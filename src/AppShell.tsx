@@ -1,7 +1,9 @@
 import { useUiTranslation } from './hooks/useUiTranslation';
 import { useCallback, useEffect, useState } from 'react';
-import { isDesktopBackendTarget } from './config/backendTarget.js';
-import { WelcomeTerminal } from './components/WelcomeTerminal';
+import { getPublicBackendTarget, isDesktopBackendTarget } from './config/backendTarget.js';
+import { preloadPublicMarketCatalog } from './services/publicMarketCatalog';
+import { preloadPublicStartupHistory } from './startup/publicHistoryPrefetch';
+import { WelcomeTerminal } from './startup/WelcomeTerminalEntry';
 import {
   parseSessionExpiryMs,
   type AuthenticatedSessionHandoff,
@@ -36,6 +38,12 @@ export const preloadAuthenticatedPresentation = (): Promise<AuthenticatedStylesM
  */
 export const preloadAuthenticatedTerminal = (): Promise<AppModule> => {
   if (!appModulePromise) {
+    // Begin public market discovery while the terminal modules download. The
+    // mounted catalog and guest quote consumers join this in-flight request.
+    if (!isDesktopBackendTarget()) {
+      void preloadPublicMarketCatalog(getPublicBackendTarget()).catch(() => undefined);
+      preloadPublicStartupHistory();
+    }
     // TradingChart is the largest first-viewport dependency. Warm it beside
     // the shell, but do not make authentication handoff wait for it.
     void preloadTradingChartRuntime().catch(() => undefined);
@@ -105,8 +113,8 @@ function StoredSessionTerminalLoader({
 
   if (loadFailed) {
     return (
-      <div data-terminal-module-error="true" role="alert">
-        <span>{tr("Unable to load the terminal.")}</span>
+      <TerminalLoadFallback message="Unable to load the terminal." isError>
+        <div className="rtx-terminal-loading__actions" data-terminal-module-error="true">
         <button
           type="button"
           onClick={() => {
@@ -115,7 +123,8 @@ function StoredSessionTerminalLoader({
           }}
         >
           {tr("Retry")}</button>
-      </div>
+        </div>
+      </TerminalLoadFallback>
     );
   }
 
@@ -146,9 +155,9 @@ export const hasStoredSessionCandidate = (): boolean => {
 };
 
 /**
- * Anonymous sessions own only the login UI. The chart/data/WebSocket graph is
- * fetched through the dynamic boundary only after authentication succeeds or
- * a restorable stored session exists.
+ * Web visitors enter the public workspace; desktop visitors start with login
+ * unless a stored session can be restored. App owns authenticated connection
+ * gating after the terminal graph crosses its dynamic boundary.
  */
 interface AppShellProps {
   loadStoredSessionTerminal?: () => Promise<AppModule>;
@@ -158,6 +167,7 @@ export default function AppShell({
   loadStoredSessionTerminal = preloadAuthenticatedTerminal,
 }: AppShellProps = {}) {
   const [shouldMountTerminal, setShouldMountTerminal] = useState(hasStoredSessionCandidate);
+  const [sessionGeneration, setSessionGeneration] = useState(0);
   const guestEnabled = !isDesktopBackendTarget();
   const [initialSessionHandoff, setInitialSessionHandoff] = useState<AuthenticatedSessionHandoff | null>(null);
   const prepareTerminal = useCallback(() => {
@@ -174,6 +184,9 @@ export default function AppShell({
   const handleSessionEnded = useCallback(() => {
     setInitialSessionHandoff(null);
     setShouldMountTerminal(false);
+    // Web keeps the public workspace open, but account-owned component state
+    // and effects must end just as they do when the desktop opens login.
+    setSessionGeneration((generation) => generation + 1);
   }, []);
 
   if (!shouldMountTerminal && !guestEnabled) {
@@ -206,6 +219,7 @@ export default function AppShell({
 
   return (
     <StoredSessionTerminalLoader
+      key={sessionGeneration}
       initialSessionHandoff={initialSessionHandoff}
       loadTerminal={loadStoredSessionTerminal}
       onSessionEnded={handleSessionEnded}

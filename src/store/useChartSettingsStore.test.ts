@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyChartShiftDefaultMigration,
+  applyOhlcDefaultMigration,
   applyPeriodSeparatorsDefaultMigration,
   applyVolumeBarsDefaultMigration,
   CHART_CANDLE_DOWN_COLOR,
@@ -369,5 +370,41 @@ describe('chart settings trade history overlay defaults', () => {
       lineChart: '#000000',
       lastPriceLine: '#000000',
     });
+  });
+
+  it('shows OHLC values by default in defaultChartProperties', () => {
+    expect(defaultChartProperties.showOHLC).toBe(true);
+  });
+
+  it('migrates old persisted hidden OHLC to visible once', () => {
+    const oldPersistedProperties = normalizeChartProperties({
+      showOHLC: false,
+    });
+
+    const migrated = applyOhlcDefaultMigration(
+      oldPersistedProperties,
+      { XAUUSD: oldPersistedProperties },
+      undefined,
+    );
+
+    expect(migrated.globalProperties.showOHLC).toBe(true);
+    expect(migrated.symbolProperties.XAUUSD.showOHLC).toBe(true);
+    expect(migrated.ohlcDefaultMigrationVersion).toBe(1);
+  });
+
+  it('preserves explicit hidden OHLC preference after migration has run', () => {
+    const migratedProperties = normalizeChartProperties({
+      showOHLC: false,
+    });
+
+    const migrated = applyOhlcDefaultMigration(
+      migratedProperties,
+      { XAUUSD: migratedProperties },
+      1,
+    );
+
+    expect(migrated.globalProperties.showOHLC).toBe(false);
+    expect(migrated.symbolProperties.XAUUSD.showOHLC).toBe(false);
+    expect(migrated.ohlcDefaultMigrationVersion).toBe(1);
   });
 });

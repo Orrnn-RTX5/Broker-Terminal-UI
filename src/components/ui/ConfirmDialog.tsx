@@ -4,7 +4,7 @@ import { useConfirmStore } from '../../store/useConfirmStore';
 
 export function ConfirmDialog() {
     const tr = useUiTranslation();
-    const { isOpen, title, message, onConfirm, onCancel, closeConfirm } = useConfirmStore();
+    const { isOpen, title, message, confirmLabel, danger, onConfirm, onCancel } = useConfirmStore();
 
     if (!isOpen) return null;
 
@@ -44,9 +44,12 @@ export function ConfirmDialog() {
                         {tr("Cancel")}</button>
                     <button
                         onClick={onConfirm}
-                        className="rtx-confirm-dialog__confirm px-6 py-1.5 rounded text-[12px] font-bold text-white bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 border border-blue-400/30 shadow-lg transition-colors"
+                        className={`rtx-confirm-dialog__confirm${danger ? ' rtx-confirm-dialog__confirm--danger' : ''} px-6 py-1.5 rounded text-[12px] font-bold text-white border shadow-lg transition-colors ${danger
+                            ? 'bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 border-red-400/30'
+                            : 'bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 border-blue-400/30'
+                            }`}
                     >
-                        {tr("OK")}</button>
+                        {tr(confirmLabel || "OK")}</button>
                 </div>
             </div>
         </div>

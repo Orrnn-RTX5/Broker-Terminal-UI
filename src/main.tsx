@@ -54,9 +54,9 @@ try {
   }
 } catch { /* ignore parse errors */ }
 
-// The real login UI is part of the static entry graph. Vite can therefore
-// discover its JavaScript and CSS directly from the initial module request,
-// eliminating the former entry -> bootstrap -> login request waterfall.
+// Keep bootstrap statically discoverable from the first entry request.
+// Desktop builds include login here; web builds defer its code and styles
+// while their public terminal runtime loads through AppShell.
 try {
   mountApp();
 } catch (error) {

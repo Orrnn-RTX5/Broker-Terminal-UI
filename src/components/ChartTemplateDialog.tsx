@@ -39,7 +39,6 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
   const { templates, saveTemplate, deleteTemplate, loadTemplate } = useTemplateStore();
   const [templateName, setTemplateName] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
-  const [showSaveInput, setShowSaveInput] = useState(mode === 'save');
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
@@ -91,7 +90,6 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
 
     console.log('[ChartTemplateDialog] Saved template:', newTemplate);
     setTemplateName('');
-    setShowSaveInput(false);
     onClose();
   };
 
@@ -170,7 +168,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Save Input */}
-          {mode === 'save' && showSaveInput && (
+          {mode === 'save' && (
             <div className="bg-[#252526] border border-zinc-700 rounded-lg p-4">
               <label className="block text-xs text-zinc-400 mb-2 font-medium">
                 {tr("Template Name")}</label>
@@ -266,7 +264,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
             </div>
           )}
 
-          {customTemplates.length === 0 && mode === 'load' && !showSaveInput && (
+          {customTemplates.length === 0 && mode === 'load' && (
             <div className="text-center py-12 text-zinc-600">
               <Plus size={32} className="mx-auto mb-3 opacity-20" />
               <p className="text-sm font-medium">{tr("No custom templates")}</p>

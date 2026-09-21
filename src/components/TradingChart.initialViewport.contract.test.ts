@@ -10,6 +10,17 @@ const chartSource = readFileSync(
 ).replace(/\r\n/g, '\n');
 
 describe('TradingChart initial viewport contract', () => {
+  it('reports rendered candles to the terminal startup boundary', () => {
+    expect(chartSource).toContain("import { useTerminalStartupReady } from '../startup/TerminalStartupBoundary';");
+    expect(chartSource).toMatch(/useTerminalStartupReady\(\s*'chart',\s*loadingPhase === 'ready' \|\| loadingPhase === 'hidden',?\s*\)/);
+
+    const renderStart = chartSource.indexOf('series.setData(seriesData);');
+    const reportReady = chartSource.indexOf('markCandlesReady();', renderStart);
+    expect(renderStart).toBeGreaterThan(-1);
+    expect(reportReady).toBeGreaterThan(renderStart);
+    expect(chartSource.slice(renderStart, reportReady)).toContain('pending.finishLoadingAfterRender && seriesData.length > 0');
+  });
+
   it('moves from a sparse live range to the latest uncached history range', () => {
     const sparseLiveRange = getTradingChartInitialLogicalRange({
       timeframe: 'M1',
@@ -44,6 +55,19 @@ describe('TradingChart initial viewport contract', () => {
     expect(initialHistoryRender).toContain('shouldResetInitialHistoryVisibleRange({');
     expect(initialHistoryRender).toContain('hydratedFromCache,');
     expect(initialHistoryRender).toContain('resetVisibleRange: shouldResetVisibleRange');
+  });
+
+  it('resets candle zoom and scroll when Reset Layout fires', () => {
+    const listenerStart = chartSource.indexOf('// Reset Layout restores the default candle zoom and scroll');
+    const listenerEnd = chartSource.indexOf('const flushTradeOverlay', listenerStart);
+    const listener = chartSource.slice(listenerStart, listenerEnd);
+
+    expect(listenerStart).toBeGreaterThan(-1);
+    expect(listenerEnd).toBeGreaterThan(listenerStart);
+    expect(listener).toContain("window.addEventListener('resetLayout', handleResetLayoutZoom);");
+    expect(listener).toContain('const totalBars = lastRenderedCandlesRef.current.length;');
+    expect(listener).toContain("seriesRef.current?.priceScale().applyOptions({ autoScale: true });");
+    expect(listener).toContain('applyInitialVisibleLogicalRange(chart, totalBars, timeframe);');
   });
 
   it('keeps sparse live data covered until history settles without blocking live updates', () => {

@@ -14,7 +14,8 @@ import i18n from '../i18n';
  * - Keyboard shortcuts: Shift+B (Buy), Shift+S (Sell), Shift+X (Close)
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useFloatingPanelDrag } from '../hooks/useFloatingPanelDrag';
 import { Icon } from './ui/Icon';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { useAppStore } from '../store/useAppStore';
@@ -33,22 +34,26 @@ import {
     resolveExactBrokerSymbolValue,
 } from '../utils/exactBrokerSymbol';
 
-const PANEL_WIDTH = 320;
-const PANEL_EDGE_GAP = 16;
+const PANEL_WIDTH = 368;
+const PANEL_EDGE_GAP = 12;
+const snapToPixel = (value: number) => {
+    const scale = window.devicePixelRatio || 1;
+    return Math.round(value * scale) / scale;
+};
 const ACCOUNT_VALUE_FORMATTER = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
 });
 
-const clampPanelPosition = (position: { x: number; y: number }) => ({
-    x: Math.max(
+const clampPanelPosition = (position: { x: number; y: number }, panel: HTMLDivElement | null) => ({
+    x: snapToPixel(Math.max(
         PANEL_EDGE_GAP,
-        Math.min(Math.max(PANEL_EDGE_GAP, window.innerWidth - PANEL_WIDTH - PANEL_EDGE_GAP), position.x),
-    ),
-    y: Math.max(
+        Math.min(Math.max(PANEL_EDGE_GAP, window.innerWidth - (panel?.offsetWidth || PANEL_WIDTH) - PANEL_EDGE_GAP), position.x),
+    )),
+    y: snapToPixel(Math.max(
         PANEL_EDGE_GAP,
-        Math.min(Math.max(PANEL_EDGE_GAP, window.innerHeight - 96), position.y),
-    ),
+        Math.min(Math.max(PANEL_EDGE_GAP, window.innerHeight - (panel?.offsetHeight || 96) - PANEL_EDGE_GAP), position.y),
+    )),
 });
 
 export function LastSymbolPanel() {
@@ -82,21 +87,14 @@ export function LastSymbolPanel() {
     const [statusMessage, setStatusMessage] = useState('');
     const [statusType, setStatusType] = useState<'success' | 'error' | 'info'>('info');
     const [showSettings, setShowSettings] = useState(false);
-    const [isDragging, setIsDragging] = useState(false);
-    const [position, setPosition] = useState(() => {
-        const saved = localStorage.getItem('lst_panel_pos');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved) as Partial<{ x: number; y: number }>;
-                if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
-                    return clampPanelPosition({ x: parsed.x as number, y: parsed.y as number });
-                }
-            } catch { /* ignore */ }
-        }
-        return clampPanelPosition({ x: window.innerWidth - PANEL_WIDTH - PANEL_EDGE_GAP, y: 96 });
-    });
-    const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+    // Measure before paint so centering never transforms the text onto fractional pixels.
+    const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+    const hasDragged = useRef(false);
     const panelRef = useRef<HTMLDivElement>(null);
+    const { isDragging, dragHandleProps } = useFloatingPanelDrag(panelRef, (next) => {
+        hasDragged.current = true;
+        setPosition(clampPanelPosition(next, panelRef.current));
+    });
     const marketStatus = useSymbolMarketStatus(lastSymbol, {
         enabled: Boolean(lastSymbol),
     });
@@ -311,41 +309,27 @@ export function LastSymbolPanel() {
         return () => window.removeEventListener('keydown', handleKey);
     }, [placeOrder, closeLastPositions]);
 
-    // Dragging
-    const onMouseDown = useCallback((e: React.MouseEvent) => {
-        if ((e.target as HTMLElement).closest('button, input, select')) return;
-        setIsDragging(true);
-        dragRef.current = { startX: e.clientX, startY: e.clientY, origX: position.x, origY: position.y };
-    }, [position]);
-
-    useEffect(() => {
-        if (!isDragging) return;
-        const onMove = (e: MouseEvent) => {
-            if (!dragRef.current) return;
-            const dx = e.clientX - dragRef.current.startX;
-            const dy = e.clientY - dragRef.current.startY;
-            const newPos = clampPanelPosition({
-                x: dragRef.current.origX + dx,
-                y: dragRef.current.origY + dy,
+    useLayoutEffect(() => {
+        const panel = panelRef.current;
+        if (!panel) return;
+        const updatePosition = () => {
+            const bounds = panel.getBoundingClientRect();
+            setPosition((current) => {
+                const next = clampPanelPosition(hasDragged.current && current ? current : {
+                    x: (window.innerWidth - bounds.width) / 2,
+                    y: (window.innerHeight - bounds.height) / 2,
+                }, panel);
+                return current?.x === next.x && current.y === next.y ? current : next;
             });
-            setPosition(newPos);
         };
-        const onUp = () => {
-            setIsDragging(false);
-            localStorage.setItem('lst_panel_pos', JSON.stringify(position));
-        };
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
+        updatePosition();
+        const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updatePosition);
+        observer?.observe(panel);
+        window.addEventListener('resize', updatePosition);
         return () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
+            observer?.disconnect();
+            window.removeEventListener('resize', updatePosition);
         };
-    }, [isDragging, position]);
-
-    useEffect(() => {
-        const keepPanelInViewport = () => setPosition((current) => clampPanelPosition(current));
-        window.addEventListener('resize', keepPanelInViewport);
-        return () => window.removeEventListener('resize', keepPanelInViewport);
     }, []);
 
     // Time since last trade
@@ -364,12 +348,14 @@ export function LastSymbolPanel() {
         <div
             ref={panelRef}
             className={`rtx-last-symbol-panel${isDragging ? ' is-dragging' : ''}`}
-            style={{ left: position.x, top: position.y }}
+            style={{ left: position?.x ?? 0, top: position?.y ?? 0, visibility: position ? 'visible' : 'hidden' }}
+            onPointerDown={event => event.stopPropagation()}
+            onMouseDown={event => event.stopPropagation()}
             role="region"
             aria-label={tr("Last symbol trader")}
         >
             <div className="last-symbol-card">
-                <header className="last-symbol-header" onMouseDown={onMouseDown}>
+                <header className="last-symbol-header" {...dragHandleProps}>
                     <div className="last-symbol-brand">
                         <span className="last-symbol-brand__icon" aria-hidden="true">
                             <Icon name="zap" size="sm" />
@@ -515,6 +501,7 @@ export function LastSymbolPanel() {
                         >
                             <span className="last-symbol-trade-button__top">
                                 <strong>{tr("Sell")}</strong>
+                                <span className="last-symbol-trade-button__quote-label">{tr("Bid")}</span>
                             </span>
                             <span className="last-symbol-trade-button__price">
                                 {bid > 0 ? bid.toFixed(digits) : '—'}
@@ -531,6 +518,7 @@ export function LastSymbolPanel() {
                         >
                             <span className="last-symbol-trade-button__top">
                                 <strong>{tr("Buy")}</strong>
+                                <span className="last-symbol-trade-button__quote-label">{tr("Ask")}</span>
                             </span>
                             <span className="last-symbol-trade-button__price">
                                 {ask > 0 ? ask.toFixed(digits) : '—'}
@@ -574,19 +562,6 @@ export function LastSymbolPanel() {
                         </span>
                     </button>
                 </div>
-
-                {account && (
-                    <dl className="last-symbol-account-summary">
-                        <div>
-                            <dt>{tr("Balance")}</dt>
-                            <dd>{ACCOUNT_VALUE_FORMATTER.format(account.balance ?? 0)}</dd>
-                        </div>
-                        <div>
-                            <dt>{tr("Equity")}</dt>
-                            <dd>{ACCOUNT_VALUE_FORMATTER.format(account.equity ?? 0)} {account.currency || 'USD'}</dd>
-                        </div>
-                    </dl>
-                )}
 
                 {showSettings && (
                     <section id="last-symbol-settings" className="last-symbol-settings" aria-label={tr("Execution settings panel")}>
@@ -660,6 +635,19 @@ export function LastSymbolPanel() {
                             </div>
                         )}
                     </section>
+                )}
+
+                {account && (
+                    <dl className="last-symbol-account-summary">
+                        <div>
+                            <dt>{tr("Balance")}</dt>
+                            <dd>{ACCOUNT_VALUE_FORMATTER.format(account.balance ?? 0)}</dd>
+                        </div>
+                        <div>
+                            <dt>{tr("Equity")}</dt>
+                            <dd>{ACCOUNT_VALUE_FORMATTER.format(account.equity ?? 0)} {account.currency || 'USD'}</dd>
+                        </div>
+                    </dl>
                 )}
 
             </div>

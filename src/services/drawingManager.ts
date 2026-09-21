@@ -4741,6 +4741,9 @@ export class DrawingManager {
 
   private beginDrag(e: PointerEvent, id: string, nodeIndex: number | null): void {
     e.stopPropagation();
+    // A secondary press opens the context menu without starting a drag or
+    // reducing an existing multi-selection to the drawing under the pointer.
+    if (e.button > 0) return;
     e.preventDefault();
     const context = this.activateContextFromEventTarget(e.target);
 
@@ -5102,7 +5105,8 @@ export class DrawingManager {
     e.preventDefault();
     e.stopPropagation();
     const context = this.activateContextFromEventTarget(e.target);
-    this.selectDrawing(id);
+    const drawing = this.drawings.find(candidate => candidate.id === id);
+    this.selectDrawing(id, drawing?.selected === true);
     window.dispatchEvent(new CustomEvent('drawing:contextmenu', {
       detail: {
         x: e.clientX,

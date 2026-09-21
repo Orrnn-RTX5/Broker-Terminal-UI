@@ -18,6 +18,9 @@ import {
 import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
 import { decodeJwtPayload } from '../utils/jwt';
 import { candleCache } from './candleCache';
+import { takePublicStartupHistory } from '../startup/publicHistoryPrefetch';
+import { preloadAuthenticatedStartupHistory, StartupHistorySessionChangedError, takeAuthenticatedStartupHistory } from '../startup/authenticatedHistoryPrefetch';
+import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME, FIRST_PAINT_HISTORY_COUNT } from '../constants/chartDefaults';
 import {
   getChartPriceFromQuote,
   isStructurallyValidPriceCandle,
@@ -59,6 +62,8 @@ export interface FetchCandlesOptions {
   from?: number;
   to?: number;
   signal?: AbortSignal;
+  /** The snapshot started before this chart mounted; retain all observed live mutations. */
+  onStartupPrefetchConsumed?: () => void;
 }
 
 export interface CandleStreamOptions {
@@ -565,11 +570,30 @@ export class ChartDataService {
   }
 
   async fetchCandles(options: FetchCandlesOptions): Promise<OHLCData[]> {
+    const startupHistory = takeAuthenticatedStartupHistory(options);
+    if (startupHistory) {
+      try {
+        const candles = await startupHistory;
+        if (candles.length > 0) {
+          options.onStartupPrefetchConsumed?.();
+          return candles;
+        }
+      } catch (error) {
+        if (options.signal?.aborted || error instanceof StartupHistorySessionChangedError) throw error;
+      }
+    }
     // The chart owns a session cache for immediate warm paints, but every
     // refresh here must reach the broker. Treating a 60-second snapshot as a
     // fresh REST response allowed stale forming OHLC to overwrite live state,
     // and sharing an in-flight AbortSignal coupled unrelated chart requests.
     return this.fetchCandlesFromNetwork(options);
+  }
+
+  preloadStartupHistory(): void {
+    preloadAuthenticatedStartupHistory(signal => this.fetchCandlesFromNetwork({
+      symbol: DEFAULT_CHART_SYMBOL, timeframe: DEFAULT_CHART_TIMEFRAME,
+      count: FIRST_PAINT_HISTORY_COUNT, signal,
+    }));
   }
 
   private async fetchCandlesFromNetwork(options: FetchCandlesOptions): Promise<OHLCData[]> {
@@ -628,6 +652,21 @@ export class ChartDataService {
     let sawSuccessfulSource = false;
     for (const attempt of attempts) {
       try {
+        if (!token && !isDesktopBackendTarget()) {
+          const prefetched = takePublicStartupHistory(attempt.url, signal);
+          if (prefetched) {
+            try {
+              const candles = this.normalizeCandleResponse(await prefetched, apiTf, symbol);
+              if (candles.length > 0) {
+                options.onStartupPrefetchConsumed?.();
+                return candles;
+              }
+            } catch (error) {
+              if (signal?.aborted) throw error;
+              // Speculation must not make normal history loading less reliable.
+            }
+          }
+        }
         const response = await fetch(attempt.url, {
           signal,
           headers: attempt.headers,

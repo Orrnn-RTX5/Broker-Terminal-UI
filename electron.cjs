@@ -4,12 +4,13 @@ if (!process.env.GH_TOKEN) {
   console.warn('[OTA] GH_TOKEN missing. OTA token-protected endpoints may fail.');
 }
 
-const { app, BrowserWindow, ipcMain, session, shell } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, shell } = require('electron');
 const fs = require('fs/promises');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { exec } = require('child_process');
 const { registerBrokerWebSocketOriginPolicy } = require('./electron-network.cjs');
+const { createDesktopStartup } = require('./electron-startup.cjs');
 
 // ─── GPU & Performance Optimization Switches ──────────────────────────────────
 app.commandLine.appendSwitch('enable-gpu-rasterization');
@@ -361,6 +362,7 @@ function createWindow() {
         title: 'RTX Terminal',
         icon: path.join(__dirname, 'build', 'icon.ico'),
         frame: false,
+        show: false,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -370,6 +372,8 @@ function createWindow() {
         autoHideMenuBar: true,
         backgroundColor: '#1e1e1e',
     });
+
+    createDesktopStartup({ WebContentsView, ipcMain, mainWindow, appRoot: __dirname });
 
     // Notify renderer when maximize state changes
     mainWindow.on('maximize', () => {
@@ -384,7 +388,9 @@ function createWindow() {
     });
 
     // In production, load the built files
-    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+    void mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html')).catch((error) => {
+        console.error('[Electron] Failed to load terminal:', error.message);
+    });
 
     mainWindow.on('closed', () => {
         mainWindow = null;

@@ -48,8 +48,6 @@ import { MenuBar } from './MenuBar';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { TimeframePicker } from './TimeframePicker';
 import { DesktopQuickActions, DesktopSymbolSearchButton } from './DesktopQuickActions';
-import { ChartTemplateManager } from '../ChartTemplateManager';
-import { indicatorManager } from '../../services/indicatorManager';
 import { drawingManager } from '../../services/drawingManager';
 import { captureFullPage } from '../../services/screenshotService';
 import {
@@ -367,6 +365,7 @@ const MainToolbar = ({
     const historyOverlayRef = useRef<HTMLDivElement>(null);
     const historyOverlayDropdownRef = useRef<HTMLDivElement>(null);
     const accountId = useAppStore((s) => s.accountId) || '';
+    const isAuthenticated = useAppStore((s) => s.isAuthenticated);
     const savedAccounts = useAppStore((s) => s.savedAccounts);
     const connectionState = useWebSocketStore((s) => s.fixConnectionState);
     const lastSymbol = useLastSymbolStore((state) => state.lastSymbol);
@@ -479,9 +478,7 @@ const MainToolbar = ({
     };
 
     const resetTradeHistorySettings = () => {
-        updateTradeHistorySetting('showTradeHistory', defaultChartProperties.showTradeHistory);
         updateTradeHistorySetting('showTradeHistoryArrows', defaultChartProperties.showTradeHistoryArrows);
-        updateTradeHistorySetting('tradeHistoryLineOpacity', defaultChartProperties.tradeHistoryLineOpacity);
     };
 
     const handleLogout = () => {
@@ -491,7 +488,7 @@ const MainToolbar = ({
             method: 'POST',
             headers: {
                 'accept': '*/*',
-                'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`,
+                'Authorization': `Bearer ${localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || ''}`,
             },
         }).catch(() => { /* ignore */ });
 
@@ -512,7 +509,7 @@ const MainToolbar = ({
             onSetAdvancedViewEnabled={setAdvancedViewEnabled}
             onSetAdvancedFontSize={(fontSize) => updateAdvancedOptions({ fontSize })}
             onSetFocusChart={(focusChart) => updateAdvancedOptions({ focusChart })}
-            onLogout={handleLogout}
+            onLogout={isAuthenticated ? handleLogout : undefined}
         />
     );
 
@@ -684,16 +681,6 @@ const MainToolbar = ({
                                             </button>
                                         </div>
 
-                                        <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry-to-close line</span>
-                                            <input
-                                                type="checkbox"
-                                                checked={tradeHistorySettings.showTradeHistory !== false}
-                                                onChange={(event) => updateTradeHistorySetting('showTradeHistory', event.target.checked)}
-                                                className="h-3.5 w-3.5 accent-blue-500"
-                                            />
-                                        </label>
-
                                         <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
                                             <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry / close arrows</span>
                                             <input
@@ -704,24 +691,6 @@ const MainToolbar = ({
                                             />
                                         </label>
 
-                                        <div className="space-y-2 rounded-[4px] border border-zinc-800/80 bg-zinc-950/35 p-2 [.rtx-advanced-view_&]:border-gray-100 [.rtx-advanced-view_&]:bg-gray-50">
-                                            <label className="block">
-                                                <div className="mb-1 flex items-center justify-between">
-                                                    <span className="text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Line opacity</span>
-                                                    <span className="font-mono text-[12px] font-normal text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryLineOpacity}%</span>
-                                                </div>
-                                                <input
-                                                    type="range"
-                                                    min={0}
-                                                    max={100}
-                                                    step={5}
-                                                    disabled={tradeHistorySettings.showTradeHistory === false}
-                                                    value={tradeHistorySettings.tradeHistoryLineOpacity}
-                                                    onChange={(event) => updateTradeHistorySetting('tradeHistoryLineOpacity', Number(event.target.value))}
-                                                    className="w-full accent-blue-500"
-                                                />
-                                            </label>
-                                        </div>
                                     </div>,
                                     document.body,
                                 )}
@@ -781,15 +750,11 @@ const MT5Divider = () => (
     <div aria-hidden="true" className="rtx-mt5-divider invisible h-6 w-0 shrink-0" />
 );
 
-interface MT5BtnProps {
-    icon: React.ReactNode;
+interface CommandIconButtonProps {
+    icon: ChartCommandIconName;
     title: string;
     active?: boolean;
     onClick?: () => void;
-}
-
-interface CommandIconButtonProps extends Omit<MT5BtnProps, 'icon'> {
-    icon: ChartCommandIconName;
     selectionRole?: 'radio';
     className?: string;
     ariaHasPopup?: React.AriaAttributes['aria-haspopup'];
@@ -812,123 +777,3 @@ const CommandIconButton = ({ icon, title, active, selectionRole, onClick, classN
         <ChartCommandIcon name={icon} />
     </button>
 );
-
-const MT5Btn = ({ icon, title, active, onClick }: MT5BtnProps) => (
-    <button
-        type="button"
-        onClick={onClick}
-        title={title}
-        aria-label={title}
-        aria-pressed={active === undefined ? undefined : active}
-        className={`flex items-center justify-center w-[32px] h-[32px] rounded-[3px] transition-all border group
-            ${active
-                ? 'bg-blue-500/15 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)] text-blue-400'
-                : 'bg-transparent border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-zinc-400 hover:text-blue-300'
-            }
-        `}
-    >
-        {icon}
-    </button>
-);
-
-// MT5-style tool button with a small ▾ dropdown arrow for sub-type selection
-interface MT5DropdownItem {
-    label: string;
-    icon: React.ReactNode;
-    onClick: () => void;
-    active?: boolean;
-}
-
-interface MT5ToolWithDropdownProps {
-    icon: React.ReactNode;
-    title: string;
-    active?: boolean;
-    onMainClick: () => void;
-    items: MT5DropdownItem[];
-}
-
-const MT5ToolWithDropdown = ({ icon, title, active, onMainClick, items }: MT5ToolWithDropdownProps) => {
-    const [open, setOpen] = React.useState(false);
-    const btnRef = React.useRef<HTMLButtonElement>(null);
-    const [pos, setPos] = React.useState({ top: 0, left: 0 });
-
-    const openDropdown = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (btnRef.current) {
-            const rect = btnRef.current.getBoundingClientRect();
-            setPos({ top: rect.bottom + 4, left: rect.left });
-        }
-        setOpen(v => !v);
-    };
-
-    // Close on outside click
-    React.useEffect(() => {
-        if (!open) return;
-        const handler = (e: MouseEvent) => {
-            const target = e.target as Node;
-            if (btnRef.current && !btnRef.current.closest('[data-dropdown-root]')?.contains(target)) {
-                setOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler, true);
-        return () => document.removeEventListener('mousedown', handler, true);
-    }, [open]);
-
-    return (
-        <div className="relative flex items-center" data-dropdown-root>
-            {/* Main tool button */}
-            <button
-                onClick={onMainClick}
-                title={title}
-                className={`flex items-center justify-center w-[28px] h-[32px] rounded-l-[3px] transition-all border border-r-0 group
-                    ${active
-                        ? 'bg-blue-500/15 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)] text-blue-400'
-                        : 'bg-transparent border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-zinc-400 hover:text-blue-300'
-                    }
-                `}
-            >
-                {icon}
-            </button>
-            {/* Small ▾ dropdown arrow button */}
-            <button
-                ref={btnRef}
-                onClick={openDropdown}
-                title={`${title} options`}
-                className={`flex items-center justify-center w-[10px] h-[32px] rounded-r-[3px] transition-all border border-l-0 group
-                    ${active || open
-                        ? 'bg-blue-500/15 border-blue-500/30 text-blue-400'
-                        : 'bg-transparent border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-zinc-600 hover:text-blue-300'
-                    }
-                `}
-            >
-                <svg width="8" height="6" viewBox="0 0 8 6" fill="currentColor"><path d="M0 0 L8 0 L4 5 Z" /></svg>
-            </button>
-
-            {/* Dropdown submenu — rendered via portal to escape toolbar overflow clipping */}
-            {open && ReactDOM.createPortal(
-                <div
-                    className="fixed w-52 bg-[#131316] border border-zinc-700/80 rounded shadow-2xl z-[9999] py-1"
-                    style={{ top: pos.top, left: pos.left }}
-                >
-                    {items.map((item) => (
-                        <button
-                            key={item.label}
-                            onClick={() => { item.onClick(); setOpen(false); }}
-                            className={`w-full flex min-h-[30px] items-center gap-3 px-3 py-1.5 text-[14px] font-normal transition-colors cursor-pointer
-                                ${item.active
-                                    ? 'bg-blue-500/15 text-blue-300'
-                                    : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-                                }
-                            `}
-                        >
-                            <span className="w-4 flex justify-center text-zinc-400">{item.icon}</span>
-                            <span>{item.label}</span>
-                            {item.active && <span className="ml-auto text-blue-400">✓</span>}
-                        </button>
-                    ))}
-                </div>,
-                document.body
-            )}
-        </div>
-    );
-};

@@ -281,7 +281,7 @@ describe('useToolboxTradeData helpers', () => {
 
     expect(account).toMatchObject({
       balance: 10000,
-      equity: 10000,
+      equity: 0,
       freeMargin: 0,
       marginLevel: 0,
       hasBackendEquity: false,
@@ -290,47 +290,48 @@ describe('useToolboxTradeData helpers', () => {
     });
   });
 
-  it('protects a funded balance from a zero-balance packet without fabricating equity', () => {
+  it('applies explicit zero backend metrics even after a funded snapshot', () => {
     const previous = normalizeToolboxAccount({
-      balance: 10000,
-      equity: 10005.5,
-      used_margin: 10,
-      free_margin: 9995.5,
-      margin_level: 100055,
-      floating_pnl: 5.5,
+      balance: 10000, equity: 10005.5, used_margin: 10,
+      free_margin: 9995.5, margin_level: 100055, floating_pnl: 5.5,
     });
-
     const account = normalizeToolboxAccount(
       { balance: 0, equity: 9800.25, free_margin: 0, margin_level: 0, floating_pnl: -2 },
       previous,
     );
-
-    // Known-funded balance is preserved: the packet's 0 is rejected.
-    expect(account.balance).toBe(10000);
-    // Everything else from that same packet is untrustworthy -> reported as unavailable.
-    expect(account.hasBackendEquity).toBe(false);
-    expect(account.hasBackendFreeMargin).toBe(false);
-    expect(account.hasBackendMarginLevel).toBe(false);
-    // No locally reconstructed equity (balance + floating P/L would have been 9998).
-    expect(account.equity).not.toBe(10000 + -2);
     expect(resolveTradeAccountMetrics(account)).toMatchObject({
-      balance: 10000,
-      equity: null,
-      freeMargin: null,
-      marginLevel: null,
-      equitySource: 'unavailable',
-      freeMarginSource: 'unavailable',
-      marginLevelSource: 'unavailable',
+      balance: 0, equity: 9800.25, margin: 10, freeMargin: 0, marginLevel: 0, unrealizedPL: -2,
     });
   });
 
-  it('rejects a zero-balance packet even when it carries no equity at all', () => {
-    const previous = normalizeToolboxAccount({ balance: 5000, equity: 5000, free_margin: 5000, margin_level: 0 });
+  it('preserves known backend metrics when a partial packet omits them', () => {
+    const previous = normalizeToolboxAccount({ balance: 5000, equity: 5010, free_margin: 4000, margin_level: 501 });
     const account = normalizeToolboxAccount({ balance: 0 }, previous);
+    expect(resolveTradeAccountMetrics(account)).toMatchObject({
+      balance: 0, equity: 5010, freeMargin: 4000, marginLevel: 501,
+    });
+  });
 
-    expect(account.balance).toBe(5000);
-    expect(account.hasBackendEquity).toBe(false);
-    expect(resolveTradeAccountMetrics(account).equitySource).toBe('unavailable');
+  it('keeps unavailable metrics and position placeholders unavailable after normalization', () => {
+    const account = normalizeToolboxAccount({ balance: 0, hasBackendBalance: false });
+    expect(resolveTradeAccountMetrics(account).balance).toBeNull();
+    const position = normalizeToolboxPosition({
+      ...warmPosition, profit: 0, hasBackendProfit: false, hasBackendCurrentPrice: false,
+    });
+    expect(position).toMatchObject({ hasBackendProfit: false, hasBackendCurrentPrice: false });
+    expect(normalizeToolboxPosition(position)).toMatchObject({ hasBackendProfit: false, hasBackendCurrentPrice: false });
+  });
+
+  it('makes explicitly invalid position fields unavailable while preserving omitted backend deltas', () => {
+    const initial = [normalizeToolboxPosition({ ...warmPosition, profit: 10 })];
+    const omitted = patchToolboxPositions(initial, [{ id: 17, sl: 1.05 }]);
+    expect(omitted[0]).toMatchObject({ hasBackendProfit: true, hasBackendCurrentPrice: true });
+    const invalid = patchToolboxPositions(omitted, [{ id: 17, profit: null, price_current: null }]);
+    expect(invalid[0]).toMatchObject({ hasBackendProfit: false, hasBackendCurrentPrice: false });
+    const recovered = patchToolboxPositions(invalid, [{ id: 17, profit: 0, price_current: 1.102 }]);
+    expect(recovered[0]).toMatchObject({
+      profit: 0, price_current: 1.102, hasBackendProfit: true, hasBackendCurrentPrice: true,
+    });
   });
 
   it('keeps trusting a genuine zero balance when no funded balance was known', () => {

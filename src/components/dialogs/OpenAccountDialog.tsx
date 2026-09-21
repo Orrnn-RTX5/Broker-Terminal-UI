@@ -222,12 +222,6 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [createError, setCreateError] = useState('');
     const [validationError, setValidationError] = useState('');
 
-    // FileMenu mounts this dialog closed. Warm the shared directory before the
-    // user opens the wizard; a recent sign-in response needs no new request.
-    useEffect(() => {
-        void loadAppBrokerDirectory({ desktop: isDesktopBackendTarget() }).catch(() => undefined);
-    }, []);
-
     useEffect(() => {
         if (!isOpen) return;
 

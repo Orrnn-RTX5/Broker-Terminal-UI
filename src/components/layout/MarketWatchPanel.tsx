@@ -1,11 +1,12 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useTerminalStartupReady } from '../../startup/TerminalStartupBoundary';
+import React, { lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { resolveTickFromLookup, selectTickCount, useAppStore, useTick } from '../../store/useAppStore';
 import { useWatchlistStore } from '../../store/useWatchlistStore';
 import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
-import { SymbolSpecificationDialog } from '../dialogs/SymbolSpecificationDialog';
+import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import {
   useActiveMarketSymbols,
   useLiveQuotes,
@@ -15,6 +16,7 @@ import {
 } from '../../hooks/useLiveMarketData';
 import { useBrokerAccountSessionScope } from '../../hooks/useBrokerAccountSessionScope';
 import { useClosedMarketDailyChanges } from '../../hooks/useClosedMarketDailyChanges';
+import { useLastMarketWatchQuotes, type MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import { useVisibleSymbolRows } from '../../hooks/useVisibleSymbolRows';
 import {
   getHiddenSymbols,
@@ -39,6 +41,9 @@ import {
   searchMarketWatchSymbols,
   shouldUseWatchlistAsMarketWatchSource,
 } from '../../utils/marketWatchSource';
+
+const SymbolSpecificationDialog = lazy(() => import('../dialogs/SymbolSpecificationDialog')
+  .then(module => ({ default: module.SymbolSpecificationDialog })));
 
 export interface ActiveMarketSymbolsSnapshot {
   symbols: string[];
@@ -163,69 +168,62 @@ const getTickSnapshot = (symbol: string) => {
   return resolveTickFromLookup(state.ticks, state.tickLookup, symbol);
 };
 
-const formatQuoteAge = (timestamp: number | undefined, now: number): string | null => {
-  if (!timestamp || !Number.isFinite(timestamp)) return null;
-  const ageSeconds = Math.max(0, Math.floor((now - timestamp) / 1000));
-  if (ageSeconds < 5) return 'now';
-  if (ageSeconds < 60) return `${ageSeconds}s`;
-  const ageMinutes = Math.floor(ageSeconds / 60);
-  if (ageMinutes < 60) return `${ageMinutes}m`;
-  return `${Math.floor(ageMinutes / 60)}h`;
-};
+const hasMarketWatchQuote = (tick: { bid?: number; ask?: number } | null | undefined): boolean => (
+  Boolean(tick && (
+    (Number.isFinite(tick.bid) && Number(tick.bid) > 0)
+    || (Number.isFinite(tick.ask) && Number(tick.ask) > 0)
+  ))
+);
+
+const formatLastPriceTime = (asOf: number): string => (
+  new Date(asOf).toUTCString().replace('GMT', 'UTC')
+);
 
 // ─── Market Watch Row ─────────────────────────────────────────────────────────
 const MarketWatchRow: React.FC<{
   symbol: string;
   isSelected: boolean;
   isLive: boolean;
-  isAvailable: boolean;
-  isStatusLoading: boolean;
-  isStatusSettled: boolean;
-  isStatusCurrent: boolean;
-  isCatalogLoading: boolean;
   isChartOpenable: boolean;
-  now: number;
   onClick: () => void;
   contextMenuItems: ContextMenuItemConfig[];
   showAsk: boolean;
   showDailyChange: boolean;
   closedDailyChange?: number | null;
+  lastPrice?: MarketWatchLastPrice;
   symbolUniverse: readonly string[];
   rowRef?: (node: HTMLTableRowElement | null) => void;
-}> = ({ symbol, isSelected, isLive, isAvailable, isStatusLoading, isStatusSettled, isStatusCurrent, isCatalogLoading, isChartOpenable, now, onClick, contextMenuItems, showAsk, showDailyChange, closedDailyChange, symbolUniverse, rowRef }) => {
+}> = ({ symbol, isSelected, isLive, isChartOpenable, onClick, contextMenuItems, showAsk, showDailyChange, closedDailyChange, lastPrice, symbolUniverse, rowRef }) => {
     const tr = useUiTranslation();
   const displaySymbol = getMarketWatchSymbolLabel(symbol, symbolUniverse);
   const cachedTick = useTick(symbol);
   const tick = cachedTick;
+  // Historical prices belong only to this row; current quotes and trade gates
+  // keep their existing ownership even when the market is closed.
+  const hasTickQuote = hasMarketWatchQuote(tick);
+  const fallbackPrice = hasTickQuote ? undefined : lastPrice;
+  const quote = hasTickQuote ? tick : fallbackPrice?.kind === 'quote' ? fallbackPrice : undefined;
+  const lastClose = fallbackPrice?.kind === 'close' ? fallbackPrice : undefined;
+  const lastPriceTitle = fallbackPrice
+    ? `${tr(fallbackPrice.kind === 'close' ? 'Last close' : 'Last quote')} · ${formatLastPriceTime(fallbackPrice.asOf)}`
+    : undefined;
   const priceDigits = getMarketWatchPriceDigits(symbol);
-  const bidDirection = tick?.bidDirection ?? 'none';
-  const askDirection = tick?.askDirection ?? 'none';
-  const bid = tick?.bid ?? 0;
-  const ask = tick?.ask ?? 0;
+  const bidDirection = hasTickQuote ? tick?.bidDirection ?? 'none' : 'none';
+  const askDirection = hasTickQuote ? tick?.askDirection ?? 'none' : 'none';
+  const bid = quote?.bid ?? 0;
+  const ask = quote?.ask ?? 0;
   // The current quote remains authoritative. Closed-market history is only a
   // display fallback when the broker no longer publishes Daily Change.
   const dailyPct = readFiniteDailyChange(tick?.dailyChange)
     ?? readFiniteDailyChange(closedDailyChange);
 
-  const hasData = tick && (tick.bid > 0 || tick.ask > 0);
+  const hasData = hasMarketWatchQuote(quote);
   const hasDailyData = dailyPct !== null;
-  const quoteAge = hasData ? formatQuoteAge(tick.timestamp, now) : null;
-  const statusLabel = isLive
-    ? null
-    : isCatalogLoading || isStatusLoading || !isStatusSettled
-      ? 'LOADING'
-      : !isStatusCurrent
-        ? 'UNKNOWN'
-        : !isAvailable
-          ? 'UNAVAILABLE'
-          : hasData
-            ? 'STALE'
-            : 'UNAVAILABLE';
 
   const bidFlash = usePriceFlash(bid);
   const askFlash = usePriceFlash(ask);
-  const bidPriceDirection = bidFlash ?? (bidDirection !== 'none' ? bidDirection : null);
-  const askPriceDirection = askFlash ?? (askDirection !== 'none' ? askDirection : null);
+  const bidPriceDirection = hasTickQuote ? bidFlash ?? (bidDirection !== 'none' ? bidDirection : null) : null;
+  const askPriceDirection = hasTickQuote ? askFlash ?? (askDirection !== 'none' ? askDirection : null) : null;
 
   const dailyPositive = hasDailyData && dailyPct! > 0;
   const dailyNegative = hasDailyData && dailyPct! < 0;
@@ -290,25 +288,25 @@ const MarketWatchRow: React.FC<{
             }}>
               {displaySymbol}
             </span>
-            {statusLabel && statusLabel !== 'STALE' && statusLabel !== 'LOADING' && (
-              <span
-                className="rtx-market-watch__status"
-                aria-label={`${displaySymbol} ${statusLabel.toLowerCase()}${quoteAge ? `, last quote ${quoteAge} ago` : ''}`}
-                title={`${displaySymbol} ${statusLabel.toLowerCase()}${quoteAge ? `, last quote ${quoteAge} ago` : ''}`}
-                style={{
-                  flexShrink: 0,
-                  width: 5,
-                  height: 5,
-                  borderRadius: '50%',
-                  background: '#6b6b73',
-                }}
-              />
-            )}
           </div>
         </td>
 
+        {lastClose ? <>
+          <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center' }}>
+            <span className="rtx-market-watch__last-close" style={{ display: 'inline-flex', justifyContent: 'center', alignItems: 'baseline', flexWrap: 'wrap', gap: '0 6px', color: 'var(--text-primary)' }}>
+              <span style={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                <PriceDisplay price={lastClose.close} symbol={symbol} digits={priceDigits} />
+              </span>
+            </span>
+          </td>
+          {showAsk && (
+            <td style={{ padding: '3px 4px', textAlign: 'center', opacity: 0.45 }}>
+              <span className="rtx-market-watch__price rtx-market-watch__price--ask rtx-market-watch__price--empty" style={{ fontSize: 13, color: '#36363e' }}>—</span>
+            </td>
+          )}
+        </> : <>
         {/* Bid — most important: bright, large, tabular */}
-        <td style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
+        <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
           <span className={`rtx-market-watch__price rtx-market-watch__price--bid${bidPriceDirection ? ` rtx-market-watch__price--${bidPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
             display: 'inline-block',
             fontSize: 13,
@@ -331,7 +329,7 @@ const MarketWatchRow: React.FC<{
 
         {/* Ask — secondary, slightly softer */}
         {showAsk && (
-          <td style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
+          <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
             <span className={`rtx-market-watch__price rtx-market-watch__price--ask${askPriceDirection ? ` rtx-market-watch__price--${askPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
               display: 'inline-block',
               fontSize: 13,
@@ -351,6 +349,7 @@ const MarketWatchRow: React.FC<{
             </span>
           </td>
         )}
+        </>}
 
         {/* MetaTrader-style Daily Change follows Ask without changing its session-close semantics. */}
         {showDailyChange && (
@@ -611,6 +610,26 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     const utcDay = new Date().getUTCDay();
     const isTraditionalMarketWeekend = utcDay === 0 || utcDay === 6;
     const canIdentifyClosedSymbols = activeSymbolsSettled && activeSymbolsCurrent;
+    const missingQuoteSymbols = useMemo(() => {
+      void liveTickCount;
+      if (!dailyChangeScopeKey) return [];
+      return visibleRowSymbols.filter((symbol) => !hasMarketWatchQuote(getTickSnapshot(symbol)));
+    }, [dailyChangeScopeKey, liveTickCount, visibleRowSymbols]);
+    const candleFallbackSymbols = useMemo(() => {
+      if (!canIdentifyClosedSymbols && !isTraditionalMarketWeekend) return [];
+      return missingQuoteSymbols.filter((symbol) => {
+        if (canIdentifyClosedSymbols && activeSymbolSet.has(symbol)) return false;
+        const groupKey = symbolGroupKeyByName.get(symbol)
+          ?? resolveMarketWatchSymbolGroup(symbol).key;
+        return groupKey !== 'crypto';
+      });
+    }, [activeSymbolSet, canIdentifyClosedSymbols, isTraditionalMarketWeekend, missingQuoteSymbols, symbolGroupKeyByName]);
+    const lastPrices = useLastMarketWatchQuotes({
+      enabled: Boolean(dailyChangeScopeKey),
+      scopeKey: dailyChangeScopeKey,
+      symbols: missingQuoteSymbols,
+      candleSymbols: candleFallbackSymbols,
+    });
     const closedDailyChangeSymbols = useMemo(() => {
       if (!dailyChangeScopeKey || (!canIdentifyClosedSymbols && !isTraditionalMarketWeekend)) return [];
       // Re-evaluate after the initial REST quote batch populates the tick store.
@@ -833,18 +852,54 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       }
     }, [activeWatchlist, quoteEligibleSymbols, shouldMergePersistedSymbols]);
 
-    const handleExport = useCallback(() => {
-      const data = rows.map(sym => {
+    const handleExport = useCallback(async () => {
+      const publishFeedback = (message: string, type: 'success' | 'error') => {
+        window.dispatchEvent(new CustomEvent('rtx:order-feedback', { detail: { message, type } }));
+      };
+      const cells = rows.map(sym => {
         const tick = getTickSnapshot(sym);
         const dailyChange = readFiniteDailyChange(tick?.dailyChange)
           ?? readFiniteDailyChange(closedDailyChanges.get(sym));
         const dailyChangeDisplay = dailyChange !== null
           ? `${dailyChange.toFixed(2)}%`
           : '-';
-        return `${sym}\t${tick?.bid ?? '-'}\t${tick?.ask ?? '-'}\t${dailyChangeDisplay}`;
-      }).join('\n');
-      navigator.clipboard.writeText(`Symbol\tBid\tAsk\tDaily Change\n${data}`);
-    }, [closedDailyChanges, rows]);
+        const fallback = hasMarketWatchQuote(tick) ? undefined : lastPrices.get(sym);
+        if (fallback?.kind === 'close') {
+          return [sym, `${tr('Last close')}: ${fallback.close}`, '-', dailyChangeDisplay];
+        }
+        const quote = hasMarketWatchQuote(tick) ? tick : fallback?.kind === 'quote' ? fallback : undefined;
+        return [sym, `${quote?.bid ?? '-'}`, `${quote?.ask ?? '-'}`, dailyChangeDisplay];
+      });
+      const clipboardPayload = `Symbol\tBid\tAsk\tDaily Change\n${cells.map(cell => cell.join('\t')).join('\n')}`;
+      try {
+        await navigator.clipboard.writeText(clipboardPayload);
+        publishFeedback(
+          tr('Market Watch exported to clipboard ({{value0}} symbols)', { value0: rows.length }),
+          'success',
+        );
+        return;
+      } catch {
+        // Clipboard can be unavailable (permissions, embedded shells); fall back to a file.
+      }
+      try {
+        const csv = `Symbol,Bid,Ask,Daily Change\n${cells.map(cell => cell.join(',')).join('\n')}`;
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `market-watch-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.csv`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        publishFeedback(
+          tr('Market Watch exported to CSV ({{value0}} symbols)', { value0: rows.length }),
+          'success',
+        );
+      } catch {
+        publishFeedback(tr('Market Watch export failed'), 'error');
+      }
+    }, [closedDailyChanges, lastPrices, rows, tr]);
 
     const getContextMenuItems = useCallback((symbol: string): ContextMenuItemConfig[] => {
       const tradeDisabled = !actionableSymbolSet.has(symbol);
@@ -864,7 +919,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
           icon: <Icon name="new-chart" size="xs" />,
           disabled: chartDisabled,
           action: () => {
-            window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol } }));
+            window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol, newWindow: true } }));
           },
         },
         {
@@ -954,6 +1009,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     }, [marketInstruments, specificationSymbol]);
 
     const isSymbolListLoading = isLoadingSymbols || watchlistLoading || (searchUniverse.length === 0 && activeSymbolsLoading);
+    useTerminalStartupReady('marketWatch', !isSymbolListLoading);
 
     useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
@@ -1488,7 +1544,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                   )}
                 </div>
               ) : (
-                <table className="rtx-market-watch__grid" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                <table className={`rtx-market-watch__grid${showGrid ? ' rtx-market-watch__grid--lines' : ''}`} style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                   <colgroup>
                     <col />
                     <col style={{ width: panelWidth < 300 ? '45%' : '22%' }} />
@@ -1511,18 +1567,13 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                           symbol={symbol}
                           isSelected={symbol === normalizeSymbol(selectedSymbol)}
                           isLive={liveQuoteSymbolSet.has(symbol)}
-                          isAvailable={quoteEligibleSymbolSet.has(symbol)}
-                          isStatusLoading={activeSymbolsLoading}
-                          isStatusSettled={activeSymbolsSettled}
-                          isStatusCurrent={activeSymbolsCurrent}
-                          isCatalogLoading={isLoadingSymbols}
                           isChartOpenable={chartOpenableSymbolSet.has(symbol)}
-                          now={Date.now()}
                           onClick={() => onSymbolSelect(symbol)}
                           contextMenuItems={getContextMenuItems(symbol)}
                           showAsk={showAsk}
                           showDailyChange={showDailyChange}
                           closedDailyChange={closedDailyChanges.get(symbol)}
+                          lastPrice={lastPrices.get(symbol)}
                           symbolUniverse={quoteEligibleSymbols}
                           rowRef={marketWatchRowRefCallbacks.get(symbol)}
                         />
@@ -1557,13 +1608,15 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
             </>
           )}
         </div>
-        <SymbolSpecificationDialog
-          isOpen={Boolean(specificationSymbol)}
-          symbol={specificationSymbol ?? ''}
-          instrument={specificationInstrument}
-          fallbackInstrument={specificationFallbackInstrument}
-          onClose={() => setSpecificationSymbol(null)}
-        />
+        <RetainedLazyFeature active={Boolean(specificationSymbol)}>
+          <SymbolSpecificationDialog
+            isOpen={Boolean(specificationSymbol)}
+            symbol={specificationSymbol ?? ''}
+            instrument={specificationInstrument}
+            fallbackInstrument={specificationFallbackInstrument}
+            onClose={() => setSpecificationSymbol(null)}
+          />
+        </RetainedLazyFeature>
       </>
     );
   };

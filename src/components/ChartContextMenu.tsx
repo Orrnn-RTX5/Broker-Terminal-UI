@@ -35,6 +35,7 @@ interface ChartContextMenuProps {
     chartShift?: boolean;
     showTradeLevels?: boolean;
     showTradeHistory?: boolean;
+    showOHLC?: boolean;
     onChangeChartType: (type: ChartType) => void;
     onChangeTimeframe: (tf: Timeframe) => void;
     onToggleOneClickTrading: () => void;
@@ -44,6 +45,7 @@ interface ChartContextMenuProps {
     onToggleChartShift: () => void;
     onToggleTradeLevels?: () => void;
     onToggleTradeHistory?: () => void;
+    onToggleOHLC?: () => void;
     onOpenProperties: () => void;
     onSaveAsPicture: () => void;
     onPrintChart: () => void;
@@ -306,6 +308,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     chartShift = false,
     showTradeLevels = true,
     showTradeHistory = true,
+    showOHLC = true,
     onChangeChartType,
     onChangeTimeframe,
     onToggleOneClickTrading,
@@ -315,6 +318,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     onToggleChartShift,
     onToggleTradeLevels,
     onToggleTradeHistory,
+    onToggleOHLC,
     onOpenProperties,
     onSaveAsPicture,
     onPrintChart,
@@ -734,6 +738,15 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 shortcut="Ctrl+K"
                 checked={showVolumes}
                 onClick={() => { onToggleVolumes(); onClose(); }}
+            />
+
+            {/* ── Show OHLC ── */}
+            <MenuItem
+                icon={<Activity size={13} strokeWidth={1.5} style={{ color: showOHLC ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
+                label={tr("Show OHLC")}
+                shortcut="Alt+Shift+L"
+                checked={showOHLC}
+                onClick={() => { onToggleOHLC?.(); onClose(); }}
             />
 
             <MenuSeparator />

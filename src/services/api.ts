@@ -5,6 +5,7 @@
  */
 
 import { resolveTickFromLookup, useAppStore } from '../store/useAppStore';
+import { readBackendNumber } from './backendAccountMetrics';
 import { API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
 import {
   normalizeBrokerInfoForTarget,
@@ -237,10 +238,11 @@ const mapFilledOrderToPosition = (
     fill.price_open ?? fill.open_price ?? fill.price,
     0,
   );
-  const currentPrice = toFiniteNumber(
-    fill.price_current ?? fill.current_price,
-    openPrice,
-  );
+  const backendCurrentPrice = readBackendNumber(fill.price_current ?? fill.current_price ?? fill.currentPrice);
+  const backendProfit = readBackendNumber(fill.profit ?? fill.unrealized_pl ?? fill.unrealized_pnl ?? fill.unrealizedPnL);
+  const hasBackendCurrentPrice = fill.pnl_available !== false && fill.hasBackendCurrentPrice !== false && backendCurrentPrice !== undefined;
+  const hasBackendProfit = fill.pnl_available !== false && fill.hasBackendProfit !== false && backendProfit !== undefined;
+  const currentPrice = hasBackendCurrentPrice ? backendCurrentPrice : 0;
 
   return {
     ...fill,
@@ -254,6 +256,8 @@ const mapFilledOrderToPosition = (
     price_open: openPrice,
     current_price: currentPrice,
     price_current: currentPrice,
+    hasBackendCurrentPrice,
+    hasBackendProfit,
     price_sl: toFiniteNumber(fill.price_sl ?? fill.sl, fallback.sl),
     price_tp: toFiniteNumber(fill.price_tp ?? fill.tp, fallback.tp),
     sl: toFiniteNumber(fill.sl ?? fill.price_sl, fallback.sl),
@@ -367,9 +371,13 @@ type ExportRow = Record<string, unknown>;
 const normalizeGatewayPositionForApp = (raw: LooseRecord, index = 0): NormalizedGatewayPosition => {
   const ticket = toFiniteNumber(raw?.ticket ?? raw?.id, index + 1);
   const openPrice = toFiniteNumber(raw?.price_open ?? raw?.open_price ?? raw?.openPrice ?? raw?.price, 0);
-  const currentPrice = toFiniteNumber(raw?.price_current ?? raw?.current_price ?? raw?.currentPrice, openPrice);
+  const backendCurrentPrice = readBackendNumber(raw?.price_current ?? raw?.current_price ?? raw?.currentPrice);
+  const backendProfit = readBackendNumber(raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealized_pnl ?? raw?.unrealizedPnL);
+  const hasBackendCurrentPrice = raw.pnl_available !== false && raw.hasBackendCurrentPrice !== false && backendCurrentPrice !== undefined;
+  const hasBackendProfit = raw.pnl_available !== false && raw.hasBackendProfit !== false && backendProfit !== undefined;
+  const currentPrice = hasBackendCurrentPrice ? backendCurrentPrice : 0;
   const side = String(raw?.side ?? '').toLowerCase() === 'sell' ? 'SELL' : 'BUY';
-  const unrealizedPnL = toFiniteNumber(raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL, 0);
+  const unrealizedPnL = hasBackendProfit ? backendProfit : 0;
 
   return {
     ...raw,
@@ -383,6 +391,8 @@ const normalizeGatewayPositionForApp = (raw: LooseRecord, index = 0): Normalized
     open_price: openPrice,
     currentPrice,
     current_price: currentPrice,
+    hasBackendCurrentPrice,
+    hasBackendProfit,
     opened_at: typeof raw?.opened_at === 'string' ? raw.opened_at : timestampToIso(raw?.time_create),
     sl: toFiniteNumber(raw?.price_sl ?? raw?.sl, 0),
     tp: toFiniteNumber(raw?.price_tp ?? raw?.tp, 0),
@@ -687,6 +697,8 @@ export const ordersApi = {
         price_sl: sl,
         price_tp: tp,
         profit: 0,
+        hasBackendProfit: false,
+        hasBackendCurrentPrice: false,
         commission: 0,
         swap: 0,
         time_create: new Date().toISOString(),

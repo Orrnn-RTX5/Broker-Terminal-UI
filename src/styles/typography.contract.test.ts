@@ -192,7 +192,7 @@ describe('enterprise typography contract', () => {
     expect(optionsDialogSource).toContain('text-[12px] font-normal');
     expect(openAccountDialogSource).toContain('text-[14px] font-normal');
     expect(openAccountDialogSource).toContain('rtx-reading-text');
-    expect(loginDialogSource).toContain('text-right text-[14px] leading-5 font-medium');
+    expect(loginDialogSource).toContain('rtx-login-label text-[14px] leading-5 font-medium');
     expect(loginDialogSource).toContain('rtx-dialog-title');
     expect(welcomeSource).toContain('fontSize: 14');
     expect(welcomeSource).toContain("fontWeight: 'var(--rtx-font-weight-body, 400)'");

@@ -8,7 +8,7 @@
  *   4. Resolve login channels       → Uses current account login → account.LOGIN
  *   5. Subscribe realtime           → Account + positions → positions.LOGIN
  *   6. Incoming updates             → Metrics and position events → handleMessage()
- *   7. useLiveAccountState          → usePositionsState → Trade / History / Settings UI update
+ *   7. Update Zustand               → Account and position store subscribers receive the changes
  */
 
 import {
@@ -414,7 +414,7 @@ class AccountSocketManager {
     }
   }
 
-  // ─── Step 7: useLiveAccountState — update Zustand ────────────────────────
+  // ─── Step 7: update account and position state in Zustand ───────────────
 
   private handleAccountUpdate(payload: any): void {
     const accRecord = unwrapAccountRecord(payload);

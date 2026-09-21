@@ -1,8 +1,0 @@
-{
-  "background": "rgba(255, 255, 255, 0.94)",
-  "blur": "blur(18px) saturate(1.15)",
-  "color": "rgb(17, 24, 39)",
-  "image": "linear-gradient(135deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.04) 65%)",
-  "radius": "10px",
-  "shadow": "rgba(255, 255, 255, 0.92) 0px 1px 0px 0px inset, rgba(255, 255, 255, 0.52) 0px 0px 0px 1px, rgba(30, 41, 59, 0.1) 0px 8px 24px 0px, rgba(30, 41, 59, 0.09) 0px 24px 64px 0px"
-}

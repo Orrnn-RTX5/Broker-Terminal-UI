@@ -265,4 +265,73 @@ describe('DrawingManager.setChart', () => {
     dispatch.mockRestore();
     render.mockRestore();
   });
+
+  it('keeps a selected group when right-clicking its hit target so Delete All Selected deletes the whole group', async () => {
+    const manager = new DrawingManager();
+    const container = document.createElement('div');
+    const sibling = document.createElement('div');
+    document.body.append(container, sibling);
+    manager.setChart(interactiveChart, interactiveSeries, 'SAME', 1, container, 'M1', 'chart-owner', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(1));
+    for (let index = 0; index < 3; index++) {
+      manager.startDrawing('hline');
+      manager.addPoint(1_700_000_000 + index * 60, 2000 + index, undefined, 'chart-owner');
+    }
+    const [first, second, third] = manager.getDrawings('chart-owner');
+    manager.selectDrawing(first.id, false, 'chart-owner');
+    manager.selectDrawing(second.id, true, 'chart-owner');
+    const originalPoints = structuredClone(first.points);
+    const lock = vi.fn();
+    manager.setScrollLockCallbacks('chart-owner', lock, vi.fn());
+
+    manager.setChart(interactiveChart, interactiveSeries, 'SAME', 1, sibling, 'M5', 'chart-sibling', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(2));
+    manager.startDrawing('hline');
+    manager.addPoint(1_700_000_000, 2050, undefined, 'chart-sibling');
+    const siblingDrawings = structuredClone(manager.getDrawings('chart-sibling'));
+
+    const hit = container.querySelector(`[data-id="${first.id}"] line[stroke="transparent"]`)!;
+    expect(hit).not.toBeNull();
+    hit.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 2, clientX: 100, clientY: 100 }));
+    window.dispatchEvent(new MouseEvent('pointermove', { buttons: 2, clientX: 130, clientY: 130 }));
+    window.dispatchEvent(new MouseEvent('pointerup', { button: 2 }));
+    expect(lock).not.toHaveBeenCalled();
+    expect(first.points).toEqual(originalPoints);
+
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    hit.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2, clientX: 130, clientY: 130 }));
+    expect(manager.getDrawings('chart-owner').filter(drawing => drawing.selected).map(drawing => drawing.id).sort())
+      .toEqual([first.id, second.id].sort());
+    const menu = dispatch.mock.calls.map(([event]) => event).find(event => event.type === 'drawing:contextmenu');
+    expect(menu).toMatchObject({ detail: { drawingId: first.id, contextId: 'chart-owner', symbol: 'SAME', timeframe: 'M1' } });
+    dispatch.mockRestore();
+
+    expect(manager.deleteSelected('chart-owner')).toBe(2);
+    expect(manager.getDrawings('chart-owner').map(drawing => drawing.id)).toEqual([third.id]);
+    expect(manager.getDrawings('chart-sibling')).toEqual(siblingDrawings);
+    expect(container.querySelectorAll('g[data-id]')).toHaveLength(1);
+  });
+
+  it('replaces the previous selection when right-clicking an unselected drawing', async () => {
+    const manager = new DrawingManager();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    manager.setChart(interactiveChart, interactiveSeries, 'TEST', 1, container, 'M1', 'chart-owner', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(1));
+    for (let index = 0; index < 3; index++) {
+      manager.startDrawing('hline');
+      manager.addPoint(1_700_000_000 + index * 60, 2000 + index, undefined, 'chart-owner');
+    }
+    const [first, second, third] = manager.getDrawings('chart-owner');
+    manager.selectDrawing(first.id, false, 'chart-owner');
+    manager.selectDrawing(second.id, true, 'chart-owner');
+
+    const hit = container.querySelector(`[data-id="${third.id}"] line[stroke="transparent"]`)!;
+    expect(hit).not.toBeNull();
+    hit.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 2 }));
+    hit.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 }));
+
+    expect(manager.getDrawings('chart-owner').filter(drawing => drawing.selected).map(drawing => drawing.id))
+      .toEqual([third.id]);
+  });
 });

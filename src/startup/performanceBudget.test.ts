@@ -97,10 +97,12 @@ describe('100 ms startup performance budget', () => {
   });
 
   it('publishes auth-shell only after the real authenticated root paints', async () => {
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => (
-      window.setTimeout(() => callback(performance.now()), 0)
-    ));
-    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => window.clearTimeout(id));
+    const frames: FrameRequestCallback[] = [];
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
 
     beginLoginPerformanceMeasurement();
     markAuthenticationRequestStarted();
@@ -111,18 +113,69 @@ describe('100 ms startup performance budget', () => {
     document.body.append(fallback);
     const cancelMeasurement = scheduleAuthenticatedShellPaintMeasurement();
 
-    await new Promise(resolve => window.setTimeout(resolve, 5));
-    expect(document.documentElement.hasAttribute('data-rtx-perf-auth-shell-ms')).toBe(false);
+    try {
+      await Promise.resolve();
+      expect(requestFrame).not.toHaveBeenCalled();
+      expect(document.documentElement.hasAttribute('data-rtx-perf-auth-shell-ms')).toBe(false);
 
+      const terminal = document.createElement('div');
+      terminal.setAttribute('data-rtx-authenticated-shell', 'true');
+      const viewport = document.createElement('div');
+      viewport.setAttribute('data-rtx-authenticated-viewport', 'true');
+      terminal.appendChild(viewport);
+      document.body.append(terminal);
+
+      await vi.waitFor(() => expect(requestFrame).toHaveBeenCalledTimes(1));
+      expect(document.documentElement.hasAttribute('data-rtx-perf-auth-shell-ms')).toBe(false);
+      frames.shift()!(performance.now());
+      await vi.waitFor(() => {
+        expect(document.documentElement.hasAttribute('data-rtx-perf-auth-shell-ms')).toBe(true);
+      });
+      expect(Number(document.documentElement.getAttribute('data-rtx-perf-auth-shell-ms'))).toBeGreaterThanOrEqual(0);
+    } finally {
+      cancelMeasurement();
+    }
+  });
+
+  it('waits for the mounted workspace to be revealed before publishing auth-shell', async () => {
+    const frames: FrameRequestCallback[] = [];
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    beginLoginPerformanceMeasurement();
+    markAuthenticationRequestStarted();
+    markAuthenticationAccepted();
+
+    const boundary = document.createElement('div');
+    boundary.setAttribute('data-terminal-startup', 'pending');
     const terminal = document.createElement('div');
     terminal.setAttribute('data-rtx-authenticated-shell', 'true');
     const viewport = document.createElement('div');
     viewport.setAttribute('data-rtx-authenticated-viewport', 'true');
-    terminal.appendChild(viewport);
-    document.body.append(terminal);
+    terminal.append(viewport);
+    boundary.append(terminal);
+    document.body.append(boundary);
+    const cancelMeasurement = scheduleAuthenticatedShellPaintMeasurement();
 
-    await new Promise(resolve => window.setTimeout(resolve, 10));
-    expect(Number(document.documentElement.getAttribute('data-rtx-perf-auth-shell-ms'))).toBeGreaterThanOrEqual(0);
-    cancelMeasurement();
+    try {
+      await Promise.resolve();
+      expect(requestFrame).not.toHaveBeenCalled();
+      expect(document.documentElement.hasAttribute('data-rtx-perf-auth-shell-ms')).toBe(false);
+
+      boundary.setAttribute('data-terminal-startup', 'ready');
+
+      await vi.waitFor(() => expect(requestFrame).toHaveBeenCalledTimes(1));
+      expect(document.documentElement.hasAttribute('data-rtx-perf-auth-shell-ms')).toBe(false);
+      frames.shift()!(performance.now());
+      await vi.waitFor(() => {
+        expect(document.documentElement.hasAttribute('data-rtx-perf-auth-shell-ms')).toBe(true);
+      });
+      expect(requestFrame).toHaveBeenCalledTimes(1);
+      expect(Number(document.documentElement.getAttribute('data-rtx-perf-auth-shell-ms'))).toBeGreaterThanOrEqual(0);
+    } finally {
+      cancelMeasurement();
+    }
   });
 });

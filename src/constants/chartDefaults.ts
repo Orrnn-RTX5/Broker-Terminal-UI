@@ -1,2 +1,3 @@
-export const DEFAULT_CHART_SYMBOL = 'XAUUSD';
+export const DEFAULT_CHART_SYMBOL = 'BTCUSD';
 export const DEFAULT_CHART_TIMEFRAME = 'M1';
+export const FIRST_PAINT_HISTORY_COUNT = 500;

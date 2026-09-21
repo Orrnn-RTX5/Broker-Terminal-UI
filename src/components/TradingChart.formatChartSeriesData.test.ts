@@ -169,10 +169,11 @@ describe('formatChartSeriesData chart types', () => {
 });
 
 describe('formatChartSeriesData market gap separators', () => {
-  it('disables implicit live new-bar viewport shifting for M1 charts', () => {
+  it('keeps the visible right edge during wheel zoom without implicit live-bar shifting', () => {
     expect(TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS).toEqual({
       shiftVisibleRangeOnNewBar: false,
       allowShiftVisibleRangeOnWhitespaceReplacement: false,
+      rightBarStaysOnScroll: true,
     });
   });
 

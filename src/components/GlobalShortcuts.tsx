@@ -587,11 +587,7 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 90,
       handler: () => {
-        if (isChartPropertiesOpen) {
-          showFeedback(null);
-        } else {
-          showFeedback('Chart Properties (F8)');
-        }
+        showFeedback(null);
         const target = resolveActiveChartTarget(selectedSymbol);
         window.dispatchEvent(new CustomEvent('openChartProperties', {
           detail: {

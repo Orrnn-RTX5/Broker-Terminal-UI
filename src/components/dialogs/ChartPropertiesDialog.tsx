@@ -36,7 +36,6 @@ const showOptions = [
   { key: 'showTickVolumes', label: 'Show tick volumes' },
   { key: 'showRealVolumes', label: 'Show real volumes' },
   { key: 'showTradeLevels', label: 'Show trade levels' },
-  { key: 'showTradeHistory', label: 'Show entry-to-close line' },
   { key: 'showTradeHistoryArrows', label: 'Show entry/close arrows' },
 ] as const satisfies ReadonlyArray<{
   key: keyof Pick<
@@ -52,7 +51,6 @@ const showOptions = [
     | 'showTickVolumes'
     | 'showRealVolumes'
     | 'showTradeLevels'
-    | 'showTradeHistory'
     | 'showTradeHistoryArrows'
   >;
   label: string;
@@ -374,24 +372,6 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
                       <span className="rtx-cp-checkbox-label text-[13px] text-[#ccc] group-hover:text-white transition-colors">{tr(label)}</span>
                     </label>
                   ))}
-                  <div className="mt-2 space-y-2 border-t border-[#333] pt-2">
-                    <label className={`block px-2 ${!showState.showTradeHistory ? 'opacity-50' : ''}`}>
-                      <div className="mb-1 flex items-center justify-between text-[12px] text-[#ccc]">
-                        <span>{tr("Trade history line opacity")}</span>
-                        <span className="font-mono">{showState.tradeHistoryLineOpacity}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={5}
-                        value={showState.tradeHistoryLineOpacity}
-                        disabled={!showState.showTradeHistory}
-                        onChange={(e) => updateActiveChartProperty('tradeHistoryLineOpacity', Number(e.target.value))}
-                        className="w-full accent-blue-500"
-                      />
-                    </label>
-                  </div>
                 </div>
               )}
 

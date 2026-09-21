@@ -1,32 +1,36 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
+import type { ReactNode } from 'react';
+import { useDesktopStartupReady } from './useDesktopStartupReady';
+
 interface TerminalLoadFallbackProps {
   sessionRestorePending?: boolean;
+  message?: string;
+  children?: ReactNode;
+  isError?: boolean;
 }
 
-/** Data-free visual shell used while authenticated code or session validation finishes. */
-export function TerminalLoadFallback({ sessionRestorePending = false }: TerminalLoadFallbackProps) {
-    const tr = useUiTranslation();
+/** Shared startup surface until the terminal can present its initial data. */
+export function TerminalLoadFallback({
+  sessionRestorePending = false,
+  message = 'Loading terminal…',
+  children,
+  isError = false,
+}: TerminalLoadFallbackProps) {
+  const tr = useUiTranslation();
+  useDesktopStartupReady(isError);
   return (
     <div
-      className="rtx-instant-terminal"
+      className="rtx-terminal-loading"
       data-terminal-module-loading="true"
       data-session-restore-pending={sessionRestorePending ? 'true' : undefined}
-      aria-hidden="true"
+      role={isError ? 'alert' : 'status'}
+      aria-live={isError ? 'assertive' : 'polite'}
+      aria-busy={!isError}
     >
-      <div className="rtx-instant-titlebar">{tr("RTX 5 Web Terminal")}</div>
-      <div className="rtx-instant-toolbar">
-        <span>{tr("File")}</span><span>{tr("View")}</span><span>{tr("Insert")}</span><span>{tr("Charts")}</span><span>{tr("Tools")}</span><span>{tr("Window")}</span><span>{tr("Help")}</span>
-      </div>
-      <div className="rtx-instant-workspace">
-        <div className="rtx-instant-sidebar">
-          <div>{tr("MARKET WATCH")}</div>
-          <div>{tr("NAVIGATOR")}</div>
-        </div>
-        <div className="rtx-instant-main">
-          <div className="rtx-instant-chart" />
-          <div className="rtx-instant-toolbox" />
-        </div>
-      </div>
+      <div className="rtx-terminal-loading__brand">RTX 5</div>
+      {!isError && <div className="rtx-terminal-loading__spinner" aria-hidden="true" />}
+      <div className="rtx-terminal-loading__message">{tr(message)}</div>
+      {children}
     </div>
   );
 }

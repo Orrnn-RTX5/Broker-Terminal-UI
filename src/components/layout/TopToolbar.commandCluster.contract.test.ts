@@ -72,6 +72,8 @@ describe('TopToolbar primary command cluster', () => {
     expect(themeCss).toMatch(/\.rtx-toolbar-action--primary \{[^}]*background: transparent;[^}]*border-color: transparent;[^}]*border-radius: 0;/);
     expect(advancedCss).toMatch(/\.rtx-toolbar-action--primary \{[^}]*background: transparent !important;[^}]*border-color: transparent !important;/);
     expect(themeCss).toMatch(/\.rtx-toolbar-icon-button\[role='radio'\]\[aria-checked='true'\] \{[^}]*background: rgb\(59 130 246 \/ 0\.15\);[^}]*border-color: rgb\(59 130 246 \/ 0\.5\);[^}]*box-shadow: none;/);
+    expect(themeCss).toMatch(/html\.rtx-desktop-shell-active \.rtx-desktop-command-row \.rtx-toolbar-icon-button:is\(\[role='radio'\]\[aria-checked='true'\], \[aria-pressed='true'\]\) \{[^}]*background: rgb\(59 130 246 \/ 0\.15\);[^}]*border-color: rgb\(59 130 246 \/ 0\.5\);[^}]*box-shadow: none;/);
+    expect(themeCss).not.toMatch(/\.rtx-desktop-command-row \.rtx-toolbar-icon-button:is\(\[role='radio'\], \.rtx-period-separator-toggle\) \{[^}]*background: transparent !important;/);
     expect(advancedCss).toMatch(/\.rtx-toolbar-icon-button\[role="radio"\]\[aria-checked="true"\] \{[^}]*box-shadow: none !important;/);
     expect(enterpriseCss).toMatch(/\.rtx-toolbar-icon-button\[role="radio"\]\[aria-checked="true"\] \{[^}]*box-shadow: none !important;/);
     expect(themeCss).toContain('background: var(--rtx-light-panel-header, var(--bg-secondary));');

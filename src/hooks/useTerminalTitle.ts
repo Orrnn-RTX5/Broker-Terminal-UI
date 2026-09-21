@@ -6,6 +6,7 @@ import { configApi } from '../services/api';
 import type { Broker, BrokerServer } from '../types/api';
 import type { NormalizedMarketStatus } from '../utils/marketStatus';
 import { RTX5_API_URL, normalizeServerUrl } from '../config/api';
+import { runAfterTerminalReady } from '../startup/runAfterTerminalReady';
 
 export const WEB_TERMINAL_TITLE = 'RTX 5 Web Terminal';
 export const DEFAULT_BROKER_SERVER = WEB_TERMINAL_TITLE;
@@ -186,9 +187,10 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
             }
         };
 
-        fetchDetails();
+        const cancelScheduledDetails = runAfterTerminalReady(() => { void fetchDetails(); });
         return () => {
             active = false;
+            cancelScheduledDetails();
         };
     }, [accountId, serverName]);
 

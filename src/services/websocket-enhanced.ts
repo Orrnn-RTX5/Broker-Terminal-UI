@@ -13,6 +13,7 @@ import { enqueueLiveTick } from './liveTickDispatcher';
 import { buildBrokerWsV2Uri, getAccessToken, onSessionChange } from './brokerSession';
 import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
 import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
+import { readFirstFiniteNumber, readFirstNonEmptyString } from '../utils/recordFields';
 import {
   asUnknownRecord,
   normalizeBrokerTimestampMs,
@@ -79,32 +80,6 @@ export const isExactAccountStreamChannel = (
   return channelLogin.length > 0 && expectedLogin.length > 0 && channelLogin === expectedLogin;
 };
 
-const readFirstFiniteNumber = (
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): number | undefined => {
-  for (const key of keys) {
-    const value = record[key];
-    if (value === null || value === undefined || value === '') continue;
-    const numeric = Number(value);
-    if (Number.isFinite(numeric)) return numeric;
-  }
-  return undefined;
-};
-
-const readFirstNonEmptyString = (
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): string | undefined => {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value !== 'string') continue;
-    const normalized = value.trim();
-    if (normalized) return normalized;
-  }
-  return undefined;
-};
-
 const resolveTickSourceTimestampMs = (...values: unknown[]): number | undefined => {
   // FIX: Normalize every supported broker alias and seconds/ms/us/ns/ISO form
   // before freshness ordering; receipt time remains a distinct fallback.
@@ -144,8 +119,6 @@ export class EnhancedWebSocketService {
 
   // Connection management
   private reconnectAttempts = 0;
-  // Unlimited retries — never get permanently stuck in 'error' state
-  private maxReconnectAttempts = 999;
   private baseReconnectDelay = 1000;
   private maxReconnectDelay = 30000;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -734,76 +707,9 @@ export class EnhancedWebSocketService {
     if (type === 'channel_message') {
       try {
         const payload = data.data as any;
-        if (data.channel?.startsWith('positions.') && payload?.positions) {
-          import('../store/useAppStore').then(({ useAppStore }) => {
-            const store = useAppStore.getState();
-            // FIX: A positions snapshot is authoritative only for the login in
-            // its exact channel. Delayed frames from a previous account must
-            // never replace the active account's positions.
-            if (!isExactAccountStreamChannel(data.channel, 'positions', store.accountId)) return;
-
-            const standardized = payload.positions.map((p: any) => {
-              // Resolve open time from all possible fields — NEVER fall back to now()
-              // because that causes execution pins to always snap to the live candle
-              // FIX: Normalize position seconds/ms/us/ns/ISO aliases and never
-              // fall back to now(), which would pin old executions to the live bar.
-              const openTimestamp = readBrokerTimestampMs([p], [
-                'time_create', 'time_create_ms', 'time_create_msc',
-                'time_open', 'time_open_ms', 'time_open_msc',
-                'opened_at', 'open_time', 'openTime',
-                'time_ms', 'time_msc', 'timestamp_ms', 'timestamp', 'time',
-              ]);
-              const openTime = openTimestamp === undefined
-                ? ''
-                : new Date(openTimestamp).toISOString();
-              return {
-                id: p.position_id ?? p.ticket ?? 0,
-                symbol: p.symbol || '',
-                side: p.action === 1 ? 'SELL' : 'BUY',
-                volume: p.volume_lots ?? p.volume ?? 0,
-                openPrice: p.price_open ?? 0,
-                currentPrice: p.price_current ?? 0,
-                openTime,   // empty string = no time data = skip pin
-                sl: p.price_sl ?? 0,
-                tp: p.price_tp ?? 0,
-                swap: p.storage ?? p.swap ?? 0,
-                commission: p.commission ?? 0,
-                unrealizedPnL: p.profit ?? 0
-              };
-            });
-            store.setPositions(standardized);
-          });
-
-          // Also update MT5 store
-          const mt5Data = { ...data, type: 'mt5_positions', positions: payload.positions };
-          this.handleMT5Update(mt5Data);
-        } else if (data.channel?.startsWith('account.')) {
-          const accRecord = payload?.account || payload;
-          if (accRecord && accRecord.balance !== undefined) {
-            import('../store/useAppStore').then(({ useAppStore }) => {
-              const store = useAppStore.getState();
-              // Filter: only accept data for the current account
-              if (!isExactAccountStreamChannel(data.channel, 'account', store.accountId)) return;
-
-              const curAccount = store.account;
-              store.setAccount({
-                ...curAccount,
-                balance: accRecord.balance ?? curAccount?.balance ?? 0,
-                equity: accRecord.equity ?? curAccount?.equity ?? 0,
-                margin: accRecord.margin ?? curAccount?.margin ?? 0,
-                freeMargin: accRecord.margin_free ?? accRecord.freeMargin ?? curAccount?.freeMargin ?? 0,
-                unrealizedPL: accRecord.profit ?? accRecord.unrealizedPL ?? curAccount?.unrealizedPL ?? 0,
-                marginLevel: accRecord.margin_level ?? accRecord.marginLevel ?? curAccount?.marginLevel ?? 0,
-                currency: accRecord.currency ?? curAccount?.currency ?? 'USD',
-                leverage: accRecord.leverage ?? curAccount?.leverage ?? 100
-              } as any);
-            });
-
-            // Also update MT5 store
-            const mt5Data = { ...data, type: 'mt5_account', account: accRecord };
-            this.handleMT5Update(mt5Data);
-          }
-        } else if (isEnhancedStoreHandledTickFrame(data) && data.channel?.startsWith('ticks.') && payload) {
+        // App owns account/position state. Transport-side async store writes
+        // could overwrite its sparse merges and financial availability flags.
+        if (isEnhancedStoreHandledTickFrame(data) && data.channel?.startsWith('ticks.') && payload) {
           const channelSymbol = data.channel.slice('ticks.'.length).trim().toUpperCase();
           const sourceTimestamp = resolveTickSourceTimestampMs(payload, data);
           this.handleFixTick({

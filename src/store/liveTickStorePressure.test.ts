@@ -3,9 +3,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const workerMocks = vi.hoisted(() => ({
-  aggregateMultipleTimeframes: vi.fn(),
+  aggregateSymbols: vi.fn(),
 }));
 vi.mock('../services/aggregationWorkerManager', () => ({
+  cancelPendingAggregations: vi.fn(),
   getWorkerManager: () => workerMocks,
 }));
 
@@ -51,7 +52,7 @@ const appTick = (timestamp: number, overrides: Partial<AppTick> = {}): AppTick =
 describe('live tick store pressure guards', () => {
   beforeEach(() => {
     resetLiveTickDispatcherForTests();
-    workerMocks.aggregateMultipleTimeframes.mockReset();
+    workerMocks.aggregateSymbols.mockReset();
     useMarketDataStore.getState().clearAllData();
     useAppStore.setState({ ticks: {}, tickLookup: {} });
   });
@@ -129,7 +130,7 @@ describe('live tick store pressure guards', () => {
       volume: 7,
       lp: 'corrected-lp',
     });
-    workerMocks.aggregateMultipleTimeframes.mockClear();
+    workerMocks.aggregateSymbols.mockClear();
     useMarketDataStore.getState().updateTicksBatch([['XAUUSD', correction]], { syncAppStore: false });
     useAppStore.getState().setTicksBatch([['XAUUSD', correction]]);
 
@@ -141,7 +142,7 @@ describe('live tick store pressure guards', () => {
     expect(app).toMatchObject({ bid: 99, volume: 7, lp: 'corrected-lp' });
     expect(app.prevBid).toBe(100);
     expect(app.bidDirection).toBe('down');
-    expect(workerMocks.aggregateMultipleTimeframes).toHaveBeenCalledTimes(1);
+    expect(workerMocks.aggregateSymbols).toHaveBeenCalledTimes(1);
   });
 
   it('keeps opaque suffix lookups exact while each contract retains its freshest tick', () => {
@@ -194,6 +195,41 @@ describe('live tick store pressure guards', () => {
     expect(useAppStore.getState().tickLookup).toBe(lookup);
     expect(useAppStore.getState().ticks.XAUUSD.timestamp).toBe(1_001);
     expect(selectTickCount(useAppStore.getState())).toBe(count);
+  });
+
+  it('publishes a complete catalog batch without mutating a previous lookup or accepting stale source data', () => {
+    useAppStore.getState().setTick('XAUUSD.raw', appTick(100, {
+      symbol: 'XAUUSD.raw', sourceTimestamp: 100, bid: 100, ask: 101,
+    }));
+    const previous = useAppStore.getState();
+    Object.freeze(previous.tickLookup);
+    Object.freeze(previous.ticks);
+    const catalog = Array.from({ length: 701 }, (_, index) => {
+      const symbol = `CATALOG${index}.raw`;
+      return [symbol, appTick(200, { symbol, sourceTimestamp: 200 })] as const;
+    });
+    const published = vi.fn();
+    const unsubscribe = useAppStore.subscribe(published);
+
+    useAppStore.getState().setTicksBatch([
+      ['XAUUSD.raw', appTick(150, { symbol: 'XAUUSD.raw', sourceTimestamp: 150, bid: 110, ask: 111 })],
+      ...catalog,
+      ['CATALOG700.raw', appTick(300, { symbol: 'CATALOG700.raw', sourceTimestamp: 199, bid: 999, ask: 1000 })],
+    ]);
+
+    unsubscribe();
+    const next = useAppStore.getState();
+    expect(published).toHaveBeenCalledOnce();
+    expect(next.tickLookup).not.toBe(previous.tickLookup);
+    expect(previous.tickLookup).toEqual({ 'XAUUSD.RAW': 'XAUUSD.raw', XAUUSD: 'XAUUSD.raw' });
+    expect(previous.ticks['XAUUSD.raw'].bid).toBe(100);
+    expect(Object.keys(next.ticks)).toHaveLength(702);
+    expect(next.ticks['XAUUSD.raw']).toMatchObject({ bid: 110, prevBid: 100, bidDirection: 'up' });
+    for (const [symbol] of catalog) {
+      expect(resolveTickFromLookup(next.ticks, next.tickLookup, symbol.toUpperCase()))
+        .toMatchObject({ symbol, sourceTimestamp: 200, bid: 2500 });
+      expect(resolveTickFromLookup(next.ticks, next.tickLookup, symbol.split('.')[0])).toBeUndefined();
+    }
   });
 
   it('retains optional quote metadata when a fresher price-only tick omits it', () => {

@@ -360,7 +360,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu,
   .web-drawing-tools-menu,
   .floating-panel,
   [role="menu"],
-  [role="listbox"]) {
+  [role="listbox"]):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   background: var(--rtx-light-elevated) !important;
   border-color: var(--rtx-light-border-strong) !important;
   color: var(--rtx-light-text) !important;
@@ -371,7 +371,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu,
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-item,
   .rtx-menu-row,
   [role="menuitem"],
-  [role="option"]) {
+  [role="option"]):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   color: var(--rtx-light-text-secondary) !important;
   border-color: transparent !important;
   box-shadow: none !important;
@@ -400,7 +400,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-i
   .rtx-menu-row:not(.is-disabled):focus-visible,
   .rtx-menu-row.is-open,
   [role="menuitem"]:not(:disabled):not([aria-disabled="true"]):hover,
-  [role="option"]:hover) {
+  [role="option"]:hover):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   background: var(--rtx-light-accent-soft) !important;
   border-color: transparent !important;
   color: var(--rtx-light-accent-strong) !important;
@@ -416,7 +416,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-desktop-quick-menu .rtx-desk
   color: var(--color-loss) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is([role="menu"], [role="listbox"]) [aria-selected="true"] {
+html.rtx-advanced-view.rtx-skin-untitled-light :is([role="menu"], [role="listbox"]) [aria-selected="true"]:not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   background: var(--rtx-light-accent-soft) !important;
   border-color: transparent !important;
   color: var(--rtx-light-accent-strong) !important;
@@ -654,7 +654,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-marke
 }
 
 /* Functional outlines stay distinct from quiet structural panel borders. */
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea),
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *)),
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input,
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog, .rtx-dom-dialog, .rtx-modify-dialog, .rtx-cp-shell,
   .rtx-options-dialog, .rtx-symbols-dialog, .rtx-chart-template-dialog) :is(input, select, textarea) {
@@ -664,7 +664,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog, .rtx-dom-d
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea)::placeholder {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *))::placeholder {
   color: var(--rtx-light-text-muted) !important;
 }
 
@@ -674,11 +674,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog, .rtx-dom-d
   border-color: var(--rtx-light-control-border-hover) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light input:is([type="checkbox"], [type="radio"]) {
+html.rtx-advanced-view.rtx-skin-untitled-light input:is([type="checkbox"], [type="radio"]):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   accent-color: var(--rtx-light-accent) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):focus,
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *)):focus,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input:focus,
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog,
   .rtx-order-dialog,
@@ -770,6 +770,16 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog__confirm {
   border-color: var(--rtx-light-accent) !important;
   color: #ffffff !important;
   box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog__confirm--danger {
+  background: var(--rtx-light-sell) !important;
+  border-color: var(--rtx-light-sell) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog__confirm--danger:hover {
+  background: var(--rtx-light-sell-hover) !important;
+  border-color: var(--rtx-light-sell-hover) !important;
 }
 
 /* Large settings and symbol surfaces use stable hooks instead of dark-class guesses. */

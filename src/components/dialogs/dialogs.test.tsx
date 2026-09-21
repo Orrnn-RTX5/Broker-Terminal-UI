@@ -24,7 +24,7 @@ describe('dialog components', () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     useChartSettingsStore.setState({
-      globalProperties: { ...defaultChartProperties },
+      globalProperties: { ...defaultChartProperties, showOHLC: false },
       symbolProperties: {},
     });
     const props = { isOpen: true, onClose, symbol: 'XAUUSD', timeframe: 'M1' };

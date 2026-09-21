@@ -1,0 +1,476 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RTX Bulk Close Confirmation Dialog — Enterprise Styling
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Backdrop ─── */
+.rtx-bulk-close-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: rtx-bulk-close-backdrop-in 0.2s ease-out;
+}
+
+@keyframes rtx-bulk-close-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ─── Dialog Container ─── */
+.rtx-bulk-close-dialog {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  box-shadow: var(--shadow-xl);
+  min-width: 480px;
+  max-width: min(640px, 92vw);
+  max-height: 80vh;
+  overflow: hidden;
+  user-select: none;
+  animation: rtx-bulk-close-dialog-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes rtx-bulk-close-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ─── Header ─── */
+.rtx-bulk-close-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--rtx-chrome-sheen, none), var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.rtx-bulk-close-dialog__header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rtx-bulk-close-dialog__mode-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.rtx-bulk-close-dialog__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.rtx-bulk-close-dialog__symbol-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--color-primary-dimmer);
+  border: 1px solid var(--color-primary-dim);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary);
+  letter-spacing: 0.02em;
+}
+
+.rtx-bulk-close-dialog__close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rtx-bulk-close-dialog__close-btn:hover {
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
+}
+
+/* ─── Summary Stats Bar ─── */
+.rtx-bulk-close-dialog__stats {
+  display: flex;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-primary);
+  gap: 0;
+}
+
+.rtx-bulk-close-dialog__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rtx-bulk-close-dialog__stat-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rtx-bulk-close-dialog__stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rtx-bulk-close-dialog__stat-value--profit {
+  color: var(--color-profit);
+}
+
+.rtx-bulk-close-dialog__stat-value--loss {
+  color: var(--color-loss);
+}
+
+.rtx-bulk-close-dialog__stat-divider {
+  width: 1px;
+  height: 32px;
+  background: var(--border-primary);
+  margin: 0 16px;
+  flex-shrink: 0;
+}
+
+/* ─── Breakdown Chips ─── */
+.rtx-bulk-close-dialog__breakdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.rtx-bulk-close-dialog__breakdown-item {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rtx-bulk-close-dialog__breakdown-item--profit {
+  color: var(--color-profit);
+}
+
+.rtx-bulk-close-dialog__breakdown-item--loss {
+  color: var(--color-loss);
+}
+
+.rtx-bulk-close-dialog__breakdown-item--neutral {
+  color: var(--text-secondary);
+}
+
+.rtx-bulk-close-dialog__breakdown-sep {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+/* ─── Position Preview Table ─── */
+.rtx-bulk-close-dialog__table-wrapper {
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-secondary) transparent;
+}
+
+.rtx-bulk-close-dialog__table-wrapper::-webkit-scrollbar {
+  width: 5px;
+}
+
+.rtx-bulk-close-dialog__table-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rtx-bulk-close-dialog__table-wrapper::-webkit-scrollbar-thumb {
+  background: var(--border-secondary);
+  border-radius: 3px;
+}
+
+.rtx-bulk-close-dialog__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+.rtx-bulk-close-dialog__table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.rtx-bulk-close-dialog__table th {
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  background: var(--bg-tertiary) !important;
+  border-bottom: 1px solid var(--border-primary);
+  white-space: nowrap;
+}
+
+.rtx-bulk-close-dialog__th-right {
+  text-align: right !important;
+}
+
+.rtx-bulk-close-dialog__table td {
+  padding: 7px 12px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.rtx-bulk-close-dialog__row {
+  transition: background-color 0.1s ease;
+}
+
+.rtx-bulk-close-dialog__row:hover {
+  background: var(--bg-quaternary) !important;
+}
+
+.rtx-bulk-close-dialog__row:nth-child(even) {
+  background: var(--bg-tertiary) !important;
+}
+
+.rtx-bulk-close-dialog__row:nth-child(even):hover {
+  background: var(--bg-quaternary) !important;
+}
+
+.rtx-bulk-close-dialog__cell-ticket {
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.rtx-bulk-close-dialog__cell-symbol {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rtx-bulk-close-dialog__cell-right {
+  text-align: right;
+}
+
+/* Direction badges */
+.rtx-bulk-close-dialog__direction {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.rtx-bulk-close-dialog__direction--buy {
+  background: var(--color-profit-dimmer);
+  color: var(--color-profit);
+  border: 1px solid var(--color-profit-dim);
+}
+
+.rtx-bulk-close-dialog__direction--sell {
+  background: var(--color-loss-dimmer);
+  color: var(--color-loss);
+  border: 1px solid var(--color-loss-dim);
+}
+
+/* P&L cell colors */
+.rtx-bulk-close-dialog__cell-pnl {
+  font-weight: 600;
+}
+
+.rtx-bulk-close-dialog__cell-pnl--profit {
+  color: var(--color-profit);
+}
+
+.rtx-bulk-close-dialog__cell-pnl--loss {
+  color: var(--color-loss);
+}
+
+.rtx-bulk-close-dialog__cell-pnl--neutral {
+  color: var(--text-secondary);
+}
+
+/* Overflow note */
+.rtx-bulk-close-dialog__overflow-note {
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-primary);
+}
+
+/* ─── Risk Warning Banner ─── */
+.rtx-bulk-close-dialog__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 14px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--color-warning) 7%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.rtx-bulk-close-dialog__warning-icon {
+  flex-shrink: 0;
+  color: var(--color-warning);
+  margin-top: 1px;
+}
+
+.rtx-bulk-close-dialog__warning span {
+  font-size: 12px;
+  color: var(--color-warning);
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+/* ─── Footer ─── */
+.rtx-bulk-close-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  background: var(--rtx-chrome-sheen, none), var(--bg-tertiary);
+  border-top: 1px solid var(--border-primary);
+  margin-top: 12px;
+}
+
+.rtx-bulk-close-dialog__btn-cancel {
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: 1px solid var(--border-secondary);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rtx-bulk-close-dialog__btn-cancel:hover {
+  background: var(--bg-quaternary);
+  border-color: var(--border-tertiary);
+  color: var(--text-primary);
+}
+
+.rtx-bulk-close-dialog__btn-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+  letter-spacing: 0.01em;
+}
+
+.rtx-bulk-close-dialog__btn-confirm:hover {
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+  border-color: rgba(239, 68, 68, 0.45);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35);
+  transform: translateY(-1px);
+}
+
+.rtx-bulk-close-dialog__btn-confirm:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(220, 38, 38, 0.2);
+}
+
+.rtx-bulk-close-dialog__btn-icon {
+  flex-shrink: 0;
+}
+
+/* Keep global table and dialog overrides on the same app palette. The scope
+   also lets financial cell colors win over generic light-theme cell text. */
+:is(html, html:root.rtx-advanced-view.rtx-skin-untitled-light) .rtx-bulk-close-backdrop .rtx-bulk-close-dialog {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-xl) !important;
+
+  .rtx-bulk-close-dialog__table {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+  }
+
+  .rtx-bulk-close-dialog__table th {
+    background: var(--rtx-chrome-sheen, none), var(--bg-tertiary) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--border-primary) !important;
+    backdrop-filter: none !important;
+  }
+
+  .rtx-bulk-close-dialog__table td {
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+  }
+
+  .rtx-bulk-close-dialog__table .rtx-bulk-close-dialog__cell-ticket,
+  .rtx-bulk-close-dialog__table .rtx-bulk-close-dialog__cell-pnl--neutral {
+    color: var(--text-secondary) !important;
+  }
+
+  .rtx-bulk-close-dialog__table .rtx-bulk-close-dialog__cell-pnl--profit {
+    color: var(--color-profit) !important;
+  }
+
+  .rtx-bulk-close-dialog__table .rtx-bulk-close-dialog__cell-pnl--loss {
+    color: var(--color-loss) !important;
+  }
+
+  .rtx-bulk-close-dialog__row:hover td {
+    background: var(--bg-quaternary) !important;
+  }
+}
+
+html.rtx-skin-untitled-light .rtx-bulk-close-backdrop {
+  background: rgb(32 36 42 / 22%);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-backdrop .rtx-bulk-close-dialog {
+  background: var(--rtx-light-elevated) !important;
+}

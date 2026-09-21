@@ -51,6 +51,20 @@ vi.mock('../services/liveTickDispatcher', () => ({
   enqueueLiveTick,
 }));
 
+// Keep one ordered request fixture for the hook's two independent sources.
+// The public transport's real credential/cancellation behavior is exercised
+// separately in publicMarketCatalog.test.ts.
+vi.mock('../services/publicMarketCatalog', () => ({
+  loadPublicMarketCatalog: (baseUrl: string, signal: AbortSignal) => apiGet('/api/v1/market/symbols', {
+    baseUrl, signal, skipAuth: true, skipDynamicUrl: true,
+  }),
+}));
+
+// The shared transport has dedicated scope and cancellation tests.
+vi.mock('../services/authenticatedInstruments', () => ({
+  loadSharedAuthenticatedInstruments: (options: unknown) => apiGet('/instruments', options),
+}));
+
 vi.mock('./useQuoteSubscription', () => ({
   useQuoteSubscription: useQuoteSubscriptionMock,
 }));
@@ -475,6 +489,66 @@ describe('useMarketInstruments normalization', () => {
     expect(normalizeInstrumentEnabled({ symbol: 'EURUSD' })).toBeUndefined();
   });
 
+  it('waits for session restoration before starting either public or authenticated catalogs', async () => {
+    apiGet.mockImplementation(async (endpoint: string) => endpoint === '/instruments'
+      ? { symbols: [{ symbol: 'EURUSD', trading_enabled: true }] }
+      : { symbols: [{ symbol: 'EURUSD', bid: 1.1, ask: 1.2 }] });
+    useAppStore.setState({ isAuthenticated: false, accountId: null });
+    const { result, rerender, unmount } = renderHook(({ enabled }) => useMarketInstruments(enabled), {
+      initialProps: { enabled: false },
+    });
+    await flushPromises();
+    await act(async () => result.current.reload());
+    expect(apiGet).not.toHaveBeenCalled();
+    expect(result.current.loading).toBe(true);
+    expect(result.current.authorizationSettled).toBe(false);
+
+    act(() => useAppStore.setState({ isAuthenticated: true, accountId: 'restored-account' }));
+    expect(apiGet).not.toHaveBeenCalled();
+    rerender({ enabled: true });
+    await flushPromises();
+    expect(apiGet.mock.calls.map(([endpoint]) => endpoint)).toEqual(['/api/v1/market/symbols', '/instruments']);
+    expect(result.current.authorizedSymbols).toEqual(['EURUSD']);
+    expect(result.current.chartCatalogCurrent).toBe(true);
+    unmount();
+  });
+
+  it('aborts this consumer and rejects its late catalog result when disabled', async () => {
+    const requests: Array<{ signal: AbortSignal; resolve: (value: unknown) => void }> = [];
+    apiGet.mockImplementation((_endpoint: string, options: { signal: AbortSignal }) => new Promise(resolve => {
+      requests.push({ signal: options.signal, resolve });
+    }));
+    const { result, rerender, unmount } = renderHook(({ enabled }) => useMarketInstruments(enabled), {
+      initialProps: { enabled: true },
+    });
+    expect(requests).toHaveLength(2);
+    rerender({ enabled: false });
+    expect(requests.every(request => request.signal.aborted)).toBe(true);
+    await act(async () => {
+      requests.forEach(request => request.resolve({ symbols: [{ symbol: 'OLD', trading_enabled: true, bid: 10, ask: 11 }] }));
+    });
+    expect(result.current.symbols).toEqual([]);
+    expect(result.current.authorizedSymbols).toEqual([]);
+    expect(result.current.authorizationSettled).toBe(false);
+    expect(result.current.loading).toBe(true);
+    unmount();
+  });
+
+  it('does not pause another enabled catalog consumer', async () => {
+    apiGet.mockResolvedValue({ symbols: [{ symbol: 'EURUSD', trading_enabled: true }] });
+    const { result, unmount } = renderHook(() => ({
+      paused: useMarketInstruments(false),
+      active: useMarketInstruments(),
+    }));
+    await flushPromises();
+    expect(apiGet).toHaveBeenCalledTimes(2);
+    expect(result.current.paused.authorizedSymbols).toEqual([]);
+    expect(result.current.paused.loading).toBe(true);
+    expect(result.current.active.authorizedSymbols).toEqual(['EURUSD']);
+    expect(result.current.active.loading).toBe(false);
+    unmount();
+  });
+
   it('preserves broker specification fields in the public fallback instrument', async () => {
     apiGet.mockResolvedValueOnce({
       symbols: [{
@@ -710,6 +784,86 @@ describe('useMarketInstruments normalization', () => {
     unmount();
   });
 
+  it('starts authorization immediately and renders its catalog while public quotes are pending', async () => {
+    let resolvePublic!: (value: unknown) => void;
+    apiGet.mockImplementationOnce(() => new Promise((resolve) => {
+      resolvePublic = resolve;
+    })).mockResolvedValueOnce({ symbols: [
+      { symbol: 'XAUUSD', trading_enabled: true, min_volume: 0.01 },
+      { symbol: 'EURUSD', trading_enabled: false },
+    ] });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    expect(apiGet.mock.calls.map(([endpoint]) => endpoint)).toEqual([
+      '/api/v1/market/symbols', '/instruments',
+    ]);
+    await flushPromises();
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['XAUUSD', 'EURUSD']);
+    expect(result.current.authorizedSymbols).toEqual(['XAUUSD']);
+    expect(result.current.disabledSymbols).toEqual(['EURUSD']);
+    expect(result.current.authorizationSettled).toBe(true);
+    expect(result.current.chartCatalogCurrent).toBe(false);
+
+    await act(async () => {
+      resolvePublic({ symbols: [
+        { symbol: 'XAUUSD', bid: 4425.9, ask: 4426.05 },
+        { symbol: 'BTCUSD', bid: 108000, ask: 108010 },
+      ] });
+    });
+
+    expect(result.current.symbols[0]).toMatchObject({ symbol: 'XAUUSD', bid: 4425.9 });
+    expect(result.current.symbols.map((item) => item.symbol)).toContain('BTCUSD');
+    expect(result.current.chartCatalogCurrent).toBe(true);
+    expect(result.current.authorizedSymbols).toEqual(['XAUUSD']);
+    expect(result.current.authorizedInstruments[0].minVolume).toBe(0.01);
+    unmount();
+  });
+
+  it.each(['before', 'after'] as const)(
+    'keeps authenticated results when the public catalog fails %s authorization resolves',
+    async (failureOrder) => {
+      let rejectPublic!: (reason: unknown) => void;
+      let resolveAuthorization!: (value: unknown) => void;
+      apiGet.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectPublic = reject;
+      })).mockImplementationOnce(() => new Promise((resolve) => {
+        resolveAuthorization = resolve;
+      }));
+
+      const { result, unmount } = renderHook(() => useMarketInstruments());
+      const failPublic = async () => {
+        await act(async () => rejectPublic(new ApiError(503, 'Public catalog unavailable')));
+      };
+      const finishAuthorization = async () => {
+        await act(async () => resolveAuthorization({ symbols: [
+          { symbol: 'XAUUSD.raw', trading_enabled: true, volume_step: 0.1 },
+          { symbol: 'EURUSD.raw', trading_enabled: false },
+        ] }));
+      };
+      if (failureOrder === 'before') {
+        await failPublic();
+        expect(result.current.authorizedSymbols).toEqual([]);
+        expect(result.current.authorizationSettled).toBe(false);
+        await finishAuthorization();
+      } else {
+        await finishAuthorization();
+        await failPublic();
+      }
+
+      expect(result.current.symbols.map((item) => item.symbol)).toEqual(['XAUUSD.RAW', 'EURUSD.RAW']);
+      expect(result.current.authorizedSymbols).toEqual(['XAUUSD.RAW']);
+      expect(result.current.disabledSymbols).toEqual(['EURUSD.RAW']);
+      expect(result.current.authorizedInstruments[0].volumeStep).toBe(0.1);
+      expect(result.current.authorizationSettled).toBe(true);
+      expect(result.current.chartCatalogCurrent).toBe(true);
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toBeNull();
+      unmount();
+    },
+  );
+
   it('invalidates successful catalog ownership before another broker/account request resolves', async () => {
     apiGet.mockResolvedValueOnce({ symbols: [{ symbol: 'XAUUSD.raw' }] })
       .mockResolvedValueOnce({ symbols: [{ symbol: 'XAUUSD.raw', trading_enabled: true }] });
@@ -760,9 +914,13 @@ describe('useMarketInstruments normalization', () => {
 
   it('keeps public requests unauthenticated and ignores the previous account response after a switch', async () => {
     let resolveFirstAccount: ((value: unknown) => void) | undefined;
+    let resolveFirstAuthorization: ((value: unknown) => void) | undefined;
     apiGet
       .mockImplementationOnce(() => new Promise((resolve) => {
         resolveFirstAccount = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFirstAuthorization = resolve;
       }))
       .mockResolvedValueOnce({
         symbols: [{ symbol: 'USDJPY', bid: 163.05, ask: 163.051 }],
@@ -800,11 +958,13 @@ describe('useMarketInstruments normalization', () => {
     });
     await flushPromises();
 
-    expect(apiGet.mock.calls[1]).toEqual([
+    expect(apiGet.mock.calls[0]?.[1].signal.aborted).toBe(true);
+    expect(apiGet.mock.calls[1]?.[1].signal.aborted).toBe(true);
+    expect(apiGet.mock.calls[2]).toEqual([
       '/api/v1/market/symbols',
       expect.objectContaining({ skipAuth: true, skipDynamicUrl: true }),
     ]);
-    expect(apiGet.mock.calls[2]?.[1]).toEqual(expect.objectContaining({
+    expect(apiGet.mock.calls[3]?.[1]).toEqual(expect.objectContaining({
       authToken: 'instrument-account-b-token',
       requestContext: expect.objectContaining({
         refreshToken: 'instrument-account-b-refresh',
@@ -816,11 +976,15 @@ describe('useMarketInstruments normalization', () => {
       resolveFirstAccount?.({
         symbols: [{ symbol: 'EURUSD', bid: 1.1, ask: 1.2 }],
       });
+      resolveFirstAuthorization?.({
+        symbols: [{ symbol: 'EURUSD', trading_enabled: true }],
+      });
       await Promise.resolve();
       await Promise.resolve();
     });
 
     expect(result.current.symbols.map((item) => item.symbol)).toEqual(['USDJPY']);
+    expect(result.current.authorizedSymbols).toEqual(['USDJPY']);
     unmount();
   });
 });

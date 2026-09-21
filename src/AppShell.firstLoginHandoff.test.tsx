@@ -33,7 +33,13 @@ vi.mock('./App', async () => {
   };
 });
 
-vi.mock('./i18n', () => ({
+vi.mock('./config/backendTarget.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./config/backendTarget.js')>(),
+  isDesktopBackendTarget: () => true,
+}));
+
+vi.mock('./i18n', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./i18n')>(),
   i18nReady: Promise.resolve(),
 }));
 vi.mock('./authenticatedStyles', () => ({}));

@@ -153,6 +153,9 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
       volume: 0.01,
       price_open: 65321.45,
       commission: -0.25,
+      price_current: 0,
+      hasBackendCurrentPrice: false,
+      hasBackendProfit: false,
     });
     expect(onNewTrade).toHaveBeenCalledTimes(1);
     const placedEvent = onNewTrade.mock.calls[0][0] as CustomEvent;
@@ -173,6 +176,8 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
         side: 'buy',
         volume: 0.01,
         placement_state: 'pending',
+        hasBackendCurrentPrice: false,
+        hasBackendProfit: false,
       },
     });
     expect(placementDetails[0].provisionalTicket).toBeLessThan(0);
@@ -191,6 +196,29 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
       volume: 0.01,
       totalMs: expect.any(Number),
     }));
+  });
+
+  it.each([
+    ['zero values', { profit: 0, price_current: 0 }, true],
+    ['unavailable values', { profit: 5, price_current: 65330, pnl_available: false }, false],
+    ['previous placeholders', { profit: 0, price_current: 0, hasBackendProfit: false, hasBackendCurrentPrice: false }, false],
+  ])('keeps filled order %s provenance without deriving a current price', async (_name, display, available) => {
+    mocks.wsPlaceOrder.mockResolvedValue({
+      type: 'order_filled',
+      status: 'filled',
+      success: true,
+      request_id: 'req-display',
+      client_order_id: CLIENT_ORDER_ID,
+      data: { ...filledData, state_version: '12345678901234567890', ...display },
+    });
+    const result = await api.orders.placeMarketOrder(inputOrder);
+    expect(result).toMatchObject({
+      state_version: '12345678901234567890',
+      hasBackendProfit: available,
+      hasBackendCurrentPrice: available,
+      price_current: 0,
+    });
+    expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
   });
 
   it('starts the transport before publishing the immediate pending row', async () => {

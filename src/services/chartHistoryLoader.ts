@@ -12,7 +12,7 @@ import {
 
 export const DEFAULT_HISTORY_PAGE_SIZE = 3000;
 export const M1_HISTORY_PAGE_SIZE = 5000;
-export const FIRST_PAINT_HISTORY_COUNT = 500;
+export { FIRST_PAINT_HISTORY_COUNT } from '../constants/chartDefaults';
 export const M5_HISTORY_PAGE_SIZE = 5000;
 export const M1_OLDER_HISTORY_RANGE_FALLBACK_WINDOWS = 8;
 export const M1_INTERIOR_GAP_LOOKBACK_SECONDS = 12 * 60 * 60;

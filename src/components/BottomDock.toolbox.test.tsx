@@ -31,6 +31,33 @@ afterEach(() => {
 });
 
 describe('Toolbox utility commands', () => {
+  it('mounts optional Toolbox and Exposure content on first activation and retains their surfaces', () => {
+    const { container } = render(<BottomDock height={300} />);
+    expect(screen.queryByTitle('Cascade')).not.toBeInTheDocument();
+    expect(container.querySelector('.rtx-exposure-tab')).toBeNull();
+    expect(container.querySelector('.rtx-trade-tab')).toBeInTheDocument();
+
+    act(() => openBottomDockTab('Toolbox'));
+    const toolboxCommand = screen.getByTitle('Cascade');
+    expect(toolboxCommand).toBeVisible();
+    fireEvent.click(toolboxCommand);
+    expect(runTerminalShortcutAction).toHaveBeenLastCalledWith('window.cascade');
+
+    act(() => openBottomDockTab('Exposure'));
+    const exposure = container.querySelector('.rtx-exposure-tab');
+    expect(exposure).toBeVisible();
+    expect(toolboxCommand).toBeInTheDocument();
+    expect(toolboxCommand).not.toBeVisible();
+
+    act(() => openBottomDockTab('Trade'));
+    expect(exposure).toBeInTheDocument();
+    expect(exposure).not.toBeVisible();
+    act(() => openBottomDockTab('Toolbox'));
+    expect(screen.getByTitle('Cascade')).toBe(toolboxCommand);
+    act(() => openBottomDockTab('Exposure'));
+    expect(container.querySelector('.rtx-exposure-tab')).toBe(exposure);
+  });
+
   it('uses the executable shortcut catalog for every enabled tool', () => {
     render(<ToolboxTab />);
     const tools = [

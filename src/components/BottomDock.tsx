@@ -2,12 +2,9 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import { Icon } from './ui/Icon';
 import { lockedTerminalTool } from '../config/terminalToolAvailability';
 import { ContextMenu, type ContextMenuItemConfig } from './ui/ContextMenu';
-import { ModifyPositionDialog } from './ModifyPositionDialog';
 import { lazy, memo, Suspense, useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { CalendarTab } from './layout/CalendarTab';
-import { CodeBaseTab, ArticlesTab, ExpertsTab } from './layout/ResearchTabs';
-import { JournalTab } from './layout/JournalTab';
-import { useAppStore, resolveTickFromLookup, type Trade } from '../store/useAppStore';
+import { RetainedLazyFeature } from '../startup/RetainedLazyFeature';
+import { useAppStore, type Trade } from '../store/useAppStore';
 import { useToolboxTradeData, type ToolboxTradePosition } from '../hooks/useToolboxTradeData';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
@@ -19,7 +16,7 @@ import {
     type ExposureAccountInput,
     type ExposurePositionInput,
 } from './BottomDock.exposure';
-import { resolveTradeAccountMetrics, resolveTradeProfit } from './BottomDock.trade';
+import { resolveTradeAccountMetrics, resolveTradeProfit, toBackendFinancialNumber } from './BottomDock.trade';
 import { MARKET_ORDER_PLACEMENT_STATE_EVENT } from '../services/marketOrderPlacementEvents';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../services/shortcutCatalog';
 import { acknowledgeBottomDockTab, getRequestedBottomDockTab } from '../services/bottomDockNavigation';
@@ -28,6 +25,13 @@ const LazyHistoryDownloader = lazy(async () => {
     const module = await import('./HistoryDownloader');
     return { default: module.HistoryDownloader };
 });
+
+const ModifyPositionDialog = lazy(() => import('./ModifyPositionDialog').then(module => ({ default: module.ModifyPositionDialog })));
+const CalendarTab = lazy(() => import('./layout/CalendarTab').then(module => ({ default: module.CalendarTab })));
+const CodeBaseTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.CodeBaseTab })));
+const ArticlesTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.ArticlesTab })));
+const ExpertsTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.ExpertsTab })));
+const JournalTab = lazy(() => import('./layout/JournalTab').then(module => ({ default: module.JournalTab })));
 
 // Memoized tab surfaces: hidden tabs must not re-render on live tick bursts,
 // otherwise every tab switch waits behind re-painting invisible tables.
@@ -326,6 +330,17 @@ export function BottomDock({
     const [account, setAccount] = useState<any>(useAppStore.getState().account);
     const [positions, setPositions] = useState<any[]>(useAppStore.getState().positions);
     const toolboxTrade = useToolboxTradeData();
+    const bulkCloseCounts = useMemo(() => {
+        const openPositions = toolboxTrade.positions ?? [];
+        let profitable = 0;
+        let losing = 0;
+        for (const position of openPositions) {
+            const profit = position.profit ?? 0;
+            if (profit > 0) profitable += 1;
+            else if (profit < 0) losing += 1;
+        }
+        return { all: openPositions.length, profitable, losing };
+    }, [toolboxTrade.positions]);
 
     // Value-level caches — prevent setState when broker sends new objects with same field values
     const cachedAccountSig = useRef<string>('');
@@ -474,16 +489,7 @@ export function BottomDock({
     // Auto-switch to Journal if the account equity hits 0 (margin call / account blown)
     const prevEquityRef = useRef<number | null>(null);
     useEffect(() => {
-        // Expose a global testing function for the user to simulate blowing up their account manually
-        (window as any).testBlowup = () => {
-            const currentAccount = useAppStore.getState().account;
-            if (currentAccount) {
-                useAppStore.getState().setAccount({ ...currentAccount, equity: 0, balance: 0, freeMargin: 0, marginLevel: 0 });
-                console.log("0000 Simulated Account Blow Up! Equity is now 0. You should be navigated to the Journal tab.");
-            }
-        };
-
-        if (!account) return;
+        if (!account || account.hasBackendEquity === false || !Number.isFinite(account.equity)) return;
         const eq = account.equity;
 
         // If equity drops to 0 or below from a previously positive state, switch instantly
@@ -492,7 +498,7 @@ export function BottomDock({
         }
 
         prevEquityRef.current = eq;
-    }, [account?.equity]);
+    }, [account?.equity, account?.hasBackendEquity]);
 
     // Resize Handler
     useEffect(() => {
@@ -534,7 +540,7 @@ export function BottomDock({
                     hidden={activeTab !== 'Toolbox'}
                     aria-hidden={activeTab !== 'Toolbox'}
                 >
-                    <MemoToolboxTab />
+                    <RetainedLazyFeature active={activeTab === 'Toolbox'}><MemoToolboxTab /></RetainedLazyFeature>
                 </div>
                 <div
                     className="h-full min-h-0"
@@ -565,11 +571,13 @@ export function BottomDock({
                     hidden={activeTab !== 'Exposure'}
                     aria-hidden={activeTab !== 'Exposure'}
                 >
-                    <MemoExposureTab
-                        positions={isExposureSurfaceLive ? positions ?? [] : HIDDEN_TAB_ROWS}
-                        formatMoney={formatMoney}
-                        account={isExposureSurfaceLive ? account : null}
-                    />
+                    <RetainedLazyFeature active={activeTab === 'Exposure'}>
+                        <MemoExposureTab
+                            positions={isExposureSurfaceLive ? positions ?? [] : HIDDEN_TAB_ROWS}
+                            formatMoney={formatMoney}
+                            account={isExposureSurfaceLive ? account : null}
+                        />
+                    </RetainedLazyFeature>
                 </div>
                 <div
                     className="h-full min-h-0"
@@ -585,35 +593,35 @@ export function BottomDock({
                     hidden={activeTab !== 'Calendar'}
                     aria-hidden={activeTab !== 'Calendar'}
                 >
-                    <MemoCalendarTab />
+                    <RetainedLazyFeature active={activeTab === 'Calendar'}><MemoCalendarTab /></RetainedLazyFeature>
                 </div>
                 <div
                     className="h-full min-h-0"
                     hidden={activeTab !== 'Code Base'}
                     aria-hidden={activeTab !== 'Code Base'}
                 >
-                    <MemoCodeBaseTab />
+                    <RetainedLazyFeature active={activeTab === 'Code Base'}><MemoCodeBaseTab /></RetainedLazyFeature>
                 </div>
                 <div
                     className="h-full min-h-0"
                     hidden={activeTab !== 'Articles'}
                     aria-hidden={activeTab !== 'Articles'}
                 >
-                    <MemoArticlesTab />
+                    <RetainedLazyFeature active={activeTab === 'Articles'}><MemoArticlesTab /></RetainedLazyFeature>
                 </div>
                 <div
                     className="h-full min-h-0"
                     hidden={activeTab !== 'Experts'}
                     aria-hidden={activeTab !== 'Experts'}
                 >
-                    <MemoExpertsTab />
+                    <RetainedLazyFeature active={activeTab === 'Experts'}><MemoExpertsTab /></RetainedLazyFeature>
                 </div>
                 <div
                     className="h-full min-h-0"
                     hidden={activeTab !== 'Journal'}
                     aria-hidden={activeTab !== 'Journal'}
                 >
-                    {activeTab === 'Journal' && <MemoJournalTab />}
+                    {activeTab === 'Journal' && <Suspense fallback={null}><MemoJournalTab /></Suspense>}
                 </div>
                 {activeTab === 'Historical Data' && (
                     <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-zinc-500">{tr("Opening historical data…")}</div>}>
@@ -645,31 +653,37 @@ export function BottomDock({
                         </button>
                     ))}
                 </div>
-                <div className="rtx-dock-tab-actions flex h-full shrink-0 flex-nowrap items-stretch">
+                <div className="rtx-dock-tab-actions rtx-bulk-close-group flex h-full shrink-0 flex-nowrap items-stretch">
                     <button
                         type="button"
-                        title={tr("Close all profitable positions")}
+                        title={tr("Close all in-profit positions")}
+                        aria-label={tr("Close In-Profit")}
                         onClick={() => handleTradeCloseBulk('WINNERS')}
-                        disabled={!onCloseBulk || (toolboxTrade.positions ?? []).length === 0}
-                        className="rtx-dock-tab rtx-trade-bulk-close inline-flex h-full items-center justify-center px-2.5 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent text-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={!onCloseBulk || bulkCloseCounts.profitable === 0}
+                        className="rtx-dock-tab rtx-trade-bulk-close rtx-bulk-close rtx-bulk-close--winners inline-flex h-full items-center justify-center px-4 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent transition-colors duration-75 relative disabled:cursor-not-allowed"
                     >
-                        {tr("Close Winners")}</button>
+                        <span className="rtx-bulk-close__label">{tr("Close In-Profit")}</span>
+                    </button>
                     <button
                         type="button"
-                        title={tr("Close all losing positions")}
+                        title={tr("Close all in-loss positions")}
+                        aria-label={tr("Close In-Loss")}
                         onClick={() => handleTradeCloseBulk('LOSERS')}
-                        disabled={!onCloseBulk || (toolboxTrade.positions ?? []).length === 0}
-                        className="rtx-dock-tab inline-flex h-full items-center justify-center px-2.5 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent text-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={!onCloseBulk || bulkCloseCounts.losing === 0}
+                        className="rtx-dock-tab rtx-trade-bulk-close rtx-bulk-close rtx-bulk-close--losers inline-flex h-full items-center justify-center px-4 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent transition-colors duration-75 relative disabled:cursor-not-allowed"
                     >
-                        {tr("Close Losers")}</button>
+                        <span className="rtx-bulk-close__label">{tr("Close In-Loss")}</span>
+                    </button>
                     <button
                         type="button"
                         title={tr("Close all open positions")}
+                        aria-label={tr("Close All")}
                         onClick={() => handleTradeCloseBulk('ALL')}
-                        disabled={!onCloseBulk || (toolboxTrade.positions ?? []).length === 0}
-                        className="rtx-dock-tab rtx-dock-tab--danger inline-flex h-full items-center justify-center px-2.5 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={!onCloseBulk || bulkCloseCounts.all === 0}
+                        className="rtx-dock-tab rtx-trade-bulk-close rtx-bulk-close rtx-bulk-close--all inline-flex h-full items-center justify-center px-4 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent transition-colors duration-75 relative disabled:cursor-not-allowed"
                     >
-                        {tr("Close All")}</button>
+                        <span className="rtx-bulk-close__label">{tr("Close All")}</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -941,43 +955,21 @@ const TradeTab = memo(function TradeTab({
         setEditingId(null);
     };
 
-    // Calculate live positions with realtime prices, PnL, and SL/TP from local overrides
+    // Display backend prices and P/L, with pending SL/TP edits from local overrides.
     const livePositions = useMemo(() => {
-        const appState = useAppStore.getState();
         return positions.map((pos: any) => {
             const symbol = pos?.symbol ?? '';
             const openPrice = Number(
                 pos?.price_open ?? pos?.open_price ?? pos?.openPrice ?? pos?.entryPrice ?? pos?.chartEntryPrice ?? pos?.price ?? 0
             );
-            let livePrice = Number(
-                pos?.price_current ?? pos?.current_price ?? pos?.currentPrice ?? pos?.livePrice ?? 0
-            );
-            if (!Number.isFinite(livePrice) || livePrice <= 0) {
-                const tick = resolveTickFromLookup(appState.ticks, appState.tickLookup, symbol);
-                if (tick) {
-                    const isBuy = String(pos?.side ?? '').toUpperCase() === 'BUY';
-                    const bid = Number(tick.bid);
-                    const ask = Number(tick.ask);
-                    const last = Number(tick.last);
-                    const tickPrice = isBuy
-                        ? (Number.isFinite(bid) && bid > 0 ? bid : Number.isFinite(last) && last > 0 ? last : ask)
-                        : (Number.isFinite(ask) && ask > 0 ? ask : Number.isFinite(last) && last > 0 ? last : bid);
-                    if (Number.isFinite(tickPrice) && tickPrice > 0) {
-                        livePrice = tickPrice;
-                    }
-                }
-            }
-            if (!Number.isFinite(livePrice) || livePrice <= 0) {
-                livePrice = openPrice;
-            }
+            const livePrice = pos.hasBackendCurrentPrice === false
+                ? null
+                : toBackendFinancialNumber(pos?.price_current ?? pos?.current_price ?? pos?.currentPrice);
 
             const openTime = pos?.time_create ?? pos?.openTime ?? pos?.open_time ?? pos?.time ?? pos?.chartEntryTime;
             const volume = Number(pos?.volume_lots ?? pos?.volume ?? pos?.quantity ?? 0);
 
-            const profitResolution = resolveTradeProfit(
-                { ...pos, currentPrice: livePrice, price_current: livePrice, openPrice, price_open: openPrice },
-                { accountCurrency: account?.currency }
-            );
+            const profitResolution = resolveTradeProfit(pos);
             const livePnL = profitResolution.value;
 
             // Apply local overrides while the Gateway API catches up.
@@ -1012,7 +1004,7 @@ const TradeTab = memo(function TradeTab({
                 profitWarnings: profitResolution.warnings,
             };
         });
-    }, [positions, tradeOverrides, account?.currency]);
+    }, [positions, tradeOverrides]);
 
     const livePositionLevelSignature = useMemo(() => (
         livePositions
@@ -1033,25 +1025,15 @@ const TradeTab = memo(function TradeTab({
         rememberTradeHistoryPositionLevels(livePositions, accountId);
     }, [accountId, livePositionLevelSignature]);
 
-    // Row-level totals. These drive the per-tile Floating P/L, Swap and Commission displays
-    // only \u2014 they must never feed the account metrics, which are backend-authoritative.
-    const totalLivePnL = useMemo(() => livePositions.reduce((acc, pos) => acc + (pos.livePnL || 0), 0), [livePositions]);
     const totalSwap = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.swap) || 0), 0), [livePositions]);
     const totalCommission = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.commission) || 0), 0), [livePositions]);
-    // Equity / free margin / margin level are shown exactly as the backend reports them. When
-    // the backend omits one it resolves to null and the footer renders a dash, not a zero.
-    const accountMetricResolution = useMemo(() => resolveTradeAccountMetrics({
-        balance: account?.balance,
-        equity: account?.equity,
-        margin: account?.margin,
-        freeMargin: account?.freeMargin,
-        marginLevel: account?.marginLevel,
-        hasBackendEquity: account?.hasBackendEquity,
-        hasBackendFreeMargin: account?.hasBackendFreeMargin,
-        hasBackendMarginLevel: account?.hasBackendMarginLevel,
-        credit: account?.credit,
-        bonus: account?.bonus,
-    }), [account]);
+    // Every account total comes from the backend, including floating P/L.
+    const accountMetricResolution = useMemo(() => resolveTradeAccountMetrics(account), [account]);
+    const totalLivePnL = accountMetricResolution.unrealizedPL;
+    const floatingProfitColor = totalLivePnL !== null && totalLivePnL > 0
+        ? 'text-[#22c55e]'
+        : totalLivePnL !== null && totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100';
+    const floatingProfitLabel = totalLivePnL === null ? METRIC_UNAVAILABLE : formatMoney(totalLivePnL);
     const accountBalance = accountMetricResolution.balance;
     const liveEquity = accountMetricResolution.equity;
     const margin = accountMetricResolution.margin;
@@ -1060,7 +1042,6 @@ const TradeTab = memo(function TradeTab({
 
     const formatMarginLevel = (value: number | null) => {
         if (value === null) return METRIC_UNAVAILABLE;
-        if (value <= 0 && livePositions.length === 0) return '\u221e';
         return `${value.toFixed(2)}%`;
     };
 
@@ -1171,13 +1152,13 @@ const TradeTab = memo(function TradeTab({
             case 'positions':
                 return <BlinkingText value={livePositions.length} />;
             case 'balance':
-                return <BlinkingText value={accountBalance} formatFn={formatMoney} />;
+                return accountBalance === null ? <UnavailableMetric /> : <BlinkingText value={accountBalance} formatFn={formatMoney} />;
             case 'equity':
                 return liveEquity === null
                     ? <UnavailableMetric />
                     : <BlinkingText value={liveEquity} formatFn={formatMoney} />;
             case 'margin':
-                return <BlinkingText value={margin} formatFn={formatMoney} />;
+                return margin === null ? <UnavailableMetric /> : <BlinkingText value={margin} formatFn={formatMoney} />;
             case 'freeMargin':
                 return liveFreeMargin === null
                     ? <UnavailableMetric />
@@ -1202,13 +1183,13 @@ const TradeTab = memo(function TradeTab({
                 value = String(livePositions.length);
                 break;
             case 'balance':
-                value = `${formatMoney(accountBalance)} ${account?.currency || 'USD'}`;
+                value = accountBalance === null ? METRIC_UNAVAILABLE : `${formatMoney(accountBalance)} ${account?.currency || 'USD'}`;
                 break;
             case 'equity':
                 value = liveEquity === null ? METRIC_UNAVAILABLE : formatMoney(liveEquity);
                 break;
             case 'margin':
-                value = formatMoney(margin);
+                value = margin === null ? METRIC_UNAVAILABLE : formatMoney(margin);
                 break;
             case 'freeMargin':
                 value = liveFreeMargin === null ? METRIC_UNAVAILABLE : formatMoney(liveFreeMargin);
@@ -1318,15 +1299,16 @@ const TradeTab = memo(function TradeTab({
     const getTradePointsValue = useCallback((pos: ToolboxTradePosition) => {
         const openPrice = Number(pos.price_open ?? pos.open_price ?? pos.openPrice ?? pos.entryPrice ?? pos.price);
         const currentPrice = Number(pos.price_current ?? pos.current_price ?? pos.currentPrice ?? pos.livePrice);
-        if (!Number.isFinite(openPrice) || !Number.isFinite(currentPrice) || openPrice <= 0 || currentPrice <= 0) return 0;
+        if (pos.hasBackendCurrentPrice === false || !Number.isFinite(openPrice) || !Number.isFinite(currentPrice) || openPrice <= 0 || currentPrice <= 0) return null;
         const pointSize = Math.pow(10, -getSymbolDigits(pos.symbol ?? ''));
         const direction = String(pos.side).toUpperCase() === 'BUY' ? 1 : -1;
         const points = ((currentPrice - openPrice) / pointSize) * direction;
-        return Number.isFinite(points) ? points : 0;
+        return Number.isFinite(points) ? points : null;
     }, []);
 
     const formatTradePoints = useCallback((pos: ToolboxTradePosition) => {
         const points = getTradePointsValue(pos);
+        if (points === null) return METRIC_UNAVAILABLE;
         const absPoints = Math.abs(points);
         const fractionDigits = absPoints > 0 && absPoints < 10 ? 1 : 0;
         return points.toLocaleString('en-US', {
@@ -1371,7 +1353,7 @@ const TradeTab = memo(function TradeTab({
                 label: profitMode === 'points' ? 'Profit Points' : 'Profit',
                 value: pos => profitMode === 'points'
                     ? formatTradePoints(pos)
-                    : formatMoney(pos.profit ?? pos.unrealizedPnL),
+                    : resolveTradeProfit(pos).value === null ? METRIC_UNAVAILABLE : formatMoney(resolveTradeProfit(pos).value),
             });
         }
         return columns;
@@ -1488,8 +1470,8 @@ ${rows}
                 label: 'Bulk Operations',
                 submenu: [
                     { label: 'Close All', action: () => onCloseBulk?.('ALL') },
-                    { label: 'Close Winners', action: () => onCloseBulk?.('WINNERS') },
-                    { label: 'Close Losers', action: () => onCloseBulk?.('LOSERS') },
+                    { label: 'Close In-Profit', action: () => onCloseBulk?.('WINNERS') },
+                    { label: 'Close In-Loss', action: () => onCloseBulk?.('LOSERS') },
                     { label: `Close All ${symbol}`, action: () => onCloseBulk?.('ALL', symbol) },
                 ],
             },
@@ -1726,10 +1708,10 @@ ${rows}
                             );
                             const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
                             const isBuy = String(pos.side).toUpperCase() === 'BUY';
-                            const pnl = pos.profit ?? pos.unrealizedPnL;
-                            const pnlValue = Number(pnl ?? 0);
+                            const pnlValue = resolveTradeProfit(pos).value;
                             const pointsValue = getTradePointsValue(pos);
-                            const profitIsPositive = profitMode === 'points' ? pointsValue >= 0 : pnlValue >= 0;
+                            const profitIsPositive = profitMode === 'points' ? pointsValue !== null && pointsValue >= 0 : pnlValue !== null && pnlValue >= 0;
+                            const profitIsAvailable = profitMode === 'points' ? pointsValue !== null : pnlValue !== null;
                             const positionKey = getPositionKey(pos);
                             const isSelected = selectedPositionKey === positionKey;
                             const symbolLabel = pos.symbol ?? '-';
@@ -1744,27 +1726,12 @@ ${rows}
                                 : formatTradePrice(rawOpenPrice, symbolLabel);
                             const slLabel = formatTradeLevel(pos.price_sl ?? pos.sl, symbolLabel);
                             const tpLabel = formatTradeLevel(pos.price_tp ?? pos.tp, symbolLabel);
-                            let rawCurrentPrice = Number(pos.price_current ?? pos.current_price ?? pos.currentPrice ?? pos.livePrice);
-                            if (!Number.isFinite(rawCurrentPrice) || rawCurrentPrice <= 0) {
-                                const tick = resolveTickFromLookup(useAppStore.getState().ticks, useAppStore.getState().tickLookup, symbolLabel);
-                                if (tick) {
-                                    const bid = Number(tick.bid);
-                                    const ask = Number(tick.ask);
-                                    const last = Number(tick.last);
-                                    const tickPrice = isBuy
-                                        ? (Number.isFinite(bid) && bid > 0 ? bid : Number.isFinite(last) && last > 0 ? last : ask)
-                                        : (Number.isFinite(ask) && ask > 0 ? ask : Number.isFinite(last) && last > 0 ? last : bid);
-                                    if (Number.isFinite(tickPrice) && tickPrice > 0) {
-                                        rawCurrentPrice = tickPrice;
-                                    }
-                                }
-                            }
-                            if (!Number.isFinite(rawCurrentPrice) || rawCurrentPrice <= 0) {
-                                rawCurrentPrice = rawOpenPrice;
-                            }
+                            const rawCurrentPrice = pos.hasBackendCurrentPrice === false
+                                ? null
+                                : toBackendFinancialNumber(pos.price_current ?? pos.current_price ?? pos.currentPrice);
                             const currentPriceLabel = isPendingPlacement
                                 ? '…'
-                                : formatTradePrice(rawCurrentPrice, symbolLabel);
+                                : rawCurrentPrice === null ? METRIC_UNAVAILABLE : formatTradePrice(rawCurrentPrice, symbolLabel);
                             const swapLabel = formatMoney(pos.swap);
                             const accountLoginLabel = String(pos.account_login ?? '-');
                             const timeUpdateLabel = formatTradeTime(pos.time_update);
@@ -1772,7 +1739,7 @@ ${rows}
                             const commentLabel = String(placementError || pos.comment || '-');
                             const profitLabel = isPendingPlacement
                                 ? '…'
-                                : profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue);
+                                : profitMode === 'points' ? formatTradePoints(pos) : pnlValue === null ? METRIC_UNAVAILABLE : formatMoney(pnlValue);
                             const rowSummary = [
                                 symbolLabel,
                                 tr(sideLabel),
@@ -1915,7 +1882,7 @@ ${rows}
 
                                     {/* profit */}
                                     {isColumnVisible('profit') && (
-                                        <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${tr(profitMode === 'points' ? 'Profit Points' : 'Profit')}: ${profitLabel}`}>
+                                        <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${!profitIsAvailable ? 'text-zinc-500' : profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${tr(profitMode === 'points' ? 'Profit Points' : 'Profit')}: ${profitLabel}`}>
                                             {profitLabel}
                                         </td>
                                     )}
@@ -1972,32 +1939,16 @@ ${rows}
                             ))}
                         </div>
                         <div className="min-w-2 flex-1" />
-                        {isColumnVisible('profit') ? (
-                            <span
-                                className={`rtx-trade-footer-floating rtx-trade-footer-floating--profit inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap text-center font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
-                                style={{ width: footerProfitColumnWidth, flex: `0 0 ${footerProfitColumnWidth}` }}
-                                title={tr("Floating P/L: {{value0}} {{value1}}", { value0: formatMoney(totalLivePnL), value1: account?.currency || 'USD' })}
-                            >
-                                <BlinkingText
-                                    value={totalLivePnL}
-                                    formatFn={formatMoney}
-                                    defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-zinc-100"}
-                                />
-                                <span className="rtx-trade-footer-currency">{account?.currency || 'USD'}</span>
-                            </span>
-                        ) : (
-                            <span
-                                className={`rtx-trade-footer-floating inline-flex shrink-0 items-center justify-end gap-1 whitespace-nowrap text-right font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
-                                title={tr("Floating P/L: {{value0}} {{value1}}", { value0: formatMoney(totalLivePnL), value1: account?.currency || 'USD' })}
-                            >
-                                <BlinkingText
-                                    value={totalLivePnL}
-                                    formatFn={formatMoney}
-                                    defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-zinc-100"}
-                                />
-                                <span className="rtx-trade-footer-currency">{account?.currency || 'USD'}</span>
-                            </span>
-                        )}
+                        <span
+                            className={`rtx-trade-footer-floating ${isColumnVisible('profit') ? 'rtx-trade-footer-floating--profit justify-center' : 'justify-end'} inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-center font-normal leading-none ${floatingProfitColor}`}
+                            style={isColumnVisible('profit') ? { width: footerProfitColumnWidth, flex: `0 0 ${footerProfitColumnWidth}` } : undefined}
+                            title={tr("Floating P/L: {{value0}} {{value1}}", { value0: floatingProfitLabel, value1: account?.currency || 'USD' })}
+                        >
+                            {totalLivePnL === null
+                                ? <UnavailableMetric />
+                                : <BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={floatingProfitColor} />}
+                            <span className="rtx-trade-footer-currency">{account?.currency || 'USD'}</span>
+                        </span>
                         <span className="rtx-trade-footer-close-spacer shrink-0" style={{ width: footerCloseColumnWidth, flex: `0 0 ${footerCloseColumnWidth}` }} aria-hidden="true" />
                     </div>
                 </div>
@@ -2027,6 +1978,7 @@ ${rows}
                 />
             )}
             {/* Modify Position Dialog */}
+            <RetainedLazyFeature active={modifyPosition !== null}>
             <ModifyPositionDialog
                 isOpen={modifyPosition !== null}
                 onClose={(modifiedSl?: number, modifiedTp?: number, modifiedComment?: string) => {
@@ -2041,6 +1993,7 @@ ${rows}
                 }}
                 position={modifyPosition}
             />
+            </RetainedLazyFeature>
         </div>
     );
 });

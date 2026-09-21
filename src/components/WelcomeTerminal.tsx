@@ -1,4 +1,5 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
+import { useDesktopStartupReady } from '../startup/useDesktopStartupReady';
 /**
  * WelcomeTerminal renders the lightweight pre-authentication webterminal.
  * Authenticated chart, data, and WebSocket modules are loaded separately.
@@ -492,6 +493,7 @@ export function WelcomeTerminal({
     onPreloadTerminalPresentation,
 }: WelcomeTerminalProps) {
     const tr = useUiTranslation();
+    useDesktopStartupReady();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [username, setUsername] = useState(() => localStorage.getItem('rtx_saved_username') || '');

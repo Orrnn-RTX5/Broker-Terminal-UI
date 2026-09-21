@@ -114,28 +114,30 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(.shadow-sm, .shadow-md, .s
   box-shadow: var(--shadow-md) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea) {
+/* The desktop welcome screen owns its dark broker palette, even when the
+   authenticated terminal's light styles remain loaded after logout. */
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   background: #ffffff !important;
   border: 1px solid #d0d5dd !important;
   color: #101828 !important;
   box-shadow: var(--shadow-sm) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea)::placeholder {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *))::placeholder {
   color: #98a2b3 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):focus {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *)):focus {
   border-color: #7f56d9 !important;
   box-shadow: 0 0 0 3px #f4ebff, var(--shadow-sm) !important;
   outline: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(button) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(button):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   color: #475467;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(button:not(:disabled):hover) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(button:not(:disabled):hover):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   background-color: #f9fafb !important;
   border-color: #d0d5dd !important;
   color: #101828 !important;
@@ -453,23 +455,23 @@ html.rtx-advanced-view.rtx-skin-untitled-light tbody:not(.tv-lightweight-charts 
   background: var(--rtx-light-hover) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where([role="menu"], [role="listbox"], [data-radix-popper-content-wrapper] > *) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where([role="menu"], [role="listbox"], [data-radix-popper-content-wrapper] > *):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   background: #ffffff !important;
   border-color: #e5e7eb !important;
   color: #101828 !important;
   box-shadow: var(--shadow-xl) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where([role="menuitem"], [role="option"]) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where([role="menuitem"], [role="option"]):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   color: #475467 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where([role="menuitem"]:hover, [role="option"]:hover, [aria-selected="true"]) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where([role="menuitem"]:hover, [role="option"]:hover, [aria-selected="true"]):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   background: #f4ebff !important;
   color: #6941c6 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where([class*="ContextMenu"], [class*="context-menu"], [class*="Dropdown"], [class*="dropdown"], [class*="Popover"], [class*="popover"], [class*="Menu"], [class*="menu"]) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where([class*="ContextMenu"], [class*="context-menu"], [class*="Dropdown"], [class*="dropdown"], [class*="Popover"], [class*="popover"], [class*="Menu"], [class*="menu"]):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   border-color: #e5e7eb !important;
 }
 

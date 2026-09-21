@@ -2,14 +2,9 @@ import { useUiTranslation } from '../../hooks/useUiTranslation';
 import './file-menu-desktop.css';
 import { Icon } from '../ui/Icon';
 import { NewChartSymbolMenu, type NewChartMenuItem } from './NewChartSymbolMenu';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SaveWorkspaceDialog } from '../dialogs/SaveWorkspaceDialog';
-import { PrintSetupDialog } from '../dialogs/PrintSetupDialog';
-import { PrintPreviewDialog } from '../dialogs/PrintPreviewDialog';
-import { ExitConfirmDialog } from '../dialogs/ExitConfirmDialog';
-import { SavePictureDialog } from '../dialogs/SavePictureDialog';
-import { OpenAccountDialog } from '../dialogs/OpenAccountDialog';
+import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { useAppStore } from '../../store/useAppStore';
 import { chartPrinter, type PrintPreferences, type ChartPrintData } from '../../services/chartPrinter';
 import {
@@ -33,6 +28,13 @@ import {
     getDesktopReleaseVersionLabel,
     openDesktopReleaseDownload,
 } from '../../services/desktopRelease';
+
+const SaveWorkspaceDialog = lazy(() => import('../dialogs/SaveWorkspaceDialog').then(module => ({ default: module.SaveWorkspaceDialog })));
+const PrintSetupDialog = lazy(() => import('../dialogs/PrintSetupDialog').then(module => ({ default: module.PrintSetupDialog })));
+const PrintPreviewDialog = lazy(() => import('../dialogs/PrintPreviewDialog').then(module => ({ default: module.PrintPreviewDialog })));
+const ExitConfirmDialog = lazy(() => import('../dialogs/ExitConfirmDialog').then(module => ({ default: module.ExitConfirmDialog })));
+const SavePictureDialog = lazy(() => import('../dialogs/SavePictureDialog').then(module => ({ default: module.SavePictureDialog })));
+const OpenAccountDialog = lazy(() => import('../dialogs/OpenAccountDialog').then(module => ({ default: module.OpenAccountDialog })));
 
 type ElectronRuntime = NonNullable<Window['electron']> & {
     app?: {
@@ -222,7 +224,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const recentlyClosedCharts = useDockLayoutStore(state => state.recentlyClosedCharts);
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const showDesktopDownload = typeof window !== 'undefined' && !window.electron;
-    const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload });
+    const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload && !shortcutsOnly });
     const desktopReleaseVersionLabel = getDesktopReleaseVersionLabel(desktopReleaseState.release);
     const desktopReleaseMetaLabel = desktopReleaseVersionLabel || (desktopReleaseState.status === 'loading' ? 'Latest' : '');
 
@@ -277,20 +279,22 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
     const isAuthenticated = useAppStore(state => state.isAuthenticated);
 
-    // Fetch symbols on mount
+    // The always-mounted shortcut owner has no symbol menu to populate.
     useEffect(() => {
-        if (!isAuthenticated) {
-            setAvailableSymbols([]);
+        if (!isAuthenticated || shortcutsOnly) {
+            setAvailableSymbols(current => current.length > 0 ? [] : current);
             setIsLoadingSymbols(false);
             return;
         }
 
+        let active = true;
         const fetchSymbols = async () => {
             try {
                 const { default: api } = await import('../../services/api');
+                if (!active) return;
                 setIsLoadingSymbols(true);
                 const symbols = await api.market.getSymbols();
-                if (symbols && symbols.length > 0) {
+                if (active && symbols && symbols.length > 0) {
                     setAvailableSymbols(symbols.map(s => ({
                         symbol: s.id || s.name, // Mapping id or name to symbol
                         name: s.name,
@@ -298,14 +302,15 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     })));
                 }
             } catch (error) {
-                console.error('Failed to load menu symbols:', error);
+                if (active) console.error('Failed to load menu symbols:', error);
             } finally {
-                setIsLoadingSymbols(false);
+                if (active) setIsLoadingSymbols(false);
             }
         };
 
         fetchSymbols();
-    }, [isAuthenticated]);
+        return () => { active = false; };
+    }, [isAuthenticated, shortcutsOnly]);
 
     // Build nested menu structure from flat symbol list
     const buildNestedMenu = (symbols: SymbolData[]): NewChartMenuItem[] => {
@@ -345,7 +350,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         return root;
     };
 
-    const newChartMenuItems = buildNestedMenu(availableSymbols);
+    const newChartMenuItems = shortcutsOnly ? [] : buildNestedMenu(availableSymbols);
 
     // Get current symbol and timeframe from store
     const selectedSymbol = useAppStore(state => state.selectedSymbol);
@@ -1015,6 +1020,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
             {/* Dialogs */}
             {showSaveDialog && (
+                <Suspense fallback={null}>
                 <SaveWorkspaceDialog
                     onConfirm={(workspaceName) => {
                         setShowSaveDialog(false);
@@ -1027,9 +1033,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     onCancel={() => setShowSaveDialog(false)}
                     accountId={accountId || 'default'}
                 />
+                </Suspense>
             )}
 
             {showPrintSetupDialog && (
+                <Suspense fallback={null}>
                 <PrintSetupDialog
                     onConfirm={(preferences) => {
                         setShowPrintSetupDialog(false);
@@ -1039,9 +1047,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     onCancel={() => setShowPrintSetupDialog(false)}
                     accountId={accountId}
                 />
+                </Suspense>
             )}
 
             {showPrintPreviewDialog && (
+                <Suspense fallback={null}>
                 <PrintPreviewDialog
                     onPrint={(preferences) => handlePrint(chartPrintData || undefined, preferences)}
                     isLoading={preparingPrint}
@@ -1050,9 +1060,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     chartData={chartPrintData || undefined}
                     preferences={printPreferences || undefined}
                 />
+                </Suspense>
             )}
 
             {showSavePictureDialog && (
+                <Suspense fallback={null}>
                 <SavePictureDialog
                     isOpen={showSavePictureDialog}
                     onClose={() => {
@@ -1064,9 +1076,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     symbol={savePictureSource?.symbol || selectedSymbol || 'EURUSD'}
                     timeframe={savePictureSource?.timeframe || timeframe || '5m'}
                 />
+                </Suspense>
             )}
 
             {showExitDialog && (
+                <Suspense fallback={null}>
                 <ExitConfirmDialog
                     isOpen={showExitDialog}
                     changes={{
@@ -1097,12 +1111,15 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     }}
                     onCancel={() => setShowExitDialog(false)}
                 />
+                </Suspense>
             )}
 
+            <RetainedLazyFeature active={showOpenAccountDialog}>
             <OpenAccountDialog
                 isOpen={showOpenAccountDialog}
                 onClose={() => setShowOpenAccountDialog(false)}
             />
+            </RetainedLazyFeature>
         </>
     );
 };

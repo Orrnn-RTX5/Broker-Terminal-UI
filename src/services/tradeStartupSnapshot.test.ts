@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   },
   getAccountSummary: vi.fn(),
   getPositions: vi.fn(),
+  sessionChangeListeners: [] as Array<() => void>,
 }));
 
 vi.mock('../api/client', () => ({
@@ -40,6 +41,10 @@ vi.mock('./brokerSession', () => ({
     scope.brokerId,
     scope.serverUrl,
   ].join('|'),
+  onSessionChange: (listener: () => void) => {
+    mocks.sessionChangeListeners.push(listener);
+    return () => undefined;
+  },
 }));
 
 vi.mock('./api', () => ({
@@ -56,16 +61,23 @@ vi.mock('./api', () => ({
 import {
   getSessionTradeSnapshotRequests,
   loadSessionTradeSnapshot,
+  seedValidatedSessionAccountSummary,
 } from './tradeStartupSnapshot';
 
 describe('loadSessionTradeSnapshot', () => {
   beforeEach(() => {
+    mocks.sessionChangeListeners.forEach((listener) => listener());
     vi.clearAllMocks();
     mocks.token = 'access-token-a';
     mocks.scope.authenticated = true;
     mocks.scope.accountId = '200001';
     mocks.scope.brokerId = 'test';
     mocks.scope.serverUrl = 'https://test.example.com';
+  });
+
+  afterEach(() => {
+    mocks.sessionChangeListeners.forEach((listener) => listener());
+    vi.useRealTimers();
   });
 
   it('coalesces concurrent account and position reads for one authenticated session', async () => {
@@ -204,5 +216,89 @@ describe('loadSessionTradeSnapshot', () => {
     });
     expect(mocks.getAccountSummary).toHaveBeenCalledTimes(1);
     expect(mocks.getPositions).toHaveBeenCalledTimes(1);
+  });
+
+  const validatedAccount = {
+    id: '200001', balance: 1000, equity: 1000, currency: 'USD', leverage: 100,
+  };
+
+  it('uses the just-validated account once while fetching fresh positions for both startup consumers', async () => {
+    const positions = deferred<Array<{ id: number }>>();
+    mocks.getPositions.mockReturnValueOnce(positions.promise);
+    expect(seedValidatedSessionAccountSummary(200001, validatedAccount, mocks.token)).toBe(true);
+
+    const appRequests = getSessionTradeSnapshotRequests(200001);
+    const toolboxRequests = getSessionTradeSnapshotRequests(200001);
+    expect(toolboxRequests).toBe(appRequests);
+    expect(mocks.getAccountSummary).not.toHaveBeenCalled();
+    expect(mocks.getPositions).toHaveBeenCalledExactlyOnceWith(200001);
+    await expect(appRequests.accountResultPromise).resolves.toEqual({
+      status: 'fulfilled', value: validatedAccount,
+    });
+    positions.resolve([{ id: 21 }]);
+    await appRequests.snapshotPromise;
+
+    mocks.getAccountSummary.mockResolvedValueOnce({ ...validatedAccount, balance: 1100 });
+    mocks.getPositions.mockResolvedValueOnce([{ id: 22 }]);
+    const refreshed = await loadSessionTradeSnapshot(200001);
+    expect(mocks.getAccountSummary).toHaveBeenCalledExactlyOnceWith(200001);
+    expect(mocks.getPositions).toHaveBeenCalledTimes(2);
+    expect(refreshed.accountResult).toMatchObject({ status: 'fulfilled', value: { balance: 1100 } });
+  });
+
+  it('expires an unused validation handoff after one second', async () => {
+    vi.useFakeTimers();
+    expect(seedValidatedSessionAccountSummary(200001, validatedAccount, mocks.token)).toBe(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+    mocks.getAccountSummary.mockResolvedValueOnce(validatedAccount);
+    mocks.getPositions.mockResolvedValueOnce([]);
+    await loadSessionTradeSnapshot(200001);
+    expect(mocks.getAccountSummary).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['token', 'broker', 'account'] as const)('never reuses a handoff after the %s identity changes', async (changed) => {
+    expect(seedValidatedSessionAccountSummary(200001, validatedAccount, mocks.token)).toBe(true);
+    if (changed === 'token') mocks.token = 'different-token';
+    if (changed === 'broker') {
+      mocks.scope.brokerId = 'another-broker';
+      mocks.scope.serverUrl = 'https://another.example.com';
+    }
+    if (changed === 'account') mocks.scope.accountId = '200002';
+    mocks.getAccountSummary.mockResolvedValueOnce({ ...validatedAccount, id: mocks.scope.accountId });
+    mocks.getPositions.mockResolvedValueOnce([]);
+    await loadSessionTradeSnapshot(mocks.scope.accountId);
+    expect(mocks.getAccountSummary).toHaveBeenCalledExactlyOnceWith(Number(mocks.scope.accountId));
+  });
+
+  it('discards the handoff on a session event even if the same identity is selected again', async () => {
+    expect(seedValidatedSessionAccountSummary(200001, validatedAccount, mocks.token)).toBe(true);
+    mocks.sessionChangeListeners.forEach((listener) => listener());
+    mocks.getAccountSummary.mockResolvedValueOnce(validatedAccount);
+    mocks.getPositions.mockResolvedValueOnce([]);
+    await loadSessionTradeSnapshot(200001);
+    expect(mocks.getAccountSummary).toHaveBeenCalledOnce();
+  });
+
+  it('rejects mismatched response identities and stale validation tokens before retaining a summary', () => {
+    expect(seedValidatedSessionAccountSummary(200001, { ...validatedAccount, id: '200002' }, mocks.token)).toBe(false);
+    const mismatchedLogin = { ...validatedAccount, login: 200002 };
+    expect(seedValidatedSessionAccountSummary(200001, mismatchedLogin, mocks.token)).toBe(false);
+    expect(seedValidatedSessionAccountSummary(200001, validatedAccount, 'previous-token')).toBe(false);
+    mocks.scope.authenticated = false;
+    expect(seedValidatedSessionAccountSummary(200001, validatedAccount, mocks.token)).toBe(false);
+  });
+
+  it('does not enqueue an old summary for a later refresh if startup is already fetching', async () => {
+    const account = deferred<typeof validatedAccount>();
+    mocks.getAccountSummary.mockReturnValueOnce(account.promise);
+    mocks.getPositions.mockResolvedValue([]);
+    const initial = loadSessionTradeSnapshot(200001);
+    expect(seedValidatedSessionAccountSummary(200001, validatedAccount, mocks.token)).toBe(false);
+    account.resolve(validatedAccount);
+    await initial;
+    mocks.getAccountSummary.mockResolvedValueOnce(validatedAccount);
+    await loadSessionTradeSnapshot(200001);
+    expect(mocks.getAccountSummary).toHaveBeenCalledTimes(2);
   });
 });

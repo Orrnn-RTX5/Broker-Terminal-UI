@@ -226,7 +226,7 @@ describe('trend drawing input priority', () => {
     const overlay = document.createElement('div');
     const findClosestTradeLevel = vi.fn(() => ({ tradeObj: { key: 'trade:1', entryPrice: 100 }, grabbedType: 'ENTRY' }));
     const beginPointerCapture = vi.fn();
-    const handler = execute(`let dragState = null, dragLineOverlay = null, dragBadgeOverlay = null;
+    const handler = execute(`let dragState = null, dragLineOverlay = null, dragBadgeOverlay = null, dragZoneOverlay = null;
       return ${tradePointerHandler};`, {
       container, isTrendDrawingInputActive, cancelQueuedTradeHover: vi.fn(), setTradeHoverCursor: vi.fn(),
       seriesRef: { current: {} }, tradeAllowed: true, chartSettingsRef: { current: { showTradeLevels: true } },
@@ -252,6 +252,6 @@ describe('trend drawing input priority', () => {
     expect(tradePress.defaultPrevented).toBe(true);
     expect(findClosestTradeLevel).toHaveBeenCalledOnce();
     expect(beginPointerCapture).toHaveBeenCalledOnce();
-    expect(overlay.children).toHaveLength(2);
+    expect(overlay.children).toHaveLength(3);
   });
 });

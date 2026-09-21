@@ -476,7 +476,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     backdropFilter: 'none',
                     WebkitBackdropFilter: 'none',
                     border: '1px solid rgba(255,255,255,0.18)',
-                    borderRadius: '0px',
+                    borderRadius: '3px',
                     overflow: 'hidden',
                     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 20px rgba(0,0,0,0.42)',
                 }}

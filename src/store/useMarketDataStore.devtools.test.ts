@@ -24,8 +24,9 @@ describe('market data Redux DevTools isolation', () => {
     });
 
     vi.doMock('../services/aggregationWorkerManager', () => ({
+      cancelPendingAggregations: vi.fn(),
       getWorkerManager: () => ({
-        aggregateMultipleTimeframes: vi.fn(),
+        aggregateSymbols: vi.fn(),
       }),
     }));
 

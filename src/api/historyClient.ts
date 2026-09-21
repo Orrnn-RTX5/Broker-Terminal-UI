@@ -8,8 +8,6 @@ import type { HistoryCandle, HistoryCandleParams, HistoryTickParams, Timeframe }
 import { historyV2Api, marketV2Api } from './trade';
 
 const CHUNK_SIZE = 10000; // Swagger history/v2 max ticks per request
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // ms
 const UNSUPPORTED_DOWNLOADER_METADATA_STATUS = 501;
 
 export class HistoryApiError extends Error {
@@ -242,57 +240,6 @@ export class HistoryClient {
   }
 
   /**
-   * Fetch with retry logic
-   */
-  private async fetchWithRetry(
-    url: string,
-    options: RequestInit = {},
-    retries = MAX_RETRIES
-  ): Promise<Response> {
-    let lastError: Error | null = null;
-
-    for (let i = 0; i < retries; i++) {
-      try {
-        const token = localStorage.getItem('auth_token');
-        const response = await fetch(url, {
-          ...options,
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-            ...options.headers
-          }
-        });
-
-        // Don't retry on client errors (4xx)
-        if (response.status >= 400 && response.status < 500) {
-          return response;
-        }
-
-        // Retry on server errors (5xx) or network errors
-        if (response.ok || i === retries - 1) {
-          return response;
-        }
-
-        lastError = new Error(`Server error: ${response.status}`);
-      } catch (error) {
-        lastError = error as Error;
-
-        // Don't retry if aborted
-        if (error instanceof Error && error.name === 'AbortError') {
-          throw error;
-        }
-      }
-
-      // Wait before retrying (exponential backoff)
-      if (i < retries - 1) {
-        await this.delay(RETRY_DELAY * Math.pow(2, i));
-      }
-    }
-
-    throw lastError || new Error('Failed to fetch after retries');
-  }
-
-  /**
    * Utility: Get dates between two dates
    */
   private getDatesBetween(from: string, to: string): string[] {
@@ -306,13 +253,6 @@ export class HistoryClient {
     }
 
     return dates;
-  }
-
-  /**
-   * Utility: Delay helper
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

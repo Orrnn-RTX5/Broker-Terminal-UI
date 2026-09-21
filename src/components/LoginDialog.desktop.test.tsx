@@ -61,6 +61,8 @@ it('lists all servers before credentials, clears the password, and logs in to th
   expect(screen.getByRole('option', { name: 'Disabled Broker (Unavailable)' })).toBeDisabled();
   const account = screen.getByPlaceholderText('Account ID');
   const password = screen.getByPlaceholderText('Password');
+  expect(screen.getByLabelText('Account ID', { exact: true })).toBe(account);
+  expect(screen.getByLabelText('Password', { exact: true })).toBe(password);
   expect(server.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   fireEvent.change(password, { target: { value: 'old-password' } });
   fireEvent.change(server, { target: { value: 'Nexa' } });
@@ -69,7 +71,7 @@ it('lists all servers before credentials, clears the password, and logs in to th
   expect(fetchMock).toHaveBeenCalledWith('https://nexa.test/health', expect.anything());
   fireEvent.change(account, { target: { value: '12345' } });
   fireEvent.change(password, { target: { value: 'new-password' } });
-  fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Log in', exact: true }));
   await waitFor(() => expect(runtime.login).toHaveBeenCalledWith(
     { username: '12345', password: 'new-password', broker_id: 'Nexa' },
     { baseUrl: 'https://nexa.test/api/v2', skipDynamicUrl: true },
@@ -82,7 +84,7 @@ it('blocks credentials and login when the selected server is offline', async () 
   render(<LoginDialog isOpen onClose={vi.fn()} />);
   await screen.findByText('Server unavailable');
   expect(screen.getByPlaceholderText('Password')).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'OK' })).toBeDisabled();
-  fireEvent.submit(screen.getByRole('button', { name: 'OK' }).closest('form')!);
+  expect(screen.getByRole('button', { name: 'Log in', exact: true })).toBeDisabled();
+  fireEvent.submit(screen.getByRole('button', { name: 'Log in', exact: true }).closest('form')!);
   expect(runtime.login).not.toHaveBeenCalled();
 });

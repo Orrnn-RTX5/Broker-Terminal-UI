@@ -1,14 +1,12 @@
 import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { lazy, useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Menu as MenuIcon } from 'lucide-react';
 import { Icon, type IconName } from '../ui/Icon';
-import { OptionsDialog } from '../settings/OptionsDialog';
+import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { FileMenu } from './FileMenu';
 import { useTranslation } from 'react-i18next';
-import { SymbolsDialog } from '../SymbolsDialog';
-import { LoginDialog } from '../LoginDialog';
 import { commandBus } from '../../services/commandBus';
 import { useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
@@ -25,6 +23,10 @@ import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
 import { BUILTIN_WORKSPACE_PROFILE_NAMES, restoreBuiltinWorkspaceProfile } from '../../services/localWorkspaceProfiles';
+
+const OptionsDialog = lazy(() => import('../settings/OptionsDialog').then(module => ({ default: module.OptionsDialog })));
+const SymbolsDialog = lazy(() => import('../SymbolsDialog').then(module => ({ default: module.SymbolsDialog })));
+const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
 
 // Local interface definition to avoid export issues
 interface MenuItem {
@@ -593,6 +595,7 @@ export const MenuBar = ({
             { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" />, checked: menuChartProperties.chartAutoScroll, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const enabled = !current.chartAutoScroll; updateActiveChartProperty('chartAutoScroll', enabled, target.symbol); commandBus.dispatch({ type: 'SET_AUTO_SCROLL', payload: { enabled, targetContextId: target.targetContextId } }); setActiveMenu(null); } },
             { label: t('menu.charts.chartShift'), icon: <Icon name="chart-shift" size="sm" />, checked: menuChartProperties.chartShift, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const enabled = !current.chartShift; updateActiveChartProperty('chartShift', enabled, target.symbol); commandBus.dispatch({ type: 'SET_CHART_SHIFT', payload: { enabled, targetContextId: target.targetContextId } }); setActiveMenu(null); } },
             { label: t('menu.charts.volumes'), shortcut: 'Ctrl+K', icon: <Icon name="bar-chart-3" size="sm" />, checked: menuChartProperties.showTickVolumes || menuChartProperties.showRealVolumes, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const visible = !(current.showTickVolumes || current.showRealVolumes); updateActiveChartProperty('showTickVolumes', visible, target.symbol); updateActiveChartProperty('showRealVolumes', false, target.symbol); setActiveMenu(null); } },
+            { label: t('menu.charts.ohlc', 'Show OHLC'), shortcut: 'Alt+Shift+L', icon: <Icon name="activity" size="sm" />, checked: menuChartProperties.showOHLC, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; updateActiveChartProperty('showOHLC', !current.showOHLC, target.symbol); setActiveMenu(null); } },
             { divider: true, label: '' },
             { label: t('menu.charts.zoomIn'), shortcut: '+', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_IN', payload: { targetContextId } }); setActiveMenu(null); } },
             { label: t('menu.charts.zoomOut'), shortcut: '-', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_OUT', payload: { targetContextId } }); setActiveMenu(null); } },
@@ -1240,16 +1243,21 @@ export const MenuBar = ({
             )}
 
             {/* Options Dialog Modal */}
+            <RetainedLazyFeature active={isOptionsOpen}>
             <OptionsDialog isOpen={isOptionsOpen} onClose={() => setIsOptionsOpen(false)} />
+            </RetainedLazyFeature>
 
             {/* Keep account login available when the desktop status bar is absent. */}
+            <RetainedLazyFeature active={isLoginDialogOpen}>
             <LoginDialog
                 reason={tradeLoginRequested ? 'trade' : undefined}
                 isOpen={isLoginDialogOpen}
                 onClose={() => setIsLoginDialogOpen(false)}
             />
+            </RetainedLazyFeature>
 
             {/* Symbols Dialog */}
+            <RetainedLazyFeature active={isSymbolsOpen}>
             <SymbolsDialog
                 isOpen={isSymbolsOpen}
                 onClose={() => setIsSymbolsOpen(false)}
@@ -1260,6 +1268,7 @@ export const MenuBar = ({
                     window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol } }));
                 }}
             />
+            </RetainedLazyFeature>
         </>
     );
 };

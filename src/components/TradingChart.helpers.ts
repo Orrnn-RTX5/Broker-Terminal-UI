@@ -535,6 +535,8 @@ export const shouldResetInitialHistoryVisibleRange = ({
 export const TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS = {
   shiftVisibleRangeOnNewBar: false,
   allowShiftVisibleRangeOnWhitespaceReplacement: false,
+  // Match chart-wheel zoom: keep the visible right edge, even in history.
+  rightBarStaysOnScroll: true,
 } as const;
 
 export const shouldRestoreProtectedHistoryForFullRender = ({

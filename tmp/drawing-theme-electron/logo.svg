@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Dark background matching image 3 -->
+  <rect width="512" height="512" fill="#2d2f33" rx="64"/>
+  
+  <!-- RTX green X / eagle logo -->
+  <!-- Top-left diagonal bar -->
+  <polygon points="40,40 130,40 256,210 382,40 472,40 320,256 472,472 382,472 256,302 130,472 40,472 192,256" 
+           fill="#6dc04a"/>
+  
+  <!-- Eagle beak cutout - right upper arm (creates the distinctive eagle/arrow notch) -->
+  <polygon points="382,40 472,40 420,130 345,90" fill="#2d2f33"/>
+  
+  <!-- Eagle beak cutout - left lower arm -->
+  <polygon points="130,472 40,472 92,382 167,422" fill="#2d2f33"/>
+  
+  <!-- Small inner cutout for depth (center of X) -->
+  <polygon points="220,220 256,256 292,220 256,200" fill="#2d2f33" opacity="0.6"/>
+  <polygon points="220,292 256,256 292,292 256,312" fill="#2d2f33" opacity="0.6"/>
+</svg>

@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { loadSharedAuthenticatedInstruments } from '../services/authenticatedInstruments';
 import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
 import { API_V2_BASE_URL, isLocalViteDevServer, normalizeBrokerServerUrl } from '../config/api';
 import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
@@ -565,9 +566,9 @@ export const marketApi = {
     for (const endpoint of SYMBOL_ENDPOINTS) {
       try {
         const request = resolveSymbolEndpoint(endpoint);
-        const response = await apiClient.get<unknown>(request.endpoint, {
-          baseUrl: request.baseUrl,
-        });
+        const response = request.endpoint === '/instruments'
+          ? await loadSharedAuthenticatedInstruments({ baseUrl: request.baseUrl })
+          : await apiClient.get<unknown>(request.endpoint, { baseUrl: request.baseUrl });
         instruments = extractInstrumentRows(response);
         if (instruments.length > 0) break;
         lastError = new Error(`No symbols returned by ${endpoint}`);

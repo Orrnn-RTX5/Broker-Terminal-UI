@@ -22,6 +22,7 @@ import {
   type WebSocketMessage,
 } from './websocket-enhanced';
 import { emitSessionChange } from './brokerSession';
+import { useAppStore } from '../store/useAppStore';
 
 type TestableService = {
   handleMessage: (message: WebSocketMessage) => void;
@@ -252,6 +253,37 @@ describe('EnhancedWebSocketService tick normalization', () => {
     expect(isExactAccountStreamChannel('positions.', 'positions', '200001')).toBe(false);
     expect(isExactAccountStreamChannel('account.200001', 'account', 200001)).toBe(true);
     expect(isExactAccountStreamChannel('account.200002', 'account', 200001)).toBe(false);
+  });
+});
+
+describe('EnhancedWebSocketService trade state ownership', () => {
+  it('forwards backend envelopes without asynchronously overwriting the account consumer', async () => {
+    const service = new EnhancedWebSocketService('wss://example.test/ws/v2');
+    const consumerAccount = { balance: 500, equity: 523, margin: 10, freeMargin: 513,
+      marginLevel: 5230, unrealizedPL: 23, currency: 'EUR', leverage: 200 };
+    const consumerPosition = { id: 42, symbol: 'BTCUSD', side: 'BUY' as const, volume: 1,
+      openPrice: 100, currentPrice: 123, openTime: '', sl: 0, tp: 0, swap: 0,
+      commission: 0, unrealizedPnL: 23, profit: 23, state_version: '90071992547409931' };
+    useAppStore.setState({ accountId: '200001', account: null, positions: [] });
+    const received: WebSocketMessage[] = [];
+    service.subscribe('*', message => {
+      received.push(message as WebSocketMessage);
+      useAppStore.getState().setAccount(consumerAccount);
+      useAppStore.getState().setPositions([consumerPosition]);
+    });
+    const frames: WebSocketMessage[] = [
+      { type: 'channel_message', channel: 'account.200001', data: { balance: 1, equity: 2 } },
+      { type: 'channel_message', channel: 'positions.200001', data: { positions: [{ ticket: 99, symbol: 'EURUSD', volume: 1 }] } },
+      { channel: 'metrics.200001', data: { type: 'metrics_update', data: { equity: 523 } } },
+      { channel: 'positions.200001', data: { type: 'position_update', data: [{ ticket: 42, profit: 23 }] } },
+    ];
+    for (const frame of frames) (service as unknown as TestableService).handleMessage(frame);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(received).toEqual(frames);
+    expect(useAppStore.getState().account).toEqual(consumerAccount);
+    expect(useAppStore.getState().positions).toEqual([consumerPosition]);
+    service.destroy();
+    useAppStore.setState({ account: null, positions: [], accountId: null });
   });
 });
 

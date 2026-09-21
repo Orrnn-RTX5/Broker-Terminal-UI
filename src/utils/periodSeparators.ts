@@ -1,3 +1,5 @@
+import { TIMEFRAME_SECONDS, type BoundaryTimeframe } from './timeframeBoundary';
+
 export type PeriodSeparatorType = 'day' | 'month' | 'year' | 'session_gap';
 
 export interface PeriodSeparatorCandle {
@@ -9,20 +11,6 @@ export interface PeriodSeparator {
   index: number;
   type: PeriodSeparatorType;
 }
-
-const SECONDS_PER_DAY = 24 * 60 * 60;
-
-const TIMEFRAME_SECONDS: Record<string, number> = {
-  M1: 60,
-  M5: 5 * 60,
-  M15: 15 * 60,
-  M30: 30 * 60,
-  H1: 60 * 60,
-  H4: 4 * 60 * 60,
-  D1: SECONDS_PER_DAY,
-  W1: 7 * SECONDS_PER_DAY,
-  MN: 30 * SECONDS_PER_DAY,
-};
 
 const DAY_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4']);
 const YEAR_SEPARATOR_TIMEFRAMES = new Set(['W1', 'MN']);
@@ -36,7 +24,7 @@ interface BrokerDateParts {
 }
 
 export const getPeriodSeparatorTimeframeSeconds = (timeframe: string): number | null => {
-  const seconds = TIMEFRAME_SECONDS[timeframe.toUpperCase()];
+  const seconds = TIMEFRAME_SECONDS[timeframe.toUpperCase() as BoundaryTimeframe];
   return Number.isFinite(seconds) ? seconds : null;
 };
 

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { getPositionStreamTicket } from './services/tradePositionStream';
 
 const source = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
 
@@ -16,6 +17,6 @@ describe('App position stream admission contract', () => {
 
   it('recognizes broker volume_lots when normalizing a complete position', () => {
     expect(source).toContain('raw.volume_lots ?? raw.quantity ?? raw.volume');
-    expect(source).toContain('payload?.position_id');
+    expect(getPositionStreamTicket({ position_id: 2984272 })).toBe(2984272);
   });
 });

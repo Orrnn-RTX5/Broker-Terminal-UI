@@ -33,6 +33,10 @@ import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTi
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
 import {
+  readFirstFiniteNumber,
+  readFirstNonEmptyString as readRecordNonEmptyString,
+} from '../utils/recordFields';
+import {
   asUnknownRecord,
   readBrokerTimestampMs,
 } from '../utils/brokerStreamSemantics';
@@ -69,30 +73,13 @@ const toNumber = (v: unknown, fallback = 0): number => {
   return Number.isFinite(n) ? n : fallback;
 };
 
-const readFirstFiniteNumber = (
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): number | undefined => {
-  for (const key of keys) {
-    const value = record[key];
-    if (value === null || value === undefined || value === '') continue;
-    const numeric = Number(value);
-    if (Number.isFinite(numeric)) return numeric;
-  }
-  return undefined;
-};
-
 const readFirstNonEmptyString = (
   records: readonly Record<string, unknown>[],
   keys: readonly string[],
 ): string | undefined => {
   for (const record of records) {
-    for (const key of keys) {
-      const value = record[key];
-      if (typeof value !== 'string') continue;
-      const normalized = value.trim();
-      if (normalized) return normalized;
-    }
+    const normalized = readRecordNonEmptyString(record, keys);
+    if (normalized !== undefined) return normalized;
   }
   return undefined;
 };
@@ -100,7 +87,6 @@ const readFirstNonEmptyString = (
 const normalizeSymbol = (v: unknown): string =>
   typeof v === 'string' ? v.trim().toUpperCase() : '';
 
-const MAX_V2_CHANNELS_PER_FRAME = 500;
 const MAX_FEED_SYMBOLS_PER_FRAME = 500;
 const MAX_LOGGED_SYMBOLS = 12;
 

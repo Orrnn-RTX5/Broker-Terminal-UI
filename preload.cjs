@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld('electron', {
     appVersion: ipcRenderer.sendSync('get-app-version'),
     isPackaged,
 
+    // The renderer has painted login, the terminal, or a recovery surface.
+    startupReady: () => ipcRenderer.send('desktop-startup-ready'),
+
     // Shell utilities
     shell: {
         openPath: (path) => ipcRenderer.invoke('shell-open-path', path),

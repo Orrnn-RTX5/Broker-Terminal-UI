@@ -9,6 +9,8 @@ import { watchlistV2Api } from '../api/trade';
 import { API_V2_BASE_URL, MARKET_WS_URL, toLocalDevProxyUrl } from '../config/api';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { enqueueLiveTick } from '../services/liveTickDispatcher';
+import { loadPublicMarketCatalog } from '../services/publicMarketCatalog';
+import { loadSharedAuthenticatedInstruments } from '../services/authenticatedInstruments';
 import { getAccessToken, getServerUrl, onSessionChange } from '../services/brokerSession';
 import { resolveTickFromLookup, useAppStore, type Tick as AppTick } from '../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../store/useMarketDataStore';
@@ -404,6 +406,7 @@ interface ApiSessionDescriptor {
   v2BaseUrl: string;
   apiRootBaseUrl: string;
   accountId: string;
+  brokerId: string;
 }
 
 interface CapturedApiSession extends ApiSessionDescriptor {
@@ -453,10 +456,11 @@ const getApiSessionDescriptor = (accountId: string): ApiSessionDescriptor => {
     ? `${toLocalDevProxyUrl(serverUrl)}/api/v2`
     : API_V2_BASE_URL;
   const apiRootBaseUrl = v2BaseUrl.replace(/\/api\/v2\/?$/, '');
-  const storageScopeKey = [v2BaseUrl, getStoredBrokerId(), accountId]
+  const brokerId = getStoredBrokerId();
+  const storageScopeKey = [v2BaseUrl, brokerId, accountId]
     .map(normalizeWatchlistScopePart)
     .join('|');
-  return { storageScopeKey, v2BaseUrl, apiRootBaseUrl, accountId };
+  return { storageScopeKey, v2BaseUrl, apiRootBaseUrl, accountId, brokerId };
 };
 
 const captureApiSession = (
@@ -915,7 +919,7 @@ export function useActiveMarketSymbols() {
   return { symbols, loading, settled, current, error, reload };
 }
 
-export function useMarketInstruments(): MarketInstrumentsSnapshot {
+export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot {
   const [symbols, setSymbols] = useState<MarketInstrument[]>([]);
   const [authorizedInstruments, setAuthorizedInstruments] = useState<MarketInstrument[]>([]);
   const [authorizedSymbols, setAuthorizedSymbols] = useState<string[]>([]);
@@ -953,6 +957,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
   const retainedCatalogRef = useRef<{ scope: string; symbols: MarketInstrument[] } | null>(null);
 
   const reload = useCallback(async () => {
+    if (!enabled) return;
     const requestGeneration = ++requestGenerationRef.current;
     requestAbortRef.current?.abort();
     requestAbortRef.current = null;
@@ -976,45 +981,64 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
     setAuthorizationSettled(false);
     setCompletedCatalogScope(null);
 
-    try {
-      const response = await apiClient.get<unknown>('/api/v1/market/symbols', {
-        baseUrl: publicApiRootBaseUrl,
-        skipAuth: true,
-        skipDynamicUrl: true,
-        signal: controller.signal,
-      });
-      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
-
-      const publicCatalog = extractInstrumentRows(response)
-        .map(normalizeInstrument)
-        .filter(Boolean) as MarketInstrument[];
-      if (publicCatalog.length === 0) {
-        throw new ApiError(0, 'No symbols returned by /api/v1/market/symbols');
-      }
-
-      retainedCatalogRef.current = { scope: catalogScope, symbols: publicCatalog };
-      setSymbols(publicCatalog);
-      upsertInstrumentTickSnapshots(publicCatalog);
-      // The public catalog is sufficient for Market Watch rows and chart data.
-      // Do not keep those read-only surfaces behind the slower authenticated
-      // authorization request below; Buy/Sell stays gated by authorizedSymbols.
+    const isCurrentRequest = () => requestGeneration === requestGenerationRef.current
+      && !controller.signal.aborted;
+    let publicCatalogSucceeded = false;
+    let publicCatalogError: unknown = null;
+    let authenticatedCatalogSucceeded = false;
+    let authenticatedCatalog: MarketInstrument[] = [];
+    const publishDisplayCatalog = (catalog: MarketInstrument[]) => {
+      retainedCatalogRef.current = { scope: catalogScope, symbols: catalog };
+      setSymbols(catalog);
+      upsertInstrumentTickSnapshots(catalog);
       setLoading(false);
+    };
 
-      if (!isAuthenticated || !requestSession) {
-        setAuthorizationSettled(true);
-        if (!isAuthenticated) setCompletedCatalogScope(catalogScope);
-        return;
-      }
-
+    // Neither catalog depends on the other. Start both together so a slow or
+    // unavailable public endpoint cannot delay the broker's authorized list.
+    const publicRequest = (async () => {
       try {
-        const authorizedResponse = await apiClient.get<unknown>(
-          '/instruments',
+        const response = await loadPublicMarketCatalog(publicApiRootBaseUrl, controller.signal);
+        if (!isCurrentRequest()) return;
+
+        const publicCatalog = extractInstrumentRows(response)
+          .map(normalizeInstrument)
+          .filter(Boolean) as MarketInstrument[];
+        if (publicCatalog.length === 0) {
+          throw new ApiError(0, 'No symbols returned by /api/v1/market/symbols');
+        }
+
+        publicCatalogSucceeded = true;
+        publishDisplayCatalog(publicCatalog);
+        if (!isAuthenticated) setCompletedCatalogScope(catalogScope);
+      } catch (err) {
+        if (!isCurrentRequest()) return;
+        publicCatalogError = err;
+      } finally {
+        if (isCurrentRequest() && (!isAuthenticated || !requestSession)) {
+          setAuthorizationSettled(true);
+        }
+      }
+    })();
+
+    const authorizationRequest = (async () => {
+      if (!isAuthenticated || !requestSession) return;
+      try {
+        const authorizedResponse = await loadSharedAuthenticatedInstruments(
           getCapturedRequestOptions(requestSession, requestSession.v2BaseUrl, controller.signal),
+          requestSession,
         );
-        if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
+        if (!isCurrentRequest()) return;
         const authorizedCatalog = extractInstrumentRows(authorizedResponse)
           .map(normalizeInstrument)
           .filter(Boolean) as MarketInstrument[];
+        authenticatedCatalogSucceeded = true;
+        authenticatedCatalog = authorizedCatalog;
+        // An authenticated catalog can render charts while public quotes are
+        // pending or unavailable. The priced public list takes over if it arrives.
+        if (!publicCatalogSucceeded && authorizedCatalog.length > 0) {
+          publishDisplayCatalog(authorizedCatalog);
+        }
         // FIX: Retain authenticated broker specifications, not only their names,
         // so order controls can enforce each exact symbol's volume grid.
         setAuthorizedInstruments(authorizedCatalog);
@@ -1032,52 +1056,56 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
         }
         setAuthorizedSymbols(uniqueSymbols(enabled));
         setDisabledSymbols(uniqueSymbols(disabled));
-        setCompletedCatalogScope(catalogScope);
       } catch {
-        if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
+        if (!isCurrentRequest()) return;
         // The public grid is still valid. Trading actions stay disabled until
         // the authenticated catalog can prove that a symbol is authorized.
         setAuthorizedSymbols([]);
         setDisabledSymbols([]);
         setAuthorizedInstruments([]);
       } finally {
-        if (requestGeneration === requestGenerationRef.current && !controller.signal.aborted) {
+        if (isCurrentRequest()) {
           setAuthorizationSettled(true);
         }
       }
-    } catch (err) {
-      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
-      setSymbols(retainedCatalog);
-      setAuthorizedInstruments([]);
-      setAuthorizedSymbols([]);
-      setDisabledSymbols([]);
-      setAuthorizationSettled(true);
-      setError(err instanceof ApiError ? err.message : 'Failed to load symbols');
+    })();
+
+    try {
+      await Promise.all([publicRequest, authorizationRequest]);
+      if (!isCurrentRequest()) return;
+      // Early authenticated rows permit display and trading, but the public
+      // catalog can contain additional chart-only symbols. Preserve saved pane
+      // selections until both sources settle before allowing reconciliation.
+      if (authenticatedCatalogSucceeded) setCompletedCatalogScope(catalogScope);
+      if (publicCatalogError && authenticatedCatalog.length === 0) {
+        setError(publicCatalogError instanceof Error ? publicCatalogError.message : 'Failed to load symbols');
+      }
     } finally {
-      if (requestGeneration === requestGenerationRef.current && !controller.signal.aborted) {
+      if (isCurrentRequest()) {
         requestAbortRef.current = null;
         setLoading(false);
       }
     }
-  }, [catalogScope, isAuthenticated, publicApiRootBaseUrl, requestSession]);
+  }, [catalogScope, enabled, isAuthenticated, publicApiRootBaseUrl, requestSession]);
 
   useEffect(() => {
+    if (!enabled) return;
     void reload();
     return () => {
       requestGenerationRef.current += 1;
       requestAbortRef.current?.abort();
       requestAbortRef.current = null;
     };
-  }, [reload]);
+  }, [enabled, reload]);
 
   return {
     symbols,
-    authorizedInstruments,
-    authorizedSymbols,
-    disabledSymbols,
-    authorizationSettled,
-    chartCatalogCurrent: completedCatalogScope === catalogScope && authorizationSettled,
-    loading,
+    authorizedInstruments: enabled ? authorizedInstruments : [],
+    authorizedSymbols: enabled ? authorizedSymbols : [],
+    disabledSymbols: enabled ? disabledSymbols : [],
+    authorizationSettled: enabled && authorizationSettled,
+    chartCatalogCurrent: enabled && completedCatalogScope === catalogScope && authorizationSettled,
+    loading: !enabled || loading,
     error,
     reload,
   };

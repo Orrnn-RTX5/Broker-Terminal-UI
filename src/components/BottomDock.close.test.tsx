@@ -83,8 +83,8 @@ describe('Toolbox title-bar close control', () => {
             </DockPanel>,
         );
 
-        expect(screen.getByRole('button', { name: 'Close Winners' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Close Losers' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Close In-Profit' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Close In-Loss' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Close All' })).toBeInTheDocument();
 
         TAB_LABELS.forEach((tabLabel, index) => {

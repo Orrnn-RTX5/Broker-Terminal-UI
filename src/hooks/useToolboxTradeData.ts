@@ -16,6 +16,7 @@ import {
   type MarketOrderPlacementStateDetail,
 } from '../services/marketOrderPlacementEvents';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
+import { normalizeBackendAccount, readBackendNumber } from '../services/backendAccountMetrics';
 
 type TradeWsState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -25,6 +26,7 @@ export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'>
   contractSize?: number;
   contract_size?: number;
   hasBackendProfit?: boolean;
+  hasBackendCurrentPrice?: boolean;
   price_open?: number;
   price_current?: number;
   price_sl?: number;
@@ -98,17 +100,6 @@ const toNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(next) ? next : fallback;
 };
 
-const hasFiniteValue = (value: unknown): boolean => {
-  if (value === undefined || value === null || value === '') return false;
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    if (record.amount !== undefined && record.amount !== null) {
-      return hasFiniteValue(record.amount);
-    }
-  }
-  const cleanStr = String(value).replace(/,/g, '');
-  return Number.isFinite(Number(cleanStr));
-};
 
 const unwrapData = (value: any): any => {
   if (!value || typeof value !== 'object') return value;
@@ -121,55 +112,9 @@ const unwrapData = (value: any): any => {
   return value;
 };
 
-export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Account => {
-  const data = unwrapData(raw) ?? {};
-  const freeMarginRaw =
-    data.free_margin_amount ?? data.free_margin ?? data.margin_free ?? data.freeMargin ?? data.margin_available;
-  const marginLevelRaw = data.margin_level ?? data.marginLevel;
-  const creditRaw = data.credit ?? data.credit_bonus ?? data.bonus;
-  const balanceRaw = data.balance_amount ?? data.balance ?? data.Balance;
-  const equityRaw = data.equity_amount ?? data.equity ?? data.Equity;
-  // Prefer scalars; unwrap Money.amount. Never replace a known funded balance with packet 0.
-  const incomingBalance = balanceRaw !== undefined && balanceRaw !== null ? toNumber(balanceRaw, 0) : undefined;
-  const rejectZeroBalance = Boolean(previous && previous.balance > 0 && incomingBalance === 0);
-
-  // A packet claiming balance 0 for a known-funded account is bogus (partial/mid-flight metrics).
-  // We keep the last known-good balance, but every other figure carried by that SAME packet —
-  // equity, free margin, margin level — is equally untrustworthy. They are therefore marked as
-  // NOT backend-supplied so the resolver reports them as `unavailable` and the UI renders a dash.
-  // We never reconstruct equity locally (balance + floating P/L): a fabricated number presented
-  // as backend truth is exactly the misleading value this account panel must not show.
-  // Unknown must look unknown.
-  const hasBackendEquity = !rejectZeroBalance && hasFiniteValue(equityRaw);
-  const hasBackendFreeMargin = !rejectZeroBalance && hasFiniteValue(freeMarginRaw);
-  const hasBackendMarginLevel = !rejectZeroBalance && hasFiniteValue(marginLevelRaw);
-
-  const balance = rejectZeroBalance
-    ? previous!.balance
-    : (incomingBalance !== undefined ? incomingBalance : (previous?.balance ?? 0));
-  const floatingPnL = toNumber(
-    data.floating_pnl ?? data.floating ?? data.profit ?? data.unrealized_pl ?? data.unrealizedPL,
-    previous?.unrealizedPL ?? 0,
-  );
-  const equity = hasBackendEquity
-    ? toNumber(equityRaw, previous?.equity ?? previous?.balance ?? balance)
-    : toNumber(previous?.equity ?? balance, balance);
-
-  return {
-    balance,
-    equity,
-    margin: toNumber(data.used_margin ?? data.margin_used ?? data.margin ?? data.marginUsed, previous?.margin ?? 0),
-    freeMargin: hasBackendFreeMargin ? toNumber(freeMarginRaw, previous?.freeMargin ?? 0) : toNumber(previous?.freeMargin, 0),
-    unrealizedPL: floatingPnL,
-    marginLevel: hasBackendMarginLevel ? toNumber(marginLevelRaw, previous?.marginLevel ?? 0) : toNumber(previous?.marginLevel, 0),
-    credit: toNumber(creditRaw, previous?.credit ?? 0),
-    hasBackendEquity,
-    hasBackendFreeMargin,
-    hasBackendMarginLevel,
-    currency: String(data.currency ?? previous?.currency ?? 'USD'),
-    leverage: toNumber(data.leverage, previous?.leverage ?? 100),
-  };
-};
+export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Account => (
+  normalizeBackendAccount(raw, previous)
+);
 
 const getPositionTicket = (position: any): number => (
   toNumber(position?.ticket ?? position?.position_id ?? position?.position_ticket ?? position?.id, 0)
@@ -182,16 +127,15 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     raw?.price_open ?? raw?.open_price ?? raw?.openPrice ?? raw?.entryPrice ?? raw?.chartEntryPrice ?? raw?.price ?? normalized.openPrice,
     normalized.openPrice || 0,
   );
-  let priceCurrent = toNumber(
-    raw?.price_current ?? raw?.current_price ?? raw?.currentPrice ?? raw?.livePrice ?? normalized.currentPrice,
-    normalized.currentPrice || 0,
+  const rawCurrentPrice = readBackendNumber(
+    raw?.price_current ?? raw?.current_price ?? raw?.currentPrice,
   );
-  if (!priceCurrent || priceCurrent <= 0) {
-    priceCurrent = openPrice;
-  }
+  const hasBackendCurrentPrice = raw?.hasBackendCurrentPrice !== false && rawCurrentPrice !== undefined;
+  const priceCurrent = hasBackendCurrentPrice ? rawCurrentPrice! : 0;
   const rawProfit = raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL;
-  const hasBackendProfit = rawProfit !== undefined && rawProfit !== null && rawProfit !== '' && Number.isFinite(Number(rawProfit));
-  const profit = hasBackendProfit ? toNumber(rawProfit, 0) : normalized.unrealizedPnL;
+  const backendProfit = readBackendNumber(rawProfit);
+  const hasBackendProfit = raw?.hasBackendProfit !== false && backendProfit !== undefined;
+  const profit = hasBackendProfit ? backendProfit! : 0;
   const openTime = resolvePositionOpenTime(raw, normalized.openTime || (typeof normalized.time_create === 'string' ? normalized.time_create : undefined));
 
   return {
@@ -205,6 +149,7 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     price_open: openPrice,
     open_price: openPrice,
     currentPrice: priceCurrent,
+    hasBackendCurrentPrice,
     price_current: priceCurrent,
     current_price: priceCurrent,
     openTime,
@@ -235,6 +180,7 @@ const positionSignature = (position: ToolboxTradePosition): string => [
   position.volume,
   position.contractSize ?? position.contract_size ?? '',
   position.hasBackendProfit ?? '',
+  position.hasBackendCurrentPrice ?? '',
   position.price_open ?? position.openPrice,
   position.price_current ?? position.currentPrice,
   position.price_sl ?? position.sl,
@@ -266,6 +212,10 @@ const accountSignature = (account: Account | null): string => (
       account.unrealizedPL,
       account.credit ?? 0,
       account.hasBackendEquity ?? '',
+      account.hasBackendBalance ?? '',
+      account.hasBackendMargin ?? '',
+      account.hasBackendUnrealizedPL ?? '',
+      account.hasBackendCredit ?? '',
       account.hasBackendFreeMargin ?? '',
       account.hasBackendMarginLevel ?? '',
       account.currency,
@@ -284,20 +234,28 @@ const mergePatchIntoPosition = (
   raw: any,
 ): ToolboxTradePosition => {
   const next: ToolboxTradePosition = { ...existing };
-  const hasPricePatch = raw?.price_current !== undefined || raw?.current_price !== undefined || raw?.currentPrice !== undefined;
-  const hasProfitPatch = raw?.profit !== undefined || raw?.unrealized_pl !== undefined || raw?.unrealizedPnL !== undefined;
+  const pricePatch = readBackendNumber(raw?.price_current ?? raw?.current_price ?? raw?.currentPrice);
+  const profitPatch = readBackendNumber(raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL);
+  const hasPricePatch = raw?.price_current !== undefined || raw?.current_price !== undefined
+    || raw?.currentPrice !== undefined || raw?.hasBackendCurrentPrice !== undefined;
+  const hasProfitPatch = raw?.profit !== undefined || raw?.unrealized_pl !== undefined
+    || raw?.unrealizedPnL !== undefined || raw?.hasBackendProfit !== undefined;
 
   if (hasPricePatch) {
-    const price = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, existing.currentPrice);
+    const supplied = raw?.hasBackendCurrentPrice !== false && pricePatch !== undefined;
+    const price = supplied ? pricePatch! : 0;
     next.currentPrice = price;
     next.price_current = price;
+    next.current_price = price;
+    next.hasBackendCurrentPrice = supplied;
   }
 
   if (hasProfitPatch) {
-    const profit = toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, existing.unrealizedPnL);
+    const supplied = raw?.hasBackendProfit !== false && profitPatch !== undefined;
+    const profit = supplied ? profitPatch! : 0;
     next.unrealizedPnL = profit;
     next.profit = profit;
-    next.hasBackendProfit = true;
+    next.hasBackendProfit = supplied;
   }
 
   if (raw?.swap !== undefined || raw?.storage !== undefined) {

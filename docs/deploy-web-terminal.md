@@ -1,8 +1,8 @@
 # RTX5 Web Terminal Deployment
 
-This repository deploys the Web Terminal frontend to broker hosts from GitHub Actions on pushes to `main`.
+As checked on 2026-09-21, every line of `.github/workflows/deploy.yml` is commented out. Pushing to `main` does not trigger that workflow. Its commented configuration delegates deployment to a separate infrastructure repository; verify the active infrastructure pipeline before expecting a local frontend change to appear on a broker host.
 
-The workflow validates the web build with `npm run build:web`, then builds and pushes the runtime image from the committed `Dockerfile` with `VITE_MODE=web`. The committed nginx config serves the container on port `80`; broker hosts keep the public app binding on `127.0.0.1:8081`.
+The sections below describe the legacy deployment procedure, not an active workflow. The committed `Dockerfile` builds with `VITE_MODE=web` by default and serves the prebuilt files through nginx on container port `80`. The deployment script defaults `MANAGE_NGINX_ON_DEPLOY` to `false`, leaving host nginx configuration to infrastructure; the nginx/certbot setup described below only runs when that flag is explicitly enabled. See the [startup and Docker audit](startup-performance-2026-09-21.md#docker-and-deployed-delivery-audit) for the measured public delivery path and build mismatch.
 
 ## Broker Metadata
 
@@ -45,6 +45,35 @@ The SSH user should have root privileges on an Ubuntu host. The deploy script in
 - A vhost for `webterminal.growtradingacademy.com` with HTTPS redirect, Let's Encrypt certificates, reverse proxying, and WebSocket headers
 
 ## Validate Deployment
+
+### Check a compiled local build
+
+Use the compiled preview when evaluating startup; `npm run dev` serves Vite's development module graph. The latest measured build from this investigation can be opened at `http://127.0.0.1:5175/` while its preview process runs:
+
+```powershell
+npx.cmd vite preview --mode web --outDir artifacts/web-startup-profile-20260921/pass7-build --host 127.0.0.1 --port 5175 --strictPort
+```
+
+For a newly built source checkout, run `npm.cmd run build:web`, then `npx.cmd vite preview --mode web --host 127.0.0.1 --port 5175 --strictPort` after stopping any previous preview on that port. This serves `dist`; container runtime inlining is applied separately by the container entrypoint. A preview is for local validation, not the public production server. The [latest timing results](startup-performance-2026-09-21.md#worker-batching-and-render-follow-up-pass-7) still exceed one second and do not demonstrate an end-to-end speedup.
+
+### Container startup configuration
+
+The runtime image now keeps the build's original HTML at `/etc/nginx/rtx-index.template.html`. Before nginx starts, `docker-entrypoint.sh` preserves the built broker configuration or applies explicit deployment overrides, then embeds it into `index.html`. The browser receives its broker settings with the HTML instead of waiting for a separate `runtime-config.js` request. The separate file remains available for compatibility and deployment diagnostics.
+
+The template and `docker-inline-runtime-config.awk` must ship together with the updated entrypoint; copying only the new shell script into an older image is insufficient. Rebuild the complete image. Startup fails if the template is missing, the external runtime script marker is missing/duplicated, or preserved configuration contains unsafe HTML script delimiters. Published files are replaced only after generation succeeds. HTML retains its revalidation policy so a broker change is not hidden by a long-lived cached page.
+
+The served HTML directory must be writable during startup for staging files and replacing them. Keep the image's normal nginx entrypoint: the two replacements are individually atomic and complete before nginx starts. This script is not a live configuration update mechanism.
+
+To build and smoke-test locally on a machine with Docker:
+
+```bash
+docker build --build-arg VITE_MODE=web -t rtx5-webterminal:startup-20260921 .
+docker run --rm --name rtx5-startup-verify -p 127.0.0.1:8082:80 rtx5-webterminal:startup-20260921
+```
+
+Open `http://127.0.0.1:8082/` and verify the HTML contains one `script#rtx-runtime-config`, no external runtime-config script, and the expected broker routing. The local smoke-test port may need explicit broker CORS configuration for live APIs; an HTML/config check alone does not prove authenticated terminal readiness. These commands were not run here because Docker is unavailable.
+
+### Legacy deployment checks
 
 After a successful workflow run:
 

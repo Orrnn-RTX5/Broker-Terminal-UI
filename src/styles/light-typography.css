@@ -175,9 +175,8 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud {
-  max-width: calc(100% - 120px);
-  white-space: nowrap;
-  overflow: hidden;
+  max-width: calc(100% - 40px);
+  flex-wrap: wrap;
 }
 
 /* Grow fixed form chrome so two text lines and longer labels remain visible. */

@@ -58,6 +58,12 @@ export interface Position {
   swap: number;
   commission: number;
   unrealizedPnL: number;
+  hasBackendProfit?: boolean;
+  hasBackendCurrentPrice?: boolean;
+  state_version?: string | number;
+  state_version_text?: string;
+  price_time_msc?: string | number;
+  pnl_available?: boolean;
   comment?: string;
   // Backend wire-format aliases (snake_case). Optional — preserves existing defensive fallback logic.
   open_price?: number;
@@ -120,6 +126,10 @@ export interface Account {
   unrealizedPL: number;
   marginLevel: number;
   credit?: number;
+  hasBackendBalance?: boolean;
+  hasBackendMargin?: boolean;
+  hasBackendUnrealizedPL?: boolean;
+  hasBackendCredit?: boolean;
   hasBackendEquity?: boolean;
   hasBackendFreeMargin?: boolean;
   hasBackendMarginLevel?: boolean;
@@ -348,6 +358,7 @@ const updateTickLookup = (
   currentTicks: Record<string, Tick>,
   storeSymbol: string,
   tick: Tick,
+  previousLookup: Record<string, string>,
 ): Record<string, string> => {
   const normalizedStoreSymbol = normalizeTickLookupKey(storeSymbol);
   const normalizedTickSymbol = normalizeTickLookupKey(tick?.symbol);
@@ -357,7 +368,9 @@ const updateTickLookup = (
   let nextLookup = currentLookup;
   const setLookup = (key: string, value: string) => {
     if (nextLookup[key] === value) return;
-    if (nextLookup === currentLookup) nextLookup = { ...currentLookup };
+    // One batch owns one copy. Cloning the growing dictionary for every new
+    // symbol makes the initial catalog quote batch quadratic.
+    if (nextLookup === previousLookup) nextLookup = { ...previousLookup };
     nextLookup[key] = value;
   };
 
@@ -463,7 +476,7 @@ const applyAppTickBatch = (
 
     if (!changed) nextTicks = { ...state.ticks };
     nextTicks[symbol] = nextTick;
-    nextLookup = updateTickLookup(nextLookup, nextTicks, symbol, nextTick);
+    nextLookup = updateTickLookup(nextLookup, nextTicks, symbol, nextTick, state.tickLookup);
     changed = true;
   });
 

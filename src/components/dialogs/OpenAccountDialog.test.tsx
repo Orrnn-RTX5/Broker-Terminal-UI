@@ -138,16 +138,17 @@ describe('OpenAccountDialog account flows', () => {
         expect(mocks.updateDynamicUrls).not.toHaveBeenCalled();
     });
 
-    it('preloads while closed and completes an opened picker without changing the active session', async () => {
+    it('waits until opened to load the directory without changing the active session', async () => {
         vi.stubGlobal('electron', { window: {} });
         const directory = pending<typeof brokers>();
         mocks.loadAppBrokerDirectory.mockReturnValue(directory.promise);
         const onClose = vi.fn();
         const dialog = render(<OpenAccountDialog isOpen={false} onClose={onClose} />);
-        expect(mocks.loadAppBrokerDirectory).toHaveBeenCalled();
+        expect(mocks.loadAppBrokerDirectory).not.toHaveBeenCalled();
         expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
 
         dialog.rerender(<OpenAccountDialog isOpen onClose={onClose} />);
+        expect(mocks.loadAppBrokerDirectory).toHaveBeenCalledOnce();
         expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
         await act(async () => directory.resolve(brokers));
         expect(screen.getByText('Broker One')).toBeInTheDocument();

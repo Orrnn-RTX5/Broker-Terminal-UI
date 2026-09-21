@@ -1,8 +1,6 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
- * MT5-Style Login Dialog
- * Modal dialog for switching accounts / logging in
- * Matches the Flexy Market MT5 Login dialog styling
+ * Account login dialog shared by the web and desktop terminals.
  */
 
 import React, { useState, useEffect, useRef, useId } from 'react';
@@ -25,7 +23,8 @@ import {
     mergeBrokerPresentation,
 } from '../services/brokerPresentation';
 import { pickDiscoveryBroker, type BrokerServerItem } from './WelcomeTerminal';
-import { User, X, HelpCircle, ChevronDown } from 'lucide-react';
+import { User, X, ChevronDown, LockKeyhole, ArrowRight, LoaderCircle, Server, AlertCircle } from 'lucide-react';
+import '../styles/login-dialog.css';
 
 interface LoginDialogProps {
     isOpen: boolean;
@@ -356,10 +355,15 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
     if (!isOpen) return null;
 
+    const serverStatusLabel = directoryLoading
+        ? 'Loading broker servers...'
+        : healthStatus === 'checking' ? 'Checking server...'
+            : healthStatus === 'online' ? 'Server online'
+                : healthStatus === 'offline' ? 'Server unavailable' : null;
+
     return ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center">
-            {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+        <div className="rtx-login-layer">
+            <div className="rtx-login-backdrop" onClick={onClose} />
 
             {/* Dialog */}
             <div
@@ -368,7 +372,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 aria-modal="true"
                 aria-labelledby={`${dialogId}-title`}
                 aria-describedby={`${dialogId}-description`}
-                className="rtx-login-dialog relative w-[420px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] overflow-y-auto bg-[#2b2e3b] border border-[#555] rounded-lg shadow-2xl"
+                className="rtx-login-dialog rtx-login-dialog--polished"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={event => {
                     if (event.key !== 'Tab') return;
@@ -379,48 +383,41 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
                 }}
             >
-                {/* Title Bar */}
-                <div className="flex items-center justify-between bg-[#353847] px-3 py-2 border-b border-[#555]">
-                    <div className="flex items-center gap-2">
-                        <User size={16} className="text-blue-400" />
-                        <span id={`${dialogId}-title`} className="rtx-dialog-title text-[20px] leading-7 font-semibold text-zinc-200">{tr(tradeLogin ? "Log in to trade" : "Login")}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <button className="p-1 hover:bg-white/10 rounded transition-colors" title={tr("Help")}>
-                            <HelpCircle size={14} className="text-zinc-400" />
-                        </button>
-                        <button onClick={onClose} className="p-1 hover:bg-red-500/80 rounded transition-colors" title={tr("Close")}>
-                            <X size={14} className="text-zinc-400 hover:text-white" />
-                        </button>
-                    </div>
-                </div>
-
-                {/* Content */}
-                <form onSubmit={handleSubmit} className="px-5 py-4">
-                    {/* Authorization Info */}
-                    <div className="flex items-center gap-3 mb-5">
-                        <div className="w-10 h-10 rounded-full bg-zinc-700/30 flex items-center justify-center flex-shrink-0">
-                            <User size={22} className="text-blue-400" />
+                <header className="rtx-login-header">
+                    <div className="rtx-login-heading">
+                        <div className="rtx-login-mark" aria-hidden="true">
+                            <User size={22} strokeWidth={1.7} />
                         </div>
-                        <p id={`${dialogId}-description`} className="text-[14px] font-normal leading-5 text-zinc-400">
-                            {tr(tradeLogin
-                                ? "Log in to your trading account to place an order. You can continue viewing charts and prices without logging in. No order has been placed."
-                                : "Authorization allows to get access to the trade account")}</p>
+                        <div>
+                            <h2 id={`${dialogId}-title`} className="rtx-dialog-title rtx-login-title">{tr(tradeLogin ? "Log in to trade" : "Login")}</h2>
+                            {!tradeLogin && <p id={`${dialogId}-description`} className="rtx-login-description">{tr("Access your trading account.")}</p>}
+                        </div>
                     </div>
+                    <button type="button" onClick={onClose} className="rtx-login-close" aria-label={tr("Close")} title={tr("Close")}>
+                        <X size={18} aria-hidden="true" />
+                    </button>
+                </header>
+
+                <form onSubmit={handleSubmit} className="rtx-login-form" aria-busy={loading}>
+                    {tradeLogin && <p id={`${dialogId}-description`} className="rtx-login-description rtx-login-trade-notice">{tr("Log in to your trading account to place an order. You can continue viewing charts and prices without logging in. No order has been placed.")}</p>}
 
                     {isDesktop && (
-                        <div className="flex items-center gap-3 mb-3">
-                            <label htmlFor="desktopLoginServer" className="w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Server:")}</label>
-                            <div className="flex-1 min-w-0">
+                        <div className="rtx-login-field">
+                            <div className="rtx-login-field-heading">
+                                <label htmlFor={`${dialogId}-server`} className="rtx-login-label text-[14px] leading-5 font-medium">{tr("Server:")}</label>
+                                {serverStatusLabel && <span role="status" className="rtx-login-status" data-status={directoryLoading ? 'checking' : healthStatus}>{tr(serverStatusLabel)}</span>}
+                            </div>
+                            <div className="rtx-login-control">
+                                <Server size={17} className="rtx-login-field-icon" aria-hidden="true" />
                                 <select
-                                    id="desktopLoginServer"
+                                    id={`${dialogId}-server`}
                                     value={selectedBroker?.broker_id || ''}
                                     disabled={loading || directoryLoading}
                                     onChange={event => {
                                         const broker = brokerList.find(item => item.broker_id === event.target.value);
                                         if (broker) handleSelectBroker(broker);
                                     }}
-                                    className="h-[32px] w-full rounded border border-[#555] bg-[#1a1c26] px-2 text-[14px] text-zinc-100"
+                                    className="rtx-login-input rtx-login-select"
                                 >
                                     <option value="" disabled>{tr(directoryLoading ? "Loading broker servers..." : "Select broker server")}</option>
                                     {brokerList.map(broker => (
@@ -429,92 +426,99 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                         </option>
                                     ))}
                                 </select>
-                                {healthStatus && <div role="status" className="mt-1 text-[12px] text-zinc-400">{tr(healthStatus === 'checking' ? 'Checking server...' : healthStatus === 'online' ? 'Server online' : 'Server unavailable')}</div>}
+                                <ChevronDown size={16} className="rtx-login-select-chevron" aria-hidden="true" />
                             </div>
                         </div>
                     )}
 
                     {/* Login Field */}
-                    <div className="flex items-center gap-3 mb-3">
-                        <label className="w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Login:")}</label>
-                        <input
-                            disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
-                            ref={loginInputRef}
-                            type="text"
-                            value={login}
-                            onChange={(e) => setLogin(e.target.value)}
-                            className="h-[32px] flex-1 rounded border border-zinc-600/60 bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
-                            placeholder={tr("Account ID")}
-                            autoFocus
-                        />
+                    <div className="rtx-login-field">
+                        <label htmlFor={`${dialogId}-account`} className="rtx-login-label text-[14px] leading-5 font-medium">{tr("Account ID")}</label>
+                        <div className="rtx-login-control">
+                            <User size={17} className="rtx-login-field-icon" aria-hidden="true" />
+                            <input
+                                id={`${dialogId}-account`}
+                                name="username"
+                                autoComplete="username"
+                                autoCapitalize="none"
+                                spellCheck={false}
+                                disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
+                                ref={loginInputRef}
+                                type="text"
+                                value={login}
+                                onChange={(e) => setLogin(e.target.value)}
+                                className="rtx-login-input"
+                                placeholder={tr("Account ID")}
+                                autoFocus
+                            />
+                        </div>
                     </div>
 
                     {/* Password Field */}
-                    <div className="flex items-center gap-3 mb-3">
-                        <label className="w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Password:")}</label>
-                        <input
-                            disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="h-[32px] flex-1 rounded border border-[#555] bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
-                            placeholder={tr("Password")}
-                        />
+                    <div className="rtx-login-field">
+                        <label htmlFor={`${dialogId}-password`} className="rtx-login-label text-[14px] leading-5 font-medium">{tr("Password")}</label>
+                        <div className="rtx-login-control">
+                            <LockKeyhole size={17} className="rtx-login-field-icon" aria-hidden="true" />
+                            <input
+                                id={`${dialogId}-password`}
+                                name="password"
+                                autoComplete="current-password"
+                                disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="rtx-login-input"
+                                placeholder={tr("Password")}
+                            />
+                        </div>
                     </div>
 
                     {/* Server / Broker Dropdown */}
-                    {!isDesktop && <div className="flex items-start gap-3 mb-4">
-                        <label className="mt-1.5 w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Server:")}</label>
-                        <div className="flex-1 relative" ref={dropdownRef}>
-                            <div className="relative flex h-[32px] w-full items-center rounded border border-[#555] bg-[#1a1c26] text-[14px] font-normal text-zinc-100 transition-colors focus-within:border-zinc-600">
-                                {selectedBroker?.logo_url && (
+                    {!isDesktop && <div className="rtx-login-field">
+                        <div className="rtx-login-field-heading">
+                            <label htmlFor={`${dialogId}-server`} className="rtx-login-label text-[14px] leading-5 font-medium">{tr("Server:")}</label>
+                            {serverStatusLabel && <span role="status" className="rtx-login-status" data-status={directoryLoading ? 'checking' : healthStatus}>{tr(serverStatusLabel)}</span>}
+                        </div>
+                        <div ref={dropdownRef}>
+                            <div className="rtx-login-control">
+                                {selectedBroker?.logo_url ? (
                                     <img
                                         src={selectedBroker.logo_url}
                                         alt=""
-                                        className="absolute left-2 top-1/2 -translate-y-1/2 w-[16px] h-[16px] rounded object-contain z-10"
+                                        className="rtx-login-broker-logo"
                                     />
-                                )}
+                                ) : <Server size={17} className="rtx-login-field-icon" aria-hidden="true" />}
                                 <input
+                                    id={`${dialogId}-server`}
                                     type="text"
+                                    autoComplete="off"
+                                    disabled={loading || directoryLoading}
                                     value={searchQuery}
                                     onChange={(e) => {
                                         setSearchQuery(e.target.value);
                                         setDropdownOpen(true);
                                     }}
                                     onFocus={() => setDropdownOpen(true)}
-                                    className="h-full flex-1 border-none bg-transparent text-[14px] font-normal text-zinc-100 outline-none"
-                                    style={{
-                                        paddingLeft: selectedBroker?.logo_url ? '28px' : '8px',
-                                        paddingRight: '32px',
-                                    }}
+                                    className="rtx-login-input rtx-login-server-input"
                                     placeholder={tr("Search broker...")}
                                 />
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-                                    {healthStatus === 'checking' && (
-                                        <span className="w-2 h-2 rounded-full bg-yellow-500 shadow-[0_0_6px_#eab308]" />
-                                    )}
-                                    {healthStatus === 'online' && (
-                                        <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_6px_#22c55e]" />
-                                    )}
-                                    {healthStatus === 'offline' && (
-                                        <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444]" />
-                                    )}
-                                    <ChevronDown size={12} className={`text-zinc-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
-                                </div>
+                                <ChevronDown size={16} className={`rtx-login-select-chevron ${dropdownOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
                             </div>
 
                             {/* Dropdown panel */}
                             {dropdownOpen && (
-                                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#1e2030] border border-zinc-600/60 rounded shadow-xl max-h-[180px] overflow-y-auto flex flex-col font-sans">
+                                <div className="rtx-login-brokers">
                                     {filteredBrokers.length === 0 ? (
-                                        <div className="px-3 py-3 text-[14px] font-normal text-zinc-500">{tr("No brokers found")}</div>
+                                        <div className="rtx-login-brokers-empty">{tr("No brokers found")}</div>
                                     ) : (
                                         filteredBrokers.map(item => (
                                             <button
                                                 key={item.broker_id}
                                                 type="button"
-                                                onMouseDown={() => handleSelectBroker(item)}
-                                                className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[14px] transition-colors hover:bg-zinc-700/60 ${selectedBroker?.broker_id === item.broker_id ? 'bg-zinc-700/40 font-semibold text-white' : 'font-normal text-zinc-300'}`}
+                                                onClick={() => handleSelectBroker(item)}
+                                                disabled={loading}
+                                                className="rtx-login-broker-option"
+                                                data-selected={selectedBroker?.broker_id === item.broker_id}
                                             >
                                                 <div className="flex items-center gap-2 truncate">
                                                     {item.logo_url ? (
@@ -531,7 +535,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                                     <span className="truncate">{item.broker_name}</span>
                                                 </div>
                                                 {item.region && (
-                                                    <span className="text-[12px] text-green-400 bg-green-500/10 border border-green-500/20 px-1 py-0.5 rounded font-medium uppercase flex-shrink-0">
+                                                    <span className="rtx-login-broker-region">
                                                         {item.region}
                                                     </span>
                                                 )}
@@ -542,12 +546,8 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             )}
 
                             {healthStatus === 'offline' && (
-                                <div className="mt-1.5 flex items-center gap-1 text-[14px] font-normal text-red-400">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                                        <line x1="12" y1="9" x2="12" y2="13" />
-                                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                                    </svg>
+                                <div className="rtx-login-offline">
+                                    <AlertCircle size={14} aria-hidden="true" />
                                     <span>{tr("Broker temporarily unavailable")}</span>
                                 </div>
                             )}
@@ -556,27 +556,31 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
                     {/* Error */}
                     {error && (
-                        <div className="mb-3 rounded border border-red-500/30 bg-red-500/15 px-2 py-1.5 text-[14px] font-normal text-red-400">
-                            {error}
+                        <div role="alert" className="rtx-login-error">
+                            <AlertCircle size={17} aria-hidden="true" />
+                            <span>{error}</span>
                         </div>
                     )}
 
                     {/* Buttons */}
-                    <div className="flex justify-end gap-2 pt-1">
-                        <button
-                            type="submit"
-                            disabled={loading || (isDesktop && (directoryLoading || !selectedBroker || healthStatus !== 'online'))}
-                            className="h-[32px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] leading-5 font-medium text-zinc-200 transition-colors hover:bg-[#4a4e5f] disabled:opacity-50"
-                        >
-                            {loading ? tr("Connecting...") : tr(tradeLogin ? "Log in" : "OK")}
-                        </button>
+                    <div className="rtx-login-actions">
                         <button
                             type="button"
                             onClick={onClose}
                             disabled={loading}
-                            className="h-[32px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] leading-5 font-medium text-zinc-200 transition-colors hover:bg-[#4a4e5f]"
+                            className="rtx-login-button rtx-login-button--secondary"
                         >
-                            {tr(tradeLogin ? "Continue viewing" : "Cancel")}</button>
+                            {tr(tradeLogin ? "Continue viewing" : "Cancel")}
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={loading || (isDesktop && (directoryLoading || !selectedBroker || healthStatus !== 'online'))}
+                            className="rtx-login-button rtx-login-button--primary"
+                        >
+                            {loading ? <LoaderCircle size={16} className="rtx-login-spinner" aria-hidden="true" /> : null}
+                            {tr(loading ? "Connecting..." : "Log in")}
+                            {!loading && <ArrowRight size={16} aria-hidden="true" />}
+                        </button>
                     </div>
                 </form>
             </div>

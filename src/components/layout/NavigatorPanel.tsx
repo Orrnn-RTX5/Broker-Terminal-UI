@@ -1,11 +1,11 @@
 import { brokerDisplayName } from '../../services/brokerDisplayName';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { lazy, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore, type SavedAccount } from '../../store/useAppStore';
 import { FileCode } from 'lucide-react';
 import { ContextMenu } from '../ui/ContextMenu';
-import { LoginDialog } from '../LoginDialog';
+import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { ChangePasswordDialog } from '../ChangePasswordDialog';
 import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
@@ -14,8 +14,11 @@ import { RTX5_API_URL, normalizeServerUrl } from '../../config/api';
 import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
 import { buildBrokerDirectoryLogoUrl } from '../BrokerLogoImage';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
+import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
 import type { Broker, BrokerServer } from '../../types/api';
 import type { BrokerDiscoveryItem } from '../../services/brokerDiscovery';
+
+const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
 
 type BrokerLogoInfo = {
     logoUrl: string;
@@ -319,10 +322,11 @@ export const NavigatorPanel: React.FC = () => {
             }
         };
 
-        loadBrokerLogos();
+        const cancelScheduledLogos = runAfterTerminalReady(() => { void loadBrokerLogos(); });
 
         return () => {
             active = false;
+            cancelScheduledLogos();
         };
     }, [serverLogoKey]);
 
@@ -511,12 +515,14 @@ export const NavigatorPanel: React.FC = () => {
                 </TreeItem>
             </div>
 
+            <RetainedLazyFeature active={loginDialogOpen}>
             <LoginDialog
                 isOpen={loginDialogOpen}
                 onClose={() => setLoginDialogOpen(false)}
                 initialLogin={selectedAccountForLogin?.login.toString()}
                 initialServer={selectedAccountForLogin?.server}
             />
+            </RetainedLazyFeature>
 
             <ChangePasswordDialog
                 isOpen={changePasswordDialogOpen}

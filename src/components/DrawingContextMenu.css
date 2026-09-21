@@ -1,0 +1,56 @@
+/* Share menu colors across the web and desktop shells, including native inputs. */
+html .drawing-context-menu button.drawing-context-menu__option[aria-pressed='true'],
+html .drawing-context-menu button.drawing-context-menu__option[aria-pressed='true']:hover {
+    background: var(--ctx-item-active-bg, var(--color-primary-dimmer)) !important;
+    border-color: var(--color-primary) !important;
+    color: var(--ctx-item-active-fg, var(--text-primary)) !important;
+}
+
+html .drawing-context-menu input.drawing-context-menu__width-slider {
+    appearance: none;
+    -webkit-appearance: none;
+    display: block;
+    height: 18px;
+    margin: 0;
+    padding: 0;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    cursor: pointer;
+}
+
+.drawing-context-menu__width-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 4px;
+    background: var(--border-secondary);
+}
+
+.drawing-context-menu__width-slider::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--color-primary);
+}
+
+.drawing-context-menu__width-slider::-moz-range-track {
+    height: 4px;
+    border-radius: 4px;
+    background: var(--border-secondary);
+}
+
+.drawing-context-menu__width-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--color-primary);
+}
+
+html .drawing-context-menu input.drawing-context-menu__width-slider:focus-visible {
+    outline: 2px solid var(--color-primary) !important;
+    outline-offset: 2px;
+}
