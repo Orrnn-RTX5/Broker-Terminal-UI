@@ -93,7 +93,7 @@ jobs:
           # Write entire environment file if PROD_ENV_FILE secret is provided
           if [ -n "${ENV_FILE:-}" ]; then
             echo "Writing environment configuration to /opt/Webterminal/.env on server..."
-            printf '%s\n' "$ENV_FILE" | ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "sudo mkdir -p /opt/Webterminal && sudo tee /opt/Webterminal/.env > /dev/null && sudo chmod 600 /opt/Webterminal/.env"
+            printf '%s\n' "$ENV_FILE" | ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "sudo mkdir -p /opt/Webterminal && sudo tee /opt/Webterminal/.env > /dev/null && sudo chown \"\$(id -u)\":\"\$(id -g)\" /opt/Webterminal/.env && sudo chmod 600 /opt/Webterminal/.env"
           fi
 
           ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" bash -s <<EOF
@@ -120,7 +120,13 @@ jobs:
 
             ENV_ARG=""
             if [ -f /opt/Webterminal/.env ]; then
-              ENV_ARG="--env-file /opt/Webterminal/.env"
+              if [ -r /opt/Webterminal/.env ]; then
+                ENV_ARG="--env-file /opt/Webterminal/.env"
+              else
+                echo "ERROR: /opt/Webterminal/.env exists but is not readable by \$(id -un); docker run would fail." >&2
+                ls -l /opt/Webterminal/.env >&2 || true
+                exit 1
+              fi
             fi
 
             docker run -d \
