@@ -58,7 +58,7 @@ describe('LoginDialog', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Account ID'), { target: { value: '123456' } });
     await user.type(screen.getByPlaceholderText('Password'), 'Password1');
-    await user.click(screen.getByRole('button', { name: 'OK' }));
+    await user.click(screen.getByRole('button', { name: 'Log in' }));
 
     await waitFor(() => expect(useAppStore.getState().authToken).toBe('fresh-real-token'));
     expect(localStorage.getItem('refresh_token')).toBeNull();
@@ -100,7 +100,7 @@ describe('LoginDialog', () => {
 
       fireEvent.change(screen.getByPlaceholderText('Account ID'), { target: { value: '123456' } });
       await user.type(screen.getByPlaceholderText('Password'), 'Password1');
-      await user.click(screen.getByRole('button', { name: 'OK' }));
+      await user.click(screen.getByRole('button', { name: 'Log in' }));
       await waitFor(() => expect(authV2Api.login).toHaveBeenCalledOnce());
       expect(authV2Api.login).toHaveBeenCalledWith(
         expect.objectContaining({ username: '123456' }),

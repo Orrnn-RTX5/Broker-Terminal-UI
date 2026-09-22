@@ -21,7 +21,8 @@ beforeEach(() => {
   useWebSocketStore.setState(initialSocket, true);
   useAppStore.setState(initialApp, true);
   useWebSocketStore.getState().setConnectionState('connected', 'fix_socket');
-  useWebSocketStore.getState().updateMetrics({ lastLatency: 12 }, 'fix_socket');
+  // Latency is only displayed while its sample is fresh, so stamp it.
+  useWebSocketStore.getState().updateMetrics({ lastLatency: 12, latencyMeasuredAt: Date.now() }, 'fix_socket');
 });
 afterEach(cleanup);
 
@@ -53,12 +54,12 @@ it('does not commit renders for message metadata or closed-menu diagnostics', ()
 
 it('updates displayed latency, fallback transport, and stale state immediately', () => {
   render(<ConnectionStatus />);
-  act(() => useWebSocketStore.getState().updateMetrics({ lastLatency: 25 }, 'fix_socket'));
+  act(() => useWebSocketStore.getState().updateMetrics({ lastLatency: 25, latencyMeasuredAt: Date.now() }, 'fix_socket'));
   expect(screen.getByRole('button', { name: 'Connected 25ms' })).toBeVisible();
 
   act(() => {
     useWebSocketStore.getState().setConnectionState('connected', 'legacy_mt5');
-    useWebSocketStore.getState().updateMetrics({ lastLatency: 31 }, 'legacy_mt5');
+    useWebSocketStore.getState().updateMetrics({ lastLatency: 31, latencyMeasuredAt: Date.now() }, 'legacy_mt5');
     useWebSocketStore.getState().setConnectionState('disconnected', 'fix_socket');
   });
   expect(screen.getByRole('button', { name: 'Connected 31ms' })).toBeVisible();

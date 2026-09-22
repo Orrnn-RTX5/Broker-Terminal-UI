@@ -737,7 +737,12 @@ describe('trade gateway normalization', () => {
       freeMargin: 92,
     });
     const unavailable = normalizeAccount({ balance: 100 });
-    expect(normalizeAccount(unavailable)).toMatchObject({ equity: 0, hasBackendEquity: false });
+    expect(unavailable).toMatchObject({ equity: 0, hasBackendEquity: false });
+    // Re-applying the same sparse packet must not resurrect the absent metric.
+    expect(normalizeAccount({ balance: 100 }, unavailable)).toMatchObject({
+      equity: 0,
+      hasBackendEquity: false,
+    });
   });
 
   it.each([

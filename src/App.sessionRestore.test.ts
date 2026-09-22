@@ -60,8 +60,14 @@ const createRestoreHarness = () => {
     setIsAutoAuthenticating: vi.fn(),
     setAutoAuthError: vi.fn(),
     updateDynamicUrls: vi.fn(),
+    // Module-level imports used by the merged restore success path.
+    seedValidatedSessionAccountSummary: vi.fn(),
+    chartDataService: { preloadStartupHistory: vi.fn() },
     useAppStore: { getState: () => state, setState: vi.fn() },
     getStoredTokenExpiryMs: () => null,
+    // Module-level helper in App.tsx; the success path is the only branch that
+    // reaches it, so an unbound reference was silently swallowed by the catch.
+    getStoredAuthToken: () => localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'),
     getCommittedBrokerAccountSessionScope: () => scope,
     hasTokenExpiryElapsed: () => false,
     parsePositiveInt: (value: unknown) => Number.parseInt(String(value), 10) || null,
