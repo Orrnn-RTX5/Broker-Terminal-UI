@@ -3,9 +3,11 @@ import { resolve } from 'node:path'
 
 /** Reject overlapping broker blocks before dotenv silently takes the last value. */
 export function validateWebBrokerEnvironment(env: Record<string, string>, directory: string): void {
+  let hasEnvFile = false
   for (const filename of ['.env.web', '.env.web.local']) {
     const path = resolve(directory, filename)
     if (!existsSync(path)) continue
+    hasEnvFile = true
     const assignments = new Map<string, number>()
     for (const [index, line] of readFileSync(path, 'utf8').split(/\r?\n/).entries()) {
       const match = /^\s*(?:export\s+)?((?:VITE_)?(?:BACKEND|API|RTX5_API|FIX_API|WS|FIX_WS|MARKET_WS|BROKER|DISCOVERY|DEFAULT_MT5|FEED|ADMIN)[A-Z0-9_]*)\s*=/.exec(line)
@@ -18,9 +20,14 @@ export function validateWebBrokerEnvironment(env: Record<string, string>, direct
       assignments.set(key, index + 1)
     }
   }
-  const brokerId = env.VITE_BROKER_ID
-  const backend = env.VITE_API_HOST || env.VITE_API_URL || env.VITE_BACKEND_URL
+  const brokerId = env.VITE_BROKER_ID || env.BROKER_ID
+  const backend = env.VITE_API_HOST || env.VITE_API_URL || env.VITE_BACKEND_URL || env.API_HOST
   if (!brokerId?.trim() || !backend?.trim()) {
+    if (!hasEnvFile) {
+      // In CI, Docker builds, or environments using dynamic runtime configuration,
+      // allow compilation to proceed without a committed .env.web file.
+      return
+    }
     throw new Error('No complete web broker is configured. Uncomment one broker block in .env.web (VITE_BROKER_ID and its backend URL are required).')
   }
 }
