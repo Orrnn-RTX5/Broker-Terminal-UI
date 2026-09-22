@@ -53,6 +53,9 @@ const createRestoreHarness = () => {
   const getAccountSummary = vi.fn(() => accountRequest);
   const bindings = {
     sessionRestoreStartedRef: { current: false },
+    // The merged restore effect bails out if a newer auth session started
+    // mid-restore. A stable generation keeps that guard inert here.
+    authSessionGenerationRef: { current: 0 },
     freshSessionHandoff: null,
     setIsAutoAuthenticating: vi.fn(),
     setAutoAuthError: vi.fn(),
