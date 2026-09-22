@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveTradeAccountMetrics } from '../components/BottomDock.trade';
+import { normalizeAccountMetrics } from '../services/accountMetrics';
 import {
   applyImmediateToolboxPosition,
   applyMarketOrderPlacementState,
@@ -290,7 +291,7 @@ describe('useToolboxTradeData helpers', () => {
     });
   });
 
-  it('applies explicit zero backend metrics even after a funded snapshot', () => {
+  it('accepts an authoritative zero balance without fabricating equity', () => {
     const previous = normalizeToolboxAccount({
       balance: 10000, equity: 10005.5, used_margin: 10,
       free_margin: 9995.5, margin_level: 100055, floating_pnl: 5.5,
@@ -299,8 +300,24 @@ describe('useToolboxTradeData helpers', () => {
       { balance: 0, equity: 9800.25, free_margin: 0, margin_level: 0, floating_pnl: -2 },
       previous,
     );
+
+    expect(account.balance).toBe(0);
+    expect(account.hasBackendEquity).toBe(true);
+    expect(account.hasBackendFreeMargin).toBe(true);
+    expect(account.hasBackendMarginLevel).toBe(true);
+    // No locally reconstructed equity (balance + floating P/L would have been 9998).
+    expect(account.equity).not.toBe(10000 + -2);
+    // `used_margin` is absent from the packet, so partial preserves it from previous.
     expect(resolveTradeAccountMetrics(account)).toMatchObject({
-      balance: 0, equity: 9800.25, margin: 10, freeMargin: 0, marginLevel: 0, unrealizedPL: -2,
+      balance: 0,
+      equity: 9800.25,
+      margin: 10,
+      freeMargin: 0,
+      marginLevel: 0,
+      unrealizedPL: -2,
+      equitySource: 'backend',
+      freeMarginSource: 'backend',
+      marginLevelSource: 'backend',
     });
   });
 
@@ -312,8 +329,18 @@ describe('useToolboxTradeData helpers', () => {
     });
   });
 
+  it('marks absent equity unavailable when the packet is not partial', () => {
+    const previous = normalizeAccountMetrics({ balance: 5000, equity: 5000, free_margin: 5000, margin_level: 0 });
+    const account = normalizeAccountMetrics({ balance: 0 }, previous);
+    expect(account.balance).toBe(0);
+    expect(account.hasBackendEquity).toBe(false);
+    expect(resolveTradeAccountMetrics(account).equitySource).toBe('unavailable');
+  });
+
   it('keeps unavailable metrics and position placeholders unavailable after normalization', () => {
-    const account = normalizeToolboxAccount({ balance: 0, hasBackendBalance: false });
+    // Provenance flags are recomputed from packet validity; an incoming
+    // `hasBackendBalance` is not trusted by the production normalizer.
+    const account = normalizeToolboxAccount({ balance: 0, valid: false });
     expect(resolveTradeAccountMetrics(account).balance).toBeNull();
     const position = normalizeToolboxPosition({
       ...warmPosition, profit: 0, hasBackendProfit: false, hasBackendCurrentPrice: false,

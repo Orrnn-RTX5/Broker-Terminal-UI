@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
     accountId: '200001',
     authToken: 'access-token',
     account: null as any,
+    setAccount: vi.fn((account: any) => { storeState.account = account; }),
     positions: [] as any[],
     setPositions: vi.fn((positions: any[]) => {
       storeState.positions = positions;

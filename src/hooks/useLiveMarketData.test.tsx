@@ -447,6 +447,61 @@ describe('useLiveQuotes REST fallback batching', () => {
 
     unmount();
   });
+
+  it('tracks guest public quote demand without issuing account quote requests', async () => {
+    // A stale stored token must not turn the guest quote snapshot into an
+    // account-scoped request while the application is logged out.
+    localStorage.setItem('auth_token', 'expired-account-token');
+    useAppStore.setState({ isAuthenticated: false, authToken: null, refreshToken: null, accountId: null });
+    const { unmount } = renderHook(() => useLiveQuotes(['btcusd']));
+    await flushPromises();
+
+    expect(apiGet).not.toHaveBeenCalled();
+    expect(useQuoteSubscriptionMock).toHaveBeenCalledWith(['BTCUSD'], expect.stringMatching(/^live-quotes:/));
+    expect(useMarketDataStore.getState().subscribedSymbols.has('BTCUSD')).toBe(true);
+    expect(apiPut).not.toHaveBeenCalled();
+
+    unmount();
+    localStorage.removeItem('auth_token');
+    expect(useMarketDataStore.getState().subscribedSymbols.has('BTCUSD')).toBe(false);
+  });
+
+  it('retains public quote demand after logout and ignores an older account response', async () => {
+    let resolveAccountSnapshot: ((value: unknown) => void) | undefined;
+    apiGet.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAccountSnapshot = resolve;
+    }));
+    const { unmount } = renderHook(() => useLiveQuotes(['EURUSD']));
+    await flushPromises();
+
+    act(() => useAppStore.setState({ isAuthenticated: false, authToken: null, accountId: null }));
+    await flushPromises();
+    expect(apiGet).toHaveBeenCalledTimes(1);
+    expect(useMarketDataStore.getState().subscribedSymbols.has('EURUSD')).toBe(true);
+
+    await act(async () => {
+      resolveAccountSnapshot?.({ quotes: [{ symbol: 'EURUSD', bid: 1.1, ask: 1.11 }] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(enqueueLiveTick).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('keeps desktop quote loading idle before account login', async () => {
+    vi.stubEnv('BACKEND_TARGET', 'desktop');
+    useAppStore.setState({ isAuthenticated: false, authToken: null, accountId: null });
+    const { result, unmount } = renderHook(() => useLiveQuotes(['BTCUSD']));
+    await flushPromises();
+
+    expect(apiGet).not.toHaveBeenCalled();
+    expect(useQuoteSubscriptionMock).toHaveBeenCalledWith([], expect.stringMatching(/^live-quotes:/));
+    expect(useMarketDataStore.getState().subscribedSymbols.has('BTCUSD')).toBe(false);
+    expect(result.current.loading).toBe(false);
+
+    unmount();
+    vi.unstubAllEnvs();
+  });
 });
 
 describe('useMarketInstruments normalization', () => {
@@ -1156,6 +1211,40 @@ describe('active market symbol status cache', () => {
     expect(result.current.symbols).toEqual(['EURUSD']);
 
     unmount();
+  });
+
+  it('loads authoritative feed freshness before login without attaching a stored account token', async () => {
+    useAppStore.setState({ isAuthenticated: false, accountId: null, authToken: null, refreshToken: null });
+    localStorage.setItem('auth_token', 'stale-guest-account-token');
+    apiGet.mockResolvedValueOnce({
+      symbol_status: [
+        { symbol: 'BTCUSD', has_data: true, last_tick_age_sec: 0, fresh: true, stale: false, silent: false },
+        { symbol: 'EURUSD', has_data: true, last_tick_age_sec: 1, fresh: true, stale: false, silent: false },
+        { symbol: '1U1D.DE', has_data: true, last_tick_age_sec: 591, fresh: false, stale: true, silent: true },
+      ],
+      available_symbols: ['BTCUSD', 'EURUSD', '1U1D.DE'],
+      silent_symbols: ['1U1D.DE'],
+    });
+
+    const { result, unmount } = renderHook(() => useActiveMarketSymbols());
+    await flushPromises();
+
+    expect(apiGet).toHaveBeenCalledTimes(1);
+    expect(apiGet).toHaveBeenCalledWith('/ws/feed/status', expect.objectContaining({
+      skipAuth: true,
+      skipDynamicUrl: true,
+    }));
+    expect(apiGet.mock.calls[0][1].authToken).toBeUndefined();
+    expect(result.current).toMatchObject({
+      current: true,
+      settled: true,
+      loading: false,
+      error: null,
+      symbols: ['BTCUSD', 'EURUSD'],
+    });
+    expect(apiPut).not.toHaveBeenCalled();
+    unmount();
+    localStorage.removeItem('auth_token');
   });
 
   it('keeps cached symbols for display but marks them non-current after status failure', async () => {

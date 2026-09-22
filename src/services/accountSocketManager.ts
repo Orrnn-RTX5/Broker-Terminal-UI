@@ -17,12 +17,15 @@ import {
   getAccountLogin,
   onSessionChange,
   isSessionReady,
+  getCommittedBrokerAccountSessionScope,
+  getCommittedBrokerAccountSessionScopeKey,
 } from './brokerSession';
+import { extractAccountMetrics, normalizeAccountMetrics } from './accountMetrics';
 import { useAppStore } from '../store/useAppStore';
+import { POSITION_CLOSED_EVENTS, readPositionStreamEvent, readPositionStreamBatch, reconcilePositionStreamBatch } from './positionStream';
 import {
-  normalizeBrokerTimestampMs,
-  readBrokerTimestampMs,
-} from '../utils/brokerStreamSemantics';
+  requestPositionSnapshotRevalidation,
+} from './positionSnapshotSafety';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -87,151 +90,7 @@ const unwrapAccountRecord = (payload: any): any => {
   return candidates.find((candidate) => hasOwnValue(candidate, ACCOUNT_DELTA_KEYS)) ?? null;
 };
 
-const timestampToIso = (v: unknown): string => {
-  const timestamp = normalizeBrokerTimestampMs(v);
-  return timestamp === undefined ? '' : new Date(timestamp).toISOString();
-};
-
 // ─── Normalizers ─────────────────────────────────────────────────────────────
-
-function normalizePosition(raw: any) {
-  // FIX: Position event time accepts every broker precision/ISO alias without
-  // multiplying a millisecond/microsecond/nanosecond epoch a second time.
-  const openTimestamp = readBrokerTimestampMs([raw], [
-    'time_create', 'time_create_ms', 'time_create_msc',
-    'time_open', 'time_open_ms', 'time_open_msc',
-    'opened_at', 'open_time', 'openTime',
-    'time_ms', 'time_msc', 'timestamp_ms', 'timestamp', 'time',
-  ]);
-  const openTime = openTimestamp === undefined ? '' : timestampToIso(openTimestamp);
-
-  const id = toFinite(raw.position_id ?? raw.ticket ?? raw.id, 0);
-  const volume = toFinite(raw.volume_lots ?? raw.volume ?? raw.quantity, 0);
-  const openPrice = toFinite(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.entryPrice ?? raw.chartEntryPrice ?? raw.price, 0);
-  const currentPrice = toFinite(raw.price_current ?? raw.current_price ?? raw.currentPrice ?? raw.livePrice, openPrice);
-  const unrealizedPnL = toFinite(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0);
-
-  return {
-    id,
-    symbol: raw.symbol || '',
-    side: Number(raw.action) === 1 || String(raw.side).toLowerCase() === 'sell' ? 'SELL' as const : 'BUY' as const,
-    volume,
-    openPrice,
-    currentPrice,
-    openTime,
-    sl: toFinite(raw.price_sl ?? raw.sl, 0),
-    tp: toFinite(raw.price_tp ?? raw.tp, 0),
-    swap: toFinite(raw.storage ?? raw.swap, 0),
-    commission: toFinite(raw.commission, 0),
-    unrealizedPnL,
-    comment: raw.comment,
-    // FIX: Keep wire aliases synchronized with the canonical fields. Several
-    // trade-table consumers still read these defensive aliases first.
-    open_price: openPrice,
-    price_open: openPrice,
-    current_price: currentPrice,
-    price_current: currentPrice,
-    quantity: volume,
-    unrealized_pl: unrealizedPnL,
-    profit: unrealizedPnL,
-    time_create: openTime,
-    open_time: openTime,
-    time: openTime,
-  };
-}
-
-function normalizeAccount(raw: any, current?: any) {
-  const hasEquity = hasOwnValue(raw, EQUITY_KEYS);
-  const hasFreeMargin = hasOwnValue(raw, FREE_MARGIN_KEYS);
-  const hasMarginLevel = hasOwnValue(raw, MARGIN_LEVEL_KEYS);
-  return {
-    // FIX: WebSocket metric frames are deltas, not guaranteed full account
-    // objects. Preserve every omitted field while applying explicit zeroes.
-    ...current,
-    balance: toFinite(firstDefined(raw, BALANCE_KEYS), current?.balance ?? 0),
-    equity: toFinite(firstDefined(raw, EQUITY_KEYS), current?.equity ?? 0),
-    margin: toFinite(firstDefined(raw, MARGIN_KEYS), current?.margin ?? 0),
-    freeMargin: toFinite(firstDefined(raw, FREE_MARGIN_KEYS), current?.freeMargin ?? 0),
-    unrealizedPL: toFinite(firstDefined(raw, FLOATING_PNL_KEYS), current?.unrealizedPL ?? 0),
-    marginLevel: toFinite(firstDefined(raw, MARGIN_LEVEL_KEYS), current?.marginLevel ?? 0),
-    credit: toFinite(firstDefined(raw, CREDIT_KEYS), current?.credit ?? 0),
-    hasBackendEquity: hasEquity ? true : (current?.hasBackendEquity ?? false),
-    hasBackendFreeMargin: hasFreeMargin ? true : (current?.hasBackendFreeMargin ?? false),
-    hasBackendMarginLevel: hasMarginLevel ? true : (current?.hasBackendMarginLevel ?? false),
-    currency: String(raw?.currency ?? current?.currency ?? 'USD'),
-    leverage: toFinite(raw?.leverage ?? current?.leverage, 100),
-  };
-}
-
-const getPositionId = (raw: any): number => (
-  toFinite(raw?.position_id ?? raw?.ticket ?? raw?.id ?? raw?.position_ticket, 0)
-);
-
-const isClosedPositionRecord = (raw: any): boolean => {
-  const lifecycle = String(raw?.event ?? raw?.status ?? raw?.state ?? '').trim().toLowerCase();
-  if (raw?.closed === true || ['close', 'closed', 'sl_hit', 'tp_hit', 'stop_out'].includes(lifecycle)) {
-    return true;
-  }
-  const closedAt = readBrokerTimestampMs([raw], [
-    'time_close', 'time_close_ms', 'time_close_msc',
-    'closed_at', 'close_time', 'closeTime',
-  ]);
-  if (
-    closedAt !== undefined
-    && closedAt > 0
-  ) return true;
-  const volumeKeys = ['volume_lots', 'volume', 'quantity'] as const;
-  return hasOwnValue(raw, volumeKeys) && toFinite(firstDefined(raw, volumeKeys), 0) <= 0;
-};
-
-const mergePositionRecord = (raw: any, existing?: any): any => {
-  const normalized = normalizePosition(raw) as any;
-  if (!existing) return normalized;
-
-  const volume = hasOwnValue(raw, ['volume_lots', 'volume', 'quantity']) ? normalized.volume : existing.volume;
-  const openPrice = hasOwnValue(raw, ['price_open', 'open_price', 'openPrice', 'price'])
-    ? normalized.openPrice
-    : existing.openPrice;
-  const currentPrice = hasOwnValue(raw, ['price_current', 'current_price', 'currentPrice'])
-    ? normalized.currentPrice
-    : existing.currentPrice;
-  const openTime = hasOwnValue(raw, [
-    'time_create', 'time_create_ms', 'time_create_msc',
-    'time_ms', 'time_msc', 'time', 'timestamp', 'timestamp_ms',
-    'time_open', 'time_open_ms', 'time_open_msc', 'opened_at', 'open_time', 'openTime',
-  ])
-    ? normalized.openTime
-    : existing.openTime;
-  const unrealizedPnL = hasOwnValue(raw, ['profit', 'unrealized_pl', 'unrealizedPnL'])
-    ? normalized.unrealizedPnL
-    : existing.unrealizedPnL;
-
-  return {
-    ...existing,
-    ...normalized,
-    symbol: hasOwnValue(raw, ['symbol']) ? normalized.symbol : existing.symbol,
-    side: hasOwnValue(raw, ['action', 'side']) ? normalized.side : existing.side,
-    volume,
-    quantity: volume,
-    openPrice,
-    open_price: openPrice,
-    currentPrice,
-    current_price: currentPrice,
-    price_current: currentPrice,
-    openTime,
-    time_create: openTime,
-    sl: hasOwnValue(raw, ['price_sl', 'sl', 'stopLoss', 'stop_loss']) ? normalized.sl : existing.sl,
-    tp: hasOwnValue(raw, ['price_tp', 'tp', 'takeProfit', 'take_profit']) ? normalized.tp : existing.tp,
-    swap: hasOwnValue(raw, ['storage', 'swap']) ? normalized.swap : existing.swap,
-    commission: hasOwnValue(raw, ['commission']) ? normalized.commission : existing.commission,
-    unrealizedPnL,
-    unrealized_pl: unrealizedPnL,
-    profit: unrealizedPnL,
-    comment: hasOwnValue(raw, ['comment']) ? normalized.comment : existing.comment,
-  };
-};
-
-// ─── AccountSocketManager ────────────────────────────────────────────────────
 
 class AccountSocketManager {
   private ws: WebSocket | null = null;
@@ -391,7 +250,7 @@ class AccountSocketManager {
 
       // Step 6a: Account channel
       if (channel.startsWith('account.') || channel.startsWith('metrics.')) {
-        this.handleAccountUpdate(payload);
+        this.handleAccountUpdate(data);
         return;
       }
 
@@ -430,58 +289,32 @@ class AccountSocketManager {
 
     const store = useAppStore.getState();
     const current = store.account;
-    store.setAccount(normalizeAccount(accRecord, current) as any);
+    store.setAccount(normalizeAccountMetrics(payload, current, {
+      partial: !extractAccountMetrics(payload).publication_token,
+      login: this.login ?? undefined,
+      scope: getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()),
+    }));
   }
 
   private handlePositionUpdate(payload: any, raw: any): void {
     const store = useAppStore.getState();
-    const eventType = String(raw?.event ?? raw?.type ?? payload?.event ?? '').toLowerCase();
 
-    // Array of positions (full snapshot)
-    const rawPositions = Array.isArray(payload)
-      ? payload
-      : (payload?.positions ?? payload?.data?.positions ?? (Array.isArray(payload?.data) ? payload.data : null));
-    if (Array.isArray(rawPositions)) {
-      const currentById = new Map(store.positions.map((position) => [Number(position.id), position]));
-      const snapshotById = new Map<number, any>();
-      for (const update of rawPositions) {
-        const ticketId = getPositionId(update);
-        if (!ticketId || isClosedPositionRecord(update)) continue;
-        snapshotById.set(ticketId, mergePositionRecord(update, currentById.get(ticketId)));
-      }
-
-      // FIX: `positions` arrays are authoritative open-position snapshots.
-      // Replace the set even when it is empty so tickets absent from the
-      // latest snapshot (or explicitly closed) cannot remain stale forever.
-      store.setPositions(Array.from(snapshotById.values()));
+    const batch = readPositionStreamBatch(raw);
+    if (batch) {
+      const result = reconcilePositionStreamBatch(store.positions, batch);
+      store.setPositions(result.positions);
+      if (result.needsRevalidation) requestPositionSnapshotRevalidation();
       return;
     }
 
-    // Single position event (open, close, modify)
-    const rawPosition = payload?.position ?? payload?.closed_position ?? payload;
-    if (!rawPosition) return;
-
-    const current = store.positions;
-    const isCloseEvent = ['close', 'closed', 'sl_hit', 'tp_hit', 'stop_out'].some(t => eventType.includes(t));
-
-    if (isCloseEvent) {
-      const id = Number(rawPosition?.ticket ?? rawPosition?.position_id ?? rawPosition?.id ?? 0);
-      if (id) {
-        store.setPositions(current.filter(p => p.id !== id));
-      }
-    } else {
-      const normalized = normalizePosition(rawPosition);
-      const existingIdx = current.findIndex(p => p.id === normalized.id);
-      if (existingIdx >= 0) {
-        const updated = [...current];
-        // FIX: Single-position events are deltas. Merge only fields explicitly
-        // carried by the event so a price/P&L update cannot erase entry data.
-        updated[existingIdx] = mergePositionRecord(rawPosition, updated[existingIdx]);
-        store.setPositions(updated);
-      } else if (normalized.id) {
-        store.setPositions([normalized, ...current]);
-      }
-    }
+    const { event, position } = readPositionStreamEvent(raw);
+    if (!position) return;
+    const result = reconcilePositionStreamBatch(store.positions, {
+      mode: 'delta',
+      positions: [POSITION_CLOSED_EVENTS.has(event) ? { ...position, closed: true } : position],
+    });
+    store.setPositions(result.positions);
+    if (result.needsRevalidation || event === 'position_partial_close') requestPositionSnapshotRevalidation();
   }
 
   // ─── Reconnect ──────────────────────────────────────────────────────────

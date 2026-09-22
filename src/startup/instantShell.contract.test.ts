@@ -156,7 +156,8 @@ describe('instant startup shell source contract', () => {
     expect(terminalFallback).not.toContain('rtx-instant-sidebar');
     expect(terminalFallback).not.toContain('Restoring session');
     expect(app).not.toContain('Restoring session');
-    expect(app).toContain("data-rtx-authenticated-shell={isAuthenticated ? 'true' : 'false'}");
+    expect(app).toContain("data-rtx-authenticated-shell={isAuthenticated ? 'true' : undefined}");
+    expect(app).toContain("data-rtx-guest-shell={guestMode ? 'true' : undefined}");
   });
 
   it('makes the bootstrap path statically discoverable from the entry module', () => {

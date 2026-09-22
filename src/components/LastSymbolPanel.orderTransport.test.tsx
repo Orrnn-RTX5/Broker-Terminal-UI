@@ -33,7 +33,7 @@ describe('LastSymbolPanel market-order transport', () => {
   beforeEach(() => {
     localStorage.clear();
     useAppStore.getState().reset();
-    useAppStore.setState({ accountId: '200002' });
+    useAppStore.setState({ accountId: '200002', isAuthenticated: true, authToken: 'transport-test-token' });
     useAppStore.getState().setTicks({
       EURUSD: {
         symbol: 'EURUSD',

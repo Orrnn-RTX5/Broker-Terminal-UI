@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { normalizeAccountMetrics } from '../services/accountMetrics';
 import type { Account, Position, Trade } from '../store/useAppStore';
 import { API_V2_BASE_URL, RTX5_WS_URL } from '../config/api';
 import { debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
@@ -6,7 +7,7 @@ import { decodeJwtPayload } from '../utils/jwt';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import { enrichTradesWithCachedLevels } from '../utils/tradeHistoryLevelCache';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
-import { normalizeBackendAccount, readBackendNumber } from '../services/backendAccountMetrics';
+import { readBackendNumber } from '../services/backendAccountMetrics';
 
 export type GatewayAccount = {
   login?: number;
@@ -51,6 +52,8 @@ export type GatewayPosition = {
   price_tp?: number | null;
   tp?: number | null;
   profit?: number;
+  unrealized_pl?: number;
+  unrealizedPnL?: number;
   swap?: number;
   storage?: number;
   commission?: number;
@@ -376,8 +379,11 @@ export const collapseDealHistory = (deals: Trade[]): Trade[] => {
   return closedHistory;
 };
 
+// REST account snapshots may omit fields. `partial` preserves the previous
+// value for anything absent instead of reporting it as an unavailable zero,
+// and cannot roll a value back because it only ever fills gaps.
 export const normalizeAccount = (raw: GatewayAccount, previous?: Account | null): Account =>
-  normalizeBackendAccount(raw, previous);
+  normalizeAccountMetrics(raw, previous, { partial: true });
 
 export const normalizePosition = (raw: GatewayPosition): Position => {
   const side = String(raw.side ?? raw.action ?? '').toLowerCase();
@@ -414,7 +420,7 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
     time_create: openTime,
     open_time: openTime,
     time: openTime,
-    profit,
+    profit: hasBackendProfit ? profit : undefined,
     quantity: volume,
   };
 };

@@ -22,18 +22,27 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
     const tr = useUiTranslation();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
-  // Incoming message counters/timestamps do not change the visible indicator.
+  const [now, setNow] = useState(Date.now);
+  // Subscribe to primitives only so unrelated message counters never repaint the
+  // indicator. `latencyMeasuredAt` is read so an aged sample can be hidden.
   const state = useWebSocketStore((snapshot) => snapshot.connectionState);
   const isStale = useWebSocketStore((snapshot) => snapshot.isStale);
   const lastLatency = useWebSocketStore((snapshot) => snapshot.fixConnectionState === 'connected'
     ? snapshot.fixMetrics.lastLatency
     : snapshot.legacyMetrics.lastLatency);
+  const latencyMeasuredAt = useWebSocketStore((snapshot) => (snapshot.fixConnectionState === 'connected'
+    ? snapshot.fixMetrics.latencyMeasuredAt
+    : snapshot.legacyMetrics.latencyMeasuredAt) ?? null);
   // Read the latest diagnostics when opened without repainting a closed menu
   // whenever account polling changes its status or completion timestamp.
   const tradeWsConnected = useAppStore((snapshot) => showDropdown && snapshot.wsConnected);
   const tradeApiError = useAppStore((snapshot) => showDropdown ? snapshot.tradeApiStatus.error : null);
   const tradeApiLoading = useAppStore((snapshot) => showDropdown && snapshot.tradeApiStatus.loading);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -96,7 +105,10 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
     setShowDropdown(false);
   };
 
-  const latencyMs = lastLatency > 0 ? lastLatency : null;
+  // A latency figure is only trustworthy when it was actually measured, is recent,
+  // and belongs to a live connection.
+  const latencyMs = lastLatency > 0 && latencyMeasuredAt !== null && now - latencyMeasuredAt <= 60_000 && state === 'connected'
+    ? lastLatency : null;
   const tradeApiLabel = tradeApiError ? 'REST error' : tradeApiLoading ? 'syncing' : 'ready';
   const tradeApiColor = tradeApiError
     ? 'text-red-400'
@@ -114,7 +126,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
       >
         <div className={`w-2 h-2 rounded-full ${status.color} shadow-sm`} />
         <span className="rtx-status-bar__metric font-normal text-[13px] leading-[19.5px]">
-          {state === 'connected' ? (lastLatency > 0 ? `${tr('Connected')} ${lastLatency}ms` : tr('Connected')) : tr(status.text)}
+          {state === 'connected' ? (latencyMs !== null ? `${tr('Connected')} ${latencyMs.toFixed(0)}ms` : tr('Connected')) : tr(status.text)}
         </span>
         {isStale && (
           <span className="text-orange-400 text-[12px] font-normal ml-1 [.rtx-advanced-view_&]:text-orange-600">{tr("(Stale)")}</span>
@@ -152,9 +164,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
                 <Zap size={14} className="text-yellow-400" />
                 <span>{tr("VPS Hosting Speed Up")}</span>
               </div>
-              {latencyMs && (
-                <span className="text-zinc-400 text-[10px]">{(latencyMs * 0.01).toFixed(2)} {tr(" ms")}</span>
-              )}
+              <span className="text-zinc-400 text-[10px]">Unavailable</span>
             </div>
           </div>
 
@@ -187,7 +197,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161921]">
             <Server size={12} className="text-zinc-500" />
             <span className={`font-mono text-[10px] ${latencyMs && latencyMs < 200 ? 'text-green-400' : 'text-yellow-400'}`}>
-              {latencyMs ? tr("{{value0}} ms", { value0: latencyMs.toFixed(2) }) : '---'}
+              {latencyMs !== null ? `RTT ${latencyMs.toFixed(2)} ms` : 'RTT unavailable'}
             </span>
           </div>
         </div>

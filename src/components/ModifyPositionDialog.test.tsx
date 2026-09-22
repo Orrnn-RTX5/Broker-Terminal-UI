@@ -163,11 +163,27 @@ describe('ModifyPositionDialog chart toolbar', () => {
 
         await waitFor(() => {
             expect(mocks.modifyPosition).toHaveBeenCalledWith(165, {
-                price_sl: 0,
-                price_tp: 0,
                 comment: 'hiiii',
             });
         });
         await waitFor(() => expect(onClose).toHaveBeenCalledWith(0, 0, 'hiiii'));
+    });
+
+    it.each([
+        { label: /stop loss:$/i, value: '1.32', patch: { price_sl: 1.32 } },
+        { label: /take profit:$/i, value: '1.38', patch: { price_tp: 1.38 } },
+        { label: /stop loss:$/i, value: '0', patch: { price_sl: 0 } },
+        { label: /take profit:$/i, value: '0', patch: { price_tp: 0 } },
+    ])('sends only the edited level: $patch', async ({ label, value, patch }) => {
+        const user = userEvent.setup();
+        render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={{
+            id: 166, symbol: 'GBPUSD', side: 'BUY', volume: 0.01,
+            openPrice: 1.34, sl: 1.31, tp: 1.37, comment: '',
+        }} />);
+        const input = screen.getByLabelText(label);
+        await user.clear(input);
+        await user.type(input, value);
+        await user.click(screen.getByRole('button', { name: /modify #166/i }));
+        await waitFor(() => expect(mocks.modifyPosition).toHaveBeenCalledWith(166, { ...patch, comment: '' }));
     });
 });

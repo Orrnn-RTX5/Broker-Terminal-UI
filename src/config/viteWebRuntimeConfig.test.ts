@@ -36,6 +36,17 @@ const executeConfig = (source: string, overrides: Record<string, unknown> = {}, 
 }
 
 describe('environment-based web runtime configuration', () => {
+  it('retains the existing same-origin local nginx preview configuration', () => {
+    const runtime = executeConfig(renderWebRuntimeConfig(createWebRuntimeConfig(achieverEnvironment)), {
+      location: { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost:5175' },
+    })
+    expect(runtime.RUNTIME_CONFIG).toEqual(expect.objectContaining({
+      BACKEND_TARGET: 'desktop', BROKER_ID: 'TEST',
+      API_HOST: 'http://localhost:5175', API_HOST_EXT: 'http://localhost:5175',
+      WS_HOST: 'ws://localhost:5175', FEED_BROKER_TOKEN: '',
+    }))
+  })
+
   it.each([
     [testEnvironment, 'TEST', 'https://fxtrustbrokerbackend.orrnn.com'],
     [achieverEnvironment, 'achiever-financials', 'https://service.achieverfinancials.com'],

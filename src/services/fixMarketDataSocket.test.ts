@@ -7,6 +7,7 @@ vi.mock('./liveTickDispatcher', () => ({
 }));
 
 import { FixMarketDataSocket, type FixTickMessage } from './fixMarketDataSocket';
+import { useWebSocketStore } from '../store/useWebSocketStore';
 
 type TestableSocket = {
   handleMessage: (message: FixTickMessage) => void;
@@ -59,5 +60,33 @@ describe('FixMarketDataSocket tick normalization', () => {
     });
 
     expect(enqueueLiveTick.mock.calls[0][1].volume).toBeUndefined();
+  });
+});
+
+describe('FIX measured RTT', () => {
+  it.each([0, 1, 37, 800])('records a correlated %d ms sample without clipping', (elapsed) => {
+    const socket = new FixMarketDataSocket('wss://example.test/ws/v2') as any;
+    useWebSocketStore.getState().updateMetrics({ lastLatency: 0, averageLatency: 0, latencyMeasuredAt: null }, 'fix_socket');
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(100 + elapsed);
+    socket.lastPingTime = 12345;
+    socket.lastPingStartedAt = 100;
+    socket.recordPongActivity({ type: 'pong', timestamp: 999 });
+    expect(useWebSocketStore.getState().fixMetrics.latencyMeasuredAt).toBeNull();
+    socket.recordPongActivity({ action: 'pong', data: { timestamp: 12345 } });
+    expect(useWebSocketStore.getState().fixMetrics.lastLatency).toBe(elapsed);
+    expect(socket.lastPingTime).toBe(0);
+    clock.mockReturnValue(2000);
+    socket.recordPongActivity({ type: 'pong', timestamp: 12345 });
+    expect(useWebSocketStore.getState().fixMetrics.lastLatency).toBe(elapsed);
+    clock.mockRestore();
+  });
+
+  it('never uses a quote as a pong', () => {
+    const socket = new FixMarketDataSocket('wss://example.test/ws/v2') as any;
+    socket.lastPingTime = 12345;
+    const record = vi.spyOn(socket, 'recordPongActivity');
+    socket.handleMessage({ type: 'tick', symbol: 'EURUSD', bid: 1.1, ask: 1.2, timestamp: 12345 });
+    expect(record).not.toHaveBeenCalled();
+    expect(socket.lastPingTime).toBe(12345);
   });
 });

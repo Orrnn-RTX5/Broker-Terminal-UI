@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { normalizeAccountMetrics } from '../services/accountMetrics';
 import type { Account, Position } from '../store/useAppStore';
+import type { TradeProfitSource } from '../components/BottomDock.trade';
 import { getStoredAccountLogin, normalizePosition } from '../api/tradeGateway';
 import {
   getAccessToken,
@@ -9,6 +11,10 @@ import {
 } from '../services/brokerSession';
 import { useAppStore } from '../store/useAppStore';
 import { TRADE_OVERLAY_CLOSE_STATE_EVENT } from '../services/tradeOverlayHistory';
+import {
+  requestPositionSnapshotRevalidation,
+  shouldDeferEmptyPositionSnapshot,
+} from '../services/positionSnapshotSafety';
 import { getSessionTradeSnapshotRequests } from '../services/tradeStartupSnapshot';
 import {
   MARKET_ORDER_PLACEMENT_STATE_EVENT,
@@ -16,7 +22,7 @@ import {
   type MarketOrderPlacementStateDetail,
 } from '../services/marketOrderPlacementEvents';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
-import { normalizeBackendAccount, readBackendNumber } from '../services/backendAccountMetrics';
+import { readBackendNumber } from '../services/backendAccountMetrics';
 
 type TradeWsState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -27,6 +33,7 @@ export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'>
   contract_size?: number;
   hasBackendProfit?: boolean;
   hasBackendCurrentPrice?: boolean;
+  profitSource?: TradeProfitSource;
   price_open?: number;
   price_current?: number;
   price_sl?: number;
@@ -100,20 +107,10 @@ const toNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(next) ? next : fallback;
 };
 
-
-const unwrapData = (value: any): any => {
-  if (!value || typeof value !== 'object') return value;
-  if (value.account) return value.account;
-  if (value.data?.account) return value.data.account;
-  if (value.data?.data && typeof value.data.data === 'object' && !Array.isArray(value.data.data)) {
-    return value.data.data;
-  }
-  if (value.data && typeof value.data === 'object' && !Array.isArray(value.data)) return value.data;
-  return value;
-};
-
+// Retained for tests; the production account path normalizes via `applyMetrics`.
+// `partial` preserves the previous value for any field a packet omits.
 export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Account => (
-  normalizeBackendAccount(raw, previous)
+  normalizeAccountMetrics(raw, previous, { partial: true })
 );
 
 const getPositionTicket = (position: any): number => (
@@ -204,6 +201,7 @@ const positionsSignature = (positions: ToolboxTradePosition[]): string => (
 const accountSignature = (account: Account | null): string => (
   account
     ? [
+      JSON.stringify(account),
       account.balance,
       account.equity,
       account.margin,
@@ -702,6 +700,7 @@ export function useToolboxTradeData() {
     const seq = ++refreshSeqRef.current;
     activeRefreshControllerRef.current?.abort();
     const controller = new AbortController();
+    const metricsScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
     activeRefreshControllerRef.current = controller;
 
     setState((prev) => ({
@@ -795,15 +794,19 @@ export function useToolboxTradeData() {
       }
 
       const accountBody = accountResult.value;
-      commitAccount(normalizeToolboxAccount(unwrapData(accountBody), accountRef.current));
+      const applyMetrics = (body: unknown) => {
+        if (metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
+        const current = useAppStore.getState().account ?? accountRef.current;
+        const next = normalizeAccountMetrics(body, current, { partial: true, scope: metricsScope, login });
+        commitAccount(next);
+        if (next !== current) useAppStore.getState().setAccount(next);
+      };
+      applyMetrics(accountBody);
 
       const metricsBody = await metricsPromise;
       if (seq !== refreshSeqRef.current || controller.signal.aborted) return;
       if (metricsBody) {
-        commitAccount(normalizeToolboxAccount(
-          { ...(unwrapData(accountBody) ?? {}), ...(unwrapData(metricsBody) ?? {}) },
-          accountRef.current,
-        ));
+        applyMetrics(metricsBody);
       }
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -830,7 +833,11 @@ export function useToolboxTradeData() {
       return;
     }
     const retained = current.filter((position) => {
-      const pnl = toNumber(position.profit ?? position.unrealizedPnL, 0);
+      if (position.hasBackendProfit === false) return true;
+      const raw: unknown = position.profit ?? position.unrealizedPnL;
+      if (raw === undefined || raw === null || raw === '') return true;
+      const pnl = toNumber(raw, Number.NaN);
+      if (!Number.isFinite(pnl)) return true;
       return mode === 'WINNERS' ? pnl <= 0 : pnl >= 0;
     });
     const retainedTickets = new Set(retained.map((position) => position.id));
@@ -882,6 +889,13 @@ export function useToolboxTradeData() {
       ),
       Array.from(retainedImmediatePositionsRef.current.values()),
     );
+    if (shouldDeferEmptyPositionSnapshot(positionsRef.current, nextPositions)) {
+      // Preserve the last REST-confirmed rows while a stale shared-store/WS
+      // update is reconciled. The hook's own REST refresh can still clear the
+      // list once the account is genuinely flat.
+      requestPositionSnapshotRevalidation();
+      return;
+    }
     const previousSig = positionsSignature(positionsRef.current);
     const nextSig = positionsSignature(nextPositions);
     positionsRef.current = nextPositions;

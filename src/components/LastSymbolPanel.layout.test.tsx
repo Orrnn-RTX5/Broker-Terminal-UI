@@ -40,7 +40,7 @@ const firePointer = (element: Element, type: string, clientX: number, clientY: n
 
 const setEmptyPanelState = () => {
   useAppStore.getState().reset();
-  useAppStore.setState({ accountId: '200002' });
+  useAppStore.setState({ accountId: '200002', isAuthenticated: true, authToken: 'layout-test-token' });
   useLastSymbolStore.setState({
     lastSymbol: '',
     lastTradeSide: null,

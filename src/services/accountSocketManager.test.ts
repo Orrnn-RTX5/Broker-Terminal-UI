@@ -37,6 +37,8 @@ vi.mock('./brokerSession', () => ({
   getAccessToken: vi.fn(() => brokerSessionMock.accessToken),
   getAccountLogin: vi.fn(() => brokerSessionMock.login),
   isSessionReady: vi.fn(() => brokerSessionMock.ready),
+  getCommittedBrokerAccountSessionScope: vi.fn(() => ({ accountId: String(brokerSessionMock.login) })),
+  getCommittedBrokerAccountSessionScopeKey: vi.fn(() => `test-session:${brokerSessionMock.login}`),
   onSessionChange: vi.fn((listener: (reason: SessionChangeReason) => void) => {
     brokerSessionMock.sessionListener = listener;
     return vi.fn();
@@ -371,6 +373,7 @@ describe('AccountSocketManager session and transport contract', () => {
     socket.emit({
       channel: 'positions.200001',
       data: {
+        type: 'positions_snapshot',
         positions: [
           { ticket: '11', price_current: 4_473.5, profit: 3.5 },
           { ticket: '12', volume: 0, status: 'closed' },
@@ -391,13 +394,51 @@ describe('AccountSocketManager session and transport contract', () => {
     ]);
     expect(appStoreMock.positions.map(position => position.id)).toEqual([11]);
 
-    socket.emit({
-      channel: 'positions.200001',
-      data: { positions: [] },
-    });
-    expect(appStoreMock.setPositions).toHaveBeenLastCalledWith([]);
-    expect(appStoreMock.positions).toEqual([]);
+    const reconciliationEvents: Event[] = [];
+    const recordReconciliation = (event: Event) => reconciliationEvents.push(event);
+    window.addEventListener('rtx:toolbox-trade-refresh', recordReconciliation);
+    try {
+      socket.emit({
+        channel: 'positions.200001',
+        data: { positions: [] },
+      });
+      // An empty transport snapshot is not enough evidence that the account
+      // is flat. The REST-backed Trade reader must confirm it first.
+      expect(appStoreMock.setPositions).toHaveBeenLastCalledWith([
+        expect.objectContaining({ id: 11 }),
+      ]);
+      expect(appStoreMock.positions.map(position => position.id)).toEqual([11]);
+      expect(reconciliationEvents).toHaveLength(1);
+    } finally {
+      window.removeEventListener('rtx:toolbox-trade-refresh', recordReconciliation);
+    }
 
+    manager.destroy();
+  });
+
+  it('keeps all symbols through alternating gateway and manager updates, then removes only closed trades', () => {
+    const manager = new AccountSocketManager();
+    manager.connect(200001);
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.emit({ channel: 'positions.200001', data: { type: 'positions_snapshot', positions: [
+      { ticket: 1, symbol: 'XAUUSD', side: 'buy', volume: 0.01, price_open: 4291 },
+      { ticket: 2, symbol: 'BTCUSD', side: 'sell', volume: 0.02, price_open: 110000 },
+    ] } });
+    for (let index = 0; index < 10; index++) {
+      socket.emit({ channel: 'positions.200001', data: { type: 'position_update', data: [
+        { ticket: 1, symbol: 'XAUUSD', side: 'buy', volume: 0.01, price_open: 4291, price_current: 4330, profit: index },
+      ] } });
+      socket.emit({ type: 'channel_message', channel: 'positions.200001', data: { type: 'pnl_update', symbol: 'BTCUSD', positions: [
+        { ticket: 2, price_current: 109900, profit: index + 1 },
+      ] } });
+      expect(appStoreMock.positions.map(position => position.symbol)).toEqual(['XAUUSD', 'BTCUSD']);
+      expect(appStoreMock.positions[1]).toMatchObject({ side: 'SELL', volume: 0.02, openPrice: 110000, currentPrice: 109900 });
+    }
+    socket.emit({ channel: 'positions.200001', data: { type: 'position_closed', data: { ticket: 1 } } });
+    expect(appStoreMock.positions.map(position => position.id)).toEqual([2]);
+    socket.emit({ type: 'channel_message', channel: 'positions.200001', data: { type: 'position_closed', data: { ticket: 2 } } });
+    expect(appStoreMock.positions).toEqual([]);
     manager.destroy();
   });
 

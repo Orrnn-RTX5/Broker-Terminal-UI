@@ -24,6 +24,7 @@ import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { isShortcutInput, isShortcutLocalScope, isShortcutOverlay, shouldIgnoreShortcutEvent } from '../services/keyboardShortcutManager';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
 import { formatOrderError } from '../utils/orderError';
+import { hasAuthenticatedTradingSession, requireTradingAuth } from '../services/tradingAuthGate';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import {
     getMarketStatusTradeBlockMessage,
@@ -82,6 +83,8 @@ export function LastSymbolPanel() {
     const account = useAppStore((s) => s.account);
     const positions = useAppStore((s) => s.positions);
     const accountId = useAppStore((s) => s.accountId);
+    const authIdentity = useAppStore((s) => `${s.isAuthenticated}:${s.accountId}:${s.authToken}`);
+    const hasTradingSession = Boolean(authIdentity) && hasAuthenticatedTradingSession();
 
     const [isClosing, setIsClosing] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
@@ -165,6 +168,8 @@ export function LastSymbolPanel() {
     const effectiveLot = useRiskSizing ? calculateRiskLot() : volume;
     const tradeBlockedMessage = getMarketStatusTradeBlockMessage(marketStatus, lastSymbol);
     const canPlaceTrade = Boolean(lastSymbol) && !shouldBlockSymbolTrading(marketStatus, lastSymbol);
+    const sellDisabled = hasTradingSession && (!canPlaceTrade || bid === 0);
+    const buyDisabled = hasTradingSession && (!canPlaceTrade || ask === 0);
     const hasLiveQuote = Boolean(lastSymbol && bid > 0 && ask > 0);
     const executionStatus = !lastSymbol
         ? { label: 'Idle', tone: 'idle' }
@@ -184,6 +189,14 @@ export function LastSymbolPanel() {
     // Place order via MT5 Sync API
     const placeOrder = useCallback(
         async (side: 'BUY' | 'SELL') => {
+            if (!requireTradingAuth({
+                source: 'last-symbol-panel',
+                side,
+                symbol: lastSymbol,
+                volume: effectiveLot,
+                bid,
+                ask,
+            })) return;
             if (!lastSymbol) {
                 flash(tr('Missing symbol'), 'error');
                 return;
@@ -494,7 +507,7 @@ export function LastSymbolPanel() {
                         <button
                             type="button"
                             onClick={() => placeOrder('SELL')}
-                            disabled={!canPlaceTrade || bid === 0}
+                            disabled={sellDisabled}
                             className="last-symbol-trade-button last-symbol-trade-button--sell"
                             aria-label={tr("Sell {{value0}} at market", { value0: lastSymbol || tr('Last Symbol') })}
                             title={tr("Sell at market (Shift+S)")}
@@ -511,7 +524,7 @@ export function LastSymbolPanel() {
                         <button
                             type="button"
                             onClick={() => placeOrder('BUY')}
-                            disabled={!canPlaceTrade || ask === 0}
+                            disabled={buyDisabled}
                             className="last-symbol-trade-button last-symbol-trade-button--buy"
                             aria-label={tr("Buy {{value0}} at market", { value0: lastSymbol || tr('Last Symbol') })}
                             title={tr("Buy at market (Shift+B)")}

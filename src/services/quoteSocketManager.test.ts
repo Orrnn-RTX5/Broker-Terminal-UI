@@ -158,6 +158,29 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
     manager.destroy();
   });
 
+  it('streams guest prices through a broker feed credential without an account session', () => {
+    brokerSessionMock.accessToken = null;
+    brokerSessionMock.hasFeedToken = true;
+    const manager = new QuoteSocketManager();
+    manager.setDemand('guest-chart', ['BTCUSD']);
+
+    const socket = FakeWebSocket.instances[0];
+    expect(socket.url).toBe('wss://broker.example/ws/feed');
+    socket.open();
+    expect(socket.sent.map((frame) => JSON.parse(frame))).toEqual([
+      { type: 'subscribe', symbols: ['BTCUSD'] },
+    ]);
+    socket.onmessage?.({ data: JSON.stringify({
+      type: 'tick', symbol: 'BTCUSD', bid: 76000, ask: 76001, time: 1_788_250_045,
+    }) });
+
+    expect(enqueueLiveTick).toHaveBeenCalledWith('BTCUSD', expect.objectContaining({
+      bid: 76000, ask: 76001,
+    }));
+    expect(internals(manager).subscribedSymbols.has('BTCUSD')).toBe(true);
+    manager.destroy();
+  });
+
   it('unsubscribes removed symbols and can resubscribe them later', () => {
     const manager = new QuoteSocketManager();
 

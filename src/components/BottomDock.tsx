@@ -346,10 +346,10 @@ export function BottomDock({
     const cachedAccountSig = useRef<string>('');
     const cachedPositionsSig = useRef<string>('');
 
-    const accountSig = (a: any) => !a ? '' : `${a.balance}|${a.equity}|${a.margin}|${a.freeMargin}|${a.marginLevel}|${a.unrealizedPL}|${a.currency}|${a.credit ?? a.bonus ?? ''}`;
+    const accountSig = (a: any) => a ? JSON.stringify(a) : '';
     const positionsSig = (ps: any[]) => ps.map(p => `${p.id}-${p.volume}-${p.sl}-${p.tp}-${p.currentPrice}-${p.unrealizedPnL}`).join('|');
 
-    // Subscribe to store — throttle to 500ms so WebSocket bursts don't flicker the UI.
+    // Coalesce bursts while leaving room in the quote-to-screen latency budget.
     // Only calls setState when the displayed field values actually changed.
     useEffect(() => {
         let lastFired = 0;
@@ -372,7 +372,7 @@ export function BottomDock({
         const unsub = useAppStore.subscribe((state, prev) => {
             if (state.account === prev.account && state.positions === prev.positions) return;
             const now = Date.now();
-            const remaining = 500 - (now - lastFired);
+            const remaining = 50 - (now - lastFired);
             if (remaining <= 0) {
                 lastFired = now;
                 flush();
@@ -489,8 +489,12 @@ export function BottomDock({
     // Auto-switch to Journal if the account equity hits 0 (margin call / account blown)
     const prevEquityRef = useRef<number | null>(null);
     useEffect(() => {
-        if (!account || account.hasBackendEquity === false || !Number.isFinite(account.equity)) return;
-        const eq = account.equity;
+        // MERGE: origin/main's guard is a superset of HEAD's. Routing through
+        // resolveTradeAccountMetrics covers HEAD's `hasBackendEquity === false` and
+        // non-finite-equity checks, and additionally rejects a stale broker-scoped
+        // snapshot, so a blown-account jump can never fire on another session's equity.
+        const eq = resolveTradeAccountMetrics(account).equity;
+        if (eq === null) return;
 
         // If equity drops to 0 or below from a previously positive state, switch instantly
         if (eq <= 0 && prevEquityRef.current !== null && prevEquityRef.current > 0) {
@@ -969,6 +973,11 @@ const TradeTab = memo(function TradeTab({
             const openTime = pos?.time_create ?? pos?.openTime ?? pos?.open_time ?? pos?.time ?? pos?.chartEntryTime;
             const volume = Number(pos?.volume_lots ?? pos?.volume ?? pos?.quantity ?? 0);
 
+            // MERGE: HEAD's single-argument call. origin/main additionally threaded the
+            // live prices and `{ accountCurrency }` into the resolver, but both branches
+            // stripped the local-estimate paths out of resolveTradeProfit, so those inputs
+            // no longer influence the result. `profitResolution.value` is null exactly when
+            // `source !== 'backend'`, which is origin/main's livePnL derivation.
             const profitResolution = resolveTradeProfit(pos);
             const livePnL = profitResolution.value;
 
@@ -997,9 +1006,10 @@ const TradeTab = memo(function TradeTab({
                 price_tp: Number(tp ?? 0),
                 comment,
                 profit: livePnL,
-                unrealizedPnL: livePnL,
+                unrealizedPnL: livePnL ?? pos?.unrealizedPnL,
                 livePrice,
                 livePnL,
+                hasBackendProfit: profitResolution.source === 'backend',
                 profitSource: profitResolution.source,
                 profitWarnings: profitResolution.warnings,
             };
@@ -1025,11 +1035,39 @@ const TradeTab = memo(function TradeTab({
         rememberTradeHistoryPositionLevels(livePositions, accountId);
     }, [accountId, livePositionLevelSignature]);
 
+    // MERGE (union): Row-level totals. These drive the per-tile Floating P/L, Swap and
+    // Commission displays only - they must never feed the account metrics, which are
+    // backend-authoritative.
     const totalSwap = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.swap) || 0), 0), [livePositions]);
     const totalCommission = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.commission) || 0), 0), [livePositions]);
+    // Equity / free margin / margin level are shown exactly as the backend reports them. When
+    // the backend omits one it resolves to null and the footer renders a dash, not a zero.
+    // The 1s ticker re-evaluates the broker-scoped staleness gate so metrics from a previous
+    // session age out of the footer even while no new snapshot arrives.
+    const [metricsNow, setMetricsNow] = useState(Date.now);
+    useEffect(() => {
+        const timer = window.setInterval(() => setMetricsNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, []);
     // Every account total comes from the backend, including floating P/L.
-    const accountMetricResolution = useMemo(() => resolveTradeAccountMetrics(account), [account]);
-    const totalLivePnL = accountMetricResolution.unrealizedPL;
+    const accountMetricResolution = useMemo(() => resolveTradeAccountMetrics(account, metricsNow), [account, metricsNow]);
+    useEffect(() => {
+        if (!account?.publicationToken) return;
+        let nextFrame = 0;
+        const frame = window.requestAnimationFrame(() => {
+            nextFrame = window.requestAnimationFrame(() => {
+                window.dispatchEvent(new CustomEvent('rtx:account-metrics-rendered', {
+                    detail: { publication_token: account.publicationToken, rendered_at: performance.now() },
+                }));
+            });
+        });
+        return () => { window.cancelAnimationFrame(frame); window.cancelAnimationFrame(nextFrame); };
+    }, [account?.publicationToken, account?.metricsScope]);
+    const floatingPnL = accountMetricResolution.floatingPnL;
+    // Kept nullable (HEAD) rather than `floatingPnL ?? 0` (origin/main) so the footer can
+    // distinguish "backend reported 0" from "backend reported nothing" and render the
+    // placeholder instead of a misleading zero.
+    const totalLivePnL = floatingPnL;
     const floatingProfitColor = totalLivePnL !== null && totalLivePnL > 0
         ? 'text-[#22c55e]'
         : totalLivePnL !== null && totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100';
@@ -1042,6 +1080,7 @@ const TradeTab = memo(function TradeTab({
 
     const formatMarginLevel = (value: number | null) => {
         if (value === null) return METRIC_UNAVAILABLE;
+        if (value === 0 && margin === 0) return '\u221e';
         return `${value.toFixed(2)}%`;
     };
 
@@ -1353,6 +1392,12 @@ const TradeTab = memo(function TradeTab({
                 label: profitMode === 'points' ? 'Profit Points' : 'Profit',
                 value: pos => profitMode === 'points'
                     ? formatTradePoints(pos)
+                    // MERGE: HEAD's self-contained form. origin/main read the memoized
+                    // `pos.profitSource` / `pos.profit` instead; both yield the same output
+                    // because livePositions stores `profit: livePnL` (null when unavailable)
+                    // alongside `profitSource`. Resolving here keeps the report correct for
+                    // any row shape and does not depend on `profitSource` being declared on
+                    // ToolboxTradePosition.
                     : resolveTradeProfit(pos).value === null ? METRIC_UNAVAILABLE : formatMoney(resolveTradeProfit(pos).value),
             });
         }
@@ -1708,6 +1753,13 @@ ${rows}
                             );
                             const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
                             const isBuy = String(pos.side).toUpperCase() === 'BUY';
+                            // MERGE (union): HEAD's derivation plus origin/main's null-safe
+                            // points check. `resolveTradeProfit(pos).value` equals
+                            // origin/main's `pos.profitSource === 'backend' ? pos.profit : null`
+                            // (and also honours the `unrealized_pl` alias and Money payloads).
+                            // `profitIsAvailable` is HEAD's and is required by the profit cell
+                            // below; origin/main's `pointsValue >= 0` treated a null points
+                            // value as positive, which HEAD's `pointsValue !== null &&` fixes.
                             const pnlValue = resolveTradeProfit(pos).value;
                             const pointsValue = getTradePointsValue(pos);
                             const profitIsPositive = profitMode === 'points' ? pointsValue !== null && pointsValue >= 0 : pnlValue !== null && pnlValue >= 0;
@@ -1739,7 +1791,13 @@ ${rows}
                             const commentLabel = String(placementError || pos.comment || '-');
                             const profitLabel = isPendingPlacement
                                 ? '…'
-                                : profitMode === 'points' ? formatTradePoints(pos) : pnlValue === null ? METRIC_UNAVAILABLE : formatMoney(pnlValue);
+                                // MERGE: origin/main's NaN guard is a strict superset of
+                                // HEAD's null check - keep it.
+                                : profitMode === 'points'
+                                    ? formatTradePoints(pos)
+                                    : pnlValue === null || Number.isNaN(pnlValue)
+                                        ? METRIC_UNAVAILABLE
+                                        : formatMoney(pnlValue);
                             const rowSummary = [
                                 symbolLabel,
                                 tr(sideLabel),
@@ -1882,6 +1940,11 @@ ${rows}
 
                                     {/* profit */}
                                     {isColumnVisible('profit') && (
+                                        // MERGE: HEAD's `profitIsAvailable` is a superset of
+                                        // origin/main's `pnlValue === null` - in points mode the
+                                        // P/L value can legitimately be null while the points
+                                        // value is available, and greying the cell out then
+                                        // would be wrong.
                                         <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${!profitIsAvailable ? 'text-zinc-500' : profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${tr(profitMode === 'points' ? 'Profit Points' : 'Profit')}: ${profitLabel}`}>
                                             {profitLabel}
                                         </td>
@@ -1913,6 +1976,11 @@ ${rows}
                 {/* Account summary follows the last trade and scrolls with the list. */}
                 <div
                     className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full text-[13px] font-normal text-zinc-300 tabular-nums"
+                    data-metrics-publication-token={account?.publicationToken}
+                    data-metrics-calculation-version={account?.calculationVersion}
+                    data-metrics-margin-calculation-version={account?.marginCalculationVersion}
+                    data-metrics-configuration-version={account?.configurationVersion}
+                    data-metrics-status={account?.metricsStatus ?? (liveEquity === null ? 'unavailable' : 'valid')}
                 >
                     <div className="rtx-trade-footer-inner flex w-max min-w-full items-center py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
                         <div className="rtx-trade-footer-metrics flex min-w-0 items-center gap-3 px-1.5">
@@ -1939,6 +2007,23 @@ ${rows}
                             ))}
                         </div>
                         <div className="min-w-2 flex-1" />
+                        {/* MERGE (union): origin/main's calculation-version badge and market-closed
+                            indicator, followed by HEAD's single floating-P/L span. HEAD collapsed
+                            origin/main's two near-identical branches into one span with conditional
+                            class/style, and its `floatingProfitColor` / `floatingProfitLabel` carry
+                            the same null handling origin/main inlined in each branch. */}
+                        <span
+                            className="rtx-trade-footer-calc shrink-0 text-zinc-500"
+                            title={`Calculation ${account?.calculationVersion || 'unknown'} · margin ${account?.marginCalculationVersion || 'unknown'} · ${account?.metricsStatus || (liveEquity === null ? 'unavailable' : 'valid')}`}
+                            data-testid="trade-footer-calculation-badge"
+                        >
+                            {account?.calculationVersion || '—'}
+                            {' · margin '}
+                            {account?.marginCalculationVersion || '—'}
+                            {' · '}
+                            {account?.metricsStatus || (liveEquity === null ? 'unavailable' : 'valid')}
+                        </span>
+                        {account?.marketClosed && <span className="shrink-0 text-zinc-500">Market closed</span>}
                         <span
                             className={`rtx-trade-footer-floating ${isColumnVisible('profit') ? 'rtx-trade-footer-floating--profit justify-center' : 'justify-end'} inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-center font-normal leading-none ${floatingProfitColor}`}
                             style={isColumnVisible('profit') ? { width: footerProfitColumnWidth, flex: `0 0 ${footerProfitColumnWidth}` } : undefined}
@@ -2023,11 +2108,14 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
         return buildExposureSummary(positions ?? [], account);
     }, [positions, account]);
 
-    const accountBalance = Number(account?.balance ?? 0);
-    const accountEquity = Number(account?.equity ?? accountBalance);
-    const accountMargin = Number(account?.margin ?? 0);
-    const accountFreeMargin = Number(account?.freeMargin ?? account?.free_margin ?? 0);
-    const accountMarginLevel = Number(account?.marginLevel ?? account?.margin_level ?? 0);
+    const [metricsNow, setMetricsNow] = useState(Date.now);
+    useEffect(() => {
+        const timer = window.setInterval(() => setMetricsNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, []);
+    const { balance: accountBalance, equity: accountEquity, margin: accountMargin,
+        freeMargin: accountFreeMargin, marginLevel: accountMarginLevel } = resolveTradeAccountMetrics(account, metricsNow);
+    const formatAccountMetric = (value: number | null) => value === null ? METRIC_UNAVAILABLE : formatMoney(value);
 
     return (
         <div className="rtx-exposure-tab flex h-full bg-[#0a0b0e] text-[13px] font-normal">
@@ -2098,24 +2186,24 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
                 <div className="rtx-exposure-account-bar">
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Balance:")}</span>
-                        <span className="rtx-exposure-account-value">{formatMoney(accountBalance)}</span>
+                        <span className="rtx-exposure-account-value">{formatAccountMetric(accountBalance)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Equity:")}</span>
-                        <span className="rtx-exposure-account-value">{formatMoney(accountEquity)}</span>
+                        <span className="rtx-exposure-account-value">{formatAccountMetric(accountEquity)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Margin:")}</span>
-                        <span className="rtx-exposure-account-value">{formatMoney(accountMargin)}</span>
+                        <span className="rtx-exposure-account-value">{formatAccountMetric(accountMargin)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Free margin:")}</span>
-                        <span className="rtx-exposure-account-value">{formatMoney(accountFreeMargin)}</span>
+                        <span className="rtx-exposure-account-value">{formatAccountMetric(accountFreeMargin)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Level:")}</span>
                         <span className="rtx-exposure-account-value">
-                            {Number.isFinite(accountMarginLevel) ? `${accountMarginLevel.toFixed(2)}%` : '0.00%'}
+                            {accountMarginLevel !== null ? `${accountMarginLevel.toFixed(2)}%` : METRIC_UNAVAILABLE}
                         </span>
                     </span>
                 </div>

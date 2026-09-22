@@ -20,6 +20,10 @@ describe('single full-position close API', () => {
 
   it('posts an exact full-close request to the configured broker v2 endpoint', async () => {
     setToken('test-access-token');
+    vi.mocked(fetch).mockImplementationOnce(async (_url, init) => {
+      const sent = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      return jsonResponse({ ticket: 1001353, status: 'closed', client_order_id: sent.client_order_id });
+    });
 
     await tradingApi.closePosition(1001353);
 
@@ -31,7 +35,11 @@ describe('single full-position close API', () => {
 
     const request = call?.[1];
     expect(request?.method).toBe('POST');
-    expect(JSON.parse(String(request?.body))).toEqual({ mode: 'full' });
+    const body = JSON.parse(String(request?.body));
+    expect(body.volume).toBe(0);
+    expect(String(body.client_order_id)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
     expect(new Headers(request?.headers).get('Authorization')).toBe('Bearer test-access-token');
     expect(new Headers(request?.headers).get('Content-Type')).toBe('application/json');
   });
@@ -39,6 +47,10 @@ describe('single full-position close API', () => {
   it('preserves a valid positive decimal string ticket without numeric coercion', async () => {
     const ticket = '900719925474099312345';
 
+    vi.mocked(fetch).mockImplementationOnce(async (_url, init) => {
+      const sent = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      return jsonResponse({ ticket, status: 'closed', client_order_id: sent.client_order_id });
+    });
     await tradingApi.closePosition(ticket);
 
     expect(String(vi.mocked(fetch).mock.calls.at(-1)?.[0])).toBe(

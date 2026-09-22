@@ -3,18 +3,20 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  * Account login dialog shared by the web and desktop terminals.
  */
 
-import React, { useState, useEffect, useRef, useId } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useId } from 'react';
 import ReactDOM from 'react-dom';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
-import { normalizeBrokerServerUrl, updateDynamicUrls, toLocalDevProxyUrl } from '../config/api';
+import { removeToken, setRefreshToken, setToken } from '../api/client';
+import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL, toLocalDevProxyUrl } from '../config/api';
 import {
+    getBackendTarget,
     isDesktopBackendTarget,
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
     resolveBrokerExtApiUrl,
 } from '../config/backendTarget.js';
-import { getDirectoryBrokerServerUrl, isDirectoryBrokerSelectable } from '../services/brokerDiscovery';
+import { extractBrokerDiscoveryList, getDirectoryBrokerServerUrl, isDirectoryBrokerSelectable } from '../services/brokerDiscovery';
 import { loadAppBrokerDirectory } from '../services/brokerDirectory';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
 import {
@@ -33,6 +35,10 @@ interface LoginDialogProps {
     initialLogin?: string;
     initialServer?: string;
     reason?: 'trade';
+    /** Prevent this broker-branded terminal from authenticating against another tenant. */
+    lockedBrokerId?: string;
+    /** Trusted policy display label; never used as the broker identity. */
+    lockedBrokerDisplayName?: string;
 }
 
 const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
@@ -46,7 +52,30 @@ const isAbortError = (err: unknown): boolean =>
 const getErrorMessage = (err: unknown, fallback: string): string =>
     err instanceof Error ? err.message : fallback;
 
-export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = '', initialServer, reason }: LoginDialogProps) {
+const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+
+const buildLockedRuntimeBroker = (brokerId: string, displayName?: string): BrokerServerItem => {
+    const backendUrl = getBackendTarget();
+    return normalizeBrokerInfoForTarget({
+        broker_id: brokerId,
+        broker_name: displayName || brokerId,
+        backend_url: backendUrl,
+        market_api_url: backendUrl,
+        server_url: backendUrl,
+        logo_url: '',
+    }) as BrokerServerItem;
+};
+
+export function LoginDialog({
+    isOpen,
+    onClose,
+    onLoginSuccess,
+    initialLogin = '',
+    initialServer,
+    reason,
+    lockedBrokerId,
+    lockedBrokerDisplayName,
+}: LoginDialogProps) {
     const tr = useUiTranslation();
     const dialogId = useId();
     const tradeLogin = reason === 'trade';
@@ -73,9 +102,26 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
         const previousFocus = document.activeElement as HTMLElement | null;
         return () => { previousFocus?.focus(); };
     }, [isOpen]);
+    const loginRequestGenerationRef = useRef(0);
+    const isMountedRef = useRef(true);
+    const isOpenRef = useRef(isOpen);
+    const lockedBrokerKey = normalizeBrokerId(lockedBrokerId);
+
+    isOpenRef.current = isOpen;
+
+    const invalidatePendingLogin = useCallback(() => {
+        loginRequestGenerationRef.current += 1;
+    }, []);
+
+    const closeDialog = useCallback(() => {
+        invalidatePendingLogin();
+        setLoading(false);
+        onClose();
+    }, [invalidatePendingLogin, onClose]);
 
     // Pre-fill with current account or provided initial login
     useEffect(() => {
+        if (!isOpen) invalidatePendingLogin();
         if (isOpen) {
             const accountId = initialLogin || useAppStore.getState().accountId || '';
             setLogin(accountId);
@@ -84,7 +130,15 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             setSearchQuery('');
             setTimeout(() => loginInputRef.current?.select(), 100);
         }
-    }, [isOpen, initialLogin]);
+    }, [isOpen, initialLogin, invalidatePendingLogin]);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+            invalidatePendingLogin();
+        };
+    }, [invalidatePendingLogin]);
 
     const runHealthCheck = async (serverUrl: string) => {
         if (healthAbortRef.current) {
@@ -121,6 +175,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
         if (submittingRef.current || (isDesktop && !isDirectoryBrokerSelectable(item))) return;
         if (isDesktop) setPassword('');
         setError(null);
+        if (lockedBrokerKey && normalizeBrokerId(item.broker_id) !== lockedBrokerKey) return;
         const normalizedBroker = normalizeBrokerInfoForTarget(item) as BrokerServerItem;
         const normalizedServerUrl = isDesktop ? getDirectoryBrokerServerUrl(item) : resolveBrokerBackendUrl(normalizedBroker);
         const nextBroker = {
@@ -166,17 +221,31 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
     useEffect(() => {
         if (!isOpen) return;
         let isMounted = true;
-        setSelectedBroker(null);
-        setBrokerList([]);
-        setHealthStatus(null);
         setDirectoryLoading(true);
+        const lockedFallback = lockedBrokerKey
+            ? buildLockedRuntimeBroker(String(lockedBrokerId), lockedBrokerDisplayName)
+            : null;
+        if (lockedFallback) {
+            setBrokerList([lockedFallback]);
+            setSelectedBroker(lockedFallback);
+            setSearchQuery(lockedFallback.broker_name);
+            setDropdownOpen(false);
+            runHealthCheck(resolveBrokerExtApiUrl(lockedFallback));
+        }
         loadAppBrokerDirectory({ forceRefresh: true, desktop: isDesktop })
-            .then((rows) => {
+            .then((payload: unknown) => {
                 if (!isMounted) return;
-                const data = rows as BrokerServerItem[];
+                const discovered = extractBrokerDiscoveryList(payload) as BrokerServerItem[];
+                const data = lockedBrokerKey
+                    ? discovered.filter(item => normalizeBrokerId(item.broker_id) === lockedBrokerKey)
+                    : discovered;
+                if (lockedBrokerKey && lockedBrokerDisplayName) {
+                    data.forEach((item) => { item.broker_name = lockedBrokerDisplayName; });
+                }
+                if (lockedBrokerKey && data.length === 0 && lockedFallback) data.push(lockedFallback);
                 setBrokerList(data);
 
-                const savedBrokerId = initialServer || localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || DEFAULT_BROKER_ID;
+                const savedBrokerId = lockedBrokerId || initialServer || localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || DEFAULT_BROKER_ID;
                 const selectedDiscoveryBroker = pickDiscoveryBroker(data, {
                     isDesktopBrokerSelection: isDesktopBackendTarget(),
                     savedBrokerId,
@@ -190,7 +259,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             })
             .finally(() => { if (isMounted) setDirectoryLoading(false); });
         return () => { isMounted = false; healthAbortRef.current?.abort(); presentationAbortRef.current?.abort(); };
-    }, [isOpen, initialServer]);
+    }, [isOpen, initialServer, lockedBrokerDisplayName, lockedBrokerId, lockedBrokerKey]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -218,12 +287,12 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                     }
                     return;
                 }
-                onClose();
+                closeDialog();
             }
         };
         if (isOpen) document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose, dropdownOpen, selectedBroker]);
+    }, [isOpen, closeDialog, dropdownOpen, selectedBroker]);
 
     // Clean up health probe abort ref on unmount
     useEffect(() => {
@@ -255,10 +324,20 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             setError('Please select a broker server');
             return;
         }
+        if (lockedBrokerKey && normalizeBrokerId(selectedBroker.broker_id) !== lockedBrokerKey) {
+            setError('This terminal only accepts accounts for its configured broker.');
+            return;
+        }
 
         submittingRef.current = true;
         setLoading(true);
         setError(null);
+        const requestGeneration = ++loginRequestGenerationRef.current;
+        const isCurrentRequest = () => (
+            requestGeneration === loginRequestGenerationRef.current
+            && isMountedRef.current
+            && isOpenRef.current
+        );
 
         try {
             // Save selected broker details before login so the request targets the broker backend.
@@ -281,7 +360,15 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             }, {
                 baseUrl: buildBrokerApiV2BaseUrl(brokerExtApiUrl),
                 skipDynamicUrl: true,
+                persistSession: false,
             });
+            if (!isCurrentRequest()) return;
+
+            if (lockedBrokerKey && data.broker_id && normalizeBrokerId(data.broker_id) !== lockedBrokerKey) {
+                removeToken();
+                useAppStore.getState().logout();
+                throw new Error('The account belongs to a different broker.');
+            }
 
             const token = data.access_token || data.token;
             if (!token) throw new Error('No authentication token received');
@@ -308,9 +395,14 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             localStorage.setItem('rtx_saved_username', String(accountId));
             localStorage.removeItem('rtx_saved_password');
 
-            const { setToken, setRefreshToken } = await import('../api/client');
             setToken(token);
-            if (data.refresh_token) setRefreshToken(data.refresh_token);
+            if (data.refresh_token) {
+                setRefreshToken(data.refresh_token);
+                sessionStorage.removeItem('refresh_token');
+            } else {
+                localStorage.removeItem('refresh_token');
+                sessionStorage.removeItem('refresh_token');
+            }
 
             let expiresAt: number | undefined = undefined;
             if (data.expires_at) {
@@ -323,6 +415,10 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                     expiresAt = Date.parse(data.expires_at);
                 }
                 localStorage.setItem('token_expires_at', String(expiresAt));
+                sessionStorage.removeItem('token_expires_at');
+            } else {
+                localStorage.removeItem('token_expires_at');
+                sessionStorage.removeItem('token_expires_at');
             }
 
             useAppStore.getState().setAuthTokens(token, data.refresh_token, expiresAt);
@@ -345,11 +441,12 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 onLoginSuccess(String(accountId));
             }
         } catch (err: unknown) {
+            if (!isCurrentRequest()) return;
             console.error('[LoginDialog] Auth error:', err);
             setError(getErrorMessage(err, 'Authentication failed'));
         } finally {
             submittingRef.current = false;
-            setLoading(false);
+            if (isCurrentRequest()) setLoading(false);
         }
     };
 
@@ -363,7 +460,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
     return ReactDOM.createPortal(
         <div className="rtx-login-layer">
-            <div className="rtx-login-backdrop" onClick={onClose} />
+            <div className="rtx-login-backdrop" onClick={closeDialog} />
 
             {/* Dialog */}
             <div
@@ -393,7 +490,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             {!tradeLogin && <p id={`${dialogId}-description`} className="rtx-login-description">{tr("Access your trading account.")}</p>}
                         </div>
                     </div>
-                    <button type="button" onClick={onClose} className="rtx-login-close" aria-label={tr("Close")} title={tr("Close")}>
+                    <button type="button" onClick={closeDialog} className="rtx-login-close" aria-label={tr("Close")} title={tr("Close")}>
                         <X size={18} aria-hidden="true" />
                     </button>
                 </header>
@@ -495,18 +592,22 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                     disabled={loading || directoryLoading}
                                     value={searchQuery}
                                     onChange={(e) => {
+                                        if (lockedBrokerKey) return;
                                         setSearchQuery(e.target.value);
                                         setDropdownOpen(true);
                                     }}
-                                    onFocus={() => setDropdownOpen(true)}
+                                    onFocus={() => { if (!lockedBrokerKey) setDropdownOpen(true); }}
+                                    readOnly={Boolean(lockedBrokerKey)}
                                     className="rtx-login-input rtx-login-server-input"
                                     placeholder={tr("Search broker...")}
+                                    aria-label="Broker server"
+                                    aria-readonly={Boolean(lockedBrokerKey)}
                                 />
-                                <ChevronDown size={16} className={`rtx-login-select-chevron ${dropdownOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                                {!lockedBrokerKey && <ChevronDown size={16} className={`rtx-login-select-chevron ${dropdownOpen ? 'rotate-180' : ''}`} aria-hidden="true" />}
                             </div>
 
                             {/* Dropdown panel */}
-                            {dropdownOpen && (
+                            {dropdownOpen && !lockedBrokerKey && (
                                 <div className="rtx-login-brokers">
                                     {filteredBrokers.length === 0 ? (
                                         <div className="rtx-login-brokers-empty">{tr("No brokers found")}</div>

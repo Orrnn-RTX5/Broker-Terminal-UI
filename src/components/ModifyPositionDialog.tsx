@@ -248,6 +248,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
     const [showMiniChartPriceLines, setShowMiniChartPriceLines] = useState(true);
     const dialogRef = useRef<HTMLDivElement>(null);
     const onCloseRef = useRef(onClose);
+    const initialLevelsRef = useRef({ sl: 0, tp: 0 });
     const isDialogVisible = isOpen && position !== null;
 
     const tick = useCurrentTick(position?.symbol || '');
@@ -259,6 +260,10 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
             const digits = getSymbolDigits(position.symbol);
             setSl(position.sl > 0 ? position.sl.toFixed(digits) : '0.00');
             setTp(position.tp > 0 ? position.tp.toFixed(digits) : '0.00');
+            initialLevelsRef.current = {
+                sl: position.sl > 0 ? Number(position.sl.toFixed(digits)) : 0,
+                tp: position.tp > 0 ? Number(position.tp.toFixed(digits)) : 0,
+            };
 
             setVolumeStr(position.volume.toFixed(2));
             setComment(position.comment ?? '');
@@ -424,6 +429,10 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
             const slVal = parseFloat(sl) || 0;
             const tpVal = parseFloat(tp) || 0;
             const nextComment = comment.trim();
+            const levelChanges = {
+                ...(slVal !== initialLevelsRef.current.sl ? { price_sl: slVal } : {}),
+                ...(tpVal !== initialLevelsRef.current.tp ? { price_tp: tpVal } : {}),
+            };
 
             if (kind === 'pending-order') {
                 await api.orders.modifyPendingOrder(position.id, {
@@ -433,18 +442,26 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                     comment: nextComment,
                 });
             } else {
-                await api.positions.modifyPosition(position.id, { price_sl: slVal, price_tp: tpVal, comment: nextComment });
+                await api.positions.modifyPosition(position.id, { ...levelChanges, comment: nextComment });
             }
 
             setSuccessMessage(kind === 'pending-order' ? 'Pending order modified successfully' : 'Position modified successfully');
             const store = useAppStore.getState();
             store.setPositions(store.positions.map(p =>
-                p.id === position.id ? { ...p, sl: slVal, tp: tpVal, comment: nextComment } : p
+                p.id === position.id ? {
+                    ...p,
+                    ...(levelChanges.price_sl !== undefined ? { sl: slVal } : {}),
+                    ...(levelChanges.price_tp !== undefined ? { tp: tpVal } : {}),
+                    comment: nextComment,
+                } : p
             ));
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new Event('rtx:force-refresh-positions'));
             }
-            setTimeout(() => onClose(slVal, tpVal, nextComment), 600);
+            const latest = store.positions.find(p => p.id === position.id);
+            const savedSl = levelChanges.price_sl ?? latest?.sl ?? position.sl;
+            const savedTp = levelChanges.price_tp ?? latest?.tp ?? position.tp;
+            setTimeout(() => onClose(savedSl, savedTp, nextComment), 600);
         } catch (err: unknown) {
             console.error('[Modify] Error:', err);
             setError(getErrorMessage(err));

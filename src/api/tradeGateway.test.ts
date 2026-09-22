@@ -90,6 +90,22 @@ describe('trade gateway normalization', () => {
       swap: -0.25,
       commission: -1.5,
       unrealizedPnL: 42.75,
+      hasBackendProfit: true,
+      profit: 42.75,
+    });
+  });
+
+  it('does not treat omitted position profit as a backend zero', () => {
+    expect(normalizePosition({
+      ticket: 993,
+      symbol: 'EURUSD',
+      action: 0,
+      volume: 0.01,
+      price_open: 1.1,
+      price_current: 1.1,
+    })).toMatchObject({
+      hasBackendProfit: false,
+      profit: undefined,
     });
   });
 

@@ -14,6 +14,7 @@ export interface ConnectionMetrics {
   messagesReceived: number;
   reconnectAttempts: number;
   lastLatency: number;
+  latencyMeasuredAt?: number | null;
   averageLatency: number;
   uptime: number;
   lastConnectedAt: number | null;

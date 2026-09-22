@@ -29,6 +29,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "bench:orders": "node scripts/benchmarkTradeSocketOrder.mjs",
+    "test:trading-browser": "node scripts/testTradingBrowser.mjs",
     "typecheck": "tsc --noEmit",
     "electron:dev": "electron .",
     "electron:build": "npm run build:electron && npx electron-builder --win",

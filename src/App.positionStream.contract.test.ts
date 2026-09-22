@@ -19,4 +19,10 @@ describe('App position stream admission contract', () => {
     expect(source).toContain('raw.volume_lots ?? raw.quantity ?? raw.volume');
     expect(getPositionStreamTicket({ position_id: 2984272 })).toBe(2984272);
   });
+
+  it('uses shared batch reconciliation for partial and empty stream updates', () => {
+    expect(source).toContain('const batch = readPositionStreamBatch(data);');
+    expect(source).toContain('reconcilePositionStreamBatch(useAppStore.getState().positions, batch)');
+    expect(source).toContain('if (result.needsRevalidation) requestPositionSnapshotRevalidation();');
+  });
 });

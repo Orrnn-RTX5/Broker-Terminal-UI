@@ -86,8 +86,11 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
     return selected;
   };
 
-  // Construct this promise before invoking the snapshot loader. The concurrent
-  // helper calls every local close synchronously before its first await.
+  // Start a bounded local close queue before loading the snapshot so existing
+  // visible tickets begin closing immediately. The snapshot read can discover
+  // a position that was not yet rendered, but its closes wait for this queue:
+  // one Close All action must never create two concurrent bursts for an
+  // account and exceed the gateway's per-account admission limit.
   const selectedLocalCandidates = selectNewCandidates(localCandidates);
   const localClosePromise = closePositionsConcurrently(selectedLocalCandidates, closePosition);
   if (selectedLocalCandidates.length > 0) onCandidatesStarted?.(selectedLocalCandidates);
@@ -100,17 +103,14 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
     authoritativeSnapshotError = error;
   }
 
-  let authoritativeClosePromise: Promise<ClosePositionsConcurrentlyResult> = Promise.resolve(EMPTY_CLOSE_RESULT);
+  const localResult = await localClosePromise;
+
+  let authoritativeResult: ClosePositionsConcurrentlyResult = EMPTY_CLOSE_RESULT;
   if (authoritativeSnapshotError === null && isSessionCurrent()) {
     const selectedAuthoritativeCandidates = selectNewCandidates(authoritativeCandidates);
-    authoritativeClosePromise = closePositionsConcurrently(selectedAuthoritativeCandidates, closePosition);
     if (selectedAuthoritativeCandidates.length > 0) onCandidatesStarted?.(selectedAuthoritativeCandidates);
+    authoritativeResult = await closePositionsConcurrently(selectedAuthoritativeCandidates, closePosition);
   }
-
-  const [localResult, authoritativeResult] = await Promise.all([
-    localClosePromise,
-    authoritativeClosePromise,
-  ]);
   const closeResult = mergeCloseResults(localResult, authoritativeResult);
 
   return {

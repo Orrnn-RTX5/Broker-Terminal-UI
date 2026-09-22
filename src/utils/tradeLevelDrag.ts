@@ -4,6 +4,11 @@ export type TradeLevelDragSide = 'BUY' | 'SELL';
 export type TradeLevelDragTarget = 'ENTRY' | 'SL' | 'TP';
 export type TradeLevelDragResultRole = 'SL' | 'TP';
 
+// Omitted levels are preserved by Gateway; zero explicitly removes a level.
+// Never send the other level from a potentially stale chart snapshot.
+export const tradeLevelModifyPatch = (role: TradeLevelDragResultRole, price: number) =>
+  role === 'SL' ? { price_sl: price } : { price_tp: price };
+
 export interface TradeLevelDragUpdateInput {
   side: TradeLevelDragSide;
   grabbedType: TradeLevelDragTarget;

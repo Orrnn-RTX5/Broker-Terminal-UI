@@ -91,6 +91,7 @@ export interface ConnectionMetrics {
   messagesReceived: number;
   reconnectAttempts: number;
   lastLatency: number;
+  latencyMeasuredAt?: number | null;
   averageLatency: number;
   uptime: number;
   lastConnectedAt: number | null;
@@ -133,6 +134,7 @@ export class EnhancedWebSocketService {
   private pongTimeoutMs = 15000; // 15 seconds
   private lastPongTime = 0;
   private lastPingSentAt = 0;
+  private lastPingStartedAt = 0;
   // A browser WebSocket cannot use protocol-level ping frames. Only enforce
   // the application heartbeat after this endpoint has proved it understands
   // our JSON ping/pong contract; otherwise a server that simply ignores the
@@ -351,6 +353,11 @@ export class EnhancedWebSocketService {
         // FIX: Pong freshness belongs to this socket instance, not its predecessor.
         this.lastPongTime = 0;
         this.lastPingSentAt = 0;
+        this.lastPingStartedAt = 0;
+        this.latencyMeasurements = [];
+        this.metrics.lastLatency = 0;
+        this.metrics.averageLatency = 0;
+        this.metrics.latencyMeasuredAt = null;
         this.metrics.lastConnectedAt = Date.now();
         this.updateState('connected');
         this.startPingInterval();
@@ -675,7 +682,7 @@ export class EnhancedWebSocketService {
       typeof value === 'string' && value.trim().toLowerCase() === 'pong'
     ));
     if (isPong) {
-      this.handlePong();
+      this.handlePong(data);
       return;
     }
 
@@ -1003,6 +1010,7 @@ export class EnhancedWebSocketService {
 
     const pingTime = Date.now();
     this.lastPingSentAt = pingTime;
+    this.lastPingStartedAt = performance.now();
     // Keep `type` for older gateways, but lead with the action-based /ws/v2
     // command shape used by subscribe/unsubscribe on this same connection.
     this.sendMessage({ action: 'ping', type: 'ping', timestamp: pingTime });
@@ -1038,7 +1046,7 @@ export class EnhancedWebSocketService {
    * Handle pong response
 
    */
-  private handlePong(): void {
+  private handlePong(data: WebSocketMessage): void {
     if (this.pongTimeout) {
       clearTimeout(this.pongTimeout);
       this.pongTimeout = null;
@@ -1046,9 +1054,11 @@ export class EnhancedWebSocketService {
 
     const now = Date.now();
     this.pongSupportedUrl = this.url;
-    if (this.lastPingSentAt > 0) {
-      const latency = now - this.lastPingSentAt;
+    const echo = data.ping_timestamp ?? data.request_timestamp ?? data.timestamp ?? (data.data as any)?.timestamp;
+    if (this.lastPingSentAt > 0 && echo === this.lastPingSentAt) {
+      const latency = performance.now() - this.lastPingStartedAt;
       this.recordLatency(latency);
+      this.lastPingSentAt = 0;
     }
     this.lastPongTime = now;
   }
@@ -1067,6 +1077,7 @@ export class EnhancedWebSocketService {
     }
 
     this.metrics.lastLatency = measuredLatency;
+    this.metrics.latencyMeasuredAt = Date.now();
     this.metrics.averageLatency =
       this.latencyMeasurements.reduce((sum, l) => sum + l, 0) /
       this.latencyMeasurements.length;

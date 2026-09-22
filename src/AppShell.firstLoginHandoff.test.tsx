@@ -5,6 +5,14 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from './AppShell';
 
+vi.mock('./config/backendTarget.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./config/backendTarget.js')>(),
+  // Desktop build: Electron keeps its login boundary and the public catalog
+  // preload stays out of this first-login handoff path.
+  isElectronRuntime: () => true,
+  isDesktopBackendTarget: () => true,
+}));
+
 const shellMocks = vi.hoisted(() => {
   let releaseTerminalImport: (() => void) | null = null;
   const terminalImportGate = new Promise<void>((resolve) => {
@@ -32,11 +40,6 @@ vi.mock('./App', async () => {
     },
   };
 });
-
-vi.mock('./config/backendTarget.js', async (importOriginal) => ({
-  ...await importOriginal<typeof import('./config/backendTarget.js')>(),
-  isDesktopBackendTarget: () => true,
-}));
 
 vi.mock('./i18n', async (importOriginal) => ({
   ...await importOriginal<typeof import('./i18n')>(),
