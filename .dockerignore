@@ -9,4 +9,11 @@ build
 .claude
 .codex
 .agents
-docker-compose*.yml
+.env*.local
+.env_local
+.env.web.local
+.env.desktop
+.env.electron
+.npmrc
+docker-compose*.override.yml
+coverage

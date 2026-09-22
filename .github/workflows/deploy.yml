@@ -1,121 +1,149 @@
-# name: Deploy RTX5 Web Terminal
+name: Deploy RTX5 Web Terminal
 
-# on:
-#   push:
-#     branches:
-#       - main
-#   workflow_dispatch:
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-# permissions:
-#   contents: read
-#   packages: write
+permissions:
+  contents: read
+  packages: write
 
-# env:
-#   IMAGE_NAME: ghcr.io/${{ github.repository }}
+concurrency:
+  group: webterminal-deploy-${{ github.ref }}
+  cancel-in-progress: true
 
-# jobs:
-#   build-push-deploy:
-#     name: Build, push, and deploy
-#     runs-on: ubuntu-latest
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/broker-terminal-ui
 
-#     steps:
-#       - name: Check out repository
-#         uses: actions/checkout@v4
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
 
-#       - name: Set up Node.js
-#         uses: actions/setup-node@v4
-#         with:
-#           node-version: "22"
-#           cache: npm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-#       - name: Install dependencies
-#         run: npm ci
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
 
-#       - name: Build frontend
-#         run: npm run build:web
+      - name: Install dependencies
+        run: npm ci
 
-#       - name: Resolve image name
-#         run: echo "IMAGE_NAME=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+      - name: Build frontend
+        run: npm run build:web
 
-#       - name: Log in to GHCR
-#         uses: docker/login-action@v3
-#         with:
-#           registry: ghcr.io
-#           username: ${{ secrets.GHCR_USERNAME }}
-#           password: ${{ github.token }}
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
-#       - name: Build and push runtime image
-#         uses: docker/build-push-action@v6
-#         with:
-#           context: .
-#           file: Dockerfile
-#           build-args: |
-#             VITE_MODE=web
-#           push: true
-#           tags: |
-#             ${{ env.IMAGE_NAME }}:${{ github.sha }}
-#             ${{ env.IMAGE_NAME }}:latest
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-#       - name: Deploy via broker infra script
-#         shell: bash
-#         env:
-#           INFRA_REPO: ${{ github.repository_owner }}/ORRNN-RTX5-Broker-Infra
-#           INFRA_TOKEN: ${{ secrets.INFRA_REPO_DISPATCH_TOKEN }}
-#           BROKER_IDS: "achiever-financials"
-#           COMPONENT: webterminal
-#           IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-#           SHARED_DISCOVERY_BASE_URL: "https://superbackend.orrnn.com"
-#           # Achiever-only: prefer Achiever identity secret (same as backend Deploy Brokers).
-#           BROKER_SSH_PRIVATE_KEY: ${{ secrets.BROKER_SSH_KNOWN_HOSTS_ACHIEVER || secrets.BROKER_SSH_PRIVATE_KEY }}
-#           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-#           GHCR_TOKEN: ${{ github.token }}
-#           LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
-#         run: |
-#           set -euo pipefail
-#           if [[ -z "$INFRA_TOKEN" ]]; then
-#             echo "INFRA_REPO_DISPATCH_TOKEN is required to read $INFRA_REPO" >&2
-#             exit 1
-#           fi
-#           if [[ -z "$BROKER_SSH_PRIVATE_KEY" ]]; then
-#             echo "BROKER_SSH_KNOWN_HOSTS_ACHIEVER (or BROKER_SSH_PRIVATE_KEY) is required for Achiever SSH deploy" >&2
-#             exit 1
-#           fi
-#           echo "SSH identity: Achiever deploy key (BROKER_SSH_KNOWN_HOSTS_ACHIEVER preferred)"
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-#           api_get() {
-#             curl --fail-with-body -sSL \
-#               -H "Accept: application/vnd.github+json" \
-#               -H "Authorization: Bearer $INFRA_TOKEN" \
-#               -H "X-GitHub-Api-Version: 2022-11-28" \
-#               "https://api.github.com/repos/$INFRA_REPO/contents/$1?ref=main"
-#           }
+      - name: Build and push runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          build-args: |
+            VITE_MODE=web
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
 
-#           api_get brokers.json | jq -r '.content' | base64 -d > /tmp/brokers.json
-#           api_get scripts/deploy-broker.sh | jq -r '.content' | base64 -d > /tmp/deploy-broker.sh
-#           chmod +x /tmp/deploy-broker.sh
+  deploy:
+    name: Deploy Container to Server
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
 
-#           install -m 700 -d ~/.ssh
-#           printf '%s\n' "$BROKER_SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
-#           chmod 600 ~/.ssh/deploy_key
+    steps:
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
-#           for broker_id in $BROKER_IDS; do
-#             echo "Deploying $COMPONENT to broker=$broker_id"
-#             broker="$(jq -c --arg broker_id "$broker_id" '.brokers[] | select(.id == $broker_id and .enabled == true)' /tmp/brokers.json)"
-#             if [[ -z "$broker" ]]; then
-#               echo "Broker '$broker_id' is missing or disabled in $INFRA_REPO/brokers.json" >&2
-#               exit 1
-#             fi
-#             broker="$(jq -c --arg discovery_base_url "$SHARED_DISCOVERY_BASE_URL" '.env = (.env // {}) | .env.DISCOVERY_BASE_URL = $discovery_base_url | .env.VITE_DISCOVERY_BASE_URL = $discovery_base_url | .env.VITE_BROKER_DISCOVERY_URL = $discovery_base_url' <<<"$broker")"
+      - name: Execute deployment via SSH
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST || '51.195.188.172' }}
+          SERVER_USER: ${{ secrets.SERVER_USER || 'ubuntu' }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT || '22' }}
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY || secrets.BROKER_SSH_PRIVATE_KEY }}
+          IMAGE_TAG: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          IMAGE_LATEST: ${{ env.IMAGE_NAME }}:latest
+          GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_PASS: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
 
-#             host="$(jq -r '.ssh.host' <<<"$broker")"
-#             user="$(jq -r '.ssh.user // "root"' <<<"$broker")"
-#             port="$(jq -r '.ssh.port // 22' <<<"$broker")"
-#             broker_b64="$(printf '%s' "$broker" | base64 -w0)"
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "ERROR: SERVER_SSH_KEY (or BROKER_SSH_PRIVATE_KEY) secret is not set!" >&2
+            echo "Please configure SERVER_SSH_KEY in repository Secrets." >&2
+            exit 1
+          fi
 
-#             ssh_opts=(-i ~/.ssh/deploy_key -p "$port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30)
-#             scp_opts=(-i ~/.ssh/deploy_key -P "$port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30)
-#             ssh "${ssh_opts[@]}" "$user@$host" "mkdir -p /opt/rtx5-infra/scripts"
-#             scp "${scp_opts[@]}" /tmp/deploy-broker.sh "$user@$host:/opt/rtx5-infra/scripts/deploy-broker.sh"
-#             ssh "${ssh_opts[@]}" "$user@$host" \
-#               "chmod +x /opt/rtx5-infra/scripts/deploy-broker.sh && BROKER_JSON_B64='$broker_b64' COMPONENT='$COMPONENT' IMAGE_REF='$IMAGE_REF' DRY_RUN='false' GHCR_USERNAME='$GHCR_USERNAME' GHCR_TOKEN='$GHCR_TOKEN' LETSENCRYPT_EMAIL='$LETSENCRYPT_EMAIL' /opt/rtx5-infra/scripts/deploy-broker.sh"
-#           done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          SSH_OPTS=(-i ~/.ssh/deploy_key -p "$SERVER_PORT" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30)
+
+          echo "Connecting to $SERVER_USER@$SERVER_HOST:$SERVER_PORT..."
+
+          ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" bash -s <<EOF
+            set -euo pipefail
+
+            echo "=== 1. Logging into GHCR ==="
+            if [ -n "$GHCR_USER" ] && [ -n "$GHCR_PASS" ]; then
+              printf '%s' "$GHCR_PASS" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            fi
+
+            echo "=== 2. Pulling image: $IMAGE_TAG ==="
+            docker pull "$IMAGE_TAG"
+            docker tag "$IMAGE_TAG" "$IMAGE_LATEST"
+
+            echo "=== 3. Ensuring directory exists ==="
+            sudo mkdir -p /opt/Webterminal || true
+
+            echo "=== 4. Recreating container on port 127.0.0.1:8103 ==="
+            docker rm -f broker-terminal-ui 2>/dev/null || true
+
+            docker run -d \
+              --name broker-terminal-ui \
+              --restart unless-stopped \
+              -p 127.0.0.1:8103:80 \
+              -e BACKEND_TARGET="web" \
+              -e API_HOST="https://service.orrnn.com" \
+              -e API_HOST_EXT="https://service.orrnn.com" \
+              -e WS_HOST="wss://service.orrnn.com" \
+              -e DEFAULT_MT5_SERVER="Orrnn" \
+              -e DISCOVERY_BASE_URL="https://superadmin-prod.orrnn.com" \
+              -e BROKER_ID="orrnn" \
+              -e FEED_BROKER_ID="orrnn" \
+              -e USE_MOCK_DISCOVERY="false" \
+              --label "rtx5.component=webterminal" \
+              --label "rtx5.broker_id=orrnn" \
+              --label "rtx5.domain=webterminal.orrnn.com" \
+              "$IMAGE_LATEST"
+
+            echo "=== 5. Verifying container health ==="
+            sleep 4
+            if docker ps --filter "name=broker-terminal-ui" --filter "status=running" | grep -q broker-terminal-ui; then
+              echo "SUCCESS: broker-terminal-ui is up and running on port 127.0.0.1:8103!"
+            else
+              echo "ERROR: Container failed to start!"
+              docker logs --tail 50 broker-terminal-ui
+              exit 1
+            fi
+          EOF
