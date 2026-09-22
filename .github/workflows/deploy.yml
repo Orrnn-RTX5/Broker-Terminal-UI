@@ -84,6 +84,7 @@ jobs:
           IMAGE_LATEST: ${{ env.IMAGE_NAME }}:latest
           GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_PASS: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          ENV_FILE: ${{ secrets.PROD_ENV_FILE || secrets.ENV_FILE }}
         run: |
           set -euo pipefail
 
@@ -101,6 +102,12 @@ jobs:
 
           echo "Connecting to $SERVER_USER@$SERVER_HOST:$SERVER_PORT..."
 
+          # Write entire environment file if PROD_ENV_FILE secret is provided
+          if [ -n "${ENV_FILE:-}" ]; then
+            echo "Writing environment configuration to /opt/Webterminal/.env on server..."
+            printf '%s\n' "$ENV_FILE" | ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "sudo mkdir -p /opt/Webterminal && sudo tee /opt/Webterminal/.env > /dev/null && sudo chmod 600 /opt/Webterminal/.env"
+          fi
+
           ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" bash -s <<EOF
             set -euo pipefail
 
@@ -117,62 +124,50 @@ jobs:
             sudo mkdir -p /opt/Webterminal || true
 
             # Record previous running image for instant auto-rollback if new version fails
-            PREV_IMAGE=$(docker inspect --format='{{.Config.Image}}' broker-terminal-ui 2>/dev/null || echo "")
-            echo "ℹ️ Active previous container image: ${PREV_IMAGE:-None}"
+            PREV_IMAGE=\$(docker inspect --format='{{.Config.Image}}' broker-terminal-ui 2>/dev/null || echo "")
+            echo "ℹ️ Active previous container image: \${PREV_IMAGE:-None}"
 
             echo "=== 4. Recreating container on port 127.0.0.1:8103 ==="
             docker rm -f broker-terminal-ui 2>/dev/null || true
+
+            ENV_ARG=""
+            if [ -f /opt/Webterminal/.env ]; then
+              ENV_ARG="--env-file /opt/Webterminal/.env"
+            fi
 
             docker run -d \
               --name broker-terminal-ui \
               --restart unless-stopped \
               -p 127.0.0.1:8103:80 \
-              -e BACKEND_TARGET="${{ secrets.BACKEND_TARGET || 'web' }}" \
-              -e API_HOST="${{ secrets.API_HOST }}" \
-              -e API_HOST_EXT="${{ secrets.API_HOST_EXT || secrets.API_HOST }}" \
-              -e WS_HOST="${{ secrets.WS_HOST }}" \
-              -e DEFAULT_MT5_SERVER="${{ secrets.DEFAULT_MT5_SERVER || 'Orrnn' }}" \
-              -e DISCOVERY_BASE_URL="${{ secrets.DISCOVERY_BASE_URL }}" \
-              -e BROKER_ID="${{ secrets.BROKER_ID }}" \
-              -e FEED_BROKER_ID="${{ secrets.FEED_BROKER_ID || secrets.BROKER_ID }}" \
-              -e USE_MOCK_DISCOVERY="${{ secrets.USE_MOCK_DISCOVERY || 'false' }}" \
+              \$ENV_ARG \
               --label "rtx5.component=webterminal" \
-              --label "rtx5.broker_id=${{ secrets.BROKER_ID }}" \
               --label "rtx5.domain=webterminal.orrnn.com" \
               "$IMAGE_LATEST"
 
             echo "=== 5. Verifying container health with Auto-Rollback Guard ==="
             SUCCESS=0
-            for i in $(seq 1 10); do
+            for i in \$(seq 1 10); do
               sleep 1
               if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8103/ | grep -q "200"; then
-                echo "✅ WebTerminal container healthy (HTTP 200) on attempt $i!"
+                echo "✅ WebTerminal container healthy (HTTP 200) on attempt \$i!"
                 SUCCESS=1
                 break
               fi
-              echo "⏳ Waiting for WebTerminal to respond... (Attempt $i/10)"
+              echo "⏳ Waiting for WebTerminal to respond... (Attempt \$i/10)"
             done
 
-            if [ "$SUCCESS" -ne 1 ]; then
-              echo "❌ CRITICAL: Health check failed! Initiating automatic rollback to: ${PREV_IMAGE:-None}" >&2
+            if [ "\$SUCCESS" -ne 1 ]; then
+              echo "❌ CRITICAL: Health check failed! Initiating automatic rollback to: \${PREV_IMAGE:-None}" >&2
               docker logs --tail 50 broker-terminal-ui || true
-              if [ -n "$PREV_IMAGE" ]; then
+              if [ -n "\$PREV_IMAGE" ]; then
                 docker rm -f broker-terminal-ui 2>/dev/null || true
                 docker run -d \
                   --name broker-terminal-ui \
                   --restart unless-stopped \
                   -p 127.0.0.1:8103:80 \
-                  -e BACKEND_TARGET="${{ secrets.BACKEND_TARGET || 'web' }}" \
-                  -e API_HOST="${{ secrets.API_HOST }}" \
-                  -e API_HOST_EXT="${{ secrets.API_HOST_EXT || secrets.API_HOST }}" \
-                  -e WS_HOST="${{ secrets.WS_HOST }}" \
-                  -e DEFAULT_MT5_SERVER="${{ secrets.DEFAULT_MT5_SERVER || 'Orrnn' }}" \
-                  -e DISCOVERY_BASE_URL="${{ secrets.DISCOVERY_BASE_URL }}" \
-                  -e BROKER_ID="${{ secrets.BROKER_ID }}" \
-                  -e FEED_BROKER_ID="${{ secrets.FEED_BROKER_ID || secrets.BROKER_ID }}" \
-                  -e USE_MOCK_DISCOVERY="${{ secrets.USE_MOCK_DISCOVERY || 'false' }}" \
+                  \$ENV_ARG \
                   --label "rtx5.component=webterminal" \
-                  "$PREV_IMAGE"
+                  "\$PREV_IMAGE"
                 echo "⚠️ Rollback completed: previous known-good container restored."
               fi
               exit 1
