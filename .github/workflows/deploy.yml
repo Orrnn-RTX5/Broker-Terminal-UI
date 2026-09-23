@@ -73,6 +73,7 @@ jobs:
           GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_PASS: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
           ENV_FILE: ${{ secrets.PROD_ENV_FILE || secrets.ENV_FILE }}
+          DEPLOY_DIR: /opt/Rtx5-broker-production/terminal-ui
         run: |
           set -euo pipefail
 
@@ -92,8 +93,8 @@ jobs:
 
           # Write entire environment file if PROD_ENV_FILE secret is provided
           if [ -n "${ENV_FILE:-}" ]; then
-            echo "Writing environment configuration to /opt/Webterminal/.env on server..."
-            printf '%s\n' "$ENV_FILE" | ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "sudo mkdir -p /opt/Webterminal && sudo tee /opt/Webterminal/.env > /dev/null && sudo chown \"\$(id -u)\":\"\$(id -g)\" /opt/Webterminal/.env && sudo chmod 600 /opt/Webterminal/.env"
+            echo "Writing environment configuration to ${DEPLOY_DIR}/.env on server..."
+            printf '%s\n' "$ENV_FILE" | ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "sudo mkdir -p ${DEPLOY_DIR} && sudo tee ${DEPLOY_DIR}/.env > /dev/null && sudo chown \"\$(id -u)\":\"\$(id -g)\" ${DEPLOY_DIR}/.env && sudo chmod 600 ${DEPLOY_DIR}/.env"
           fi
 
           ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" bash -s <<EOF
@@ -109,7 +110,7 @@ jobs:
             docker tag "$IMAGE_TAG" "$IMAGE_LATEST"
 
             echo "=== 3. Ensuring directory exists ==="
-            sudo mkdir -p /opt/Webterminal || true
+            sudo mkdir -p ${DEPLOY_DIR} || true
 
             # Record previous running image for instant auto-rollback if new version fails
             PREV_IMAGE=\$(docker inspect --format='{{.Config.Image}}' broker-terminal-ui 2>/dev/null || echo "")
@@ -119,12 +120,12 @@ jobs:
             docker rm -f broker-terminal-ui 2>/dev/null || true
 
             ENV_ARG=""
-            if [ -f /opt/Webterminal/.env ]; then
-              if [ -r /opt/Webterminal/.env ]; then
-                ENV_ARG="--env-file /opt/Webterminal/.env"
+            if [ -f ${DEPLOY_DIR}/.env ]; then
+              if [ -r ${DEPLOY_DIR}/.env ]; then
+                ENV_ARG="--env-file ${DEPLOY_DIR}/.env"
               else
-                echo "ERROR: /opt/Webterminal/.env exists but is not readable by \$(id -un); docker run would fail." >&2
-                ls -l /opt/Webterminal/.env >&2 || true
+                echo "ERROR: ${DEPLOY_DIR}/.env exists but is not readable by \$(id -un); docker run would fail." >&2
+                ls -l ${DEPLOY_DIR}/.env >&2 || true
                 exit 1
               fi
             fi
