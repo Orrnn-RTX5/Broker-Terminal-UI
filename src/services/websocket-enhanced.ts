@@ -1154,7 +1154,7 @@ export class EnhancedWebSocketService {
     // regardless of React effect subscription lifecycle timing.
     try {
       useWebSocketStore.getState().setConnectionState(state, 'legacy_mt5');
-    } catch (e) {
+    } catch {
       // Fallback: store not available yet during initial module load
     }
 

@@ -148,7 +148,7 @@ export type Command =
   }
   | {
     type: 'SELECT_ALL_DRAWINGS';
-    payload: Record<string, never>;
+    payload: { targetContextId?: string };
   }
   | {
     type: 'SET_AUTO_SCROLL';

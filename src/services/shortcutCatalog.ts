@@ -73,7 +73,7 @@ export const runTerminalShortcutAction = (id: string): void => {
     targetContextId: source?.id,
   };
   const emit = (event: string, detail?: unknown) => window.dispatchEvent(new CustomEvent(event, { detail }));
-  const toggleChartProperty = (key: keyof Pick<ChartProperties, 'showPeriodSeparators' | 'showTradeHistory' | 'showOHLC' | 'chartAutoScroll' | 'chartShift'>) => {
+  const toggleChartProperty = (key: keyof Pick<ChartProperties, 'showPeriodSeparators' | 'showTradeHistoryArrows' | 'showOHLC' | 'chartAutoScroll' | 'chartShift'>) => {
     const state = useChartSettingsStore.getState();
     const current = state.symbolProperties[target.symbol] || state.globalProperties;
     const enabled = !current[key];
@@ -102,7 +102,7 @@ export const runTerminalShortcutAction = (id: string): void => {
     case 'charts.indicator-list': commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: { targetContextId: target.targetContextId } }); break;
     case 'charts.object-list': emit('open-object-list', target); break;
     case 'charts.period-separators': toggleChartProperty('showPeriodSeparators'); break;
-    case 'charts.trade-history': toggleChartProperty('showTradeHistory'); emit('rtx:flush-trade-overlay'); break;
+    case 'charts.trade-history': toggleChartProperty('showTradeHistoryArrows'); emit('rtx:flush-trade-overlay'); break;
     case 'charts.ohlc': toggleChartProperty('showOHLC'); break;
     case 'charts.auto-scroll': commandBus.dispatch({ type: 'SET_AUTO_SCROLL', payload: { enabled: toggleChartProperty('chartAutoScroll'), targetContextId: target.targetContextId } }); break;
     case 'charts.chart-shift': commandBus.dispatch({ type: 'SET_CHART_SHIFT', payload: { enabled: toggleChartProperty('chartShift'), targetContextId: target.targetContextId } }); break;

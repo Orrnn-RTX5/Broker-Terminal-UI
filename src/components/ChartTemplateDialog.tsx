@@ -6,7 +6,6 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  */
 
 import ReactDOM from 'react-dom';
-import { Icon } from './ui/Icon';
 import React, { useState, useRef } from 'react';
 import { useTemplateStore, type ChartTemplate } from '../store/useTemplateStore';
 import type { ChartType, Timeframe } from './TradingChart';

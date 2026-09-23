@@ -6,8 +6,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNotificationStore } from '../store/useNotificationStore';
 import type { NotificationSeverity, NotificationType } from '../store/useNotificationStore';
-import { api } from '../services/api';
-import { ApiError } from '../api/client';
 
 interface UseNotificationsProps {
   wsConnection: WebSocket | null;

@@ -250,6 +250,39 @@
       );
       var initialTerminal = sessionCandidate || !desktopRuntime;
       root.setAttribute('data-rtx-initial-view', initialTerminal ? 'terminal' : 'login');
+
+      // Open the broker connections (DNS + TLS/QUIC) while the terminal
+      // JavaScript is still downloading, so the first market-data request
+      // does not pay the handshake. Origins come only from the deployment's
+      // own runtime configuration.
+      try {
+        var preconnected = {};
+        [
+          runtimeConfig.API_HOST, runtimeConfig.api_host,
+          runtimeConfig.VITE_API_HOST, runtimeConfig.API_HOST_EXT,
+          runtimeConfig.api_host_ext, runtimeConfig.VITE_API_URL,
+          runtimeConfig.VITE_BACKEND_URL,
+          runtimeConfig.WS_HOST, runtimeConfig.ws_host, runtimeConfig.VITE_WS_URL
+        ].forEach(function (value) {
+          var raw = String(value || '').trim();
+          if (!raw) return;
+          if (!/^[a-z][a-z\d+.-]*:\/\//i.test(raw)) raw = 'https://' + raw;
+          raw = raw.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://');
+          var origin;
+          try {
+            var parsed = new URL(raw);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return;
+            origin = parsed.origin;
+          } catch (_) { return; }
+          if (origin === window.location.origin || preconnected[origin]) return;
+          preconnected[origin] = true;
+          var connectHint = document.createElement('link');
+          connectHint.rel = 'preconnect';
+          connectHint.href = origin;
+          connectHint.crossOrigin = '';
+          document.head.appendChild(connectHint);
+        });
+      } catch (_) { /* Connection warmup must never delay the terminal. */ }
       if (!initialTerminal) {
         var wordmarkPreload = document.createElement('link');
         wordmarkPreload.rel = 'preload';

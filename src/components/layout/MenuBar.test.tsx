@@ -179,7 +179,7 @@ describe('unavailable terminal services', () => {
         render(<MenuBar />);
         const openTools = () => {
             if (surface === 'desktop') {
-                fireEvent.click(screen.getByRole('menuitem', { name: 'Tools', exact: true }));
+                fireEvent.click(screen.getByRole('menuitem', { name: 'Tools' }));
             } else {
                 fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
                 fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Algo Trading' }));
@@ -214,9 +214,9 @@ describe('unavailable terminal services', () => {
     it('also locks duplicate service entries under desktop View and Help', () => {
         installElectronBridge();
         render(<MenuBar />);
-        fireEvent.click(screen.getByRole('menuitem', { name: 'View', exact: true }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
         expect(screen.getByRole('menuitem', { name: 'menu.view.strategyTester' })).toBeDisabled();
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Help', exact: true }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Help' }));
         for (const key of ['marketplace', 'signals', 'cloudHosting']) {
             expect(screen.getByRole('menuitem', { name: `menu.help.${key}` })).toBeDisabled();
         }
@@ -489,6 +489,7 @@ describe('MenuBar hamburger launcher', () => {
     });
 
     it('keeps the original actions reachable through the professional launcher', async () => {
+        // Walks ~35 role queries across the full launcher menu tree; jsdom role lookups make this exceed the 10s default.
         const onSetAdvancedViewEnabled = vi.fn();
         const onSetAdvancedFontSize = vi.fn();
         const onSetFocusChart = vi.fn();
@@ -581,7 +582,7 @@ describe('MenuBar hamburger launcher', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
         expect(onLogout).toHaveBeenCalledTimes(1);
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
-    });
+    }, 30_000);
 });
 
 describe('MenuBar Electron desktop menubar', () => {
@@ -621,7 +622,7 @@ describe('MenuBar Electron desktop menubar', () => {
                 onStatus: (listener: typeof notify) => { notify = listener; return unsubscribe; } },
         });
         const view = render(<MenuBar />);
-        const openView = () => fireEvent.click(screen.getByRole('menuitem', { name: 'View', exact: true }));
+        const openView = () => fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
         openView();
         expect(screen.getByText('Version 1.0.24')).toBeInTheDocument();
         expect(screen.queryByText('menu.view.statusBar')).not.toBeInTheDocument();

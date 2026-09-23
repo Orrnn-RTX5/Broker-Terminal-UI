@@ -199,18 +199,17 @@ describe('FileMenu Component', () => {
     });
 
     describe('Rendering', () => {
-        it('keeps the authenticated shortcut owner out of symbol loading until the visible menu mounts', async () => {
+        it('carries no New Chart entry and never loads an inline symbol menu', async () => {
             appStoreMock.isAuthenticated = true;
             catalogApiMock.getSymbols.mockResolvedValue([{ id: 'EURUSD', name: 'EURUSD', category: 'Forex' }]);
-            const view = render(<FileMenu shortcutsOnly />);
+            render(<><FileMenu shortcutsOnly /><FileMenu /></>);
             await act(async () => {});
-            expect(catalogApiMock.getSymbols).not.toHaveBeenCalled();
-            expect(screen.queryByText('New Chart')).toBeNull();
 
-            view.rerender(<><FileMenu shortcutsOnly /><FileMenu /></>);
-            await waitFor(() => expect(catalogApiMock.getSymbols).toHaveBeenCalledOnce());
-            fireEvent.click(screen.getByText('New Chart'));
-            expect(await screen.findByText('Forex')).toBeVisible();
+            // Charts open from the symbol search on web and desktop; the menu
+            // holds neither the entry nor an inline symbol/group listing.
+            expect(screen.queryByText('New Chart')).toBeNull();
+            expect(screen.queryByText('Forex')).toBeNull();
+            expect(catalogApiMock.getSymbols).not.toHaveBeenCalled();
         });
 
         it('renders all menu items', () => {
@@ -275,12 +274,12 @@ describe('FileMenu Component', () => {
             render(<FileMenu {...mockHandlers} accountId="200002" onLogout={onLogout} />);
 
             const accountHeader = screen.getByTestId('file-menu-account-header');
-            const newChartButton = screen.getByText('New Chart').closest('button');
+            const profilesButton = screen.getByText('Profiles').closest('button');
             const logoutButton = within(accountHeader).getByRole('menuitem', { name: 'Log Out' });
 
             expect(accountHeader).toHaveAttribute('aria-label', 'Current trading account 200002');
             expect(within(accountHeader).getByText('200002')).toBeInTheDocument();
-            expect(accountHeader.compareDocumentPosition(newChartButton!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(accountHeader.compareDocumentPosition(profilesButton!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
             expect(screen.getAllByRole('menuitem', { name: 'Log Out' })).toHaveLength(1);
             expect(logoutButton.querySelector('svg')).not.toBeNull();
             expect(logoutButton).not.toHaveAttribute('data-desktop-logout');

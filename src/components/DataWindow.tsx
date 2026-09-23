@@ -6,7 +6,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  * Toggled via Ctrl+D, View menu, or Charts menu.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { getActiveChartSource, subscribeActiveChartSource } from '../services/activeChartSource';
 import type { ChartDataSnapshot } from '../services/chartDataSnapshot';
@@ -58,7 +58,6 @@ const DataRow = ({ label, value }: { label: string; value: string }) => { const 
 
 export const DataWindow: React.FC<DataWindowProps> = ({
   onClose,
-  initialPos = { x: 0, y: 0 },
   onDragHandleMouseDown,
 }) => {
     const tr = useUiTranslation();

@@ -141,7 +141,7 @@ const ServerTab = () => {
 
                 <label className="text-right text-zinc-400">{tr("Password:")}</label>
                 <div className="flex gap-2">
-                    <input type="password" value="********" readOnly className="flex-1 bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none focus:border-zinc-600" />
+                    <input type="text" value="********" readOnly className="flex-1 bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none focus:border-zinc-600" />
                     <button className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-zinc-200">{tr("Change")}</button>
                 </div>
             </div>
@@ -472,63 +472,6 @@ const AutomationTab = () => {
                         )}
                     </div>
                 </div>
-            </div>
-        </div>
-    );
-};
-
-const NotificationsTab = () => {
-    const tr = useUiTranslation();
-    const notifications = useSettingsStore((state) => state.notifications);
-    const updateNotificationsSettings = useSettingsStore((state) => state.updateNotificationsSettings);
-
-    return (
-        <div className="space-y-5 text-[14px] font-normal text-zinc-300">
-            <div className="space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={notifications.enablePushNotifications}
-                        onChange={(e) => updateNotificationsSettings({ enablePushNotifications: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span className="font-medium text-zinc-200">{tr("Enable push notifications")}</span>
-                </label>
-                <p className="ml-6 text-[12px] font-normal text-zinc-500">
-                    {tr("Send notifications to RTX5 Mobile app for important trading events.")}</p>
-            </div>
-
-            <div className="space-y-3 pt-4 border-t border-zinc-700/50">
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={notifications.enableSoundAlerts}
-                        onChange={(e) => updateNotificationsSettings({ enableSoundAlerts: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span className="font-medium text-zinc-200">{tr("Enable sound alerts")}</span>
-                </label>
-                <p className="ml-6 text-[12px] font-normal text-zinc-500">
-                    {tr("Play audio notifications for order fills, stop-loss hits, and other events.")}</p>
-            </div>
-
-            <div className="space-y-3 pt-4 border-t border-zinc-700/50">
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={notifications.enableEmailAlerts}
-                        onChange={(e) => updateNotificationsSettings({ enableEmailAlerts: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span className="font-medium text-zinc-200">{tr("Enable email alerts")}</span>
-                </label>
-                <p className="ml-6 text-[12px] font-normal text-zinc-500">
-                    {tr("Send email notifications for critical account events and margin calls.")}</p>
-            </div>
-
-            <div className="pt-4 border-t border-zinc-700/50 text-zinc-500">
-                <p className="text-[12px] font-normal">
-                    {tr("Configure specific notification rules and thresholds in the Events tab.")}</p>
             </div>
         </div>
     );

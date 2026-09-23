@@ -1,8 +1,10 @@
 const path = require('node:path');
 
-const MIN_SPLASH_MS = 900;
+// The minimum hold only needs to prevent a strobe-like splash flash on fast
+// machines; every millisecond beyond that delays an already-ready terminal.
+const MIN_SPLASH_MS = 300;
 const MAX_SPLASH_MS = 10_000;
-const FADE_TIMEOUT_MS = 750;
+const FADE_TIMEOUT_MS = 500;
 
 /** A full-size launch surface inside the terminal's one native window. */
 function createDesktopStartup({ WebContentsView, ipcMain, mainWindow, appRoot }) {
@@ -93,7 +95,7 @@ function createDesktopStartup({ WebContentsView, ipcMain, mainWindow, appRoot })
             if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
             return document.body.animate(
                 [{ opacity: 1 }, { opacity: 0 }],
-                { duration: 240, easing: 'ease-out', fill: 'forwards' }
+                { duration: 160, easing: 'ease-out', fill: 'forwards' }
             ).finished.then(() => undefined);
         })()`).then(finish, finish);
     }

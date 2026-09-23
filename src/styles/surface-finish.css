@@ -205,7 +205,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
     box-shadow: none !important;
   }
 
-  /* NewChartSymbolMenu portals a viewport-positioned fixed submenu into File.
+  /* File-menu submenus can portal viewport-positioned fixed panels.
      Keep both possible ancestors free of filters while retaining their sheen. */
   .rtx-file-menu[class],
   .rtx-application-menu:has(.rtx-file-menu) {

@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 import { AlertsContainer } from '../AlertsContainer'
 
@@ -12,11 +12,11 @@ class MockWebSocket extends EventTarget {
 
 describe('AlertsContainer', () => {
   let ws: MockWebSocket
-  let playSpy: ReturnType<typeof vi.fn>
+  let playSpy: Mock<() => Promise<void>>
 
   beforeEach(() => {
     ws = new MockWebSocket()
-    playSpy = vi.fn(() => Promise.resolve())
+    playSpy = vi.fn<() => Promise<void>>(() => Promise.resolve())
     vi.stubGlobal('Audio', vi.fn(function (this: HTMLAudioElement) {
       this.currentTime = 0
       this.volume = 0

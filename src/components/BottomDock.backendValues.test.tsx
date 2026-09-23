@@ -43,7 +43,7 @@ describe('Trade backend financial rendering', () => {
   });
 
   it('renders backend row profit and the separate account total, then applies fresh backend updates', () => {
-    const { container, rerender } = render(<BottomDock height={300} />);
+    const { container, rerender } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(screen.getByTitle('Profit: 7.00')).toHaveTextContent('7.00');
     expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('-81.40');
 
@@ -55,7 +55,7 @@ describe('Trade backend financial rendering', () => {
 
     trade.positions = [{ ...trade.positions[0], profit: -12, unrealizedPnL: -12 }];
     trade.account = { ...trade.account, unrealizedPL: -90.5 };
-    rerender(<BottomDock height={300} />);
+    rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(screen.getByTitle('Profit: -12.00')).toHaveTextContent('-12.00');
     expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('-90.50');
   });
@@ -66,7 +66,7 @@ describe('Trade backend financial rendering', () => {
       hasBackendBalance: false, hasBackendMargin: false, hasBackendUnrealizedPL: false,
     };
     trade.positions = [{ ...trade.positions[0], profit: 0, unrealizedPnL: 0, hasBackendProfit: false }];
-    const { container } = render(<BottomDock height={300} />);
+    const { container } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(container.querySelector('.rtx-trade-footer-floating')).not.toHaveTextContent('0.00');
     expect(container.querySelector('.rtx-trade-footer-floating [title="Not reported by the trading server"]')).toBeInTheDocument();
     expect(screen.queryByTitle('Profit: 0.00')).not.toBeInTheDocument();
@@ -76,7 +76,7 @@ describe('Trade backend financial rendering', () => {
   it('displays backend zero floating profit and margin level verbatim for an empty account', () => {
     trade.positions = [];
     trade.account = { ...trade.account, unrealizedPL: 0, marginLevel: 0 };
-    const { container } = render(<BottomDock height={300} />);
+    const { container } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('0.00');
     expect(container.querySelector('.rtx-trade-footer-metrics')).toHaveTextContent('0.00%');
     expect(container.querySelector('.rtx-trade-footer-metrics')).not.toHaveTextContent('∞');
@@ -87,7 +87,7 @@ describe('Trade backend financial rendering', () => {
       BTCUSD: { symbol: 'BTCUSD', bid: 90000, ask: 90001, spread: 1, timestamp: Date.now() },
     });
     trade.positions = [{ ...trade.positions[0], price_current: 0, currentPrice: 0, hasBackendCurrentPrice: false }];
-    render(<BottomDock height={300} />);
+    render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(screen.getByTitle('Current price: —')).toHaveTextContent('—');
     expect(screen.queryByTitle('Current price: 90000.00')).not.toBeInTheDocument();
   });

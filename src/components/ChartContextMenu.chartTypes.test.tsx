@@ -41,6 +41,8 @@ const renderMenu = (currentChartType: 'line' | 'area') => {
       onOpenNewOrder={noop}
       onOpenDOM={noop}
       onOpenTemplateDialog={noop}
+      onAddIndicator={noop}
+      targetContextId="chart-test"
       onClose={onClose}
     />,
   );

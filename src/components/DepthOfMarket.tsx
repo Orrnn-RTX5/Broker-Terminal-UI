@@ -2,6 +2,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useLiveOrderBook } from '../hooks/useLiveMarketData';
+import './DepthOfMarket.css';
 
 export type DepthOrderExecution = 'market' | 'limit';
 
@@ -96,6 +97,13 @@ function useDepthTypography() {
 /* ─── Chart display types ──────────────────────────────────────────── */
 type ChartMode = 'bar' | 'candlestick' | 'line' | 'tick';
 
+/** Splits a formatted price so the pip digits can carry visual emphasis. */
+export const splitPipDigits = (formattedPrice: string): [string, string] => (
+  formattedPrice.replace(/[.,]/g, '').length > 2
+    ? [formattedPrice.slice(0, -2), formattedPrice.slice(-2)]
+    : ['', formattedPrice]
+);
+
 /* ─── Dark Charcoal Theme Colors (from theme.css vars) ──────────────── */
 const C = {
   bgPrimary:   '#0d0d11',
@@ -125,10 +133,6 @@ const C = {
   bidBg:     'rgba(0, 200, 150, 0.06)',
   bidBgBest: 'rgba(0, 200, 150, 0.16)',
 
-  sellBtn:   'linear-gradient(180deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%)',
-  buyBtn:    'linear-gradient(180deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%)',
-  closeBtn:  '#333338',
-
   spreadBg:  '#1e1e24',
 };
 
@@ -143,6 +147,7 @@ interface TickChartProps {
   crosshair: boolean;
   zoomLevel: number; // 1=default, higher=zoomed in
   typography: DepthTypography;
+  digits: number;
 }
 
 interface TickData {
@@ -184,7 +189,7 @@ function aggregateToOHLC(ticks: TickData[], barCount: number): OHLCBar[] {
   return bars;
 }
 
-function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair, zoomLevel, typography }: TickChartProps) {
+function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair, zoomLevel, typography, digits }: TickChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tickHistoryRef = useRef<TickData[]>([]);
   const mouseRef = useRef<{ x: number; y: number } | null>(null);
@@ -291,7 +296,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
       for (let i = 0; i <= priceIntervals; i++) {
         const y = (chartH / priceIntervals) * i;
         const price = maxP - (i / priceIntervals) * totalRange;
-        ctx.fillText(price.toFixed(2), width - 3, Math.max(labelHeight / 2, Math.min(chartH - labelHeight / 2, y)));
+        ctx.fillText(price.toFixed(digits), width - 3, Math.max(labelHeight / 2, Math.min(chartH - labelHeight / 2, y)));
       }
 
       // === CHART MODE RENDERING ===
@@ -454,7 +459,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
         // Price label at crosshair Y
         if (my <= chartH) {
           const price = maxP - (my / chartH) * totalRange;
-          const labelText = price.toFixed(2);
+          const labelText = price.toFixed(digits);
           ctx.font = bodyFont;
           ctx.fillStyle = '#333338';
           const tw = ctx.measureText(labelText).width + 8;
@@ -487,8 +492,8 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
           const t = history[idx2];
           if (t) {
             const tooltipLines = [
-              `Bid: ${t.bid.toFixed(5)}`,
-              `Ask: ${t.ask.toFixed(5)}`,
+              `Bid: ${t.bid.toFixed(digits)}`,
+              `Ask: ${t.ask.toFixed(digits)}`,
               `Vol: ${t.volume.toFixed(2)}`,
             ];
             ctx.font = bodyFont;
@@ -519,7 +524,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
         const lastTick = history[history.length - 1];
         const lastY = chartH - ((lastTick.bid - minP) / totalRange) * chartH;
         ctx.font = controlFont;
-        const priceText = lastTick.bid.toFixed(2);
+        const priceText = lastTick.bid.toFixed(digits);
         const priceLabelWidth = ctx.measureText(priceText).width + 10;
         const priceLabelY = Math.max(0, Math.min(chartH - labelHeight, lastY - labelHeight / 2));
         // Price line
@@ -539,7 +544,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
     }, 100);
 
     return () => clearInterval(interval);
-  }, [fallbackWidth, height, symbol, chartMode, crosshair, zoomLevel, typography]);
+  }, [fallbackWidth, height, symbol, chartMode, crosshair, zoomLevel, typography, digits]);
 
   return (
     <canvas
@@ -567,17 +572,8 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
     const tr = useUiTranslation();
   const iconColor = '#9898a8';
   const activeColor = '#f0f0f8';
-  const activeGlow = '#00c896';
 
-  const iconBtn = (active: boolean) =>
-    `w-[26px] h-[22px] flex items-center justify-center rounded cursor-pointer transition-all ${
-      active ? 'ring-1 ring-[#505058]' : ''
-    }`;
-
-  const btnStyle = (active: boolean): React.CSSProperties => ({
-    background: active ? '#2e2e36' : 'transparent',
-    boxShadow: active ? `0 0 6px ${activeGlow}50` : 'none',
-  });
+  const iconBtn = (active: boolean) => `rtx-dom-toolbar-btn ${active ? 'is-active' : ''}`;
 
   return (
     <div
@@ -587,7 +583,6 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
       {/* Bar Chart */}
       <button
         className={iconBtn(chartMode === 'bar')}
-        style={btnStyle(chartMode === 'bar')}
         onClick={() => onChartModeChange('bar')}
         title={tr("Bar Chart (OHLC)")}
       >
@@ -601,7 +596,6 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
       {/* Candlestick */}
       <button
         className={iconBtn(chartMode === 'candlestick')}
-        style={btnStyle(chartMode === 'candlestick')}
         onClick={() => onChartModeChange('candlestick')}
         title={tr("Candlestick Chart")}
       >
@@ -622,7 +616,6 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
       {/* Line Chart */}
       <button
         className={iconBtn(chartMode === 'line')}
-        style={btnStyle(chartMode === 'line')}
         onClick={() => onChartModeChange('line')}
         title={tr("Line Chart")}
       >
@@ -639,7 +632,6 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
       {/* Tick Chart */}
       <button
         className={iconBtn(chartMode === 'tick')}
-        style={btnStyle(chartMode === 'tick')}
         onClick={() => onChartModeChange('tick')}
         title={tr("Tick Chart")}
       >
@@ -653,7 +645,6 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
       {/* Crosshair */}
       <button
         className={iconBtn(crosshair)}
-        style={btnStyle(crosshair)}
         onClick={onToggleCrosshair}
         title={crosshair ? tr("Crosshair: ON") : tr("Crosshair: OFF")}
       >
@@ -663,7 +654,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
           <line x1="1" y1="8" x2="15" y2="8"
             stroke={crosshair ? activeColor : iconColor} strokeWidth="1" strokeDasharray="2,1.5"/>
           <circle cx="8" cy="8" r="2.5"
-            stroke={crosshair ? activeGlow : iconColor} fill="none" strokeWidth="1.2"/>
+            stroke={crosshair ? activeColor : iconColor} fill="none" strokeWidth="1.2"/>
         </svg>
       </button>
 
@@ -672,7 +663,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
 
       {/* Zoom In */}
       <button
-        className="w-[26px] h-[22px] flex items-center justify-center rounded cursor-pointer transition-all hover:bg-[#333338] active:bg-[#404048]"
+        className="rtx-dom-toolbar-btn"
         onClick={onZoomIn}
         title={tr("Zoom In")}
       >
@@ -686,7 +677,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
 
       {/* Zoom Out */}
       <button
-        className="w-[26px] h-[22px] flex items-center justify-center rounded cursor-pointer transition-all hover:bg-[#333338] active:bg-[#404048]"
+        className="rtx-dom-toolbar-btn"
         onClick={onZoomOut}
         title={tr("Zoom Out")}
       >
@@ -713,9 +704,23 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
     const tr = useUiTranslation();
   const typography = useDepthTypography();
   const currentTick = useCurrentTick(symbol);
-  const [volume, setVolume] = useState(0.01);
-  const [sl, setSl] = useState(0);
-  const [tp, setTp] = useState(0);
+  // Inputs keep the raw text while typing (so clearing / "0." intermediates
+  // work); orders always use the validated numeric values derived below.
+  const [volumeInput, setVolumeInput] = useState('0.01');
+  const [slInput, setSlInput] = useState('0');
+  const [tpInput, setTpInput] = useState('0');
+  const volume = useMemo(() => {
+    const parsed = Number.parseFloat(volumeInput);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : 0.01;
+  }, [volumeInput]);
+  const sl = useMemo(() => {
+    const parsed = Number.parseFloat(slInput);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+  }, [slInput]);
+  const tp = useMemo(() => {
+    const parsed = Number.parseFloat(tpInput);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+  }, [tpInput]);
   const mainContentRef = useRef<HTMLDivElement>(null);
   const [mainContentHeight, setMainContentHeight] = useState(280);
 
@@ -758,23 +763,41 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
     return () => observer.disconnect();
   }, [hasDepthSurface]);
 
-  const depthLevels = useMemo(() => {
-    if (orderBook && (orderBook.asks.length > 0 || orderBook.bids.length > 0)) {
-      const asks = orderBook.asks.slice(0, dynamicLevels).reverse();
-      const bids = orderBook.bids.slice(0, dynamicLevels);
-      const maxVolume = Math.max(...[...asks, ...bids].map((level) => level.volume), 0);
-      return { asks, bids, maxVolume };
-    }
-
-    return { asks: [] as any[], bids: [] as any[], maxVolume: 0 };
-  }, [orderBook, dynamicLevels]);
-
   const digits = useMemo(() => {
     if (symbol.includes('JPY')) return 3;
     if (symbol.startsWith('BTC') || symbol.startsWith('ETH')) return 2;
     if (symbol.startsWith('XAU') || symbol.startsWith('XAG')) return 2;
     return 5;
   }, [symbol]);
+
+  type DepthLevel = { price: number; volume: number };
+  const depthLevels = useMemo(() => {
+    if (orderBook && (orderBook.asks.length > 0 || orderBook.bids.length > 0)) {
+      const asks = orderBook.asks.slice(0, dynamicLevels).reverse();
+      const bids = orderBook.bids.slice(0, dynamicLevels);
+      const maxVolume = Math.max(...[...asks, ...bids].map((level) => level.volume), 0);
+      return { asks, bids, maxVolume, synthetic: false };
+    }
+
+    // Broker without a depth feed: build a one-point price ladder around the
+    // live tick so limit-order entry keeps working. Prices are real (derived
+    // from the current bid/ask); no liquidity volumes are invented.
+    if (bestBid > 0 && bestAsk > 0) {
+      const point = 10 ** -digits;
+      const roundPrice = (value: number) => Number(value.toFixed(digits));
+      const asks: DepthLevel[] = Array.from({ length: dynamicLevels }, (_, index) => ({
+        price: roundPrice(bestAsk + (dynamicLevels - 1 - index) * point),
+        volume: 0,
+      }));
+      const bids: DepthLevel[] = Array.from({ length: dynamicLevels }, (_, index) => ({
+        price: roundPrice(bestBid - index * point),
+        volume: 0,
+      }));
+      return { asks, bids, maxVolume: 0, synthetic: true };
+    }
+
+    return { asks: [] as DepthLevel[], bids: [] as DepthLevel[], maxVolume: 0, synthetic: false };
+  }, [orderBook, dynamicLevels, bestBid, bestAsk, digits]);
 
   const handleCloseAll = useCallback(() => {
     onCloseBulk?.('ALL', symbol);
@@ -811,7 +834,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         onMouseDown={onDragHandleMouseDown as any}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2 h-2 rounded-full shrink-0" style={{ background: C.profit, boxShadow: `0 0 6px ${C.profit}` }} />
+          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: C.profit, boxShadow: `0 0 4px ${C.profit}99` }} />
           <div className="flex items-baseline gap-1.5 min-w-0">
             <span className="rtx-depth-of-market__heading uppercase tracking-normal shrink-0" style={{ color: C.textPrimary, fontSize: typography.fontSize, fontWeight: typography.headingWeight }}>
               {symbol}
@@ -821,18 +844,26 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="px-1 text-[12px] leading-none" style={{ color: C.textTertiary }}>⠿</div>
+        <div className="flex items-center gap-0.5">
+          <span className="rtx-dom-drag-hint" aria-hidden="true" title={tr("Drag to move")}>
+            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+              <circle cx="3" cy="3" r="1.1" /><circle cx="7" cy="3" r="1.1" />
+              <circle cx="3" cy="7" r="1.1" /><circle cx="7" cy="7" r="1.1" />
+              <circle cx="3" cy="11" r="1.1" /><circle cx="7" cy="11" r="1.1" />
+            </svg>
+          </span>
           <button
+            type="button"
             onClick={onClose}
-            className="px-1 py-0.5 rounded text-[14px] font-normal leading-none transition-colors"
-            style={{ color: C.textSecondary }}
+            className="rtx-dom-icon-btn rtx-dom-icon-btn--danger"
             onMouseDown={e => e.stopPropagation()}
-            onMouseEnter={e => { e.currentTarget.style.color = C.textPrimary; e.currentTarget.style.background = C.bgElevated; }}
-            onMouseLeave={e => { e.currentTarget.style.color = C.textSecondary; e.currentTarget.style.background = 'transparent'; }}
             title={tr("Close")}
+            aria-label={tr("Close")}
           >
-            ✕
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+              <line x1="2.5" y1="2.5" x2="9.5" y2="9.5" />
+              <line x1="9.5" y1="2.5" x2="2.5" y2="9.5" />
+            </svg>
           </button>
         </div>
       </div>
@@ -860,6 +891,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             crosshair={crosshair}
             zoomLevel={zoomLevel}
             typography={typography}
+            digits={digits}
           />
         </div>
 
@@ -877,11 +909,15 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
               background: C.bgTertiary,
             }}
           >
-            <div className="flex items-center justify-center border-r uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
+            <div
+              className="flex items-center justify-center border-r uppercase"
+              style={{ borderColor: C.borderPrimary, color: C.textTertiary, letterSpacing: '0.06em' }}
+              title={depthLevels.synthetic ? tr("No depth feed for this symbol — showing a price ladder around the live quote") : undefined}
+            >
               {tr("Volume")}</div>
-            <div className="flex items-center justify-center border-r uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
+            <div className="flex items-center justify-center border-r uppercase" style={{ borderColor: C.borderPrimary, color: C.textTertiary, letterSpacing: '0.06em' }}>
               {tr("Price")}</div>
-            <div className="flex items-center justify-center uppercase tracking-normal" style={{ color: C.textTertiary }}>
+            <div className="flex items-center justify-center uppercase" style={{ color: C.textTertiary, letterSpacing: '0.06em' }}>
               {tr("Trade")}</div>
           </div>
 
@@ -889,17 +925,18 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ background: C.bgSecondary }}>
             {depthLevels.asks.length === 0 && depthLevels.bids.length === 0 && (
               <div className="flex items-center justify-center h-full px-3 text-center text-[14px] leading-[21px] font-normal" style={{ color: C.textTertiary }}>
-                {depthLoading ? tr("Loading market depth...") : depthError || 'No market depth available'}
+                {depthLoading ? tr("Loading market depth...") : depthError || tr("No market depth available")}
               </div>
             )}
             {/* ── ASK (Sell) rows ── */}
             {depthLevels.asks.map((level, i) => {
               const isNearSpread = i === depthLevels.asks.length - 1;
-              const volPct = (level.volume / depthLevels.maxVolume) * 100;
+              const volPct = depthLevels.maxVolume > 0 ? (level.volume / depthLevels.maxVolume) * 100 : 0;
+              const [priceBase, pricePips] = splitPipDigits(level.price.toFixed(digits));
               return (
                 <div
                   key={`ask-${i}`}
-                  className="rtx-depth-of-market__row grid cursor-pointer transition-colors"
+                  className={`rtx-depth-of-market__row rtx-dom-level ${isNearSpread ? 'rtx-dom-level--best-ask' : ''} grid`}
                   style={{
                     gridTemplateColumns: ladderColumns,
                     height: ROW_H,
@@ -908,25 +945,30 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   }}
                   onClick={() => onPlaceOrder?.(buildDepthOrderRequest('SELL', level.price, volume, 'limit', digits, sl, tp))}
                   onMouseDown={e => e.stopPropagation()}
-                  onMouseEnter={e => { e.currentTarget.style.background = C.bgElevated; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = isNearSpread ? C.askBgBest : C.askBg; }}
                 >
                   <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: C.borderPrimary }}>
-                    <div className="absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.lossDim }} />
-                    {isNearSpread && (
-                      <span className="relative z-10" style={{ fontFamily: MONO, color: C.loss }}>
+                    <div className="rtx-dom-volbar absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.lossDim }} />
+                    {level.volume > 0 && (
+                      <span className="relative z-10" style={{ fontFamily: MONO, color: C.loss, opacity: isNearSpread ? 1 : 0.75 }}>
                         {level.volume.toFixed(2)}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: C.borderPrimary }}>
-                    <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#f87171' }}>
-                      {level.price.toFixed(digits)}
+                    <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#e58a8a' }}>
+                      {priceBase}<span style={{ color: '#fca5a5', fontWeight: 600 }}>{pricePips}</span>
                     </span>
                   </div>
-                  <div className="flex items-center justify-center gap-1">
-                    <span style={{ color: C.loss, fontSize: 9, cursor: 'pointer' }} title={tr("Sell @ {{value0}}", { value0: level.price.toFixed(digits) })}>▼</span>
-                    <span style={{ color: C.profit, fontSize: 9, cursor: 'pointer', opacity: 0.2 }}>▲</span>
+                  <div className="flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); onPlaceOrder?.(buildDepthOrderRequest('SELL', level.price, volume, 'limit', digits, sl, tp)); }}
+                      onMouseDown={e => e.stopPropagation()}
+                      className="rtx-dom-trade-btn"
+                      style={{ color: C.loss }}
+                      title={tr("Sell @ {{value0}}", { value0: level.price.toFixed(digits) })}
+                      aria-label={tr("Sell @ {{value0}}", { value0: level.price.toFixed(digits) })}
+                    >▼</button>
                   </div>
                 </div>
               );
@@ -935,30 +977,32 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             {/* ── Spread row ── */}
             {(bestBid > 0 || bestAsk > 0) && (
               <div
-                className="rtx-depth-of-market__row grid"
+                className="rtx-depth-of-market__row flex items-center justify-center gap-1.5"
                 style={{
-                  gridTemplateColumns: ladderColumns,
                   height: ROW_H,
                   background: C.spreadBg,
                   borderBottom: `1px solid ${C.borderSecondary}`,
                   borderTop: `1px solid ${C.borderSecondary}`,
                 }}
               >
-                <div className="flex items-center justify-center border-r" style={{ borderColor: C.borderSecondary }} />
-                <div className="flex items-center justify-center border-r uppercase tracking-normal" style={{ borderColor: C.borderSecondary, color: '#7aacca' }}>
-                  ↕ {((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)} {tr(" pts")}</div>
-                <div className="flex items-center justify-center" />
+                <span className="uppercase" style={{ color: C.textTertiary, fontSize: 11, letterSpacing: '0.08em' }}>
+                  {tr("Spread")}</span>
+                <span style={{ fontFamily: MONO, color: '#7aacca' }}>
+                  {((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)}</span>
+                <span className="uppercase" style={{ color: C.textTertiary, fontSize: 11, letterSpacing: '0.08em' }}>
+                  {tr(" pts")}</span>
               </div>
             )}
 
             {/* ── BID (Buy) rows ── */}
             {depthLevels.bids.map((level, i) => {
               const isNearSpread = i === 0;
-              const volPct = (level.volume / depthLevels.maxVolume) * 100;
+              const volPct = depthLevels.maxVolume > 0 ? (level.volume / depthLevels.maxVolume) * 100 : 0;
+              const [priceBase, pricePips] = splitPipDigits(level.price.toFixed(digits));
               return (
                 <div
                   key={`bid-${i}`}
-                  className="rtx-depth-of-market__row grid cursor-pointer transition-colors"
+                  className={`rtx-depth-of-market__row rtx-dom-level ${isNearSpread ? 'rtx-dom-level--best-bid' : ''} grid`}
                   style={{
                     gridTemplateColumns: ladderColumns,
                     height: ROW_H,
@@ -967,25 +1011,30 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   }}
                   onClick={() => onPlaceOrder?.(buildDepthOrderRequest('BUY', level.price, volume, 'limit', digits, sl, tp))}
                   onMouseDown={e => e.stopPropagation()}
-                  onMouseEnter={e => { e.currentTarget.style.background = C.bgElevated; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = isNearSpread ? C.bidBgBest : C.bidBg; }}
                 >
                   <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: C.borderPrimary }}>
-                    <div className="absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.profitDim }} />
-                    {isNearSpread && (
-                      <span className="relative z-10" style={{ fontFamily: MONO, color: C.profit }}>
+                    <div className="rtx-dom-volbar absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.profitDim }} />
+                    {level.volume > 0 && (
+                      <span className="relative z-10" style={{ fontFamily: MONO, color: C.profit, opacity: isNearSpread ? 1 : 0.75 }}>
                         {level.volume.toFixed(2)}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: C.borderPrimary }}>
-                    <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#60a5fa' }}>
-                      {level.price.toFixed(digits)}
+                    <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#7ba4e0' }}>
+                      {priceBase}<span style={{ color: '#93c5fd', fontWeight: 600 }}>{pricePips}</span>
                     </span>
                   </div>
-                  <div className="flex items-center justify-center gap-1">
-                    <span style={{ color: C.loss, fontSize: 9, cursor: 'pointer', opacity: 0.2 }}>▼</span>
-                    <span style={{ color: C.profit, fontSize: 9, cursor: 'pointer' }} title={tr("Buy @ {{value0}}", { value0: level.price.toFixed(digits) })}>▲</span>
+                  <div className="flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); onPlaceOrder?.(buildDepthOrderRequest('BUY', level.price, volume, 'limit', digits, sl, tp)); }}
+                      onMouseDown={e => e.stopPropagation()}
+                      className="rtx-dom-trade-btn"
+                      style={{ color: C.profit }}
+                      title={tr("Buy @ {{value0}}", { value0: level.price.toFixed(digits) })}
+                      aria-label={tr("Buy @ {{value0}}", { value0: level.price.toFixed(digits) })}
+                    >▲</button>
                   </div>
                 </div>
               );
@@ -996,63 +1045,64 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
 
       {/* ── Bottom Controls: SL | Volume | TP ── */}
       <div
-        className="flex items-center gap-1 px-1.5 py-[4px] border-t shrink-0"
+        className="flex items-center justify-between gap-2 px-2 py-[5px] border-t shrink-0"
         style={{ borderColor: C.borderPrimary, background: C.bgTertiary }}
+        onMouseDown={e => e.stopPropagation()}
       >
-        <div className="flex items-center gap-0.5">
-          <label className="text-[12px] leading-[18px] font-normal uppercase" style={{ color: C.textTertiary }}>{tr("sl")}</label>
-          <input
-            type="number"
-            value={sl}
-            min={0}
-            step={1}
-            onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0) setSl(v); }}
-            onMouseDown={e => e.stopPropagation()}
-            className="w-[42px] text-[14px] leading-[21px] font-normal text-center border rounded-sm px-0.5 py-[1px] outline-none focus:border-blue-500"
-            style={{ fontFamily: MONO, borderColor: C.borderSecondary, background: C.bgElevated, color: C.textPrimary }}
-          />
-          <div className="flex flex-col">
-            <button onClick={() => setSl(v => v + 1)} className="text-[6px] leading-none" style={{ color: C.textSecondary }} onMouseDown={e => e.stopPropagation()}>▲</button>
-            <button onClick={() => setSl(v => Math.max(0, v - 1))} className="text-[6px] leading-none" style={{ color: C.textSecondary }} onMouseDown={e => e.stopPropagation()}>▼</button>
+        <div className="flex items-center gap-1.5">
+          <span className="rtx-dom-stepper__label">{tr("sl")}</span>
+          <div className="rtx-dom-stepper" title={tr("Stop Loss distance in points (0 = off)")}>
+            <button type="button" className="rtx-dom-stepper__btn" onClick={() => setSlInput(String(Math.max(0, sl - 1)))} aria-label={tr("Decrease Stop Loss")}>−</button>
+            <input
+              type="number"
+              value={slInput}
+              min={0}
+              step={1}
+              onChange={e => setSlInput(e.target.value)}
+              onBlur={() => setSlInput(String(sl))}
+              className="rtx-dom-stepper__input"
+              style={{ fontFamily: MONO }}
+              aria-label={tr("Stop Loss points")}
+            />
+            <button type="button" className="rtx-dom-stepper__btn" onClick={() => setSlInput(String(sl + 1))} aria-label={tr("Increase Stop Loss")}>+</button>
           </div>
         </div>
 
-        <div className="w-px h-4" style={{ background: C.borderSecondary }} />
-
-        <div className="flex items-center gap-0.5 flex-1 justify-center">
-          <input
-            type="number"
-            value={volume}
-            min={0.01}
-            step={0.01}
-            onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) setVolume(Math.round(v * 100) / 100); }}
-            onMouseDown={e => e.stopPropagation()}
-            className="w-[54px] text-[14px] leading-[21px] text-center border rounded-sm px-0.5 py-[1px] font-normal outline-none focus:border-blue-500"
-            style={{ fontFamily: MONO, borderColor: '#1d4ed8', background: C.bgElevated, color: '#60a5fa' }}
-          />
-          <div className="flex flex-col">
-            <button onClick={() => setVolume(v => Math.round((v + 0.01) * 100) / 100)} className="text-[6px] leading-none" style={{ color: C.textSecondary }} onMouseDown={e => e.stopPropagation()}>▲</button>
-            <button onClick={() => setVolume(v => Math.max(0.01, Math.round((v - 0.01) * 100) / 100))} className="text-[6px] leading-none" style={{ color: C.textSecondary }} onMouseDown={e => e.stopPropagation()}>▼</button>
+        <div className="flex items-center gap-1.5">
+          <span className="rtx-dom-stepper__label">{tr("Volume")}</span>
+          <div className="rtx-dom-stepper" title={tr("Order volume in lots")}>
+            <button type="button" className="rtx-dom-stepper__btn" onClick={() => setVolumeInput(Math.max(0.01, Math.round((volume - 0.01) * 100) / 100).toFixed(2))} aria-label={tr("Decrease volume")}>−</button>
+            <input
+              type="number"
+              value={volumeInput}
+              min={0.01}
+              step={0.01}
+              onChange={e => setVolumeInput(e.target.value)}
+              onBlur={() => setVolumeInput(volume.toFixed(2))}
+              className="rtx-dom-stepper__input"
+              style={{ fontFamily: MONO, color: '#93c5fd' }}
+              aria-label={tr("Order volume in lots")}
+            />
+            <button type="button" className="rtx-dom-stepper__btn" onClick={() => setVolumeInput((Math.round((volume + 0.01) * 100) / 100).toFixed(2))} aria-label={tr("Increase volume")}>+</button>
           </div>
         </div>
 
-        <div className="w-px h-4" style={{ background: C.borderSecondary }} />
-
-        <div className="flex items-center gap-0.5">
-          <label className="text-[12px] leading-[18px] font-normal uppercase" style={{ color: C.textTertiary }}>{tr("tp")}</label>
-          <input
-            type="number"
-            value={tp}
-            min={0}
-            step={1}
-            onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0) setTp(v); }}
-            onMouseDown={e => e.stopPropagation()}
-            className="w-[42px] text-[14px] leading-[21px] font-normal text-center border rounded-sm px-0.5 py-[1px] outline-none focus:border-blue-500"
-            style={{ fontFamily: MONO, borderColor: C.borderSecondary, background: C.bgElevated, color: C.textPrimary }}
-          />
-          <div className="flex flex-col">
-            <button onClick={() => setTp(v => v + 1)} className="text-[6px] leading-none" style={{ color: C.textSecondary }} onMouseDown={e => e.stopPropagation()}>▲</button>
-            <button onClick={() => setTp(v => Math.max(0, v - 1))} className="text-[6px] leading-none" style={{ color: C.textSecondary }} onMouseDown={e => e.stopPropagation()}>▼</button>
+        <div className="flex items-center gap-1.5">
+          <span className="rtx-dom-stepper__label">{tr("tp")}</span>
+          <div className="rtx-dom-stepper" title={tr("Take Profit distance in points (0 = off)")}>
+            <button type="button" className="rtx-dom-stepper__btn" onClick={() => setTpInput(String(Math.max(0, tp - 1)))} aria-label={tr("Decrease Take Profit")}>−</button>
+            <input
+              type="number"
+              value={tpInput}
+              min={0}
+              step={1}
+              onChange={e => setTpInput(e.target.value)}
+              onBlur={() => setTpInput(String(tp))}
+              className="rtx-dom-stepper__input"
+              style={{ fontFamily: MONO }}
+              aria-label={tr("Take Profit points")}
+            />
+            <button type="button" className="rtx-dom-stepper__btn" onClick={() => setTpInput(String(tp + 1))} aria-label={tr("Increase Take Profit")}>+</button>
           </div>
         </div>
       </div>
@@ -1060,32 +1110,37 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
       {/* ── Sell / Close / Buy Buttons ── */}
       <div className="flex shrink-0" style={{ borderTop: `1px solid ${C.borderPrimary}` }}>
         <button
+          type="button"
           onClick={() => onPlaceOrder?.(buildDepthOrderRequest('SELL', bestBid, volume, 'market', digits, sl, tp))}
           onMouseDown={e => e.stopPropagation()}
-          className="flex-1 py-[6px] text-[14px] leading-[21px] font-semibold text-white transition-all"
-          style={{ background: C.sellBtn, borderRight: `1px solid ${C.bgSecondary}`, borderRadius: '0 0 0 10px' }}
-          onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.2)')}
-          onMouseLeave={e => (e.currentTarget.style.filter = 'none')}
+          className="rtx-dom-exec-btn rtx-dom-exec-btn--sell"
+          style={{ borderRight: `1px solid ${C.bgSecondary}` }}
+          title={tr("Sell {{value0}} at market", { value0: volume.toFixed(2) })}
         >
-          {tr("Sell")}</button>
+          <span className="rtx-dom-exec-btn__caption">{tr("Sell")}</span>
+          <span className="rtx-dom-exec-btn__price">{bestBid > 0 ? bestBid.toFixed(digits) : '—'}</span>
+        </button>
         <button
+          type="button"
           onClick={handleCloseAll}
           onMouseDown={e => e.stopPropagation()}
-          className="flex-1 py-[6px] text-[14px] leading-[21px] font-semibold transition-all"
-          style={{ background: C.closeBtn, borderRight: `1px solid ${C.bgSecondary}`, color: C.textSecondary }}
-          onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.3)'; e.currentTarget.style.color = C.textPrimary; }}
-          onMouseLeave={e => { e.currentTarget.style.filter = 'none'; e.currentTarget.style.color = C.textSecondary; }}
+          className="rtx-dom-exec-btn rtx-dom-exec-btn--flat"
+          style={{ borderRight: `1px solid ${C.bgSecondary}` }}
+          title={tr("Close all {{value0}} positions", { value0: symbol })}
         >
-          {tr("Close")}</button>
+          <span className="rtx-dom-exec-btn__caption">{tr("Close All")}</span>
+          <span className="rtx-dom-exec-btn__price" style={{ fontSize: 12, fontWeight: 400, opacity: 0.8 }}>{symbol}</span>
+        </button>
         <button
+          type="button"
           onClick={() => onPlaceOrder?.(buildDepthOrderRequest('BUY', bestAsk, volume, 'market', digits, sl, tp))}
           onMouseDown={e => e.stopPropagation()}
-          className="flex-1 py-[6px] text-[14px] leading-[21px] font-semibold text-white transition-all"
-          style={{ background: C.buyBtn, borderRadius: '0 0 10px 0' }}
-          onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.2)')}
-          onMouseLeave={e => (e.currentTarget.style.filter = 'none')}
+          className="rtx-dom-exec-btn rtx-dom-exec-btn--buy"
+          title={tr("Buy {{value0}} at market", { value0: volume.toFixed(2) })}
         >
-          {tr("Buy")}</button>
+          <span className="rtx-dom-exec-btn__caption">{tr("Buy")}</span>
+          <span className="rtx-dom-exec-btn__price">{bestAsk > 0 ? bestAsk.toFixed(digits) : '—'}</span>
+        </button>
       </div>
     </div>
   );

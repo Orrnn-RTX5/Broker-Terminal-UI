@@ -56,7 +56,7 @@ describe('reset layout', () => {
   it('keeps the current language and reports the failure when English cannot be loaded', async () => {
     const feedback = collectOrderFeedback();
     vi.spyOn(i18n, 'loadLanguages').mockImplementation((_language, callback) => {
-      callback?.(new Error('Chunk unavailable'));
+      callback?.(new Error('Chunk unavailable'), i18n.t);
       return Promise.resolve();
     });
 

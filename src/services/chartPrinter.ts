@@ -88,9 +88,28 @@ const PAGE_SIZES: PageSize[] = ['A4', 'Letter', 'Legal', 'A3'];
 const PAGE_ORIENTATIONS: PageOrientation[] = ['portrait', 'landscape'];
 const COLOR_MODES: ColorMode[] = ['color', 'grayscale'];
 
+type ChartCaptureRenderer = typeof import('html2canvas-pro')['default'];
+
 class ChartPrinterService {
   private preferences: PrintPreferences = { ...DEFAULT_PRINT_PREFERENCES };
   private readonly accountPreferences = new Map<string, PrintPreferences>();
+  private captureRendererPromise: Promise<ChartCaptureRenderer> | null = null;
+
+  /** The capture renderer loads on demand; a dev-server restart or a fresh
+   * deploy can invalidate its module URL mid-session, so a failed load resets
+   * the cache (the next attempt re-imports) and reports an actionable error. */
+  private loadCaptureRenderer(): Promise<ChartCaptureRenderer> {
+    if (!this.captureRendererPromise) {
+      this.captureRendererPromise = import('html2canvas-pro')
+        .then((module) => module.default)
+        .catch((error) => {
+          this.captureRendererPromise = null;
+          console.warn('Failed to load the chart capture module:', error);
+          throw new Error('The chart capture module could not be loaded. Reload the terminal and try again.');
+        });
+    }
+    return this.captureRendererPromise;
+  }
 
   private getAccountScope(accountId: string): string {
     const scope = accountId.trim();
@@ -288,7 +307,7 @@ class ChartPrinterService {
     if (bounds.width < 1 || bounds.height < 1 || !container.querySelector('canvas')) {
       throw new Error('The chart is not ready. Wait for it to load, then try again.');
     }
-    const { default: render } = await import('html2canvas-pro');
+    const render = await this.loadCaptureRenderer();
     if (!container.isConnected || getActiveChartSource()?.id !== source.id) {
       throw new Error('The active chart changed. Open Print Preview again.');
     }

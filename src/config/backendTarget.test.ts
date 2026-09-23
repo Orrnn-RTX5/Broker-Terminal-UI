@@ -15,7 +15,7 @@ import {
   resolveBrokerWsUrl,
 } from './backendTarget.js';
 
-type RuntimeWindow = Window & {
+type RuntimeWindow = Omit<Window, 'electron' | 'electronAPI'> & {
   electron?: { window?: unknown };
   electronAPI?: unknown;
   RUNTIME_CONFIG?: Record<string, unknown>;

@@ -14,11 +14,11 @@ function open(subtype = 'text', isNew = false, properties: Partial<Drawing> = {}
 }
 describe('annotation editor', () => {
   it.each([
-    { isNew: true, modifier: 'Ctrl', ctrlKey: true },
-    { isNew: true, modifier: 'Cmd', metaKey: true },
-    { isNew: false, modifier: 'Ctrl', ctrlKey: true },
-    { isNew: false, modifier: 'Cmd', metaKey: true },
-  ])('saves $isNew annotation with $modifier+Enter without bubbling into chart shortcuts', ({ isNew, modifier: _modifier, ...modifiers }) => {
+    { isNew: true, modifier: 'Ctrl', modifiers: { ctrlKey: true } },
+    { isNew: true, modifier: 'Cmd', modifiers: { metaKey: true } },
+    { isNew: false, modifier: 'Ctrl', modifiers: { ctrlKey: true } },
+    { isNew: false, modifier: 'Cmd', modifiers: { metaKey: true } },
+  ])('saves $isNew annotation with $modifier+Enter without bubbling into chart shortcuts', ({ isNew, modifiers }) => {
     const update = vi.spyOn(drawingManager, 'updateDrawingProperties').mockReturnValue(true);
     const background = vi.fn();
     open('text', isNew);

@@ -109,12 +109,13 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog :is
 
 /* Desktop account setup uses the terminal palette with consistent form spacing. */
 html:root .rtx-open-account-dialog.rtx-open-account-dialog--desktop[data-step] {
-  --account-surface: var(--rtx-light-elevated, var(--bg-secondary));
-  --account-subtle: var(--rtx-light-panel-header, var(--bg-tertiary));
-  --account-border: var(--rtx-light-border, var(--border-primary));
+  --account-surface: var(--rtx-light-elevated, #171a21);
+  --account-subtle: var(--rtx-light-panel-header, #1b1f27);
+  --account-border: var(--rtx-light-border, #2a2f3a);
   --account-text: var(--rtx-light-text, var(--text-primary));
   --account-muted: var(--rtx-light-text-secondary, var(--text-secondary));
-  --account-accent: var(--rtx-light-accent, #a78bfa);
+  --account-accent: var(--rtx-light-accent, #818cf8);
+  --account-footer: var(--rtx-light-elevated, #14171d);
   width: 600px;
   max-height: calc(100vh - 32px) !important;
   background: var(--account-surface) !important;
@@ -125,8 +126,6 @@ html:root .rtx-open-account-dialog.rtx-open-account-dialog--desktop[data-step] {
   color: var(--account-text);
   font: 400 13px/1.5 "Segoe UI", var(--font-sans);
 }
-
-.rtx-open-account-dialog--desktop > .absolute { display: none; }
 
 html:root .rtx-open-account-dialog.rtx-open-account-dialog--desktop[data-step] .rtx-open-account-dialog__header {
   padding: 22px 24px 18px;
@@ -152,7 +151,7 @@ html:root .rtx-open-account-dialog.rtx-open-account-dialog--desktop[data-step] .
   width: 40px;
   height: 40px;
   border-radius: 8px;
-  background: var(--rtx-light-accent-soft, var(--bg-quaternary)) !important;
+  background: var(--rtx-light-accent-soft, #232838) !important;
   box-shadow: none !important;
 }
 
@@ -197,7 +196,7 @@ html:root .rtx-open-account-dialog.rtx-open-account-dialog--desktop[data-step] :
 .rtx-account-field > span, .rtx-open-account-dialog--desktop .rtx-country-combobox > label { color: var(--account-muted); font-size: 13px; font-weight: 500; }
 .rtx-account-field small { --rtx-type-size: 11px; margin-left: 7px; font-size: 11px !important; font-weight: 400; color: var(--account-muted); }
 .rtx-account-field--wide { grid-column: 1 / -1; }
-.rtx-account-field :is(input, select) { box-sizing: border-box; width: 100%; min-width: 0; height: 38px; border: 1px solid var(--rtx-light-border-strong, var(--border-secondary)); border-radius: 5px; padding: 0 11px; background: var(--bg-primary); color: var(--account-text); font: inherit; outline: none; }
+.rtx-account-field :is(input, select) { box-sizing: border-box; width: 100%; min-width: 0; height: 38px; border: 1px solid var(--rtx-light-border-strong, #303542); border-radius: 5px; padding: 0 11px; background: var(--rtx-light-field, #1e222a); color: var(--account-text); font: inherit; outline: none; }
 .rtx-account-field :is(input, select):focus { border-color: var(--account-accent); box-shadow: 0 0 0 1px var(--account-accent); }
 .rtx-open-account-dialog--desktop .rtx-country-combobox input { border-radius: 5px; }
 html:root .rtx-open-account-dialog.rtx-open-account-dialog--desktop[data-step] .rtx-country-combobox input[aria-invalid='true'] {
@@ -211,15 +210,15 @@ html:root .rtx-open-account-dialog.rtx-open-account-dialog--desktop[data-step] .
 .rtx-account-consent span { font-size: 13px; line-height: 20px; }
 .rtx-account-consent a { display: inline-block; margin: 8px 0 0 26px; color: var(--account-accent); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 
-.rtx-account-footer { flex-shrink: 0; margin-top: auto; border-top: 1px solid var(--account-border); padding: 16px 24px; background: var(--account-surface); }
+.rtx-account-footer { flex-shrink: 0; margin-top: auto; border-top: 1px solid var(--account-border); padding: 16px 24px; background: var(--account-footer, var(--account-surface)); }
 .rtx-account-footer__actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .rtx-account-footer__actions > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.rtx-account-footer button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-width: 82px; height: 36px; padding: 0 16px; border: 1px solid var(--rtx-light-border-strong, var(--border-secondary)); border-radius: 5px; background: var(--account-surface); color: var(--account-text); font: 500 13px/20px "Segoe UI", var(--font-sans); cursor: pointer; }
-.rtx-account-footer button:hover:not(:disabled) { background: var(--account-subtle); }
+.rtx-account-footer button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-width: 82px; height: 36px; padding: 0 16px; border: 1px solid var(--rtx-light-border-strong, #323845); border-radius: 5px; background: var(--rtx-light-elevated, #232733); color: var(--account-text); font: 500 13px/20px "Segoe UI", var(--font-sans); cursor: pointer; }
+.rtx-account-footer button:hover:not(:disabled) { background: var(--rtx-light-hover, #2a2f3d); }
 .rtx-account-footer button:disabled { opacity: 0.5; cursor: not-allowed; }
 .rtx-account-footer button:focus-visible { outline: 2px solid var(--account-accent); outline-offset: 2px; }
-.rtx-account-footer button.rtx-account-primary { background: var(--rtx-light-accent, #6d28d9); border-color: transparent; color: #fff; }
-.rtx-account-footer button.rtx-account-primary:hover:not(:disabled) { background: var(--rtx-light-accent-strong, #7c3aed); }
+.rtx-account-footer button.rtx-account-primary { background: var(--rtx-light-accent, #4f46e5); border-color: transparent; color: #fff; }
+.rtx-account-footer button.rtx-account-primary:hover:not(:disabled) { background: var(--rtx-light-accent-strong, #6366f1); }
 .rtx-account-primary svg { width: 16px; height: 16px; }
 .rtx-account-error { color: var(--color-loss); margin: 0 0 12px; font-size: 13px; line-height: 20px; }
 .rtx-account-body > .rtx-account-error { margin-top: 16px; margin-bottom: 0; }

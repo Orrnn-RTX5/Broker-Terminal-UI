@@ -87,7 +87,7 @@ const setVisibilityState = (state: DocumentVisibilityState): void => {
   });
 };
 
-type QuoteSocketManagerInternals = QuoteSocketManager & {
+type QuoteSocketManagerInternals = Pick<QuoteSocketManager, keyof QuoteSocketManager> & {
   ws: WebSocket | null;
   handleMessage: (data: unknown) => void;
   sendSubscribe: (symbols?: string[]) => void;

@@ -246,7 +246,7 @@ export class BrokerAPI {
         errData = await response.json();
         errCode = errData.error || errData.code || errCode;
         errMsg = errData.message || errData.error || errMsg;
-      } catch (e) {
+      } catch {
         // Fallback for non-JSON or blank responses
       }
 

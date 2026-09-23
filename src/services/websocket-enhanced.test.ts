@@ -458,7 +458,7 @@ describe('EnhancedWebSocketService connection startup', () => {
     document.dispatchEvent(new Event('visibilitychange'));
     expect(ConnectingWebSocket.instances).toHaveLength(2);
     ConnectingWebSocket.instances[1].open();
-    expect(ConnectingWebSocket.instances[1].sent.map(JSON.parse)).toContainEqual({
+    expect(ConnectingWebSocket.instances[1].sent.map((message) => JSON.parse(message))).toContainEqual({
       action: 'subscribe',
       channel: 'ticks.EURUSD.r',
       channels: ['ticks.EURUSD.r'],

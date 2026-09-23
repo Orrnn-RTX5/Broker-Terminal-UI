@@ -29,17 +29,6 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-const toFinite = (v: unknown, fallback = 0): number => {
-  // FIX: Partial account packets may carry omitted/null fields or Money-like
-  // `{ amount }` values. Neither may silently erase a known metric with zero.
-  if (v === undefined || v === null || v === '') return fallback;
-  const candidate = typeof v === 'object' && v !== null && 'amount' in v
-    ? (v as { amount?: unknown }).amount
-    : v;
-  const n = Number(String(candidate).replace(/,/g, ''));
-  return Number.isFinite(n) ? n : fallback;
-};
-
 const hasOwnValue = (record: any, keys: readonly string[]): boolean => (
   !!record
   && typeof record === 'object'
@@ -69,14 +58,6 @@ const ACCOUNT_DELTA_KEYS = [
   'currency',
   'leverage',
 ] as const;
-
-const firstDefined = (record: any, keys: readonly string[]): unknown => {
-  for (const key of keys) {
-    const value = record?.[key];
-    if (value !== undefined && value !== null && value !== '') return value;
-  }
-  return undefined;
-};
 
 const unwrapAccountRecord = (payload: any): any => {
   const candidates = [

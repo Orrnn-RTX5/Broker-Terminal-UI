@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getTradeWebSocketClient: vi.fn(),
@@ -75,8 +75,8 @@ type TradeSocketStub = {
 };
 
 let tradeSocket: TradeSocketStub;
-let onNewTrade: ReturnType<typeof vi.fn>;
-let onPlacementState: ReturnType<typeof vi.fn>;
+let onNewTrade: Mock<(event: Event) => void>;
+let onPlacementState: Mock<(event: Event) => void>;
 
 const extractWsClientOrderId = (): unknown => {
   const call = mocks.wsPlaceOrder.mock.calls[0] as unknown[] | undefined;
@@ -102,8 +102,8 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     mocks.getTradeWebSocketClient.mockReturnValue(tradeSocket);
     vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(CLIENT_ORDER_ID);
 
-    onNewTrade = vi.fn();
-    onPlacementState = vi.fn();
+    onNewTrade = vi.fn<(event: Event) => void>();
+    onPlacementState = vi.fn<(event: Event) => void>();
     window.addEventListener('rtx:new-trade-placed', onNewTrade);
     window.addEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, onPlacementState);
   });

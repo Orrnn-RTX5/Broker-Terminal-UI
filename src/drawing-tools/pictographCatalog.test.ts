@@ -1,20 +1,31 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PICTOGRAPH_CATEGORIES,
   getPictographItems,
   getPictographStamp,
+  getResolvedPictographDataUrl,
   isPictographStamp,
+  resolvePictographDataUrl,
   type PictographTab,
 } from './pictographCatalog';
 
-const decodeSvg = (url: string): string => {
+const decodeDataUrlSvg = (url: string): string => {
   expect(url).toMatch(/^data:image\/svg\+xml[;,]/);
   const comma = url.indexOf(',');
   return url.slice(0, comma).includes(';base64')
     ? Buffer.from(url.slice(comma + 1), 'base64').toString('utf8')
     : decodeURIComponent(url.slice(comma + 1));
+};
+
+// Icons stay inline data URIs; emoji artwork is a bundled same-origin asset
+// whose URL must map back to the pinned Twemoji file for its own identifier.
+const readSvg = (url: string): string => {
+  if (url.startsWith('data:')) return decodeDataUrlSvg(url);
+  const filename = /(?:^|\/)([0-9a-f-]+\.svg)(?:[?#]|$)/.exec(url)?.[1];
+  expect(filename, `bundled asset URL expected, got: ${url}`).toBeDefined();
+  return readFileSync(resolve(process.cwd(), 'src/assets/pictographs/twemoji', filename!), 'utf8');
 };
 
 describe('bundled pictograph catalog', () => {
@@ -40,7 +51,7 @@ describe('bundled pictograph catalog', () => {
           expect(stamp.glyph.trim()).not.toBe('');
           expect(stamp.label.trim()).not.toBe('');
           expect(getPictographStamp(stamp.id)).toBe(stamp);
-          const svg = decodeSvg(stamp.assetUrl);
+          const svg = readSvg(stamp.assetUrl);
           expect(svg).toContain('<svg');
           expect(svg).toMatch(/viewBox=/);
           expect(svg).not.toMatch(/<script|<foreignObject|\bon\w+\s*=|(?:href|src)\s*=\s*["'](?:https?:|\/\/)/i);
@@ -82,6 +93,48 @@ describe('bundled pictograph catalog', () => {
     expect(getPictographItems('emojis', 'unknown')).toEqual([]);
     expect(getPictographItems('icons', '__proto__')).toEqual([]);
     expect(getPictographItems('stickers', 'constructor')).toEqual([]);
+  });
+
+  describe('export inlining', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('inlines bundled emoji artwork as a data URI and then serves it synchronously', async () => {
+      const stamp = getPictographStamp('emoji:1f600')!;
+      const svgSource = readSvg(stamp.assetUrl);
+      const fetchMock = vi.fn(async () => new Response(svgSource, { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const dataUrl = await resolvePictographDataUrl(stamp);
+      expect(decodeDataUrlSvg(dataUrl)).toBe(svgSource);
+      expect(getResolvedPictographDataUrl(stamp)).toBe(dataUrl);
+      // Later resolutions reuse the cache instead of refetching.
+      await expect(resolvePictographDataUrl(stamp)).resolves.toBe(dataUrl);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns inline icon artwork without any fetch', async () => {
+      const stamp = getPictographStamp('icon:arrow-up')!;
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(resolvePictographDataUrl(stamp)).resolves.toBe(stamp.assetUrl);
+      expect(getResolvedPictographDataUrl(stamp)).toBe(stamp.assetUrl);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('does not cache a failed resolution', async () => {
+      const stamp = getPictographStamp('emoji:1f602')!;
+      const svgSource = readSvg(stamp.assetUrl);
+      const fetchMock = vi.fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValueOnce(new Response(svgSource, { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(resolvePictographDataUrl(stamp)).rejects.toThrow('offline');
+      expect(getResolvedPictographDataUrl(stamp)).toBeUndefined();
+      await expect(resolvePictographDataUrl(stamp).then(decodeDataUrlSvg)).resolves.toBe(svgSource);
+    });
   });
 
   it('includes attribution, the pinned source revision, and the graphics license', () => {

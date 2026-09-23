@@ -245,7 +245,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -305,7 +305,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -503,7 +503,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -530,7 +530,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -580,7 +580,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -638,7 +638,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -688,7 +688,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });

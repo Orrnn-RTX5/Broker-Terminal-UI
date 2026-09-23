@@ -435,7 +435,7 @@ export function OrderPanelDialog({
 }: OrderPanelProps) {
     const tr = useUiTranslation();
   const [symbol, setSymbol] = useState(initialSymbol);
-  const [orderType, setOrderType] = useState<OrderType>('Market Execution');
+  const [orderType] = useState<OrderType>('Market Execution');
   const [volumeStr, setVolumeStr] = useState(() => localStorage.getItem('lastLotSize') || '0.01');
   const [fillPolicy, setFillPolicy] = useState<FillPolicy>('Fill or Kill');
   const [comment, setComment] = useState('');

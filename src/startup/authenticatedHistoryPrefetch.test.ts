@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest';
+import type { OHLCData } from '../services/chartDataService';
 
 const state = vi.hoisted(() => ({
   token: 'token-a', desktop: false,
@@ -17,14 +18,14 @@ import { preloadAuthenticatedStartupHistory, takeAuthenticatedStartupHistory } f
 
 const options = { symbol: 'BTCUSD', timeframe: 'M1', count: 500 };
 const candles = [{ time: 1789479000, open: 100, high: 105, low: 98, close: 102, volume: 10 }];
-let resolve: (value: typeof candles) => void;
-let load: ReturnType<typeof vi.fn>;
+let resolve: (value: OHLCData[]) => void;
+let load: Mock<(signal: AbortSignal) => Promise<OHLCData[]>>;
 let signal: AbortSignal;
 beforeEach(() => {
   vi.useFakeTimers();
   state.token = 'token-a'; state.desktop = false;
   state.scope = { authenticated: true, accountId: '10001', brokerId: 'broker-a', serverUrl: 'https://broker-a.example' };
-  load = vi.fn((requestSignal: AbortSignal) => new Promise<typeof candles>((done, reject) => {
+  load = vi.fn((requestSignal: AbortSignal) => new Promise<OHLCData[]>((done, reject) => {
     resolve = done; signal = requestSignal;
     signal.addEventListener('abort', () => reject(signal.reason), { once: true });
   }));

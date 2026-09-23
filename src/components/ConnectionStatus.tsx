@@ -18,7 +18,7 @@ interface ConnectionStatusProps {
   reconnectCallback?: () => void;
 }
 
-export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusProps) {
+export function ConnectionStatus({ reconnectCallback }: ConnectionStatusProps) {
     const tr = useUiTranslation();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
@@ -97,7 +97,11 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
 
   const handleLogin = () => {
     setShowDropdown(false);
-    setShowLoginDialog(true);
+    if (typeof window !== 'undefined' && (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__) {
+      window.dispatchEvent(new CustomEvent('rtx:openTradeAuth'));
+    } else {
+      setShowLoginDialog(true);
+    }
   };
 
   const handleNetworkRescan = () => {

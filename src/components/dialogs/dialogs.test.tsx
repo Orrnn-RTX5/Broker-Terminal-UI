@@ -10,13 +10,15 @@ import { ExitConfirmDialog } from './ExitConfirmDialog';
 import { PrintPreviewDialog } from './PrintPreviewDialog';
 import { PrintSetupDialog } from './PrintSetupDialog';
 import { SaveWorkspaceDialog } from './SaveWorkspaceDialog';
+import type { UnsavedChanges } from '../../services/exitHandler';
 
-const unsavedChanges = {
+const unsavedChanges: UnsavedChanges = {
   hasWorkspaceChanges: true,
   hasOpenTrades: true,
   hasDraftOrders: false,
   openTradesCount: 2,
   draftOrdersCount: 0,
+  workspaceModified: true,
 };
 
 describe('dialog components', () => {

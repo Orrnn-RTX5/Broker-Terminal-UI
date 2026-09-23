@@ -1,7 +1,6 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import './file-menu-desktop.css';
 import { Icon } from '../ui/Icon';
-import { NewChartSymbolMenu, type NewChartMenuItem } from './NewChartSymbolMenu';
 import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
@@ -40,126 +39,6 @@ type ElectronRuntime = NonNullable<Window['electron']> & {
     app?: {
         quit?: () => void;
     };
-};
-
-interface SymbolData {
-    symbol: string;
-    name: string;
-    category: string;
-}
-
-// Organized symbol catalog for YoForex broker
-const YOFOREX_SYMBOLS: { group: string; pairs: { symbol: string; desc: string }[] }[] = [
-    {
-        group: 'Major Pairs',
-        pairs: [
-            { symbol: 'EURUSD', desc: 'Euro / US Dollar' },
-            { symbol: 'GBPUSD', desc: 'Pound / US Dollar' },
-            { symbol: 'USDJPY', desc: 'US Dollar / Yen' },
-            { symbol: 'USDCHF', desc: 'US Dollar / Franc' },
-            { symbol: 'AUDUSD', desc: 'Aussie / US Dollar' },
-            { symbol: 'USDCAD', desc: 'US Dollar / CAD' },
-            { symbol: 'NZDUSD', desc: 'Kiwi / US Dollar' },
-        ]
-    },
-    {
-        group: 'Cross Pairs',
-        pairs: [
-            { symbol: 'EURGBP', desc: 'Euro / Pound' },
-            { symbol: 'EURJPY', desc: 'Euro / Yen' },
-            { symbol: 'EURCHF', desc: 'Euro / Franc' },
-            { symbol: 'EURAUD', desc: 'Euro / Aussie' },
-            { symbol: 'EURCAD', desc: 'Euro / CAD' },
-            { symbol: 'EURNZD', desc: 'Euro / Kiwi' },
-            { symbol: 'GBPJPY', desc: 'Pound / Yen' },
-            { symbol: 'GBPCHF', desc: 'Pound / Franc' },
-            { symbol: 'GBPAUD', desc: 'Pound / Aussie' },
-            { symbol: 'GBPCAD', desc: 'Pound / CAD' },
-            { symbol: 'GBPNZD', desc: 'Pound / Kiwi' },
-            { symbol: 'AUDJPY', desc: 'Aussie / Yen' },
-            { symbol: 'AUDCHF', desc: 'Aussie / Franc' },
-            { symbol: 'AUDCAD', desc: 'Aussie / CAD' },
-            { symbol: 'AUDNZD', desc: 'Aussie / Kiwi' },
-            { symbol: 'CADJPY', desc: 'CAD / Yen' },
-            { symbol: 'CADCHF', desc: 'CAD / Franc' },
-            { symbol: 'NZDJPY', desc: 'Kiwi / Yen' },
-            { symbol: 'NZDCHF', desc: 'Kiwi / Franc' },
-            { symbol: 'CHFJPY', desc: 'Franc / Yen' },
-        ]
-    },
-    {
-        group: 'Metals & Crypto',
-        pairs: [
-            { symbol: 'XAUUSD', desc: 'Gold / US Dollar' },
-            { symbol: 'XAGUSD', desc: 'Silver / US Dollar' },
-            { symbol: 'BTCUSD', desc: 'Bitcoin / US Dollar' },
-            { symbol: 'ETHUSD', desc: 'Ethereum / US Dollar' },
-        ]
-    },
-];
-
-// YoForex symbol panel – clean pair list only
-const YoForexPanel: React.FC<{
-    activePair: string;
-    onSelect: (sym: string) => void;
-}> = ({ activePair, onSelect }) => {
-    const tr = useUiTranslation();
-    const [search, setSearch] = React.useState('');
-
-    const filtered = YOFOREX_SYMBOLS.map(grp => ({
-        ...grp,
-        pairs: grp.pairs.filter(p =>
-            p.symbol.toLowerCase().includes(search.toLowerCase())
-        )
-    })).filter(grp => grp.pairs.length > 0);
-
-    return (
-        <div className="rtx-menu-surface flex flex-col overflow-hidden" style={{ width: 180, maxHeight: 420 }}>
-            {/* Search */}
-            <div className="px-2 pt-2 pb-1 flex-none">
-                <div className="flex items-center gap-1.5 bg-[#111] [.rtx-advanced-view_&]:bg-gray-100 border border-zinc-700/60 [.rtx-advanced-view_&]:border-gray-200 rounded px-2 py-1">
-                    <svg className="w-3 h-3 text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 flex-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <input
-                        autoFocus
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder={tr("Search...")}
-                        className="bg-transparent text-[14px] font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-900 placeholder-zinc-600 [.rtx-advanced-view_&]:placeholder-gray-400 outline-none w-full"
-                        onClick={e => e.stopPropagation()}
-                    />
-                </div>
-            </div>
-            {/* Pair list */}
-            <div className="overflow-y-auto flex-1 pb-1 px-1" style={{ scrollbarWidth: 'none' }}>
-                {filtered.map(grp => (
-                    <div key={grp.group}>
-                        <div className="px-2 pt-2 pb-0.5 text-[12px] font-medium tracking-widest text-zinc-600 [.rtx-advanced-view_&]:text-gray-500 uppercase">{grp.group}</div>
-                        {grp.pairs.map(p => {
-                            const isActive = activePair === p.symbol;
-                            return (
-                                <button
-                                    key={p.symbol}
-                                    onClick={() => onSelect(p.symbol)}
-                                    className={`w-full flex min-h-[30px] items-center gap-1.5 px-2 py-1.5 text-[14px] font-normal rounded text-left cursor-default transition-colors duration-75 ${isActive
-                                            ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600 bg-emerald-500/10 [.rtx-advanced-view_&]:bg-emerald-50'
-                                            : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
-                                        }`}
-                                >
-                                    <span className={`text-[10px] w-3 flex-none ${isActive ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600' : 'text-transparent'}`}>✓</span>
-                                    <span className="font-mono">{p.symbol}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                ))}
-                {filtered.length === 0 && (
-                    <div className="px-3 py-3 text-center text-[12px] font-normal text-zinc-600 [.rtx-advanced-view_&]:text-gray-500">{tr("No pairs found")}</div>
-                )}
-            </div>
-        </div>
-    );
 };
 
 export interface FileMenuProps {
@@ -210,7 +89,6 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const [showPrintPreviewDialog, setShowPrintPreviewDialog] = useState(false);
     const [showExitDialog, setShowExitDialog] = useState(false);
     const [showOpenAccountDialog, setShowOpenAccountDialog] = useState(false);
-    const [newChartOpen, setNewChartOpen] = useState(false);
     const [profilesOpen, setProfilesOpen] = useState(false);
     const [deleteSubmenuOpen, setDeleteSubmenuOpen] = useState(false);
     const [activeProfileName, setActiveProfileName] = useState(() => {
@@ -273,84 +151,6 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         showSaveDialog,
         showSavePictureDialog,
     ]);
-
-    // Dynamic symbol loading for New Chart menu
-    const [availableSymbols, setAvailableSymbols] = useState<SymbolData[]>([]);
-    const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
-    const isAuthenticated = useAppStore(state => state.isAuthenticated);
-
-    // The always-mounted shortcut owner has no symbol menu to populate.
-    useEffect(() => {
-        if (!isAuthenticated || shortcutsOnly) {
-            setAvailableSymbols(current => current.length > 0 ? [] : current);
-            setIsLoadingSymbols(false);
-            return;
-        }
-
-        let active = true;
-        const fetchSymbols = async () => {
-            try {
-                const { default: api } = await import('../../services/api');
-                if (!active) return;
-                setIsLoadingSymbols(true);
-                const symbols = await api.market.getSymbols();
-                if (active && symbols && symbols.length > 0) {
-                    setAvailableSymbols(symbols.map(s => ({
-                        symbol: s.id || s.name, // Mapping id or name to symbol
-                        name: s.name,
-                        category: s.category
-                    })));
-                }
-            } catch (error) {
-                if (active) console.error('Failed to load menu symbols:', error);
-            } finally {
-                if (active) setIsLoadingSymbols(false);
-            }
-        };
-
-        fetchSymbols();
-        return () => { active = false; };
-    }, [isAuthenticated, shortcutsOnly]);
-
-    // Build nested menu structure from flat symbol list
-    const buildNestedMenu = (symbols: SymbolData[]): NewChartMenuItem[] => {
-        const root: NewChartMenuItem[] = [];
-        const groups: Record<string, SymbolData[]> = {};
-
-        symbols.forEach(sym => {
-            // If category is empty, it's a root item
-            if (!sym.category || sym.category.trim() === '') {
-                root.push({
-                    label: sym.name,
-                    symbol: sym.symbol
-                });
-                return;
-            }
-
-            const parts = sym.category.split('.');
-            const topLevel = parts[0];
-            if (!groups[topLevel]) groups[topLevel] = [];
-
-            if (parts.length > 1) {
-                groups[topLevel].push({ ...sym, category: parts.slice(1).join('.') });
-            } else {
-                groups[topLevel].push({ ...sym, category: '' });
-            }
-        });
-
-        // Add grouped items (folders) after root items
-        Object.keys(groups).sort().forEach(key => {
-            const groupSymbols = groups[key];
-            root.push({
-                label: key,
-                children: buildNestedMenu(groupSymbols)
-            });
-        });
-
-        return root;
-    };
-
-    const newChartMenuItems = shortcutsOnly ? [] : buildNestedMenu(availableSymbols);
 
     // Get current symbol and timeframe from store
     const selectedSymbol = useAppStore(state => state.selectedSymbol);
@@ -601,49 +401,9 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     </>
                 )}
 
-                {/* New Chart - Click to open pairs panel directly */}
-                <div className="relative px-1">
-                    <button
-                        onClick={() => setNewChartOpen(o => !o)}
-                        className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left cursor-default group ${newChartOpen ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827]' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
-                            }`}
-                        title={tr("Open a new chart for a symbol")}
-                    >
-                        <div className="w-4 flex items-center justify-center text-emerald-500">
-                            <Icon name="plus-circle" size="sm" />
-                        </div>
-                        <span className="flex-1">{t('menu.file.newChart')}</span>
-                        <span className="text-[10px] text-zinc-500 [.rtx-advanced-view_&]:text-gray-400">{newChartOpen ? '▼' : '▶'}</span>
-                    </button>
-
-                    {/* Pairs panel — appears directly to the right, no intermediate submenu */}
-                    {newChartOpen && (
-                        <div className="absolute left-full top-0 -ml-0.5 z-[101]">
-                            {isLoadingSymbols ? (
-                                <div className="rtx-menu-surface w-[220px] px-3 py-3 text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 text-[12px] font-normal flex items-center gap-2">
-                                    <Icon name="refresh" size="sm" className="animate-spin" />
-                                    {tr("Connecting to broker...")}</div>
-                            ) : newChartMenuItems.length > 0 ? (
-                                <NewChartSymbolMenu
-                                    items={newChartMenuItems}
-                                    activeSymbol={selectedSymbol}
-                                    onSelect={(symbol) => {
-                                        window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol, newTab: true } }));
-                                        setNewChartOpen(false);
-                                    }}
-                                />
-                            ) : (
-                                <YoForexPanel
-                                    activePair={selectedSymbol}
-                                    onSelect={(sym) => {
-                                        window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: sym, newTab: true } }));
-                                        setNewChartOpen(false);
-                                    }}
-                                />
-                            )}
-                        </div>
-                    )}
-                </div>
+                {/* New Chart was removed from this menu on web and desktop:
+                    charts open from the symbol search, where symbols and their
+                    groups are browsed and searched. */}
 
                 {/* Open Deleted */}
                 <div className="relative group/deleted px-1 [&:hover>div.submenu]:block">

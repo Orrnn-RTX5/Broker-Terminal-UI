@@ -6,7 +6,7 @@
 
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
-import { DockManager, dockManager, DockLayout, DockPanelConfig, DropZone, DockDirection, MAX_CHART_PANELS, getChartPanelCount, type ChartArrangement, type AddChartPanelOptions, type AddChartPanelResult } from '../services/dockManager';
+import { dockManager, DockLayout, DockPanelConfig, DropZone, DockDirection, MAX_CHART_PANELS, getChartPanelCount, type ChartArrangement, type AddChartPanelOptions, type AddChartPanelResult } from '../services/dockManager';
 import { runOutsideChartFocus } from '../utils/advancedViewRootClasses';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
 import { getActiveChartSource } from '../services/activeChartSource';

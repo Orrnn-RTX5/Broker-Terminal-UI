@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildVolumeProfile, calculateAnchoredVwap, projectSectorBoundaryPoint, renderForecastingMeasurementDrawing, resolveForecastSeries, selectBarsInTimeRange, type ForecastingMeasurementRendererInput } from './forecastingMeasurementRenderer';
+import { buildVolumeProfile, calculateAnchoredVwap, projectSectorBoundaryPoint, renderForecastingMeasurementDrawing, resolveForecastSeries, selectBarsInTimeRange, type ForecastingMeasurementRendererInput, type ForecastingPoint } from './forecastingMeasurementRenderer';
 
 const bars = [
   { time: 1, open: 10, high: 12, low: 9, close: 11, volume: 2 },
   { time: 2, open: 11, high: 14, low: 10, close: 13, volume: 4 },
   { time: 3, open: 13, high: 15, low: 12, close: 14, volume: 3 },
 ];
-const input = (subtype: ForecastingMeasurementRendererInput['subtype'], points = [{ time: 1, price: 11 }, { time: 3, price: 14 }, { time: 3, price: 12 }]): ForecastingMeasurementRendererInput => {
+const input = (subtype: ForecastingMeasurementRendererInput['subtype'], points: ForecastingPoint[] = [{ time: 1, price: 11 }, { time: 3, price: 14 }, { time: 3, price: 12 }]): ForecastingMeasurementRendererInput => {
   const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   return { group, subtype, points, plot: { width: 400, height: 250 }, series: bars, timeToCoordinate: (time) => time * 100, priceToCoordinate: (price) => 250 - price * 10, formatPrice: (price) => price.toFixed(1), formatTime: (time) => `T${time}` };
 };

@@ -49,7 +49,8 @@ describe('trade gateway normalization', () => {
       marginLevel: '4000',
       currency: 'USD',
       leverage: '500',
-    })).toMatchObject({
+      // Wire payloads can carry numeric strings; normalizeAccount must coerce them.
+    } as unknown as Parameters<typeof normalizeAccount>[0])).toMatchObject({
       balance: 10000.5,
       equity: 0,
       hasBackendBalance: true,
@@ -755,7 +756,7 @@ describe('trade gateway normalization', () => {
   ])('keeps %s position display provenance through repeated normalization', (_name, display, available) => {
     const raw = { ticket: 41, symbol: 'BTCUSD', price_open: 81000, state_version: '9007199254740993123', ...display };
     const first = normalizePosition(raw as Parameters<typeof normalizePosition>[0]);
-    const second = normalizePosition(first);
+    const second = normalizePosition(first as unknown as Parameters<typeof normalizePosition>[0]); // re-normalizing app-shaped output is intentional
     for (const result of [first, second]) {
       expect(result).toMatchObject({
         id: 41,

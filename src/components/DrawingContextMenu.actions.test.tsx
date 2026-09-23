@@ -17,9 +17,16 @@ vi.mock('../services/drawingApi', () => ({
 import { drawingManager, type DrawingType } from '../services/drawingManager';
 import { DrawingContextMenu } from './DrawingContextMenu';
 
-const charts: ReturnType<typeof createChart>[] = [];
+interface ChartFixture {
+    container: HTMLDivElement;
+    contextId: string;
+    symbol: string;
+    activate: () => void;
+}
 
-function createChart(contextId: string, symbol: string) {
+const charts: ChartFixture[] = [];
+
+function createChart(contextId: string, symbol: string): ChartFixture {
     const container = document.createElement('div');
     Object.defineProperty(container, 'clientWidth', { value: 500 });
     Object.defineProperty(container, 'clientHeight', { value: 300 });

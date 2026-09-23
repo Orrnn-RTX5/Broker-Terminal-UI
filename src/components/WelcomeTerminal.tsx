@@ -1159,11 +1159,15 @@ export function WelcomeTerminal({
                                         <LoginIcon name="lock" />
                                         <input
                                             id="rtxPassword"
-                                            name="password"
-                                            type={showPassword ? 'text' : 'password'}
+                                            name="account-key"
+                                            type="text"
+                                            className={showPassword ? undefined : 'rtx-secret-input'}
                                             placeholder={tr("Enter Password")}
                                             required
-                                            autoComplete="current-password"
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                            autoCorrect="off"
+                                            autoCapitalize="none"
                                             value={password}
                                             disabled={loading || (isDesktopBrokerSelection && !desktopLoginReady)}
                                             onChange={e => setPassword(e.target.value)}

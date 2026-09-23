@@ -212,26 +212,6 @@ export const HistoryDownloader: React.FC = () => {
     }
   };
 
-  const handleClearAll = async () => {
-    const confirmed = await useConfirmStore.getState().showConfirm(
-      tr('Clear historical cache'),
-      tr('Remove all locally cached historical data? Download tasks are not affected.'),
-    );
-    if (!confirmed) return;
-
-    setClearingSymbol('*');
-    setOperationError(null);
-    try {
-      await historyDataManager.clearAll();
-      await Promise.all([loadSymbols(), loadStorageStats()]);
-    } catch (error) {
-      console.error('Failed to clear historical cache:', error);
-      setOperationError('The historical data cache could not be cleared.');
-    } finally {
-      setClearingSymbol(null);
-    }
-  };
-
   const formatBytes = (bytes: number): string => {
     if (!bytes) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];

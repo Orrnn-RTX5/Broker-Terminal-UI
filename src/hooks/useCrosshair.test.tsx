@@ -2,7 +2,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react';
 import { useRef } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { useCrosshair } from './useCrosshair';
 
@@ -72,7 +72,7 @@ describe('useCrosshair dirty rendering', () => {
   let originalClientHeight: PropertyDescriptor | undefined;
   let originalOffsetWidth: PropertyDescriptor | undefined;
   let resizeCallbacks: Set<ResizeObserverCallback>;
-  let resizeDisconnect: ReturnType<typeof vi.fn>;
+  let resizeDisconnect: Mock<() => void>;
 
   const flushFrames = () => {
     const pending = Array.from(frames.entries());
@@ -87,7 +87,7 @@ describe('useCrosshair dirty rendering', () => {
     layoutWidth = 500;
     layoutHeight = 300;
     resizeCallbacks = new Set();
-    resizeDisconnect = vi.fn();
+    resizeDisconnect = vi.fn<() => void>();
     requestFrame = vi.fn((callback: FrameRequestCallback) => {
       const id = nextFrameId++;
       frames.set(id, callback);
@@ -138,11 +138,11 @@ describe('useCrosshair dirty rendering', () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     if (originalClientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', originalClientWidth);
-    else delete (HTMLElement.prototype as Partial<HTMLElement>).clientWidth;
+    else Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
     if (originalClientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight);
-    else delete (HTMLElement.prototype as Partial<HTMLElement>).clientHeight;
+    else Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
     if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
-    else delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+    else Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
   });
 
   it('renders only dirty frames, coalesces pointer/chart events, and caches label width', () => {

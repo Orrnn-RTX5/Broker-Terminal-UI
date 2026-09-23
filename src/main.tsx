@@ -26,7 +26,7 @@ import { mountApp } from './bootstrap';
   (console as any).groupEnd = noop;
 
   // Swallow all uncaught JS errors silently
-  window.onerror = (_msg, _src, _line, _col, _err) => true;
+  window.onerror = () => true;
 
   // Swallow all unhandled promise rejections silently
   window.addEventListener('unhandledrejection', (e) => {

@@ -145,7 +145,7 @@ describe('directory broker login address', () => {
 });
 
 describe('isBrokerSuspended', () => {
-  const broker = (overrides: Partial<BrokerDiscoveryItem>): BrokerDiscoveryItem => ({
+  const broker = (overrides: Partial<BrokerDiscoveryItem> = {}): BrokerDiscoveryItem => ({
     broker_id: 'some-broker',
     broker_name: 'Some Broker',
     logo_url: '',

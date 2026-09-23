@@ -851,6 +851,175 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog :is(input, se
   color-scheme: light !important;
 }
 
+/* The trade auth dialog ships a hardcoded dark palette; without these tokens
+   its title and action labels keep dark-theme colors on the light shell. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-backdrop {
+  background: rgba(32, 36, 42, 0.28) !important;
+  backdrop-filter: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  border-radius: 10px !important;
+  color: var(--rtx-light-text) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-dialog__header,
+  .rtx-auth-dialog__footer) {
+  border-color: var(--rtx-light-border) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__title {
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__close {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__close:hover {
+  background: var(--rtx-light-hover) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__close:active {
+  background: var(--rtx-light-pressed) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-order-card,
+  .rtx-auth-broker) {
+  background: var(--rtx-light-panel-subtle) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-order-symbol,
+  .rtx-auth-broker__value) {
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-order-volume,
+  .rtx-auth-order-dot) {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-broker__label {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-order-note {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-order-note-icon {
+  color: var(--rtx-light-accent) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-order-note-text {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-badge--buy {
+  background: rgba(4, 120, 87, 0.1) !important;
+  box-shadow: inset 0 0 0 1px rgba(4, 120, 87, 0.35) !important;
+  color: var(--color-profit) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-badge--sell {
+  background: rgba(185, 28, 28, 0.1) !important;
+  box-shadow: inset 0 0 0 1px rgba(185, 28, 28, 0.35) !important;
+  color: var(--color-loss) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-badge--action {
+  background: var(--rtx-light-panel-header) !important;
+  box-shadow: inset 0 0 0 1px var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--primary,
+  .rtx-auth-button[data-variant='primary']) {
+  background: var(--rtx-light-accent) !important;
+  border-color: var(--rtx-light-accent) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--primary,
+  .rtx-auth-button[data-variant='primary']):hover:not(:disabled) {
+  background: var(--rtx-light-accent-strong) !important;
+  border-color: var(--rtx-light-accent-strong) !important;
+  color: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--primary,
+  .rtx-auth-button[data-variant='primary']):active:not(:disabled) {
+  background: var(--rtx-light-accent-pressed) !important;
+  border-color: var(--rtx-light-accent-pressed) !important;
+  color: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--secondary,
+  .rtx-auth-button[data-variant='ghost']) {
+  background: var(--rtx-light-panel) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text-secondary) !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--secondary,
+  .rtx-auth-button[data-variant='ghost']):hover:not(:disabled) {
+  background: var(--rtx-light-hover) !important;
+  border-color: var(--rtx-light-control-border-hover) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--secondary,
+  .rtx-auth-button[data-variant='ghost']):active:not(:disabled) {
+  background: var(--rtx-light-pressed) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-guest-link {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-guest-link:hover {
+  background: var(--rtx-light-hover) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field__label {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field input:hover:not(:focus) {
+  border-color: var(--rtx-light-control-border-hover) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field__hint {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-alert {
+  background: rgba(185, 28, 28, 0.08) !important;
+  border-color: rgba(185, 28, 28, 0.3) !important;
+  color: var(--color-loss) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-button:disabled {
+  background: var(--rtx-light-panel-subtle) !important;
+  border-color: var(--rtx-light-border) !important;
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog :is(button, input):focus-visible {
+  outline-color: var(--rtx-light-accent) !important;
+}
+
 /* Data Window receives stable hooks so its inline dark fallback cannot leak. */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-data-window {
   background: var(--rtx-light-panel) !important;

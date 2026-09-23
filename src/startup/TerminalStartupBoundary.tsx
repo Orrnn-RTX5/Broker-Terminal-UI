@@ -1,5 +1,4 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { useUiTranslation } from '../hooks/useUiTranslation';
 import { TerminalLoadFallback } from './TerminalLoadFallback';
 import { useDesktopStartupReady } from './useDesktopStartupReady';
 
@@ -24,24 +23,24 @@ export function TerminalStartupBoundary({
   waitForChart: boolean;
   children: ReactNode;
 }) {
-  const tr = useUiTranslation();
   const [parts, setParts] = useState({ chart: false, marketWatch: false });
   const [revealed, setRevealed] = useState(false);
-  const [slow, setSlow] = useState(false);
   const reportReady = useCallback((part: StartupPart) => {
     setParts(previous => previous[part] ? previous : { ...previous, [part]: true });
   }, []);
   const ready = dataReady && parts.marketWatch && (!waitForChart || parts.chart);
   const pending = !revealed && !ready;
-  useDesktopStartupReady(!pending || slow);
+  useDesktopStartupReady(!pending);
 
   useEffect(() => {
     if (ready) setRevealed(true);
   }, [ready]);
 
+  // A slow or unreachable backend must not trap the user on the loading
+  // screen: open the terminal anyway and let data stream in when it arrives.
   useEffect(() => {
     if (!pending) return;
-    const timer = window.setTimeout(() => setSlow(true), 15_000);
+    const timer = window.setTimeout(() => setRevealed(true), 15_000);
     return () => window.clearTimeout(timer);
   }, [pending]);
 
@@ -58,14 +57,7 @@ export function TerminalStartupBoundary({
         </div>
         {pending && (
           <div style={{ position: 'absolute', inset: 0 }}>
-            <TerminalLoadFallback message={slow ? 'The connection is taking longer than usual.' : undefined}>
-              {slow && (
-                <div className="rtx-terminal-loading__actions">
-                  <button type="button" onClick={() => window.location.reload()}>{tr('Retry')}</button>
-                  <button type="button" onClick={() => setRevealed(true)}>{tr('Continue to terminal')}</button>
-                </div>
-              )}
-            </TerminalLoadFallback>
+            <TerminalLoadFallback />
           </div>
         )}
       </div>

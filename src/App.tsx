@@ -43,7 +43,7 @@ import { captureTradeOrderIntent } from './services/orderLatencyTelemetry';
 import { loadSessionTradeSnapshot, seedValidatedSessionAccountSummary } from './services/tradeStartupSnapshot';
 import { chartDataService } from './services/chartDataService';
 import { resolveOptionalPositionTime, resolvePositionOpenTime } from './services/tradePositionTime';
-import { API_BASE_URL, WS_ENDPOINTS, updateDynamicUrls } from './config/api';
+import { WS_ENDPOINTS, updateDynamicUrls } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useActiveMarketSymbols, useMarketInstruments } from './hooks/useLiveMarketData';
 import { getCachedSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useSymbolMarketStatus';
@@ -198,12 +198,6 @@ const toSettingsChartType = (chartType: ChartType) => {
   if (chartType === 'line') return 'Line' as const;
   if (chartType === 'area') return 'Area' as const;
   return 'Candlesticks' as const;
-};
-
-// Helper to get auth headers for fetch
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('auth_token');
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
 };
 
 const parseStoredTokenExpiryMs = (expiresAt: unknown): number | null => {
@@ -731,7 +725,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const refreshToken = localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
     return Boolean(targetLogin && (token || refreshToken));
   });
-  const [autoAuthError, setAutoAuthError] = useState<string | null>(null);
+  const [, setAutoAuthError] = useState<string | null>(null);
   const [initialTradeSnapshotSettledFor, setInitialTradeSnapshotSettledFor] = useState('');
   useGuestMarketData(guestMarketAccess && !isAuthenticated && !isAutoAuthenticating);
   const [tokenSessionVersion, setTokenSessionVersion] = useState(0);
@@ -739,16 +733,16 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const hasInitialAccountSnapshot = useAppStore(state => state.account !== null);
   const [selectedSymbol, setSelectedSymbol] = useState<string>(DEFAULT_CHART_SYMBOL);
   const [positions, setPositions] = useState<Position[]>([]);
-  const [account, setAccount] = useState<Account | null>(null);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [ledger, setLedger] = useState<any[]>([]);
+  const [, setAccount] = useState<Account | null>(null);
+  const [, setOrders] = useState<any[]>([]);
+  const [, setLedger] = useState<any[]>([]);
   const [volume, setVolume] = useState(0.01);
   const [chartType, setChartType] = useState<ChartType>(() => {
     const saved = localStorage.getItem('rtx5_chart_type');
     return (saved as ChartType) || 'candlestick';
   });
   const [timeframe, setTimeframe] = useState<Timeframe>(DEFAULT_CHART_TIMEFRAME);
-  const [brokerConfig, setBrokerConfig] = useState<BrokerConfig | null>(null);
+  const [, setBrokerConfig] = useState<BrokerConfig | null>(null);
   const [dockHeight, setDockHeight] = useState(() => {
     const saved = localStorage.getItem('dockHeight');
     return saved ? parseInt(saved, 10) : 250;
@@ -789,7 +783,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     enabled: (isAuthenticated || guestMode) && Boolean(selectedSymbol),
   });
 
-  const [enableHistoricalData] = useState(true);
 
   accountIdRef.current = accountId;
   isAuthenticatedRef.current = isAuthenticated;
@@ -1079,7 +1072,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const savedAccounts = storeState.savedAccounts || [];
       if (savedAccounts.some((account: any) => account.password)) {
         useAppStore.setState({
-          savedAccounts: savedAccounts.map(({ password: _password, ...account }: any) => account)
+          savedAccounts: savedAccounts.map((savedAccount: any) => {
+            const sanitized = { ...savedAccount };
+            delete sanitized.password;
+            return sanitized;
+          })
         } as any);
       }
       const lastAccountId = storeState.accountId;
@@ -1251,7 +1248,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [showDOM, setShowDOM] = useState(false);
   const [domSymbol, setDomSymbol] = useState<string>(selectedSymbol);
   const [showAccountPanel, setShowAccountPanel] = useState(false);
-  const [showOneClick, setShowOneClick] = useState(false);
   const [domPos, setDomPos] = useState({ x: 620, y: 56 });
   const [domSize, setDomSize] = useState({ w: 520, h: 540 });
   const [showChartProperties, setShowChartProperties] = useState(false);
@@ -1542,14 +1538,27 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [pendingTradeIntent, setPendingTradeIntent] = useState<TradingAuthIntent | null>(null);
 
   useEffect(() => {
+    (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__ = true;
     const handleTradingAuthRequest = (event: Event) => {
       const intent = (event as CustomEvent<TradingAuthIntent>).detail;
-      if (!intent) return;
-      setPendingTradeIntent(intent);
+      setPendingTradeIntent(intent || null);
+      setTradeAuthOpen(true);
+    };
+    const handleGeneralLoginRequest = () => {
+      setPendingTradeIntent(null);
       setTradeAuthOpen(true);
     };
     window.addEventListener(TRADING_AUTH_REQUEST_EVENT, handleTradingAuthRequest);
-    return () => window.removeEventListener(TRADING_AUTH_REQUEST_EVENT, handleTradingAuthRequest);
+    window.addEventListener('rtx:openTradeAuth', handleGeneralLoginRequest);
+    window.addEventListener('rtx:openLoginDialog', handleGeneralLoginRequest);
+    window.addEventListener('rtx:requestTradeLogin', handleGeneralLoginRequest);
+    return () => {
+      delete (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__;
+      window.removeEventListener(TRADING_AUTH_REQUEST_EVENT, handleTradingAuthRequest);
+      window.removeEventListener('rtx:openTradeAuth', handleGeneralLoginRequest);
+      window.removeEventListener('rtx:openLoginDialog', handleGeneralLoginRequest);
+      window.removeEventListener('rtx:requestTradeLogin', handleGeneralLoginRequest);
+    };
   }, []);
 
   const handleTradeAuthClose = useCallback(() => {
@@ -2855,36 +2864,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       publishOrderFeedback(formatOrderError(err));
     }
   }, [ensureMarketOpenForOrder, getAllowedSymbol, getLiveTradingLogin, orderPanelSymbol, selectedSymbol, refreshPositions, refreshOrdersAndHistory]);
-
-  const closePosition = useCallback(async (tradeId: number, volume?: number) => {
-    if (volume !== undefined) {
-      console.error('Partial close is unsupported by the trading API');
-      return;
-    }
-    // Trigger close sound
-    import('./utils/audio').then(m => m.playSystemSound('close'));
-    const closeSnapshots = buildTradeOverlayCloseSnapshots(
-      useAppStore.getState().positions.filter((position) => position.id === tradeId) as Position[],
-    );
-    markLocalTradeMutation([tradeId]);
-    dispatchTradeOverlayCloseState([tradeId], 'pending', { snapshots: closeSnapshots });
-    useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== tradeId));
-    try {
-      await api.positions.closePosition(String(tradeId));
-      markLocalTradeMutation();
-      dispatchTradeOverlayCloseState([tradeId], 'confirmed', { snapshots: closeSnapshots });
-      const loginId = getLiveTradingLogin() || undefined;
-      refreshPositions(loginId, { allowWsCommit: true }); // fire-and-forget
-      if (loginId) {
-        refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history after close:', err));
-      }
-    } catch (err) {
-      clearOptimisticClosedTickets([tradeId]);
-      dispatchTradeOverlayCloseState([tradeId], 'failed');
-      console.error('Close failed:', err);
-      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
-    }
-  }, [clearOptimisticClosedTickets, getLiveTradingLogin, markLocalTradeMutation, refreshOrdersAndHistory, refreshPositions]);
 
   // useMarketInstruments owns the authenticated catalog request. Reuse that
   // result for selection and trading so App does not issue a second identical

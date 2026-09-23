@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TickMarkType } from 'lightweight-charts';
+import { TickMarkType, type UTCTimestamp } from 'lightweight-charts';
 import {
   getTradingChartDefaultRightPadBars,
   getTradingChartDefaultVisibleBars,
@@ -14,7 +14,7 @@ import {
 describe('chartTimeFormat', () => {
   it.each(['fr', 'hi', 'ar'])('localizes month labels in %s without changing broker time', locale => {
     const date = new Date(Date.UTC(2026, 3, 1, 10, 25));
-    const timestamp = date.getTime() / 1000;
+    const timestamp = (date.getTime() / 1000) as UTCTimestamp;
     const month = new Intl.DateTimeFormat(locale, { month: 'short', timeZone: 'UTC' }).format(date);
     expect(formatTradingChartCrosshairLabel(timestamp, 'M1', 7200, locale)).toBe(`1 ${month} 2026 12:25`);
     expect(formatTradingChartTickLabel(timestamp, 'M1', TickMarkType.Time, 7200, { locale })).toBe('12:25');
@@ -22,7 +22,7 @@ describe('chartTimeFormat', () => {
   });
 
   it('formats M1 footer labels with compact time-only ticks', () => {
-    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 25, 0, 0) / 1000);
+    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 25, 0, 0) / 1000) as UTCTimestamp;
     const brokerOffsetSeconds = 2 * 60 * 60;
 
     expect(formatTradingChartTickLabel(timestamp, 'M1', TickMarkType.Time, brokerOffsetSeconds)).toBe('12:25');
@@ -31,14 +31,14 @@ describe('chartTimeFormat', () => {
   });
 
   it('formats M5 footer labels with compact time-only ticks', () => {
-    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 0, 0, 0) / 1000);
+    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 0, 0, 0) / 1000) as UTCTimestamp;
     const brokerOffsetSeconds = 2 * 60 * 60;
 
     expect(formatTradingChartTickLabel(timestamp, 'M5', TickMarkType.Time, brokerOffsetSeconds)).toBe('12:00');
   });
 
   it('formats M15 and M30 footer labels like the nav intraday minute frames', () => {
-    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 0, 0, 0) / 1000);
+    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 0, 0, 0) / 1000) as UTCTimestamp;
     const brokerOffsetSeconds = 2 * 60 * 60;
 
     expect(formatTradingChartTickLabel(timestamp, 'M15', TickMarkType.Time, brokerOffsetSeconds)).toBe('12:00');
@@ -46,7 +46,7 @@ describe('chartTimeFormat', () => {
   });
 
   it('formats hourly timeframes with compact time-only ticks in the footer', () => {
-    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 0, 0, 0) / 1000);
+    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 0, 0, 0) / 1000) as UTCTimestamp;
     const brokerOffsetSeconds = 2 * 60 * 60;
 
     expect(formatTradingChartTickLabel(timestamp, 'H1', TickMarkType.Time, brokerOffsetSeconds)).toBe('12:00');
@@ -54,7 +54,7 @@ describe('chartTimeFormat', () => {
   });
 
   it('keeps day and month boundary labels readable on minute charts', () => {
-    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 0, 0, 0, 0) / 1000);
+    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 0, 0, 0, 0) / 1000) as UTCTimestamp;
 
     expect(formatTradingChartTickLabel(timestamp, 'M1', TickMarkType.DayOfMonth)).toBe('1 Apr 2026');
     expect(formatTradingChartTickLabel(timestamp, 'M5', TickMarkType.DayOfMonth)).toBe('1 Apr 2026');
@@ -62,14 +62,14 @@ describe('chartTimeFormat', () => {
   });
 
   it('keeps seconds on intraday footer labels when the library requests them', () => {
-    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 25, 30, 0) / 1000);
+    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 25, 30, 0) / 1000) as UTCTimestamp;
 
     expect(formatTradingChartTickLabel(timestamp, 'M1', TickMarkType.TimeWithSeconds)).toBe('10:25:30');
     expect(formatTradingChartTickLabel(timestamp, 'M5', TickMarkType.TimeWithSeconds)).toBe('10:25:30');
   });
 
   it('formats higher timeframe labels without intraday time', () => {
-    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 0, 0, 0, 0) / 1000);
+    const timestamp = Math.floor(Date.UTC(2026, 3, 1, 0, 0, 0, 0) / 1000) as UTCTimestamp;
 
     expect(formatTradingChartTickLabel(timestamp, 'D1', TickMarkType.DayOfMonth)).toBe('1 Apr');
     expect(formatTradingChartTickLabel(timestamp, 'W1', TickMarkType.Month)).toBe('Apr 2026');

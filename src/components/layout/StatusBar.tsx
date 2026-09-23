@@ -39,9 +39,11 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
     useEffect(() => {
         setLogoError(false); // Reset error state on server/logo change
     }, [brokerInfo.logoUrl]);
+    // The fallback renders at 16x16; favicon.png is a fraction of the size of
+    // the desktop titlebar artwork and looks identical at this scale.
     const brokerLogo = brokerInfo.logoUrl && !logoError
         ? getLogoUrl(brokerInfo.logoUrl, brokerInfo.logoBaseCandidates)
-        : './titlebar-icon.png';
+        : './favicon.png';
 
     const terminalTitle = symbol && timeframe
         ? formatTerminalTitle(brokerInfo, symbol, timeframe, marketStatus)

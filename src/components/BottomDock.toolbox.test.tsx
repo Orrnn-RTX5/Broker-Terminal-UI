@@ -21,6 +21,12 @@ vi.mock('../hooks/useToolboxTradeData', () => ({
   }),
 }));
 
+// openBottomDockTab only routes the Terminal-level tabs (History/Toolbox/Historical Data).
+// Trade and Exposure are selected through the same window event BottomDock listens for.
+const selectDockSurfaceTab = (tab: 'Trade' | 'Exposure') => {
+  window.dispatchEvent(new CustomEvent('rtx:open-bottom-dock-tab', { detail: { tab } }));
+};
+
 const originalLayout = useDockLayoutStore.getState().layout;
 afterEach(() => {
   cleanup();
@@ -32,7 +38,7 @@ afterEach(() => {
 
 describe('Toolbox utility commands', () => {
   it('mounts optional Toolbox and Exposure content on first activation and retains their surfaces', () => {
-    const { container } = render(<BottomDock height={300} />);
+    const { container } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(screen.queryByTitle('Cascade')).not.toBeInTheDocument();
     expect(container.querySelector('.rtx-exposure-tab')).toBeNull();
     expect(container.querySelector('.rtx-trade-tab')).toBeInTheDocument();
@@ -43,18 +49,18 @@ describe('Toolbox utility commands', () => {
     fireEvent.click(toolboxCommand);
     expect(runTerminalShortcutAction).toHaveBeenLastCalledWith('window.cascade');
 
-    act(() => openBottomDockTab('Exposure'));
+    act(() => selectDockSurfaceTab('Exposure'));
     const exposure = container.querySelector('.rtx-exposure-tab');
     expect(exposure).toBeVisible();
     expect(toolboxCommand).toBeInTheDocument();
     expect(toolboxCommand).not.toBeVisible();
 
-    act(() => openBottomDockTab('Trade'));
+    act(() => selectDockSurfaceTab('Trade'));
     expect(exposure).toBeInTheDocument();
     expect(exposure).not.toBeVisible();
     act(() => openBottomDockTab('Toolbox'));
     expect(screen.getByTitle('Cascade')).toBe(toolboxCommand);
-    act(() => openBottomDockTab('Exposure'));
+    act(() => selectDockSurfaceTab('Exposure'));
     expect(container.querySelector('.rtx-exposure-tab')).toBe(exposure);
   });
 
@@ -87,7 +93,7 @@ describe('Toolbox utility commands', () => {
   it('keeps backend-only utilities and unconfigured documentation locked', () => {
     render(<ToolboxTab />);
     for (const label of ['Strategy Tester', 'Global Variables', 'MetaEditor', 'Documentation', 'Market', 'Signals']) {
-      const button = screen.getByRole('button', { name: label, exact: true });
+      const button = screen.getByRole('button', { name: label });
       expect(button).toBeDisabled();
       expect(button).toHaveAttribute('aria-description');
       fireEvent.click(button);
@@ -100,7 +106,7 @@ describe('Toolbox utility commands', () => {
     manager.removePanel('toolbox');
     useDockLayoutStore.getState().setLayout(manager.getLayout());
     openBottomDockTab('Toolbox');
-    render(<React.StrictMode><BottomDock height={300} /></React.StrictMode>);
+    render(<React.StrictMode><BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} /></React.StrictMode>);
     expect(screen.getByText('Toolbox', { selector: '.rtx-dock-tab' })).toHaveClass('active-tab');
     expect(screen.getByTitle('Cascade')).toBeEnabled();
     expect(getRequestedBottomDockTab()).toBeNull();

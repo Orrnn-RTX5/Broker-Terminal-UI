@@ -23,7 +23,8 @@ describe('EmojiPicker', () => {
     expect(within(categories).getByRole('button', { name: 'Smileys & people' })).toHaveFocus();
     expect(screen.getByRole('tab', { name: 'Emojis' })).toHaveAttribute('aria-selected', 'true');
     for (const image of screen.getByRole('tabpanel').querySelectorAll('img')) {
-      expect(image.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
+      // Bundled same-origin artwork or inline data URIs only — never a remote host.
+      expect(image.getAttribute('src')).toMatch(/^(?:data:image\/svg\+xml|(?!\/\/|https?:).*\.svg(?:[?#]|$))/);
       expect(image).toHaveAttribute('draggable', 'false');
     }
     for (const label of ['Stickers', 'Icons', 'Emojis']) {

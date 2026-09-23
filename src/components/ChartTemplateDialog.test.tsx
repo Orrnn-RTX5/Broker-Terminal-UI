@@ -63,7 +63,7 @@ describe('retained lazy chart templates', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(screen.getByRole('button', { name: 'Open Save' }));
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'After loading' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(useTemplateStore.getState().templates).toEqual([
       expect.objectContaining({ ...currentConfig, name: 'After loading' }),
@@ -89,7 +89,7 @@ describe('retained lazy chart templates', () => {
     render(<TemplateHost />);
     await openFirstDialog('Open Save');
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'First template' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     fireEvent.click(screen.getByRole('button', { name: 'Open Save' }));
     expect(screen.getByRole('textbox')).toHaveValue('');
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Second template' } });

@@ -12,7 +12,6 @@ import { SHORTCUT_CATEGORIES } from '../../services/keyboardShortcutManager';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { Command } from '../../types/commands';
 import { useAppStore } from '../../store/useAppStore';
-import { useWebSocketStore } from '../../store/useWebSocketStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
 import {
     defaultChartProperties,
@@ -22,12 +21,11 @@ import {
 import { useDrawingToolPreferencesStore } from '../../store/useDrawingToolPreferencesStore';
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
 import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
-import { buildBrokerWsFeedUri } from '../../services/brokerSession';
-import { getActiveChartCommandTarget } from '../../services/chartCommandTarget';
+import { getActiveChartCommandTarget, getPanelIdFromChartContextId } from '../../services/chartCommandTarget';
 import { getActiveChartSourceId, subscribeActiveChartSource } from '../../services/activeChartSource';
-import { getDockPanelChartType } from '../../services/chartTypeCommand';
+import { getDockPanelChartType, findChartPanel } from '../../services/chartTypeCommand';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
-import type { DesktopFeedSnapshot, DesktopTransportSecurity } from './desktopToolbarStatus';
+import type { DesktopFeedSnapshot } from './desktopToolbarStatus';
 
 interface TopToolbarProps {
     chartType: ChartType;
@@ -63,13 +61,7 @@ import {
 import { suppressThemeTransitions } from '../../utils/themeTransitionSuppression';
 
 const subscribeToolbarActiveChartSource = (listener: () => void): (() => void) => {
-    let subscribed = true;
-    // Visibility fallback can publish from a menu render. Notify this toolbar
-    // after that render completes rather than setting React state inside it.
-    const unsubscribe = subscribeActiveChartSource(() => {
-        queueMicrotask(() => { if (subscribed) listener(); });
-    });
-    return () => { subscribed = false; unsubscribe(); };
+    return subscribeActiveChartSource(listener);
 };
 
 const getLogoutBase = (): string => {
@@ -98,10 +90,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     const { state: toolbarState, dispatch: dispatchToolbar, syncState: syncToolbarState } = useToolbarState();
     const { dispatch: dispatchCommand } = useCommandBus();
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
-    const desktopDockLayout = useDockLayoutStore(state => isDesktopShell ? state.layout : null);
+    const dockLayout = useDockLayoutStore(state => state.layout);
     const activeChartSourceId = useSyncExternalStore(
         subscribeToolbarActiveChartSource,
-        isDesktopShell ? getActiveChartSourceId : () => null,
+        getActiveChartSourceId,
         () => null,
     );
 
@@ -125,52 +117,92 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             ctrl: true,
             description: 'Select all drawings',
             category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'SELECT_ALL_DRAWINGS', payload: {} })
+            handler: () => {
+                const target = getActiveChartCommandTarget(symbol, timeframe);
+                if (target.targetContextId) {
+                    drawingManager.selectAll(target.targetContextId);
+                } else {
+                    drawingManager.selectAll();
+                }
+                dispatchCommand({ type: 'SELECT_ALL_DRAWINGS', payload: { ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}) } });
+            }
         },
         {
             id: 'drawing.trendline',
             key: 't',
             description: 'Select Trendline Tool',
             category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'trendline' } })
+            handler: () => {
+                const target = getActiveChartCommandTarget(symbol, timeframe);
+                dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'trendline', ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}) } });
+            }
         },
         {
             id: 'drawing.hline',
             key: 'h',
             description: 'Select Horizontal Line Tool',
             category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'hline' } })
+            handler: () => {
+                const target = getActiveChartCommandTarget(symbol, timeframe);
+                dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'hline', ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}) } });
+            }
         },
         {
             id: 'drawing.vline',
             key: 'v',
             description: 'Select Vertical Line Tool',
             category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'vline' } })
+            handler: () => {
+                const target = getActiveChartCommandTarget(symbol, timeframe);
+                dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'vline', ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}) } });
+            }
         },
         {
             id: 'drawing.text',
             key: 'x',
             description: 'Select Text Tool',
             category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'text' } })
+            handler: () => {
+                const target = getActiveChartCommandTarget(symbol, timeframe);
+                dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'text', ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}) } });
+            }
         }
     ]);
 
-    // Desktop selection follows the active pane's saved style after tab DOM
-    // visibility updates. This only updates the toolbar, never another chart.
     useEffect(() => {
-        const displayedChartType = desktopDockLayout
-            ? getDockPanelChartType(desktopDockLayout, getActiveChartCommandTarget().targetContextId, chartType)
-            : chartType;
-        syncToolbarState({ type: 'SET_CHART_TYPE', chartType: displayedChartType });
-    }, [chartType, desktopDockLayout, activeChartSourceId, syncToolbarState]);
+        const activeTarget = getActiveChartCommandTarget(symbol, timeframe);
+        const panelId = getPanelIdFromChartContextId(activeTarget.targetContextId);
+        const activePanel = (dockLayout && panelId) ? findChartPanel(dockLayout, panelId) : undefined;
+        const activePanelSymbol = activePanel?.props?.symbol;
+        const activeTargetSymbol = activeTarget.symbol;
 
-    useEffect(() => {
-        if (timeframe !== toolbarState.timeframe) {
-            syncToolbarState({ type: 'SET_TIMEFRAME', timeframe });
+        const isDifferentWebSymbol = !isDesktopShell
+            && Boolean(symbol)
+            && symbol !== 'STALE'
+            && (
+                (activePanelSymbol && activePanelSymbol !== symbol)
+                || (activeTargetSymbol && activeTargetSymbol !== symbol)
+            );
+
+        if (!isDifferentWebSymbol) {
+            const displayedChartType = activePanel?.props?.chartType
+                ? (['bar', 'candlestick', 'line', 'area'] as const).includes(activePanel.props.chartType)
+                    ? activePanel.props.chartType
+                    : chartType
+                : (dockLayout ? getDockPanelChartType(dockLayout, activeTarget.targetContextId, chartType) : chartType);
+            syncToolbarState({ type: 'SET_CHART_TYPE', chartType: displayedChartType });
+
+            const displayedTimeframe = (activePanel?.props?.timeframe as string) || activeTarget.timeframe || timeframe;
+            if (displayedTimeframe) {
+                syncToolbarState({ type: 'SET_TIMEFRAME', timeframe: displayedTimeframe });
+            }
+        } else {
+            syncToolbarState({ type: 'SET_CHART_TYPE', chartType });
+            if (timeframe) {
+                syncToolbarState({ type: 'SET_TIMEFRAME', timeframe });
+            }
         }
-    }, [timeframe, toolbarState.timeframe, syncToolbarState]);
+    }, [chartType, timeframe, symbol, dockLayout, activeChartSourceId, isDesktopShell, syncToolbarState]);
 
     return (
         <div className="rtx-top-chrome flex flex-col z-50 relative border-b border-white/5 shadow-2xl">
@@ -335,17 +367,11 @@ function loadAdvancedOptions(): AdvancedViewOptions {
 }
 
 const MainToolbar = ({
-    chartType,
     timeframe,
     onTimeframeChange,
-    onToggleDOM,
     toolbarState,
     dispatchCommand,
-    dispatchToolbar,
     symbol,
-    feedStatus,
-    onRefreshConnection,
-    onLoadTemplate,
     desktopDrawingTools,
     accountBrokerName
 }: MainToolbarProps) => {
@@ -367,18 +393,11 @@ const MainToolbar = ({
     const accountId = useAppStore((s) => s.accountId) || '';
     const isAuthenticated = useAppStore((s) => s.isAuthenticated);
     const savedAccounts = useAppStore((s) => s.savedAccounts);
-    const connectionState = useWebSocketStore((s) => s.fixConnectionState);
     const lastSymbol = useLastSymbolStore((state) => state.lastSymbol);
     const lastSymbolPanelVisible = useLastSymbolStore((state) => state.panelVisible);
     const toggleLastSymbolPanel = useLastSymbolStore((state) => state.togglePanel);
     const activeSavedAccount = savedAccounts.find((account) => String(account.login) === accountId);
     const savedAccountCount = new Set(savedAccounts.map((account) => account.login)).size;
-    const feedSocketUrl = buildBrokerWsFeedUri();
-    const transportSecurity: DesktopTransportSecurity = !feedSocketUrl
-        ? 'unknown'
-        : /^wss:/i.test(feedSocketUrl)
-            ? 'secure'
-            : 'insecure';
     const tradeHistorySettings = useChartSettingsStore((state) => state.symbolProperties[symbol] || state.globalProperties);
 
     const dispatchTargetedChartType = (nextChartType: ChartType) => {
@@ -701,11 +720,20 @@ const MainToolbar = ({
 
                         {/* Group 8: Horizontal MT-style timeframe strip */}
                         <TimeframePicker
-                            timeframe={timeframe}
+                            timeframe={toolbarState.timeframe || timeframe}
                             advancedViewEnabled={advancedViewEnabled}
                             onSelect={(nextTimeframe) => {
                                 onTimeframeChange(nextTimeframe);
-                                dispatchCommand({ type: 'SET_TIMEFRAME', payload: { timeframe: nextTimeframe } });
+                                const target = getActiveChartCommandTarget(symbol, timeframe);
+                                const panelId = getPanelIdFromChartContextId(target.targetContextId);
+                                dispatchCommand({
+                                    type: 'SET_TIMEFRAME',
+                                    payload: {
+                                        timeframe: nextTimeframe,
+                                        ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}),
+                                        ...(panelId ? { panelId } : {}),
+                                    },
+                                });
                                 window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: nextTimeframe } }));
                             }}
                         />

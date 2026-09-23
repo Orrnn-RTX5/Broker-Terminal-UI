@@ -319,7 +319,8 @@ const dispatchAuthTokenUpdated = () => {
 
 const sanitizeSavedAccount = (account: SavedAccount | (SavedAccount & { password?: unknown })): SavedAccount | null => {
   if (!account || typeof account !== 'object') return null;
-  const { password: _password, ...safeAccount } = account as SavedAccount & { password?: unknown };
+  const safeAccount = { ...(account as SavedAccount & { password?: unknown }) };
+  delete safeAccount.password;
   return safeAccount;
 };
 

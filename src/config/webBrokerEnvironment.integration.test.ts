@@ -22,7 +22,7 @@ const selectBrokerBlock = (selected: 'TEST' | 'Achiever Financials'): string => 
     .map((line) => {
       if (/^# TEST(?: \(active\))?\s*$/.test(line)) block = 'TEST'
       else if (/^# Achiever Financials\s*$/.test(line)) block = 'Achiever Financials'
-      else if (/^# (?:MyProp|Grow Trading Academy|Legacy backend reference)/.test(line)) block = 'other'
+      else if (/^# (?:MyProp|Grow Trading Academy|Legacy backend reference|Nexa|Active broker)/.test(line)) block = 'other'
 
       const assignment = /^\s*(?:#\s*)?(?:export\s+)?([A-Za-z_]\w*)\s*=(.*)$/.exec(line)
       if (!assignment) return line

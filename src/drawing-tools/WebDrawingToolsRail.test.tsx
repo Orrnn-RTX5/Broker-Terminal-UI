@@ -125,8 +125,8 @@ afterEach(() => {
 describe('WebDrawingToolsRail', () => {
   it('keeps emojis and trading stamps in separate rail sections and arms the active chart', () => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-    const emojiTrigger = screen.getByRole('button', { name: 'Emojis', exact: true });
-    const stampTrigger = screen.getByRole('button', { name: 'Icons and Stamps', exact: true });
+    const emojiTrigger = screen.getByRole('button', { name: 'Emojis' });
+    const stampTrigger = screen.getByRole('button', { name: 'Icons and Stamps' });
     expect(emojiTrigger.querySelector('svg')?.innerHTML).not.toBe(stampTrigger.querySelector('svg')?.innerHTML);
     fireEvent.click(emojiTrigger);
     const picker = screen.getByRole('dialog', { name: 'Emoji picker' });
@@ -141,7 +141,7 @@ describe('WebDrawingToolsRail', () => {
     expect(stampTrigger).toHaveAttribute('data-active', 'false');
     const stamps = openRailMenu('Icons and Stamps', 'Icons and stamps');
     expect(within(stamps).getAllByRole('menuitemradio')).toHaveLength(STAMP_OPTIONS.length);
-    fireEvent.click(within(stamps).getByRole('menuitemradio', { name: 'Thumbs Up', exact: true }));
+    fireEvent.click(within(stamps).getByRole('menuitemradio', { name: 'Thumbs Up' }));
     expect(commandBus.getHistory().at(-1)).toEqual({
       type: 'SELECT_TOOL', payload: { tool: 'stamp', subtype: 'thumbsUp', targetContextId: 'chart-xauusd-m1' },
     });
@@ -151,7 +151,7 @@ describe('WebDrawingToolsRail', () => {
 
   it('dismisses the emoji picker with Escape or an outside press and restores trigger focus', () => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-    const trigger = screen.getByRole('button', { name: 'Emojis', exact: true });
+    const trigger = screen.getByRole('button', { name: 'Emojis' });
     fireEvent.click(trigger);
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Emoji picker' })).not.toBeInTheDocument();
@@ -165,7 +165,7 @@ describe('WebDrawingToolsRail', () => {
   it.each(BRUSH_SHAPE_TOOLS)('routes $label to its exact drawing subtype', tool => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     const menu = openRailMenu('Brush tools', 'Brushes, arrows, and shapes');
-    fireEvent.click(within(menu).getByRole('menuitemradio', { name: tool.label, exact: true }));
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: tool.label }));
     expect(commandBus.getHistory().at(-1)).toEqual({
       type: 'SELECT_TOOL', payload: { tool: 'shapes', subtype: tool.id, targetContextId: 'chart-xauusd-m1' },
     });
@@ -271,7 +271,7 @@ describe('WebDrawingToolsRail', () => {
         <WebDrawingToolsRail selectedSymbol="XAUUSD" />
         <div className="rtx-chart-wrapper" data-testid="active-chart" />
       </>);
-      fireEvent.click(within(openTrendMenu()).getByRole('menuitemradio', { name: 'Pitchfork', exact: true }));
+      fireEvent.click(within(openTrendMenu()).getByRole('menuitemradio', { name: 'Pitchfork' }));
       expect(commandBus.getHistory()).toHaveLength(1);
       fireEvent.pointerMove(screen.getByTestId('active-chart'));
       fireEvent.pointerDown(screen.getByTestId('active-chart'));
@@ -546,7 +546,7 @@ describe('WebDrawingToolsRail', () => {
     expect(commandBus.getHistory().at(-1)).toEqual({
       type: 'SELECT_TOOL', payload: { tool: 'hline', subtype: 'horizontal_line', targetContextId: 'chart-xauusd-m1' },
     });
-    fireEvent.click(within(rail).getByRole('button', { name: 'Emojis', exact: true }));
+    fireEvent.click(within(rail).getByRole('button', { name: 'Emojis' }));
     const emoji = getPictographItems('emojis', 'smileys')[0];
     fireEvent.click(screen.getByRole('dialog', { name: 'Emoji picker' }).querySelector(`[data-pictograph-id="${emoji.id}"]`)!);
     expect(commandBus.getHistory().at(-1)).toEqual({
@@ -578,17 +578,17 @@ describe('WebDrawingToolsRail', () => {
 
   it('shows zoom out directly below zoom in only after the active chart reports a larger scale', () => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-    const zoomIn = screen.getByRole('button', { name: 'Zoom In', exact: true });
+    const zoomIn = screen.getByRole('button', { name: 'Zoom In' });
     fireEvent.click(zoomIn);
     // Dispatch alone must not advertise a successful zoom on an empty chart.
-    expect(screen.queryByRole('button', { name: 'Zoom Out', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Zoom Out' })).not.toBeInTheDocument();
 
     act(() => {
       const zoom = useChartZoomStore.getState();
       zoom.syncSpacing('chart-xauusd-m1', 30, true);
       zoom.syncSpacing('chart-xauusd-m1', 36);
     });
-    const zoomOut = screen.getByRole('button', { name: 'Zoom Out', exact: true });
+    const zoomOut = screen.getByRole('button', { name: 'Zoom Out' });
     expect(zoomIn.nextElementSibling).toBe(zoomOut);
     fireEvent.focus(zoomOut);
     fireEvent.click(zoomOut);
@@ -596,7 +596,7 @@ describe('WebDrawingToolsRail', () => {
       type: 'ZOOM_OUT', payload: { targetContextId: 'chart-xauusd-m1' },
     });
     act(() => useChartZoomStore.getState().syncSpacing('chart-xauusd-m1', 30));
-    expect(screen.queryByRole('button', { name: 'Zoom Out', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Zoom Out' })).not.toBeInTheDocument();
     fireEvent.mouseEnter(zoomIn);
     fireEvent.mouseLeave(zoomIn);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
@@ -606,19 +606,19 @@ describe('WebDrawingToolsRail', () => {
     useChartZoomStore.getState().syncSpacing('chart-xauusd-m1', 8, true);
     useChartZoomStore.getState().syncSpacing('chart-xauusd-m1', 16);
     const { rerender } = render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-    expect(screen.getByRole('button', { name: 'Zoom Out', exact: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zoom Out' })).toBeInTheDocument();
     activeChartSource.id = 'second-xauusd-panel';
     rerender(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-    expect(screen.queryByRole('button', { name: 'Zoom Out', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Zoom Out' })).not.toBeInTheDocument();
     activeChartSource.id = 'chart-xauusd-m1';
     rerender(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-    expect(screen.getByRole('button', { name: 'Zoom Out', exact: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zoom Out' })).toBeInTheDocument();
   });
 
   it('does not send a zoom command when no chart is available', () => {
     activeChartSource.id = undefined;
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Zoom In', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom In' }));
     expect(commandBus.getHistory()).toEqual([]);
   });
 
@@ -640,7 +640,7 @@ describe('WebDrawingToolsRail', () => {
     expect(useDrawingToolPreferencesStore.getState().magnetMode).toBe('off');
   });
 
-  it.each(['trendline', 'freehand'])('returns desktop %s tools to idle even with a saved repeat preference', async (type) => {
+  it.each(['trendline', 'freehand'] as const)('returns desktop %s tools to idle even with a saved repeat preference', async (type) => {
     useDrawingToolPreferencesStore.setState({ keepDrawing: true });
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" orientation="horizontal" />);
     expect(screen.queryByRole('button', { name: 'Cursor' })).not.toBeInTheDocument();

@@ -47,7 +47,15 @@ describe('broker server URL normalization', () => {
 
 describe('position close adapter', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ok: true })));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      const parsedBody = init?.body ? JSON.parse(String(init.body)) : {};
+      return Promise.resolve(jsonResponse({
+        status: 'closed',
+        client_order_id: parsedBody.client_order_id,
+        position_id: '900719925474099312345',
+        ticket: '900719925474099312345',
+      }));
+    }));
     clearStoredRouting();
   });
 
@@ -58,7 +66,9 @@ describe('position close adapter', () => {
 
     expect(lastFetchCall()).toMatchObject({
       url: `${API_V2_BASE_URL}/positions/${ticket}/close`,
-      body: { mode: 'full' },
+      body: expect.objectContaining({
+        client_order_id: expect.any(String),
+      }),
     });
   });
 });

@@ -6,6 +6,8 @@ import {
 } from '../store/useChartSettingsStore';
 import {
   formatChartSeriesData,
+  getAreaTrendDirection,
+  getAreaTrendSeriesOptions,
   getLeftVisibleTimeFromLogicalRange,
   getLivePriceOverlayColors,
   getLivePriceSeriesColor,
@@ -20,6 +22,7 @@ import {
   shouldResetInitialHistoryVisibleRange,
   shouldRestoreProtectedHistoryForFullRender,
   TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
+  type Candle,
 } from './TradingChart.helpers';
 
 const utcSeconds = (year: number, month: number, day: number, hour = 0, minute = 0) =>
@@ -42,6 +45,12 @@ const theme = {
   line: '#10B981',
   areaTop: 'rgba(16,185,129,0.22)',
   areaBottom: 'rgba(16,185,129,0)',
+  areaUpLine: '#10B981',
+  areaUpTop: 'rgba(16,185,129,0.28)',
+  areaUpBottom: 'rgba(16,185,129,0)',
+  areaDownLine: '#EF4444',
+  areaDownTop: 'rgba(239,68,68,0.28)',
+  areaDownBottom: 'rgba(239,68,68,0)',
   volumeUp: 'rgba(16,185,129,0.28)',
   volumeDown: 'rgba(239,68,68,0.28)',
 };
@@ -91,8 +100,8 @@ const closedSessionRun = (
 
 describe('TradingChart live candle finality helpers', () => {
   it('infers legacy finality from the active broker period without overriding an explicit flag', () => {
-    const legacyClosed = realCandle(60, 1.1);
-    const legacyForming = realCandle(120, 1.2);
+    const legacyClosed: Candle = realCandle(60, 1.1);
+    const legacyForming: Candle = realCandle(120, 1.2);
     const explicitForming = { ...legacyClosed, closed: false };
 
     expect(resolveCandleFinalityFromActivePeriod(legacyClosed, 120).closed).toBe(true);
@@ -165,6 +174,117 @@ describe('formatChartSeriesData chart types', () => {
       { time: 100, open: 4379, high: 4382, low: 4378, close: 4380 },
       { time: 280, open: 4380, high: 4383, low: 4379, close: 4381 },
     ]);
+  });
+});
+
+describe('TradingView-style area trend coloring', () => {
+  const bar = (time: number, close: number, open = close) => ({ time, open, close });
+
+  it('colors by the daily change against the previous day close', () => {
+    const candles = [
+      bar(utcSeconds(2026, 9, 21, 10), 1.10),
+      bar(utcSeconds(2026, 9, 21, 23), 1.12), // previous daily close
+      bar(utcSeconds(2026, 9, 22, 9), 1.13),
+      bar(utcSeconds(2026, 9, 22, 10), 1.14),
+    ];
+    expect(getAreaTrendDirection(candles)).toBe('up');
+
+    const falling = [
+      bar(utcSeconds(2026, 9, 21, 23), 1.12),
+      bar(utcSeconds(2026, 9, 22, 9), 1.11),
+    ];
+    expect(getAreaTrendDirection(falling)).toBe('down');
+    expect(getAreaTrendDirection([])).toBe(null);
+  });
+
+  it('treats an unchanged price as up, matching the TradingView symbol page', () => {
+    const candles = [
+      bar(utcSeconds(2026, 9, 21, 23), 1.10),
+      bar(utcSeconds(2026, 9, 22, 9), 1.10),
+    ];
+    expect(getAreaTrendDirection(candles)).toBe('up');
+  });
+
+  it('respects the broker time offset when finding the day boundary', () => {
+    // Broker day starts 3 hours before UTC midnight. A 22:30 UTC candle on the
+    // 21st already belongs to the broker's 22nd, so the previous daily close
+    // is the 20:30 UTC candle, not the 22:30 one.
+    const offset = 3 * 60 * 60;
+    const candles = [
+      bar(utcSeconds(2026, 9, 21, 20, 30), 1.20),
+      bar(utcSeconds(2026, 9, 21, 22, 30), 1.10),
+      bar(utcSeconds(2026, 9, 22, 9), 1.15),
+    ];
+    expect(getAreaTrendDirection(candles, offset)).toBe('down');
+    expect(getAreaTrendDirection(candles, 0)).toBe('up');
+  });
+
+  it('falls back to the day-open when history does not reach the previous session', () => {
+    const candles = [
+      bar(utcSeconds(2026, 9, 22, 9), 1.13, 1.12),
+      bar(utcSeconds(2026, 9, 22, 10), 1.11),
+    ];
+    expect(getAreaTrendDirection(candles)).toBe('down');
+    expect(getAreaTrendDirection([bar(utcSeconds(2026, 9, 22, 9), 1.14, 1.12)])).toBe('up');
+  });
+
+  it('lets the live tick close override the last rendered candle', () => {
+    const candles = [
+      bar(utcSeconds(2026, 9, 21, 23), 1.12),
+      bar(utcSeconds(2026, 9, 22, 9), 1.14),
+    ];
+    expect(getAreaTrendDirection(candles, 0, 1.05)).toBe('down');
+    expect(getAreaTrendDirection(candles, 0, 1.16)).toBe('up');
+  });
+
+  it('scopes the change period to the timeframe like the TradingView range buttons', () => {
+    const candles = [
+      bar(utcSeconds(2026, 9, 17, 22), 1.00),
+      bar(utcSeconds(2026, 9, 19, 22), 1.50),
+      bar(utcSeconds(2026, 9, 22, 9), 1.20),
+    ];
+    // M1 → 1-day change (loss vs the 1.50 previous close), M5 → 5-day change
+    // (profit vs the 1.00 close from five days back).
+    expect(getAreaTrendDirection(candles, 0, undefined, 'M1')).toBe('down');
+    expect(getAreaTrendDirection(candles, 0, undefined, 'M5')).toBe('up');
+  });
+
+  it('colors daily charts by the one-year change', () => {
+    const candles = [
+      bar(utcSeconds(2025, 9, 10), 100),
+      bar(utcSeconds(2026, 3, 2), 140),
+      bar(utcSeconds(2026, 9, 21), 120),
+    ];
+    expect(getAreaTrendDirection(candles, 0, undefined, 'D1')).toBe('up');
+    expect(getAreaTrendDirection(candles, 0, undefined, 'M1')).toBe('down');
+  });
+
+  it('uses a five-year change period on weekly charts, falling back to loaded history', () => {
+    const candles = [
+      bar(utcSeconds(2020, 9, 7), 1.00),
+      bar(utcSeconds(2024, 1, 5), 2.00),
+      bar(utcSeconds(2026, 9, 21), 1.50),
+    ];
+    expect(getAreaTrendDirection(candles, 0, undefined, 'W1')).toBe('up');
+
+    const shortHistory = [
+      bar(utcSeconds(2026, 9, 14), 1.40, 1.60),
+      bar(utcSeconds(2026, 9, 21), 1.50),
+    ];
+    expect(getAreaTrendDirection(shortHistory, 0, undefined, 'W1')).toBe('down');
+  });
+
+  it('maps trend direction to the themed line and gradient colors', () => {
+    expect(getAreaTrendSeriesOptions(theme, 'up')).toEqual({
+      lineColor: theme.areaUpLine,
+      topColor: theme.areaUpTop,
+      bottomColor: theme.areaUpBottom,
+    });
+    expect(getAreaTrendSeriesOptions(theme, 'down')).toEqual({
+      lineColor: theme.areaDownLine,
+      topColor: theme.areaDownTop,
+      bottomColor: theme.areaDownBottom,
+    });
   });
 });
 

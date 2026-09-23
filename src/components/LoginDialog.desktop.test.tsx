@@ -15,6 +15,7 @@ vi.mock('../config/api', () => ({
 }));
 vi.mock('../config/backendTarget.js', () => ({
   isDesktopBackendTarget: () => true,
+  getBackendTarget: () => 'https://superbackend.orrnn.com',
   SHARED_DISCOVERY_FALLBACK: 'https://superbackend.orrnn.com',
   normalizeBrokerInfoForTarget: (broker: unknown) => broker,
   resolveBrokerBackendUrl: () => 'https://wrong-environment.test',
@@ -44,7 +45,7 @@ it('explains the blocked guest trade and lets the user continue viewing without 
   expect(dialog).toHaveAttribute('aria-modal', 'true');
   expect(dialog).toHaveTextContent('No order has been placed.');
   await screen.findByText('Server online');
-  expect(screen.getByRole('button', { name: 'Log in', exact: true })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Continue viewing' }));
   expect(close).toHaveBeenCalledOnce();
   expect(runtime.login).not.toHaveBeenCalled();
@@ -52,7 +53,7 @@ it('explains the blocked guest trade and lets the user continue viewing without 
 
 it('lists all servers before credentials, clears the password, and logs in to the selected directory endpoint', async () => {
   render(<LoginDialog isOpen onClose={vi.fn()} />);
-  const server = screen.getByRole('combobox', { name: 'Server:' });
+  const server = screen.getByRole('combobox', { name: 'Server' });
   await screen.findByText('Server online');
   expect(screen.getByRole('option', { name: 'Achiever Financials' })).toBeInTheDocument();
   expect(screen.getByRole('option', { name: 'Nexa' })).toBeInTheDocument();
@@ -71,10 +72,10 @@ it('lists all servers before credentials, clears the password, and logs in to th
   expect(fetchMock).toHaveBeenCalledWith('https://nexa.test/health', expect.anything());
   fireEvent.change(account, { target: { value: '12345' } });
   fireEvent.change(password, { target: { value: 'new-password' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Log in', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
   await waitFor(() => expect(runtime.login).toHaveBeenCalledWith(
     { username: '12345', password: 'new-password', broker_id: 'Nexa' },
-    { baseUrl: 'https://nexa.test/api/v2', skipDynamicUrl: true },
+    expect.objectContaining({ baseUrl: 'https://nexa.test/api/v2', skipDynamicUrl: true }),
   ));
   await screen.findByText('Test authentication rejected');
 });
@@ -84,7 +85,7 @@ it('blocks credentials and login when the selected server is offline', async () 
   render(<LoginDialog isOpen onClose={vi.fn()} />);
   await screen.findByText('Server unavailable');
   expect(screen.getByPlaceholderText('Password')).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Log in', exact: true })).toBeDisabled();
-  fireEvent.submit(screen.getByRole('button', { name: 'Log in', exact: true }).closest('form')!);
+  expect(screen.getByRole('button', { name: 'Log in' })).toBeDisabled();
+  fireEvent.submit(screen.getByRole('button', { name: 'Log in' }).closest('form')!);
   expect(runtime.login).not.toHaveBeenCalled();
 });

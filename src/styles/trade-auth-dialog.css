@@ -1,0 +1,619 @@
+/* Trade authentication dialog — enterprise-grade financial interface.
+   Restrained dark surfaces, a strict typographic scale (11 / 12.5 / 13 / 16px),
+   tabular numerals for trade figures, and a clear primary/secondary/tertiary
+   action hierarchy. */
+
+.rtx-auth-backdrop {
+  align-items: center;
+  background: rgba(8, 9, 12, 0.6);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 16px;
+  position: fixed;
+  z-index: 10000;
+  animation: rtx-auth-fade 160ms ease-out;
+}
+
+.rtx-auth-backdrop__dismiss {
+  background: transparent;
+  border: 0;
+  cursor: default;
+  inset: 0;
+  padding: 0;
+  position: absolute;
+}
+
+.rtx-auth-dialog {
+  background: #1c1d21;
+  border: 1px solid #383b40;
+  border-top: 1px solid #4a4e56;
+  border-radius: 14px;
+  box-shadow:
+    0 24px 48px -8px rgba(0, 0, 0, 0.75),
+    0 4px 12px rgba(0, 0, 0, 0.4);
+  color: #d7dade;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'ss01' on, 'cv05' on;
+  letter-spacing: 0.001em;
+  line-height: 1.5;
+  max-height: calc(100vh - 32px);
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  position: relative;
+  width: 408px;
+  animation: rtx-auth-rise 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes rtx-auth-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rtx-auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.984);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtx-auth-backdrop,
+  .rtx-auth-dialog { animation: none; }
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.rtx-auth-dialog__header {
+  align-items: center;
+  border-bottom: 1px solid #2e3136;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 18px 24px 16px;
+  position: relative;
+}
+
+.rtx-auth-dialog__title {
+  color: #f4f5f7;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.rtx-auth-dialog__close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #8b9096;
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 28px;
+  height: 28px;
+  justify-content: center;
+  margin-right: -6px;
+  transition: background-color 120ms ease, color 120ms ease;
+  width: 28px;
+}
+
+.rtx-auth-dialog__close:hover {
+  background: #282a2e;
+  color: #f4f5f7;
+}
+
+.rtx-auth-dialog__close:active {
+  background: #212326;
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────── */
+
+.rtx-auth-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+/* ── Structured Trade Ticket Receipt ────────────────────────────────────── */
+
+.rtx-auth-order-card {
+  background: #24262b;
+  border: 1px solid #383b40;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rtx-auth-order-info {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 13px 16px;
+}
+
+.rtx-auth-order-lead {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rtx-auth-badge {
+  border-radius: 5px;
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  line-height: 1;
+  padding: 4.5px 7px;
+  text-transform: uppercase;
+}
+
+.rtx-auth-badge--buy {
+  background: rgba(16, 197, 152, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(16, 197, 152, 0.3);
+  color: #2fd3a8;
+}
+
+.rtx-auth-badge--sell {
+  background: rgba(246, 92, 99, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(246, 92, 99, 0.3);
+  color: #ff7378;
+}
+
+.rtx-auth-badge--action {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  color: #a6abb2;
+}
+
+.rtx-auth-order-symbol {
+  color: #f4f5f7;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtx-auth-order-dot {
+  color: #4d5157;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.rtx-auth-order-volume {
+  color: #a6abb2;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.rtx-auth-order-note {
+  align-items: flex-start;
+  background: #1c1d21;
+  border-top: 1px solid #303338;
+  display: flex;
+  font-size: 12px;
+  gap: 9px;
+  line-height: 1.55;
+  padding: 11px 16px 12px;
+}
+
+.rtx-auth-order-note-icon {
+  color: #7aa5f0;
+  flex-shrink: 0;
+  margin-top: 2.5px;
+}
+
+.rtx-auth-order-note-text {
+  color: #9aa0a8;
+  flex: 1;
+  font-weight: 400;
+  letter-spacing: 0.005em;
+}
+
+/* ── Action Buttons ─────────────────────────────────────────────────────── */
+
+.rtx-auth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rtx-auth-action {
+  align-items: center;
+  border-radius: 9px;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  gap: 9px;
+  height: 42px;
+  justify-content: center;
+  letter-spacing: 0.005em;
+  line-height: 1;
+  padding: 0 16px;
+  text-decoration: none;
+  transition: background-color 140ms ease, border-color 140ms ease,
+    box-shadow 140ms ease, transform 80ms ease;
+  width: 100%;
+}
+
+.rtx-auth-action:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.rtx-auth-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.rtx-auth-action svg {
+  flex-shrink: 0;
+  opacity: 0.92;
+}
+
+/* Primary: saturated brand blue with a subtle top light and depth shadow */
+.rtx-auth-action--primary {
+  background: linear-gradient(180deg, #2479f0 0%, #1a6ce0 100%);
+  border: 1px solid rgba(9, 58, 128, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.32),
+    0 4px 12px -4px rgba(26, 108, 224, 0.45) !important;
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+.rtx-auth-action--primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #3186f5 0%, #2174e8 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 1px 2px rgba(0, 0, 0, 0.32),
+    0 6px 16px -4px rgba(26, 108, 224, 0.55) !important;
+}
+
+.rtx-auth-action--primary:active:not(:disabled) {
+  background: linear-gradient(180deg, #1a63cc 0%, #175bbd 100%);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.2),
+    0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Secondary: solid crisp surface (no transparent background) */
+.rtx-auth-action--secondary {
+  background: #282a2e;
+  border: 1px solid #3c4043;
+  box-shadow: none !important;
+  color: #e8eaed;
+}
+
+.rtx-auth-action--secondary:hover:not(:disabled) {
+  background: #32353b;
+  border-color: #4f535a;
+  box-shadow: none !important;
+  color: #ffffff;
+}
+
+.rtx-auth-action--secondary:active:not(:disabled) {
+  background: #202124;
+  border-color: #3c4043;
+  box-shadow: none !important;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.rtx-auth-dialog__footer {
+  border-top: 1px solid #2e3136;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 16px 24px 18px;
+}
+
+.rtx-auth-dialog__footer--choice {
+  border-top: 0;
+  display: flex;
+  justify-content: center;
+  padding: 0 24px 18px;
+}
+
+.rtx-auth-guest-link {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #8b9096;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  height: 34px;
+  justify-content: center;
+  letter-spacing: 0.005em;
+  padding: 0 14px;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.rtx-auth-guest-link:hover {
+  background: #282a2e;
+  color: #e6e8eb;
+}
+
+/* ── Broker Strip (Demo Form) ───────────────────────────────────────────── */
+
+.rtx-auth-broker {
+  align-items: center;
+  background: #24262b;
+  border: 1px solid #383b40;
+  border-radius: 9px;
+  display: flex;
+  gap: 12px;
+  padding: 11px 16px;
+}
+
+.rtx-auth-broker__label {
+  color: #8b9096;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.rtx-auth-broker__value {
+  color: #f4f5f7;
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Form Fields ────────────────────────────────────────────────────────── */
+
+.rtx-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rtx-auth-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 420px) {
+  .rtx-auth-grid { grid-template-columns: 1fr; }
+}
+
+.rtx-auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rtx-auth-field__label {
+  color: #c3c7cd;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+
+.rtx-auth-field input {
+  background: #24262b;
+  border: 1px solid #383b40;
+  border-radius: 8px;
+  box-shadow: none !important;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  height: 38px;
+  letter-spacing: 0.005em;
+  outline: none;
+  padding: 0 13px;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+  width: 100%;
+}
+
+.rtx-auth-field input::placeholder {
+  color: #8b9096;
+  opacity: 1;
+}
+
+.rtx-auth-field input:hover:not(:focus) {
+  border-color: #4f535a;
+}
+
+.rtx-auth-field input:focus {
+  background: #24262b;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.35) !important;
+}
+
+.rtx-auth-field__hint {
+  color: #8b9096;
+  font-size: 11.5px;
+  letter-spacing: 0.005em;
+  line-height: 1.5;
+}
+
+/* ── Alert ──────────────────────────────────────────────────────────────── */
+
+.rtx-auth-alert {
+  align-items: flex-start;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
+  color: #f59396;
+  display: flex;
+  font-size: 12px;
+  font-weight: 450;
+  gap: 8px;
+  letter-spacing: 0.005em;
+  line-height: 1.5;
+  padding: 10px 13px;
+}
+
+.rtx-auth-alert svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+/* ── Standard Form Buttons ──────────────────────────────────────────────── */
+
+.rtx-auth-button {
+  align-items: center;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 8px;
+  height: 38px;
+  justify-content: center;
+  letter-spacing: 0.005em;
+  line-height: 1;
+  padding: 0 18px;
+  transition: background-color 140ms ease, border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.rtx-auth-button[data-variant='ghost'] {
+  background: #282a2e;
+  border: 1px solid #3c4043;
+  box-shadow: none !important;
+  color: #e8eaed;
+}
+
+.rtx-auth-button[data-variant='ghost']:hover:not(:disabled) {
+  background: #32353b;
+  border-color: #4f535a;
+  color: #ffffff;
+}
+
+.rtx-auth-button[data-variant='ghost']:active:not(:disabled) {
+  background: #202124;
+  border-color: #3c4043;
+}
+
+.rtx-auth-button[data-variant='primary'] {
+  background: linear-gradient(180deg, #2479f0 0%, #1a6ce0 100%);
+  border: 1px solid rgba(9, 58, 128, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.32) !important;
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+.rtx-auth-button[data-variant='primary']:hover:not(:disabled) {
+  background: linear-gradient(180deg, #3186f5 0%, #2174e8 100%);
+}
+
+.rtx-auth-button[data-variant='primary']:active:not(:disabled) {
+  background: linear-gradient(180deg, #1a63cc 0%, #175bbd 100%);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+.rtx-auth-button:disabled {
+  background: #24262b;
+  border: 1px solid #383b40;
+  box-shadow: none !important;
+  color: #6b7076;
+  cursor: not-allowed;
+  text-shadow: none;
+}
+
+.rtx-auth-spinner {
+  animation: rtx-auth-spin 700ms linear infinite;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  border-top-color: #ffffff;
+  height: 13px;
+  width: 13px;
+}
+
+@keyframes rtx-auth-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Focus visibility ───────────────────────────────────────────────────── */
+
+.rtx-auth-dialog :is(button, input):focus-visible {
+  outline: 2px solid #4a90f4;
+  outline-offset: 2px;
+}
+
+.rtx-auth-field input:focus-visible {
+  outline: none;
+}
+
+/* ── Backward compatibility aliases ─────────────────────────────────────── */
+
+.rtx-auth-ticket {
+  background: #24262b;
+  border: 1px solid #383b40;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rtx-auth-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rtx-auth-option {
+  align-items: center;
+  background: #282a2e;
+  border: 1px solid #3c4043;
+  border-radius: 9px;
+  box-shadow: none !important;
+  cursor: pointer;
+  display: flex;
+  font-size: 13.5px;
+  font-weight: 600;
+  gap: 9px;
+  height: 42px;
+  justify-content: center;
+  padding: 0 16px;
+  width: 100%;
+  color: #e8eaed;
+}
+
+.rtx-auth-option:hover:not(:disabled) {
+  background: #32353b;
+  border-color: #4f535a;
+  color: #ffffff;
+}

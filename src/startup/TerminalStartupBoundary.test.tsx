@@ -108,19 +108,16 @@ describe('TerminalStartupBoundary', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('offers recovery after 15 seconds and Continue reveals the pending workspace', () => {
+  it('auto-opens the pending workspace after 15 seconds without recovery buttons', () => {
     render(startup());
     act(() => vi.advanceTimersByTime(14_999));
-    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Continue to terminal' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Workspace state')).not.toBeVisible();
 
     act(() => vi.advanceTimersByTime(1));
-    expect(screen.getByRole('status')).toHaveTextContent('The connection is taking longer than usual.');
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue to terminal' }));
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Workspace state')).toBeVisible();
     expect(screen.getByLabelText('Workspace state').parentElement).not.toHaveAttribute('inert');
     expect(vi.getTimerCount()).toBe(0);
@@ -135,7 +132,7 @@ describe('TerminalStartupBoundary', () => {
 
     expect(vi.getTimerCount()).toBe(0);
     act(() => vi.advanceTimersByTime(15_000));
-    expect(screen.queryByRole('button', { name: 'Continue to terminal' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Workspace state')).toBeVisible();
   });
 
   it('clears the pending timer when the workspace unmounts', () => {

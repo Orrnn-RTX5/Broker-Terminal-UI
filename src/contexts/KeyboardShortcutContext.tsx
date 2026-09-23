@@ -13,8 +13,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode, useCa
 import {
   keyboardShortcutManager,
   type ShortcutDefinition,
-  type ShortcutHint,
-  DEFAULT_SHORTCUTS
+  type ShortcutHint
 } from '../services/keyboardShortcutManager';
 
 interface KeyboardShortcutContextValue {

@@ -24,7 +24,7 @@ describe('bottom dock navigation', () => {
     openBottomDockTab('Historical Data');
     const currentCenter = useDockLayoutStore.getState().layout.root.children[1] as DockContainer;
     expect(currentCenter.children.filter(child => child.id === 'toolbox')).toHaveLength(1);
-    expect(currentCenter.children[0]).toMatchObject({ id: center.children[0].id, props: { timeframe: 'M5' } });
+    expect(currentCenter.children[0]).toMatchObject({ id: center.children[0].id, props: { timeframe: 'M1' } });
     expect(getRequestedBottomDockTab()).toBe('Historical Data');
     expect(dispatch.mock.calls.at(-1)?.[0]).toMatchObject({ type: 'rtx:open-bottom-dock-tab', detail: { tab: 'Historical Data' } });
     acknowledgeBottomDockTab('History');

@@ -258,7 +258,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(badgeMarkup).toContain("fontSize: 'var(--rtx-ui-font-size, 14px)'");
     expect(badgeMarkup).toContain("opacity: 1");
     expect(badgeMarkup).toContain("textAlign: 'center'");
-    expect(badgeMarkup).toContain('transform: `translateY(-${LIVE_PRICE_BADGE_PRICE_ROW_OFFSET_PX}px)`');
+    expect(badgeMarkup).toContain("transform: 'translateY(-50%)'");
 
     expect(paint).toContain('livePriceValueRef.current.textContent = formatChartAxisPrice(livePrice, digits)');
     expect(paint).not.toContain('badge.textContent =');

@@ -14,7 +14,8 @@ import {
 } from './ExportDialog.helpers';
 import { tradeGatewayApi } from '../api/tradeGateway';
 import { api } from '../services/api';
-import type { Position, Trade } from '../store/useAppStore';
+import type { Position } from '../api/endpoints';
+import type { Trade } from '../store/useAppStore';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -111,11 +112,11 @@ describe('ExportDialog unavailable export modes', () => {
 describe('ExportDialog v2 export data sources', () => {
   it('routes position exports through the existing v2 positions helper', async () => {
     const positionsSpy = vi.spyOn(api.positions, 'getPositions').mockResolvedValueOnce([
-      { id: 1, symbol: 'EURUSD' } as Position,
+      { id: '1', symbol: 'EURUSD', side: 'buy' } satisfies Position,
     ]);
 
     await expect(fetchExportRows('100001', 'positions', '2026-06-01', '2026-06-07')).resolves.toEqual([
-      { id: 1, symbol: 'EURUSD' },
+      { id: '1', symbol: 'EURUSD', side: 'buy' },
     ]);
     expect(positionsSpy).toHaveBeenCalledWith(100001);
   });

@@ -966,3 +966,12 @@ html.rtx-skin-untitled-light .rtx-journal-toolbar .rtx-journal-auto[aria-pressed
   backdrop-filter: blur(4px);
   box-shadow: var(--shadow-md);
 }
+
+/* Broker credential fields are masked locally instead of using
+   type="password", so the browser password manager never classifies the
+   account key as a web credential — no save prompts and no post-login
+   "password found in a data breach" popup. Supported in all Chromium
+   builds (including the desktop shell) and Firefox 132+. */
+.rtx-secret-input {
+  -webkit-text-security: disc;
+}

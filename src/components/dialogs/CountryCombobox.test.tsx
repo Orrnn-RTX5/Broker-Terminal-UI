@@ -7,7 +7,7 @@ import { COUNTRIES, ISO_COUNTRY_CODES, resolveCountryCode } from '../../constant
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-const ControlledCountry = ({ initial = 'US', onChange = (_code: string) => {} }) => {
+const ControlledCountry = ({ initial = 'US', onChange = (() => {}) as (code: string) => void }) => {
   const [value, setValue] = useState(initial);
   return <>
     <CountryCombobox value={value} onChange={code => { setValue(code); onChange(code); }} />

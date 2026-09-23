@@ -214,10 +214,6 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-trade-butt
   line-height: 1.25 !important;
 }
 
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-price-badge {
-  transform: translateY(-12px) !important;
-}
-
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-price-badge span {
   line-height: 20px !important;
 }

@@ -63,7 +63,11 @@ const singleChartLayout = (): DockLayout => ({
 const charts = (layout: DockLayout) => [layout.root, ...layout.floatingPanels]
   .flatMap(panels).filter(panel => panel.component === 'Chart');
 const center = (layout: DockLayout) => layout.root.children.find(child => child.id === 'center-main') as DockContainer;
-const withoutRatio = ({ ratio: _ratio, ...panel }: DockPanelConfig) => panel;
+const withoutRatio = (panel: DockPanelConfig) => {
+  const rest = { ...panel };
+  delete rest.ratio;
+  return rest;
+};
 
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
 

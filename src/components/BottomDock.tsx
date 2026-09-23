@@ -125,7 +125,7 @@ const TRADE_COLUMN_DEFS: TradeColumnDef[] = [
     { key: 'priceOpen', label: 'Price Open', defaultWidth: 98, minWidth: 82, maxWidth: 150 },
     { key: 'sl', label: 'S / L', defaultWidth: 92, minWidth: 80, maxWidth: 150 },
     { key: 'tp', label: 'T / P', defaultWidth: 92, minWidth: 80, maxWidth: 150 },
-    { key: 'priceCurrent', label: 'Price Current', defaultWidth: 108, minWidth: 90, maxWidth: 160 },
+    { key: 'priceCurrent', label: 'Current Price', defaultWidth: 108, minWidth: 90, maxWidth: 160 },
     { key: 'swap', label: 'Swap', defaultWidth: 72, minWidth: 62, maxWidth: 120 },
     { key: 'accountLogin', label: 'Account Login', defaultWidth: 108, minWidth: 88, maxWidth: 160 },
     { key: 'timeUpdate', label: 'Time Update', defaultWidth: 150, minWidth: 120, maxWidth: 220 },
@@ -861,7 +861,6 @@ const TradeTab = memo(function TradeTab({
     onModifyPosition,
     onCloseBulk,
     formatMoney,
-    formatDate,
     loading,
     error,
 }: any) {
@@ -1382,7 +1381,7 @@ const TradeTab = memo(function TradeTab({
         if (isColumnVisible('priceOpen')) columns.push({ label: 'Price Open', value: pos => formatTradePrice(pos.price_open ?? pos.open_price ?? pos.openPrice, pos.symbol ?? '') });
         if (isColumnVisible('sl')) columns.push({ label: 'S / L', value: pos => formatTradeLevel(pos.price_sl ?? pos.sl, pos.symbol ?? '') });
         if (isColumnVisible('tp')) columns.push({ label: 'T / P', value: pos => formatTradeLevel(pos.price_tp ?? pos.tp, pos.symbol ?? '') });
-        if (isColumnVisible('priceCurrent')) columns.push({ label: 'Price Current', value: pos => formatTradePrice(pos.price_current ?? pos.current_price ?? pos.currentPrice ?? pos.livePrice, pos.symbol ?? '') });
+        if (isColumnVisible('priceCurrent')) columns.push({ label: 'Current Price', value: pos => formatTradePrice(pos.price_current ?? pos.current_price ?? pos.currentPrice ?? pos.livePrice, pos.symbol ?? '') });
         if (isColumnVisible('swap')) columns.push({ label: 'Swap', value: pos => formatMoney(pos.swap) });
         if (isColumnVisible('accountLogin')) columns.push({ label: 'Account Login', value: pos => pos.account_login ?? '-' });
         if (isColumnVisible('timeUpdate')) columns.push({ label: 'Time Update', value: pos => formatTradeTime(pos.time_update) });
@@ -2011,18 +2010,22 @@ ${rows}
                             indicator, followed by HEAD's single floating-P/L span. HEAD collapsed
                             origin/main's two near-identical branches into one span with conditional
                             class/style, and its `floatingProfitColor` / `floatingProfitLabel` carry
-                            the same null handling origin/main inlined in each branch. */}
-                        <span
-                            className="rtx-trade-footer-calc shrink-0 text-zinc-500"
-                            title={`Calculation ${account?.calculationVersion || 'unknown'} · margin ${account?.marginCalculationVersion || 'unknown'} · ${account?.metricsStatus || (liveEquity === null ? 'unavailable' : 'valid')}`}
-                            data-testid="trade-footer-calculation-badge"
-                        >
-                            {account?.calculationVersion || '—'}
-                            {' · margin '}
-                            {account?.marginCalculationVersion || '—'}
-                            {' · '}
-                            {account?.metricsStatus || (liveEquity === null ? 'unavailable' : 'valid')}
-                        </span>
+                            the same null handling origin/main inlined in each branch. The badge is
+                            diagnostic; without version data it stays hidden instead of rendering
+                            "— · margin — · valid" placeholders. */}
+                        {Boolean(account?.calculationVersion || account?.marginCalculationVersion) && (
+                            <span
+                                className="rtx-trade-footer-calc shrink-0 text-zinc-500"
+                                title={`Calculation ${account?.calculationVersion || 'unknown'} · margin ${account?.marginCalculationVersion || 'unknown'} · ${account?.metricsStatus || (liveEquity === null ? 'unavailable' : 'valid')}`}
+                                data-testid="trade-footer-calculation-badge"
+                            >
+                                {account?.calculationVersion || '—'}
+                                {' · margin '}
+                                {account?.marginCalculationVersion || '—'}
+                                {' · '}
+                                {account?.metricsStatus || (liveEquity === null ? 'unavailable' : 'valid')}
+                            </span>
+                        )}
                         {account?.marketClosed && <span className="shrink-0 text-zinc-500">Market closed</span>}
                         <span
                             className={`rtx-trade-footer-floating ${isColumnVisible('profit') ? 'rtx-trade-footer-floating--profit justify-center' : 'justify-end'} inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-center font-normal leading-none ${floatingProfitColor}`}

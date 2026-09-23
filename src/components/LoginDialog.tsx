@@ -8,7 +8,7 @@ import ReactDOM from 'react-dom';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
 import { removeToken, setRefreshToken, setToken } from '../api/client';
-import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL, toLocalDevProxyUrl } from '../config/api';
+import { normalizeBrokerServerUrl, updateDynamicUrls, toLocalDevProxyUrl } from '../config/api';
 import {
     getBackendTarget,
     isDesktopBackendTarget,
@@ -25,7 +25,7 @@ import {
     mergeBrokerPresentation,
 } from '../services/brokerPresentation';
 import { pickDiscoveryBroker, type BrokerServerItem } from './WelcomeTerminal';
-import { User, X, ChevronDown, LockKeyhole, ArrowRight, LoaderCircle, Server, AlertCircle } from 'lucide-react';
+import { User, X, ChevronDown, LockKeyhole, LoaderCircle, Server, AlertCircle } from 'lucide-react';
 import '../styles/login-dialog.css';
 
 interface LoginDialogProps {
@@ -483,7 +483,7 @@ export function LoginDialog({
                 <header className="rtx-login-header">
                     <div className="rtx-login-heading">
                         <div className="rtx-login-mark" aria-hidden="true">
-                            <User size={22} strokeWidth={1.7} />
+                            <User size={20} strokeWidth={2} />
                         </div>
                         <div>
                             <h2 id={`${dialogId}-title`} className="rtx-dialog-title rtx-login-title">{tr(tradeLogin ? "Log in to trade" : "Login")}</h2>
@@ -491,7 +491,7 @@ export function LoginDialog({
                         </div>
                     </div>
                     <button type="button" onClick={closeDialog} className="rtx-login-close" aria-label={tr("Close")} title={tr("Close")}>
-                        <X size={18} aria-hidden="true" />
+                        <X size={16} aria-hidden="true" />
                     </button>
                 </header>
 
@@ -501,7 +501,7 @@ export function LoginDialog({
                     {isDesktop && (
                         <div className="rtx-login-field">
                             <div className="rtx-login-field-heading">
-                                <label htmlFor={`${dialogId}-server`} className="rtx-login-label text-[14px] leading-5 font-medium">{tr("Server:")}</label>
+                                <label htmlFor={`${dialogId}-server`} className="rtx-login-label text-[14px] leading-5 font-medium">{tr("Server")}</label>
                                 {serverStatusLabel && <span role="status" className="rtx-login-status" data-status={directoryLoading ? 'checking' : healthStatus}>{tr(serverStatusLabel)}</span>}
                             </div>
                             <div className="rtx-login-control">
@@ -558,13 +558,16 @@ export function LoginDialog({
                             <LockKeyhole size={17} className="rtx-login-field-icon" aria-hidden="true" />
                             <input
                                 id={`${dialogId}-password`}
-                                name="password"
-                                autoComplete="current-password"
+                                name="account-key"
+                                autoComplete="off"
+                                spellCheck={false}
+                                autoCorrect="off"
+                                autoCapitalize="none"
                                 disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
-                                type="password"
+                                type="text"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="rtx-login-input"
+                                className="rtx-login-input rtx-secret-input"
                                 placeholder={tr("Password")}
                             />
                         </div>
@@ -573,7 +576,7 @@ export function LoginDialog({
                     {/* Server / Broker Dropdown */}
                     {!isDesktop && <div className="rtx-login-field">
                         <div className="rtx-login-field-heading">
-                            <label htmlFor={`${dialogId}-server`} className="rtx-login-label text-[14px] leading-5 font-medium">{tr("Server:")}</label>
+                            <label htmlFor={`${dialogId}-server`} className="rtx-login-label text-[14px] leading-5 font-medium">{tr("Server")}</label>
                             {serverStatusLabel && <span role="status" className="rtx-login-status" data-status={directoryLoading ? 'checking' : healthStatus}>{tr(serverStatusLabel)}</span>}
                         </div>
                         <div ref={dropdownRef}>
@@ -680,7 +683,6 @@ export function LoginDialog({
                         >
                             {loading ? <LoaderCircle size={16} className="rtx-login-spinner" aria-hidden="true" /> : null}
                             {tr(loading ? "Connecting..." : "Log in")}
-                            {!loading && <ArrowRight size={16} aria-hidden="true" />}
                         </button>
                     </div>
                 </form>

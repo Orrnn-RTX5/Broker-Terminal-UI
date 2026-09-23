@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import i18n, { changeInterfaceLanguage, i18nReady } from '../i18n';
+import { changeInterfaceLanguage, i18nReady } from '../i18n';
 import { feedbackLabel, feedbackValue, feedbackSymbol, formatUiMessage } from './uiFeedback';
 
 describe('interface feedback', () => {

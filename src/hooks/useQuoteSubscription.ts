@@ -11,7 +11,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getQuoteSocketManager } from '../services/quoteSocketManager';
-import { onSessionChange } from '../services/brokerSession';
+import {
+  getAccessToken,
+  getServerUrl,
+  hasFeedBrokerToken,
+  onSessionChange,
+} from '../services/brokerSession';
 import { debugLog } from '../utils/debugLogging';
 import { useAppStore } from '../store/useAppStore';
 import { isDesktopBackendTarget } from '../config/backendTarget.js';
@@ -27,13 +32,16 @@ export interface UseQuoteSubscriptionOptions {
   enabled?: boolean;
 }
 
+const hasReadyStoredBrokerSession = (): boolean =>
+  Boolean(getServerUrl() && (getAccessToken() || hasFeedBrokerToken()));
+
 export function useQuoteSubscription(
   symbols: string[],
   sourceId: string,
   options: UseQuoteSubscriptionOptions = {},
 ): UseQuoteSubscriptionReturn {
+  const enabled = options.enabled !== false;
   const authenticated = useAppStore(state => state.isAuthenticated);
-  const enabled = options.enabled !== false && (authenticated || isDesktopBackendTarget());
   const [sessionRevision, setSessionRevision] = useState(0);
 
   useEffect(() => {
@@ -48,14 +56,16 @@ export function useQuoteSubscription(
   );
 
   const managerRef = useRef(getQuoteSocketManager());
+  const storedSessionReady = hasReadyStoredBrokerSession();
+  const canSubscribe = authenticated || storedSessionReady || isDesktopBackendTarget();
 
   useEffect(() => {
     if (!enabled) return undefined;
 
     const manager = managerRef.current;
-    debugLog(`[useQuoteSubscription] public v2 demand - symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
+    debugLog(`[useQuoteSubscription] demand - canSubscribe=${canSubscribe}, symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
 
-    if (normalizedSymbols.length === 0) {
+    if (!canSubscribe || normalizedSymbols.length === 0) {
       manager.removeDemand(sourceId);
       return;
     }
@@ -66,7 +76,7 @@ export function useQuoteSubscription(
       manager.removeDemand(sourceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, normalizedSymbols.join('|'), sourceId, sessionRevision]);
+  }, [enabled, normalizedSymbols.join('|'), sourceId, canSubscribe, sessionRevision]);
 
   return {
     isConnected: managerRef.current.isConnected(),

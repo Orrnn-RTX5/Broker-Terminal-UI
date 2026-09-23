@@ -70,7 +70,7 @@ interface NotificationState {
 export const useNotificationStore = create<NotificationState>()(
   devtools(
     persist(
-      (set, get) => ({
+      (set) => ({
         notifications: [],
         unreadCount: 0,
         isOpen: false,

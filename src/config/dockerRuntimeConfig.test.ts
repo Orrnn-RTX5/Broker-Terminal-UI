@@ -46,7 +46,7 @@ const createContainer = (buildEnv: Record<string, string> = {}, template = built
         NGINX_INLINE_HELPER: resolve('docker-inline-runtime-config.awk').replace(/\\/g, '/'),
         ...overrides,
       },
-      encoding: 'utf8', timeout: 10000, stdio: 'pipe',
+      encoding: 'utf8', timeout: process.platform === 'win32' ? 60000 : 10000, stdio: 'pipe',
     });
     return { built, source: readFileSync(path, 'utf8'), html: readFileSync(indexPath, 'utf8') };
   };
@@ -70,7 +70,9 @@ const evaluate = (source: string) => {
   return runtimeWindow;
 };
 
-describe.skipIf(!existsSync(shell))('container broker environment', () => {
+describe.skipIf(!existsSync(shell))('container broker environment', {
+  timeout: process.platform === 'win32' ? 90000 : 10000,
+}, () => {
   it('preserves the .env.web build when no broker override is supplied', () => {
     const { built, source, html } = generate();
     expect(source).toBe(built);
@@ -155,7 +157,7 @@ describe.skipIf(!existsSync(shell))('container broker environment', () => {
     expect(readFileSync(container.indexPath, 'utf8')).toBe(initial.html);
     expect(readFileSync(container.configPath, 'utf8')).toBe(initial.source);
     expect(readdirSync(container.directory).filter(name => name.startsWith('.'))).toEqual([]);
-  });
+  }, 60000);
 
   it('fails clearly when the pristine template is missing', () => {
     const container = createContainer();
