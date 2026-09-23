@@ -36,9 +36,12 @@ artifacts/desktop-splash*/*isolated-profile/
 .env.local
 .env.*.local
 .env_*
+.env.web*
+.env.desktop*
+.env.electron*
+.env.normal*
+.env.*
 !.env.example
-!.env.production
-!.env.staging
 
 # Test and report outputs
 coverage/
