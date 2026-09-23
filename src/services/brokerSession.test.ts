@@ -60,11 +60,11 @@ describe('broker websocket URL builder', () => {
     localStorage.setItem('ws_url', 'ws://103.91.186.142:8091/ws/v2');
     localStorage.setItem('feed_url', 'ws://103.91.186.142:8091/ws/feed');
 
-    expect(getServerUrl()).toBe('https://backend.orrnn.com');
-    expect(buildBrokerApiV2()).toBe('https://backend.orrnn.com/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('wss://backend.orrnn.com/ws/feed');
+    expect(getServerUrl()).toBe('https://service.orrnn.com');
+    expect(buildBrokerApiV2()).toBe('https://service.orrnn.com/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://service.orrnn.com/ws/feed');
     expect(buildBrokerWsV2Uri('access-token')).toBe(
-      'wss://backend.orrnn.com/ws/v2?token=access-token'
+      'wss://service.orrnn.com/ws/v2?token=access-token'
     );
   });
 
@@ -75,11 +75,11 @@ describe('broker websocket URL builder', () => {
     localStorage.setItem('ws_url', 'ws://69.197.178.27:8090/ws/v2');
     localStorage.setItem('feed_url', 'ws://69.197.178.27/ws/feed');
 
-    expect(getServerUrl()).toBe('https://backend.orrnn.com');
-    expect(buildBrokerApiV2()).toBe('https://backend.orrnn.com/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('wss://backend.orrnn.com/ws/feed');
+    expect(getServerUrl()).toBe('https://service.orrnn.com');
+    expect(buildBrokerApiV2()).toBe('https://service.orrnn.com/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://service.orrnn.com/ws/feed');
     expect(buildBrokerWsV2Uri('access-token')).toBe(
-      'wss://backend.orrnn.com/ws/v2?token=access-token'
+      'wss://service.orrnn.com/ws/v2?token=access-token'
     );
     expect([
       buildBrokerWsFeedUri(),
@@ -100,10 +100,10 @@ describe('broker websocket URL builder', () => {
       feed_url: 'ws://103.91.186.142:8091/ws/feed',
     });
 
-    expect(localStorage.getItem('backend_url')).toBe('https://backend.orrnn.com');
-    expect(localStorage.getItem('server_url')).toBe('https://backend.orrnn.com');
-    expect(localStorage.getItem('ws_url')).toBe('wss://backend.orrnn.com/ws/v2');
-    expect(localStorage.getItem('feed_url')).toBe('wss://backend.orrnn.com/ws/feed');
+    expect(localStorage.getItem('backend_url')).toBe('https://service.orrnn.com');
+    expect(localStorage.getItem('server_url')).toBe('https://service.orrnn.com');
+    expect(localStorage.getItem('ws_url')).toBe('wss://service.orrnn.com/ws/v2');
+    expect(localStorage.getItem('feed_url')).toBe('wss://service.orrnn.com/ws/feed');
   });
 
   it('extracts only host and port when server_url contains a path', () => {

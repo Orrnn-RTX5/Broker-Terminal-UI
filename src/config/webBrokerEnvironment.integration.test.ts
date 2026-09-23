@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -58,7 +58,8 @@ afterEach(async () => {
   if (failure?.status === 'rejected') throw failure.reason
 })
 
-describe('real .env.web broker selection over Vite HTTP', () => {
+// .env.web is untracked (local-only broker config), so clean CI checkouts skip this suite.
+describe.skipIf(!existsSync(resolve(repositoryRoot, '.env.web')))('real .env.web broker selection over Vite HTTP', () => {
   it.each([
     {
       block: 'TEST' as const,
