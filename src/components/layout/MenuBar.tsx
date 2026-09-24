@@ -17,6 +17,7 @@ import { openWebTrader } from '../../services/webTrader';
 import { getActiveChartCommandTarget, getPanelIdFromChartContextId } from '../../services/chartCommandTarget';
 import { getChartPanelCount, MAX_CHART_PANELS } from '../../services/dockManager';
 import { useDrawingSidebarStore } from '../../store/useDrawingSidebarStore';
+import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import { lockedTerminalTool } from '../../config/terminalToolAvailability';
 import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
@@ -87,6 +88,9 @@ export const MenuBar = ({
     const desktopUpdater = useDesktopUpdater();
     const { t, i18n } = useTranslation();
     const drawingSidebarVisible = useDrawingSidebarStore((state) => state.visible);
+    const statusBarVisible = useTerminalBarsStore(state => state.statusBarVisible);
+    const chartsBarVisible = useTerminalBarsStore(state => state.chartsBarVisible);
+    const timeframesVisible = useTerminalBarsStore(state => state.timeframesVisible);
     const canArrangeIcons = useDockLayoutStore(state => state.layout.floatingPanels.some(container =>
         container.children.some(child => !('children' in child) && child.minimized === true)));
     const chartCount = useDockLayoutStore(state => getChartPanelCount(state.layout));
@@ -98,7 +102,11 @@ export const MenuBar = ({
     const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
     const [tradeLoginRequested, setTradeLoginRequested] = useState(false);
     useEffect(() => {
-        const openLogin = () => { setTradeLoginRequested(true); setIsLoginDialogOpen(true); };
+        const openLogin = () => {
+            if ((window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__) return;
+            setTradeLoginRequested(true);
+            setIsLoginDialogOpen(true);
+        };
         window.addEventListener('rtx:requestTradeLogin', openLogin);
         return () => window.removeEventListener('rtx:requestTradeLogin', openLogin);
     }, []);
@@ -373,9 +381,16 @@ export const MenuBar = ({
             { label: t('menu.view.languages'), children: languageList, scrollableChildren: true },
 
             { divider: true, label: '' },
-            { label: t('menu.view.toolbars'), children: [{ label: 'Standard', icon: <Icon name="box" size="xs" /> }, { label: 'Line Studies' }, { label: 'Timeframes' }] },
-            { label: t('menu.view.statusBar'), icon: <Icon name="layout" size="sm" /> },
-            { label: t('menu.view.chartsBar'), icon: <Icon name="layers" size="sm" /> },
+            {
+                label: t('menu.view.toolbars'),
+                children: [
+                    { label: 'Standard', icon: <Icon name="box" size="xs" /> },
+                    { label: 'Line Studies', checked: drawingSidebarVisible, checkRole: 'checkbox', action: () => useDrawingSidebarStore.getState().toggle() },
+                    { label: 'Timeframes', checked: timeframesVisible, checkRole: 'checkbox', action: () => useTerminalBarsStore.getState().toggleTimeframes() },
+                ],
+            },
+            { label: t('menu.view.statusBar'), icon: <Icon name="layout" size="sm" />, checked: statusBarVisible, checkRole: 'checkbox', action: () => useTerminalBarsStore.getState().toggleStatusBar() },
+            { label: t('menu.view.chartsBar'), icon: <Icon name="layers" size="sm" />, checked: chartsBarVisible, checkRole: 'checkbox', action: () => useTerminalBarsStore.getState().toggleChartsBar() },
             { divider: true, label: '' },
             { label: 'Search Symbols', shortcut: 'Alt+U', icon: <Icon name="search" size="sm" />, action: () => { setIsSymbolsOpen(true); setActiveMenu(null); } },
             { label: t('menu.view.depthOfMarket'), ...terminalShortcut('view.depth-of-market') },
@@ -651,7 +666,7 @@ export const MenuBar = ({
             menuItems.View[0],
             fontSizeMenuItem,
             focusChartMenuItem,
-            ...menuItems.View.slice(1, -2).filter(item => item.label !== t('menu.view.statusBar')),
+            ...menuItems.View.slice(1, -2),
             {
                 label: 'Economic Calendar',
                 icon: <Icon name="calendar" size="sm" />,

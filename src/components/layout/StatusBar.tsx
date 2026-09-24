@@ -4,6 +4,7 @@ import { Icon } from '../ui/Icon';
 import { ConnectionStatus } from '../ConnectionStatus';
 import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
 import { useDesktopRelease } from '../../hooks/useDesktopRelease';
+import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import {
     getDesktopReleaseButtonTitle,
     getDesktopReleaseVersionLabel,
@@ -27,6 +28,7 @@ interface StatusBarProps {
 
 export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketStatus }: StatusBarProps) {
     const tr = useUiTranslation();
+    const visible = useTerminalBarsStore(state => state.statusBarVisible);
     const brokerInfo = useTerminalBrokerInfo();
     const [currentTime, setCurrentTime] = useState(new Date());
     useEffect(() => {
@@ -67,7 +69,8 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
     const desktopDownloadVersionLabel = desktopReleaseVersionLabel || (desktopReleaseState.status === 'loading' ? 'Latest' : '');
 
     return (
-        <div className="rtx-status-bar h-6 flex items-center justify-between border-t border-[#2a3342] bg-[#10151d] px-2 text-[13px] leading-[19.5px] font-normal font-sans text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] select-none z-50 [.rtx-advanced-view_&]:border-zinc-400 [.rtx-advanced-view_&]:bg-[#e1e1e1] [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:shadow-none">
+        // Keep ConnectionStatus mounted: it also handles login requests outside the bar.
+        <div style={{ display: visible ? undefined : 'none' }} className="rtx-status-bar h-6 flex items-center justify-between border-t border-[#2a3342] bg-[#10151d] px-2 text-[13px] leading-[19.5px] font-normal font-sans text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] select-none z-50 [.rtx-advanced-view_&]:border-zinc-400 [.rtx-advanced-view_&]:bg-[#e1e1e1] [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:shadow-none">
             <div className="flex min-w-0 flex-1 items-center">
                 <div
                     className="rtx-status-bar__metric flex min-w-0 max-w-full items-center gap-2 overflow-hidden whitespace-nowrap font-normal text-zinc-400 [.rtx-advanced-view_&]:text-zinc-600"

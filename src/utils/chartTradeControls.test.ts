@@ -180,7 +180,8 @@ describe('createEntryTradeControlBar', () => {
       tradeKey: 'trade:compact', ticket: 987, symbol: 'XAUUSD', side,
       volume: 0.01, isLightSurface: false, leftInset: 10, plainLabel: true, currencyLabel: 'EUR',
     });
-    expect(root.dataset.align).toBe('right');
+    expect(root.dataset.align).toBe('left');
+    expect(root.style.left).toBe('10px');
     expect(root.style.transform).toBe('translateY(-50%)');
     expect(root.tabIndex).toBe(0);
     expect(root.querySelector('.rtx-trade-chip--volume')?.textContent).toBe(`${side} 0.01`);

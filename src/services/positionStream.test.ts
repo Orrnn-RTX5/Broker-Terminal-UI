@@ -61,10 +61,11 @@ describe('account position stream reconciliation', () => {
   });
 
   it('revalidates empty snapshots but still applies explicit closes, including the last ticket', () => {
-    expect(reconcilePositionStreamBatch(initial(), { mode: 'snapshot', positions: [] })).toEqual({ positions: initial(), needsRevalidation: true });
+    expect(reconcilePositionStreamBatch(initial(), { mode: 'snapshot', positions: [] })).toEqual({ positions: initial(), needsRevalidation: true, closedTickets: [] });
     const firstClose = reconcilePositionStreamBatch(initial(), { mode: 'delta', positions: [{ ticket: gold.ticket, status: 'closed' }] });
     expect(firstClose.positions.map((position) => position.id)).toEqual([bitcoin.ticket]);
-    expect(reconcilePositionStreamBatch(firstClose.positions, { mode: 'delta', positions: [{ ticket: bitcoin.ticket, volume: 0 }] })).toEqual({ positions: [], needsRevalidation: false });
+    expect(firstClose.closedTickets).toEqual([gold.ticket]);
+    expect(reconcilePositionStreamBatch(firstClose.positions, { mode: 'delta', positions: [{ ticket: bitcoin.ticket, volume: 0 }] })).toEqual({ positions: [], needsRevalidation: false, closedTickets: [bitcoin.ticket] });
   });
 
   it('reads nested close events without mistaking partial closes for full closes', () => {

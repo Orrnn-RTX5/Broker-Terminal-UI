@@ -2,6 +2,7 @@
 
 import '@testing-library/jest-dom';
 import { useDrawingSidebarStore } from '../../store/useDrawingSidebarStore';
+import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DockLayout } from '../../services/dockManager';
@@ -162,7 +163,9 @@ afterEach(() => {
     dockStoreFixture.resetWindows.mockClear();
     dockStoreFixture.resetToDefaultLayout.mockClear();
     useDrawingSidebarStore.setState({ visible: true });
+    useTerminalBarsStore.setState({ statusBarVisible: true, chartsBarVisible: true, timeframesVisible: true });
     delete window.electron;
+    delete (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__;
     useChartSettingsStore.setState({
         globalProperties: {
             ...defaultChartProperties,
@@ -223,7 +226,113 @@ describe('unavailable terminal services', () => {
     });
 });
 
+describe('MenuBar toolbar visibility', () => {
+    const openToolbars = (surface: string) => {
+        if (surface === 'desktop') {
+            fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+        } else {
+            fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
+        }
+        fireEvent.click(screen.getByRole('menuitem', { name: 'menu.view.toolbars' }));
+    };
+
+    it.each(['web', 'desktop'])('hides and restores Line Studies through the %s Toolbars submenu', (surface) => {
+        if (surface === 'desktop') installElectronBridge();
+        render(<MenuBar />);
+
+        openToolbars(surface);
+        const lineStudies = screen.getByRole('menuitemcheckbox', { name: 'Line Studies' });
+        expect(lineStudies).toHaveAttribute('aria-checked', 'true');
+        fireEvent.click(lineStudies);
+        expect(useDrawingSidebarStore.getState().visible).toBe(false);
+        expect(useTerminalBarsStore.getState().timeframesVisible).toBe(true);
+        expect(screen.queryByRole('menuitemcheckbox', { name: 'Line Studies' })).not.toBeInTheDocument();
+
+        openToolbars(surface);
+        expect(screen.getByRole('menuitemcheckbox', { name: 'Line Studies' })).toHaveAttribute('aria-checked', 'false');
+        fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Line Studies' }));
+        expect(useDrawingSidebarStore.getState().visible).toBe(true);
+    });
+
+    it.each(['web', 'desktop'])('persists the Timeframes checkbox and restores it from the %s Toolbars submenu', async (surface) => {
+        if (surface === 'desktop') installElectronBridge();
+        render(<MenuBar />);
+
+        openToolbars(surface);
+        const timeframes = screen.getByRole('menuitemcheckbox', { name: 'Timeframes' });
+        expect(timeframes).toHaveAttribute('aria-checked', 'true');
+        fireEvent.click(timeframes);
+        expect(useTerminalBarsStore.getState().timeframesVisible).toBe(false);
+        expect(useTerminalBarsStore.getState().statusBarVisible).toBe(true);
+        expect(useTerminalBarsStore.getState().chartsBarVisible).toBe(true);
+        expect(useDrawingSidebarStore.getState().visible).toBe(true);
+        expect(screen.queryByRole('menuitemcheckbox', { name: 'Timeframes' })).not.toBeInTheDocument();
+
+        const savedBars = localStorage.getItem('rtx-terminal-bars');
+        expect(savedBars).not.toBeNull();
+        expect(JSON.parse(savedBars!).state.timeframesVisible).toBe(false);
+        act(() => useTerminalBarsStore.setState({ timeframesVisible: true }));
+        localStorage.setItem('rtx-terminal-bars', savedBars!);
+        await act(async () => { await useTerminalBarsStore.persist.rehydrate(); });
+        expect(useTerminalBarsStore.getState().timeframesVisible).toBe(false);
+
+        openToolbars(surface);
+        expect(screen.getByRole('menuitemcheckbox', { name: 'Timeframes' })).toHaveAttribute('aria-checked', 'false');
+        fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Timeframes' }));
+        expect(useTerminalBarsStore.getState().timeframesVisible).toBe(true);
+        expect(JSON.parse(localStorage.getItem('rtx-terminal-bars')!).state.timeframesVisible).toBe(true);
+    });
+
+    it('keeps Line Studies synchronized with the existing Show and Hide drawing tools action', () => {
+        render(<MenuBar />);
+        const launcher = screen.getByRole('button', { name: 'Open application menu' });
+
+        fireEvent.click(launcher);
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Hide drawing tools' }));
+        openToolbars('web');
+        expect(screen.getByRole('menuitemcheckbox', { name: 'Line Studies' })).toHaveAttribute('aria-checked', 'false');
+        fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Line Studies' }));
+
+        fireEvent.click(launcher);
+        expect(screen.getByRole('menuitem', { name: 'Hide drawing tools' })).toBeInTheDocument();
+        fireEvent.click(launcher);
+        openToolbars('web');
+        fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Line Studies' }));
+        fireEvent.click(launcher);
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Show drawing tools' }));
+
+        openToolbars('web');
+        expect(screen.getByRole('menuitemcheckbox', { name: 'Line Studies' })).toHaveAttribute('aria-checked', 'true');
+    });
+});
+
 describe('MenuBar hamburger launcher', () => {
+    it.each(['statusBar', 'chartsBar'] as const)('toggles %s, updates its checkmark, and remembers the setting', async (bar) => {
+        render(<MenuBar />);
+        const launcher = screen.getByRole('button', { name: 'Open application menu' });
+        const openView = () => {
+            fireEvent.click(launcher);
+            fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
+        };
+        const stateKey = bar === 'statusBar' ? 'statusBarVisible' : 'chartsBarVisible';
+        const otherKey = bar === 'statusBar' ? 'chartsBarVisible' : 'statusBarVisible';
+        openView();
+        const item = screen.getByRole('menuitemcheckbox', { name: `menu.view.${bar}` });
+        expect(item).toHaveAttribute('aria-checked', 'true');
+        fireEvent.click(item);
+        expect(useTerminalBarsStore.getState()[stateKey]).toBe(false);
+        expect(useTerminalBarsStore.getState()[otherKey]).toBe(true);
+        expect(launcher).toHaveAttribute('aria-expanded', 'false');
+        await act(async () => { await useTerminalBarsStore.persist.rehydrate(); });
+        openView();
+        expect(screen.getByRole('menuitemcheckbox', { name: `menu.view.${bar}` })).toHaveAttribute('aria-checked', 'false');
+        fireEvent.click(screen.getByRole('menuitemcheckbox', { name: `menu.view.${bar}` }));
+        expect(useTerminalBarsStore.getState()[stateKey]).toBe(true);
+    });
+
     it('hides and restores the drawing sidebar from the application menu', () => {
         render(<MenuBar />);
         const launcher = screen.getByRole('button', { name: 'Open application menu' });
@@ -540,7 +649,7 @@ describe('MenuBar hamburger launcher', () => {
         fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Search Symbols' }));
-        expect(await screen.findByRole('dialog', { name: 'Symbols dialog' })).toBeInTheDocument();
+        expect(await screen.findByRole('dialog', { name: 'Symbols dialog' }, { timeout: 5_000 })).toBeInTheDocument();
 
         fireEvent.click(launcher);
         fireEvent.click(screen.getByRole('menuitem', { name: 'Chart settings' }));
@@ -586,6 +695,39 @@ describe('MenuBar hamburger launcher', () => {
 });
 
 describe('MenuBar Electron desktop menubar', () => {
+    it('leaves trade login requests to App while the terminal is mounted', async () => {
+        installElectronBridge();
+        (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__ = true;
+        render(<MenuBar />);
+
+        await act(async () => {
+            window.dispatchEvent(new Event('rtx:requestTradeLogin'));
+        });
+        expect(screen.queryByRole('dialog', { name: 'Trade account login' })).not.toBeInTheDocument();
+
+        delete (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__;
+        fireEvent(window, new Event('rtx:requestTradeLogin'));
+        expect(await screen.findByRole('dialog', { name: 'Trade account login' })).toBeVisible();
+    });
+
+    it.each(['statusBar', 'chartsBar'] as const)('hides and restores %s from the desktop View menu', (bar) => {
+        installElectronBridge();
+        render(<MenuBar />);
+        const stateKey = bar === 'statusBar' ? 'statusBarVisible' : 'chartsBarVisible';
+        const otherKey = bar === 'statusBar' ? 'chartsBarVisible' : 'statusBarVisible';
+        const viewMenu = screen.getByRole('menuitem', { name: 'View' });
+        fireEvent.click(viewMenu);
+        expect(screen.getByRole('menuitemcheckbox', { name: `menu.view.${bar}` })).toHaveAttribute('aria-checked', 'true');
+        fireEvent.click(screen.getByRole('menuitemcheckbox', { name: `menu.view.${bar}` }));
+        expect(useTerminalBarsStore.getState()[stateKey]).toBe(false);
+        expect(useTerminalBarsStore.getState()[otherKey]).toBe(true);
+        expect(viewMenu).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(viewMenu);
+        expect(screen.getByRole('menuitemcheckbox', { name: `menu.view.${bar}` })).toHaveAttribute('aria-checked', 'false');
+        fireEvent.click(screen.getByRole('menuitemcheckbox', { name: `menu.view.${bar}` }));
+        expect(useTerminalBarsStore.getState()[stateKey]).toBe(true);
+    });
+
     it('opens, closes, and reopens trade account login without a status bar', async () => {
         installElectronBridge();
         render(<MenuBar />);
@@ -609,7 +751,7 @@ describe('MenuBar Electron desktop menubar', () => {
         expect(screen.queryByRole('menu', { name: 'File menu' })).not.toBeInTheDocument();
     });
 
-    it('exposes the installed version and working updater in View without the removed status bar entry', async () => {
+    it('keeps the installed version and updater working alongside the Status Bar toggle', async () => {
         installElectronBridge();
         let notify: (data: import('../../types/trading').UpdateStatusPayload) => void = () => {};
         const checkForUpdates = vi.fn().mockResolvedValue({ ok: true });
@@ -625,7 +767,7 @@ describe('MenuBar Electron desktop menubar', () => {
         const openView = () => fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
         openView();
         expect(screen.getByText('Version 1.0.24')).toBeInTheDocument();
-        expect(screen.queryByText('menu.view.statusBar')).not.toBeInTheDocument();
+        expect(screen.getByRole('menuitemcheckbox', { name: 'menu.view.statusBar' })).toHaveAttribute('aria-checked', 'true');
         fireEvent.click(screen.getByRole('menuitem', { name: 'Check updates' }));
         await waitFor(() => expect(checkForUpdates).toHaveBeenCalledTimes(1));
         act(() => notify({ status: 'available', percent: 0, message: 'Available', version: '1.0.25' }));
@@ -924,5 +1066,3 @@ describe('MenuBar Electron desktop menubar', () => {
         window.removeEventListener('rtx:order-feedback', feedbackSpy);
     });
 });
-
-

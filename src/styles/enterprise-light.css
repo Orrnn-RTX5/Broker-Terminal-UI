@@ -875,6 +875,16 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__title {
   color: var(--rtx-light-text) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__subtitle {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__header-icon {
+  background: var(--rtx-light-accent-soft) !important;
+  border-color: var(--rtx-light-accent-border) !important;
+  color: var(--rtx-light-accent-strong) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__close {
   color: var(--rtx-light-text-muted) !important;
 }
@@ -962,6 +972,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--primary,
   color: #ffffff !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--primary :is(.rtx-auth-action__description,
+  .rtx-auth-action__chevron) {
+  color: #ffffff !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--secondary,
   .rtx-auth-button[data-variant='ghost']) {
   background: var(--rtx-light-panel) !important;
@@ -981,6 +996,25 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--secondary,
   .rtx-auth-button[data-variant='ghost']):active:not(:disabled) {
   background: var(--rtx-light-pressed) !important;
   border-color: var(--rtx-light-border-strong) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--secondary .rtx-auth-action__icon {
+  background: var(--rtx-light-panel-subtle) !important;
+  border-color: var(--rtx-light-border) !important;
+  color: var(--rtx-light-accent-strong) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--secondary .rtx-auth-action__label {
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--secondary :is(.rtx-auth-action__description,
+  .rtx-auth-action__chevron) {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__footer--choice {
+  background: var(--rtx-light-canvas) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-guest-link {

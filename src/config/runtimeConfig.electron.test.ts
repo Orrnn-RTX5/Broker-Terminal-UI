@@ -17,6 +17,8 @@ describe('deployed runtime configuration', () => {
     expect((runtimeWindow as any).RUNTIME_CONFIG).toBeUndefined();
     expect(source).not.toContain('fxtrustbrokerbackend.orrnn.com');
     expect(source).not.toContain('service.achieverfinancials.com');
+    expect(source).not.toContain('service.orrnn.com');
+    expect(source).not.toContain('superadmin-prod.orrnn.com');
   });
 
   it.each([

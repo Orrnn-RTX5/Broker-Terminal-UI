@@ -155,6 +155,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     // Get current symbol and timeframe from store
     const selectedSymbol = useAppStore(state => state.selectedSymbol);
     const timeframe = useAppStore(state => state.timeframe);
+    const isAuthenticated = useAppStore(state => state.isAuthenticated);
 
     // Print state
     const [printPreferences, setPrintPreferences] = useState<PrintPreferences | null>(null);
@@ -763,19 +764,22 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="flex-1">{t('menu.file.loginMql5')}</span>
                 </button>
 
-                <div className="rtx-menu-divider" role="separator"></div>
-
                 {/* Exit */}
-                <button
-                    onClick={handleExit}
-                    className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title={tr("Close application")}
-                >
-                    <div className="w-4 flex items-center justify-center text-rose-400 group-hover:text-rose-300">
-                        <Icon name="log-out" size="sm" />
-                    </div>
-                    <span className="flex-1">{t('menu.file.exit')}</span>
-                </button>
+                {isAuthenticated && (
+                    <>
+                        <div className="rtx-menu-divider" role="separator"></div>
+                        <button
+                            onClick={handleExit}
+                            className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
+                            title={tr("Close application")}
+                        >
+                            <div className="w-4 flex items-center justify-center text-rose-400 group-hover:text-rose-300">
+                                <Icon name="log-out" size="sm" />
+                            </div>
+                            <span className="flex-1">{t('menu.file.exit')}</span>
+                        </button>
+                    </>
+                )}
             </div>}
 
             {/* Dialogs */}

@@ -17,7 +17,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMe
 import { getAnnotationTool } from '../drawing-tools/annotationToolCatalog';
 import { createChartRuler, rulerMetrics } from '../drawing-tools/chartRuler';
 import {
-  createChart,
+  createChartEx,
   ColorType,
   CrosshairMode,
   LineStyle,
@@ -37,6 +37,7 @@ import { useActiveChartRuntimeEffect } from '../hooks/useActiveChartRuntimeEffec
 import { useBrokerAccountSessionScope } from '../hooks/useBrokerAccountSessionScope';
 import { useTradingChartVisibleRuntime } from '../hooks/useTradingChartVisibleRuntime';
 import { createChartInteractionOwnership } from '../utils/chartInteractionOwnership';
+import { TradingChartTimeScaleBehavior } from '../utils/chartTimeScaleBehavior';
 import { createChartPostInteractionCoordinator } from '../utils/chartPostInteractionCoordinator';
 import {
   buildChartSelectionPresentationKey,
@@ -126,6 +127,7 @@ import {
 import { ChartTemplateDialog } from './ChartTemplateDialog';
 import { type ChartTemplate } from '../store/useTemplateStore';
 import {
+  clampChartOpacityPercent,
   defaultChartProperties,
   getEffectiveChartColors,
   useChartSettingsStore,
@@ -229,6 +231,7 @@ import {
   mergeFormingCandleEnvelope,
   mergeBackendCandlePage,
   prependCandleHistory,
+  resolveCanonicalServerCandle,
   selectCandlesMutatedAfterGeneration,
   selectOlderHistoryCandlesForMerge,
   upsertCandleIntoHistory,
@@ -242,6 +245,7 @@ import {
   getLeftVisibleTimeFromLogicalRange,
   getLivePriceOverlayColors,
   getLivePriceSeriesColor,
+  LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX,
   isCandleAtOrBeforeFinalizedTime,
   markFinalizedCandleTime,
   getRenderedPrependedBarCount,
@@ -251,6 +255,7 @@ import {
   isDenseMinuteSeparatorTimeframe,
   isPotentialMarketClosedPlaceholderCandle,
   resolveCandleFinalityFromActivePeriod,
+  resolveLivePriceScaleWidth,
   shouldRecomputeMarketGapSeparatorsForCandle,
   shouldRestoreProtectedHistoryForFullRender,
   shouldApplyVisibleRangeResetForRender,
@@ -331,9 +336,8 @@ const TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS = 1_500;
 // One backend refresh per window for the whole position cluster: a dozen
 // trades riding their levels must not turn every tick into a request storm.
 const TRADE_LEVEL_CROSS_REFRESH_MIN_DISPATCH_INTERVAL_MS = 3_000;
-const TRADE_LEVEL_BADGE_LEFT_INSET_PX = 10;
+const TRADE_LEVEL_BADGE_LEFT_INSET_PX = 16;
 const TRADE_LEVEL_BADGE_STACK_OFFSET_PX = 76;
-const LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX = 52;
 const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
 const REALTIME_SCROLL_THRESHOLD_BARS = 2;
 const LIVE_CHART_UPDATE_INTERVAL_MS = 50;
@@ -749,6 +753,9 @@ interface OverlayNodeData {
   endPrice?: number;
   endTime?: number;
   markerSide?: TradeSide;
+  /** Segments only: snaps each end onto its execution arrow's tip instead of the raw price. */
+  startMarkerSide?: TradeSide;
+  endMarkerSide?: TradeSide;
   /** 'candle' snaps the marker outside its candle (BUY below the low, SELL above the high). */
   markerAnchor?: 'candle' | 'price';
   /** Extra vertical shift (px) applied after the price coordinate for price-badge and marker nodes. */
@@ -759,6 +766,9 @@ interface OverlayNodeData {
 }
 
 type TradeOverlayLayer = 'active' | 'history';
+
+/** Candle edge → chevron tip: 3px marker offset plus the 3px tip inset of the 20px arrow SVG. */
+const TRADE_MARKER_TIP_OFFSET_PX = 6;
 
 interface PriceLevelOptions {
   tradeKey?: string;
@@ -879,6 +889,8 @@ export const TradingChart = React.memo(function TradingChart({
   }, []);
   const containerRef = useRef<HTMLDivElement>(null); // Main chart refs
   const chartRef = useRef<IChartApi | null>(null);
+  const timeScaleTimeframeRef = useRef(timeframe);
+  timeScaleTimeframeRef.current = timeframe;
   const seriesRef = useRef<ISeriesApi<any> | null>(null);
   const volumeRef = useRef<ISeriesApi<any> | null>(null);
   const squareGridHostSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -1164,6 +1176,10 @@ export const TradingChart = React.memo(function TradingChart({
     const state = useChartSettingsStore.getState();
     return state.symbolProperties[symbol]?.showTradeHistoryArrows ?? state.globalProperties.showTradeHistoryArrows;
   });
+  const [ctxShowTradeHistoryLine, setCtxShowTradeHistoryLine] = useState(() => {
+    const state = useChartSettingsStore.getState();
+    return state.symbolProperties[symbol]?.showTradeHistory ?? state.globalProperties.showTradeHistory;
+  });
   const [localChartType, setLocalChartType] = useState<ChartType>(chartType);
 
   const toggleOneClickTrading = useCallback(() => {
@@ -1344,6 +1360,7 @@ export const TradingChart = React.memo(function TradingChart({
   );
   const livePriceColorPaletteRef = useRef<ChartColorPalette>(defaultChartProperties.colors);
   const lastLivePriceDirectionalColorRef = useRef(defaultChartProperties.colors.bullCandle);
+  const areaTrendDirectionRef = useRef<AreaTrendDirection | null>(null);
   const useEnterpriseLightPricePaletteRef = useRef(false);
   const leftVisibleTimeRef = useRef<number | null>(null);
   const lastAcceptedQuoteRef = useRef<number | null>(null);
@@ -1559,6 +1576,13 @@ export const TradingChart = React.memo(function TradingChart({
     nextClose?: number,
   ): string => {
     const colors = livePriceColorPaletteRef.current;
+    // The area series follows its period change, which can be negative even
+    // while the current candle rises. Share its rendered direction with the badge.
+    if (chartType === 'area') {
+      const color = getLivePriceSeriesColor(colors, chartType, areaTrendDirectionRef.current ?? 'up');
+      lastLivePriceDirectionalColorRef.current = color;
+      return color;
+    }
     const currentCandle = currentCandleRef.current;
     const fallback = lastLivePriceDirectionalColorRef.current
       || getLivePriceSeriesColor(colors, chartType, 'up');
@@ -1576,14 +1600,14 @@ export const TradingChart = React.memo(function TradingChart({
     return color;
   }, [chartType]);
 
-  const applyStableLivePriceHorizontalGeometry = useCallback((measuredScaleWidth: number) => {
-    const measuredWidth = Number.isFinite(measuredScaleWidth) && measuredScaleWidth > 0
-      ? measuredScaleWidth
-      : LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX;
-    const stableWidth = livePriceScaleWidthRef.current ?? measuredWidth;
-    livePriceScaleWidthRef.current = stableWidth;
+  const applyLivePriceHorizontalGeometry = useCallback((measuredScaleWidth: number) => {
+    const resolvedWidth = resolveLivePriceScaleWidth(
+      measuredScaleWidth,
+      livePriceScaleWidthRef.current,
+    );
+    livePriceScaleWidthRef.current = resolvedWidth;
 
-    const right = `${stableWidth}px`;
+    const right = `${resolvedWidth}px`;
     const line = livePriceLineRef.current;
     const badge = livePriceBadgeRef.current;
     if (line && line.style.right !== right) line.style.right = right;
@@ -1610,7 +1634,7 @@ export const TradingChart = React.memo(function TradingChart({
     livePriceOverlayColorsRef.current = overlayColors;
 
     line.style.top = `${y}px`;
-    applyStableLivePriceHorizontalGeometry(priceScaleWidth);
+    applyLivePriceHorizontalGeometry(priceScaleWidth);
     line.style.borderTopColor = overlayColors.lineColor;
     line.style.display = 'block';
 
@@ -1621,7 +1645,7 @@ export const TradingChart = React.memo(function TradingChart({
       livePriceValueRef.current.textContent = formatChartAxisPrice(livePrice, digits);
     }
     badge.style.display = 'block';
-  }, [applyStableLivePriceHorizontalGeometry, getLivePriceDirectionalColor]);
+  }, [applyLivePriceHorizontalGeometry, getLivePriceDirectionalColor]);
 
   const repaintLivePriceOverlayFromCurrentPrice = useCallback((activeCandle: Candle) => {
     if (!chartSettingsRef.current.showBidPriceLine) {
@@ -1703,6 +1727,7 @@ export const TradingChart = React.memo(function TradingChart({
     chartSettingsRef.current = chartSettings;
     setCtxShowTradeLevels(chartSettings.showTradeLevels);
     setCtxShowTradeHistory(chartSettings.showTradeHistoryArrows);
+    setCtxShowTradeHistoryLine(chartSettings.showTradeHistory);
     setShowOneClick(chartSettings.showQuickTradingButtons);
   }, [chartSettings]);
 
@@ -2187,8 +2212,6 @@ export const TradingChart = React.memo(function TradingChart({
     chart.timeScale().scrollToPosition(getLatestCandleScrollOffset(), false);
   }, [getLatestCandleScrollOffset]);
 
-  const areaTrendDirectionRef = useRef<AreaTrendDirection | null>(null);
-
   // TradingView-style Area coloring: the line and gradient follow the change
   // over the timeframe's period (daily change on M1, five days on M5, a year
   // on D1, …) — bull color while price sits at or above that period's
@@ -2209,6 +2232,22 @@ export const TradingChart = React.memo(function TradingChart({
     areaTrendDirectionRef.current = direction;
     try {
       series.applyOptions(getAreaTrendSeriesOptions(chartThemeRef.current, direction));
+      // History can change the period direction without another quote arriving.
+      // Recolor the overlay without moving it during a chart interaction.
+      const colors = livePriceColorPaletteRef.current;
+      const overlayColors = getLivePriceOverlayColors(
+        colors,
+        getLivePriceSeriesColor(colors, 'area', direction),
+        useEnterpriseLightPricePaletteRef.current,
+      );
+      livePriceOverlayColorsRef.current = overlayColors;
+      if (livePriceLineRef.current) {
+        livePriceLineRef.current.style.borderTopColor = overlayColors.lineColor;
+      }
+      if (livePriceBadgeRef.current) {
+        livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;
+        livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;
+      }
     } catch {
       // The series can be disposed during a rapid symbol or chart-type switch.
     }
@@ -2562,8 +2601,14 @@ export const TradingChart = React.memo(function TradingChart({
 
     console.log(`[TradingChart] Container size: ${containerRef.current.offsetWidth}x${containerRef.current.offsetHeight}`);
 
-    const chart = createChart(containerRef.current, {
+    // Footer tick steps follow the timeframe (M1 → 1m, M5 → 5m, ...).
+    const timeScaleBehavior = new TradingChartTimeScaleBehavior({
+      getTimeframe: () => timeScaleTimeframeRef.current,
+      getDisplayOffsetSeconds: () => brokerTimeOffsetSecRef.current,
+    });
+    const chart = createChartEx(containerRef.current, timeScaleBehavior, {
       autoSize: true,
+      localization: { dateFormat: "dd MMM 'yy" },
       layout: {
         background: { type: ColorType.Solid, color: chartTheme.background },
         textColor: chartTheme.axisText,
@@ -2619,7 +2664,7 @@ export const TradingChart = React.memo(function TradingChart({
         fixLeftEdge: false,
         fixRightEdge: false,
       },
-    });
+    }) as IChartApi;
 
     chartRef.current = chart;
     // The host has no data and paints no line. It only gives the grid primitive
@@ -2782,7 +2827,7 @@ export const TradingChart = React.memo(function TradingChart({
         if (y === null || !Number.isFinite(y)) return;
 
         const scaleWidth = chart.priceScale('right').width();
-        applyStableLivePriceHorizontalGeometry(scaleWidth);
+        applyLivePriceHorizontalGeometry(scaleWidth);
         line.style.top = `${y}px`;
         badge.style.top = `${y}px`;
       } catch {
@@ -2807,6 +2852,13 @@ export const TradingChart = React.memo(function TradingChart({
         }
       });
     };
+
+    // Lightweight Charts has no direct price-scale width event. A right-axis
+    // width change resizes the time-scale surface, though, so repaint one frame
+    // later after the library has committed its new axis geometry. This also
+    // covers static/closed charts where no next quote would otherwise repaint.
+    const handleTimeScaleSizeChange = () => queuePriceBoundOverlayGeometryRepaint();
+    chart.timeScale().subscribeSizeChange(handleTimeScaleSizeChange);
 
     const handlePointerInteractionStart = (event: PointerEvent) => {
       if (!interactionOwnership.beginPointer({
@@ -3067,6 +3119,7 @@ export const TradingChart = React.memo(function TradingChart({
       historyRequestCoordinatorRef.current.abort();
       cancelQueuedChartRender();
       chart.unsubscribeCrosshairMove(crosshairHandler);
+      chart.timeScale().unsubscribeSizeChange(handleTimeScaleSizeChange);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeHandler);
       clearPeriodSeparators();
 
@@ -3988,6 +4041,135 @@ export const TradingChart = React.memo(function TradingChart({
     setActiveTimeframe(timeframe);
   }, [timeframe]);
 
+  // Builds the price series for a chart type with the current theme and symbol precision.
+  const createPriceSeries = useCallback((chart: IChartApi, type: ChartType): ISeriesApi<any> => {
+    let series: ISeriesApi<any>;
+    const priceFormatOpts = {
+      type: 'price' as const,
+      precision: resolvedPriceDigitsRef.current,
+      minMove: resolvedPricePointRef.current,
+    };
+    const theme = chartThemeRef.current;
+
+    switch (type) {
+      case 'candlestick':
+        series = chart.addSeries(CandlestickSeries, {
+          upColor: theme.candleUp,
+          downColor: theme.candleDown,
+          borderVisible: true,
+          wickVisible: true,
+          borderUpColor: theme.barUp,
+          borderDownColor: theme.barDown,
+          wickUpColor: theme.wickUp,
+          wickDownColor: theme.wickDown,
+          priceFormat: priceFormatOpts,
+          priceLineVisible: false,  // Hide built-in dashed last-value line
+          lastValueVisible: false,  // Hide built-in axis label
+        });
+        break;
+      case 'bar':
+        series = chart.addSeries(BarSeries, {
+          upColor: theme.barUp,
+          downColor: theme.barDown,
+          priceFormat: priceFormatOpts,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+        break;
+      case 'line':
+        series = chart.addSeries(LineSeries, {
+          color: theme.line,
+          lineWidth: 2,
+          priceFormat: priceFormatOpts,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+        break;
+      case 'area': {
+        // TradingView-style trend coloring; the direction is recomputed as soon
+        // as data renders, so the previous direction only bridges the rebuild.
+        const areaDirection = areaTrendDirectionRef.current ?? 'up';
+        areaTrendDirectionRef.current = areaDirection;
+        series = chart.addSeries(AreaSeries, {
+          ...getAreaTrendSeriesOptions(theme, areaDirection),
+          lineWidth: 2,
+          priceFormat: priceFormatOpts,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+        break;
+      }
+      default:
+        series = chart.addSeries(CandlestickSeries, {
+          upColor: theme.candleUp,
+          downColor: theme.candleDown,
+          priceFormat: priceFormatOpts,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+    }
+    return series;
+  }, []);
+
+  // Switch the chart type in place: swap only the price/volume series and paint
+  // the cached candles synchronously. This avoids the full rebuild path (which
+  // resets the zoom and waits a frame for data), so the new type shows instantly.
+  const applyChartTypeInPlace = useCallback((type: ChartType): boolean => {
+    const chart = chartRef.current;
+    if (isDisposedRef.current || !chart || !seriesRef.current) return false;
+    if (prevChartTypeRef.current === type) return true;
+
+    const visibleRange = chart.timeScale().getVisibleLogicalRange() as LogicalRangeLike | null;
+    rememberVisibleLogicalRange(visibleRange);
+    isRebuildingRef.current = true;
+
+    try { chart.removeSeries(seriesRef.current); } catch { }
+    seriesRef.current = null;
+    askPriceLineRef.current = null;
+    lastPriceLineRef.current = null;
+    if (volumeRef.current) {
+      try { chart.removeSeries(volumeRef.current); } catch { }
+      volumeRef.current = null;
+    }
+
+    const series = createPriceSeries(chart, type);
+    seriesRef.current = series;
+    const volSeries = chart.addSeries(HistogramSeries, {
+      color: chartThemeRef.current.volumeUp,
+      priceScaleId: '',
+      priceFormat: { type: 'volume' },
+      lastValueVisible: false,
+      priceLineVisible: false,
+      visible: shouldBuildVolumeData(chartSettingsRef.current),
+    });
+    volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.68, bottom: 0 } });
+    volumeRef.current = volSeries;
+    prevChartTypeRef.current = type;
+
+    drawingManager.setChart(
+      chart,
+      series,
+      prevSymbolRef.current || symbol,
+      1,
+      overlayRef.current,
+      prevTimeframeRef.current || timeframe,
+      activeChartSourceId,
+      drawingRuntimeContextRef.current.accountScope,
+      getDrawingSeriesData,
+    );
+
+    isRebuildingRef.current = false;
+
+    if (candlesRef.current.length > 0) {
+      requestChartDataRender({ chartType: type, immediate: true, reason: 'chart-type-switch' });
+      flushQueuedChartRender();
+      if (visibleRange && Number.isFinite(visibleRange.from) && Number.isFinite(visibleRange.to)) {
+        try { chart.timeScale().setVisibleLogicalRange(visibleRange); } catch { }
+      }
+    }
+    return true;
+  }, [activeChartSourceId, createPriceSeries, flushQueuedChartRender, getDrawingSeriesData, rememberVisibleLogicalRange, requestChartDataRender, symbol, timeframe]);
+
   // Create series when chart type, symbol, or timeframe changes
   useEffect(() => {
     if (isDisposedRef.current || !chartRef.current) return;
@@ -3996,6 +4178,10 @@ export const TradingChart = React.memo(function TradingChart({
     const typeChanged = prevChartTypeRef.current !== chartType;
     const symbolChanged = prevSymbolRef.current !== symbol;
     const timeframeChanged = prevTimeframeRef.current !== timeframe;
+
+    if (seriesRef.current && typeChanged && !symbolChanged && !timeframeChanged) {
+      if (applyChartTypeInPlace(chartType)) return;
+    }
 
     if (seriesRef.current && !typeChanged) {
       if (!symbolChanged && !timeframeChanged) {
@@ -4158,74 +4344,9 @@ export const TradingChart = React.memo(function TradingChart({
 
     // Create new series
     const chart = chartRef.current;
-    let series: ISeriesApi<any>;
-
-    // Compute price format based on symbol
-    const digits = resolvedPriceDigits;
-    const minMove = resolvedPricePoint; // e.g. 0.01 for 2 digits, 0.00001 for 5
-    const priceFormatOpts = { type: 'price' as const, precision: digits, minMove };
+    console.log(`[TradingChart] Creating series for chartType=${chartType}, symbol=${symbol}, digits=${resolvedPriceDigits}`);
+    const series = createPriceSeries(chart, chartType);
     const theme = chartThemeRef.current;
-
-    console.log(`[TradingChart] Creating series for chartType=${chartType}, symbol=${symbol}, digits=${digits}`);
-
-    switch (chartType) {
-      case 'candlestick':
-        series = chart.addSeries(CandlestickSeries, {
-          upColor: theme.candleUp,
-          downColor: theme.candleDown,
-          borderVisible: true,
-          wickVisible: true,
-          borderUpColor: theme.barUp,
-          borderDownColor: theme.barDown,
-          wickUpColor: theme.wickUp,
-          wickDownColor: theme.wickDown,
-          priceFormat: priceFormatOpts,
-          priceLineVisible: false,  // Hide built-in dashed last-value line
-          lastValueVisible: false,  // Hide built-in axis label
-        });
-        break;
-      case 'bar':
-        series = chart.addSeries(BarSeries, {
-          upColor: theme.barUp,
-          downColor: theme.barDown,
-          priceFormat: priceFormatOpts,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        break;
-      case 'line':
-        series = chart.addSeries(LineSeries, {
-          color: theme.line,
-          lineWidth: 2,
-          priceFormat: priceFormatOpts,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        break;
-      case 'area': {
-        // TradingView-style trend coloring; the direction is recomputed as soon
-        // as data renders, so the previous direction only bridges the rebuild.
-        const areaDirection = areaTrendDirectionRef.current ?? 'up';
-        areaTrendDirectionRef.current = areaDirection;
-        series = chart.addSeries(AreaSeries, {
-          ...getAreaTrendSeriesOptions(theme, areaDirection),
-          lineWidth: 2,
-          priceFormat: priceFormatOpts,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        break;
-      }
-      default:
-        series = chart.addSeries(CandlestickSeries, {
-          upColor: theme.candleUp,
-          downColor: theme.candleDown,
-          priceFormat: priceFormatOpts,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-    }
-
 
     seriesRef.current = series;
     console.log(`[TradingChart] Series created and stored in ref`);
@@ -4742,7 +4863,7 @@ export const TradingChart = React.memo(function TradingChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(timeRangeHandler);
 
     isRebuildingRef.current = false; // Safe to resume ticks and resizes
-  }, [cancelQueuedChartRender, chartType, symbol, resetLiveQuotePriceGuard, updateChartData, clearPeriodSeparators, hydrateHistoryFromCache, timeframe]); // Note: precision changes are hot-applied below; intentional omit chartSettings
+  }, [applyChartTypeInPlace, cancelQueuedChartRender, chartType, createPriceSeries, symbol, resetLiveQuotePriceGuard, updateChartData, clearPeriodSeparators, hydrateHistoryFromCache, timeframe]); // Note: precision changes are hot-applied below; intentional omit chartSettings
 
   // The authorized instrument catalog can resolve after the chart mounts.
   // Hot-apply its precision without rebuilding the series or resetting data.
@@ -4911,9 +5032,11 @@ export const TradingChart = React.memo(function TradingChart({
       }
     }
 
-    // Update Series colors
+    // Update Series colors for the series currently on the chart (a chart-type
+    // switch can swap it before the chartType prop catches up).
+    const renderedChartType = prevChartTypeRef.current || chartType;
     if (seriesRef.current) {
-      if (chartType === 'candlestick') {
+      if (renderedChartType === 'candlestick') {
         seriesRef.current.applyOptions({
           upColor: chartTheme.candleUp,
           downColor: chartTheme.candleDown,
@@ -4922,16 +5045,16 @@ export const TradingChart = React.memo(function TradingChart({
           borderUpColor: chartTheme.barUp,
           borderDownColor: chartTheme.barDown,
         });
-      } else if (chartType === 'bar') {
+      } else if (renderedChartType === 'bar') {
         seriesRef.current.applyOptions({
           upColor: chartTheme.barUp,
           downColor: chartTheme.barDown,
         });
-      } else if (chartType === 'line') {
+      } else if (renderedChartType === 'line') {
         seriesRef.current.applyOptions({
           color: chartTheme.line,
         });
-      } else if (chartType === 'area') {
+      } else if (renderedChartType === 'area') {
         seriesRef.current.applyOptions(
           getAreaTrendSeriesOptions(chartTheme, areaTrendDirectionRef.current ?? 'up'),
         );
@@ -5573,6 +5696,7 @@ export const TradingChart = React.memo(function TradingChart({
       const [reconciled] = reconcileCandlesWithLiveQuote([c], 'stream update');
       if (!reconciled) return;
       c = reconciled;
+      c = resolveCanonicalServerCandle(currentCandleRef.current, c);
       if (!validateRenderedCandlesAgainstLivePrice(c.close, prevTimeframeRef.current || timeframe)) return;
       mergeHistoryCache(
         prevTimeframeRef.current || timeframe,
@@ -5730,9 +5854,7 @@ export const TradingChart = React.memo(function TradingChart({
         const activeFormingCandle = currentCandleRef.current;
         const protectedSnapshot = activeFormingCandle
           ? reconciledSnapshot.map((snapshotCandle) => (
-            snapshotCandle.time === activeFormingCandle.time && snapshotCandle.closed !== true
-              ? mergeFormingCandleEnvelope(activeFormingCandle, snapshotCandle)
-              : snapshotCandle
+            resolveCanonicalServerCandle(activeFormingCandle, snapshotCandle)
           ))
           : reconciledSnapshot;
         // FIX: A snapshot may end on an explicitly final row. Seal it before
@@ -6573,7 +6695,7 @@ export const TradingChart = React.memo(function TradingChart({
   // ─── Trade Annotations on Chart (MT5-style entry/exit markers + live trails) ───
   const TRADE_BUY_COLOR = '#22c55e';
   const TRADE_SELL_COLOR = '#ef4444';
-  const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v12-shared-trade-presentation';
+  const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v13-entry-close-connectors';
   // MT5-style entry lines: dotted blue for BUY, dotted red for SELL.
   const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';
   const TRADE_ENTRY_LINE_SELL_COLOR = '#ef4444';
@@ -6941,10 +7063,18 @@ export const TradingChart = React.memo(function TradingChart({
               continue;
             }
 
+            const resolveSegmentEndY = (price: number, time: number, markerSide?: TradeSide) => {
+              if (!markerSide) return series.priceToCoordinate(price);
+              const y = series.priceToCoordinate(
+                resolveTradeMarkerAnchorPrice({ kind: 'marker', price, time, markerSide, markerAnchor: 'candle' }),
+              );
+              if (y == null) return null;
+              return y + (markerSide === 'BUY' ? TRADE_MARKER_TIP_OFFSET_PX : -TRADE_MARKER_TIP_OFFSET_PX);
+            };
             const x1 = resolveTimeCoordinate(node.time);
-            const y1 = series.priceToCoordinate(node.price);
+            const y1 = resolveSegmentEndY(node.price, node.time, node.startMarkerSide);
             const x2 = resolveTimeCoordinate(endTime);
-            const y2 = series.priceToCoordinate(endPrice);
+            const y2 = resolveSegmentEndY(endPrice, endTime, node.endMarkerSide);
             const geometry = resolveTradeOverlaySegmentGeometry({
               x1,
               y1,
@@ -7052,7 +7182,7 @@ export const TradingChart = React.memo(function TradingChart({
       const y = series.priceToCoordinate(livePriceRef.current);
       if (y !== null && y !== undefined && y > 0) {
         const overlayColors = livePriceOverlayColorsRef.current;
-        applyStableLivePriceHorizontalGeometry(priceScaleWidth);
+        applyLivePriceHorizontalGeometry(priceScaleWidth);
         livePriceLineRef.current.style.display = 'block';
         livePriceLineRef.current.style.top = `${y}px`;
         livePriceLineRef.current.style.borderTopColor = overlayColors.lineColor;
@@ -7064,7 +7194,7 @@ export const TradingChart = React.memo(function TradingChart({
     } else if (!chartSettingsRef.current.showBidPriceLine) {
       hideLivePriceOverlay(false);
     }
-  }, [applyStableLivePriceHorizontalGeometry, hideLivePriceOverlay]);
+  }, [applyLivePriceHorizontalGeometry, hideLivePriceOverlay]);
 
   repaintTradeOverlayGeometryRef.current = () => updateLabelPositions(false);
 
@@ -7193,6 +7323,14 @@ export const TradingChart = React.memo(function TradingChart({
     };
 
     const getEntryColor = (side: TradeSide) => side === 'BUY' ? TRADE_BUY_COLOR : TRADE_SELL_COLOR;
+    const getClosedTradeLineColor = (trade: ClosedTradeSnapshot) => {
+      const profit = trade.profit ?? (
+        trade.side === 'BUY'
+          ? trade.exitPrice - trade.entryPrice
+          : trade.entryPrice - trade.exitPrice
+      );
+      return profit >= 0 ? chartThemeRef.current.candleUp : chartThemeRef.current.candleDown;
+    };
     const getLiveTrailTime = () =>
       currentCandleRef.current?.time
       ?? candlesRef.current[candlesRef.current.length - 1]?.time
@@ -7606,6 +7744,29 @@ export const TradingChart = React.memo(function TradingChart({
         hoverTarget,
         { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? 3 : -3 },
       );
+    };
+
+    const createTradeHistoryLine = (
+      price: number,
+      time: number,
+      endPrice: number,
+      endTime: number,
+      color: string,
+      opacity: number,
+      arrowSides?: { start: TradeSide; end: TradeSide },
+    ) => {
+      const line = document.createElement('div');
+      line.className = 'rtx-trade-history-line';
+      line.style.cssText = `position:absolute;display:none;height:1px;background:${color};border:0;border-radius:999px;z-index:17;pointer-events:none;opacity:${clampAlpha(opacity)};transform-origin:0 50%;will-change:transform,width;`;
+      appendOverlayNode(line, {
+        kind: 'segment',
+        price,
+        time,
+        endPrice,
+        endTime,
+        startMarkerSide: arrowSides?.start,
+        endMarkerSide: arrowSides?.end,
+      }, 'history');
     };
 
     const createPriceLevel = (labelText: string, price: number, color: string, options: PriceLevelOptions = {}) => {
@@ -8036,8 +8197,14 @@ export const TradingChart = React.memo(function TradingChart({
           useChartObjectStateStore.getState().byContext,
           drawingRuntimeContextRef.current.contextId,
         ).tradesHidden;
+      const showTradeHistoryLine = chartProperties.showTradeHistory !== false;
       const showTradeHistoryArrows = chartProperties.showTradeHistoryArrows !== false;
-      const showAnyTradeHistoryOverlay = showTradeHistoryArrows;
+      const showAnyTradeHistoryOverlay = showTradeHistoryLine || showTradeHistoryArrows;
+      const tradeHistoryLineOpacityPercent = clampChartOpacityPercent(
+        chartProperties.tradeHistoryLineOpacity,
+        defaultChartProperties.tradeHistoryLineOpacity,
+      );
+      const tradeHistoryLineOpacity = tradeHistoryLineOpacityPercent / 100;
       const appState = useAppStore.getState();
       const appPositions = Array.isArray(appState.positions) ? appState.positions : [];
       const appTrades = Array.isArray(appState.trades) ? appState.trades : [];
@@ -8403,7 +8570,9 @@ export const TradingChart = React.memo(function TradingChart({
         normalizedChartSymbol,
         timeframe,
         TRADE_HISTORY_PRESENTATION_VERSION,
+        showTradeHistoryLine ? 'history-lines:on' : 'history-lines:off',
         showTradeHistoryArrows ? 'arrows:on' : 'arrows:off',
+        `line-opacity:${tradeHistoryLineOpacityPercent}`,
         closedSignature,
       ].join('\n');
 
@@ -8564,10 +8733,24 @@ export const TradingChart = React.memo(function TradingChart({
         if (showAnyTradeHistoryOverlay) {
           closedTrades.forEach((trade) => {
             const exitSide = getTradeHistoryExecutionSide(trade.side, 'CLOSE');
-            const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
-            createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, entryPriceLabel, 'history', 1, undefined, 'open', trade.side, trade.entryExecutionTime);
-            const closePriceLabel = formatTradeLevelBadgePrice(trade.exitPrice);
-            createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime);
+            if (showTradeHistoryLine) {
+              createTradeHistoryLine(
+                trade.entryPrice,
+                trade.entryTime,
+                trade.exitPrice,
+                trade.exitTime,
+                getClosedTradeLineColor(trade),
+                tradeHistoryLineOpacity,
+                // Join the arrow tips when arrows are drawn; otherwise the raw fill prices.
+                showTradeHistoryArrows ? { start: trade.side, end: exitSide } : undefined,
+              );
+            }
+            if (showTradeHistoryArrows) {
+              const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
+              createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, entryPriceLabel, 'history', 1, undefined, 'open', trade.side, trade.entryExecutionTime);
+              const closePriceLabel = formatTradeLevelBadgePrice(trade.exitPrice);
+              createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime);
+            }
           });
         }
       }
@@ -8613,7 +8796,9 @@ export const TradingChart = React.memo(function TradingChart({
       const previousProperties = previousState.symbolProperties[symbol] || previousState.globalProperties;
       if (
         currentProperties.showTradeLevels !== previousProperties.showTradeLevels
+        || currentProperties.showTradeHistory !== previousProperties.showTradeHistory
         || currentProperties.showTradeHistoryArrows !== previousProperties.showTradeHistoryArrows
+        || currentProperties.tradeHistoryLineOpacity !== previousProperties.tradeHistoryLineOpacity
       ) {
         renderTradeOverlay(true);
       }
@@ -9252,12 +9437,20 @@ export const TradingChart = React.memo(function TradingChart({
   }, []);
 
   const handleCtxChartTypeChange = useCallback((type: ChartType) => {
+    // Repaint this chart right away; the app-wide bookkeeping (dock layout,
+    // persisted settings, toolbar sync) re-renders the whole workspace, so it
+    // runs after the new chart type has been painted.
+    applyChartTypeInPlace(type);
     setLocalChartType(type);
-    commandBus.dispatch({
-      type: 'SET_CHART_TYPE',
-      payload: { chartType: type, targetContextId: activeChartSourceId },
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        commandBus.dispatch({
+          type: 'SET_CHART_TYPE',
+          payload: { chartType: type, targetContextId: activeChartSourceId },
+        });
+      }, 0);
     });
-  }, [activeChartSourceId]);
+  }, [activeChartSourceId, applyChartTypeInPlace]);
 
   const handleCtxTimeframeChange = useCallback((tf: Timeframe) => {
     commandBus.dispatch({
@@ -9324,6 +9517,16 @@ export const TradingChart = React.memo(function TradingChart({
       const next = !prev;
       const store = useChartSettingsStore.getState();
       store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', next);
+      window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+      return next;
+    });
+  }, [symbol]);
+
+  const handleCtxToggleTradeHistoryLine = useCallback(() => {
+    setCtxShowTradeHistoryLine(prev => {
+      const next = !prev;
+      const store = useChartSettingsStore.getState();
+      store.updateSymbolProperty(symbol, 'showTradeHistory', next);
       window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
       return next;
     });
@@ -10452,6 +10655,7 @@ export const TradingChart = React.memo(function TradingChart({
         chartShift={ctxChartShift}
         showTradeLevels={ctxShowTradeLevels}
         showTradeHistory={ctxShowTradeHistory}
+        showTradeHistoryLine={ctxShowTradeHistoryLine}
         showOHLC={chartSettings.showOHLC}
         onChangeChartType={handleCtxChartTypeChange}
         onChangeTimeframe={handleCtxTimeframeChange}
@@ -10462,6 +10666,7 @@ export const TradingChart = React.memo(function TradingChart({
         onToggleChartShift={handleCtxToggleChartShift}
         onToggleTradeLevels={handleCtxToggleTradeLevels}
         onToggleTradeHistory={handleCtxToggleTradeHistory}
+        onToggleTradeHistoryLine={handleCtxToggleTradeHistoryLine}
         onToggleOHLC={handleCtxToggleOHLC}
         onOpenProperties={handleCtxOpenProperties}
         onSaveAsPicture={handleCtxSaveAsPicture}

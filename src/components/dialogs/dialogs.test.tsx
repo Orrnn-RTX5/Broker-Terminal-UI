@@ -22,6 +22,41 @@ const unsavedChanges: UnsavedChanges = {
 };
 
 describe('dialog components', () => {
+  it('controls trade connector lines independently from entry and close arrows', async () => {
+    const user = userEvent.setup();
+    useChartSettingsStore.setState({
+      globalProperties: {
+        ...defaultChartProperties,
+        showTradeHistory: true,
+        showTradeHistoryArrows: true,
+      },
+      symbolProperties: {},
+    });
+
+    render(
+      <ChartPropertiesDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="BTCUSD"
+        timeframe="M1"
+      />,
+    );
+
+    await user.click(screen.getByText('Show', { exact: true }));
+    const lineToggle = screen.getByLabelText('Show entry/close line');
+    const arrowToggle = screen.getByLabelText('Show entry/close arrows');
+    expect(lineToggle).toBeChecked();
+    expect(arrowToggle).toBeChecked();
+
+    await user.click(lineToggle);
+    expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistory).toBe(false);
+    expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistoryArrows).toBe(true);
+
+    await user.click(arrowToggle);
+    expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistory).toBe(false);
+    expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistoryArrows).toBe(false);
+  });
+
   it.each(['Close', 'Escape', 'Backdrop', 'OK'])('retains enabled OHLC after %s dismissal and reopening', async (dismissal) => {
     const user = userEvent.setup();
     const onClose = vi.fn();

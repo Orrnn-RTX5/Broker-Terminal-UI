@@ -90,13 +90,57 @@ export const isRecentlyAdmittedOpenPosition = (position: Position, now = Date.no
   return ageMs >= 0 && ageMs <= RECENT_OPEN_POSITION_RETENTION_MS;
 };
 
+// Tickets the terminal is closing or has seen closed. Recent-open retention must
+// never bring one of these back onto the chart or into Trade.
+const CLOSED_POSITION_TICKET_TTL_MS = 5 * 60_000;
+const closedPositionTickets = new Map<number, number>();
+
+const toPositionTicket = (value: unknown): number | null => {
+  const ticket = Number(value);
+  return Number.isSafeInteger(ticket) && ticket > 0 ? ticket : null;
+};
+
+export const markPositionsClosed = (ticketIds: readonly unknown[], now = Date.now()): void => {
+  for (const value of ticketIds) {
+    const ticket = toPositionTicket(value);
+    if (ticket !== null) closedPositionTickets.set(ticket, now + CLOSED_POSITION_TICKET_TTL_MS);
+  }
+};
+
+/** A close that failed leaves the position open, so it may be retained again. */
+export const unmarkPositionsClosed = (ticketIds: readonly unknown[]): void => {
+  for (const value of ticketIds) {
+    const ticket = toPositionTicket(value);
+    if (ticket !== null) closedPositionTickets.delete(ticket);
+  }
+};
+
+export const isPositionMarkedClosed = (ticketId: unknown, now = Date.now()): boolean => {
+  const ticket = toPositionTicket(ticketId);
+  if (ticket === null) return false;
+  const expiresAt = closedPositionTickets.get(ticket);
+  if (expiresAt === undefined) return false;
+  if (expiresAt > now) return true;
+  closedPositionTickets.delete(ticket);
+  return false;
+};
+
+const isRetainableOpenPosition = (position: Position, now: number): boolean => (
+  isRecentlyAdmittedOpenPosition(position, now) && !isPositionMarkedClosed(position.id, now)
+);
+
+// Tickets kept only by recent-open retention, and the timer that drops them once
+// retention ends even if no further position update arrives.
+let retainedOnlyTickets = new Set<number>();
+let retentionPruneTimer: ReturnType<typeof setTimeout> | null = null;
+
 export const shouldReplaceOpenPositionSnapshot = (
   incoming: readonly Position[],
   current: readonly Position[],
   now = Date.now(),
 ): boolean => (
   incoming.length > 0
-  || !current.some((position) => isRecentlyAdmittedOpenPosition(position, now))
+  || !current.some((position) => isRetainableOpenPosition(position, now))
 );
 
 const isRenderableOpenPosition = (position: Pick<Position, 'symbol' | 'volume' | 'quantity'>): boolean => (
@@ -746,12 +790,29 @@ export const useAppStore = create<AppState>()(
             // until the broker snapshot catches up or the short retention ends.
             const now = Date.now();
             const nextIds = new Set(nextPositions.map((position) => position.id));
+            const retained = new Set<number>();
+            let retentionEndsAt = Number.POSITIVE_INFINITY;
             for (const existing of state.positions) {
               if (nextIds.has(existing.id)) continue;
-              if (!isRenderableOpenPosition(existing) || !isRecentlyAdmittedOpenPosition(existing, now)) continue;
+              if (!isRenderableOpenPosition(existing) || !isRetainableOpenPosition(existing, now)) continue;
               nextPositions.push(existing);
               nextIds.add(existing.id);
+              retained.add(existing.id);
+              retentionEndsAt = Math.min(
+                retentionEndsAt,
+                Date.parse(String(existing.chartEntryTime)) + RECENT_OPEN_POSITION_RETENTION_MS,
+              );
             }
+
+            retainedOnlyTickets = retained;
+            if (retentionPruneTimer !== null) clearTimeout(retentionPruneTimer);
+            // Re-apply without the retained tickets: any still inside their window
+            // are retained again (and rescheduled); expired ones leave the chart.
+            retentionPruneTimer = retained.size === 0 ? null : setTimeout(() => {
+              retentionPruneTimer = null;
+              const store = useAppStore.getState();
+              store.setPositions(store.positions.filter((position) => !retainedOnlyTickets.has(position.id)));
+            }, Math.max(0, retentionEndsAt - now) + 1);
 
             return { positions: nextPositions };
           }),

@@ -16,7 +16,9 @@ import {
   getRenderedPrependedBarCount,
   getVisibleLogicalRangeAnchoredToTime,
   isPotentialMarketClosedPlaceholderCandle,
+  LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX,
   resolveCandleFinalityFromActivePeriod,
+  resolveLivePriceScaleWidth,
   shouldRecomputeMarketGapSeparatorsForCandle,
   shouldApplyVisibleRangeResetForRender,
   shouldResetInitialHistoryVisibleRange,
@@ -293,6 +295,7 @@ describe('formatChartSeriesData market gap separators', () => {
     expect(TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS).toEqual({
       shiftVisibleRangeOnNewBar: false,
       allowShiftVisibleRangeOnWhitespaceReplacement: false,
+      uniformDistribution: true,
       rightBarStaysOnScroll: true,
     });
   });
@@ -660,6 +663,19 @@ describe('formatChartSeriesData market gap separators', () => {
   });
 });
 
+describe('live price scale geometry', () => {
+  it('adopts every valid current price-scale width instead of freezing the first measurement', () => {
+    expect(resolveLivePriceScaleWidth(76, 58)).toBe(76);
+    expect(resolveLivePriceScaleWidth(64, 76)).toBe(64);
+  });
+
+  it('uses the last valid width only while the chart reports a transient invalid measurement', () => {
+    expect(resolveLivePriceScaleWidth(0, 76)).toBe(76);
+    expect(resolveLivePriceScaleWidth(Number.NaN, 76)).toBe(76);
+    expect(resolveLivePriceScaleWidth(0, null)).toBe(LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX);
+  });
+});
+
 describe('live price overlay colors', () => {
   it('separates enterprise light price label fills from the matching candle marks', () => {
     const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: true });
@@ -699,7 +715,36 @@ describe('live price overlay colors', () => {
     expect(getLivePriceSeriesColor(colors, 'bar', 'up')).toBe('#228866');
     expect(getLivePriceSeriesColor(colors, 'bar', 'down')).toBe('#bb3344');
     expect(getLivePriceSeriesColor(colors, 'line', 'down')).toBe('#3366cc');
-    expect(getLivePriceSeriesColor(colors, 'area', 'up')).toBe('#3366cc');
+    expect(getLivePriceSeriesColor(colors, 'area', 'up')).toBe('#11aa77');
+    expect(getLivePriceSeriesColor(colors, 'area', 'down')).toBe('#dd4455');
+  });
+
+  it.each([
+    { name: 'daily loss while the current candle rises', open: 90, close: 95, direction: 'down' as const, color: '#F23645' },
+    { name: 'daily gain while the current candle falls', open: 110, close: 105, direction: 'up' as const, color: '#089981' },
+  ])('matches the area price badge and line to $name', ({ open, close, direction, color }) => {
+    const colors = defaultChartProperties.colors;
+    const candles = [
+      { time: utcSeconds(2026, 9, 21, 23, 59), open: 100, close: 100 },
+      { time: utcSeconds(2026, 9, 22, 11), open, close },
+    ];
+    const areaDirection = getAreaTrendDirection(candles, 0, close, 'M1');
+    expect(areaDirection).toBe(direction);
+    if (!areaDirection) throw new Error('Expected an area trend from the loaded candles');
+
+    const areaOptions = getAreaTrendSeriesOptions({
+      ...theme,
+      areaUpLine: colors.bullCandle,
+      areaDownLine: colors.bearCandle,
+    }, areaDirection);
+    const overlay = getLivePriceOverlayColors(
+      colors,
+      getLivePriceSeriesColor(colors, 'area', areaDirection),
+    );
+
+    expect(areaOptions.lineColor).toBe(color);
+    expect(overlay.lineColor).toBe(areaOptions.lineColor);
+    expect(overlay.badgeBackground).toBe(color);
   });
 
   it('uses Yellow on Black directional bar colors instead of the black bull candle', () => {

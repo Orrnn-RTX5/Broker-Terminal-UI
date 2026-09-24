@@ -455,8 +455,15 @@ describe('TradingChart interaction-priority contract', () => {
     expect(serverCandle).toContain(
       'currentCandleRef.current = mergeFormingCandleEnvelope(currentCandleRef.current, c)',
     );
+    const canonicalAssignment = serverCandle.indexOf(
+      'c = resolveCanonicalServerCandle(currentCandleRef.current, c)',
+    );
+    const explicitFinalBranch = serverCandle.indexOf('if (c.closed === true)');
+    expect(canonicalAssignment).toBeGreaterThan(-1);
+    expect(explicitFinalBranch).toBeGreaterThan(canonicalAssignment);
+    expect(serverCandle).toContain('[c]');
     expect(snapshot).toContain('const activeFormingCandle = currentCandleRef.current');
-    expect(snapshot).toContain('mergeFormingCandleEnvelope(activeFormingCandle, snapshotCandle)');
+    expect(snapshot).toContain('resolveCanonicalServerCandle(activeFormingCandle, snapshotCandle)');
     expect(snapshot).toContain('mergeAuthoritativeCandleHistory(candlesRef.current, protectedSnapshot');
     expect(snapshot).toContain('formingLiveCandle: activeFormingCandle');
     expect(snapshot).toContain('hasNewerLiveMutation: hasNewerLiveSnapshotMutation');
@@ -474,7 +481,7 @@ describe('TradingChart interaction-priority contract', () => {
 
   it('matches the live price line and badge to the forming candle direction', () => {
     const directionStart = source.indexOf('const getLivePriceDirectionalColor = useCallback');
-    const directionEnd = source.indexOf('const applyStableLivePriceHorizontalGeometry = useCallback', directionStart);
+    const directionEnd = source.indexOf('const applyLivePriceHorizontalGeometry = useCallback', directionStart);
     const direction = source.slice(directionStart, directionEnd);
     const paintStart = source.indexOf('const paintLivePriceOverlay = useCallback');
     const paintEnd = source.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
@@ -506,10 +513,10 @@ describe('TradingChart interaction-priority contract', () => {
     expect(themeSync).not.toContain('lineColor: chartSettingsRef.current.colors.bidPriceLine');
   });
 
-  it('keeps live price horizontal geometry stable while candle ticks repaint it', () => {
-    const stableGeometryStart = source.indexOf('const applyStableLivePriceHorizontalGeometry = useCallback');
+  it('keeps the live price badge synchronized to the complete current price scale', () => {
+    const geometrySyncStart = source.indexOf('const applyLivePriceHorizontalGeometry = useCallback');
     const paintStart = source.indexOf('const paintLivePriceOverlay = useCallback');
-    const stableGeometry = source.slice(stableGeometryStart, paintStart);
+    const geometrySync = source.slice(geometrySyncStart, paintStart);
     const paintEnd = source.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
     const paint = source.slice(paintStart, paintEnd);
     const geometryStart = source.indexOf('const repaintLivePriceOverlayGeometry = () => {');
@@ -522,27 +529,32 @@ describe('TradingChart interaction-priority contract', () => {
     const relayoutEnd = source.indexOf('repaintTradeOverlayGeometryRef.current =', relayoutStart);
     const relayout = source.slice(relayoutStart, relayoutEnd);
 
-    expect(stableGeometryStart).toBeGreaterThan(-1);
-    expect(stableGeometry).toContain('const stableWidth = livePriceScaleWidthRef.current ?? measuredWidth;');
-    expect(stableGeometry).toContain('livePriceScaleWidthRef.current = stableWidth;');
-    expect(stableGeometry).toContain('if (line && line.style.right !== right) line.style.right = right;');
-    expect(stableGeometry).toContain('if (badge && badge.style.width !== right) badge.style.width = right;');
+    expect(geometrySyncStart).toBeGreaterThan(-1);
+    expect(geometrySync).toContain('const resolvedWidth = resolveLivePriceScaleWidth(');
+    expect(geometrySync).toContain('measuredScaleWidth,');
+    expect(geometrySync).toContain('livePriceScaleWidthRef.current,');
+    expect(geometrySync).toContain('livePriceScaleWidthRef.current = resolvedWidth;');
+    expect(geometrySync).toContain('if (line && line.style.right !== right) line.style.right = right;');
+    expect(geometrySync).toContain('if (badge && badge.style.width !== right) badge.style.width = right;');
+    expect(geometrySync).not.toContain('livePriceScaleWidthRef.current ?? measuredWidth');
     expect(paintStart).toBeGreaterThan(-1);
     expect(paintEnd).toBeGreaterThan(paintStart);
     expect(paint).toContain('line.style.top = `${y}px`;');
-    expect(paint).toContain('applyStableLivePriceHorizontalGeometry(priceScaleWidth);');
+    expect(paint).toContain('applyLivePriceHorizontalGeometry(priceScaleWidth);');
     expect(paint).not.toMatch(/line\.style\.(?:left|right|width)\s*=/);
     expect(geometryStart).toBeGreaterThan(-1);
     expect(geometryEnd).toBeGreaterThan(geometryStart);
-    expect(geometry).toContain('applyStableLivePriceHorizontalGeometry(scaleWidth);');
+    expect(geometry).toContain('applyLivePriceHorizontalGeometry(scaleWidth);');
     expect(geometry).not.toMatch(/line\.style\.(?:left|right|width)\s*=/);
+    expect(source).toContain('chart.timeScale().subscribeSizeChange(handleTimeScaleSizeChange);');
+    expect(source).toContain('chart.timeScale().unsubscribeSizeChange(handleTimeScaleSizeChange);');
     expect(markupStart).toBeGreaterThan(-1);
     expect(markupEnd).toBeGreaterThan(markupStart);
     expect(markup).toContain('right: LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX');
     expect(markup).toContain('borderTop: `0.5px solid ${initialLivePriceOverlayColors.lineColor}`');
     expect(relayoutStart).toBeGreaterThan(-1);
     expect(relayoutEnd).toBeGreaterThan(relayoutStart);
-    expect(relayout).toContain('applyStableLivePriceHorizontalGeometry(priceScaleWidth);');
+    expect(relayout).toContain('applyLivePriceHorizontalGeometry(priceScaleWidth);');
     expect(relayout).not.toMatch(/livePriceLineRef\.current\.style\.(?:left|right|width)\s*=/);
     expect(source).not.toMatch(/livePriceLineRef\.current\.style\.(?:left|right|width)\s*=/);
   });

@@ -13,7 +13,7 @@ const dialogSource = readFileSync(
 
 describe('TradingChart enterprise grid rendering contract', () => {
   it('disables the rectangular native grid during creation and hot theme updates', () => {
-    const creationStart = chartSource.indexOf('const chart = createChart(containerRef.current, {');
+    const creationStart = chartSource.indexOf('const chart = createChartEx(containerRef.current, timeScaleBehavior, {');
     const creationEnd = chartSource.indexOf('crosshair:', creationStart);
     const creationGrid = chartSource.slice(creationStart, creationEnd);
     const hotApplyStart = chartSource.indexOf('// Apply global layout and grid');

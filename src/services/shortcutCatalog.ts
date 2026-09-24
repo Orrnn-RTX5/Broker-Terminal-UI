@@ -36,7 +36,7 @@ export const TERMINAL_SHORTCUTS: ShortcutHelpEntry[] = [
   { id: 'charts.indicator-list', key: 'i', ctrl: true, description: 'Indicator List', category: 'Charts' },
   { id: 'charts.object-list', key: 'b', ctrl: true, description: 'Object List', category: 'Charts' },
   { id: 'charts.period-separators', key: 'p', alt: true, shift: true, description: 'Show period separators', category: 'Charts' },
-  { id: 'charts.trade-history', key: 'i', alt: true, shift: true, description: 'Show trade history', category: 'Charts' },
+  { id: 'charts.trade-history', key: 'i', alt: true, shift: true, description: 'Show entry/close arrows', category: 'Charts' },
   { id: 'charts.ohlc', key: 'l', alt: true, shift: true, description: 'Show OHLC', category: 'Charts' },
   { id: 'charts.auto-scroll', key: 'a', alt: true, shift: true, description: 'Auto Scroll', category: 'Charts' },
   { id: 'charts.chart-shift', key: 'f', alt: true, shift: true, description: 'Chart Shift', category: 'Charts' },

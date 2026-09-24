@@ -13,6 +13,7 @@ import {
   normalizeCandlePageAscending,
   offsetLogicalRangeForPrependedCandles,
   prependCandleHistory,
+  resolveCanonicalServerCandle,
   selectCandlesMutatedAfterGeneration,
   selectOlderHistoryCandlesForMerge,
   upsertCandleIntoHistory,
@@ -178,6 +179,64 @@ describe('candle history helpers', () => {
     const incoming = candle(120, 201, { open: 200, high: 202, low: 199, volume: 2 });
 
     expect(mergeFormingCandleEnvelope(previous, incoming)).toEqual(incoming);
+  });
+
+  it('caches the expanded canonical envelope for a delayed same-time partial', () => {
+    const active = candle(60, 105, {
+      open: 100,
+      high: 110,
+      low: 90,
+      volume: 18,
+      closed: false,
+    });
+    const delayedPartial = candle(60, 99, {
+      open: 101,
+      high: 108,
+      low: 95,
+      volume: 12,
+      closed: false,
+    });
+
+    expect(resolveCanonicalServerCandle(active, delayedPartial)).toEqual({
+      ...delayedPartial,
+      open: 100,
+      high: 110,
+      low: 90,
+      volume: 18,
+      tickVolume: 18,
+    });
+  });
+
+  it('keeps an explicit final authoritative when selecting the cache revision', () => {
+    const active = candle(60, 105, { open: 100, high: 110, low: 90, volume: 18 });
+    const final = candle(60, 99, {
+      open: 101,
+      high: 108,
+      low: 95,
+      volume: 12,
+      closed: true,
+    });
+
+    expect(resolveCanonicalServerCandle(active, final)).toEqual(final);
+  });
+
+  it('does not reopen a cached explicit final from a delayed partial', () => {
+    const final = candle(60, 99, {
+      open: 101,
+      high: 108,
+      low: 95,
+      volume: 12,
+      closed: true,
+    });
+    const delayedPartial = candle(60, 105, {
+      open: 100,
+      high: 110,
+      low: 90,
+      volume: 18,
+      closed: false,
+    });
+
+    expect(resolveCanonicalServerCandle(final, delayedPartial)).toEqual(final);
   });
 
   it('retains every valid backend candle while merging paged history', () => {

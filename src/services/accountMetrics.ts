@@ -113,9 +113,14 @@ export function normalizeAccountMetrics(
   return next;
 }
 
-export function accountMetricAvailable(account: Partial<Account> | null | undefined, field: AccountMetric, now = Date.now()): boolean {
+export function accountMetricAvailable(
+  account: Partial<Account> | null | undefined,
+  field: AccountMetric,
+  now = Date.now(),
+  maxAgeMs = ACCOUNT_METRICS_MAX_AGE_MS,
+): boolean {
   if (!account || account[flags[field]] === false || ['stale', 'unavailable', 'invalid'].includes(account.metricsStatus ?? '')) return false;
   const at = account.metricUpdatedAt?.[field];
-  if (at !== undefined && (at <= 0 || now - at > ACCOUNT_METRICS_MAX_AGE_MS || at - now > 5_000)) return false;
+  if (at !== undefined && (at <= 0 || now - at > maxAgeMs || at - now > 5_000)) return false;
   return accountMetricNumber(account[field]) !== null;
 }

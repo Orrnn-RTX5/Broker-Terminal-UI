@@ -7,6 +7,7 @@
 @import "./styles/calendar-tab.css";
 @import "./styles/research-tabs.css";
 @import "./styles/bulk-close-dialog.css";
+@import "./styles/action-feedback-toast.css";
 
 /* Scan the app only. Saved builds and diagnostics under artifacts/ can grow
    to hundreds of MB and must not become CSS inputs on every cold start. */

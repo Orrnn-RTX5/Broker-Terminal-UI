@@ -1,7 +1,7 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, ChevronRight, ExternalLink, Building2, Shield, Globe, CheckCircle2, Copy, Loader2 } from 'lucide-react';
+import { X, Search, ChevronRight, ArrowRight, Building2, Shield, Globe, CheckCircle2, Copy, Loader2 } from 'lucide-react';
 import { tradeApi } from '../../api/trade';
 import { parseTokenExpiresAt } from '../../api/client';
 import { BROKER_DISCOVERY_URL, normalizeBrokerServerUrl, updateDynamicUrls } from '../../config/api';
@@ -47,22 +47,15 @@ const getLogoUrl = (url?: string) => {
     return `${base}${path}`;
 };
 
-const BrokerAvatar: React.FC<{ broker: BrokerServer; index: number; isSelected: boolean }> = ({ broker, index, isSelected }) => {
+const BrokerAvatar: React.FC<{ broker: BrokerServer }> = ({ broker }) => {
     const [hasError, setHasError] = useState(false);
-    const grad = GRADIENTS[index % GRADIENTS.length];
     
     if (broker.logo_url && !hasError) {
         return (
-            <div
-                className="rtx-open-account-dialog__logo w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden bg-white flex-shrink-0"
-                style={{
-                    border: isSelected ? '1px solid #6366f1' : '1px solid #303542',
-                }}
-            >
+            <div className="rtx-open-account-dialog__logo">
                 <img
                     src={getLogoUrl(broker.logo_url)}
-                    alt={broker.broker_name}
-                    className="w-full h-full object-contain p-1.5"
+                    alt=""
                     onError={() => setHasError(true)}
                 />
             </div>
@@ -70,12 +63,7 @@ const BrokerAvatar: React.FC<{ broker: BrokerServer; index: number; isSelected: 
     }
     
     return (
-        <div
-            className="rtx-open-account-dialog__avatar w-10 h-10 rounded-xl flex items-center justify-center text-white font-semibold text-[14px] flex-shrink-0"
-            style={{
-                background: `linear-gradient(135deg, ${grad.from} 0%, ${grad.to} 100%)`,
-            }}
-        >
+        <div className="rtx-open-account-dialog__avatar rtx-open-account-dialog__initials" aria-hidden="true">
             {initials(broker.broker_name)}
         </div>
     );
@@ -204,7 +192,6 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [directoryError, setDirectoryError] = useState('');
     const [directoryAttempt, setDirectoryAttempt] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
-    const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [accountType, setAccountType] = useState<AccountType>('demo');
 
     // "Connect existing" sub-form state
@@ -226,7 +213,6 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         let active = true;
         setStep(0);
         setSearchQuery('');
-        setHoveredId(null);
         setAccountType('demo');
         setExistingLogin('');
         setExistingPassword('');
@@ -467,43 +453,30 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
     // ─── Step 0: Broker Selection ───────────────────────────────────────────────
     const renderStep0 = () => (
-        <div className="rtx-open-account-dialog__broker-step flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 p-5">
+        <div className="rtx-open-account-dialog__broker-step">
             {/* Search bar */}
-            <div className="flex gap-2">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
-                    <input
-                        type="text"
-                        aria-label={tr("Search brokers")}
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        placeholder={tr("Search broker name or server address…")}
-                        className="w-full rounded-lg py-2 pl-9 pr-3 text-[14px] font-normal text-zinc-300 transition-all placeholder:text-zinc-600 focus:outline-none"
-                        style={{
-                            background: '#1e222a',
-                            border: '1px solid #303542',
-                        }}
-                        onFocus={e => (e.currentTarget.style.borderColor = '#6366f1')}
-                        onBlur={e => (e.currentTarget.style.borderColor = '#303542')}
-                    />
-                </div>
+            <div className="rtx-open-account-dialog__search">
+                <Search aria-hidden="true" />
+                <input
+                    type="text"
+                    aria-label={tr("Search brokers")}
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder={tr("Search broker name or server address…")}
+                />
             </div>
 
             {/* Section header */}
-            <div className="rtx-open-account-dialog__list-heading flex items-center gap-2">
-                <span className="text-[12px] font-semibold uppercase tracking-wider text-zinc-500">
+            <div className="rtx-open-account-dialog__list-heading">
+                <span>
                     {tr("Available Brokers")}</span>
-                <div className="flex-1 h-px" style={{ background: '#232833' }} />
-                <span
-                    className="rtx-open-account-dialog__badge px-2 py-0.5 rounded-full text-[12px] font-semibold"
-                    style={{ background: '#232838', color: '#a5b4fc' }}
-                >
+                <span className="rtx-open-account-dialog__count" aria-live="polite">
                     {loadingBrokers ? '…' : filteredBrokers.length}
                 </span>
             </div>
 
             {/* Broker list */}
-            <div className="overflow-y-auto rounded-xl flex flex-col gap-2" style={{ maxHeight: '280px', minHeight: '80px' }}>
+            <div className="rtx-open-account-dialog__broker-list" aria-busy={loadingBrokers}>
                 {loadingBrokers ? (
                     <div className="flex flex-col items-center gap-2 py-10 text-[14px] font-normal text-zinc-600">
                         <Loader2 className="w-6 h-6 animate-spin opacity-50" />
@@ -526,9 +499,8 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         <p>{tr("No brokers found")}</p>
                     </div>
                 ) : (
-                    filteredBrokers.map((broker, i) => {
+                    filteredBrokers.map(broker => {
                         const isSelected = selected === String(broker.id);
-                        const isHovered = hoveredId === String(broker.id);
                         return (
                             <button
                                 type="button"
@@ -536,26 +508,16 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 aria-pressed={isSelected}
                                 onClick={() => setSelected(String(broker.id))}
                                 onDoubleClick={handleNext}
-                                onMouseEnter={() => setHoveredId(String(broker.id))}
-                                onMouseLeave={() => setHoveredId(null)}
                                 data-selected={isSelected}
-                                className={`rtx-open-account-dialog__broker flex items-center gap-4 px-4 py-3 rounded-xl cursor-pointer transition-all duration-150 select-none text-left`}
-                                style={{
-                                    background: isSelected
-                                        ? '#222839'
-                                        : isHovered ? '#20242d' : '#1b1f27',
-                                    border: isSelected
-                                        ? '1px solid #4f46e5'
-                                        : isHovered ? '1px solid #323845' : '1px solid #272c37',
-                                }}
+                                className="rtx-open-account-dialog__broker rtx-open-account-dialog__broker-row"
                             >
                                 {/* Avatar */}
-                                <BrokerAvatar broker={broker} index={i} isSelected={isSelected} />
+                                <BrokerAvatar broker={broker} />
 
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <span className={`truncate text-[14px] ${isSelected ? 'font-semibold text-white' : 'font-normal text-zinc-200'}`}>
+                                        <span className="rtx-open-account-dialog__broker-name truncate">
                                             {broker.broker_name}
                                         </span>
                                         {broker.region && (
@@ -568,13 +530,13 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                         )}
                                     </div>
                                     <div className="rtx-open-account-dialog__broker-id flex items-center gap-2 mt-0.5">
-                                        <span className="truncate font-mono text-[14px] font-normal text-zinc-400">{broker.broker_id}</span>
+                                        <span className="truncate">{broker.broker_id}</span>
                                     </div>
                                 </div>
 
-                                {isDesktopShell && isSelected
+                                {isSelected
                                     ? <CheckCircle2 className="rtx-open-account-dialog__selected-icon" aria-hidden="true" />
-                                    : <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${isSelected ? 'text-zinc-400' : 'text-zinc-700'}`} />}
+                                    : <ChevronRight className="rtx-open-account-dialog__row-chevron" aria-hidden="true" />}
                             </button>
                         );
                     })
@@ -582,16 +544,9 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
 
             {selectedBroker && !isDesktopShell && (
-                <div
-                    className="rtx-open-account-dialog__surface flex items-center gap-2 px-3 py-2 rounded-lg"
-                    style={{ background: '#1b1f27', border: '1px solid #272c37' }}
-                >
-                    <ExternalLink className="w-3 h-3 text-zinc-400 flex-shrink-0" />
-                    <p className="text-[14px] font-normal text-zinc-500">
-                        {tr("Clicking ")}<span className="text-zinc-400 font-semibold">{tr("Next")}</span> {tr(" will proceed with")}{' '}
-                        <span className="text-zinc-300">{selectedBroker.broker_name}</span>
-                        <span className="text-zinc-600 font-mono ml-1">({selectedBroker.broker_id})</span>
-                    </p>
+                <div className="rtx-open-account-dialog__selection" role="status">
+                    <span>{tr("Selected broker")}</span>
+                    <strong title={selectedBroker.broker_name}>{selectedBroker.broker_name}</strong>
                 </div>
             )}
         </div>
@@ -951,7 +906,6 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     return createPortal(
         <div
             className="rtx-open-account-backdrop fixed inset-0 z-[9999] flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
             onClick={e => { e.stopPropagation(); if (e.target === e.currentTarget) closeDialog(); }}
             onMouseDown={e => e.stopPropagation()}
             onTouchStart={e => e.stopPropagation()}
@@ -961,21 +915,15 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="rtx-open-account-title"
+                aria-describedby="rtx-open-account-description"
                 data-step={step}
-                className={`rtx-open-account-dialog ${isDesktopShell ? 'rtx-open-account-dialog--desktop' : ''} relative w-[580px] max-w-[calc(100vw-24px)] flex flex-col overflow-hidden transition-all duration-300`}
-                style={{
-                    background: '#171a21',
-                    border: '1px solid #2a2f3a',
-                    borderRadius: '12px',
-                    boxShadow: '0 24px 64px rgba(0,0,0,0.55)',
-                    maxHeight: '90vh',
-                }}
+                className={`rtx-open-account-dialog ${isDesktopShell ? 'rtx-open-account-dialog--desktop' : ''} relative flex flex-col overflow-hidden`}
             >
                 {/* Header */}
-                <div className="rtx-open-account-dialog__header flex shrink-0 items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid #232833' }}>
+                <div className="rtx-open-account-dialog__header flex shrink-0 items-center justify-between gap-3">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                         {step === 0 && (
-                            <div className="rtx-open-account-dialog__header-icon w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#4f46e5' }}>
+                            <div className="rtx-open-account-dialog__header-icon flex items-center justify-center" aria-hidden="true">
                                 <Building2 className="w-4 h-4 text-white" />
                             </div>
                         )}
@@ -983,12 +931,11 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                             <h2 id="rtx-open-account-title" className="rtx-dialog-title break-words text-[20px] leading-7 font-semibold text-white tracking-tight">
                                 {isDesktopShell ? tr(header.title) : step > 0 ? tr("Open an Account: {{value0}}", { value0: selectedBroker?.broker_name || tr('Broker') }) : tr(header.title)}
                             </h2>
-                            <p className="mt-0.5 text-[14px] font-normal text-zinc-500">{isDesktopShell && step > 0 ? selectedBroker?.broker_name : tr(step > 0 ? header.title : header.sub)}</p>
+                            <p id="rtx-open-account-description" className="mt-0.5 text-[14px] font-normal text-zinc-500">{isDesktopShell && step > 0 ? selectedBroker?.broker_name : tr(step > 0 ? header.title : header.sub)}</p>
                         </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                        {!isDesktopShell && <button className="flex h-7 w-7 items-center justify-center rounded-md text-[14px] font-normal text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300" title={tr("Help")}>?</button>}
-                        <button onClick={closeDialog} className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-red-500/20 transition-all" title={tr("Close")}>
+                        <button type="button" onClick={closeDialog} className="rtx-open-account-dialog__close" aria-label={tr("Close")} title={tr("Close")}>
                             <X className="w-3.5 h-3.5" />
                         </button>
                     </div>
@@ -1024,17 +971,18 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 <button type="button" onClick={handleNext} disabled={!isStepValid || isCreating} className="rtx-account-primary">
                                     {isCreating && <Loader2 className="animate-spin" aria-hidden="true" />}
                                     {tr(actionLabel === 'Next >' ? 'Next' : actionLabel)}
+                                    {!isCreating && actionLabel === 'Next >' && <ArrowRight aria-hidden="true" />}
                                 </button>
                             </div>
                         </div>
                     </div>
-                ) : <div className="rtx-open-account-dialog__footer flex shrink-0 flex-wrap items-center justify-between gap-3 px-5 py-4 mt-auto" style={{ borderTop: '1px solid #232833', background: '#14171d' }}>
-                    <div className="max-w-[280px] text-[14px] font-normal">
+                ) : <div className="rtx-open-account-dialog__footer">
+                    <div className="rtx-open-account-dialog__footer-hint">
                         {validationError ? <span role="alert" className="text-red-400">{tr(validationError)}</span> : (
                             <span className="text-zinc-600">{step === 0 ? tr("Double-click to proceed immediately") : ''}</span>
                         )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="rtx-open-account-dialog__footer-actions">
                         {step > 0 && step < 4 && (
                             <button
                                 onClick={handleBack}
@@ -1044,19 +992,21 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 {tr("< Back")}</button>
                         )}
                         <button
-                            onClick={handleNext}
-                            disabled={!isStepValid || isCreating}
-                            className="rtx-open-account-dialog__primary flex items-center gap-2 rounded-lg px-5 py-2 text-[14px] leading-5 font-medium text-white transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-                            style={{ background: '#4f46e5', border: '1px solid #4f46e5' }}
-                        >
-                            {tr(actionLabel)}
-                        </button>
-                        <button
                             onClick={closeDialog}
                             className="ml-1 rounded-lg px-5 py-2 text-[14px] leading-5 font-medium text-zinc-300 transition-all hover:text-white hover:brightness-110"
                             style={{ background: '#232733', border: '1px solid #323845' }}
                         >
                             {tr("Cancel")}</button>
+                        <button
+                            type="button"
+                            onClick={handleNext}
+                            disabled={!isStepValid || isCreating}
+                            className="rtx-open-account-dialog__primary"
+                        >
+                            {isCreating && <Loader2 className="animate-spin" aria-hidden="true" />}
+                            {tr(actionLabel === 'Next >' ? 'Next' : actionLabel)}
+                            {!isCreating && actionLabel === 'Next >' && <ArrowRight aria-hidden="true" />}
+                        </button>
                     </div>
                 </div>}
             </div>

@@ -112,12 +112,29 @@ export interface LivePriceOverlayColors {
   badgeTextColor: '#000000' | '#ffffff';
 }
 
+export const LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX = 52;
+
+// The chart can briefly report a zero-width scale while a hidden pane is
+// mounting. Keep the last real width only for that transient state; every
+// positive measurement must win so the badge continues to cover the full
+// price scale after symbol, timeframe, font, or layout changes.
+export const resolveLivePriceScaleWidth = (
+  measuredScaleWidth: number,
+  lastValidScaleWidth: number | null,
+): number => {
+  if (Number.isFinite(measuredScaleWidth) && measuredScaleWidth > 0) return measuredScaleWidth;
+  if (lastValidScaleWidth !== null && Number.isFinite(lastValidScaleWidth) && lastValidScaleWidth > 0) {
+    return lastValidScaleWidth;
+  }
+  return LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX;
+};
+
 export const getLivePriceSeriesColor = (
   colors: ChartProperties['colors'],
   chartType: ChartType,
   direction: 'up' | 'down',
 ): string => {
-  if (chartType === 'line' || chartType === 'area') return colors.lineChart;
+  if (chartType === 'line') return colors.lineChart;
   if (chartType === 'bar') return direction === 'up' ? colors.barUp : colors.barDown;
   return direction === 'up' ? colors.bullCandle : colors.bearCandle;
 };
@@ -610,6 +627,9 @@ export const shouldResetInitialHistoryVisibleRange = ({
 export const TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS = {
   shiftVisibleRangeOnNewBar: false,
   allowShiftVisibleRangeOnWhitespaceReplacement: false,
+  // Do not mix a lone lower-weight tick (for example 10:18) into the regular
+  // five-minute marks (for example 10:15, 10:20) when every mark cannot fit.
+  uniformDistribution: true,
   // Match chart-wheel zoom: keep the visible right edge, even in history.
   rightBarStaysOnScroll: true,
 } as const;

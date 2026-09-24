@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RTX 5 Web Terminal</title>
+  <script id="rtx-runtime-config">
+// Web runtime configuration is generated from the active .env.web broker by Vite.
+// Docker may replace the built file with explicit deployment environment values.
+// This source placeholder intentionally does not select or override any broker.
+</script>
+  <script>
+    (function prepareInstantShellAndMetrics() {
+      var root = document.documentElement;
+      var metrics = {};
+      var pendingInteraction = null;
+      var pendingInteractionTimer = 0;
+      var interactionDurations = {};
+
+      function publish(name, durationMs) {
+        var value = Number(durationMs);
+        if (!Number.isFinite(value)) return;
+        value = Math.max(0, Math.round(value * 10) / 10);
+        metrics[name] = value;
+        root.setAttribute(
+          'data-rtx-perf-' + String(name).replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-ms',
+          value.toFixed(1)
+        );
+      }
+
+      window.__RTX_STARTUP_PERFORMANCE__ = {
+        publish: publish,
+        beginInteraction: function (label) {
+          var normalizedLabel = String(label);
+          var now = performance.now();
+          if (
+            !pendingInteraction
+            || pendingInteraction.label !== normalizedLabel
+            || now - pendingInteraction.start > 5000
+          ) {
+            pendingInteraction = { label: normalizedLabel, start: now, form: null };
+          }
+          return pendingInteraction.start;
+        }
+      };
+      window.__RTX_STARTUP_METRICS__ = metrics;
+
+      // Measure the first usable workspace independently of HTML/module load.
+      // Stop watching as soon as the startup boundary reveals its real UI.
+      try {
+        var terminalReadyObserver = new MutationObserver(function () {
+          if (!document.querySelector('[data-terminal-startup="ready"]')) return;
+          terminalReadyObserver.disconnect();
+          window.requestAnimationFrame(function () {
+            window.setTimeout(function () {
+              publish('terminal-ready', performance.now());
+            }, 0);
+          });
+        });
+        terminalReadyObserver.observe(root, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['data-terminal-startup']
+        });
+      } catch (_) { /* Startup measurement must never delay the terminal. */ }
+
+      function loginFormForEvent(event) {
+        var target = event.target;
+        if (!(target instanceof Element)) return null;
+        if (target.matches('form[data-rtx-login-form]')) return target;
+        return target.closest('form[data-rtx-login-form]');
+      }
+
+      function captureLoginInteraction(event) {
+        var form = loginFormForEvent(event);
+        if (!form) return;
+        if (event.type === 'pointerdown') {
+          var submitTarget = event.target instanceof Element
+            ? event.target.closest('[data-rtx-login-submit]')
+            : null;
+          if (!submitTarget) return;
+        }
+        if (event.type === 'keydown' && event.key !== 'Enter') return;
+
+        var eventStart = Number(event.timeStamp);
+        var now = performance.now();
+        if (!Number.isFinite(eventStart) || eventStart < 0 || eventStart > now + 1000) eventStart = now;
+        if (
+          event.type === 'submit'
+          && pendingInteraction
+          && pendingInteraction.label === 'login'
+          && now - pendingInteraction.start <= 5000
+        ) {
+          pendingInteraction.form = form;
+          return;
+        }
+        pendingInteraction = { label: 'login', start: eventStart, form: form };
+      }
+
+      document.addEventListener('pointerdown', captureLoginInteraction, true);
+      document.addEventListener('keydown', captureLoginInteraction, true);
+      document.addEventListener('submit', captureLoginInteraction, true);
+
+      try {
+        var paintObserver = new PerformanceObserver(function (list) {
+          list.getEntries().forEach(function (entry) {
+            if (entry.name === 'first-contentful-paint') publish('fcp', entry.startTime);
+          });
+        });
+        paintObserver.observe({ type: 'paint', buffered: true });
+      } catch (_) { /* Paint Timing is optional in older embedded browsers. */ }
+
+      try {
+        var eventObserver = new PerformanceObserver(function (list) {
+          list.getEntries().forEach(function (entry) {
+            if (!entry.interactionId) return;
+            publish('last-interaction', entry.duration);
+            if (!pendingInteraction || entry.startTime < pendingInteraction.start - 50) return;
+            if (
+              pendingInteraction.form
+              && entry.target instanceof Node
+              && !pendingInteraction.form.contains(entry.target)
+            ) return;
+
+            var key = pendingInteraction.label + ':' + entry.interactionId;
+            interactionDurations[key] = Math.max(interactionDurations[key] || 0, entry.duration);
+            publish(pendingInteraction.label + '-interaction', interactionDurations[key]);
+
+            window.clearTimeout(pendingInteractionTimer);
+            var measuredInteraction = pendingInteraction;
+            pendingInteractionTimer = window.setTimeout(function () {
+              if (pendingInteraction === measuredInteraction) pendingInteraction = null;
+            }, 1000);
+          });
+        });
+        eventObserver.observe({ type: 'event', buffered: true, durationThreshold: 16 });
+      } catch (_) { /* Event Timing is optional in older embedded browsers. */ }
+
+      try {
+        var longestTask = 0;
+        var longTaskObserver = new PerformanceObserver(function (list) {
+          list.getEntries().forEach(function (entry) {
+            longestTask = Math.max(longestTask, entry.duration);
+            publish('long-task-max', longestTask);
+            if (pendingInteraction) publish(pendingInteraction.label + '-long-task-max', entry.duration);
+          });
+        });
+        longTaskObserver.observe({ type: 'longtask', buffered: true });
+      } catch (_) { /* Long Tasks are optional in older embedded browsers. */ }
+
+      try {
+        var resourceObserver = new PerformanceObserver(function (list) {
+          list.getEntries().forEach(function (entry) {
+            if (!/\/auth\/login(?:[/?#]|$)/i.test(entry.name)) return;
+            if (entry.responseEnd > entry.requestStart) {
+              publish('auth-network-resource', entry.responseEnd - entry.requestStart);
+            }
+            if (entry.responseStart > entry.requestStart) {
+              publish('auth-ttfb', entry.responseStart - entry.requestStart);
+            }
+          });
+        });
+        resourceObserver.observe({ type: 'resource', buffered: true });
+      } catch (_) { /* Cross-origin servers can intentionally restrict Resource Timing. */ }
+
+      window.addEventListener('load', function () {
+        window.setTimeout(function () {
+          var navigation = performance.getEntriesByType('navigation')[0];
+          if (!navigation) return;
+          publish('navigation-ttfb', navigation.responseStart - navigation.requestStart);
+          publish('navigation-response', navigation.responseEnd);
+          publish('navigation-interactive', navigation.domInteractive);
+          publish('navigation-load', navigation.loadEventEnd);
+        }, 0);
+      }, { once: true });
+
+      function parseExpiry(value) {
+        if (value === null || value === undefined || value === '') return null;
+        var raw = String(value).trim();
+        var numeric = /^\d+$/.test(raw) ? Number(raw) : NaN;
+        if (Number.isFinite(numeric)) return numeric < 100000000000 ? numeric * 1000 : numeric;
+        var parsed = Date.parse(raw);
+        return Number.isNaN(parsed) ? null : parsed;
+      }
+
+      var sessionCandidate = false;
+      try {
+        var account = localStorage.getItem('rtx_saved_username') || localStorage.getItem('rtx_last_login');
+        var token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+        var refreshToken = localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
+        var expiresAt = parseExpiry(
+          localStorage.getItem('token_expires_at') || sessionStorage.getItem('token_expires_at')
+        );
+        sessionCandidate = Boolean(
+          account
+          && (token || refreshToken)
+          && (expiresAt === null || expiresAt > Date.now())
+        );
+      } catch (_) { /* Storage can be unavailable in hardened browser contexts. */ }
+
+      var isLightTheme = false;
+      try {
+        isLightTheme = localStorage.getItem('rtx5-advanced-view-enabled') === 'true' ||
+                       localStorage.getItem('rtx5-theme') === 'light';
+      } catch (_) { /* Storage can be unavailable in hardened browser contexts. */ }
+
+      if (isLightTheme) {
+        root.classList.add('rtx-advanced-view', 'rtx-skin-untitled-light', 'theme-light');
+        root.setAttribute('data-theme', 'light');
+        try {
+          var advOpts = JSON.parse(localStorage.getItem('rtx5-advanced-view-options') || '{}');
+          if (advOpts.fontSize) root.classList.add('rtx-advanced-font-' + advOpts.fontSize);
+          if (advOpts.density) root.classList.add('rtx-advanced-density-' + advOpts.density);
+          if (advOpts.accent) root.classList.add('rtx-advanced-accent-' + advOpts.accent);
+          if (advOpts.chartSurface) root.classList.add('rtx-advanced-surface-' + advOpts.chartSurface);
+        } catch (_) {}
+      } else {
+        root.classList.add('theme-dark');
+        root.setAttribute('data-theme', 'dark');
+      }
+
+      // Web visitors enter the guest terminal even without a saved account.
+      // Keep this choice aligned with AppShell so its static status can paint
+      // while the terminal modules load, without requesting unused login art.
+      var runtimeConfig = Object.assign({}, window.RUNTIME_CONFIG || {}, window.__RTX_RUNTIME_CONFIG__ || {});
+      function firstConfiguredValue(values) {
+        for (var index = 0; index < values.length; index++) {
+          var value = String(values[index] || '').trim().toLowerCase();
+          if (value) return value;
+        }
+        return '';
+      }
+      var runtimeTarget = firstConfiguredValue([
+        runtimeConfig.backendTarget, runtimeConfig.backend_target,
+        runtimeConfig.BACKEND_TARGET, runtimeConfig.VITE_BACKEND_TARGET,
+        runtimeConfig.runtimeTarget, runtimeConfig.runtime_target,
+        runtimeConfig.target, runtimeConfig.platform, '%VITE_BACKEND_TARGET%'
+      ]);
+      var runtimeMode = firstConfiguredValue([
+        runtimeConfig.backendMode, runtimeConfig.backend_mode,
+        runtimeConfig.BACKEND_MODE, runtimeConfig.VITE_BACKEND_MODE
+      ]);
+      var desktopRuntime = Boolean(
+        (window.electron && window.electron.window)
+        || window.electronAPI
+        || window.location.protocol === 'file:'
+        || navigator.userAgent.indexOf('Electron') !== -1
+        || /^(desktop|electron|direct)$/.test(runtimeTarget)
+        || /^(desktop|electron|direct)$/.test(runtimeMode)
+      );
+      var initialTerminal = sessionCandidate || !desktopRuntime;
+      root.setAttribute('data-rtx-initial-view', initialTerminal ? 'terminal' : 'login');
+
+      // Open the broker connections (DNS + TLS/QUIC) while the terminal
+      // JavaScript is still downloading, so the first market-data request
+      // does not pay the handshake. Origins come only from the deployment's
+      // own runtime configuration.
+      try {
+        var preconnected = {};
+        [
+          runtimeConfig.API_HOST, runtimeConfig.api_host,
+          runtimeConfig.VITE_API_HOST, runtimeConfig.API_HOST_EXT,
+          runtimeConfig.api_host_ext, runtimeConfig.VITE_API_URL,
+          runtimeConfig.VITE_BACKEND_URL,
+          runtimeConfig.WS_HOST, runtimeConfig.ws_host, runtimeConfig.VITE_WS_URL
+        ].forEach(function (value) {
+          var raw = String(value || '').trim();
+          if (!raw) return;
+          if (!/^[a-z][a-z\d+.-]*:\/\//i.test(raw)) raw = 'https://' + raw;
+          raw = raw.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://');
+          var origin;
+          try {
+            var parsed = new URL(raw);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return;
+            origin = parsed.origin;
+          } catch (_) { return; }
+          if (origin === window.location.origin || preconnected[origin]) return;
+          preconnected[origin] = true;
+          var connectHint = document.createElement('link');
+          connectHint.rel = 'preconnect';
+          connectHint.href = origin;
+          connectHint.crossOrigin = '';
+          document.head.appendChild(connectHint);
+        });
+      } catch (_) { /* Connection warmup must never delay the terminal. */ }
+      if (!initialTerminal) {
+        var wordmarkPreload = document.createElement('link');
+        wordmarkPreload.rel = 'preload';
+        wordmarkPreload.as = 'image';
+        wordmarkPreload.href = './brand/rtx5-login-wordmark.png';
+        wordmarkPreload.type = 'image/png';
+        wordmarkPreload.setAttribute('fetchpriority', 'high');
+        document.head.appendChild(wordmarkPreload);
+
+        // Resolve the broker visual from runtime configuration or the last
+        // verified presentation cache, then load its responsive source in
+        // parallel with the real login JavaScript.
+        var heroIdentity = '';
+        try {
+          heroIdentity = JSON.stringify(window.RUNTIME_CONFIG || window.__RTX_RUNTIME_CONFIG__ || {})
+            + ' ' + (localStorage.getItem('rtx_broker_presentation_v1') || '')
+            + ' ' + window.location.hostname;
+        } catch (_) { /* Use the TEST/default hero. */ }
+        heroIdentity = heroIdentity.toLowerCase().replace(/[^a-z0-9]+/g, '');
+        var desktopHeroPath = './login/trading-desk-hero.webp';
+        var mobileHeroPath = './login/trading-desk-hero-mobile.webp';
+        var mobileHeroType = 'image/webp';
+        if (heroIdentity.indexOf('myprop') >= 0) {
+          desktopHeroPath = './login/myprop-hero-wide.webp';
+          mobileHeroPath = './login/myprop-hero-mobile.jpg';
+          mobileHeroType = 'image/jpeg';
+        } else if (heroIdentity.indexOf('achiever') >= 0 || heroIdentity.indexOf('achiver') >= 0) {
+          desktopHeroPath = './login/achiever-hero-desktop-fit.webp';
+          mobileHeroPath = './login/achiever-hero-mobile.jpg';
+          mobileHeroType = 'image/jpeg';
+        } else if (heroIdentity.indexOf('growtradingacademy') >= 0 || heroIdentity.indexOf('gtabroker') >= 0) {
+          desktopHeroPath = './login/gta-hero-desktop-fit.webp';
+          mobileHeroPath = './login/gta-hero-mobile.jpg';
+          mobileHeroType = 'image/jpeg';
+        }
+        var heroPreload = document.createElement('link');
+        heroPreload.rel = 'preload';
+        heroPreload.as = 'image';
+        heroPreload.href = desktopHeroPath;
+        heroPreload.type = 'image/webp';
+        heroPreload.media = '(min-width: 761px)';
+        heroPreload.setAttribute('fetchpriority', 'high');
+        document.head.appendChild(heroPreload);
+
+        var mobileHeroPreload = document.createElement('link');
+        mobileHeroPreload.rel = 'preload';
+        mobileHeroPreload.as = 'image';
+        mobileHeroPreload.href = mobileHeroPath;
+        mobileHeroPreload.type = mobileHeroType;
+        mobileHeroPreload.media = '(max-width: 760px)';
+        mobileHeroPreload.setAttribute('fetchpriority', 'high');
+        document.head.appendChild(mobileHeroPreload);
+      }
+      performance.mark('rtx-instant-shell-selected');
+    })();
+  </script>
+  <style>
+    :root { color-scheme: dark; }
+    html, body, #root { width: 100%; min-height: 100%; height: 100%; background: #050608; }
+    body { margin: 0; overflow: hidden; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; font-weight: 400; line-height: 20px; }
+    * { box-sizing: border-box; }
+
+    .rtx-terminal-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; width: 100%; height: 100%; min-height: 0; padding: 24px; background: #0d0d11; color: #cbd5e1; text-align: center; }
+    .rtx-terminal-loading__brand { font-size: 22px; font-weight: 600; letter-spacing: .08em; }
+    .rtx-terminal-loading__spinner { width: 22px; height: 22px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rtx-terminal-loading-spin .8s linear infinite; }
+    .rtx-terminal-loading__message { max-width: 420px; font-size: 14px; line-height: 20px; }
+    .rtx-terminal-loading__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+    .rtx-terminal-loading__actions button { min-height: 36px; padding: 8px 14px; border: 1px solid #454550; border-radius: 6px; background: #202026; color: inherit; font: inherit; cursor: pointer; }
+    .rtx-terminal-loading__actions button:hover { border-color: currentColor; }
+    .rtx-terminal-loading__actions button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 3px; }
+    @keyframes rtx-terminal-loading-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .rtx-terminal-loading__spinner { animation: none; } }
+
+    [data-rtx-static-shell] { width: 100%; height: 100%; background: #050608; }
+    [data-rtx-static-shell] > .rtx-terminal-loading { display: none; }
+    html[data-rtx-initial-view="terminal"] [data-rtx-static-shell] > .rtx-terminal-loading { display: flex; }
+
+    /* Light Theme instantaneous pre-paint styles */
+    html.rtx-skin-untitled-light,
+    html[data-theme="light"] {
+      color-scheme: light;
+    }
+    html.rtx-skin-untitled-light,
+    html.rtx-skin-untitled-light body,
+    html.rtx-skin-untitled-light #root,
+    html.rtx-skin-untitled-light [data-rtx-static-shell],
+    html[data-theme="light"],
+    html[data-theme="light"] body,
+    html[data-theme="light"] #root,
+    html[data-theme="light"] [data-rtx-static-shell] {
+      background: #f7f8fa;
+      color: #111827;
+    }
+    html.rtx-skin-untitled-light .rtx-terminal-loading,
+    html[data-theme="light"] .rtx-terminal-loading {
+      background: #f7f8fa;
+      color: #111827;
+    }
+    html.rtx-skin-untitled-light .rtx-terminal-loading__actions button,
+    html[data-theme="light"] .rtx-terminal-loading__actions button {
+      background: #ffffff;
+      border-color: #cbd5e1;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root">
+    <div data-rtx-static-shell>
+      <div class="rtx-terminal-loading" role="status" aria-live="polite" aria-busy="true">
+        <div class="rtx-terminal-loading__brand">RTX 5</div>
+        <div class="rtx-terminal-loading__spinner" aria-hidden="true"></div>
+        <div class="rtx-terminal-loading__message">Loading terminal…</div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

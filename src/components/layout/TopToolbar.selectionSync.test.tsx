@@ -6,6 +6,7 @@ import { TopToolbar } from './TopToolbar';
 import { commandBus } from '../../services/commandBus';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { useChartSettingsStore } from '../../store/useChartSettingsStore';
+import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import type { DockLayout } from '../../services/dockManager';
 import {
   activateActiveChartSource,
@@ -58,6 +59,7 @@ const prepareDesktopCharts = (layout: DockLayout) => {
 
 afterEach(() => {
   cleanup();
+  useTerminalBarsStore.setState({ timeframesVisible: true });
   clearActiveChartSources();
   chartElements.splice(0).forEach(element => element.remove());
   useDockLayoutStore.getState().setLayout(originalLayout);
@@ -70,6 +72,28 @@ afterEach(() => {
 });
 
 describe('toolbar selection synchronization', () => {
+  it.each(['web', 'desktop'])('hides and restores the %s timeframe strip without changing the selected chart period', (surface) => {
+    if (surface === 'desktop') prepareDesktopCharts(desktopChartLayout());
+    else Object.defineProperty(window, 'electron', { configurable: true, writable: true, value: undefined });
+    const props = toolbarProps();
+    render(<TopToolbar {...props} />);
+
+    expect(screen.getByRole('radiogroup', { name: 'Chart timeframes' })).toBeInTheDocument();
+    act(() => useTerminalBarsStore.getState().toggleTimeframes());
+    expect(screen.queryByRole('radiogroup', { name: 'Chart timeframes' })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Candlesticks' })).toBeInTheDocument();
+    expect(props.onTimeframeChange).not.toHaveBeenCalled();
+    expect(commandBus.getHistory().filter(command => command.type === 'SET_TIMEFRAME')).toHaveLength(0);
+
+    act(() => useTerminalBarsStore.getState().toggleTimeframes());
+    expect(screen.getByRole('radio', { name: 'Timeframe: 5 minutes' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('radio', { name: 'Timeframe: 15 minutes' }));
+    expect(props.onTimeframeChange).toHaveBeenCalledWith('M15');
+    expect(commandBus.getHistory().filter(command => command.type === 'SET_TIMEFRAME')).toEqual([
+      expect.objectContaining({ payload: expect.objectContaining({ timeframe: 'M15' }) }),
+    ]);
+  });
+
   it('reflects a restored symbol timeframe without sending a command back to the previous chart', () => {
     commandBus.clearHistory();
     const props = toolbarProps();

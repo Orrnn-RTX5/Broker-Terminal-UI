@@ -1,7 +1,7 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 /**
  * JournalTab — MT5-style server journal panel
- * Fetches broker/account-scoped logs from GET /api/v1/journal.
+ * Fetches broker/account-scoped logs from GET /api/v2/journal.
  *
  * Filters:
  *   - Type  : All / Config / System / Network / History / User / Trade / API / Notify

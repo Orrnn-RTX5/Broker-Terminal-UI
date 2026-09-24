@@ -14,6 +14,7 @@ import { twMerge } from 'tailwind-merge';
 import type { DockPanelConfig } from '../../services/dockManager';
 import { X, Minus } from 'lucide-react';
 import { ChartSymbolTabs } from './ChartSymbolTabs';
+import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -54,6 +55,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
   const [localMinimized, setLocalMinimized] = useState(false);
   const minimized = onMinimizedChange ? Boolean(panel.minimized) : localMinimized;
   const isChart = panel.component === 'Chart';
+  const chartsBarVisible = useTerminalBarsStore(state => state.chartsBarVisible);
   const chartSymbol = typeof panel.props?.symbol === 'string' ? panel.props.symbol : panel.title.split(',')[0];
   const setMinimized = (value: boolean) => {
     if (onMinimizedChange) onMinimizedChange(value);
@@ -99,7 +101,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
         >
           {/* Title */}
           <span className="dock-panel__title flex-1 min-w-0 flex items-center gap-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]">
-            {isChart ? <ChartSymbolTabs panel={panel} /> : tr(panel.title)}
+            {isChart && chartsBarVisible ? <ChartSymbolTabs panel={panel} /> : tr(panel.title)}
             {minimized && (
               <span className="ml-1 text-[12px] font-normal text-zinc-600 italic">{tr("(minimized)")}</span>
             )}

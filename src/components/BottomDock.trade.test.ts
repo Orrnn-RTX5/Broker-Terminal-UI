@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyLivePositionProfit,
+  formatPositionProfit,
   calculateLivePositionProfit,
   resolveTradeAccountMetrics,
   resolveTradeProfit,
@@ -407,7 +409,7 @@ describe('BottomDock trade helpers', () => {
     })).toMatchObject({ credit: 75 });
   });
 
-  it('treats a stale broker-scoped metrics snapshot as unavailable', () => {
+  it('keeps the last figures of a quiet account but hides a snapshot the backend marks stale', () => {
     const now = 1_700_000_000_000;
     const fresh = resolveTradeAccountMetrics({
       balance: 1000,
@@ -429,7 +431,19 @@ describe('BottomDock trade helpers', () => {
       metricUpdatedAt: { balance: now - 60_000, equity: now - 60_000, freeMargin: now - 60_000, marginLevel: now - 60_000 },
     }, now);
 
-    expect(stale).toMatchObject({
+    // No new publication for a minute (nothing changed): still the last backend values.
+    expect(stale).toMatchObject({ balance: 1000, equity: 1010, freeMargin: 910, marginLevel: 1010 });
+
+    const marked = resolveTradeAccountMetrics({
+      balance: 1000,
+      equity: 1010,
+      freeMargin: 910,
+      marginLevel: 1010,
+      metricsStatus: 'stale',
+      metricUpdatedAt: { balance: now, equity: now, freeMargin: now, marginLevel: now },
+    }, now);
+
+    expect(marked).toMatchObject({
       balance: null,
       equity: null,
       freeMargin: null,
@@ -446,5 +460,55 @@ describe('BottomDock trade helpers', () => {
     }, now);
 
     expect(invalidated).toMatchObject({ balance: null, equity: null, equitySource: 'unavailable' });
+  });
+});
+
+describe('live account metrics between backend snapshots', () => {
+  const metrics = resolveTradeAccountMetrics({
+    balance: 10025.36, credit: 0, equity: 10024.76, margin: 25.08,
+    freeMargin: 9999.68, marginLevel: 39972.53, unrealizedPL: -0.6,
+  });
+  // The three BTCUSD 0.01-lot rows from the Trade tab at 83559.53.
+  const positions = [
+    { symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83574.78, currentPrice: 83559.53, profit: -0.15 },
+    { symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83613.04, currentPrice: 83559.53, profit: -0.54 },
+    { symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83603.41, currentPrice: 83559.53, profit: -0.44 },
+  ];
+
+  it('shows unrounded row profit when it rounds to the backend value', () => {
+    expect(resolveTradeProfit(positions[0]).value).toBeCloseTo(-0.1525, 10);
+    // Currency conversion or an unknown contract size: backend value verbatim.
+    expect(resolveTradeProfit({ ...positions[0], profit: -0.2 }).value).toBe(-0.2);
+    expect(resolveTradeProfit({ ...positions[0], hasBackendCurrentPrice: false }).value).toBe(-0.15);
+  });
+
+  it('derives floating P/L, equity, free margin and level from the live rows', () => {
+    const live = applyLivePositionProfit(metrics, positions);
+    expect(live.balance).toBe(10025.36);
+    expect(live.margin).toBe(25.08);
+    expect(live.floatingPnL).toBeCloseTo(-1.1264, 10);
+    expect(live.equity).toBeCloseTo(10024.2336, 10);
+    expect(live.freeMargin).toBeCloseTo(9999.1536, 10);
+    expect(live.marginLevel).toBeCloseTo((10024.2336 / 25.08) * 100, 8);
+  });
+
+  it('adds swap and commission, which backend position profit excludes', () => {
+    const live = applyLivePositionProfit(metrics, [{ ...positions[0], swap: -1, commission: -0.5 }]);
+    expect(live.floatingPnL).toBeCloseTo(-1.6525, 10);
+  });
+
+  it('keeps backend values when a row has no backend profit or a metric is unavailable', () => {
+    expect(applyLivePositionProfit(metrics, [...positions, { ...positions[0], hasBackendProfit: false }])).toBe(metrics);
+    expect(applyLivePositionProfit(metrics, [])).toBe(metrics);
+    const partial = applyLivePositionProfit({ ...metrics, freeMargin: null, marginLevel: null }, positions);
+    expect(partial).toMatchObject({ freeMargin: null, marginLevel: null });
+    expect(partial.equity).toBeCloseTo(10024.2336, 10);
+  });
+
+  it('formats small row profit with enough decimals to show each tick', () => {
+    expect(formatPositionProfit(-0.1525)).toBe('-0.1525');
+    expect(formatPositionProfit(-0.00001)).toBe('0.0000');
+    expect(formatPositionProfit(42.5)).toBe('42.500');
+    expect(formatPositionProfit(12345.678)).toBe('12 345.68');
   });
 });

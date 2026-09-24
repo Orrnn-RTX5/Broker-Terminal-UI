@@ -672,11 +672,11 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
         return 0;
       });
     }, [marketWatchSymbolOrder, selectedSymbolGroup]);
-    // Demand follows the rows actually rendered. Filtering by the locally loaded
-    // catalog subset would leave rows unsubscribed until the catalog hydrates
-    // (and would drop custom-watchlist rows the local catalog does not list);
-    // the server confirms or rejects each symbol individually instead.
-    const subscriptionSymbols = visibleRowSymbols;
+    // Keep every symbol in the active watchlist subscribed, including rows that
+    // are currently outside the scroll viewport. Visibility still scopes the
+    // historical fallback requests below, but it must not suppress live ticks
+    // for a symbol the user has explicitly added.
+    const subscriptionSymbols = rows;
 
     const filteredSymbols = useMemo(() => {
       if (search.trim()) {

@@ -16,7 +16,8 @@ import {
     type ExposureAccountInput,
     type ExposurePositionInput,
 } from './BottomDock.exposure';
-import { resolveTradeAccountMetrics, resolveTradeProfit, toBackendFinancialNumber } from './BottomDock.trade';
+import { formatPositionProfit, resolveTradeAccountMetrics, resolveTradeProfit, toBackendFinancialNumber } from './BottomDock.trade';
+import { useLiveAccountMetrics } from '../hooks/useLiveAccountMetrics';
 import { MARKET_ORDER_PLACEMENT_STATE_EVENT } from '../services/marketOrderPlacementEvents';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../services/shortcutCatalog';
 import { acknowledgeBottomDockTab, getRequestedBottomDockTab } from '../services/bottomDockNavigation';
@@ -1039,17 +1040,17 @@ const TradeTab = memo(function TradeTab({
     // backend-authoritative.
     const totalSwap = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.swap) || 0), 0), [livePositions]);
     const totalCommission = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.commission) || 0), 0), [livePositions]);
-    // Equity / free margin / margin level are shown exactly as the backend reports them. When
-    // the backend omits one it resolves to null and the footer renders a dash, not a zero.
-    // The 1s ticker re-evaluates the broker-scoped staleness gate so metrics from a previous
-    // session age out of the footer even while no new snapshot arrives.
+    // Equity / free margin / margin level come from the backend. When the backend omits one
+    // it resolves to null and the footer renders a dash, not a zero. A quiet account keeps its
+    // last published figures; the 1s clock only re-checks future-dated snapshots.
     const [metricsNow, setMetricsNow] = useState(Date.now);
     useEffect(() => {
         const timer = window.setInterval(() => setMetricsNow(Date.now()), 1000);
         return () => window.clearInterval(timer);
     }, []);
-    // Every account total comes from the backend, including floating P/L.
-    const accountMetricResolution = useMemo(() => resolveTradeAccountMetrics(account, metricsNow), [account, metricsNow]);
+    // Every account total comes from the backend, including floating P/L, and follows
+    // the live position profit stream between backend snapshots.
+    const accountMetricResolution = useLiveAccountMetrics(account, livePositions, metricsNow);
     useEffect(() => {
         if (!account?.publicationToken) return;
         let nextFrame = 0;
@@ -1796,7 +1797,7 @@ ${rows}
                                     ? formatTradePoints(pos)
                                     : pnlValue === null || Number.isNaN(pnlValue)
                                         ? METRIC_UNAVAILABLE
-                                        : formatMoney(pnlValue);
+                                        : formatPositionProfit(pnlValue);
                             const rowSummary = [
                                 symbolLabel,
                                 tr(sideLabel),
@@ -2117,7 +2118,7 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
         return () => window.clearInterval(timer);
     }, []);
     const { balance: accountBalance, equity: accountEquity, margin: accountMargin,
-        freeMargin: accountFreeMargin, marginLevel: accountMarginLevel } = resolveTradeAccountMetrics(account, metricsNow);
+        freeMargin: accountFreeMargin, marginLevel: accountMarginLevel } = useLiveAccountMetrics(account, positions, metricsNow);
     const formatAccountMetric = (value: number | null) => value === null ? METRIC_UNAVAILABLE : formatMoney(value);
 
     return (

@@ -35,6 +35,7 @@ interface ChartContextMenuProps {
     chartShift?: boolean;
     showTradeLevels?: boolean;
     showTradeHistory?: boolean;
+    showTradeHistoryLine?: boolean;
     showOHLC?: boolean;
     onChangeChartType: (type: ChartType) => void;
     onChangeTimeframe: (tf: Timeframe) => void;
@@ -45,6 +46,7 @@ interface ChartContextMenuProps {
     onToggleChartShift: () => void;
     onToggleTradeLevels?: () => void;
     onToggleTradeHistory?: () => void;
+    onToggleTradeHistoryLine?: () => void;
     onToggleOHLC?: () => void;
     onOpenProperties: () => void;
     onSaveAsPicture: () => void;
@@ -307,6 +309,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     chartShift = false,
     showTradeLevels = true,
     showTradeHistory = true,
+    showTradeHistoryLine = true,
     showOHLC = true,
     onChangeChartType,
     onChangeTimeframe,
@@ -317,6 +320,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     onToggleChartShift,
     onToggleTradeLevels,
     onToggleTradeHistory,
+    onToggleTradeHistoryLine,
     onToggleOHLC,
     onOpenProperties,
     onSaveAsPicture,
@@ -409,28 +413,33 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
         { name: 'Rectangle', tool: 'rectangle', icon: <Shapes size={12} /> },
     ];
 
+    // Close the menu first and run the action only after the browser has painted
+    // the closed state. Actions such as switching chart type rebuild the chart
+    // series synchronously; running them in the same render as the close kept the
+    // menu frozen on screen until that work finished, which felt like click lag.
+    const closeThen = (action: () => void) => {
+        onClose();
+        requestAnimationFrame(() => { setTimeout(action, 0); });
+    };
+
     const handleAddIndicator = (indicator: typeof indicators[number]) => {
-        onAddIndicator({
+        closeThen(() => onAddIndicator({
             name: indicator.name,
             indicatorType: indicator.type,
             params: indicator.params,
-        });
-        onClose();
+        }));
     };
 
     const handleSelectDrawingTool = (tool: any) => {
-        commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool, targetContextId } });
-        onClose();
+        closeThen(() => commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool, targetContextId } }));
     };
 
     const handleOpenSaveTemplate = () => {
-        onOpenTemplateDialog('save');
-        onClose();
+        closeThen(() => onOpenTemplateDialog('save'));
     };
 
     const handleOpenLoadTemplate = () => {
-        onOpenTemplateDialog('load');
-        onClose();
+        closeThen(() => onOpenTemplateDialog('load'));
     };
 
     const handleTemplateLoad = (template: ChartTemplate) => {
@@ -494,7 +503,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 label={tr("New Order")}
                 shortcut="F9"
                 highlight={false}
-                onClick={() => { onOpenNewOrder(); onClose(); }}
+                onClick={() => closeThen(() => { onOpenNewOrder(); })}
             />
 
             {/* ── Trading submenu ── */}
@@ -502,13 +511,13 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 label={tr("Trading")}
                 icon={<TrendingUp size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />}
             >
-                <MenuItem label={tr("Buy Market")} onClick={() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'BUY', symbol } })); onClose(); }} />
-                <MenuItem label={tr("Sell Market")} onClick={() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'SELL', symbol } })); onClose(); }} />
+                <MenuItem label={tr("Buy Market")} onClick={() => closeThen(() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'BUY', symbol } })); })} />
+                <MenuItem label={tr("Sell Market")} onClick={() => closeThen(() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'SELL', symbol } })); })} />
                 <MenuSeparator />
-                <MenuItem label={tr("Buy Limit")} onClick={() => { onOpenNewOrder(); onClose(); }} />
-                <MenuItem label={tr("Sell Limit")} onClick={() => { onOpenNewOrder(); onClose(); }} />
-                <MenuItem label={tr("Buy Stop")} onClick={() => { onOpenNewOrder(); onClose(); }} />
-                <MenuItem label={tr("Sell Stop")} onClick={() => { onOpenNewOrder(); onClose(); }} />
+                <MenuItem label={tr("Buy Limit")} onClick={() => closeThen(() => { onOpenNewOrder(); })} />
+                <MenuItem label={tr("Sell Limit")} onClick={() => closeThen(() => { onOpenNewOrder(); })} />
+                <MenuItem label={tr("Buy Stop")} onClick={() => closeThen(() => { onOpenNewOrder(); })} />
+                <MenuItem label={tr("Sell Stop")} onClick={() => closeThen(() => { onOpenNewOrder(); })} />
             </Submenu>
 
             <MenuSeparator />
@@ -518,7 +527,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 icon={<ArrowUpDown size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Depth Of Market")}
                 shortcut="Alt+B"
-                onClick={() => { onOpenDOM(); onClose(); }}
+                onClick={() => closeThen(() => { onOpenDOM(); })}
             />
 
             {/* ── One Click Trading ── */}
@@ -527,7 +536,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 label={tr("One Click Trading")}
                 shortcut="Alt+T"
                 checked={oneClickTrading}
-                onClick={() => { onToggleOneClickTrading(); onClose(); }}
+                onClick={() => closeThen(() => { onToggleOneClickTrading(); })}
             />
 
             <MenuItem
@@ -537,17 +546,27 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 label={showTradeLevels ? tr("Hide Trade Levels") : tr("Show Trade Levels")}
                 checked={showTradeLevels}
                 disabled={!onToggleTradeLevels}
-                onClick={() => { onToggleTradeLevels?.(); onClose(); }}
+                onClick={() => closeThen(() => { onToggleTradeLevels?.(); })}
+            />
+
+            <MenuItem
+                icon={showTradeHistoryLine
+                    ? <Eye size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />
+                    : <EyeOff size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
+                label={showTradeHistoryLine ? tr("Hide Entry / Close Line") : tr("Show Entry / Close Line")}
+                checked={showTradeHistoryLine}
+                disabled={!onToggleTradeHistoryLine}
+                onClick={() => closeThen(() => { onToggleTradeHistoryLine?.(); })}
             />
 
             <MenuItem
                 icon={showTradeHistory
                     ? <Eye size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />
                     : <EyeOff size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label={showTradeHistory ? tr("Hide Trade History") : tr("Show Trade History")}
+                label={showTradeHistory ? tr("Hide Entry / Close Arrows") : tr("Show Entry / Close Arrows")}
                 checked={showTradeHistory}
                 disabled={!onToggleTradeHistory}
-                onClick={() => { onToggleTradeHistory?.(); onClose(); }}
+                onClick={() => closeThen(() => { onToggleTradeHistory?.(); })}
             />
 
             <MenuSeparator />
@@ -590,7 +609,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 shortcut="Alt+1"
                 checked={currentChartType === 'bar'}
                 active={currentChartType === 'bar'}
-                onClick={() => { onChangeChartType('bar'); onClose(); }}
+                onClick={() => closeThen(() => { onChangeChartType('bar'); })}
             />
             <MenuItem
                 icon={<CandlestickChart size={13} strokeWidth={1.5} style={{ color: currentChartType === 'candlestick' ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
@@ -598,7 +617,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 shortcut="Alt+2"
                 checked={currentChartType === 'candlestick'}
                 active={currentChartType === 'candlestick'}
-                onClick={() => { onChangeChartType('candlestick'); onClose(); }}
+                onClick={() => closeThen(() => { onChangeChartType('candlestick'); })}
             />
             <MenuItem
                 icon={<LineChart size={13} strokeWidth={1.5} style={{ color: currentChartType === 'line' ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
@@ -606,14 +625,14 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 shortcut="Alt+3"
                 checked={currentChartType === 'line'}
                 active={currentChartType === 'line'}
-                onClick={() => { onChangeChartType('line'); onClose(); }}
+                onClick={() => closeThen(() => { onChangeChartType('line'); })}
             />
             <MenuItem
                 icon={<AreaChart size={13} strokeWidth={1.5} style={{ color: currentChartType === 'area' ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Area Chart")}
                 checked={currentChartType === 'area'}
                 active={currentChartType === 'area'}
-                onClick={() => { onChangeChartType('area'); onClose(); }}
+                onClick={() => closeThen(() => { onChangeChartType('area'); })}
             />
 
             <MenuSeparator />
@@ -629,7 +648,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                         label={tf}
                         active={currentTimeframe === tf}
                         checked={currentTimeframe === tf}
-                        onClick={() => { onChangeTimeframe(tf); onClose(); }}
+                        onClick={() => closeThen(() => { onChangeTimeframe(tf); })}
                     />
                 ))}
             </Submenu>
@@ -675,7 +694,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                             <MenuItem
                                 key={tpl.id}
                                 label={tpl.name}
-                                onClick={() => { handleTemplateLoad(tpl); onClose(); }}
+                                onClick={() => closeThen(() => { handleTemplateLoad(tpl); })}
                             />
                         ))}
                     </>
@@ -686,7 +705,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             <MenuItem
                 icon={<RefreshCw size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Refresh")}
-                onClick={() => { onRefresh(); onClose(); }}
+                onClick={() => closeThen(() => { onRefresh(); })}
             />
 
             <MenuSeparator />
@@ -697,7 +716,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 label={tr("Grid")}
                 shortcut="Ctrl+G"
                 checked={showGrid}
-                onClick={() => { onToggleGrid(); onClose(); }}
+                onClick={() => closeThen(() => { onToggleGrid(); })}
             />
 
             {/* ── Auto Scroll ── */}
@@ -705,7 +724,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 icon={<RefreshCw size={13} strokeWidth={1.5} style={{ color: autoScroll ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Auto Scroll")}
                 checked={autoScroll}
-                onClick={() => { onToggleAutoScroll(); onClose(); }}
+                onClick={() => closeThen(() => { onToggleAutoScroll(); })}
             />
 
             {/* ── Chart Shift ── */}
@@ -713,7 +732,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 icon={<AlignJustify size={13} strokeWidth={1.5} style={{ color: chartShift ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Chart Shift")}
                 checked={chartShift}
-                onClick={() => { onToggleChartShift(); onClose(); }}
+                onClick={() => closeThen(() => { onToggleChartShift(); })}
             />
 
             <MenuSeparator />
@@ -724,7 +743,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 label={tr("Volumes")}
                 shortcut="Ctrl+K"
                 checked={showVolumes}
-                onClick={() => { onToggleVolumes(); onClose(); }}
+                onClick={() => closeThen(() => { onToggleVolumes(); })}
             />
 
             {/* ── Show OHLC ── */}
@@ -733,7 +752,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 label={tr("Show OHLC")}
                 shortcut="Alt+Shift+L"
                 checked={showOHLC}
-                onClick={() => { onToggleOHLC?.(); onClose(); }}
+                onClick={() => closeThen(() => { onToggleOHLC?.(); })}
             />
 
             <MenuSeparator />
@@ -743,13 +762,13 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 icon={<ZoomIn size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Zoom In")}
                 shortcut="+"
-                onClick={() => { onZoomIn(); onClose(); }}
+                onClick={() => closeThen(() => { onZoomIn(); })}
             />
             <MenuItem
                 icon={<ZoomOut size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Zoom Out")}
                 shortcut="-"
-                onClick={() => { onZoomOut(); onClose(); }}
+                onClick={() => closeThen(() => { onZoomOut(); })}
             />
 
             {/* ── Delete Indicators Window ── */}
@@ -757,7 +776,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 icon={<Trash2 size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Delete Indicators Window")}
                 disabled={currentIndicators.length === 0}
-                onClick={() => { onDeleteIndicators(); onClose(); }}
+                onClick={() => closeThen(() => { onDeleteIndicators(); })}
             />
 
             <MenuSeparator />
@@ -766,7 +785,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             <MenuItem
                 icon={<Camera size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Save as Picture")}
-                onClick={() => { onSaveAsPicture(); onClose(); }}
+                onClick={() => closeThen(() => { onSaveAsPicture(); })}
             />
 
             {/* ── Properties ── */}
@@ -774,7 +793,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 icon={<Settings size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
                 label={tr("Properties")}
                 shortcut="F8"
-                onClick={() => { onOpenProperties(); onClose(); }}
+                onClick={() => closeThen(() => { onOpenProperties(); })}
             />
         </div>
     );

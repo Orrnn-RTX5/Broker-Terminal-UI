@@ -294,6 +294,8 @@ describe('useLiveQuotes REST fallback batching', () => {
     useAppStore.setState({ isAuthenticated: false, ticks: {}, tickLookup: {} });
     useMarketDataStore.getState().clearAllData();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it('splits quote symbols into bounded REST batches', () => {
@@ -488,19 +490,53 @@ describe('useLiveQuotes REST fallback batching', () => {
     unmount();
   });
 
-  it('keeps desktop quote loading idle before account login', async () => {
+  it.each(['desktop', 'direct'])('streams newly added browser guest symbols with a %s backend target', async (backendTarget) => {
+    vi.stubEnv('BACKEND_TARGET', backendTarget);
+    useAppStore.setState({ isAuthenticated: false, authToken: null, refreshToken: null, accountId: null });
+    const { rerender, unmount } = renderHook(({ symbols }) => useLiveQuotes(symbols), {
+      initialProps: { symbols: ['BTCUSD'] },
+    });
+    await flushPromises();
+
+    expect(useQuoteSubscriptionMock).toHaveBeenLastCalledWith(['BTCUSD'], expect.stringMatching(/^live-quotes:/));
+    expect(useMarketDataStore.getState().subscribedSymbols.has('BTCUSD')).toBe(true);
+
+    rerender({ symbols: ['BTCUSD', 'xauusd'] });
+    await flushPromises();
+
+    expect(useQuoteSubscriptionMock).toHaveBeenLastCalledWith(['BTCUSD', 'XAUUSD'], expect.stringMatching(/^live-quotes:/));
+    expect(useMarketDataStore.getState().subscribedSymbols.has('XAUUSD')).toBe(true);
+    expect(apiGet).not.toHaveBeenCalled();
+    expect(apiPut).not.toHaveBeenCalled();
+
+    unmount();
+    expect(useMarketDataStore.getState().subscribedSymbols.size).toBe(0);
+  });
+
+  it('subscribes newly added Electron symbols without waiting for account login or chart selection', async () => {
     vi.stubEnv('BACKEND_TARGET', 'desktop');
-    useAppStore.setState({ isAuthenticated: false, authToken: null, accountId: null });
-    const { result, unmount } = renderHook(() => useLiveQuotes(['BTCUSD']));
+    vi.stubGlobal('electronAPI', {});
+    useAppStore.setState({ isAuthenticated: false, authToken: null, refreshToken: null, accountId: null });
+    const { result, rerender, unmount } = renderHook(({ symbols }) => useLiveQuotes(symbols), {
+      initialProps: { symbols: ['BTCUSD'] },
+    });
     await flushPromises();
 
     expect(apiGet).not.toHaveBeenCalled();
-    expect(useQuoteSubscriptionMock).toHaveBeenCalledWith([], expect.stringMatching(/^live-quotes:/));
-    expect(useMarketDataStore.getState().subscribedSymbols.has('BTCUSD')).toBe(false);
+    expect(useQuoteSubscriptionMock).toHaveBeenLastCalledWith(['BTCUSD'], expect.stringMatching(/^live-quotes:/));
+    expect(useMarketDataStore.getState().subscribedSymbols.has('BTCUSD')).toBe(true);
     expect(result.current.loading).toBe(false);
 
+    rerender({ symbols: ['BTCUSD', 'xauusd'] });
+    await flushPromises();
+
+    expect(useQuoteSubscriptionMock).toHaveBeenLastCalledWith(['BTCUSD', 'XAUUSD'], expect.stringMatching(/^live-quotes:/));
+    expect(useMarketDataStore.getState().subscribedSymbols.has('XAUUSD')).toBe(true);
+    expect(apiGet).not.toHaveBeenCalled();
+    expect(apiPut).not.toHaveBeenCalled();
+
     unmount();
-    vi.unstubAllEnvs();
+    expect(useMarketDataStore.getState().subscribedSymbols.size).toBe(0);
   });
 });
 

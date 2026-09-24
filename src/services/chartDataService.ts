@@ -702,25 +702,10 @@ export class ChartDataService {
   }
 
   subscribeCandles(options: CandleStreamOptions): CandleStreamSubscription {
-    if (!getAuthToken() && !isDesktopBackendTarget()) {
-      const controller = new AbortController();
-      let timer: ReturnType<typeof setTimeout>;
-      const refresh = async () => {
-        try {
-          if (document.visibilityState === 'hidden') return;
-          const candles = await this.fetchCandles({ symbol: options.symbol, timeframe: options.timeframe, count: 3, signal: controller.signal });
-          if (controller.signal.aborted) return;
-          options.onConnected?.();
-          candles.forEach(candle => options.onCandle?.(candle));
-        } catch (error) {
-          if (!controller.signal.aborted) options.onError?.(error instanceof Error ? error : new Error('Public candle refresh failed'));
-        } finally {
-          if (!controller.signal.aborted) timer = setTimeout(refresh, 3000);
-        }
-      };
-      void refresh();
-      return { close: () => { controller.abort(); clearTimeout(timer); } };
-    }
+    // Public web sessions use the same anonymous candle channel as the broker's
+    // public quote stream. REST polling remains a compatibility fallback for a
+    // broker that explicitly rejects or never acknowledges anonymous candles.
+    const allowPublicPollingFallback = !getAuthToken() && !isDesktopBackendTarget();
     const apiTf = this.normalizeTimeframe(options.timeframe);
     const symbol = normalizeSymbol(options.symbol);
     const channel = `candles.${symbol}.${apiTf}`;
@@ -735,6 +720,9 @@ export class ChartDataService {
     let subscriptionReady = false;
     let reconnectAttempts = 0;
     let reconnectPendingWhileSuspended = false;
+    let publicPollingFallbackActive = false;
+    let publicPollingController: AbortController | null = null;
+    let publicPollingTimer: ReturnType<typeof setTimeout> | null = null;
 
     const isDocumentHidden = () => (
       typeof document !== 'undefined' && document.visibilityState === 'hidden'
@@ -775,6 +763,54 @@ export class ChartDataService {
       pongTimer = null;
     };
 
+    const stopPublicPollingFallback = () => {
+      publicPollingController?.abort();
+      publicPollingController = null;
+      if (publicPollingTimer !== null) clearTimeout(publicPollingTimer);
+      publicPollingTimer = null;
+      publicPollingFallbackActive = false;
+    };
+
+    const startPublicPollingFallback = (): boolean => {
+      if (!allowPublicPollingFallback || closed || publicPollingFallbackActive) return false;
+
+      publicPollingFallbackActive = true;
+      clearReconnectTimer();
+      clearOpenTimer();
+      clearSubscriptionAckTimer();
+      clearHeartbeat();
+      reconnectPendingWhileSuspended = isRuntimeSuspended();
+
+      const socket = ws;
+      ws = null;
+      try { socket?.close(1000, 'Anonymous candle stream unavailable; using public REST'); } catch { /* ignore */ }
+
+      const controller = new AbortController();
+      publicPollingController = controller;
+      const refresh = async () => {
+        try {
+          if (document.visibilityState === 'hidden') return;
+          const candles = await this.fetchCandles({
+            symbol: options.symbol,
+            timeframe: options.timeframe,
+            count: 3,
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) return;
+          options.onConnected?.();
+          candles.forEach(candle => options.onCandle?.(candle));
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            options.onError?.(error instanceof Error ? error : new Error('Public candle refresh failed'));
+          }
+        } finally {
+          if (!controller.signal.aborted) publicPollingTimer = setTimeout(refresh, 3000);
+        }
+      };
+      void refresh();
+      return true;
+    };
+
     const buildStreamUrl = (): { url: string; token: string | null } => {
       // FIX: Re-read URL and token for every reconnect so broker/account or
       // token rotation cannot silently reopen against stale session inputs.
@@ -790,7 +826,7 @@ export class ChartDataService {
 
     let connect = () => undefined;
     const scheduleReconnect = () => {
-      if (closed || reconnectTimer !== null) return;
+      if (closed || publicPollingFallbackActive || reconnectTimer !== null) return;
       if (isRuntimeSuspended()) {
         reconnectPendingWhileSuspended = true;
         return;
@@ -828,6 +864,7 @@ export class ChartDataService {
           sendSubscription(socket);
           return;
         }
+        if (startPublicPollingFallback()) return;
         ws = null;
         try { socket.close(4000, 'Candle subscription acknowledgement timeout'); } catch { /* ignore */ }
         scheduleReconnect();
@@ -860,13 +897,14 @@ export class ChartDataService {
     };
 
     connect = () => {
-      if (closed) return;
+      if (closed || publicPollingFallbackActive) return;
       if (isRuntimeSuspended()) {
         reconnectPendingWhileSuspended = true;
         return;
       }
       const { url, token } = buildStreamUrl();
       if (!url) {
+        if (startPublicPollingFallback()) return;
         options.onError?.(new Error(`Candle stream URL is unavailable for ${channel}`));
         scheduleReconnect();
         return;
@@ -909,8 +947,14 @@ export class ChartDataService {
           recordTransportActivity();
           try {
             const message = JSON.parse(event.data);
+            if (String(message?.type ?? '').toLowerCase() === 'error') {
+              // This socket owns only one candle subscription. An anonymous
+              // rejection is therefore definitive and should fall back now,
+              // instead of waiting through four acknowledgement deadlines.
+              if (startPublicPollingFallback()) return;
+              return;
+            }
             if (!messageMatchesCandleSubscription(message, channel, symbol, apiTf)) return;
-            if (String(message?.type ?? '').toLowerCase() === 'error') return;
             clearSubscriptionAckTimer();
             if (!subscriptionReady) {
               subscriptionReady = true;
@@ -955,6 +999,7 @@ export class ChartDataService {
           clearHeartbeat();
           ws = null;
           if (closed) return;
+          if (CANDLE_STREAM_AUTH_CLOSE_CODES.has(event.code) && startPublicPollingFallback()) return;
           if (CANDLE_STREAM_AUTH_CLOSE_CODES.has(event.code)) {
             options.onError?.(new Error(`Candle stream authorization failed for ${channel}`));
             return;
@@ -975,6 +1020,7 @@ export class ChartDataService {
       clearOpenTimer();
       clearSubscriptionAckTimer();
       clearHeartbeat();
+      stopPublicPollingFallback();
       const socket = ws;
       ws = null;
       try { socket?.close(1000, reason); } catch { /* ignore */ }
@@ -997,6 +1043,7 @@ export class ChartDataService {
       clearOpenTimer();
       clearSubscriptionAckTimer();
       clearHeartbeat();
+      stopPublicPollingFallback();
       reconnectPendingWhileSuspended = true;
     };
     const handleVisibilityChange = () => {
@@ -1005,6 +1052,7 @@ export class ChartDataService {
         clearOpenTimer();
         clearSubscriptionAckTimer();
         clearHeartbeat();
+        stopPublicPollingFallback();
         reconnectPendingWhileSuspended = true;
         return;
       }
@@ -1027,6 +1075,7 @@ export class ChartDataService {
         clearOpenTimer();
         clearSubscriptionAckTimer();
         clearHeartbeat();
+        stopPublicPollingFallback();
         if (typeof window !== 'undefined') {
           window.removeEventListener('online', handleOnline);
           window.removeEventListener('offline', handleOffline);

@@ -27,7 +27,7 @@ import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME } from './constants/chart
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OrderPanelDialog } from './components/OrderPanelDialog';
 import { AlertsContainer } from './components/AlertsContainer';
-import { resolveTickFromLookup, shouldReplaceOpenPositionSnapshot, useAppStore, type Account, type Position } from './store/useAppStore';
+import { markPositionsClosed, resolveTickFromLookup, shouldReplaceOpenPositionSnapshot, unmarkPositionsClosed, useAppStore, type Account, type Position } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
 import { enqueueLiveTick } from './services/liveTickDispatcher';
@@ -134,6 +134,8 @@ import { GlobalShortcuts } from './components/GlobalShortcuts';
 // Notifications
 import { useNotifications } from './hooks/useNotifications';
 import { ToastContainer } from './components/notifications/Toast';
+import { ActionFeedbackToast, resolveActionFeedbackDurationMs, resolveActionFeedbackTone } from './components/notifications/ActionFeedbackToast';
+import { buildPositionCloseReport, type PositionCloseReport, type PositionCloseReportRow } from './components/notifications/positionCloseReport';
 import { useNotificationStore } from './store/useNotificationStore';
 
 // Alerts
@@ -162,17 +164,20 @@ type OrderFeedbackDetail = {
   message: string;
   messageParts?: UiMessagePart[];
   type: 'success' | 'error';
+  /** Structured execution receipt; the toast renders it in place of the message. */
+  report?: PositionCloseReport;
 };
 
 const publishOrderFeedback = (
   message: UiMessage,
   type: OrderFeedbackDetail['type'] = 'error',
+  report?: PositionCloseReport,
 ): void => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent<OrderFeedbackDetail>(ORDER_FEEDBACK_EVENT, {
     // Keep the string contract for other listeners, and retain source labels
     // separately so an already visible toast can follow a language change.
-    detail: { message: formatUiMessage(message), messageParts: typeof message === 'string' ? [feedbackLabel(message)] : message, type },
+    detail: { message: formatUiMessage(message), messageParts: typeof message === 'string' ? [feedbackLabel(message)] : message, type, report },
   }));
 };
 
@@ -647,6 +652,29 @@ const buildTradeOverlayCloseSnapshots = (positions: readonly Position[]): TradeO
   });
 };
 
+/** Capture what each position looked like when its close was sent, for the close receipt. */
+const buildPositionCloseReportRows = (
+  positions: readonly Position[],
+): Omit<PositionCloseReportRow, 'status'>[] => {
+  const { ticks, tickLookup } = useAppStore.getState();
+  return positions.map((position) => {
+    const side = normalizeCloseSnapshotSide(position.side);
+    const tick = resolveTickFromLookup(ticks, tickLookup, position.symbol);
+    const closePrice = getTradeExitPriceFromQuote(tick, side)
+      ?? (Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null);
+    return {
+      ticket: position.id,
+      symbol: position.symbol,
+      side,
+      volume: Number(position.volume) || 0,
+      openPrice: Number(position.openPrice) || 0,
+      closePrice,
+      profit: backendCloseProfit(position),
+      digits: Number(tick?.digits) > 0 ? Number(tick?.digits) : getSymbolDigits(position.symbol),
+    };
+  });
+};
+
 // Ayan's scope/token-aware normalizer is the only one that satisfies the
 // store's publicationToken/metricsScope gate in useAppStore.setAccount.
 const normalizeAccountSummary = normalizeAccountMetrics;
@@ -901,6 +929,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         optimisticClosedTicketsRef.current.add(ticketId);
       }
     });
+    // Closing tickets must not be retained on the chart as "recently opened".
+    markPositionsClosed(ticketIds);
   }, []);
 
   const markServerClosedTickets = useCallback((ticketIds: number[] = []) => {
@@ -910,6 +940,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         serverClosedTicketsRef.current.add(ticketId);
       }
     });
+    markPositionsClosed(ticketIds);
   }, []);
 
   const reconcileOptimisticClosedPositions = useCallback((normalized: Position[], options: OptimisticCloseReconcileOptions = {}) => {
@@ -932,6 +963,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
   const clearOptimisticClosedTickets = useCallback((ticketIds: number[]) => {
     ticketIds.forEach((ticketId) => optimisticClosedTicketsRef.current.delete(ticketId));
+    unmarkPositionsClosed(ticketIds);
   }, []);
 
   const beginTradeRestRead = useCallback((): TradeRestRead => ({
@@ -2057,6 +2089,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     let optimisticTicketIds: number[] = [];
     let claimedBulkTicketIds: number[] = [];
+    const closeReportRows: Omit<PositionCloseReportRow, 'status'>[] = [];
     try {
       const accId = getLiveTradingLogin();
       if (!accId) return;
@@ -2095,6 +2128,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         onCandidatesStarted: (candidates) => {
           const ticketIds = candidates.map((position) => position.id);
           optimisticTicketIds = [...optimisticTicketIds, ...ticketIds];
+          closeReportRows.push(...buildPositionCloseReportRows(candidates));
           markLocalTradeMutation(ticketIds);
           dispatchTradeOverlayCloseState(ticketIds, 'pending', {
             snapshots: buildTradeOverlayCloseSnapshots(candidates),
@@ -2125,18 +2159,30 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       if (confirmedTicketIds.length > 0) {
         dispatchTradeOverlayCloseState(confirmedTicketIds, 'confirmed');
       }
+      const failureMessage = failedTicketIds.length > 0 ? formatOrderError(failedReasons[0]) : undefined;
+      const closeReport = buildPositionCloseReport({
+        scope: type,
+        symbol,
+        rows: closeReportRows,
+        confirmedTicketIds,
+        failedTicketIds,
+        currency: useAppStore.getState().account?.currency,
+        failureReason: failureMessage,
+      });
       if (failedTicketIds.length > 0) {
         clearOptimisticClosedTickets(failedTicketIds);
         dispatchTradeOverlayCloseState(failedTicketIds, 'failed');
-        const failureMessage = formatOrderError(failedReasons[0]);
         console.error(`Bulk close failed for ${failedTicketIds.length} position(s):`, failedReasons[0]);
         publishOrderFeedback(
           [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length} · `), feedbackLabel('Failed'), feedbackValue(`: ${failedTicketIds.length} — ${failureMessage}`)],
+          'error',
+          closeReport,
         );
       } else {
         publishOrderFeedback(
           [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}`)],
           'success',
+          closeReport,
         );
       }
       if (closeResult.authoritativeSnapshotError) {
@@ -2476,6 +2522,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           positionsStreamVersionRef.current += 1;
           if (WS_DEBUG) console.log('[DEBUG WS POSITIONS RAW]', data);
           try {
+            // Mark rows the backend reports closed before any store write, so
+            // recent-open retention cannot put them back on the chart.
+            markPositionsClosed(decoded.closedTickets);
             const batch = readPositionStreamBatch(data);
             const eventName = getPositionEventName(data);
             const ticket = getPositionEventTicket(data);
@@ -2488,6 +2537,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
               refreshOrdersAndHistory(acceptedLogin).catch(err => console.error('[WS POSITIONS HISTORY REFRESH ERROR]', err));
             } else if (batch) {
               const result = reconcilePositionStreamBatch(useAppStore.getState().positions, batch);
+              markPositionsClosed(result.closedTickets);
               const normalized = reconcileOptimisticClosedPositions(result.positions as Position[]);
               if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
               useAppStore.getState().setPositions(normalized as any);
@@ -2498,6 +2548,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
               const result = reconcilePositionStreamBatch(useAppStore.getState().positions, {
                 mode: 'delta', positions: [position],
               });
+              markPositionsClosed(result.closedTickets);
               useAppStore.getState().setPositions(reconcileOptimisticClosedPositions(result.positions as Position[]) as any);
               if (result.needsRevalidation || eventName === 'position_partial_close') requestPositionSnapshotRevalidation();
             }
@@ -3073,40 +3124,39 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       ?? { symbol }
   )), [allSymbols, chartEligibleSymbolNames]);
   useEffect(() => { setChartSymbolPicker(null); }, [isAuthenticated, accountId]);
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState<UiMessage>('');
-  const [toastType, setToastType] = useState<'success' | 'error'>('success');
-  const toastHideTimerRef = useRef<number | null>(null);
+  // One feedback toast at a time. Each message gets a fresh id so the toast
+  // remounts and restarts its full lifetime; the toast owns its own timer so
+  // it can pause while the trader hovers or focuses it.
+  const [feedbackToast, setFeedbackToast] = useState<{
+    id: number;
+    message: UiMessage;
+    type: 'success' | 'error';
+    report?: PositionCloseReport;
+  } | null>(null);
+  const feedbackToastSeqRef = useRef(0);
 
-  // Toast notification handler
-  const displayToast = useCallback((message: UiMessage, type: 'success' | 'error' = 'success') => {
-    setToastMessage(message);
-    setToastType(type);
-    setShowToast(true);
-    if (toastHideTimerRef.current !== null) {
-      window.clearTimeout(toastHideTimerRef.current);
-    }
-    toastHideTimerRef.current = window.setTimeout(() => {
-      toastHideTimerRef.current = null;
-      setShowToast(false);
-    }, 3000);
+  const displayToast = useCallback((
+    message: UiMessage,
+    type: 'success' | 'error' = 'success',
+    report?: PositionCloseReport,
+  ) => {
+    feedbackToastSeqRef.current += 1;
+    setFeedbackToast({ id: feedbackToastSeqRef.current, message, type, report });
+  }, []);
+
+  const dismissFeedbackToast = useCallback((id: number) => {
+    setFeedbackToast((current) => (current?.id === id ? null : current));
   }, []);
 
   useEffect(() => {
     const handleOrderFeedback = (event: Event) => {
       const detail = (event as CustomEvent<OrderFeedbackDetail>).detail;
       if (!detail?.message) return;
-      displayToast(detail.messageParts ?? detail.message, detail.type || 'error');
+      displayToast(detail.messageParts ?? detail.message, detail.type || 'error', detail.report);
     };
 
     window.addEventListener(ORDER_FEEDBACK_EVENT, handleOrderFeedback);
-    return () => {
-      window.removeEventListener(ORDER_FEEDBACK_EVENT, handleOrderFeedback);
-      if (toastHideTimerRef.current !== null) {
-        window.clearTimeout(toastHideTimerRef.current);
-        toastHideTimerRef.current = null;
-      }
-    };
+    return () => window.removeEventListener(ORDER_FEEDBACK_EVENT, handleOrderFeedback);
   }, [displayToast]);
 
   // Opening the ticket is a navigation action, so it follows the active chart
@@ -3758,13 +3808,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
           {/* 4. Status Bar */}
           {/* FIX: Status chrome must identify the chart the user can actually see. */}
-          {!window.electron?.window && <StatusBar
+          <StatusBar
             wsRef={wsRef}
             reconnectCallback={reconnectCallbackRef.current || undefined}
             symbol={desktopToolbarSymbol}
             timeframe={timeframe}
             marketStatus={desktopToolbarMarketStatus}
-          />} 
+          />
 
           {/* OTA Update Banner (fixed overlay, top-right) */}
           <UpdateBanner />
@@ -3846,30 +3896,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           ))}
 
           {/* Non-blocking workspace and order feedback */}
-          {showToast && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="fixed top-4 right-4 z-[300] animate-in slide-in-from-top-5 fade-in duration-200"
-            >
-              <div className={`px-4 py-3 rounded-lg shadow-xl border ${toastType === 'success'
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-                : 'bg-rose-500/10 border-rose-500/30 text-rose-200'
-                }`}>
-                <div className="flex items-center gap-2">
-                  {toastType === 'success' ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  )}
-                  <span className="text-sm font-medium">{formatUiMessage(toastMessage, tr)}</span>
-                </div>
-              </div>
-            </div>
+          {feedbackToast && (
+            <ActionFeedbackToast
+              key={feedbackToast.id}
+              durationMs={resolveActionFeedbackDurationMs(feedbackToast.type, feedbackToast.report)}
+              message={feedbackToast.message}
+              onDismiss={() => dismissFeedbackToast(feedbackToast.id)}
+              report={feedbackToast.report}
+              tone={resolveActionFeedbackTone(feedbackToast.type, feedbackToast.report)}
+            />
           )}
 
           {/* Last Symbol Trading Panel */}

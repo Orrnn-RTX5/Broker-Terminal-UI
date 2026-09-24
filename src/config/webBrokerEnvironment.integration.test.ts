@@ -15,12 +15,13 @@ const directories: string[] = []
 const servers: ViteDevServer[] = []
 
 /** Reproduce editing the real broker blocks without copying their credentials. */
-const selectBrokerBlock = (selected: 'TEST' | 'Achiever Financials'): string => {
+const selectBrokerBlock = (selected: 'Orrnn' | 'TEST' | 'Achiever Financials'): string => {
   let block = 'shared'
   return readFileSync(resolve(repositoryRoot, '.env.web'), 'utf8')
     .split(/\r?\n/)
     .map((line) => {
-      if (/^# TEST(?: \(active\))?\s*$/.test(line)) block = 'TEST'
+      if (/^# Orrnn(?: \(active\))?\s*$/.test(line)) block = 'Orrnn'
+      else if (/^# TEST(?: \(active\))?\s*$/.test(line)) block = 'TEST'
       else if (/^# Achiever Financials\s*$/.test(line)) block = 'Achiever Financials'
       else if (/^# (?:MyProp|Grow Trading Academy|Legacy backend reference|Nexa|Active broker)/.test(line)) block = 'other'
 
@@ -61,6 +62,14 @@ afterEach(async () => {
 // .env.web is untracked (local-only broker config), so clean CI checkouts skip this suite.
 describe.skipIf(!existsSync(resolve(repositoryRoot, '.env.web')))('real .env.web broker selection over Vite HTTP', () => {
   it.each([
+    {
+      block: 'Orrnn' as const,
+      brokerId: 'Orrnn',
+      api: 'https://service.orrnn.com',
+      ws: 'wss://service.orrnn.com',
+      discovery: 'https://superadmin-prod.orrnn.com',
+      serverName: 'Orrnn',
+    },
     {
       block: 'TEST' as const,
       brokerId: 'TEST',
@@ -107,7 +116,13 @@ describe.skipIf(!existsSync(resolve(repositoryRoot, '.env.web')))('real .env.web
     expect(response.headers.get('cache-control')).toContain('no-store')
 
     const context = {
-      window: { location: { protocol: 'http:' } } as Record<string, unknown>,
+      window: {
+        location: {
+          protocol: 'http:',
+          hostname: '127.0.0.1',
+          origin: `http://127.0.0.1:${address.port}`,
+        },
+      } as Record<string, unknown>,
       navigator: { userAgent: 'Integration browser' },
     }
     runInNewContext(await response.text(), context)

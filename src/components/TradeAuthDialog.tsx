@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, Info, LogIn, UserPlus, X } from 'lucide-react';
+import { AlertCircle, ChevronRight, Info, LogIn, ShieldCheck, UserPlus, X } from 'lucide-react';
 import '../styles/trade-auth-dialog.css';
 import { LoginDialog } from './LoginDialog';
 import { registerRuntimeBrokerDemoAccount } from '../api/demoRegistration';
@@ -8,6 +8,7 @@ import { parseTokenExpiresAt, setRefreshToken, setToken } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 import type { TradingAuthIntent } from '../services/tradingAuthGate';
 import { useBrokerLoginPolicy } from '../hooks/useBrokerLoginPolicy';
+import { isElectronRuntime } from '../config/backendTarget.js';
 
 interface TradeAuthDialogProps {
   isOpen: boolean;
@@ -22,7 +23,24 @@ const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Unable to create the demo account.';
 const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim().toLowerCase();
 
-export function TradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeAuthDialogProps) {
+export function TradeAuthDialog(props: TradeAuthDialogProps) {
+  // Desktop accounts belong to the selected directory server, not a web
+  // deployment. Keep the broker selector available when re-authenticating.
+  if (isElectronRuntime()) {
+    return (
+      <LoginDialog
+        isOpen={props.isOpen}
+        reason="trade"
+        onClose={props.onClose}
+        onLoginSuccess={props.onAuthenticated}
+      />
+    );
+  }
+
+  return <WebTradeAuthDialog {...props} />;
+}
+
+function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeAuthDialogProps) {
   const [mode, setMode] = useState<DialogMode>('choice');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -174,6 +192,7 @@ export function TradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: Tr
         type="button"
         className="rtx-auth-backdrop__dismiss"
         aria-label="Close authentication dialog"
+        tabIndex={-1}
         onClick={closeDialog}
       />
 
@@ -181,12 +200,26 @@ export function TradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: Tr
         role="dialog"
         aria-modal="true"
         aria-labelledby="trade-auth-title"
+        aria-describedby="trade-auth-description"
         className="rtx-auth-dialog"
+        data-mode={mode}
       >
         <header className="rtx-auth-dialog__header">
-          <h2 id="trade-auth-title" className="rtx-auth-dialog__title">
-            {isDemo ? 'Create demo account' : 'Account required to trade'}
-          </h2>
+          <div className="rtx-auth-dialog__heading">
+            <span className="rtx-auth-dialog__header-icon" aria-hidden="true">
+              {isDemo ? <UserPlus size={19} strokeWidth={1.8} /> : <ShieldCheck size={19} strokeWidth={1.8} />}
+            </span>
+            <div className="rtx-auth-dialog__heading-copy">
+              <h2 id="trade-auth-title" className="rtx-auth-dialog__title">
+                {isDemo ? 'Create demo account' : 'Account required to trade'}
+              </h2>
+              <p id="trade-auth-description" className="rtx-auth-dialog__subtitle">
+                {isDemo
+                  ? 'Set up a practice account with virtual funds.'
+                  : 'Choose an account to continue securely.'}
+              </p>
+            </div>
+          </div>
           <button type="button" onClick={closeDialog} className="rtx-auth-dialog__close" aria-label="Close">
             <X size={16} />
           </button>
@@ -236,8 +269,14 @@ export function TradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: Tr
                   onClick={() => setMode('login')}
                   disabled={!brokerId}
                 >
-                  <LogIn size={16} strokeWidth={2} aria-hidden="true" />
-                  <span>Login to real account</span>
+                  <span className="rtx-auth-action__icon" aria-hidden="true">
+                    <LogIn size={17} strokeWidth={1.9} />
+                  </span>
+                  <span className="rtx-auth-action__copy">
+                    <span className="rtx-auth-action__label">Login to real account</span>
+                    <span className="rtx-auth-action__description">Use your existing live trading account</span>
+                  </span>
+                  <ChevronRight className="rtx-auth-action__chevron" size={16} strokeWidth={1.8} aria-hidden="true" />
                 </button>
 
                 <button
@@ -246,8 +285,14 @@ export function TradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: Tr
                   onClick={() => setMode('demo')}
                   disabled={!brokerId}
                 >
-                  <UserPlus size={16} strokeWidth={2} aria-hidden="true" />
-                  <span>Create demo account</span>
+                  <span className="rtx-auth-action__icon" aria-hidden="true">
+                    <UserPlus size={17} strokeWidth={1.9} />
+                  </span>
+                  <span className="rtx-auth-action__copy">
+                    <span className="rtx-auth-action__label">Create demo account</span>
+                    <span className="rtx-auth-action__description">Practice risk-free with virtual funds</span>
+                  </span>
+                  <ChevronRight className="rtx-auth-action__chevron" size={16} strokeWidth={1.8} aria-hidden="true" />
                 </button>
               </div>
 
@@ -265,7 +310,8 @@ export function TradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: Tr
                 onClick={closeDialog}
                 className="rtx-auth-guest-link"
               >
-                Continue browsing in guest mode
+                <span>Continue browsing in guest mode</span>
+                <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" />
               </button>
             </div>
           </>

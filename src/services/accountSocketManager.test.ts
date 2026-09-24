@@ -46,6 +46,7 @@ vi.mock('./brokerSession', () => ({
 }));
 
 vi.mock('../store/useAppStore', () => ({
+  markPositionsClosed: vi.fn(),
   useAppStore: {
     getState: () => appStoreMock,
   },

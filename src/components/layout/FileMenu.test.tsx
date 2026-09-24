@@ -212,7 +212,7 @@ describe('FileMenu Component', () => {
             expect(catalogApiMock.getSymbols).not.toHaveBeenCalled();
         });
 
-        it('renders all menu items', () => {
+        it('renders available menu items while logged out', () => {
             render(<FileMenu {...mockHandlers} />);
 
             expect(screen.getByText('Save')).toBeInTheDocument();
@@ -223,7 +223,7 @@ describe('FileMenu Component', () => {
             expect(screen.getByText('Print')).toBeInTheDocument();
             expect(screen.getByText('Print Preview')).toBeInTheDocument();
             expect(screen.getByText('Print Setup')).toBeInTheDocument();
-            expect(screen.getByText('Exit')).toBeInTheDocument();
+            expect(screen.queryByText('Exit')).not.toBeInTheDocument();
         });
 
         it('displays keyboard shortcuts', () => {
@@ -583,6 +583,7 @@ describe('FileMenu Component', () => {
         });
 
         it('opens ExitConfirmDialog when Exit is clicked with unsaved changes', async () => {
+            appStoreMock.isAuthenticated = true;
             render(<FileMenu {...mockHandlers} hasUnsavedChanges={true} />);
 
             const exitBtn = screen.getByText('Exit').closest('button');
@@ -594,6 +595,7 @@ describe('FileMenu Component', () => {
         });
 
         it('calls onExit directly when no unsaved changes', () => {
+            appStoreMock.isAuthenticated = true;
             const mockWindowClose = vi.spyOn(window, 'close').mockImplementation(() => { });
 
             render(<FileMenu {...mockHandlers} hasUnsavedChanges={false} />);

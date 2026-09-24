@@ -19,6 +19,7 @@ export interface TradeProfitInput {
   unrealizedPnL?: unknown;
   unrealized_pl?: unknown;
   hasBackendProfit?: boolean;
+  hasBackendCurrentPrice?: boolean;
   openPrice?: number | string;
   open_price?: number | string;
   price_open?: number | string;
@@ -29,6 +30,9 @@ export interface TradeProfitInput {
   contract_size?: number | string;
   currency_profit?: string;
   profitCurrency?: string;
+  swap?: unknown;
+  storage?: unknown;
+  commission?: unknown;
 }
 
 export type TradeProfitSource = 'backend' | 'missing';
@@ -132,10 +136,12 @@ export const readBackendPositionProfit = (position: TradeProfitInput): number | 
  * When the backend omits a metric it is reported as `null` / `'unavailable'` so the UI can
  * render an explicit placeholder instead of a misleading zero.
  *
- * Availability and freshness apply to every metric: a value is only usable when the backend
- * actually supplied it (`hasBackend*` provenance) AND the broker-scoped snapshot carrying it
- * is still current (`metricsStatus` / `metricUpdatedAt`). Metrics from a previous broker or
- * account session therefore resolve to `null` instead of bleeding into the new session.
+ * Availability applies to every metric: a value is only usable when the backend actually
+ * supplied it (`hasBackend*` provenance) AND the snapshot carrying it is not marked
+ * stale/unavailable/invalid (`metricsStatus`). Age alone does not hide a value: the backend
+ * only republishes account metrics when something changes, so a quiet account (for example
+ * one with no open positions) keeps its last published figures, as MT5 does. Open-position
+ * figures stay live through applyLivePositionProfit. Session changes clear the account.
  */
 export const resolveTradeAccountMetrics = (
   account: TradeAccountMetricInput | null | undefined,
@@ -145,7 +151,7 @@ export const resolveTradeAccountMetrics = (
   // normalized value so raw (not yet normalized) payloads behave too.
   const read = (key: AccountMetric, value: unknown, supplied?: boolean): number | null => (
     supplied === false
-      || !accountMetricAvailable({ ...account, [key]: value } as Partial<Account>, key, now)
+      || !accountMetricAvailable({ ...account, [key]: value } as Partial<Account>, key, now, Number.POSITIVE_INFINITY)
       ? null
       : accountMetricNumber(value)
   );
@@ -211,6 +217,49 @@ export const resolveTradeAccountMetrics = (
 };
 
 /**
+ * Keeps equity, free margin, margin level and floating P/L moving with the live
+ * position stream between backend account snapshots.
+ *
+ * The backend streams per-position profit far more often than it publishes account
+ * metrics. Its position `profit` excludes swap and commission, so the live floating
+ * P/L is the sum of each open position's profit + swap + commission (the same rule
+ * as the RTX 5 mobile app), and equity = balance + credit + floating P/L. Balance,
+ * credit and margin stay exactly as the backend reports them. Metrics the backend
+ * did not supply stay unavailable, and nothing is derived while any open position
+ * is missing its backend profit.
+ */
+export const applyLivePositionProfit = (
+  metrics: TradeAccountMetricResolution,
+  positions: readonly TradeProfitInput[],
+): TradeAccountMetricResolution => {
+  if (positions.length === 0 || metrics.balance === null) return metrics;
+  let floatingPnL = 0;
+  for (const position of positions) {
+    const profit = resolveTradeProfit(position).value;
+    if (profit === null) return metrics;
+    floatingPnL += profit + toFiniteNumber(position.swap ?? position.storage) + toFiniteNumber(position.commission);
+  }
+  if (!Number.isFinite(floatingPnL)) return metrics;
+
+  const liveEquity = metrics.balance + (metrics.credit ?? 0) + floatingPnL;
+  const equity = metrics.equity === null ? null : liveEquity;
+  const margin = metrics.margin;
+  const freeMargin = metrics.freeMargin === null || margin === null ? metrics.freeMargin : liveEquity - margin;
+  const marginLevel = metrics.marginLevel === null || margin === null || margin <= 0
+    ? metrics.marginLevel
+    : (liveEquity / margin) * 100;
+  const livePnL = metrics.floatingPnL === null ? null : floatingPnL;
+  return {
+    ...metrics,
+    equity,
+    freeMargin,
+    marginLevel,
+    floatingPnL: livePnL,
+    unrealizedPL: livePnL,
+  };
+};
+
+/**
  * Local contract-size reconstruction. Not a display or trading substitute.
  * Live profit in the terminal comes only from readBackendPositionProfit.
  */
@@ -246,12 +295,39 @@ export const calculateLivePositionProfit = (
   return Number.isFinite(profit) ? profit : null;
 };
 
-/** The trading server owns contract, currency-conversion, commission and profit rules. */
+// Backend profit arrives rounded to cents, which hides most price ticks on small
+// lots. Half a cent plus float noise is the widest rounding gap we accept.
+const BACKEND_PROFIT_ROUNDING_TOLERANCE = 0.005 + 1e-9;
+
+/**
+ * The trading server owns contract, currency-conversion, commission and profit rules.
+ * The unrounded price x volume x contract-size profit is shown only when it rounds to
+ * the backend value, i.e. when it provably follows the backend's own rules; any other
+ * case (currency conversion, unknown contract size) shows the backend value verbatim.
+ */
 export const resolveTradeProfit = (position: TradeProfitInput): TradeProfitResolution => {
-  const value = readBackendPositionProfit(position);
+  const backend = readBackendPositionProfit(position);
+  const precise = backend === null || position.hasBackendCurrentPrice === false
+    ? null
+    : calculateLivePositionProfit(position);
+  const value = precise !== null && Math.abs(precise - backend!) <= BACKEND_PROFIT_ROUNDING_TOLERANCE
+    ? precise
+    : backend;
   return {
     value,
     source: value === null ? 'missing' : 'backend',
     warnings: value === null ? ['missing_backend_profit'] : [],
   };
+};
+
+/**
+ * Open-position P/L with enough decimals to see every tick on small lots, matching
+ * the RTX 5 mobile app; large values keep the MT5 two-decimal money format.
+ */
+export const formatPositionProfit = (value: number): string => {
+  const abs = Math.abs(value);
+  const digits = abs < 10 ? 4 : abs < 100 ? 3 : 2;
+  const fixed = value.toFixed(digits);
+  const [whole, fraction] = (Number(fixed) === 0 ? fixed.replace('-', '') : fixed).split('.');
+  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}.${fraction}`;
 };

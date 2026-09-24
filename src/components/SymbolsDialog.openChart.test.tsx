@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SymbolsDialog } from './SymbolsDialog';
@@ -108,6 +108,76 @@ describe('SymbolsDialog chart opening', () => {
     expectDialogInsideViewport();
   });
 
+  it('centers and contains the web symbol browser at reference and compact viewport sizes', () => {
+    setViewport(811, 505);
+    render(<SymbolsDialog isOpen onClose={vi.fn()} instruments={[{ symbol: brokerSymbol }]} />);
+
+    expect(screen.getByRole('dialog')).toHaveStyle({
+      left: '16px', top: '16px', width: '779px', height: '473px',
+    });
+    expectDialogInsideViewport();
+
+    setViewport(600, 400);
+    fireEvent(window, new Event('resize'));
+    expectDialogInsideViewport();
+  });
+
+  it('uses the enterprise presentation and keyboard-accessible tab semantics on web', async () => {
+    render(<SymbolsDialog isOpen onClose={vi.fn()} instruments={[
+      { symbol: brokerSymbol, category: 'Commodities.Metals' },
+      { symbol: 'XAGUSD.raw', category: 'Commodities.Metals' },
+    ]} />);
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('data-presentation', 'enterprise');
+    expect(screen.queryByRole('button', { name: 'Minimize' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Maximize' })).not.toBeInTheDocument();
+
+    const specificationTab = screen.getByRole('tab', { name: 'Specification' });
+    const barsTab = screen.getByRole('tab', { name: 'Bars' });
+    expect(specificationTab).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(specificationTab, { key: 'ArrowRight' });
+    expect(barsTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'rtx-symbols-tab-bars');
+    expect(await screen.findByText(`No bars returned for ${brokerSymbol} M15.`)).toBeInTheDocument();
+  });
+
+  it('uses one keyboard tab stop per symbol collection and arrow-key row navigation', () => {
+    render(<SymbolsDialog isOpen onClose={vi.fn()} instruments={[
+      { symbol: brokerSymbol, category: 'Commodities.Metals' },
+      { symbol: 'XAGUSD.raw', category: 'Commodities.Metals' },
+    ]} />);
+
+    const tree = screen.getByRole('group', { name: 'Instrument categories' });
+    expect(within(tree).getAllByRole('button').filter(button => button.tabIndex === 0)).toHaveLength(1);
+    expect(screen.queryByRole('tree')).not.toBeInTheDocument();
+
+    const catalog = screen.getByRole('table', { name: 'Available symbols' });
+    const symbolRows = within(catalog).getAllByRole('row').slice(1);
+    expect(symbolRows.filter(row => row.tabIndex === 0)).toHaveLength(1);
+
+    fireEvent.keyDown(symbolRows[0], { key: 'ArrowDown' });
+    expect(symbolRows[1]).toHaveFocus();
+    expect(symbolRows[1]).toHaveAttribute('aria-selected', 'true');
+
+    const categoryButton = within(tree).getByRole('button', { name: 'Commodities' });
+    fireEvent.click(categoryButton);
+    fireEvent.click(within(catalog).getAllByText(brokerSymbol)[0]);
+    expect(within(tree).getAllByRole('button').filter(button => button.tabIndex === 0)).toEqual([categoryButton]);
+  });
+
+  it('keeps a mounted tree tab stop when the selected symbol is below a collapsed deep category', () => {
+    render(<SymbolsDialog isOpen onClose={vi.fn()} instruments={[
+      { symbol: brokerSymbol, category: 'Assets.Groups.Metals' },
+    ]} />);
+
+    const tree = screen.getByRole('group', { name: 'Instrument categories' });
+    const tabStops = within(tree).getAllByRole('button').filter(button => button.tabIndex === 0);
+    expect(tabStops).toHaveLength(1);
+    expect(tabStops[0]).toHaveAccessibleName('Metals');
+    expect(within(tree).queryByRole('button', { name: brokerSymbol })).not.toBeInTheDocument();
+  });
+
   it('keeps desktop window bounds visible on small screens, reopening, resizing and dragging', () => {
     vi.stubGlobal('electron', { window: {} });
     setViewport(600, 460);
@@ -124,8 +194,13 @@ describe('SymbolsDialog chart opening', () => {
     fireEvent(window, new Event('resize'));
     expectDialogInsideViewport();
 
+    view.rerender(<SymbolsDialog isOpen={false} {...props} />);
     setViewport(1000, 760);
-    fireEvent(window, new Event('resize'));
+    view.rerender(<SymbolsDialog isOpen {...props} />);
+    expect(screen.getByRole('dialog')).toHaveStyle({
+      left: '70px', top: '60px', width: '860px', height: '640px',
+    });
+
     const titlebar = screen.getByText('Symbols').closest('.rtx-symbols-dialog__titlebar')!;
     fireEvent.mouseDown(titlebar, { clientX: 30, clientY: 30 });
     fireEvent.mouseMove(window, { clientX: 2000, clientY: 2000 });
@@ -163,6 +238,23 @@ describe('SymbolsDialog chart opening', () => {
     expect(onOpenChart).toHaveBeenCalledWith('XAGUSD.raw');
     expect(onClose).toHaveBeenCalledOnce();
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('hides confirmed expired contracts until the user asks to show them', async () => {
+    render(<SymbolsDialog isOpen onClose={vi.fn()} instruments={[
+      { symbol: 'OLDUSD.rtx', description: 'Expired contract', expiration: '2000-01-01T00:00:00Z' },
+      { symbol: brokerSymbol, description: 'Current contract', expiration: '2999-12-31T00:00:00Z' },
+    ]} />);
+    const catalog = within(screen.getByRole('table', { name: 'Available symbols' }));
+
+    expect(catalog.getByText(brokerSymbol)).toBeInTheDocument();
+    expect(catalog.queryByText('OLDUSD.rtx')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Bars' }));
+    expect(screen.getByRole('combobox', { name: 'Bars symbol' })).toHaveValue(brokerSymbol);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
+    fireEvent.click(screen.getByRole('tab', { name: 'Specification' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Show expired contracts' }));
+    expect(within(screen.getByRole('table', { name: 'Available symbols' })).getByText('OLDUSD.rtx')).toBeInTheDocument();
   });
 
   it('does not consume Escape belonging to another local overlay', () => {

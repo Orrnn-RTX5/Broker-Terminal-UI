@@ -26,6 +26,18 @@ const achieverEnvironment = {
   VITE_DEFAULT_MT5_SERVER: 'Achiever Financials',
 }
 
+const orrnnEnvironment = {
+  VITE_BACKEND_TARGET: 'web',
+  VITE_API_HOST: 'https://service.orrnn.com',
+  VITE_API_HOST_EXT: 'https://service.orrnn.com',
+  VITE_WS_HOST: 'wss://service.orrnn.com',
+  VITE_DISCOVERY_BASE_URL: 'https://superadmin-prod.orrnn.com',
+  VITE_BROKER_DISCOVERY_URL: 'https://superadmin-prod.orrnn.com',
+  VITE_DEFAULT_MT5_SERVER: 'Orrnn',
+  VITE_BROKER_ID: 'Orrnn',
+  VITE_FEED_BROKER_ID: 'Orrnn',
+}
+
 const executeConfig = (source: string, overrides: Record<string, unknown> = {}, userAgent = 'Browser') => {
   const context = {
     window: { location: { protocol: 'http:' }, ...overrides } as Record<string, unknown>,
@@ -36,8 +48,28 @@ const executeConfig = (source: string, overrides: Record<string, unknown> = {}, 
 }
 
 describe('environment-based web runtime configuration', () => {
-  it('retains the existing same-origin local nginx preview configuration', () => {
-    const runtime = executeConfig(renderWebRuntimeConfig(createWebRuntimeConfig(achieverEnvironment)), {
+  it('maps the complete Orrnn VITE profile to browser runtime fields', () => {
+    expect(createWebRuntimeConfig(orrnnEnvironment)).toEqual({
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://service.orrnn.com',
+      API_HOST_EXT: 'https://service.orrnn.com',
+      WS_HOST: 'wss://service.orrnn.com',
+      DEFAULT_MT5_SERVER: 'Orrnn',
+      DISCOVERY_BASE_URL: 'https://superadmin-prod.orrnn.com',
+      BROKER_DISCOVERY_URL: 'https://superadmin-prod.orrnn.com',
+      BROKER_ID: 'Orrnn',
+      VITE_BROKER_ID: 'Orrnn',
+      FEED_BROKER_ID: 'Orrnn',
+      FEED_BROKER_TOKEN: '',
+      USE_MOCK_DISCOVERY: false,
+    })
+  })
+
+  it('retains the explicitly selected same-origin local desktop gateway configuration', () => {
+    const runtime = executeConfig(renderWebRuntimeConfig(createWebRuntimeConfig({
+      ...achieverEnvironment,
+      VITE_BACKEND_TARGET: 'desktop',
+    })), {
       location: { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost:5175' },
     })
     expect(runtime.RUNTIME_CONFIG).toEqual(expect.objectContaining({
@@ -47,9 +79,22 @@ describe('environment-based web runtime configuration', () => {
     }))
   })
 
+  it('keeps the selected web broker active on localhost', () => {
+    const runtime = executeConfig(renderWebRuntimeConfig(createWebRuntimeConfig(achieverEnvironment)), {
+      location: { protocol: 'http:', hostname: '127.0.0.1', origin: 'http://127.0.0.1:5173' },
+    })
+    expect(runtime.RUNTIME_CONFIG).toEqual(expect.objectContaining({
+      BACKEND_TARGET: 'web',
+      BROKER_ID: 'achiever-financials',
+      API_HOST: 'https://service.achieverfinancials.com',
+      WS_HOST: 'wss://service.achieverfinancials.com',
+    }))
+  })
+
   it.each([
     [testEnvironment, 'TEST', 'https://fxtrustbrokerbackend.orrnn.com'],
     [achieverEnvironment, 'achiever-financials', 'https://service.achieverfinancials.com'],
+    [orrnnEnvironment, 'Orrnn', 'https://service.orrnn.com'],
   ])('publishes the selected broker to every supported runtime global', (env, brokerId, apiHost) => {
     const config = createWebRuntimeConfig(env)
     const runtime = executeConfig(renderWebRuntimeConfig(config))

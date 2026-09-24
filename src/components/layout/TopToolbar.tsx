@@ -13,6 +13,7 @@ import { useCommandBus } from '../../hooks/useCommandBus';
 import type { Command } from '../../types/commands';
 import { useAppStore } from '../../store/useAppStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
+import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import {
     defaultChartProperties,
     useChartSettingsStore,
@@ -395,6 +396,7 @@ const MainToolbar = ({
     const savedAccounts = useAppStore((s) => s.savedAccounts);
     const lastSymbol = useLastSymbolStore((state) => state.lastSymbol);
     const lastSymbolPanelVisible = useLastSymbolStore((state) => state.panelVisible);
+    const timeframesVisible = useTerminalBarsStore(state => state.timeframesVisible);
     const toggleLastSymbolPanel = useLastSymbolStore((state) => state.togglePanel);
     const activeSavedAccount = savedAccounts.find((account) => String(account.login) === accountId);
     const savedAccountCount = new Set(savedAccounts.map((account) => account.login)).size;
@@ -497,6 +499,7 @@ const MainToolbar = ({
     };
 
     const resetTradeHistorySettings = () => {
+        updateTradeHistorySetting('showTradeHistory', defaultChartProperties.showTradeHistory);
         updateTradeHistorySetting('showTradeHistoryArrows', defaultChartProperties.showTradeHistoryArrows);
     };
 
@@ -700,7 +703,17 @@ const MainToolbar = ({
                                             </button>
                                         </div>
 
-                                        <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
+                                        <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
+                                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry / close line</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={tradeHistorySettings.showTradeHistory !== false}
+                                                onChange={(event) => updateTradeHistorySetting('showTradeHistory', event.target.checked)}
+                                                className="h-3.5 w-3.5 accent-blue-500"
+                                            />
+                                        </label>
+
+                                        <label className="mb-1 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
                                             <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry / close arrows</span>
                                             <input
                                                 type="checkbox"
@@ -716,27 +729,30 @@ const MainToolbar = ({
                             </div>
                         </MT5Group>
 
-                        <MT5Divider />
-
                         {/* Group 8: Horizontal MT-style timeframe strip */}
-                        <TimeframePicker
-                            timeframe={toolbarState.timeframe || timeframe}
-                            advancedViewEnabled={advancedViewEnabled}
-                            onSelect={(nextTimeframe) => {
-                                onTimeframeChange(nextTimeframe);
-                                const target = getActiveChartCommandTarget(symbol, timeframe);
-                                const panelId = getPanelIdFromChartContextId(target.targetContextId);
-                                dispatchCommand({
-                                    type: 'SET_TIMEFRAME',
-                                    payload: {
-                                        timeframe: nextTimeframe,
-                                        ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}),
-                                        ...(panelId ? { panelId } : {}),
-                                    },
-                                });
-                                window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: nextTimeframe } }));
-                            }}
-                        />
+                        {timeframesVisible && (
+                            <>
+                                <MT5Divider />
+                                <TimeframePicker
+                                    timeframe={toolbarState.timeframe || timeframe}
+                                    advancedViewEnabled={advancedViewEnabled}
+                                    onSelect={(nextTimeframe) => {
+                                        onTimeframeChange(nextTimeframe);
+                                        const target = getActiveChartCommandTarget(symbol, timeframe);
+                                        const panelId = getPanelIdFromChartContextId(target.targetContextId);
+                                        dispatchCommand({
+                                            type: 'SET_TIMEFRAME',
+                                            payload: {
+                                                timeframe: nextTimeframe,
+                                                ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}),
+                                                ...(panelId ? { panelId } : {}),
+                                            },
+                                        });
+                                        window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: nextTimeframe } }));
+                                    }}
+                                />
+                            </>
+                        )}
 
                     </div>
 

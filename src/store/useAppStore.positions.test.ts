@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { shouldReplaceOpenPositionSnapshot, type Position, useAppStore } from './useAppStore';
+import {
+  markPositionsClosed,
+  RECENT_OPEN_POSITION_RETENTION_MS,
+  shouldReplaceOpenPositionSnapshot,
+  type Position,
+  unmarkPositionsClosed,
+  useAppStore,
+} from './useAppStore';
 
 const position = (id: number, overrides: Partial<Position> = {}): Position => ({
   id,
@@ -167,5 +174,56 @@ describe('useAppStore setPositions burst merge', () => {
     expect(result).toHaveLength(250);
     expect(result.map(({ id }) => id)).toEqual(incoming.map(({ id }) => id));
     expect(result.every((row) => row.id % 2 === 0 && row.currentPrice === 80_011 + row.id)).toBe(true);
+  });
+});
+
+describe('closed positions and recent-open retention', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.getState().reset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const ids = () => useAppStore.getState().positions.map(({ id }) => id).sort((a, b) => a - b);
+
+  it('removes just-opened tickets from the chart when they are closed', () => {
+    const recent = { chartEntryTime: new Date().toISOString() };
+    useAppStore.getState().setPositions([position(201, recent), position(202, recent), position(203)]);
+
+    // Close all: the close path marks the tickets, then removes them.
+    markPositionsClosed([201, 202, 203]);
+    useAppStore.getState().setPositions([]);
+
+    expect(ids()).toEqual([]);
+    expect(shouldReplaceOpenPositionSnapshot([], [position(201, recent)])).toBe(true);
+  });
+
+  it('retains a just-opened ticket again when its close fails', () => {
+    const recent = { chartEntryTime: new Date().toISOString() };
+    useAppStore.getState().setPositions([position(211, recent)]);
+    markPositionsClosed([211]);
+    unmarkPositionsClosed([211]);
+
+    useAppStore.getState().setPositions([]);
+
+    expect(ids()).toEqual([211]);
+  });
+
+  it('drops a retained ticket when retention ends even if no further update arrives', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-24T12:00:00.000Z'));
+    useAppStore.getState().setPositions([
+      position(221, { chartEntryTime: new Date().toISOString() }),
+      position(222),
+    ]);
+
+    useAppStore.getState().setPositions([position(222)]);
+    expect(ids()).toEqual([221, 222]);
+
+    vi.advanceTimersByTime(RECENT_OPEN_POSITION_RETENTION_MS + 1);
+    expect(ids()).toEqual([222]);
   });
 });

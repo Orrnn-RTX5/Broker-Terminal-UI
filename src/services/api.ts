@@ -1476,7 +1476,11 @@ const normalizeTradeJournalTiming = (
   return null;
 };
 
-export const normalizeJournalResponse = (payload: unknown): JournalResponse => {
+export const normalizeJournalResponse = (rawPayload: unknown): JournalResponse => {
+  // Accept both the bare `{ count, logs }` body and a v2 `{ data: { count, logs } }` envelope.
+  const payload = isJournalRecord(rawPayload) && !Array.isArray(rawPayload.logs) && isJournalRecord(rawPayload.data)
+    ? rawPayload.data
+    : rawPayload;
   if (!isJournalRecord(payload) || !Array.isArray(payload.logs)) {
     throw new Error('Invalid Journal API response');
   }
@@ -1568,7 +1572,7 @@ export const journalApi = {
   ): Promise<JournalResponse> {
     const apiRootBaseUrl = API_V2_BASE_URL.replace(/\/api\/v2\/?$/, '');
     const accessToken = getAuthToken();
-    const payload = await apiClient.get<unknown>('/api/v1/journal', {
+    const payload = await apiClient.get<unknown>('/api/v2/journal', {
       ...(apiRootBaseUrl ? { baseUrl: apiRootBaseUrl, skipDynamicUrl: true } : {}),
       authToken: accessToken,
       requestContext: getJournalRequestContext(apiRootBaseUrl, accessToken),

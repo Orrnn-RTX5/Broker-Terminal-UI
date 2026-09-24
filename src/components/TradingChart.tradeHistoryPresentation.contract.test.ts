@@ -49,13 +49,12 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(chartSource).toContain('getTradeHistoryMarkerPrice(node.markerSide, node.price, tradeMarkerCandles.get(markerTime))');
     expect(chartSource).toContain('markerTime = fallbackTime;');
     expect(chartSource).toContain("getTradeHistoryExecutionSide(trade.side, 'CLOSE')");
-    expect(chartSource).toContain('const showAnyTradeHistoryOverlay = showTradeHistoryArrows;');
-    expect(chartSource).not.toContain('const showTradeHistory =');
-    expect(chartSource).not.toContain('createTradeSegment');
-    expect(chartSource).not.toContain('deriveClosedTradeColor');
+    expect(chartSource).toContain('const showAnyTradeHistoryOverlay = showTradeHistoryLine || showTradeHistoryArrows;');
+    expect(chartSource).toContain('const showTradeHistoryLine = chartProperties.showTradeHistory !== false;');
+    expect(chartSource).toContain('const createTradeHistoryLine = (');
     expect(chartSource).toContain("createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, entryPriceLabel, 'history', 1, undefined, 'open', trade.side, trade.entryExecutionTime)");
     expect(chartSource).toContain("createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime)");
-    expect(chartSource).toContain("const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v12-shared-trade-presentation';");
+    expect(chartSource).toContain("const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v13-entry-close-connectors';");
     expect((chartSource.match(/TRADE_HISTORY_PRESENTATION_VERSION/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(chartSource).not.toContain('createTradeHistoryLabel');
   });
@@ -91,11 +90,18 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(propertiesDialogSource).not.toContain('tradeHistoryBoxOpacity');
   });
 
-  it('removes connector settings from both platform presentation menus', () => {
-    expect(toolbarSource).not.toContain('supportsHistoryLines');
-    expect(toolbarSource).not.toContain('tradeHistoryLineOpacity');
-    expect(propertiesDialogSource).not.toContain('supportsHistoryLines');
-    expect(propertiesDialogSource).not.toContain('tradeHistoryLineOpacity');
+  it('keeps entry-close lines and arrows independently configurable', () => {
+    expect(chartSource).toContain("showTradeHistoryLine ? 'history-lines:on' : 'history-lines:off'");
+    expect(chartSource).toContain("showTradeHistoryArrows ? 'arrows:on' : 'arrows:off'");
+    expect(chartSource).toContain('if (showTradeHistoryLine) {');
+    expect(chartSource).toContain('createTradeHistoryLine(');
+    expect(chartSource).toContain('if (showTradeHistoryArrows) {');
+    expect(chartSource).toContain("currentProperties.showTradeHistory !== previousProperties.showTradeHistory");
+    expect(toolbarSource).toContain('Entry / close line');
+    expect(toolbarSource).toContain("updateTradeHistorySetting('showTradeHistory', event.target.checked)");
+    expect(toolbarSource).toContain('Entry / close arrows');
+    expect(propertiesDialogSource).toContain("{ key: 'showTradeHistory', label: 'Show entry/close line' }");
+    expect(propertiesDialogSource).toContain("{ key: 'showTradeHistoryArrows', label: 'Show entry/close arrows' }");
     const historyToggleStart = chartSource.indexOf('const handleCtxToggleTradeHistory =');
     const historyToggleEnd = chartSource.indexOf('}, [symbol]);', historyToggleStart);
     expect(historyToggleStart).toBeGreaterThan(-1);
@@ -103,5 +109,12 @@ describe('TradingChart trade-history presentation contract', () => {
     const historyToggle = chartSource.slice(historyToggleStart, historyToggleEnd);
     expect(historyToggle).not.toContain('isDesktopBackendTarget');
     expect(historyToggle).toContain("store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', next);");
+  });
+
+  it('joins the entry-close line to the arrow tips when arrows are shown', () => {
+    expect(chartSource).toContain('showTradeHistoryArrows ? { start: trade.side, end: exitSide } : undefined');
+    expect(chartSource).toContain('const y1 = resolveSegmentEndY(node.price, node.time, node.startMarkerSide);');
+    expect(chartSource).toContain('const y2 = resolveSegmentEndY(endPrice, endTime, node.endMarkerSide);');
+    expect(chartSource).toContain("resolveTradeMarkerAnchorPrice({ kind: 'marker', price, time, markerSide, markerAnchor: 'candle' })");
   });
 });

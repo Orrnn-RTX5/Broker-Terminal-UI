@@ -35,8 +35,15 @@ describe('App market-order feedback source contract', () => {
   });
 
   it('keeps concurrent feedback visible for a full timeout window', () => {
-    expect(source).toContain('const toastHideTimerRef = useRef<number | null>(null);');
-    expect(source).toContain('window.clearTimeout(toastHideTimerRef.current);');
-    expect(source).toContain('toastHideTimerRef.current = window.setTimeout(() => {');
+    // A new id remounts the toast, which restarts its own full lifetime timer.
+    expect(source).toContain('feedbackToastSeqRef.current += 1;');
+    expect(source).toContain('key={feedbackToast.id}');
+    expect(source).toContain('onDismiss={() => dismissFeedbackToast(feedbackToast.id)}');
+  });
+
+  it('publishes a structured execution report for bulk closes', () => {
+    expect(source).toContain('closeReportRows.push(...buildPositionCloseReportRows(candidates));');
+    expect(source).toContain('const closeReport = buildPositionCloseReport({');
+    expect(source).toContain("displayToast(detail.messageParts ?? detail.message, detail.type || 'error', detail.report);");
   });
 });

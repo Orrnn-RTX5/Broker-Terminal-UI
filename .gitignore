@@ -72,3 +72,8 @@ Thumbs.db
 .gemini/happen
 codex-opener/
 Critical Instruction.txt
+
+# Local scratch and generated output
+/tmp/
+/artifacts/
+.qwen/

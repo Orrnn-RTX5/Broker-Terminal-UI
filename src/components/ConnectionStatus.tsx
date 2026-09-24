@@ -63,7 +63,11 @@ export function ConnectionStatus({ reconnectCallback }: ConnectionStatusProps) {
 
   // Listen for global login dialog event (from Navigator, context menus, etc.)
   useEffect(() => {
-    const handleOpenLogin = () => setShowLoginDialog(true);
+    const handleOpenLogin = () => {
+      // The terminal owns authentication while mounted; retain the standalone fallback.
+      if ((window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__) return;
+      setShowLoginDialog(true);
+    };
     window.addEventListener('rtx:openLoginDialog', handleOpenLogin);
     return () => window.removeEventListener('rtx:openLoginDialog', handleOpenLogin);
   }, []);

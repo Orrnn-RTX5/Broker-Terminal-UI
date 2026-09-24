@@ -81,12 +81,14 @@ export const renderWebRuntimeConfig = (config: WebRuntimeConfig): string => {
   if (isElectron) return;
 
   var config = ${serialized};
-  // Preserve the local nginx preview while production follows the selected env.
+  // Preserve the opt-in local desktop gateway without overriding a web broker
+  // selected by .env.web merely because Vite is running on localhost.
   var hostname = String(window.location.hostname || '');
-  var isLocalWeb = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+  var isLocalDesktopGateway = String(config.BACKEND_TARGET || '').toLowerCase() === 'desktop'
+    && (window.location.protocol === 'http:' || window.location.protocol === 'https:')
     && (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
       || hostname === '[::1]' || hostname.endsWith('.localhost'));
-  if (isLocalWeb) {
+  if (isLocalDesktopGateway) {
     var localOrigin = window.location.origin;
     config = Object.assign({}, config, {
       BACKEND_TARGET: 'desktop', BACKEND_MODE: 'desktop',

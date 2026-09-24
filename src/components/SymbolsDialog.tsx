@@ -2,7 +2,7 @@ import './SymbolsDialog.css';
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { Search, ChevronRight, ChevronDown, FolderOpen, Folder, X, Minus, Square } from 'lucide-react';
+import { Search, ChevronRight, ChevronDown, FolderOpen, Folder, X } from 'lucide-react';
 import { useWatchlistStore } from '../store/useWatchlistStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
@@ -69,6 +69,23 @@ interface TickRow {
 
 type Tab = 'Specification' | 'Bars' | 'Ticks';
 
+const SYMBOL_TABS: readonly Tab[] = ['Specification', 'Bars', 'Ticks'];
+const DIALOG_VIEWPORT_GAP = 16;
+const DIALOG_DEFAULT_WIDTH = 860;
+const DIALOG_DEFAULT_HEIGHT = 640;
+const DIALOG_MIN_WIDTH = 680;
+const DIALOG_MIN_HEIGHT = 440;
+
+const getDialogSizeForViewport = () => ({
+  w: Math.min(DIALOG_DEFAULT_WIDTH, Math.max(0, window.innerWidth - DIALOG_VIEWPORT_GAP * 2)),
+  h: Math.min(DIALOG_DEFAULT_HEIGHT, Math.max(0, window.innerHeight - DIALOG_VIEWPORT_GAP * 2)),
+});
+
+const getCenteredDialogPosition = (size: { w: number; h: number }) => ({
+  x: Math.max(DIALOG_VIEWPORT_GAP, Math.round((window.innerWidth - size.w) / 2)),
+  y: Math.max(DIALOG_VIEWPORT_GAP, Math.round((window.innerHeight - size.h) / 2)),
+});
+
 // ─── Safe time formatter ────────────────────────────────────────────────────
 const safeTime = (value: unknown): string => {
   if (value === null || value === undefined) return '—';
@@ -86,6 +103,22 @@ const safeTime = (value: unknown): string => {
 };
 
 // ─── Constants ───────────────────────────────────────────────────────────────
+
+const isExpiredSymbol = (value: unknown): boolean => {
+  if (value === null || value === undefined) return false;
+  const raw = String(value).trim();
+  if (!raw) return false;
+
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric) && numeric >= 1e9) {
+    const milliseconds = numeric < 1e12 ? numeric * 1000 : numeric;
+    return milliseconds < Date.now();
+  }
+
+  if (!/[./-]|T/.test(raw)) return false;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) && parsed < Date.now();
+};
 
 const SYMBOL_SECTOR_MAP: Record<string, { sector: string; industry: string }> = {
   XAU: { sector: 'Commodities', industry: 'Precious Metals' },
@@ -257,18 +290,33 @@ const DollarIcon = ({ className = '', shown = true }: { className?: string, show
 interface TreeItemProps {
   name: string;
   node: TreeNode;
+  path: string;
   depth?: number;
   selectedSymbol: SymbolSpec | null;
   onSelectSymbol: (s: SymbolSpec) => void;
   searchQuery: string;
   watchlistSymbols: string[];
+  treeFocusId: string | null;
+  onTreeFocus: (id: string) => void;
 }
 
-const TreeItem: React.FC<TreeItemProps> = ({ name, node, depth = 0, selectedSymbol, onSelectSymbol, searchQuery, watchlistSymbols }) => {
+const TreeItem: React.FC<TreeItemProps> = ({
+  name,
+  node,
+  path,
+  depth = 0,
+  selectedSymbol,
+  onSelectSymbol,
+  searchQuery,
+  watchlistSymbols,
+  treeFocusId,
+  onTreeFocus,
+}) => {
     useUiTranslation();
   const [expanded, setExpanded] = useState(depth < 2);
   const hasChildren = node.children && Object.keys(node.children).length > 0;
   const hasSymbols = node.symbols && node.symbols.length > 0;
+  const folderFocusId = `folder:${path}`;
 
   // Auto-expand when searching
   useEffect(() => {
@@ -278,10 +326,18 @@ const TreeItem: React.FC<TreeItemProps> = ({ name, node, depth = 0, selectedSymb
   return (
     <div>
       {/* Folder row */}
-      <div
+      <button
+        type="button"
+        data-symbol-tree-item={folderFocusId}
+        tabIndex={treeFocusId === folderFocusId ? 0 : -1}
         className="rtx-symbols-dialog__folder flex items-center gap-1 px-1 py-[2px] cursor-pointer hover:bg-[var(--bg-quaternary)] rounded-sm select-none"
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
-        onClick={() => setExpanded(e => !e)}
+        onFocus={() => onTreeFocus(folderFocusId)}
+        onClick={() => {
+          onTreeFocus(folderFocusId);
+          setExpanded(e => !e);
+        }}
+        aria-expanded={expanded}
       >
         {(hasChildren || hasSymbols) ? (
           expanded
@@ -292,43 +348,54 @@ const TreeItem: React.FC<TreeItemProps> = ({ name, node, depth = 0, selectedSymb
         )}
         {expanded ? <FolderOpen size={13} className="text-yellow-400 flex-shrink-0" /> : <Folder size={13} className="text-yellow-600 flex-shrink-0" />}
         <span className="ml-1 text-[13px] font-normal text-[var(--text-primary)]">{name}</span>
-      </div>
+      </button>
 
       {/* Children */}
       {expanded && (
-        <>
+        <div>
           {/* Sub-folders */}
           {hasChildren && Object.entries(node.children!).map(([childName, childNode]) => (
             <TreeItem
               key={childName}
               name={childName}
               node={childNode}
+              path={`${path}.${childName}`}
               depth={depth + 1}
               selectedSymbol={selectedSymbol}
               onSelectSymbol={onSelectSymbol}
               searchQuery={searchQuery}
               watchlistSymbols={watchlistSymbols}
+              treeFocusId={treeFocusId}
+              onTreeFocus={onTreeFocus}
             />
           ))}
 
           {/* Symbol leaves */}
           {hasSymbols && node.symbols!.map(sym => (
-            <div
+            <button
+              type="button"
               key={sym.id || sym.name}
+              data-symbol-tree-item={`symbol:${sym.name}`}
+              tabIndex={treeFocusId === `symbol:${sym.name}` ? 0 : -1}
               data-selected={selectedSymbol?.name === sym.name}
+              aria-pressed={selectedSymbol?.name === sym.name}
               className={`rtx-symbols-dialog__tree-symbol flex items-center gap-1 px-1 py-[2px] cursor-pointer rounded-sm select-none ${
                 selectedSymbol?.name === sym.name
                   ? 'bg-[var(--color-info-dim)] text-[var(--text-primary)]'
                   : 'hover:bg-[var(--bg-quaternary)] text-[var(--text-primary)]'
               }`}
               style={{ paddingLeft: `${(depth + 1) * 12 + 4}px` }}
-              onClick={() => onSelectSymbol(sym)}
+              onFocus={() => onTreeFocus(`symbol:${sym.name}`)}
+              onClick={() => {
+                onTreeFocus(`symbol:${sym.name}`);
+                onSelectSymbol(sym);
+              }}
             >
               <DollarIcon className="flex-shrink-0" shown={watchlistSymbols.includes(sym.symbol || sym.name)} />
               <span className="ml-1 text-[13px] font-normal" title={sym.name}>{sym.name}</span>
-            </div>
+            </button>
           ))}
-        </>
+        </div>
       )}
     </div>
   );
@@ -376,6 +443,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   const [ticksProgress, setTicksProgress] = useState(0);
   const [barsVisibleCount, setBarsVisibleCount] = useState(100);
   const [ticksVisibleCount, setTicksVisibleCount] = useState(100);
+  const [treeFocusId, setTreeFocusId] = useState<string | null>(null);
 
   // Bars tab specific state
   const TIMEFRAMES = useMemo(() => ['M1','M5','M15','M30','H1','H4','D1','W1','MN'], []);
@@ -418,14 +486,9 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   }, [onClose, onOpenChart]);
 
   // Drag state — centered on screen when first rendered
-  const [size, setSize] = useState(() => ({
-    w: isDesktopShell ? Math.min(860, window.innerWidth - 32) : 620,
-    h: isDesktopShell ? Math.min(640, window.innerHeight - 64) : 460,
-  }));
-  const [pos, setPos] = useState(() => ({
-    x: isDesktopShell ? Math.max(16, (window.innerWidth - size.w) / 2) : Math.max(20, Math.round((window.innerWidth - size.w) / 2)) + 120,
-    y: isDesktopShell ? Math.max(16, (window.innerHeight - size.h) / 2) : Math.max(40, Math.round((window.innerHeight - size.h) / 3)),
-  }));
+  const [size, setSize] = useState(getDialogSizeForViewport);
+  const sizeRef = useRef(size);
+  const [pos, setPos] = useState(() => getCenteredDialogPosition(size));
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
   const resizeRef = useRef<{ sx: number; sy: number; ow: number; oh: number } | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -433,27 +496,31 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   // ── Reset position to center every time the dialog opens ──────────────────
   useEffect(() => {
     if (!isOpen) return;
-    setPos({
-      x: isDesktopShell ? Math.max(16, (window.innerWidth - size.w) / 2) : Math.max(20, Math.round((window.innerWidth - size.w) / 2)) + 120,
-      y: isDesktopShell ? Math.max(16, (window.innerHeight - size.h) / 2) : Math.max(40, Math.round((window.innerHeight - size.h) / 3)),
-    });
+    const nextSize = getDialogSizeForViewport();
+    sizeRef.current = nextSize;
+    setSize(nextSize);
+    setPos(getCenteredDialogPosition(nextSize));
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !isDesktopShell) return;
+    if (!isOpen) return;
     const fitToViewport = () => {
-      const w = Math.min(Math.max(680, size.w), window.innerWidth - 32);
-      const h = Math.min(Math.max(440, size.h), window.innerHeight - 32);
+      const availableWidth = Math.max(0, window.innerWidth - DIALOG_VIEWPORT_GAP * 2);
+      const availableHeight = Math.max(0, window.innerHeight - DIALOG_VIEWPORT_GAP * 2);
+      const minimumWidth = Math.min(DIALOG_MIN_WIDTH, availableWidth);
+      const minimumHeight = Math.min(DIALOG_MIN_HEIGHT, availableHeight);
+      const w = Math.min(Math.max(minimumWidth, sizeRef.current.w), availableWidth);
+      const h = Math.min(Math.max(minimumHeight, sizeRef.current.h), availableHeight);
+      sizeRef.current = { w, h };
       setSize(current => current.w === w && current.h === h ? current : { w, h });
       setPos(current => ({
-        x: Math.max(16, Math.min(current.x, window.innerWidth - w - 16)),
-        y: Math.max(16, Math.min(current.y, window.innerHeight - h - 16)),
+        x: Math.max(DIALOG_VIEWPORT_GAP, Math.min(current.x, window.innerWidth - w - DIALOG_VIEWPORT_GAP)),
+        y: Math.max(DIALOG_VIEWPORT_GAP, Math.min(current.y, window.innerHeight - h - DIALOG_VIEWPORT_GAP)),
       }));
     };
-    fitToViewport();
     window.addEventListener('resize', fitToViewport);
     return () => window.removeEventListener('resize', fitToViewport);
-  }, [isOpen, isDesktopShell, size.w, size.h]);
+  }, [isOpen]);
 
   // ── Load symbols on open ──────────────────────────────────────────────────
   useEffect(() => {
@@ -461,7 +528,12 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
     if (instruments) {
       const normalized = instruments.map(normalizeInstrument).filter((symbol): symbol is SymbolSpec => Boolean(symbol));
       setAllSymbols(normalized);
-      setSelectedSymbol(normalized.find(symbol => normalizeExactBrokerSymbol(symbol.symbol) === normalizeExactBrokerSymbol(initialSymbol)) || normalized[0] || null);
+      const initialMatch = normalized.find(symbol => normalizeExactBrokerSymbol(symbol.symbol) === normalizeExactBrokerSymbol(initialSymbol));
+      setSelectedSymbol(
+        (initialMatch && !isExpiredSymbol(initialMatch.expiration) ? initialMatch : null)
+        || normalized.find(symbol => !isExpiredSymbol(symbol.expiration))
+        || null,
+      );
       setLoading(false); setSymbolsError(null);
       return;
     }
@@ -499,8 +571,11 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
         if (cancelled) return;
         setAllSymbols(normalized);
         setSelectedSymbol(current => {
-          if (current && normalized.some(sym => (sym.symbol || sym.name) === (current.symbol || current.name))) return current;
-          return normalized[0] || null;
+          const retained = current
+            ? normalized.find(sym => (sym.symbol || sym.name) === (current.symbol || current.name))
+            : null;
+          if (retained && !isExpiredSymbol(retained.expiration)) return retained;
+          return normalized.find(symbol => !isExpiredSymbol(symbol.expiration)) || null;
         });
         if (normalized.length === 0) {
           setSymbolsError(`No symbols returned by ${endpoint}.`);
@@ -518,15 +593,46 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
 
   // ── Filter symbols by search (memoized) ───────────────────────────────────
   const filteredSymbols = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return allSymbols;
-    }
     const q = searchQuery.toLowerCase();
-    return allSymbols.filter(s =>
-      s.name.toLowerCase().includes(q) ||
-      (s.description && s.description.toLowerCase().includes(q))
-    );
-  }, [searchQuery, allSymbols]);
+    return allSymbols.filter(s => {
+      if (!showExpired && isExpiredSymbol(s.expiration)) return false;
+      if (!q.trim()) return true;
+      return s.name.toLowerCase().includes(q)
+        || Boolean(s.description && s.description.toLowerCase().includes(q));
+    });
+  }, [searchQuery, showExpired, allSymbols]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (selectedSymbol && (showExpired || !isExpiredSymbol(selectedSymbol.expiration))) return;
+    const nextSelection = allSymbols.find(symbol => showExpired || !isExpiredSymbol(symbol.expiration)) || null;
+    if ((nextSelection?.symbol || nextSelection?.name) !== (selectedSymbol?.symbol || selectedSymbol?.name)) {
+      setSelectedSymbol(nextSelection);
+    }
+  }, [allSymbols, isOpen, selectedSymbol, showExpired]);
+
+  useEffect(() => {
+    const selectedIsVisible = selectedSymbol
+      ? filteredSymbols.some(symbol => (symbol.symbol || symbol.name) === (selectedSymbol.symbol || selectedSymbol.name))
+      : false;
+    const renderedItems = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('[data-symbol-tree-item]') ?? []);
+    const renderedIds = new Set(renderedItems.map(item => item.dataset.symbolTreeItem).filter(Boolean));
+    setTreeFocusId(current => {
+      if (current && renderedIds.has(current)) return current;
+
+      if (selectedIsVisible && selectedSymbol) {
+        const selectedId = `symbol:${selectedSymbol.name}`;
+        if (renderedIds.has(selectedId)) return selectedId;
+
+        const categoryParts = (selectedSymbol.category?.trim() || 'Forex').split('.');
+        const ancestorIds = categoryParts.map((_, index) => `folder:${categoryParts.slice(0, index + 1).join('.')}`);
+        const deepestMountedAncestor = ancestorIds.reverse().find(id => renderedIds.has(id));
+        if (deepestMountedAncestor) return deepestMountedAncestor;
+      }
+
+      return renderedItems[0]?.dataset.symbolTreeItem || null;
+    });
+  }, [filteredSymbols, selectedSymbol]);
 
   // Load bar data from swagger v2/history APIs. Empty/error responses stay visible instead of fabricating candles.
   useEffect(() => {
@@ -673,15 +779,15 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
       if (!dragRef.current) return;
       const x = dragRef.current.ox + ev.clientX - dragRef.current.sx;
       const y = dragRef.current.oy + ev.clientY - dragRef.current.sy;
-      setPos(isDesktopShell ? {
-        x: Math.max(16, Math.min(x, window.innerWidth - size.w - 16)),
-        y: Math.max(16, Math.min(y, window.innerHeight - size.h - 16)),
-      } : { x, y });
+      setPos({
+        x: Math.max(DIALOG_VIEWPORT_GAP, Math.min(x, window.innerWidth - size.w - DIALOG_VIEWPORT_GAP)),
+        y: Math.max(DIALOG_VIEWPORT_GAP, Math.min(y, window.innerHeight - size.h - DIALOG_VIEWPORT_GAP)),
+      });
     };
     const onUp = () => { dragRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  }, [pos, isDesktopShell, size]);
+  }, [pos, size]);
 
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -690,15 +796,19 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
       if (!resizeRef.current) return;
       const w = resizeRef.current.ow + ev.clientX - resizeRef.current.sx;
       const h = resizeRef.current.oh + ev.clientY - resizeRef.current.sy;
-      setSize(isDesktopShell ? {
-        w: Math.min(Math.max(680, w), window.innerWidth - pos.x - 16),
-        h: Math.min(Math.max(440, h), window.innerHeight - pos.y - 16),
-      } : { w: Math.max(500, w), h: Math.max(360, h) });
+      const availableWidth = Math.max(0, window.innerWidth - pos.x - DIALOG_VIEWPORT_GAP);
+      const availableHeight = Math.max(0, window.innerHeight - pos.y - DIALOG_VIEWPORT_GAP);
+      const nextSize = {
+        w: Math.min(Math.max(Math.min(DIALOG_MIN_WIDTH, availableWidth), w), availableWidth),
+        h: Math.min(Math.max(Math.min(DIALOG_MIN_HEIGHT, availableHeight), h), availableHeight),
+      };
+      sizeRef.current = nextSize;
+      setSize(nextSize);
     };
     const onUp = () => { resizeRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  }, [size, isDesktopShell, pos]);
+  }, [size, pos]);
 
   // ── Keyboard shortcut ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -714,7 +824,8 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
       const closeShortcut = e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key.toLowerCase() === 'u' || e.code === 'KeyU');
       if (closeShortcut || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
       if (e.key === 'Tab') {
-        const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]') ?? []);
+        const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]') ?? [])
+          .filter(control => control.tabIndex >= 0);
         const first = controls[0]; const last = controls.at(-1);
         if (first && last && (document.activeElement === dialogRef.current || (!e.shiftKey && document.activeElement === last) || (e.shiftKey && document.activeElement === first))) {
           e.preventDefault(); (e.shiftKey ? last : first).focus();
@@ -726,7 +837,31 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   }, [isOpen, onClose]);
 
   // ── Build tree ────────────────────────────────────────────────────────────
-  const tree = buildTree(searchQuery ? filteredSymbols : allSymbols);
+  const tree = buildTree(filteredSymbols);
+  const catalogTabStopName = filteredSymbols.some(symbol => symbol.name === selectedSymbol?.name)
+    ? selectedSymbol?.name
+    : filteredSymbols[0]?.name;
+
+  const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (!target.matches('[data-symbol-tree-item]')) return;
+    const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-symbol-tree-item]'));
+    const currentIndex = items.indexOf(target);
+    if (currentIndex < 0) return;
+
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowDown') nextIndex = Math.min(items.length - 1, currentIndex + 1);
+    else if (event.key === 'ArrowUp') nextIndex = Math.max(0, currentIndex - 1);
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = items.length - 1;
+    else return;
+
+    event.preventDefault();
+    const nextItem = items[nextIndex];
+    const nextFocusId = nextItem.dataset.symbolTreeItem;
+    if (nextFocusId) setTreeFocusId(nextFocusId);
+    nextItem.focus();
+  };
 
   if (!isOpen) return null;
 
@@ -734,31 +869,39 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   const specFields = selectedSymbol ? [
     { label: 'Sector', value: selectedSymbol.sector || 'Forex', color: 'text-[var(--text-primary)]' },
     { label: 'Industry', value: selectedSymbol.industry || 'Currency Pairs', color: 'text-[var(--text-primary)]', alignRight: true },
-    { label: 'Digits', value: selectedSymbol.digits, prefix: '01', color: 'text-[var(--text-primary)]' },
-    { label: 'Contract size', value: `${selectedSymbol.contractSize} ${selectedSymbol.marginCurrency || ''}`, prefix: '½', color: 'text-[var(--text-primary)]' },
-    { label: 'Spread', value: selectedSymbol.spread || 'floating', prefix: '01', color: 'text-[var(--text-primary)]' },
-    { label: 'Stops level', value: selectedSymbol.stopsLevel || 20, prefix: '01', color: 'text-[var(--text-primary)]' },
-    { label: 'Margin currency', value: selectedSymbol.marginCurrency || selectedSymbol.name.slice(0, 3), prefix: 'ab', color: 'text-[var(--color-profit)]' },
-    { label: 'Tick size', value: selectedSymbol.tickSize, prefix: '01', color: 'text-[var(--text-primary)]' },
-    { label: 'Trading enabled', value: selectedSymbol.tradingEnabled ? 'Yes' : 'No', prefix: '', color: 'text-[var(--text-primary)]' },
+    { label: 'Digits', value: selectedSymbol.digits, color: 'text-[var(--text-primary)]' },
+    { label: 'Contract size', value: `${selectedSymbol.contractSize} ${selectedSymbol.marginCurrency || ''}`, color: 'text-[var(--text-primary)]' },
+    { label: 'Spread', value: selectedSymbol.spread || 'floating', color: 'text-[var(--text-primary)]' },
+    { label: 'Stops level', value: selectedSymbol.stopsLevel || 20, color: 'text-[var(--text-primary)]' },
+    { label: 'Margin currency', value: selectedSymbol.marginCurrency || selectedSymbol.name.slice(0, 3), color: 'text-[var(--color-profit)]' },
+    { label: 'Tick size', value: selectedSymbol.tickSize, color: 'text-[var(--text-primary)]' },
+    { label: 'Trading enabled', value: selectedSymbol.tradingEnabled ? 'Yes' : 'No', color: 'text-[var(--text-primary)]' },
   ] : [];
 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[9990] pointer-events-none">
       {/* Backdrop — just for click-outside detection */}
-      <div className="rtx-symbols-dialog-backdrop absolute inset-0 pointer-events-auto" data-desktop={isDesktopShell} onClick={onClose} style={{ background: isDesktopShell ? 'rgba(15, 23, 42, 0.16)' : 'transparent' }} />
+      <div className="rtx-symbols-dialog-backdrop absolute inset-0 pointer-events-auto" onClick={onClose} />
 
       {/* Dialog Window */}
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={tr(title)}
+        aria-labelledby="rtx-symbols-dialog-title"
         data-desktop={isDesktopShell}
+        data-presentation="enterprise"
         data-shortcut-scope="local"
         tabIndex={-1}
         className="rtx-symbols-dialog absolute pointer-events-auto flex flex-col bg-[var(--bg-tertiary)] border border-[var(--border-primary)] shadow-2xl select-none"
-        style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, minWidth: isDesktopShell ? Math.min(680, window.innerWidth - 32) : 500, minHeight: isDesktopShell ? Math.min(440, window.innerHeight - 32) : 360 }}
+        style={{
+          left: pos.x,
+          top: pos.y,
+          width: size.w,
+          height: size.h,
+          minWidth: Math.min(DIALOG_MIN_WIDTH, Math.max(0, window.innerWidth - DIALOG_VIEWPORT_GAP * 2)),
+          minHeight: Math.min(DIALOG_MIN_HEIGHT, Math.max(0, window.innerHeight - DIALOG_VIEWPORT_GAP * 2)),
+        }}
         onClick={e => e.stopPropagation()}
       >
         {/* ── Title bar ────────────────────────────────────────────────────── */}
@@ -767,24 +910,17 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
           onMouseDown={onDragStart}
         >
           <div className="rtx-symbols-dialog__heading flex items-center gap-2">
-            {isDesktopShell ? <span className="rtx-symbols-dialog__title-icon"><Search size={18} /></span> : <DollarIcon />}
+            <span className="rtx-symbols-dialog__title-icon"><Search size={18} /></span>
             <div>
-              <span className="rtx-dialog-title text-[20px] leading-7 font-semibold text-[var(--text-primary)]">{tr(title)}</span>
-              {isDesktopShell && <p className="rtx-symbols-dialog__subtitle">{tr('Browse instruments and contract specifications')}</p>}
+              <span id="rtx-symbols-dialog-title" className="rtx-dialog-title text-[20px] leading-7 font-semibold text-[var(--text-primary)]">{tr(title)}</span>
+              <p className="rtx-symbols-dialog__subtitle">{tr('Browse instruments and contract specifications')}</p>
             </div>
           </div>
           <div className="rtx-symbols-dialog__window-actions flex items-center gap-0 h-full" onMouseDown={e => e.stopPropagation()}>
-            {!isDesktopShell && <>
-            <button className="h-full px-3 hover:bg-white/10 flex items-center justify-center" title={tr("Minimize")}>
-              <Minus size={10} className="text-[var(--text-secondary)]" strokeWidth={1.8} />
-            </button>
-            <button className="h-full px-3 hover:bg-white/10 flex items-center justify-center" title={tr("Maximize")}>
-              <Square size={10} className="text-[var(--text-secondary)]" strokeWidth={1.8} />
-            </button>
-            </>}
             <button
               className="h-full px-3 hover:bg-red-500 flex items-center justify-center group"
               onClick={onClose}
+              aria-label={tr("Close")}
               title={tr("Close")}
             >
               <X size={11} className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]" strokeWidth={1.8} />
@@ -793,12 +929,29 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
         </div>
 
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
-        <div className="rtx-symbols-dialog__tabs flex items-end h-8 bg-[var(--bg-tertiary)] border-b border-[var(--border-primary)] px-2 gap-0 flex-shrink-0">
-          {(['Specification', 'Bars', 'Ticks'] as Tab[]).map(tab => (
+        <div className="rtx-symbols-dialog__tabs flex items-end h-8 bg-[var(--bg-tertiary)] border-b border-[var(--border-primary)] px-2 gap-0 flex-shrink-0" role="tablist" aria-label={tr('Symbol data views')}>
+          {SYMBOL_TABS.map(tab => (
             <button
               key={tab}
-              aria-pressed={activeTab === tab}
+              id={`rtx-symbols-tab-${tab.toLowerCase()}`}
+              role="tab"
+              aria-selected={activeTab === tab}
+              aria-controls={`rtx-symbols-panel-${tab.toLowerCase()}`}
+              tabIndex={activeTab === tab ? 0 : -1}
               onClick={() => setActiveTab(tab)}
+              onKeyDown={event => {
+                const currentIndex = SYMBOL_TABS.indexOf(tab);
+                let nextIndex = currentIndex;
+                if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % SYMBOL_TABS.length;
+                if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + SYMBOL_TABS.length) % SYMBOL_TABS.length;
+                if (event.key === 'Home') nextIndex = 0;
+                if (event.key === 'End') nextIndex = SYMBOL_TABS.length - 1;
+                if (nextIndex === currentIndex) return;
+                event.preventDefault();
+                const nextTab = SYMBOL_TABS[nextIndex];
+                setActiveTab(nextTab);
+                document.getElementById(`rtx-symbols-tab-${nextTab.toLowerCase()}`)?.focus();
+              }}
               className={`px-4 py-1.5 text-[13px] border-b-2 transition-colors ${
                 activeTab === tab
                   ? 'border-[var(--color-info)] text-[var(--text-primary)] bg-[var(--color-info-dim)] font-medium'
@@ -811,39 +964,57 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
         </div>
 
         {/* ── Main content ─────────────────────────────────────────────────── */}
-        <div className="rtx-symbols-dialog__body flex flex-1 min-h-0 bg-[var(--bg-secondary)]">
+        <div
+          id={`rtx-symbols-panel-${activeTab.toLowerCase()}`}
+          className="rtx-symbols-dialog__body flex flex-1 min-h-0 bg-[var(--bg-secondary)]"
+          role="tabpanel"
+          aria-labelledby={`rtx-symbols-tab-${activeTab.toLowerCase()}`}
+        >
           {activeTab === 'Bars' ? (
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="rtx-symbols-dialog__history-panel flex-1 flex flex-col min-w-0">
               {/* Bars Top Controls */}
-              <div className="flex flex-wrap items-center gap-2 px-2 py-2 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)]">
-                <select 
-                  className="w-[120px] border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none"
-                  value={barsSymbolInput}
-                  onChange={e => setBarsSymbolInput(e.target.value)}
-                >
-                  {allSymbols.map(s => <option key={s.symbol || s.name} value={s.symbol || s.name}>{s.name || s.symbol}</option>)}
-                </select>
-                <select 
-                  className="w-[70px] border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none"
-                  value={barsTimeframe}
-                  onChange={e => setBarsTimeframe(e.target.value)}
-                >
-                  {TIMEFRAMES.map(tf => <option key={tf} value={tf}>{tf}</option>)}
-                </select>
-                <input 
-                  type="datetime-local" 
-                  className="border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none [color-scheme:dark]"
-                  value={barsStartTime}
-                  onChange={e => setBarsStartTime(e.target.value)}
-                />
-                <input 
-                  type="datetime-local" 
-                  className="border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none [color-scheme:dark]"
-                  value={barsEndTime}
-                  onChange={e => setBarsEndTime(e.target.value)}
-                />
-                <button 
-                  className="ml-auto rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-6 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
+              <div className="rtx-symbols-dialog__history-controls flex flex-wrap items-end gap-2 px-2 py-2 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)]">
+                <label className="rtx-symbols-dialog__field rtx-symbols-dialog__field--symbol">
+                  <span>{tr('Symbol')}</span>
+                  <select
+                    aria-label={tr('Bars symbol')}
+                    value={barsSymbolInput}
+                    onChange={e => setBarsSymbolInput(e.target.value)}
+                  >
+                    {allSymbols.map(s => <option key={s.symbol || s.name} value={s.symbol || s.name}>{s.name || s.symbol}</option>)}
+                  </select>
+                </label>
+                <label className="rtx-symbols-dialog__field rtx-symbols-dialog__field--timeframe">
+                  <span>{tr('Timeframe')}</span>
+                  <select
+                    aria-label={tr('Bars timeframe')}
+                    value={barsTimeframe}
+                    onChange={e => setBarsTimeframe(e.target.value)}
+                  >
+                    {TIMEFRAMES.map(tf => <option key={tf} value={tf}>{tf}</option>)}
+                  </select>
+                </label>
+                <label className="rtx-symbols-dialog__field rtx-symbols-dialog__field--date">
+                  <span>{tr('From')}</span>
+                  <input
+                    type="datetime-local"
+                    aria-label={tr('Bars start time')}
+                    value={barsStartTime}
+                    onChange={e => setBarsStartTime(e.target.value)}
+                  />
+                </label>
+                <label className="rtx-symbols-dialog__field rtx-symbols-dialog__field--date">
+                  <span>{tr('To')}</span>
+                  <input
+                    type="datetime-local"
+                    aria-label={tr('Bars end time')}
+                    value={barsEndTime}
+                    onChange={e => setBarsEndTime(e.target.value)}
+                  />
+                </label>
+                <button
+                  data-action="request"
+                  className="rtx-symbols-dialog__request text-[13px] font-normal"
                   onClick={() => setBarsFetchTrigger(v => v + 1)}
                 >
                   {tr("Request")}</button>
@@ -851,20 +1022,20 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               
               {/* Bars Meta Info */}
               {barsLoading ? (
-                <div className="h-[20px] bg-[var(--bg-quaternary)] relative border-b border-[var(--border-primary)] flex-shrink-0 text-[var(--text-primary)] font-sans">
+                <div className="rtx-symbols-dialog__history-status rtx-symbols-dialog__history-status--loading relative flex-shrink-0 text-[var(--text-primary)] font-sans" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(barsProgress)}>
                   <div className="absolute top-0 left-0 h-full bg-[var(--color-profit)]" style={{ width: `${barsProgress}%` }} />
                   <div className="absolute inset-0 z-10 flex w-full items-center overflow-hidden text-ellipsis whitespace-nowrap px-2 text-[12px] font-normal">
                     {barsSymbolInput}: '{new Date(barsStartTime).toLocaleString('default', { month: 'short', year: 'numeric' })}{tr("' downloaded (")}{barsProgress.toFixed(1)}%)
                   </div>
                 </div>
               ) : (
-                <div className="flex-shrink-0 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-3 py-1 text-[12px] font-normal text-[var(--text-primary)]">
+                <div className="rtx-symbols-dialog__history-status flex-shrink-0 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-3 py-1 text-[12px] font-normal text-[var(--text-primary)]" role="status">
                   {barsSymbolInput},{barsTimeframe}: {bars.length} {tr(" bars")}</div>
               )}
               
               {/* Bars Table */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar" onScroll={handleBarsScroll}>
-                <table className="w-full border-collapse text-[13px] font-normal">
+              <div className="rtx-symbols-dialog__history-table-wrap flex-1 overflow-y-auto custom-scrollbar" onScroll={handleBarsScroll}>
+                <table className="rtx-symbols-dialog__history-table w-full border-collapse text-[13px] font-normal" aria-label={tr('Historical bars')}>
                     <thead>
                       <tr className="bg-[var(--bg-tertiary)] sticky top-0 z-10">
                         {['Date', 'Open', 'High', 'Low', 'Close', 'Tick Volume', 'Volume', 'Spread'].map((h, i) => (
@@ -915,37 +1086,50 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               </div>
             </div>
           ) : activeTab === 'Ticks' ? (
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="rtx-symbols-dialog__history-panel flex-1 flex flex-col min-w-0">
               {/* Ticks Top Controls */}
-              <div className="flex flex-wrap items-center gap-2 px-2 py-2 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)]">
-                <select 
-                  className="w-[120px] border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none"
-                  value={ticksSymbolInput}
-                  onChange={e => setTicksSymbolInput(e.target.value)}
-                >
-                  {allSymbols.map(s => <option key={s.symbol || s.name} value={s.symbol || s.name}>{s.name || s.symbol}</option>)}
-                </select>
-                <select 
-                  className="w-[110px] border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none"
-                  value={ticksType}
-                  onChange={e => setTicksType(e.target.value)}
-                >
-                  {TICK_TYPES.map(tt => <option key={tt} value={tt}>{tt}</option>)}
-                </select>
-                <input 
-                  type="datetime-local" 
-                  className="border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none [color-scheme:dark]"
-                  value={ticksStartTime}
-                  onChange={e => setTicksStartTime(e.target.value)}
-                />
-                <input 
-                  type="datetime-local" 
-                  className="border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none [color-scheme:dark]"
-                  value={ticksEndTime}
-                  onChange={e => setTicksEndTime(e.target.value)}
-                />
-                <button 
-                  className="ml-auto rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-6 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
+              <div className="rtx-symbols-dialog__history-controls flex flex-wrap items-end gap-2 px-2 py-2 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)]">
+                <label className="rtx-symbols-dialog__field rtx-symbols-dialog__field--symbol">
+                  <span>{tr('Symbol')}</span>
+                  <select
+                    aria-label={tr('Ticks symbol')}
+                    value={ticksSymbolInput}
+                    onChange={e => setTicksSymbolInput(e.target.value)}
+                  >
+                    {allSymbols.map(s => <option key={s.symbol || s.name} value={s.symbol || s.name}>{s.name || s.symbol}</option>)}
+                  </select>
+                </label>
+                <label className="rtx-symbols-dialog__field rtx-symbols-dialog__field--type">
+                  <span>{tr('Tick type')}</span>
+                  <select
+                    aria-label={tr('Tick type')}
+                    value={ticksType}
+                    onChange={e => setTicksType(e.target.value)}
+                  >
+                    {TICK_TYPES.map(tt => <option key={tt} value={tt}>{tt}</option>)}
+                  </select>
+                </label>
+                <label className="rtx-symbols-dialog__field rtx-symbols-dialog__field--date">
+                  <span>{tr('From')}</span>
+                  <input
+                    type="datetime-local"
+                    aria-label={tr('Ticks start time')}
+                    value={ticksStartTime}
+                    onChange={e => setTicksStartTime(e.target.value)}
+                  />
+                </label>
+                <label className="rtx-symbols-dialog__field rtx-symbols-dialog__field--date">
+                  <span>{tr('To')}</span>
+                  <input
+                    type="datetime-local"
+                    aria-label={tr('Ticks end time')}
+                    value={ticksEndTime}
+                    onChange={e => setTicksEndTime(e.target.value)}
+                  />
+                </label>
+                <button
+                  data-action="request"
+                  className="rtx-symbols-dialog__request text-[13px] font-normal"
                   onClick={() => setTicksFetchTrigger(v => v + 1)}
                 >
                   {tr("Request")}</button>
@@ -953,20 +1137,20 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               
               {/* Ticks Meta Info */}
               {ticksLoading ? (
-                <div className="h-[20px] bg-[var(--bg-quaternary)] relative border-b border-[var(--border-primary)] flex-shrink-0 text-[var(--text-primary)] font-sans">
+                <div className="rtx-symbols-dialog__history-status rtx-symbols-dialog__history-status--loading relative flex-shrink-0 text-[var(--text-primary)] font-sans" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(ticksProgress)}>
                   <div className="absolute top-0 left-0 h-full bg-[var(--color-profit)]" style={{ width: `${ticksProgress}%` }} />
                   <div className="absolute inset-0 z-10 flex w-full items-center overflow-hidden text-ellipsis whitespace-nowrap px-2 text-[12px] font-normal">
                     {ticksSymbolInput}: '{new Date(ticksStartTime).toLocaleString('default', { month: 'short', year: 'numeric' })}{tr("' downloaded (")}{ticksProgress.toFixed(1)}%)
                   </div>
                 </div>
               ) : (
-                <div className="flex-shrink-0 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-3 py-1 text-[12px] font-normal text-[var(--text-primary)]">
+                <div className="rtx-symbols-dialog__history-status flex-shrink-0 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-3 py-1 text-[12px] font-normal text-[var(--text-primary)]" role="status">
                   {ticksSymbolInput}: {ticks.length} {tr(" ticks")}</div>
               )}
               
               {/* Ticks Table */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar" onScroll={handleTicksScroll}>
-                <table className="w-full border-collapse text-[13px] font-normal">
+              <div className="rtx-symbols-dialog__history-table-wrap flex-1 overflow-y-auto custom-scrollbar" onScroll={handleTicksScroll}>
+                <table className="rtx-symbols-dialog__history-table w-full border-collapse text-[13px] font-normal" aria-label={tr('Historical ticks')}>
                     <thead>
                       <tr className="bg-[var(--bg-tertiary)] sticky top-0 z-10">
                         {['Date', 'Bid', 'Ask', 'Last', 'Volume', 'Flags'].map((h, i) => (
@@ -1012,10 +1196,15 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
             {/* Tree header */}
             <div className="rtx-symbols-dialog__sidebar-heading flex items-center gap-1 px-2 py-1.5 border-b border-[var(--border-primary)]">
               <FolderOpen size={14} className="text-yellow-400" />
-              <span className="text-[12px] font-normal text-[var(--text-secondary)]">{tr(isDesktopShell ? 'Instruments' : 'RTX 5 Web Terminal')}</span>
-              {isDesktopShell && <span className="rtx-symbols-dialog__count">{allSymbols.length}</span>}
+              <span className="text-[12px] font-normal text-[var(--text-secondary)]">{tr('Instruments')}</span>
+              <span className="rtx-symbols-dialog__count" aria-label={tr(`${allSymbols.length} instruments`)}>{allSymbols.length}</span>
             </div>
-            <div className="rtx-symbols-dialog__tree flex-1 overflow-y-auto no-scrollbar py-1">
+            <div
+              className="rtx-symbols-dialog__tree flex-1 overflow-y-auto no-scrollbar py-1"
+              role="group"
+              aria-label={tr('Instrument categories')}
+              onKeyDown={handleTreeKeyDown}
+            >
               {loading ? (
                 <div className="px-3 py-2 text-[12px] font-normal text-[var(--text-secondary)]">{tr("Loading...")}</div>
               ) : symbolsError ? (
@@ -1033,11 +1222,14 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                     key={n}
                     name={n}
                     node={node}
+                    path={n}
                     depth={0}
                     selectedSymbol={selectedSymbol}
                     onSelectSymbol={setSelectedSymbol}
                     searchQuery={searchQuery}
                     watchlistSymbols={watchlistSymbols}
+                    treeFocusId={treeFocusId}
+                    onTreeFocus={setTreeFocusId}
                   />
                 ))
               )}
@@ -1105,8 +1297,31 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                     <tr
                       key={sym.id || sym.name}
                       data-selected={selectedSymbol?.name === sym.name}
+                      aria-selected={selectedSymbol?.name === sym.name}
+                      data-symbol-row
+                      tabIndex={catalogTabStopName === sym.name ? 0 : -1}
                       onClick={() => setSelectedSymbol(sym)}
                       onDoubleClick={() => openChartForSymbol(sym)}
+                      onKeyDown={event => {
+                        const rows = Array.from(event.currentTarget.closest('tbody')?.querySelectorAll<HTMLTableRowElement>('tr[data-symbol-row]') ?? []);
+                        const currentIndex = rows.indexOf(event.currentTarget);
+                        let nextIndex = currentIndex;
+                        if (event.key === 'ArrowDown') nextIndex = Math.min(rows.length - 1, currentIndex + 1);
+                        else if (event.key === 'ArrowUp') nextIndex = Math.max(0, currentIndex - 1);
+                        else if (event.key === 'Home') nextIndex = 0;
+                        else if (event.key === 'End') nextIndex = rows.length - 1;
+                        else if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedSymbol(sym);
+                          if (event.key === 'Enter') openChartForSymbol(sym);
+                          return;
+                        } else return;
+
+                        event.preventDefault();
+                        const nextSymbol = filteredSymbols[nextIndex];
+                        if (nextSymbol) setSelectedSymbol(nextSymbol);
+                        rows[nextIndex]?.focus();
+                      }}
                       className={`cursor-pointer transition-colors ${
                         selectedSymbol?.name === sym.name
                           ? 'bg-[var(--color-info-dim)] text-[var(--text-primary)]'
@@ -1135,12 +1350,8 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                 <div>
                   {/* Symbol title */}
                   <div className="rtx-symbols-dialog__selection px-3 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border-primary)]">
-                    {isDesktopShell ? <>
-                      <span className="rtx-symbols-dialog__selected-name">{selectedSymbol.name}</span>
-                      {selectedSymbol.description !== selectedSymbol.name && <span className="rtx-symbols-dialog__selected-description">{selectedSymbol.description}</span>}
-                    </> : <span className="text-[13px] font-medium text-[var(--color-info)]">
-                      {selectedSymbol.name}, {selectedSymbol.description}
-                    </span>}
+                    <span className="rtx-symbols-dialog__selected-name">{selectedSymbol.name}</span>
+                    {selectedSymbol.description !== selectedSymbol.name && <span className="rtx-symbols-dialog__selected-description">{selectedSymbol.description}</span>}
                   </div>
 
                   {/* Spec rows */}
@@ -1150,13 +1361,6 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                         <tr key={i} className={`border-b border-[var(--border-primary)] ${i % 2 === 0 ? 'bg-[var(--bg-secondary)]' : 'bg-[var(--bg-tertiary)]'}`}>
                           <td className="px-3 py-[5px] w-[160px]">
                             <div className="flex items-center gap-1.5">
-                              {!isDesktopShell && field.prefix && (
-                                <span className={`text-[9px] font-mono font-bold ${
-                                  field.prefix === 'ab' ? 'text-[var(--color-profit)]' :
-                                  field.prefix === '½' ? 'text-[var(--text-primary)]' :
-                                  field.prefix === '01' ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'
-                                }`}>{field.prefix}</span>
-                              )}
                               <span className="text-[var(--text-secondary)]">{tr(field.label)}</span>
                             </div>
                           </td>
@@ -1186,23 +1390,20 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
           <div className="rtx-symbols-dialog__actions flex items-center gap-2">
             {activeTab === 'Bars' || activeTab === 'Ticks' ? (
               <>
-                <button className="flex items-center gap-1.5 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-4 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]">
+                <button data-action="export" className="rtx-symbols-dialog__button text-[13px] font-normal" disabled title={tr('Export is not available yet')}>
                   {tr("Export ")}{activeTab}
                 </button>
-                <button className="flex items-center gap-1.5 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-4 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]">
+                <button data-action="import" className="rtx-symbols-dialog__button text-[13px] font-normal" disabled title={tr('Import is not available yet')}>
                   {tr("Import ")}{activeTab}
                 </button>
-                <button className="cursor-not-allowed rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-4 py-1 text-[13px] font-normal text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-quaternary)]">
+                <button data-action="create-custom" className="rtx-symbols-dialog__button text-[13px] font-normal" disabled title={tr('Custom symbols are not available yet')}>
                   {tr("Create Custom Symbol")}</button>
               </>
             ) : (
               <>
                 <button
-                  className={`rounded-sm border px-3 py-0.5 text-[13px] font-normal transition-colors ${
-                    !selectedSymbol || isSelectedSymbolShown
-                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border-[var(--border-primary)] cursor-not-allowed'
-                      : 'text-[var(--text-primary)] bg-[var(--bg-quaternary)] border-[var(--border-primary)] hover:bg-[var(--bg-quaternary)] hover:border-[var(--color-info)]'
-                  }`}
+                  data-action="show-symbol"
+                  className="rtx-symbols-dialog__button text-[13px] font-normal"
                   disabled={!selectedSymbol || isSelectedSymbolShown}
                   onClick={() => {
                     if (selectedSymbol && activeWatchlist) {
@@ -1219,11 +1420,8 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                 >
                   {tr("Show Symbol")}</button>
                 <button
-                  className={`rounded-sm border px-4 py-1 text-[13px] font-normal transition-colors ${
-                    !selectedSymbol || !isSelectedSymbolShown
-                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border-[var(--border-primary)] cursor-not-allowed'
-                      : 'text-[var(--text-secondary)] bg-[var(--bg-quaternary)] border-[var(--border-primary)] hover:bg-[var(--bg-quaternary)]'
-                  }`}
+                  data-action="hide-symbol"
+                  className="rtx-symbols-dialog__button text-[13px] font-normal"
                   disabled={!selectedSymbol || !isSelectedSymbolShown}
                   onClick={() => {
                     if (selectedSymbol && activeWatchlist) {
@@ -1235,18 +1433,16 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                   {tr("Hide Symbol")}</button>
                 <button
                   data-action="open-chart"
-                  className={`rounded-sm border px-4 py-1 text-[13px] font-normal transition-colors ${
-                    !selectedSymbol || !onOpenChart
-                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border-[var(--border-primary)] cursor-not-allowed'
-                      : 'border-[var(--color-info)] bg-[var(--color-info-dim)] text-[var(--text-primary)] hover:bg-[var(--color-info-dim)]'
-                  }`}
+                  className="rtx-symbols-dialog__button text-[13px] font-normal"
                   disabled={!selectedSymbol || !onOpenChart}
                   onClick={() => openChartForSymbol(selectedSymbol)}
                 >
                   {tr(chartActionLabel)}</button>
                 <button
-                  className="cursor-not-allowed rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-4 py-1 text-[13px] font-normal text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-quaternary)]"
-                  disabled={isDesktopShell}
+                  data-action="create-custom"
+                  className="rtx-symbols-dialog__button text-[13px] font-normal"
+                  disabled
+                  title={tr('Custom symbols are not available yet')}
                 >
                   {tr("Create Custom Symbol")}</button>
               </>
@@ -1254,7 +1450,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
           </div>
           <button
             data-action="close"
-            className="rounded-sm border border-[var(--color-info)] bg-[var(--color-info-dim)] px-5 py-0.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--color-info-dim)]"
+            className="rtx-symbols-dialog__button rtx-symbols-dialog__button--close text-[13px] font-medium"
             onClick={onClose}
           >
             {tr("OK")}</button>

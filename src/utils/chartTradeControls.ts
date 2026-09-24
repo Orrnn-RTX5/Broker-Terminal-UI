@@ -424,7 +424,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     root.style.height = '20px';
     root.style.minHeight = '20px';
     root.style.gap = '4px';
-    root.dataset.align = 'right';
+    // Keep the active-position strip beside the chart's left edge. The chart
+    // relayout only overrides controls explicitly marked as right-aligned.
+    root.dataset.align = 'left';
     root.tabIndex = 0;
     root.style.backgroundColor = 'transparent';
     root.style.borderRadius = '0';

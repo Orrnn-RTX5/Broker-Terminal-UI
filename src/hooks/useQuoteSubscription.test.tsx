@@ -113,12 +113,20 @@ describe('useQuoteSubscription', () => {
     unmount();
   });
 
-  it('registers quote demand after a broker session change makes storage ready', () => {
+  it('registers quote demand for a logged-out guest with no stored session', () => {
     const { unmount } = renderHook(() => useQuoteSubscription(['xauusd'], 'chart:2'));
 
+    expect(managerMock.setDemand).toHaveBeenCalledWith('chart:2', ['XAUUSD']);
+    expect(managerMock.removeDemand).not.toHaveBeenCalled();
+
+    unmount();
+
     expect(managerMock.removeDemand).toHaveBeenCalledWith('chart:2');
+  });
+
+  it('re-registers quote demand after login', () => {
+    const { unmount } = renderHook(() => useQuoteSubscription(['xauusd'], 'chart:2'));
     managerMock.setDemand.mockClear();
-    managerMock.removeDemand.mockClear();
 
     brokerSessionMock.token = 'access-token';
     brokerSessionMock.serverUrl = 'http://broker.example';
@@ -142,19 +150,19 @@ describe('useQuoteSubscription', () => {
     unmount();
   });
 
-  it('removes quote demand when the stored broker session is no longer ready', () => {
+  it('keeps streaming quotes after logout so the session continues as a guest', () => {
     brokerSessionMock.token = 'access-token';
     brokerSessionMock.serverUrl = 'http://broker.example';
 
     const { unmount } = renderHook(() => useQuoteSubscription(['gbpusd'], 'chart:3'));
-    managerMock.removeDemand.mockClear();
+    managerMock.setDemand.mockClear();
 
     brokerSessionMock.token = null;
     act(() => {
       brokerSessionMock.listener?.('logout');
     });
 
-    expect(managerMock.removeDemand).toHaveBeenCalledWith('chart:3');
+    expect(managerMock.setDemand).toHaveBeenLastCalledWith('chart:3', ['GBPUSD']);
 
     unmount();
   });

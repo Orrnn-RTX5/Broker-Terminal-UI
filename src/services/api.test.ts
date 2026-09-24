@@ -411,7 +411,7 @@ describe('journalApi.getLogs authentication', () => {
     await journalApi.getLogs();
 
     const request = lastFetchCall();
-    expect(request.url).toBe('https://fxtrustbrokerbackend.orrnn.com/api/v1/journal?mode=2&type=0');
+    expect(request.url).toBe('https://fxtrustbrokerbackend.orrnn.com/api/v2/journal?mode=2&type=0');
     expect(request.url).not.toContain('filter=');
     expect(request.url).not.toContain('from=');
     expect(request.headers.Authorization).toBe('Bearer journal-jwt');
@@ -437,7 +437,7 @@ describe('journalApi.getLogs authentication', () => {
     await journalApi.getLogs();
 
     const calls = vi.mocked(fetch).mock.calls;
-    expect(String(calls[0][0])).toBe('https://fxtrustbrokerbackend.orrnn.com/api/v1/journal?mode=2&type=0');
+    expect(String(calls[0][0])).toBe('https://fxtrustbrokerbackend.orrnn.com/api/v2/journal?mode=2&type=0');
     expect(String(calls[1][0])).toBe('https://fxtrustbrokerbackend.orrnn.com/api/v2/auth/refresh');
     expect(JSON.parse(String(calls[1][1]?.body))).toEqual({ refresh_token: 'journal-refresh-token' });
     expect(new Headers(calls[2][1]?.headers).get('Authorization')).toBe('Bearer renewed-journal-jwt');
@@ -507,6 +507,14 @@ describe('normalizeJournalResponse', () => {
 
   it('rejects a payload that is not the journal contract', () => {
     expect(() => normalizeJournalResponse({ data: [] })).toThrow('Invalid Journal API response');
+  });
+
+  it('unwraps a v2 data envelope around the journal contract', () => {
+    const response = normalizeJournalResponse({
+      data: { count: 1, logs: [{ code: 0, type: 2, type_text: 'System', datetime: 1, source: 'Gateway', message: 'ok' }] },
+    });
+    expect(response.count).toBe(1);
+    expect(response.logs[0]?.message).toBe('ok');
   });
 
   it('retains canonical backend latency and correlation for identical burst rows', () => {

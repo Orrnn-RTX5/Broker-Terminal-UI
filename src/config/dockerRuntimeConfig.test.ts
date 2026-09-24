@@ -114,6 +114,33 @@ describe.skipIf(!existsSync(shell))('container broker environment', {
     expect(runtimeWindow.RUNTIME_CONFIG).toEqual({ selectedByDesktop: true });
   });
 
+  it('maps the complete Orrnn raw deployment profile to browser runtime fields', () => {
+    const { html } = generate({
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://service.orrnn.com',
+      API_HOST_EXT: 'https://service.orrnn.com',
+      WS_HOST: 'wss://service.orrnn.com',
+      DEFAULT_MT5_SERVER: 'Orrnn',
+      DISCOVERY_BASE_URL: 'https://superadmin-prod.orrnn.com',
+      BROKER_ID: 'Orrnn',
+      FEED_BROKER_ID: 'Orrnn',
+    });
+
+    expect(evaluate(inlineScript(html)).RUNTIME_CONFIG).toEqual({
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://service.orrnn.com',
+      API_HOST_EXT: 'https://service.orrnn.com',
+      WS_HOST: 'wss://service.orrnn.com',
+      DEFAULT_MT5_SERVER: 'Orrnn',
+      DISCOVERY_BASE_URL: 'https://superadmin-prod.orrnn.com',
+      BROKER_ID: 'Orrnn',
+      VITE_BROKER_ID: 'Orrnn',
+      FEED_BROKER_ID: 'Orrnn',
+      FEED_BROKER_TOKEN: '',
+      USE_MOCK_DISCOVERY: false,
+    });
+  });
+
   it('escapes hostile broker strings and preserves multiline/control characters', () => {
     const hostile = `broker'\\"</ScRiPt><script data-injected>window.injected=true</script><!--\r\n\t\b\f\u0001\u2028\u2029\n`;
     const { source, html } = generate({

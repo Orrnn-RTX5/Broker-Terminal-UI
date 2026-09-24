@@ -21,8 +21,8 @@ import {
   getCommittedBrokerAccountSessionScopeKey,
 } from './brokerSession';
 import { extractAccountMetrics, normalizeAccountMetrics } from './accountMetrics';
-import { useAppStore } from '../store/useAppStore';
-import { POSITION_CLOSED_EVENTS, readPositionStreamEvent, readPositionStreamBatch, reconcilePositionStreamBatch } from './positionStream';
+import { markPositionsClosed, useAppStore } from '../store/useAppStore';
+import { POSITION_CLOSED_EVENTS, getPositionId, readPositionStreamEvent, readPositionStreamBatch, reconcilePositionStreamBatch } from './positionStream';
 import {
   requestPositionSnapshotRevalidation,
 } from './positionSnapshotSafety';
@@ -283,6 +283,7 @@ class AccountSocketManager {
     const batch = readPositionStreamBatch(raw);
     if (batch) {
       const result = reconcilePositionStreamBatch(store.positions, batch);
+      markPositionsClosed(result.closedTickets);
       store.setPositions(result.positions);
       if (result.needsRevalidation) requestPositionSnapshotRevalidation();
       return;
@@ -290,6 +291,7 @@ class AccountSocketManager {
 
     const { event, position } = readPositionStreamEvent(raw);
     if (!position) return;
+    if (POSITION_CLOSED_EVENTS.has(event)) markPositionsClosed([getPositionId(position)]);
     const result = reconcilePositionStreamBatch(store.positions, {
       mode: 'delta',
       positions: [POSITION_CLOSED_EVENTS.has(event) ? { ...position, closed: true } : position],

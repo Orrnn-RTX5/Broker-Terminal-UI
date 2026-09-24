@@ -72,6 +72,21 @@ export const mergeFormingCandleEnvelope = <T extends CandleHistoryCandle>(
 };
 
 /**
+ * Resolve the canonical server revision used by both the chart and its cache.
+ * An explicit final remains authoritative and may contract a bad local wick,
+ * while a delayed partial cannot reopen an already-final candle.
+ */
+export const resolveCanonicalServerCandle = <T extends CandleHistoryCandle>(
+  activeCandle: T | null | undefined,
+  incoming: T,
+): T => {
+  if (activeCandle?.time !== incoming.time) return { ...incoming };
+  if (incoming.closed === true) return { ...incoming };
+  if (activeCandle.closed === true) return { ...activeCandle };
+  return mergeFormingCandleEnvelope(activeCandle, incoming);
+};
+
+/**
  * Apply one real quote tick to an existing forming candle. A zero volume can
  * mean that the backend omitted volume; it does not mean the candle's OHLC is
  * synthetic or safe to reset.

@@ -1,488 +1,231 @@
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import { Icon } from '../ui/Icon';
-import React, { useState, useEffect, useRef } from 'react';
+import { Icon, type IconName } from '../ui/Icon';
 import { useSettingsStore, type SettingsState } from '../../store/useSettingsStore';
 import { useAppStore } from '../../store/useAppStore';
 import { NotificationPreferences } from './NotificationPreferences';
+import { SettingsField, SettingsNotice, SettingsSection, SettingsToggle } from './OptionsControls';
+import './options-dialog.css';
 
-interface OptionsDialogProps {
-    isOpen: boolean;
-    onClose: () => void;
+interface OptionsDialogProps { isOpen: boolean; onClose: () => void; }
+type TabId = 'server' | 'charts' | 'trade' | 'automation' | 'events' | 'notifications' | 'email' | 'ftp' | 'community' | 'signals';
+const TABS: { id: TabId; label: string; icon: IconName; title: string; description: string; group?: string; unavailable?: boolean }[] = [
+    { id: 'server', label: 'Server', icon: 'server', title: 'Server & connection', description: 'Account details and terminal startup preferences.', group: 'Workspace' },
+    { id: 'charts', label: 'Charts', icon: 'candlestick', title: 'Charts', description: 'Display preferences, drawing tools and chart history.' },
+    { id: 'trade', label: 'Trade', icon: 'sliders-horizontal', title: 'Trading preferences', description: 'Default values and confirmation preferences for trading.' },
+    { id: 'automation', label: 'Automation & Bots', icon: 'code', title: 'Automation & Bots', description: 'Strategy preferences and access to external resources.' },
+    { id: 'events', label: 'Events', icon: 'activity', title: 'Events', description: 'Sound profiles for terminal and system events.', group: 'Communication', unavailable: true },
+    { id: 'notifications', label: 'Notifications', icon: 'bell', title: 'Notifications', description: 'Choose which updates you receive and how they reach you.' },
+    { id: 'email', label: 'Email', icon: 'mail', title: 'Email', description: 'Email delivery for alerts and terminal updates.', unavailable: true },
+    { id: 'ftp', label: 'FTP', icon: 'hard-drive', title: 'Report publishing', description: 'Scheduled report delivery to an FTP server.', unavailable: true },
+    { id: 'community', label: 'Community', icon: 'globe', title: 'RTX5 Community', description: 'Your connection to the RTX5 community.', group: 'RTX5 services', unavailable: true },
+    { id: 'signals', label: 'Signals', icon: 'wifi', title: 'RTX5 Signals Hub', description: 'Signal providers and subscription preferences.', unavailable: true },
+];
+
+export function OptionsDialog({ isOpen, onClose }: OptionsDialogProps) {
+    const [activeTab, setActiveTab] = useState<TabId>('server');
+    return isOpen ? <OpenOptionsDialog onClose={onClose} activeTab={activeTab} setActiveTab={setActiveTab} /> : null;
 }
 
-type TabId = 'server' | 'charts' | 'trade' | 'automation' | 'events' | 'notifications' | 'email' | 'ftp' | 'community' | 'signals';
-
-export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose }) => {
+function OpenOptionsDialog({ onClose, activeTab, setActiveTab }: {
+    onClose: () => void; activeTab: TabId; setActiveTab: (tab: TabId) => void;
+}) {
     const tr = useUiTranslation();
-    const [activeTab, setActiveTab] = useState<TabId>('server');
-    const snapshotRef = useRef<SettingsState | null>(null);
-
-    const getSnapshot = useSettingsStore((state) => state.getSnapshot);
-    const restoreSnapshot = useSettingsStore((state) => state.restoreSnapshot);
-
-    // Capture snapshot when dialog opens
-    useEffect(() => {
-        if (isOpen) {
-            snapshotRef.current = getSnapshot();
-        }
-    }, [isOpen, getSnapshot]);
-
-    // Handle Cancel - revert to snapshot
-    const handleCancel = () => {
-        if (snapshotRef.current) {
-            restoreSnapshot(snapshotRef.current);
-        }
+    const settings = useSettingsStore();
+    const [baseline, setBaseline] = useState<SettingsState>(() => useSettingsStore.getState().getSnapshot());
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const currentTab = TABS.find((tab) => tab.id === activeTab)!;
+    const dirty = JSON.stringify(settings.getSnapshot()) !== JSON.stringify(baseline);
+    const handleCancel = useCallback(() => {
+        useSettingsStore.getState().restoreSnapshot(baseline);
         onClose();
+    }, [baseline, onClose]);
+    const handleApply = () => {
+        setBaseline(settings.getSnapshot());
     };
-
-    // Handle OK - just close (settings already persisted)
-    const handleOK = () => {
-        onClose();
-    };
-
-    // Close on Escape
+    const cancelFromKeyboard = useEffectEvent(handleCancel);
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && isOpen) handleCancel();
+        const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        dialogRef.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
+        const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault(); event.stopPropagation(); cancelFromKeyboard();
+            }
+            if (event.key !== 'Tab') return;
+            const elements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+                ':is(button, input, select, [tabindex="0"]):not(:disabled)'
+            ) ?? []).filter((element) => element.tabIndex >= 0 && !element.closest('[hidden]'));
+            const first = elements[0]; const last = elements[elements.length - 1];
+            if (event.shiftKey && (document.activeElement === first || !dialogRef.current?.contains(document.activeElement))) {
+                event.preventDefault(); last?.focus();
+            } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current?.contains(document.activeElement))) {
+                event.preventDefault(); first?.focus();
+            }
         };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen]);
-
-    if (!isOpen) return null;
-
-    const tabs: { id: TabId; label: string }[] = [
-        { id: 'server', label: 'Server' },
-        { id: 'charts', label: 'Charts' },
-        { id: 'trade', label: 'Trade' },
-        { id: 'automation', label: 'Automation & Bots' },
-        { id: 'events', label: 'Events' },
-        { id: 'notifications', label: 'Notifications' },
-        { id: 'email', label: 'Email' },
-        { id: 'ftp', label: 'FTP' },
-        { id: 'community', label: 'Community' },
-        { id: 'signals', label: 'Signals' },
-    ];
-
-    return (
-        <div className="rtx-options-dialog-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="rtx-options-dialog w-[800px] h-[600px] bg-[#252528] rounded-lg shadow-2xl border border-zinc-700 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="h-10 bg-[#131316] border-b border-zinc-700 flex items-center justify-between px-4 select-none">
-                    <span className="rtx-dialog-title text-[20px] leading-7 font-semibold text-zinc-200">{tr("Options")}</span>
-                    <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
-                        <Icon name="x-close" size="md" />
-                    </button>
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown, true);
+            if (previousFocus?.isConnected) previousFocus.focus();
+        };
+    }, []);
+    const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+        let next = index;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % TABS.length;
+        else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (index - 1 + TABS.length) % TABS.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = TABS.length - 1;
+        else return;
+        event.preventDefault(); setActiveTab(TABS[next].id);
+        dialogRef.current?.querySelector<HTMLButtonElement>(`#options-tab-${TABS[next].id}`)?.focus();
+    };
+    return createPortal(
+        <div className="rtx-options-dialog-backdrop">
+            <div className="rtx-options-dialog text-[14px] font-normal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="options-title" aria-describedby="options-description" onKeyDown={(event) => event.stopPropagation()}>
+                <header className="options-header">
+                    <span className="options-header-icon"><Icon name="settings" size={22} /></span>
+                    <div className="options-header-copy"><h2 className="rtx-dialog-title" id="options-title">{tr('Options')}</h2><p id="options-description">{tr('Personalize your terminal workspace')}</p></div>
+                    <button className="options-close" onClick={handleCancel} aria-label={tr('Close options')}><Icon name="x-close" size={18} /></button>
+                </header>
+                <div className="options-layout">
+                    <aside className="options-sidebar">
+                        <div role="tablist" aria-label={tr('Options categories')} aria-orientation="vertical" className="options-navigation">
+                            {TABS.map((tab, index) => <div key={tab.id} role="presentation">
+                                {tab.group && <div className="options-nav-group" role="presentation">{tr(tab.group)}</div>}
+                                <button id={`options-tab-${tab.id}`} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`options-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} className="options-nav-item" onClick={() => setActiveTab(tab.id)} onKeyDown={(event) => handleTabKeyDown(event, index)}>
+                                    <Icon name={tab.icon} size={17} /><span>{tr(tab.label)}</span>{tab.unavailable && <Icon name="lock" size={12} className="options-nav-lock" />}
+                                </button>
+                            </div>)}
+                        </div>
+                        <div className="options-sidebar-note"><Icon name="monitor" size={15} /><span>{tr('Terminal preferences')}</span></div>
+                    </aside>
+                    <div className="options-content" key={activeTab} id={`options-panel-${activeTab}`} role="tabpanel" aria-labelledby={`options-tab-${activeTab}`} tabIndex={0}>
+                        <div className="options-page-heading"><h2>{tr(currentTab.title)}</h2><p>{tr(currentTab.description)}</p></div>
+                        {activeTab === 'server' && <ServerTab />}
+                        {activeTab === 'charts' && <ChartsTab />}
+                        {activeTab === 'trade' && <TradeTab />}
+                        {activeTab === 'automation' && <AutomationTab />}
+                        {activeTab === 'notifications' && <NotificationPreferences />}
+                        {currentTab.unavailable && <UnavailableTab tab={currentTab.id} icon={currentTab.icon} />}
+                    </div>
                 </div>
-
-                {/* Tabs */}
-                <div className="bg-[#131316] border-b border-zinc-700 px-2 flex items-center gap-1 overflow-x-auto scrollbar-hide">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`px-3 py-2 text-[14px] border-b-2 transition-all whitespace-nowrap
-                                ${activeTab === tab.id
-                                    ? 'border-zinc-600 text-blue-400 font-semibold'
-                                    : 'border-transparent text-zinc-400 font-normal hover:text-zinc-200 hover:bg-zinc-800/50'}`}
-                        >
-                            {tr(tab.label)}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6 bg-[#252528]">
-                    {activeTab === 'server' && <ServerTab />}
-                    {activeTab === 'charts' && <ChartsTab />}
-                    {activeTab === 'trade' && <TradeTab />}
-                    {activeTab === 'automation' && <AutomationTab />}
-                    {activeTab === 'events' && <PlaceholderTab icon={<Icon name="activity" size="xl" />} title={tr("Events")} desc="Configure sound notifications and system events." />}
-                    {activeTab === 'notifications' && <NotificationPreferences />}
-                    {activeTab === 'email' && <PlaceholderTab icon={<Icon name="mail" size="xl" />} title={tr("Email")} desc="SMTP server configuration for alerts." />}
-                    {activeTab === 'ftp' && <PlaceholderTab icon={<Icon name="hard-drive" size="xl" />} title={tr("FTP")} desc="Automated report publishing settings." />}
-                    {activeTab === 'community' && <PlaceholderTab icon={<Icon name="globe" size="xl" />} title={tr("RTX5 Community")} desc="Login to the proprietary RTX5 ecosystem." />}
-                    {activeTab === 'signals' && <PlaceholderTab icon={<Icon name="wifi" size="xl" />} title={tr("RTX5 Signals Hub")} desc="Subscribe to institutional signal providers." />}
-                </div>
-
-                {/* Footer */}
-                <div className="h-14 bg-[#131316] border-t border-zinc-700 flex items-center justify-end px-4 gap-3">
-                    <button onClick={handleCancel} className="rounded px-4 py-1.5 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-zinc-700">
-                        {tr("Cancel")}</button>
-                    <button onClick={handleOK} className="rounded bg-zinc-700 px-4 py-1.5 text-[14px] font-semibold text-white transition-colors hover:bg-zinc-600">
-                        {tr("Apply")}</button>
-                    <button onClick={handleOK} className="rounded bg-zinc-700 px-4 py-1.5 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-zinc-600">
-                        {tr("OK")}</button>
-                </div>
+                <footer className="options-footer">
+                    <div className="options-save-status text-[12px] font-normal" role="status"><Icon name={dirty ? 'info' : 'check-circle'} size={15} /><span>{tr(dirty ? 'Unapplied changes' : 'All changes applied')}</span></div>
+                    <div className="options-footer-actions"><button className="options-button options-button--quiet" onClick={handleCancel}>{tr('Cancel')}</button><button className="options-button options-button--secondary" onClick={handleApply} disabled={!dirty}>{tr('Apply')}</button><button className="options-button options-button--primary" onClick={onClose}>{tr('OK')}</button></div>
+                </footer>
             </div>
-        </div>
+        </div>, document.body
     );
-};
+}
 
-const ServerTab = () => {
+function ServerTab() {
     const tr = useUiTranslation();
     const server = useSettingsStore((state) => state.server);
-    const updateServerSettings = useSettingsStore((state) => state.updateServerSettings);
-    const accountId = useAppStore(state => state.accountId);
-
-    return (
-        <div className="space-y-6 text-[14px] font-normal text-zinc-300">
-            <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                <label className="text-right text-zinc-400">{tr("Server:")}</label>
-                <input
-                    type="text"
-                    value={server.serverName || "RTX 5 Web Terminal"}
-                    readOnly
-                    className="w-full bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none cursor-not-allowed opacity-80 text-zinc-400"
-                />
-
-                <label className="text-right text-zinc-400">{tr("Login:")}</label>
-                <input type="text" value={accountId || tr("Guest")} readOnly className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none focus:border-zinc-600" />
-
-                <label className="text-right text-zinc-400">{tr("Password:")}</label>
-                <div className="flex gap-2">
-                    <input type="text" value="********" readOnly className="flex-1 bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none focus:border-zinc-600" />
-                    <button className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-zinc-200">{tr("Change")}</button>
-                </div>
+    const update = useSettingsStore((state) => state.updateServerSettings);
+    const accountId = useAppStore((state) => state.accountId);
+    return <div className="options-stack">
+        <SettingsSection title="Account details" action={<span className="options-badge">{tr('Read only')}</span>}>
+            <div className="options-field-grid">
+                <SettingsField label="Server" htmlFor="options-server"><input id="options-server" className="options-control" value={server.serverName || 'RTX 5 Web Terminal'} readOnly /></SettingsField>
+                <SettingsField label="Login" htmlFor="options-login"><input id="options-login" className="options-control" value={accountId || tr('Guest')} readOnly /></SettingsField>
             </div>
+            <div className="options-field"><label htmlFor="options-password">{tr('Password')}</label><div className="options-input-action"><input id="options-password" className="options-control" value="••••••••" readOnly /><button className="options-button options-button--secondary" disabled>{tr('Change')}</button></div><p className="options-field-hint">{tr('Password changes are not available in this window.')}</p></div>
+        </SettingsSection>
+        <SettingsSection title="Connection & startup">
+            <SettingsToggle label="Enable proxy server" description="Use a proxy for the terminal connection." checked={server.proxyEnabled} onChange={(proxyEnabled) => update({ proxyEnabled })} />
+            {server.proxyEnabled && <SettingsNotice>{tr('Proxy configuration is not available in this terminal.')}</SettingsNotice>}
+            <SettingsToggle label="Keep personal settings and data at startup" description="Retain your saved workspace preferences between sessions." checked={server.keepPersonalSettings} onChange={(keepPersonalSettings) => update({ keepPersonalSettings })} />
+            <SettingsToggle label="Enable news" checked={server.enableNews} onChange={(enableNews) => update({ enableNews })} />
+        </SettingsSection>
+    </div>;
+}
 
-            <div className="ml-[116px] space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={server.proxyEnabled}
-                        onChange={(e) => updateServerSettings({ proxyEnabled: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-0 focus:ring-offset-0"
-                    />
-                    <span>{tr("Enable proxy server")}</span>
-                    <button className="ml-auto px-3 py-0.5 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700">{tr("Proxy...")}</button>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={server.keepPersonalSettings}
-                        onChange={(e) => updateServerSettings({ keepPersonalSettings: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-0 focus:ring-offset-0"
-                    />
-                    <span>{tr("Keep personal settings and data at startup")}</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={server.enableNews}
-                        onChange={(e) => updateServerSettings({ enableNews: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-0 focus:ring-offset-0"
-                    />
-                    <span>{tr("Enable news")}</span>
-                </label>
-            </div>
-        </div>
-    );
-};
-
-const ChartsTab = () => {
+function ChartsTab() {
     const tr = useUiTranslation();
     const charts = useSettingsStore((state) => state.charts);
-    const updateChartsSettings = useSettingsStore((state) => state.updateChartsSettings);
+    const update = useSettingsStore((state) => state.updateChartsSettings);
+    return <div className="options-stack">
+        <SettingsSection title="Trade display">
+            <SettingsToggle label="Show trade history" description="Display previous trades on the chart." checked={charts.showTradeHistory} onChange={(showTradeHistory) => update({ showTradeHistory })} />
+            <SettingsToggle label="Show trade levels" description="Display price levels for positions and orders." checked={charts.showTradeLevels} onChange={(showTradeLevels) => update({ showTradeLevels })} />
+            <SettingsField label="Trade level dragging" htmlFor="options-dragging"><select id="options-dragging" className="options-control" value={charts.tradeLevelsDragging} onChange={(e) => update({ tradeLevelsDragging: e.target.value as 'enabled' | 'disabled' })}><option value="enabled">{tr('Enable dragging of trade levels')}</option><option value="disabled">{tr('Disable dragging')}</option></select></SettingsField>
+        </SettingsSection>
+        <SettingsSection title="Drawing tools">
+            <SettingsToggle label="Show object properties after creation" checked={charts.showObjectPropertiesAfterCreation} onChange={(showObjectPropertiesAfterCreation) => update({ showObjectPropertiesAfterCreation })} />
+            <SettingsToggle label="Select object after creation" checked={charts.selectObjectAfterCreation} onChange={(selectObjectAfterCreation) => update({ selectObjectAfterCreation })} />
+            <SettingsField label="Magnet sensitivity" htmlFor="options-magnet"><select id="options-magnet" className="options-control" value={charts.magnetSensitivity} onChange={(e) => update({ magnetSensitivity: Number(e.target.value) })}>{[5, 10, 20].map((value) => <option key={value} value={value}>{value} {tr('pixels')}</option>)}</select></SettingsField>
+        </SettingsSection>
+        <SettingsSection title="Data & performance">
+            <SettingsToggle label="Preload chart data for open positions and orders" checked={charts.preloadChartData} onChange={(preloadChartData) => update({ preloadChartData })} />
+            <SettingsField label="Max bars in chart" htmlFor="options-bars"><select id="options-bars" className="options-control" value={charts.maxBarsInChart} onChange={(e) => update({ maxBarsInChart: e.target.value === 'unlimited' ? 'unlimited' : Number(e.target.value) })}><option value="100000">100,000</option><option value="unlimited">{tr('Unlimited')}</option></select></SettingsField>
+        </SettingsSection>
+    </div>;
+}
 
-    return (
-        <div className="space-y-4 text-[14px] font-normal text-zinc-300">
-            <div className="space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={charts.showTradeHistory}
-                        onChange={(e) => updateChartsSettings({ showTradeHistory: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span>{tr("Show trade history")}</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={charts.showTradeLevels}
-                        onChange={(e) => updateChartsSettings({ showTradeLevels: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span>{tr("Show trade levels")}</span>
-                </label>
-                <div className="ml-6">
-                    <select
-                        value={charts.tradeLevelsDragging}
-                        onChange={(e) => updateChartsSettings({ tradeLevelsDragging: e.target.value as 'enabled' | 'disabled' })}
-                        className="w-full bg-[#131316] border border-zinc-700 rounded px-2 py-1"
-                    >
-                        <option value="enabled">{tr("Enable dragging of trade levels")}</option>
-                        <option value="disabled">{tr("Disable dragging")}</option>
-                    </select>
-                </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={charts.preloadChartData}
-                        onChange={(e) => updateChartsSettings({ preloadChartData: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span>{tr("Preload chart data for open positions and orders")}</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={charts.showObjectPropertiesAfterCreation}
-                        onChange={(e) => updateChartsSettings({ showObjectPropertiesAfterCreation: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span>{tr("Show object properties after creation")}</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={charts.selectObjectAfterCreation}
-                        onChange={(e) => updateChartsSettings({ selectObjectAfterCreation: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span>{tr("Select object after creation")}</span>
-                </label>
-            </div>
-
-            <div className="grid grid-cols-[120px_1fr] gap-4 pt-4 border-t border-zinc-700/50">
-                <label className="text-right text-zinc-400">{tr("Magnet sensitivity:")}</label>
-                <select
-                    value={charts.magnetSensitivity}
-                    onChange={(e) => updateChartsSettings({ magnetSensitivity: parseInt(e.target.value) })}
-                    className="w-20 bg-[#131316] border border-zinc-700 rounded px-2 py-1"
-                >
-                    <option value="5">5</option>
-                    <option value="10">10</option>
-                    <option value="20">20</option>
-                </select>
-
-                <label className="text-right text-zinc-400">{tr("Max bars in chart:")}</label>
-                <select
-                    value={charts.maxBarsInChart}
-                    onChange={(e) => updateChartsSettings({ maxBarsInChart: e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value) })}
-                    className="w-32 bg-[#131316] border border-zinc-700 rounded px-2 py-1"
-                >
-                    <option value="100000">100000</option>
-                    <option value="unlimited">{tr("Unlimited")}</option>
-                </select>
-            </div>
-        </div>
-    );
-};
-
-const TradeTab = () => {
+function TradeTab() {
     const tr = useUiTranslation();
     const trade = useSettingsStore((state) => state.trade);
-    const updateTradeSettings = useSettingsStore((state) => state.updateTradeSettings);
+    const update = useSettingsStore((state) => state.updateTradeSettings);
     const selectedSymbol = useAppStore((state) => state.selectedSymbol);
-
-    return (
-        <div className="space-y-5 text-[14px] font-normal text-zinc-300">
-            <div className="grid grid-cols-[100px_1fr_1fr] gap-4 items-center">
-                <label className="text-right text-zinc-400">{tr("Symbol:")}</label>
-                <select
-                    value={trade.defaultSymbolMode}
-                    onChange={(e) => updateTradeSettings({ defaultSymbolMode: e.target.value as 'automatic' | 'last-used' })}
-                    className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 focus:border-zinc-600"
-                >
-                    <option value="automatic">{tr("Automatic")}</option>
-                    <option value="last-used">{tr("Last Used")}</option>
-                </select>
-                <div className="text-zinc-500 italic">{selectedSymbol || 'EURUSD'}</div>
-
-                <label className="text-right text-zinc-400">{tr("Volume:")}</label>
-                <select
-                    value={trade.defaultVolumeMode}
-                    onChange={(e) => updateTradeSettings({ defaultVolumeMode: e.target.value as 'last-used' | 'default' })}
-                    className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 focus:border-zinc-600"
-                >
-                    <option value="last-used">{tr("Last Used")}</option>
-                    <option value="default">{tr("Default")}</option>
-                </select>
-                <input
-                    type="number"
-                    value={trade.defaultVolume}
-                    onChange={(e) => updateTradeSettings({ defaultVolume: parseFloat(e.target.value) || 0.01 })}
-                    step="0.01"
-                    min="0.01"
-                    className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 w-24"
-                />
-
-                <label className="text-right text-zinc-400">{tr("Deviation:")}</label>
-                <select
-                    value={trade.defaultDeviationMode}
-                    onChange={(e) => updateTradeSettings({ defaultDeviationMode: e.target.value as 'last-used' | 'default' })}
-                    className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 focus:border-zinc-600"
-                >
-                    <option value="last-used">{tr("Last Used")}</option>
-                    <option value="default">{tr("Default")}</option>
-                </select>
-                <input
-                    type="number"
-                    value={trade.defaultDeviation}
-                    onChange={(e) => updateTradeSettings({ defaultDeviation: parseInt(e.target.value) || 0 })}
-                    min="0"
-                    className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 w-24"
-                />
+    return <div className="options-stack">
+        <SettingsSection title="Order defaults" description="Choose the preferred starting values for an order.">
+            <SettingsField label="Symbol" htmlFor="options-symbol"><div className="options-input-action"><select id="options-symbol" className="options-control" value={trade.defaultSymbolMode} onChange={(e) => update({ defaultSymbolMode: e.target.value as 'automatic' | 'last-used' })}><option value="automatic">{tr('Automatic')}</option><option value="last-used">{tr('Last Used')}</option></select><span className="options-symbol-badge">{selectedSymbol || 'EURUSD'}</span></div></SettingsField>
+            <div className="options-field-grid">
+                <SettingsField label="Volume" htmlFor="options-volume-mode"><select id="options-volume-mode" className="options-control" value={trade.defaultVolumeMode} onChange={(e) => update({ defaultVolumeMode: e.target.value as 'last-used' | 'default' })}><option value="last-used">{tr('Last Used')}</option><option value="default">{tr('Default')}</option></select></SettingsField>
+                <SettingsField label="Default volume (lots)" htmlFor="options-volume"><input id="options-volume" className="options-control" type="number" min="0.01" step="0.01" value={trade.defaultVolume} onChange={(e) => update({ defaultVolume: parseFloat(e.target.value) || 0.01 })} /></SettingsField>
+                <SettingsField label="Deviation" htmlFor="options-deviation-mode"><select id="options-deviation-mode" className="options-control" value={trade.defaultDeviationMode} onChange={(e) => update({ defaultDeviationMode: e.target.value as 'last-used' | 'default' })}><option value="last-used">{tr('Last Used')}</option><option value="default">{tr('Default')}</option></select></SettingsField>
+                <SettingsField label="Default deviation (points)" htmlFor="options-deviation"><input id="options-deviation" className="options-control" type="number" min="0" value={trade.defaultDeviation} onChange={(e) => update({ defaultDeviation: parseInt(e.target.value) || 0 })} /></SettingsField>
             </div>
+        </SettingsSection>
+        <SettingsSection title="Trade confirmation"><SettingsToggle label="One Click Trading" description="Allows trade operations with a single click without an additional confirmation." checked={trade.oneClickTrading} onChange={(oneClickTrading) => update({ oneClickTrading })} /></SettingsSection>
+    </div>;
+}
 
-            <div className="pt-4 border-t border-zinc-700/50">
-                <label className="flex items-center gap-2 cursor-pointer group">
-                    <div className="relative">
-                        <input
-                            type="checkbox"
-                            checked={trade.oneClickTrading}
-                            onChange={(e) => updateTradeSettings({ oneClickTrading: e.target.checked })}
-                            className="peer sr-only"
-                        />
-                        <div className="w-9 h-5 bg-zinc-700 rounded-full peer peer-checked:bg-blue-600 transition-colors"></div>
-                        <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full peer-checked:translate-x-4 transition-transform"></div>
-                    </div>
-                    <span className="font-medium group-hover:text-white transition-colors">{tr("One Click Trading")}</span>
-                </label>
-                <p className="ml-11 mt-2 text-[12px] font-normal text-zinc-500">
-                    {tr("Allows performing trade operations with a single mouse click without additional confirmation.")}</p>
-            </div>
-        </div>
-    );
-};
-
-const AutomationTab = () => {
+function AutomationTab() {
     const tr = useUiTranslation();
     const [newURL, setNewURL] = useState('');
+    const [urlError, setUrlError] = useState('');
     const automation = useSettingsStore((state) => state.automation);
-    const updateAutomationSettings = useSettingsStore((state) => state.updateAutomationSettings);
-    const addAllowedURL = useSettingsStore((state) => state.addAllowedURL);
-    const removeAllowedURL = useSettingsStore((state) => state.removeAllowedURL);
-
+    const update = useSettingsStore((state) => state.updateAutomationSettings);
+    const addURL = useSettingsStore((state) => state.addAllowedURL);
+    const removeURL = useSettingsStore((state) => state.removeAllowedURL);
     const handleAddURL = () => {
-        if (newURL.trim() && newURL.startsWith('http')) {
-            addAllowedURL(newURL.trim());
-            setNewURL('');
-        }
+        const value = newURL.trim();
+        try { const url = new URL(value); if (!['http:', 'https:'].includes(url.protocol)) throw new Error('protocol'); }
+        catch { setUrlError('Enter a valid HTTP or HTTPS URL.'); return; }
+        if (automation.allowedURLs.includes(value)) { setUrlError('This URL is already in the list.'); return; }
+        addURL(value); setNewURL(''); setUrlError('');
     };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleAddURL();
-        }
-    };
-
-    return (
-        <div className="space-y-5 text-[14px] font-normal text-zinc-300">
-            <div className="space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={automation.enableStrategies}
-                        onChange={(e) => updateAutomationSettings({ enableStrategies: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span className="font-medium text-zinc-200">{tr("Enable automated strategies")}</span>
-                </label>
-                <div className="ml-6 space-y-2 text-zinc-400">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={automation.disableOnAccountChange}
-                            onChange={(e) => updateAutomationSettings({ disableOnAccountChange: e.target.checked })}
-                            disabled={!automation.enableStrategies}
-                            className="rounded bg-zinc-700 border-zinc-600 text-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        <span>{tr("Disable strategies when the account has been changed")}</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={automation.disableOnProfileChange}
-                            onChange={(e) => updateAutomationSettings({ disableOnProfileChange: e.target.checked })}
-                            disabled={!automation.enableStrategies}
-                            className="rounded bg-zinc-700 border-zinc-600 text-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        <span>{tr("Disable strategies when the profile has been changed")}</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={automation.disableOnChartChange}
-                            onChange={(e) => updateAutomationSettings({ disableOnChartChange: e.target.checked })}
-                            disabled={!automation.enableStrategies}
-                            className="rounded bg-zinc-700 border-zinc-600 text-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        <span>{tr("Disable strategies when the charts symbol or period has been changed")}</span>
-                    </label>
-                </div>
+    return <div className="options-stack">
+        <SettingsSection title="Automated strategies">
+            <SettingsToggle label="Enable automated strategies" checked={automation.enableStrategies} onChange={(enableStrategies) => update({ enableStrategies })} />
+            <div className="options-dependent-settings">
+                <SettingsToggle label="Disable strategies when the account has been changed" disabled={!automation.enableStrategies} checked={automation.disableOnAccountChange} onChange={(disableOnAccountChange) => update({ disableOnAccountChange })} />
+                <SettingsToggle label="Disable strategies when the profile has been changed" disabled={!automation.enableStrategies} checked={automation.disableOnProfileChange} onChange={(disableOnProfileChange) => update({ disableOnProfileChange })} />
+                <SettingsToggle label="Disable strategies when the charts symbol or period has been changed" disabled={!automation.enableStrategies} checked={automation.disableOnChartChange} onChange={(disableOnChartChange) => update({ disableOnChartChange })} />
             </div>
-
-            <div className="space-y-3 pt-4 border-t border-zinc-700/50">
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={automation.allowDLL}
-                        onChange={(e) => updateAutomationSettings({ allowDLL: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span className="flex items-center gap-2">
-                        {tr("External library access (DLL)")}<Icon name="alert-triangle" size="xs" className="text-amber-500" />
-                        <span className="text-zinc-500">{tr("(potentially dangerous, enable only for trusted applications)")}</span>
-                    </span>
-                </label>
+        </SettingsSection>
+        <SettingsSection title="External access">
+            <SettingsToggle label="External library access (DLL)" description="Potentially dangerous. Enable only for trusted applications." checked={automation.allowDLL} onChange={(allowDLL) => update({ allowDLL })} />
+            <SettingsToggle label="Allow WebRequest for listed URL:" description="Manage the addresses your automated strategies may access." checked={automation.allowWebRequest} onChange={(allowWebRequest) => update({ allowWebRequest })} />
+            <div className="options-url-list" aria-label={tr('Allowed URLs')}>
+                {automation.allowedURLs.length === 0 && <p className="options-empty-list">{tr('No URLs added yet.')}</p>}
+                {automation.allowedURLs.map((url, index) => <div className="options-url-row" key={`${url}-${index}`}><Icon name="globe" size={15} /><span>{url}</span><button className="options-icon-button" onClick={() => removeURL(url)} aria-label={`${tr('Remove')} ${url}`}><Icon name="trash" size={15} /></button></div>)}
             </div>
+            <SettingsField label="Allowed URL" htmlFor="options-new-url"><div className="options-input-action"><input id="options-new-url" className="options-control" type="url" placeholder="https://api.example.com" value={newURL} aria-invalid={!!urlError} aria-describedby={urlError ? 'options-url-error' : undefined} onChange={(e) => { setNewURL(e.target.value); setUrlError(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddURL(); } }} /><button className="options-button options-button--secondary" disabled={!newURL.trim()} onClick={handleAddURL}><Icon name="plus" size={14} />{tr('Add URL')}</button></div></SettingsField>
+            {urlError && <p className="options-error" id="options-url-error" role="alert">{tr(urlError)}</p>}
+        </SettingsSection>
+    </div>;
+}
 
-            <div className="space-y-2 pt-4 border-t border-zinc-700/50">
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={automation.allowWebRequest}
-                        onChange={(e) => updateAutomationSettings({ allowWebRequest: e.target.checked })}
-                        className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
-                    />
-                    <span>{tr("Allow WebRequest for listed URL:")}</span>
-                </label>
-                <div className="border border-zinc-700 rounded bg-[#131316] h-32 overflow-y-auto">
-                    {automation.allowedURLs.map((url, index) => (
-                        <div key={index} className="flex items-center gap-2 px-2 py-1.5 border-b border-zinc-800 hover:bg-zinc-800/50 group">
-                            <Icon name="globe" size="xs" className="text-blue-400" />
-                            <span className="flex-1">{url}</span>
-                            <button
-                                onClick={() => removeAllowedURL(url)}
-                                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity"
-                            >
-                                <Icon name="trash" size="xs" />
-                            </button>
-                        </div>
-                    ))}
-                    <div className="flex items-center gap-2 px-2 py-1.5">
-                        <span className="text-emerald-500 font-bold">+</span>
-                        <input
-                            type="text"
-                            value={newURL}
-                            onChange={(e) => setNewURL(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="https://api.example.com"
-                            className="flex-1 bg-transparent outline-none text-zinc-300 placeholder:text-zinc-600"
-                        />
-                        {newURL && (
-                            <button
-                                onClick={handleAddURL}
-                                className="text-[14px] font-normal text-emerald-500 hover:text-emerald-400"
-                            >
-                                {tr("ADD")}</button>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+const UNAVAILABLE_CONTENT: Partial<Record<TabId, { title: string; description: string; features: string[] }>> = {
+    events: { title: 'Event sound profiles', description: 'Custom event sounds are not available in this terminal. You can manage notification sounds in Notifications.', features: ['Connection & system events', 'Custom sound profiles', 'Event playback preferences'] },
+    email: { title: 'Email delivery', description: 'Email configuration is not available in this terminal.', features: ['SMTP server configuration', 'Sender & recipient details', 'Email alert delivery'] },
+    ftp: { title: 'Automated report publishing', description: 'FTP publishing is not available in this terminal.', features: ['FTP server connection', 'Report destination', 'Publishing schedule'] },
+    community: { title: 'Connect with the RTX5 community', description: 'Community accounts are not available in this terminal.', features: ['Community account', 'Shared resources', 'Account preferences'] },
+    signals: { title: 'Signal subscriptions', description: 'Signal subscriptions are not available in this terminal.', features: ['Signal providers', 'Subscription management', 'Signal preferences'] },
 };
-
-const PlaceholderTab = ({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) => { const tr = useUiTranslation(); return ((
-    <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
-        <div className="text-zinc-600">{icon}</div>
-        <div>
-            <h3 className="text-[14px] font-semibold text-zinc-300">{tr(title)}</h3>
-            <p className="mx-auto max-w-xs text-[12px] font-normal text-zinc-500">{tr(desc)}</p>
-        </div>
-    </div>
-)); };
+function UnavailableTab({ tab, icon }: { tab: TabId; icon: IconName }) {
+    const tr = useUiTranslation(); const content = UNAVAILABLE_CONTENT[tab]!;
+    return <section className="options-unavailable"><div className="options-unavailable-icon"><Icon name={icon} size={28} /></div><span className="options-badge"><Icon name="lock" size={12} />{tr('Not available')}</span><h3>{tr(content.title)}</h3><p>{tr(content.description)}</p><div className="options-feature-list">{content.features.map((feature) => <div key={feature}><Icon name="lock" size={14} /><span>{tr(feature)}</span></div>)}</div></section>;
+}

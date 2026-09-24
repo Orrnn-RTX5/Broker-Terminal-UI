@@ -17,8 +17,8 @@ services:
       - WS_HOST=wss://service.orrnn.com
       - DEFAULT_MT5_SERVER=Orrnn
       - DISCOVERY_BASE_URL=https://superadmin-prod.orrnn.com
-      - BROKER_ID=orrnn
-      - FEED_BROKER_ID=orrnn
+      - BROKER_ID=Orrnn
+      - FEED_BROKER_ID=Orrnn
       - USE_MOCK_DISCOVERY=false
     labels:
       - "rtx5.component=webterminal"

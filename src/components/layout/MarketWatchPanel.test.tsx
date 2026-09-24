@@ -693,7 +693,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     }
   });
 
-  it('subscribes only intersecting public-catalog rows and drops rows after scroll-out', () => {
+  it('keeps the full active watchlist subscribed as rows enter and leave the viewport', () => {
     const observers: ControlledIntersectionObserver[] = [];
 
     class ControlledIntersectionObserver {
@@ -740,19 +740,19 @@ describe('MarketWatchPanel symbol visibility', () => {
     const btcRow = screen.getByText('BTCUSD').closest('tr')!;
     const eurRow = screen.getByText('EURUSD').closest('tr')!;
     expect(observer.observed).toEqual(new Set([xauRow, btcRow, eurRow]));
-    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith([]);
+    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(['XAUUSD', 'BTCUSD', 'EURUSD']);
 
     act(() => observer.emit([
       { target: btcRow, isIntersecting: true },
       { target: eurRow, isIntersecting: true },
     ]));
-    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(['BTCUSD', 'EURUSD']);
+    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(['XAUUSD', 'BTCUSD', 'EURUSD']);
 
     act(() => observer.emit([
       { target: xauRow, isIntersecting: true },
       { target: btcRow, isIntersecting: false },
     ]));
-    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(['XAUUSD', 'EURUSD']);
+    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(['XAUUSD', 'BTCUSD', 'EURUSD']);
   });
 
   it('keeps curated defaults visible in product order when feed freshness is partial', () => {

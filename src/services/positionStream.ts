@@ -224,7 +224,7 @@ export const readPositionStreamBatch = (message: any): PositionStreamBatch | nul
 export const reconcilePositionStreamBatch = <T extends { id: number }>(
   current: T[],
   batch: PositionStreamBatch,
-): { positions: T[]; needsRevalidation: boolean } => {
+): { positions: T[]; needsRevalidation: boolean; closedTickets: number[] } => {
   const currentById = new Map(current.map((position) => [Number(position.id), position]));
   const nextById = batch.mode === 'snapshot' ? new Map<number, T>() : new Map(currentById);
   let needsRevalidation = false;
@@ -259,10 +259,11 @@ export const reconcilePositionStreamBatch = <T extends { id: number }>(
   const positions = Array.from(nextById.values());
   const retained = current.filter((position) => !closedTickets.has(position.id));
   if (shouldDeferEmptyPositionSnapshot(retained, positions)) {
-    return { positions: retained, needsRevalidation: true };
+    return { positions: retained, needsRevalidation: true, closedTickets: Array.from(closedTickets) };
   }
   return {
     positions,
     needsRevalidation: needsRevalidation || (batch.positions.length === 0 && retained.length > 0),
+    closedTickets: Array.from(closedTickets),
   };
 };

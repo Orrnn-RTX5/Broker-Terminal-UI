@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ChartContextMenu } from './ChartContextMenu';
@@ -51,7 +51,7 @@ const renderMenu = (currentChartType: 'line' | 'area') => {
 };
 
 describe('ChartContextMenu chart types', () => {
-  it('keeps Line and Area separate and places Area immediately after Line', () => {
+  it('keeps Line and Area separate and places Area immediately after Line', async () => {
     const { onChangeChartType, onClose } = renderMenu('line');
     const lineLabel = screen.getByText('Line Chart');
     const areaLabel = screen.getByText('Area Chart');
@@ -63,11 +63,12 @@ describe('ChartContextMenu chart types', () => {
     expect(areaItem).toHaveStyle({ background: 'transparent' });
 
     fireEvent.click(areaItem);
-    expect(onChangeChartType).toHaveBeenCalledWith('area');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onChangeChartType).toHaveBeenCalledWith('area'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('marks only Area active when Area is selected and Line still selects Line', () => {
+  it('marks only Area active when Area is selected and Line still selects Line', async () => {
     const { onChangeChartType } = renderMenu('area');
     const lineItem = screen.getByText('Line Chart').parentElement as HTMLDivElement;
     const areaItem = screen.getByText('Area Chart').parentElement as HTMLDivElement;
@@ -76,6 +77,6 @@ describe('ChartContextMenu chart types', () => {
     expect(areaItem).toHaveStyle({ background: 'var(--ctx-item-active-bg, rgba(59, 130, 246, 0.15))' });
 
     fireEvent.click(lineItem);
-    expect(onChangeChartType).toHaveBeenCalledWith('line');
+    await waitFor(() => expect(onChangeChartType).toHaveBeenCalledWith('line'));
   });
 });
