@@ -59,6 +59,7 @@ export function normalizePosition(raw: any) {
 
   return {
     ...raw,
+    state_version: positionVersion(raw),
     id,
     symbol: raw.symbol || '',
     side: Number(raw.action) === 1 || ['sell', 'short'].includes(String(raw.side).toLowerCase()) ? 'SELL' as const : 'BUY' as const,
@@ -72,6 +73,7 @@ export function normalizePosition(raw: any) {
     swap: toFinite(raw.storage ?? raw.swap, 0),
     commission: toFinite(raw.commission, 0),
     unrealizedPnL,
+    hasBackendProfit: raw.pnl_available !== false && raw.hasBackendProfit !== false && hasOwnValue(raw, ['profit', 'unrealized_pl', 'unrealizedPnL']),
     comment: raw.comment,
     // FIX: Keep wire aliases synchronized with the canonical fields. Several
     // trade-table consumers still read these defensive aliases first.
@@ -109,8 +111,34 @@ export const isClosedPositionRecord = (raw: any): boolean => {
 
 export const mergePositionRecord = (raw: any, existing?: any): any => {
   if (existing && isOlderPositionVersion(raw, existing)) return existing;
+  if (existing && raw?.update_kind === 'pnl') {
+    const incomingTime = Number(raw.price_time_msc);
+    const previousTime = Number(existing.price_time_msc);
+    if (Number.isFinite(incomingTime) && Number.isFinite(previousTime) && incomingTime < previousTime) return existing;
+    // Display messages are never allowed to modify volume, side or protection,
+    // even if a legacy publisher accidentally includes those fields.
+    const profit = firstDefined(raw, ['profit', 'unrealized_pl', 'unrealizedPnL']);
+    const price = firstDefined(raw, ['price_current', 'current_price', 'currentPrice']);
+    return {
+      ...existing,
+      pnl_available: true,
+      ...(price !== undefined ? { currentPrice: toFinite(price), current_price: toFinite(price), price_current: toFinite(price) } : {}),
+      ...(profit !== undefined ? { profit: toFinite(profit), unrealizedPnL: toFinite(profit), unrealized_pl: toFinite(profit), hasBackendProfit: true } : {}),
+      ...(raw.margin !== undefined ? { margin: raw.margin } : {}),
+      ...(Number.isFinite(incomingTime) ? { price_time_msc: incomingTime } : {}),
+    };
+  }
   const normalized = normalizePosition(raw) as any;
   if (!existing) return normalized;
+  const duplicatePricedSnapshot = raw.pnl_available === false
+    && positionVersion(raw) !== undefined && positionVersion(raw) === positionVersion(existing)
+    && existing.pnl_available !== false && existing.hasBackendProfit !== false;
+  if (positionVersion(existing) !== undefined && positionVersion(raw) === positionVersion(existing)
+    && Number(existing.price_time_msc) > (Number(raw.price_time_msc) || 0)) {
+    normalized.currentPrice = existing.currentPrice;
+    normalized.unrealizedPnL = existing.unrealizedPnL;
+    normalized.price_time_msc = existing.price_time_msc;
+  }
 
   const volume = hasOwnValue(raw, ['volume_lots', 'volume', 'quantity']) ? normalized.volume : existing.volume;
   const openPrice = hasOwnValue(raw, ['price_open', 'open_price', 'openPrice', 'price'])
@@ -135,7 +163,9 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
   return {
     ...existing,
     ...normalized,
+    pnl_available: duplicatePricedSnapshot ? true : (raw.pnl_available ?? existing.pnl_available),
     state_version: positionVersion(raw) ?? positionVersion(existing),
+    state_version_text: positionVersion(raw) ?? positionVersion(existing),
     symbol: hasOwnValue(raw, ['symbol']) ? normalized.symbol : existing.symbol,
     side: hasOwnValue(raw, ['action', 'side']) ? normalized.side : existing.side,
     volume,
@@ -158,12 +188,14 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
     unrealizedPnL,
     unrealized_pl: unrealizedPnL,
     profit: unrealizedPnL,
+    hasBackendProfit: duplicatePricedSnapshot ? existing.hasBackendProfit : raw.pnl_available === false ? false
+      : hasOwnValue(raw, ['profit', 'unrealized_pl', 'unrealizedPnL']) ? normalized.hasBackendProfit : existing.hasBackendProfit,
     comment: hasOwnValue(raw, ['comment']) ? normalized.comment : existing.comment,
   };
 };
 
 const positionVersion = (raw: any): string | undefined => {
-  const value = raw?.state_version;
+  const value = raw?.state_version_text ?? raw?.state_version;
   if (typeof value === 'number' && (!Number.isSafeInteger(value) || value < 0)) return undefined;
   if (typeof value !== 'string' && typeof value !== 'number') return undefined;
   const text = String(value);
@@ -173,7 +205,7 @@ const positionVersion = (raw: any): string | undefined => {
 
 // Do not coerce version strings to Number: PostgreSQL bigint exceeds JS's
 // exact integer range. Unversioned legacy messages remain compatible.
-const isOlderPositionVersion = (incoming: any, existing: any): boolean => {
+export const isOlderPositionVersion = (incoming: any, existing: any): boolean => {
   const next = positionVersion(incoming);
   const current = positionVersion(existing);
   return next !== undefined && current !== undefined
@@ -224,7 +256,7 @@ export const readPositionStreamBatch = (message: any): PositionStreamBatch | nul
 export const reconcilePositionStreamBatch = <T extends { id: number }>(
   current: T[],
   batch: PositionStreamBatch,
-): { positions: T[]; needsRevalidation: boolean } => {
+): { positions: T[]; needsRevalidation: boolean; closedTickets: number[] } => {
   const currentById = new Map(current.map((position) => [Number(position.id), position]));
   const nextById = batch.mode === 'snapshot' ? new Map<number, T>() : new Map(currentById);
   let needsRevalidation = false;
@@ -233,8 +265,14 @@ export const reconcilePositionStreamBatch = <T extends { id: number }>(
     const ticket = getPositionId(raw);
     if (!Number.isFinite(ticket) || ticket <= 0) continue;
     const existing = currentById.get(ticket);
-    if (!existing && raw.display_only === true) {
+    if (!existing && (raw.display_only === true || raw.update_kind === 'pnl')) {
       needsRevalidation = true;
+      continue;
+    }
+    if (existing && raw.update_kind === 'pnl' && positionVersion(raw) !== undefined
+      && positionVersion(existing) !== undefined && positionVersion(raw) !== positionVersion(existing)) {
+      if (!isOlderPositionVersion(raw, existing)) needsRevalidation = true;
+      nextById.set(ticket, existing);
       continue;
     }
     if (existing && isOlderPositionVersion(raw, existing)) {
@@ -259,10 +297,11 @@ export const reconcilePositionStreamBatch = <T extends { id: number }>(
   const positions = Array.from(nextById.values());
   const retained = current.filter((position) => !closedTickets.has(position.id));
   if (shouldDeferEmptyPositionSnapshot(retained, positions)) {
-    return { positions: retained, needsRevalidation: true };
+    return { positions: retained, needsRevalidation: true, closedTickets: [...closedTickets] };
   }
   return {
     positions,
+    closedTickets: [...closedTickets],
     needsRevalidation: needsRevalidation || (batch.positions.length === 0 && retained.length > 0),
   };
 };

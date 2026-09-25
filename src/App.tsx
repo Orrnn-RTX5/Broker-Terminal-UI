@@ -1,4 +1,5 @@
 import { isDesktopBackendTarget } from './config/backendTarget.js';
+import { createStateInvalidator } from './services/stateInvalidation';
 import { useGuestMarketData } from './hooks/useGuestMarketData';
 import { getLogoUrl, useTerminalBrokerInfo } from './hooks/useTerminalTitle';
 import { brokerDisplayName } from './services/brokerDisplayName';
@@ -44,13 +45,16 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useActiveMarketSymbols, useMarketInstruments } from './hooks/useLiveMarketData';
 import { getCachedSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useSymbolMarketStatus';
 import {
-  buildChartEligibleSymbolNames,
-  buildTradeEligibleSymbolNames,
   getUniqueSymbolNames as getAllowedSymbolNames,
   normalizeSymbolName,
   pickPreferredChartSymbol,
   resolveAuthorizedChartSymbol,
 } from './utils/symbolEligibility';
+import {
+  isAccountSymbolUniverseActive,
+  resolveChartEligibleSymbolNames,
+  resolveTradeEligibleSymbolNames,
+} from './utils/accountSymbolUniverse';
 import {
   buildChartSelectionReconciliationKey,
   getChartSelectionDiagnosticAttributes,
@@ -250,6 +254,9 @@ interface Tick {
 }
 
 interface Position {
+  state_version?: string | number;
+  protection_version?: string | number;
+  price_time_msc?: number;
   id: number;
   symbol: string;
   side: 'BUY' | 'SELL';
@@ -561,6 +568,9 @@ const normalizePositions = (payload: unknown): Position[] => {
 
     return [{
       id: parsedId,
+      state_version: (raw.state_version_text ?? raw.state_version) as string | number | undefined,
+      protection_version: raw.protection_version as string | number | undefined,
+      price_time_msc: raw.price_time_msc as number | undefined,
       symbol: String(raw.symbol ?? ''),
       side: rawSide === 'sell' || rawSide === 'short' ? 'SELL' : 'BUY',
       volume,
@@ -1434,30 +1444,40 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     ? !marketInstrumentsSnapshot.loading && marketInstrumentsSnapshot.symbols.length > 0
     : marketInstrumentsSnapshot.authorizationSettled;
   const isLoadingSymbols = guestMode ? marketInstrumentsSnapshot.loading : isAuthenticated && !marketInstrumentsSnapshot.authorizationSettled;
-  const publicMarketSymbolNames = useMemo(
+  const marketCatalogSymbolNames = useMemo(
     () => getAllowedSymbolNames(marketInstrumentsSnapshot.symbols),
     [marketInstrumentsSnapshot.symbols],
   );
-  const chartEligibleSymbolNames = useMemo(() => {
-    const chartCatalog = buildChartEligibleSymbolNames(
-      [...allowedSymbolNames, ...publicMarketSymbolNames],
-      activeMarketSymbols,
-    );
-    if (chartCatalog.length > 0) return chartCatalog;
-    return getAllowedSymbolNames(activeMarketSymbols);
-  }, [activeMarketSymbols, allowedSymbolNames, publicMarketSymbolNames]);
-  const tradeEligibleSymbolNames = useMemo(() => {
-    if (!activeMarketSymbolsCurrent) return [];
-    const fromCatalog = buildTradeEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols);
-    if (fromCatalog.length > 0) return fromCatalog;
-    return getAllowedSymbolNames(activeMarketSymbols);
-  }, [activeMarketSymbols, activeMarketSymbolsCurrent, allowedSymbolNames]);
+  // A logged-in account's universe is its own group catalogue (the hook
+  // returns it as `symbols`, empty while loading). Charts never union the
+  // public catalogue or raw feed for an account; guests keep that behaviour.
+  const accountSymbolUniverseActive = isAccountSymbolUniverseActive(
+    isAuthenticated,
+    marketInstrumentsSnapshot.accountCatalogStatus,
+  );
+  const chartEligibleSymbolNames = useMemo(() => resolveChartEligibleSymbolNames({
+    accountUniverseActive: accountSymbolUniverseActive,
+    accountSymbols: marketCatalogSymbolNames,
+    authorizedSymbols: allowedSymbolNames,
+    publicSymbols: marketCatalogSymbolNames,
+    activeFeedSymbols: activeMarketSymbols,
+  }), [accountSymbolUniverseActive, activeMarketSymbols, allowedSymbolNames, marketCatalogSymbolNames]);
+  const tradeEligibleSymbolNames = useMemo(() => resolveTradeEligibleSymbolNames({
+    isAuthenticated,
+    feedCurrent: activeMarketSymbolsCurrent,
+    authorizedSymbols: allowedSymbolNames,
+    activeFeedSymbols: activeMarketSymbols,
+  }), [activeMarketSymbols, activeMarketSymbolsCurrent, allowedSymbolNames, isAuthenticated]);
   const chartEligibleSymbolsKey = chartEligibleSymbolNames.join(',');
   const chartEligibleSymbolSet = useMemo(() => new Set(chartEligibleSymbolNames), [chartEligibleSymbolNames]);
   const tradeEligibleSymbolSet = useMemo(() => new Set(tradeEligibleSymbolNames), [tradeEligibleSymbolNames]);
-  const hasLoadedChartSymbols = hasLoadedSymbols
-    || publicMarketSymbolNames.length > 0
-    || (activeMarketSymbolsCurrent && activeMarketSymbols.length > 0);
+  // While an account catalogue loads, no public/feed symbol may seed chart
+  // selection or rewrite saved chart panels.
+  const hasLoadedChartSymbols = accountSymbolUniverseActive
+    ? chartEligibleSymbolNames.length > 0 || marketInstrumentsSnapshot.authorizationSettled
+    : hasLoadedSymbols
+      || marketCatalogSymbolNames.length > 0
+      || (activeMarketSymbolsCurrent && activeMarketSymbols.length > 0);
   const hasLoadedTradeSymbols = activeMarketSymbolsSettled
     && activeMarketSymbolsCurrent
     && (hasLoadedSymbols || activeMarketSymbols.length > 0);
@@ -1715,12 +1735,20 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const request = (async () => {
     try {
       const restRead = beginTradeRestRead();
+      const startedPositions = useAppStore.getState().positions;
+      const startedAuthToken = useAppStore.getState().authToken;
       const posData = await api.positions.getPositions(requestedLogin);
       const activeLogin = parsePositiveInt(useAppStore.getState().accountId || accountIdRef.current || undefined);
       if (!isAuthenticatedRef.current || activeLogin !== requestedLogin) return;
+      if (useAppStore.getState().authToken !== startedAuthToken) return;
       if (isStaleTradeRestRead(restRead, options)) return;
 
-      const normalized = reconcileOptimisticClosedPositions(normalizePositions(posData), { clearConfirmedAbsent: true });
+      let normalized = reconcileOptimisticClosedPositions(normalizePositions(posData), { clearConfirmedAbsent: true });
+      const livePositions = useAppStore.getState().positions;
+      if (livePositions !== startedPositions) {
+        const liveTickets = new Set(livePositions.map((position) => position.id));
+        normalized = [...livePositions as unknown as Position[], ...normalized.filter((position) => !liveTickets.has(position.id))];
+      }
       // Write ONLY to the central store — NOT to local App state.
       // This prevents App.tsx from re-rendering (which caused the blank-display crash
       // after every Buy/Sell). BottomDock reads positions from useAppStore directly.
@@ -1881,7 +1909,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     markLocalTradeMutation([id]);
     dispatchTradeOverlayCloseState([id], 'pending', { snapshots: closeSnapshots });
     // Optimistically remove from the app store immediately.
-    useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== id));
+    useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== id), { removedTickets: [id] });
     // Trigger close sound
     import('./utils/audio').then(m => m.playSystemSound('close'));
 
@@ -2090,6 +2118,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           const ticketSet = new Set(ticketIds);
           useAppStore.getState().setPositions(
             useAppStore.getState().positions.filter((position) => !ticketSet.has(position.id)),
+            { removedTickets: ticketIds },
           );
         },
       });
@@ -2177,9 +2206,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!loginId) return;
     let setupActive = true;
 
+    let heartbeatPending = false;
+
     const fetchAccountHeartbeat = async (isInitial = false) => {
       if (accountPollInFlightRef.current) {
         const inFlightLogin = accountPollInFlightLoginRef.current;
+        if (inFlightLogin === loginId) heartbeatPending = true;
         await accountPollInFlightRef.current;
         if (inFlightLogin === loginId) return;
         const activeLogin = parsePositiveInt(useAppStore.getState().accountId || accountIdRef.current || undefined);
@@ -2204,12 +2236,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           }
         }
 
+        const startedPositionSnapshot = useAppStore.getState().positions;
+        const startedSessionToken = useAppStore.getState().authToken;
         const {
           accountResult: accResult,
           positionsResult: posResult,
         } = await loadSessionTradeSnapshot(loginId);
 
         const activeLogin = parsePositiveInt(useAppStore.getState().accountId || accountIdRef.current || undefined);
+        if (useAppStore.getState().authToken !== startedSessionToken) return;
         if (!isAuthenticatedRef.current || activeLogin !== loginId || metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) {
           return;
         }
@@ -2222,7 +2257,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           if (posResult.status === 'rejected') console.error('[REST Error] getPositions failed:', posResult.reason);
         }
 
-        if (isStaleTradeRestRead(restRead, isInitial ? { allowWsCommit: true } : undefined)) return;
+        if (isStaleTradeRestRead(restRead, { allowWsCommit: true })) return;
 
         // Write account data to the Zustand store directly — NOT to App local state.
         // This prevents App.tsx from re-rendering on every poll (root cause of blank-display crash).
@@ -2261,9 +2296,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         }
 
         if (posPayload !== null) {
-          applyOpenPositionSnapshot(
-            reconcileOptimisticClosedPositions(normalizePositions(posPayload), { clearConfirmedAbsent: true }),
-          );
+          let next = reconcileOptimisticClosedPositions(normalizePositions(posPayload), { clearConfirmedAbsent: true });
+          const live = useAppStore.getState().positions;
+          if (live !== startedPositionSnapshot) {
+            const tickets = new Set(live.map((position) => position.id));
+            next = [...live as unknown as Position[], ...next.filter((position) => !tickets.has(position.id))];
+          }
+          applyOpenPositionSnapshot(next);
         }
         activeAccountDataRef.current = loginId;
 
@@ -2274,6 +2313,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           if (accountPollInFlightLoginRef.current === loginId) {
             accountPollInFlightRef.current = null;
             accountPollInFlightLoginRef.current = null;
+          }
+          if (heartbeatPending && setupActive) {
+            heartbeatPending = false;
+            queueMicrotask(() => { if (setupActive) void fetchAccountHeartbeat(false); });
           }
         }
       })();
@@ -2295,6 +2338,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     const handleTradeStreamRecovery = () => {
       void fetchAccountHeartbeat(false);
+      void refreshPositions(loginId, { allowWsCommit: true });
+      void refreshOrdersAndHistory(loginId).catch(err => console.error('[History] Recovery failed:', err));
     };
     window.addEventListener('rtx:trade-stream-recovered', handleTradeStreamRecovery);
 
@@ -2302,7 +2347,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       setupActive = false;
       window.removeEventListener('rtx:trade-stream-recovered', handleTradeStreamRecovery);
     };
-  }, [beginTradeRestRead, isAuthenticated, accountId, isStaleTradeRestRead, reconcileOptimisticClosedPositions, refreshOrdersAndHistory]);
+  }, [beginTradeRestRead, isAuthenticated, accountId, isStaleTradeRestRead, reconcileOptimisticClosedPositions, refreshOrdersAndHistory, refreshPositions]);
 
   // NOTE: positions are now written directly to useAppStore in the polling above.
   // No sync useEffect needed — removed to prevent double-write cascade.
@@ -2378,6 +2423,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       `positions.${loginId}`,
       `orders.${loginId}`,
       `deals.${loginId}`,
+      `state.${loginId}`,
     ];
 
     console.log('[WS] Subscribing to account v2 channels:', channels.join(', '));
@@ -2390,6 +2436,19 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!isAuthenticated) return;
 
     console.log('[WS] Subscribing to all market data channels...');
+
+    let configurationChanged = false;
+    const changedEntities = new Set<string>();
+    const invalidator = createStateInvalidator((login) => {
+      if (!isAuthenticatedRef.current || getLiveTradingLogin() !== login) return;
+      window.dispatchEvent(new Event('rtx:trade-stream-recovered'));
+      window.dispatchEvent(new CustomEvent('rtx:state-changed', { detail: { entities: [...changedEntities] } }));
+      changedEntities.clear();
+      if (configurationChanged) {
+        configurationChanged = false;
+        void activeMarketSnapshot.reload();
+      }
+    });
 
     // Subscribe to wildcard channel to receive all message types
     const unsubscribe = subscribe('*', (message: any) => {
@@ -2404,7 +2463,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           Number.isFinite(Number(data?.lastPrice))
         );
         const isLiveQuote = data.channel?.startsWith('quotes.');
-        if (data.channel?.startsWith('account.') || data.channel?.startsWith('metrics.')) {
+        if (data.channel?.startsWith('state.')) {
+          const login = getAcceptedChannelLogin(data.channel);
+          const entity = data.data?.data?.entity;
+          changedEntities.add(entity || '*');
+          if (['groups', 'group_symbol_settings', 'accounts', 'instruments', 'brokers'].includes(entity)) configurationChanged = true;
+          if (login) invalidator.invalidate(login);
+        } else if (data.channel?.startsWith('account.') || data.channel?.startsWith('metrics.')) {
           const acceptedLogin = getAcceptedChannelLogin(data.channel);
           if (!acceptedLogin) return;
           markTradeWsMessage();
@@ -2432,16 +2497,21 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             const ticket = getPositionEventTicket(data);
             if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
             if (POSITION_CLOSED_EVENTS.has(eventName) && ticket) {
+              const { position } = readPositionStreamEvent(data);
+              const closeResult = reconcilePositionStreamBatch(useAppStore.getState().positions, {
+                mode: 'delta', positions: [{ ...position, closed: true }],
+              });
+              if (!closeResult.closedTickets.includes(ticket)) return;
               // Keep optimistic close suppression until REST confirms absence; WS snapshots can lag.
               markServerClosedTickets([ticket]);
               dispatchTradeOverlayCloseState([ticket], 'confirmed');
-              useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== ticket));
+              useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== ticket), { closedTickets: [ticket] });
               refreshOrdersAndHistory(acceptedLogin).catch(err => console.error('[WS POSITIONS HISTORY REFRESH ERROR]', err));
             } else if (batch) {
               const result = reconcilePositionStreamBatch(useAppStore.getState().positions, batch);
               const normalized = reconcileOptimisticClosedPositions(result.positions as Position[]);
               if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
-              useAppStore.getState().setPositions(normalized as any);
+              useAppStore.getState().setPositions(normalized as any, { closedTickets: result.closedTickets });
               if (result.needsRevalidation) requestPositionSnapshotRevalidation();
             } else {
               const { position } = readPositionStreamEvent(data);
@@ -2449,7 +2519,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
               const result = reconcilePositionStreamBatch(useAppStore.getState().positions, {
                 mode: 'delta', positions: [position],
               });
-              useAppStore.getState().setPositions(reconcileOptimisticClosedPositions(result.positions as Position[]) as any);
+              useAppStore.getState().setPositions(reconcileOptimisticClosedPositions(result.positions as Position[]) as any, { closedTickets: result.closedTickets });
               if (result.needsRevalidation || eventName === 'position_partial_close') requestPositionSnapshotRevalidation();
             }
           } catch (err) {
@@ -2461,11 +2531,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           markTradeWsMessage();
           // Coalesce fill/order bursts. Immediate REST history on every WS
           // frame contended with market-order execution for the DB pool.
-          if (historyRefreshTimerRef.current !== null) window.clearTimeout(historyRefreshTimerRef.current);
-          historyRefreshTimerRef.current = window.setTimeout(() => {
+          if (historyRefreshTimerRef.current === null) historyRefreshTimerRef.current = window.setTimeout(() => {
             historyRefreshTimerRef.current = null;
             refreshOrdersAndHistory(loginId).catch(err => console.error('[WS HISTORY REFRESH ERROR]', err));
-          }, 2000);
+          }, 50);
         } else if (data.type === 'tick' || isTickLikeUpdate || isLiveQuote || data.channel?.startsWith('ticks.') || data.channel === 'prices') {
           const alreadyEnqueuedBySocketService = isEnhancedStoreHandledTickFrame(data);
           // Wrap live quote data if it comes in raw formats
@@ -2607,9 +2676,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     });
 
     return () => {
+      invalidator.dispose();
       unsubscribe();
     };
-  }, [isAuthenticated, subscribe, getAcceptedChannelLogin, getLiveTradingLogin, markServerClosedTickets, markTradeWsMessage, reconcileOptimisticClosedPositions, refreshOrdersAndHistory, refreshPositions]);
+  }, [isAuthenticated, subscribe, getAcceptedChannelLogin, getLiveTradingLogin, markServerClosedTickets, markTradeWsMessage, reconcileOptimisticClosedPositions, refreshOrdersAndHistory, refreshPositions, activeMarketSnapshot.reload]);
 
   const ensureMarketOpenForOrder = useCallback((symbol: string): boolean => {
     const normalizedSymbol = normalizeSymbolName(symbol);
@@ -2813,7 +2883,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     );
     markLocalTradeMutation([tradeId]);
     dispatchTradeOverlayCloseState([tradeId], 'pending', { snapshots: closeSnapshots });
-    useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== tradeId));
+    useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== tradeId), { removedTickets: [tradeId] });
     try {
       await api.positions.closePosition(String(tradeId));
       markLocalTradeMutation();
@@ -2863,7 +2933,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   useEffect(() => {
     if (!hasLoadedChartSymbols) return;
 
-    const liveSymbols = activeMarketSymbolsCurrent ? activeMarketSymbols : [];
+    const liveSymbols = activeMarketSymbolsCurrent
+      ? (accountSymbolUniverseActive
+        ? activeMarketSymbols.filter((symbol) => chartEligibleSymbolSet.has(normalizeSymbolName(symbol)))
+        : activeMarketSymbols)
+      : [];
     const applyLivePreference = activeMarketSymbolsCurrent && !didApplyLiveChartPreferenceRef.current;
     const fallbackSymbol = pickPreferredChartSymbol(
       chartEligibleSymbolNames,
@@ -2917,10 +2991,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     }
   }, [
     accountId,
+    accountSymbolUniverseActive,
     activeMarketSymbols,
     activeMarketSymbolsCurrent,
     chartSelectionReconciliationKey,
     chartEligibleSymbolNames,
+    chartEligibleSymbolSet,
     getChartEligibleSymbol,
     hasAppliedLiveChartPreference,
     hasLoadedChartSymbols,
@@ -3737,6 +3813,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                 currentPrice={orderPanelPrice}
                 onSubmitOrder={handleOrderPanelSubmit}
                 marketStatus={selectedMarketStatus}
+                symbols={isAuthenticated ? allowedSymbolNames : undefined}
               />
             </ErrorBoundary>
           )}

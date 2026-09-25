@@ -126,6 +126,7 @@ import {
   updateLiveQuoteGuardState,
   type RenderedPriceReference,
 } from '../services/chartPriceGuards';
+import { getQuoteBidMarkupOffset, getRawQuoteSides, roundPriceToDigits } from '../utils/spreadMarkup';
 import { ChartTemplateDialog } from './ChartTemplateDialog';
 import { type ChartTemplate } from '../store/useTemplateStore';
 import {
@@ -1331,6 +1332,9 @@ export const TradingChart = React.memo(function TradingChart({
   const livePriceValueRef = useRef<HTMLSpanElement | null>(null);
   const livePriceCountdownRef = useRef<HTMLSpanElement | null>(null);
   const livePriceRef = useRef<number | null>(null);
+  // Candles are the raw feed bid; the bid line shows the account's effective
+  // (spread-markup widened) bid, this far below the forming candle's close.
+  const liveBidMarkupOffsetRef = useRef(0);
   const livePriceScaleWidthRef = useRef<number | null>(null);
   const livePriceRepaintFrameRef = useRef<number | null>(null);
   const repaintTradeOverlayGeometryRef = useRef<() => void>(() => undefined);
@@ -1609,7 +1613,11 @@ export const TradingChart = React.memo(function TradingChart({
       hideLivePriceOverlay(false);
       return;
     }
-    const livePrice = Number(activeCandle.close);
+    const candleClose = Number(activeCandle.close);
+    const bidMarkupOffset = liveBidMarkupOffsetRef.current;
+    const livePrice = bidMarkupOffset > 0 && Number.isFinite(candleClose)
+      ? roundPriceToDigits(candleClose - bidMarkupOffset, Math.max(resolvedPriceDigitsRef.current, 0))
+      : candleClose;
     if (!Number.isFinite(livePrice) || !livePriceLineRef.current || !livePriceBadgeRef.current || !seriesRef.current) return;
 
     const paint = () => {
@@ -1989,7 +1997,9 @@ export const TradingChart = React.memo(function TradingChart({
     const tick = ticks[symbol]
       ?? ticks[normalizedSymbol];
 
-    return getChartPriceFromQuote(tick);
+    // Candle-scale checks compare against the raw feed bid, never the
+    // account's spread-markup widened quote.
+    return getChartPriceFromQuote(getRawQuoteSides(tick));
   }, [symbol]);
 
   const getCachedRenderedPriceReference = useCallback((): RenderedPriceReference => {
@@ -5328,8 +5338,18 @@ export const TradingChart = React.memo(function TradingChart({
       synchronizeChartMarketClock(tick?.sourceTimestamp ?? tick?.timestamp);
       reconcileSynchronizedCandleBoundary();
 
-      const price = getChartPriceFromQuote(tick);
-      if (price == null) return;
+      // Candles (history, candle stream and the raw quote listener above) are
+      // the raw feed bid. A logged-in account's store quote is widened by its
+      // spread markup, so the candle model reads the raw sides while the bid/ask
+      // lines show the effective prices the account trades at.
+      const bidMarkupOffset = getQuoteBidMarkupOffset(tick);
+      if (bidMarkupOffset !== liveBidMarkupOffsetRef.current) {
+        liveBidMarkupOffsetRef.current = bidMarkupOffset;
+        if (currentCandleRef.current) repaintLivePriceOverlayOrDefer(currentCandleRef.current);
+      }
+      const candleQuote = getRawQuoteSides(tick);
+      const price = getChartPriceFromQuote(candleQuote);
+      if (price == null || !tick || !candleQuote) return;
       syncSupplementalPriceLines(Number(tick.ask ?? tick.bid), price);
       const rawTickTimestamp = Number(tick.sourceTimestamp ?? tick.timestamp);
       if (!Number.isFinite(rawTickTimestamp) || rawTickTimestamp <= 0) return;
@@ -5337,7 +5357,7 @@ export const TradingChart = React.memo(function TradingChart({
       // Reject only the exact quote already processed by the 50ms poll. Use the
       // raw timestamp (before second bucketing) plus both quote sides so a newer
       // same-price tick still advances candle time/volume and SL/TP semantics.
-      const tickKey = `${rawTickTimestamp}:${tick.bid}:${tick.ask ?? tick.bid}:${price}`;
+      const tickKey = `${rawTickTimestamp}:${candleQuote.bid}:${candleQuote.ask ?? candleQuote.bid}:${price}`;
       if (tickKey === lastTickKey) return;
       lastTickKey = tickKey;
 
@@ -5419,8 +5439,8 @@ export const TradingChart = React.memo(function TradingChart({
 
       const aggregationUpdates = candleAggregationService.processTick({
         symbol,
-        bid: tick.bid,
-        ask: tick.ask ?? tick.bid,
+        bid: candleQuote.bid,
+        ask: candleQuote.ask ?? candleQuote.bid,
         timestamp: rawTickTimestamp,
         volume: 1,
       });

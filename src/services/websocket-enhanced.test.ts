@@ -434,6 +434,30 @@ describe('EnhancedWebSocketService connection startup', () => {
     service.destroy();
   });
 
+  it('keeps the wildcard listener local and never subscribes the server to every channel', () => {
+    const service = new EnhancedWebSocketService('wss://example.test/ws/v2');
+    service.connect();
+    const socket = ConnectingWebSocket.instances[0];
+    socket.open();
+    const wildcard = vi.fn();
+
+    const unsubscribeWildcard = service.subscribe('*', wildcard);
+    service.subscribe('ticks.EURUSD', vi.fn());
+    const sent = socket.sent.map((payload) => JSON.parse(payload));
+    expect(sent.some((message) => message.channel === '*' || message.channels?.includes('*'))).toBe(false);
+    expect(sent).toContainEqual({ action: 'subscribe', channel: 'ticks.EURUSD', channels: ['ticks.EURUSD'] });
+
+    (service as unknown as TestableService).handleMessage({
+      type: 'channel_message', channel: 'state.123', data: { entity: 'groups' },
+    } as WebSocketMessage);
+    expect(wildcard).toHaveBeenCalled();
+
+    unsubscribeWildcard();
+    expect(socket.sent.map((payload) => JSON.parse(payload))
+      .some((message) => message.channel === '*')).toBe(false);
+    service.destroy();
+  });
+
   it('does not reconnect a destroyed service after later session-change events', () => {
     vi.useFakeTimers();
     const service = new EnhancedWebSocketService('wss://example.test/ws/v2');

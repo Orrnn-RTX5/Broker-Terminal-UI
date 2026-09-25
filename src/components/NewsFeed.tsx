@@ -24,11 +24,16 @@ export function NewsFeed() {
 
   // Auto-refresh every 60 seconds
   useEffect(() => {
+    const onStateChanged = (event: Event) => {
+      const entities = (event as CustomEvent).detail?.entities || [];
+      if (entities.includes('news_items') || entities.includes('*')) refreshNews();
+    };
+    window.addEventListener('rtx:state-changed', onStateChanged);
     const interval = setInterval(() => {
       refreshNews();
     }, 60000);
 
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); window.removeEventListener('rtx:state-changed', onStateChanged); };
   }, [refreshNews]);
 
   const handleRefresh = () => {

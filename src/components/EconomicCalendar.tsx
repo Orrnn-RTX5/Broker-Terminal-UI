@@ -106,7 +106,10 @@ export const EconomicCalendar: React.FC<EconomicCalendarProps> = ({ onClose }) =
 
   // Fetch events on mount
   useEffect(() => {
+    let active = true;
+    let requestVersion = 0;
     const loadEvents = async () => {
+      const version = ++requestVersion;
       setIsLoading(true);
 
       const params: any = {};
@@ -128,11 +131,18 @@ export const EconomicCalendar: React.FC<EconomicCalendarProps> = ({ onClose }) =
       if (selectedImpacts.length > 0) params.impact = selectedImpacts.map(i => i.toLowerCase());
 
       const data = await fetchEconomicEvents(params);
+      if (!active || version !== requestVersion) return;
       setEvents(data);
       setIsLoading(false);
     };
 
     loadEvents();
+    const onStateChanged = (event: Event) => {
+      const entities = (event as CustomEvent).detail?.entities || [];
+      if (entities.includes('economic_events') || entities.includes('*')) void loadEvents();
+    };
+    window.addEventListener('rtx:state-changed', onStateChanged);
+    return () => { active = false; window.removeEventListener('rtx:state-changed', onStateChanged); };
   }, [dateRange, customDateFrom, customDateTo, selectedCurrencies, selectedImpacts]);
 
   // Live countdown timer - updates every second

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
@@ -29,7 +29,7 @@ vi.mock('../store/useAppStore', () => {
       getState: () => mocks.storeState,
     },
   );
-  return { useAppStore };
+  return { useAppStore, isConfirmedClosedPosition: () => false };
 });
 
 vi.mock('../api/tradeGateway', () => ({
@@ -144,6 +144,26 @@ describe('useToolboxTradeData display lifecycle', () => {
     expect(mocks.getSessionTradeSnapshotRequests).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(webSocketSpy).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('keeps pushed SLTP and profit when an older REST snapshot finishes later', async () => {
+    mocks.storeState.positions = [{ ...rawPosition, id: 17, sl: 0, tp: 0 }];
+    let resolvePositions!: (value: unknown) => void;
+    mocks.getSessionTradeSnapshotRequests.mockReturnValue({
+      positionsResultPromise: new Promise((resolve) => { resolvePositions = resolve; }),
+      accountResultPromise: Promise.resolve({ status: 'fulfilled', value: {} }),
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{}' }));
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    let request!: Promise<void>;
+    act(() => { request = result.current.refresh(); });
+    mocks.storeState.positions = [{ ...rawPosition, id: 17, sl: 1.05, tp: 1.2, profit: 22 }];
+    await act(async () => {
+      resolvePositions({ status: 'fulfilled', value: [{ ...rawPosition, price_sl: 0, price_tp: 0, profit: 1 }] });
+      await request;
+    });
+    expect(result.current.positions[0]).toMatchObject({ sl: 1.05, tp: 1.2, profit: 22 });
     unmount();
   });
 });

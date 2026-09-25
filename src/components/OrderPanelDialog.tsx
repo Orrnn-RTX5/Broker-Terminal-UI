@@ -14,6 +14,7 @@ import { formatSpreadDisplayWithUnit } from '../utils/spread';
 import { RTX_ADVANCED_VIEW_CHANGE_EVENT } from '../utils/advancedViewRootClasses';
 import { tradeApi } from '../api/trade';
 import { getStoredAccountLogin } from '../api/tradeGateway';
+import { buildOrderTicketSymbolOptions } from '../utils/accountSymbolUniverse';
 import '../styles/order-panel-dialog.css';
 
 // Symbol display names
@@ -43,6 +44,12 @@ interface OrderPanelProps {
   currentPrice: { bid: number; ask: number };
   onSubmitOrder: (order: any) => Promise<void> | void;
   marketStatus?: NormalizedMarketStatus;
+  /**
+   * Symbols the logged-in account may trade (its group catalogue). When
+   * provided, the symbol dropdown offers only these instead of every quote
+   * present in the tick store.
+   */
+  symbols?: readonly string[];
 }
 
 // Instrument config helper.
@@ -432,6 +439,7 @@ export function OrderPanelDialog({
   currentPrice,
   onSubmitOrder,
   marketStatus,
+  symbols: accountSymbols,
 }: OrderPanelProps) {
     const tr = useUiTranslation();
   const [symbol, setSymbol] = useState(initialSymbol);
@@ -449,7 +457,8 @@ export function OrderPanelDialog({
 
   const tick = useAppStore((s) => s.ticks[symbol]);
   const account = useAppStore((s) => s.account);
-  const ticks = useAppStore((s) => s.ticks);
+  // Only needed for callers without an account catalogue (legacy fallback).
+  const tickSymbolsKey = useAppStore((s) => (accountSymbols ? '' : Object.keys(s.ticks).join('|')));
   const chartSettings = useChartSettingsStore((state) => (
     state.symbolProperties[symbol] || state.globalProperties
   ));
@@ -487,7 +496,11 @@ export function OrderPanelDialog({
     };
   }, []);
 
-  const availableSymbols = Object.keys(ticks).length > 0 ? Object.keys(ticks) : [initialSymbol];
+  const symbolOptions = useMemo(() => buildOrderTicketSymbolOptions({
+    accountSymbols,
+    tickSymbols: tickSymbolsKey ? tickSymbolsKey.split('|') : [],
+    currentSymbol: accountSymbols ? symbol : initialSymbol,
+  }), [accountSymbols, initialSymbol, symbol, tickSymbolsKey]);
 
   const config = getInstrumentConfig(symbol, tick?.digits);
   const { digits } = config;
@@ -683,8 +696,8 @@ export function OrderPanelDialog({
                 onChange={(e) => setSymbol(e.target.value)}
                 className="rtx-order-dialog__control"
               >
-                {availableSymbols.map(s => (
-                  <option key={s} value={s}>{SYMBOL_NAMES[s] ? `${s}, ${tr(SYMBOL_NAMES[s])}` : s}</option>
+                {symbolOptions.map(({ symbol: s, disabled }) => (
+                  <option key={s} value={s} disabled={disabled}>{SYMBOL_NAMES[s] ? `${s}, ${tr(SYMBOL_NAMES[s])}` : s}</option>
                 ))}
               </select>
             </div>

@@ -104,6 +104,11 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
     }
 
     const request = (async () => {
+      const startedStore = useAppStore.getState();
+      const sessionCurrent = () => {
+        const current = useAppStore.getState();
+        return current.accountId === startedStore.accountId && current.authToken === startedStore.authToken;
+      };
       const startedAt = Date.now();
       setState((prev) => ({ ...prev, loading: true, error: null }));
       setTradeApiStatus({ loading: true, error: null, lastStartedAt: startedAt });
@@ -113,11 +118,16 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
           tradeGatewayApi.getPositions(login),
           tradeGatewayApi.getDeals(login).catch(() => tradeGatewayApi.getDeals(undefined)),
         ]);
-        applySnapshot({ account, positions, deals });
+        if (!sessionCurrent()) return;
+        const livePositions = useAppStore.getState().positions;
+        const liveTickets = new Set(livePositions.map((position) => position.id));
+        applySnapshot({ account, positions: livePositions === startedStore.positions ? positions
+          : [...livePositions, ...positions.filter((position) => !liveTickets.has(position.id))], deals });
         const completedAt = Date.now();
         setState((prev) => ({ ...prev, loading: false, error: null, lastUpdated: completedAt }));
         setTradeApiStatus({ loading: false, error: null, lastUpdated: completedAt });
       } catch (error) {
+        if (!sessionCurrent()) return;
         const message = error instanceof Error ? error.message : 'Failed to refresh trading data';
         setState((prev) => ({
           ...prev,

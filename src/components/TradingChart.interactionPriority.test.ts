@@ -776,7 +776,8 @@ describe('TradingChart interaction-priority contract', () => {
     const tickLoopEnd = source.indexOf('}, LIVE_CHART_UPDATE_INTERVAL_MS);', tickLoopStart);
     const tickLoop = source.slice(tickLoopStart, tickLoopEnd);
     const timestampIndex = tickLoop.indexOf('const rawTickTimestamp = Number(tick.sourceTimestamp ?? tick.timestamp);');
-    const keyIndex = tickLoop.indexOf('const tickKey = `${rawTickTimestamp}:${tick.bid}:${tick.ask ?? tick.bid}:${price}`;');
+    // The key uses the raw feed sides (not the spread-markup widened quote).
+    const keyIndex = tickLoop.indexOf('const tickKey = `${rawTickTimestamp}:${candleQuote.bid}:${candleQuote.ask ?? candleQuote.bid}:${price}`;');
     const reconciliationIndex = tickLoop.indexOf('validateRenderedCandlesAgainstLivePrice(price, activeTf)');
 
     expect(timestampIndex).toBeGreaterThan(-1);

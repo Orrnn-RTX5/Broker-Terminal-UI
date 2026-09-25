@@ -20,9 +20,9 @@ const storeSession = (brokerId = 'TEST', backendUrl = TEST_URL) => {
   localStorage.setItem('rtx_last_login', '200001');
   localStorage.setItem('rtx_saved_username', '200001');
   localStorage.setItem('rtx_last_authenticated_broker_id', brokerId);
-  localStorage.setItem('feed_broker_token', 'old-feed');
+  localStorage.setItem('feed_broker_id', brokerId);
   sessionStorage.setItem('auth_token', 'session-access');
-  sessionStorage.setItem('feed_token', 'session-feed');
+  sessionStorage.setItem('feed_broker_id', brokerId);
 };
 
 describe('configured web broker session ownership', () => {
@@ -48,11 +48,11 @@ describe('configured web broker session ownership', () => {
     storeSession();
     localStorage.setItem('feed_url', 'wss://fxtrustbrokerbackend.orrnn.com/ws/feed');
     expect(ensureConfiguredWebSession()).toBe(false);
-    for (const key of ['auth_token', 'refresh_token', 'rtx_saved_username', 'rtx_last_login', 'feed_broker_token', 'rtx_last_authenticated_broker_id']) {
+    for (const key of ['auth_token', 'refresh_token', 'rtx_saved_username', 'rtx_last_login', 'feed_broker_id', 'rtx_last_authenticated_broker_id']) {
       expect(localStorage.getItem(key)).toBeNull();
     }
     expect(sessionStorage.getItem('auth_token')).toBeNull();
-    expect(sessionStorage.getItem('feed_token')).toBeNull();
+    expect(sessionStorage.getItem('feed_broker_id')).toBeNull();
     expect(localStorage.getItem('broker_id')).toBe('achiever-financials');
     expect(localStorage.getItem('server_url')).toBe(ACHIEVER_URL);
     expect(localStorage.getItem('feed_url')).toBe('wss://service.achieverfinancials.com/ws/feed');

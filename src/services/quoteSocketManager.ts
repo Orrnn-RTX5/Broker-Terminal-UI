@@ -9,7 +9,7 @@
  *   4. Set live subscriptions       → Load active watchlist override (setSubscriptions)
  *   5. Merge active demand          → Sticky + row + chart consumers (syncActiveSymbols)
  *   6. Any symbols?                 → No: close socket  |  Yes: connect
- *   7. Open quote socket            → Prefer authenticated /ws/feed; on handshake/auth
+ *   7. Open quote socket            → Prefer the anonymous /ws/feed; on handshake
  *                                     failure fall over to authenticated /ws/v2 with
  *                                     the same demand union
  *   8. Send subscribe message       → feed: {type:'subscribe',symbols:[...]},
@@ -26,7 +26,6 @@ import {
   buildBrokerWsFeedUri,
   buildBrokerWsV2Uri,
   getAccessToken,
-  hasFeedBrokerToken,
   onSessionChange,
 } from './brokerSession';
 import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
@@ -422,14 +421,14 @@ class QuoteSocketManager {
   /**
    * Transport selection for the next connection attempt.
    *
-   * Prefer the broker `/ws/feed` whenever a scoped feed credential exists. If
-   * the feed credential was rejected earlier in this session, fail the demand
-   * union over to `/ws/v2` — but only for authenticated terminal sessions.
-   * Feed-token-only sessions never attempt account-authenticated v2; they
-   * retry the feed with backoff instead.
+   * Prefer the broker `/ws/feed` whenever a feed URL can be resolved. The feed
+   * accepts anonymous connections, so no credential is required. If the feed
+   * handshake failed earlier in this session, fail the demand union over to
+   * `/ws/v2` — but only for authenticated terminal sessions. Anonymous sessions
+   * never attempt account-authenticated v2; they retry the feed with backoff.
    */
   private resolveTransport(): QuoteTransport {
-    const feedAvailable = hasFeedBrokerToken() && Boolean(buildBrokerWsFeedUri());
+    const feedAvailable = Boolean(buildBrokerWsFeedUri());
     if (!feedAvailable) return 'v2';
     if (!this.feedAuthFailed) return 'feed';
     return getAccessToken() ? 'v2' : 'feed';
@@ -517,7 +516,7 @@ class QuoteSocketManager {
 
     this.wsUrl = nextWsUrl;
     this.activeTransport = nextTransport;
-    this.fallbackActive = nextTransport === 'v2' && hasFeedBrokerToken();
+    this.fallbackActive = nextTransport === 'v2' && this.feedAuthFailed;
 
     console.log(`[QuoteSocket] Opening ${nextTransport} WebSocket → ${redactWsUrl(this.wsUrl)}`);
 
@@ -1196,7 +1195,7 @@ class QuoteSocketManager {
     return this.activeTransport;
   }
 
-  /** True while quotes are served over v2 even though feed credentials exist. */
+  /** True while quotes are served over v2 after the broker feed failed. */
   isFallbackActive(): boolean {
     return this.fallbackActive;
   }

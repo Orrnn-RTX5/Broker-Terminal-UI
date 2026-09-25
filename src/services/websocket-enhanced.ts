@@ -23,9 +23,12 @@ import {
 import {
   requestPositionSnapshotRevalidation,
 } from './positionSnapshotSafety';
-import { readPositionStreamBatch, reconcilePositionStreamBatch } from './positionStream';
+import { POSITION_CLOSED_EVENTS, readPositionStreamEvent, readPositionStreamBatch, reconcilePositionStreamBatch } from './positionStream';
 
 const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
+
+/** Channels that exist only as local listeners and are never sent to the server. */
+export const isLocalOnlyChannel = (channel: string): boolean => channel === '*';
 
 export type SubscriptionCallback = (data: unknown) => void;
 export type ConnectionStateCallback = (state: ConnectionState) => void;
@@ -544,6 +547,18 @@ export class EnhancedWebSocketService {
 
     this.subscribers.get(channel)!.add(callback);
 
+    // The wildcard is a client-side listener for every received frame. Never
+    // ask the server for `channel: '*'`: that would stream every symbol,
+    // bypassing the account's group-scoped per-symbol demand.
+    if (isLocalOnlyChannel(channel)) {
+      return () => {
+        const callbacks = this.subscribers.get(channel);
+        if (!callbacks) return;
+        callbacks.delete(callback);
+        if (callbacks.size === 0) this.subscribers.delete(channel);
+      };
+    }
+
     // Send subscription message if connected
     if (this.ws?.readyState === WebSocket.OPEN) {
       console.log(`[WS] Sending subscribe request for channel: ${channel}`);
@@ -743,20 +758,29 @@ export class EnhancedWebSocketService {
     }
 
     // Broadcast to subscribers
-    if (type === 'channel_message') {
+    if (type === 'channel_message' || typeof data.channel === 'string') {
       try {
         const payload = data.data as any;
-        const batch = readPositionStreamBatch(data);
+        let batch = readPositionStreamBatch(data);
+        if (!batch && data.channel?.startsWith('positions.')) {
+          const { event, position } = readPositionStreamEvent(data);
+          if (position) batch = { mode: 'delta', positions: [POSITION_CLOSED_EVENTS.has(event) ? { ...position, closed: true } : position] };
+        }
         if (data.channel?.startsWith('positions.') && batch) {
+          const positionBatch = batch;
+          const positionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+          const positionToken = getAccessToken();
           import('../store/useAppStore').then(({ useAppStore }) => {
             const store = useAppStore.getState();
             // FIX: A positions snapshot is authoritative only for the login in
             // its exact channel. Delayed frames from a previous account must
             // never replace the active account's positions.
             if (!isExactAccountStreamChannel(data.channel, 'positions', store.accountId)) return;
+            if (positionScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
+            if (positionToken !== getAccessToken()) return;
 
-            const result = reconcilePositionStreamBatch(store.positions, batch);
-            store.setPositions(result.positions);
+            const result = reconcilePositionStreamBatch(store.positions, positionBatch);
+            store.setPositions(result.positions, { closedTickets: result.closedTickets });
             if (result.needsRevalidation) requestPositionSnapshotRevalidation();
           });
 
@@ -1198,7 +1222,7 @@ export class EnhancedWebSocketService {
     console.log(`[WS] Resubscribing to ${this.subscribers.size} channels`);
 
     this.subscribers.forEach((_, channel) => {
-      if (channel === '*') return;
+      if (isLocalOnlyChannel(channel)) return;
 
       if (channel.startsWith('symbols:')) return;
 

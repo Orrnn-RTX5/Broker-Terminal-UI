@@ -19,7 +19,13 @@ import {
   useMarketInstruments,
   useLiveQuotes,
   useRemoteWatchlistSync,
+  applySpreadMarkupToOrderBook,
 } from './useLiveMarketData';
+import {
+  getAccountSpreadMarkup,
+  getAccountSpreadMarkupMap,
+  resetAccountSpreadMarkupForTests,
+} from '../services/accountSpreadMarkup';
 
 const apiGet = vi.hoisted(() => vi.fn());
 const apiPut = vi.hoisted(() => vi.fn());
@@ -720,11 +726,14 @@ describe('useMarketInstruments normalization', () => {
     unmount();
   });
 
-  it('reveals the public catalog without waiting for authenticated authorization', async () => {
+  it('never flashes the public catalog to a logged-in account while its catalogue loads', async () => {
     let resolveAuthorization!: (value: unknown) => void;
     apiGet
       .mockResolvedValueOnce({
-        symbols: [{ symbol: 'XAUUSD', bid: 4425.9, ask: 4426.05 }],
+        symbols: [
+          { symbol: 'XAUUSD', bid: 4425.9, ask: 4426.05 },
+          { symbol: 'BTCUSD', bid: 108000, ask: 108010 },
+        ],
       })
       .mockImplementationOnce(() => new Promise((resolve) => {
         resolveAuthorization = resolve;
@@ -733,12 +742,13 @@ describe('useMarketInstruments normalization', () => {
     const { result, unmount } = renderHook(() => useMarketInstruments());
     await flushPromises();
 
-    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['XAUUSD']);
-    expect(result.current.loading).toBe(false);
+    expect(result.current.symbols).toEqual([]);
+    expect(result.current.loading).toBe(true);
+    expect(result.current.accountCatalogStatus).toBe('loading');
     expect(result.current.authorizedSymbols).toEqual([]);
     expect(result.current.authorizationSettled).toBe(false);
-
     expect(result.current.chartCatalogCurrent).toBe(false);
+    expect(enqueueLiveTick).not.toHaveBeenCalled();
 
     await act(async () => {
       resolveAuthorization({
@@ -748,9 +758,80 @@ describe('useMarketInstruments normalization', () => {
       await Promise.resolve();
     });
 
+    // Only the account's group symbols; BTCUSD from the public list is gone.
+    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['XAUUSD']);
+    expect(result.current.symbols[0]).toMatchObject({ bid: 4425.9, ask: 4426.05 });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.accountCatalogStatus).toBe('loaded');
     expect(result.current.authorizedSymbols).toEqual(['XAUUSD']);
     expect(result.current.authorizationSettled).toBe(true);
     expect(result.current.chartCatalogCurrent).toBe(true);
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(1);
+    expect(enqueueLiveTick).toHaveBeenCalledWith('XAUUSD', expect.anything());
+    unmount();
+  });
+
+  it('uses the account catalogue in backend order as the symbol universe', async () => {
+    apiGet.mockResolvedValueOnce({
+      symbols: [
+        { symbol: 'BTCUSD', bid: 108000, ask: 108010 },
+        { symbol: 'EURUSD', bid: 1.1, ask: 1.2, description: 'Euro vs US Dollar' },
+        { symbol: 'US30', bid: 40000, ask: 40002 },
+        { symbol: 'XAUUSD', bid: 2345.1, ask: 2345.6 },
+      ],
+    }).mockResolvedValueOnce({
+      symbols: [
+        { symbol: 'XAUUSD', trading_enabled: true },
+        { symbol: 'GER40', trading_enabled: true },
+        { symbol: 'EURUSD', trading_enabled: false },
+      ],
+    });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['XAUUSD', 'GER40', 'EURUSD']);
+    expect(result.current.symbols[2]).toMatchObject({ description: 'Euro vs US Dollar', tradingEnabled: false });
+    expect(result.current.authorizedSymbols).toEqual(['XAUUSD', 'GER40']);
+    expect(result.current.disabledSymbols).toEqual(['EURUSD']);
+    expect(result.current.accountCatalogStatus).toBe('loaded');
+    // Only account symbols are seeded into the quote store.
+    expect(enqueueLiveTick.mock.calls.map(([symbol]) => symbol).sort()).toEqual(['EURUSD', 'XAUUSD']);
+    unmount();
+  });
+
+  it('still loads the account catalogue when the public catalog is unavailable', async () => {
+    apiGet.mockRejectedValueOnce(new ApiError(503, 'Public catalog unavailable'))
+      .mockResolvedValueOnce({ symbols: [{ symbol: 'EURUSD', trading_enabled: true }] });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['EURUSD']);
+    expect(result.current.accountCatalogStatus).toBe('loaded');
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
+  it('hides the previous account universe immediately on logout and account switch', async () => {
+    apiGet.mockResolvedValueOnce({ symbols: [{ symbol: 'XAUUSD' }, { symbol: 'BTCUSD' }] })
+      .mockResolvedValueOnce({ symbols: [{ symbol: 'XAUUSD', trading_enabled: true }] });
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['XAUUSD']);
+
+    apiGet.mockImplementation(() => new Promise(() => {}));
+    act(() => {
+      useAppStore.setState({ accountId: 'instrument-other-account' });
+    });
+    expect(result.current.symbols).toEqual([]);
+    expect(result.current.accountCatalogStatus).toBe('loading');
+
+    act(() => {
+      useAppStore.setState({ isAuthenticated: false, accountId: null });
+    });
+    expect(result.current.symbols).toEqual([]);
+    expect(result.current.accountCatalogStatus).toBe('none');
     unmount();
   });
 
@@ -760,7 +841,10 @@ describe('useMarketInstruments normalization', () => {
     const { result, unmount } = renderHook(() => useMarketInstruments());
     await flushPromises();
     expect(result.current.authorizationSettled).toBe(true);
+    // Read-only public fallback; trading stays unauthorized.
     expect(result.current.symbols.map(item => item.symbol)).toEqual(['AAPL.US']);
+    expect(result.current.accountCatalogStatus).toBe('failed');
+    expect(result.current.authorizedSymbols).toEqual([]);
     expect(result.current.chartCatalogCurrent).toBe(false);
     unmount();
   });
@@ -805,6 +889,7 @@ describe('useMarketInstruments normalization', () => {
       expect.objectContaining({ skipAuth: true, skipDynamicUrl: true }),
     );
     expect(result.current.symbols.map((item) => item.symbol)).toEqual(['EURUSD', 'BTCUSD']);
+    expect(result.current.accountCatalogStatus).toBe('none');
     expect(result.current.authorizedSymbols).toEqual([]);
     expect(result.current.disabledSymbols).toEqual([]);
     expect(result.current.authorizationSettled).toBe(true);
@@ -1574,5 +1659,98 @@ describe('active market symbol status cache', () => {
     });
     expect(result.current.symbols).toEqual(['0002.HK']);
     unmount();
+  });
+});
+
+describe('account spread markup from the authenticated catalogue', () => {
+  beforeEach(() => {
+    apiGet.mockReset();
+    enqueueLiveTick.mockReset();
+    useQuoteSubscriptionMock.mockReset();
+    resetAccountSpreadMarkupForTests();
+    localStorage.setItem('auth_token', 'markup-test-token');
+    localStorage.setItem('refresh_token', 'markup-test-refresh');
+    useAppStore.setState({
+      isAuthenticated: true,
+      accountId: 'markup-test-account',
+      authToken: 'markup-test-token',
+      refreshToken: 'markup-test-refresh',
+      ticks: {},
+      tickLookup: {},
+    });
+  });
+
+  afterEach(() => {
+    resetAccountSpreadMarkupForTests();
+    useAppStore.setState({
+      isAuthenticated: false,
+      accountId: null,
+      authToken: null,
+      refreshToken: null,
+      ticks: {},
+      tickLookup: {},
+    });
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
+  });
+
+  it('publishes the account markup before seeding quotes, with public tick size fallback', async () => {
+    apiGet.mockResolvedValueOnce({
+      symbols: [
+        { symbol: 'XAUUSD', bid: 4425.9, ask: 4426.05, digits: 2, tick_size: 0.01 },
+        { symbol: 'EURUSD', bid: 1.1, ask: 1.10012, digits: 5, spread_markup: 9 },
+      ],
+    }).mockResolvedValueOnce({
+      symbols: [
+        { symbol: 'XAUUSD', trading_enabled: true, spread_markup: 5 },
+        { symbol: 'EURUSD', trading_enabled: true },
+      ],
+    });
+    let markupAtSeed: unknown = 'not-seeded';
+    enqueueLiveTick.mockImplementation((symbol: string) => {
+      if (symbol === 'XAUUSD') markupAtSeed = getAccountSpreadMarkup('XAUUSD');
+    });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    expect(result.current.authorizedInstruments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: 'XAUUSD', spreadMarkup: 5 }),
+    ]));
+    expect(getAccountSpreadMarkup('XAUUSD')).toEqual({ points: 5, tickSize: 0.01, digits: 2 });
+    expect(markupAtSeed).toEqual({ points: 5, tickSize: 0.01, digits: 2 });
+    // The public catalogue can never contribute markup to an account.
+    expect(getAccountSpreadMarkup('EURUSD')).toBeUndefined();
+    unmount();
+  });
+
+  it('never carries markup into guest mode', async () => {
+    useAppStore.setState({ isAuthenticated: false, accountId: null, authToken: null, refreshToken: null });
+    apiGet.mockResolvedValueOnce({
+      symbols: [{ symbol: 'XAUUSD', bid: 4425.9, ask: 4426.05, digits: 2, spread_markup: 5 }],
+    });
+
+    const { unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    expect(getAccountSpreadMarkupMap().size).toBe(0);
+    unmount();
+  });
+
+  it('widens depth-of-market levels like the top-of-book quote', () => {
+    const map = new Map([['EURUSD', { points: 5, tickSize: 0.00001, digits: 5 }]]);
+    const book = {
+      symbol: 'EURUSD',
+      bids: [{ price: 1.1, volume: 1, total: 1 }],
+      asks: [{ price: 1.10012, volume: 1, total: 1 }],
+      spread: 0.00012,
+      spreadPips: 1.2,
+      timestamp: 1,
+    };
+    const widened = applySpreadMarkupToOrderBook(book, map);
+    expect(widened?.bids[0].price).toBe(1.09995);
+    expect(widened?.asks[0].price).toBe(1.10017);
+    expect(widened?.spread).toBe(0.00022);
+    expect(applySpreadMarkupToOrderBook(book, new Map())).toBe(book);
   });
 });

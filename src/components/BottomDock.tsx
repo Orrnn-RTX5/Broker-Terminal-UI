@@ -13,6 +13,7 @@ import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
 import { formatPrice, getSymbolDigits } from '../utils/symbolUtils';
 import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
+import { resolvePositionClosePrice } from '../utils/spreadMarkup';
 import {
     buildExposureSummary,
     formatExposureVolume,
@@ -944,18 +945,14 @@ const TradeTab = memo(function TradeTab({
                 pos?.price_current ?? pos?.current_price ?? pos?.currentPrice ?? pos?.livePrice ?? 0
             );
             if (!Number.isFinite(livePrice) || livePrice <= 0) {
-                const tick = resolveTickFromLookup(appState.ticks, appState.tickLookup, symbol);
-                if (tick) {
-                    const isBuy = String(pos?.side ?? '').toUpperCase() === 'BUY';
-                    const bid = Number(tick.bid);
-                    const ask = Number(tick.ask);
-                    const last = Number(tick.last);
-                    const tickPrice = isBuy
-                        ? (Number.isFinite(bid) && bid > 0 ? bid : Number.isFinite(last) && last > 0 ? last : ask)
-                        : (Number.isFinite(ask) && ask > 0 ? ask : Number.isFinite(last) && last > 0 ? last : bid);
-                    if (Number.isFinite(tickPrice) && tickPrice > 0) {
-                        livePrice = tickPrice;
-                    }
+                // Store quotes are already the account's effective (spread
+                // markup widened) prices: BUY closes at bid, SELL at ask.
+                const tickPrice = resolvePositionClosePrice(
+                    pos?.side,
+                    resolveTickFromLookup(appState.ticks, appState.tickLookup, symbol),
+                );
+                if (tickPrice !== null) {
+                    livePrice = tickPrice;
                 }
             }
             if (!Number.isFinite(livePrice) || livePrice <= 0) {
@@ -1748,17 +1745,12 @@ ${rows}
                             const tpLabel = formatTradeLevel(pos.price_tp ?? pos.tp, symbolLabel);
                             let rawCurrentPrice = Number(pos.price_current ?? pos.current_price ?? pos.currentPrice ?? pos.livePrice);
                             if (!Number.isFinite(rawCurrentPrice) || rawCurrentPrice <= 0) {
-                                const tick = resolveTickFromLookup(useAppStore.getState().ticks, useAppStore.getState().tickLookup, symbolLabel);
-                                if (tick) {
-                                    const bid = Number(tick.bid);
-                                    const ask = Number(tick.ask);
-                                    const last = Number(tick.last);
-                                    const tickPrice = isBuy
-                                        ? (Number.isFinite(bid) && bid > 0 ? bid : Number.isFinite(last) && last > 0 ? last : ask)
-                                        : (Number.isFinite(ask) && ask > 0 ? ask : Number.isFinite(last) && last > 0 ? last : bid);
-                                    if (Number.isFinite(tickPrice) && tickPrice > 0) {
-                                        rawCurrentPrice = tickPrice;
-                                    }
+                                const tickPrice = resolvePositionClosePrice(
+                                    isBuy ? 'BUY' : 'SELL',
+                                    resolveTickFromLookup(useAppStore.getState().ticks, useAppStore.getState().tickLookup, symbolLabel),
+                                );
+                                if (tickPrice !== null) {
+                                    rawCurrentPrice = tickPrice;
                                 }
                             }
                             if (!Number.isFinite(rawCurrentPrice) || rawCurrentPrice <= 0) {

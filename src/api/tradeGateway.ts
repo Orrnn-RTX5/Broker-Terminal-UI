@@ -34,6 +34,10 @@ export type GatewayAccount = {
 };
 
 export type GatewayPosition = {
+  state_version?: string | number;
+  state_version_text?: string;
+  protection_version?: string | number;
+  price_time_msc?: number;
   ticket?: number;
   position_id?: number;
   account_login?: number;
@@ -386,11 +390,15 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
   const openPrice = Number(raw.price_open ?? raw.open_price ?? (raw as any).openPrice ?? (raw as any).entryPrice ?? (raw as any).chartEntryPrice ?? (raw as any).price ?? 0);
   const currentPrice = Number(raw.price_current ?? raw.current_price ?? (raw as any).currentPrice ?? (raw as any).livePrice ?? openPrice ?? 0);
   const rawProfit: unknown = raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL;
-  const hasBackendProfit = rawProfit !== undefined && rawProfit !== null && rawProfit !== '' && Number.isFinite(Number(rawProfit));
+  const hasBackendProfit = (raw as any).pnl_available !== false && (raw as any).hasBackendProfit !== false
+    && rawProfit !== undefined && rawProfit !== null && rawProfit !== '' && Number.isFinite(Number(rawProfit));
   const profit = hasBackendProfit ? Number(rawProfit) : 0;
   const openTime = resolvePositionOpenTime(raw);
   return {
     id: Number(raw.ticket ?? raw.position_id ?? (raw as any).id ?? 0),
+    state_version: raw.state_version_text ?? raw.state_version,
+    protection_version: raw.protection_version,
+    price_time_msc: raw.price_time_msc,
     symbol: (raw.symbol ?? '').toUpperCase(),
     side: side.includes('sell') || side === '1' ? 'SELL' : 'BUY',
     volume,

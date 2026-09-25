@@ -124,6 +124,7 @@ const isAllowedPublicBrokerHostname = (hostname = '') => {
     || normalized === 'service.achieverfinancials.com'
     || normalized === 'fxtrusts-broker.orrnn.com'
     || normalized === 'nexa.orrnn.com'
+    || normalized === 'trivanta.orrnn.com'
     || normalized === 'backend.orrnn.com'
     || normalized === 'testbrokerbackend.orrnn.com'
     || normalized === 'fxtrustbrokerbackend.orrnn.com'

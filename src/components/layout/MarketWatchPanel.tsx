@@ -39,6 +39,11 @@ import {
   searchMarketWatchSymbols,
   shouldUseWatchlistAsMarketWatchSource,
 } from '../../utils/marketWatchSource';
+import {
+  isAccountSymbolUniverseActive,
+  pruneSymbolsToUniverse,
+  selectAccountDefaultMarketWatchSymbols,
+} from '../../utils/accountSymbolUniverse';
 
 export interface ActiveMarketSymbolsSnapshot {
   symbols: string[];
@@ -411,7 +416,11 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       disabledSymbols,
       loading: isLoadingSymbols,
       error: symbolsError,
+      accountCatalogStatus,
     } = marketInstrumentsSnapshot;
+    // A logged-in account sees only its own group catalogue (empty while it
+    // loads). Guests and the catalogue-failure fallback keep the public list.
+    const accountUniverseActive = isAccountSymbolUniverseActive(isAuthenticated, accountCatalogStatus);
     const {
       symbols: activeMarketSymbols,
       loading: activeSymbolsLoading,
@@ -501,20 +510,27 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       [quoteEligibleSymbols],
     );
     const defaultSymbols = useMemo(
-      () => selectDefaultMarketWatchSymbols(
+      () => (accountUniverseActive ? selectAccountDefaultMarketWatchSymbols : selectDefaultMarketWatchSymbols)(
         marketInstruments,
         [...allSymbols, ...marketInstruments],
       ),
-      [allSymbols, marketInstruments],
+      [accountUniverseActive, allSymbols, marketInstruments],
     );
     const shouldMergePersistedSymbols = shouldUseWatchlistAsMarketWatchSource({
       activeWatchlistId: activeWatchlist?.id,
       activeWatchlistIsDefault: activeWatchlist?.isDefault,
     });
-    const persistedSymbols = useMemo(() => shouldMergePersistedSymbols
-      ? uniqueSymbols(activeWatchlist?.symbols ?? [])
-        .map((symbol) => resolveMarketWatchSymbolInput(quoteEligibleSymbols, symbol) ?? symbol)
-      : [], [
+    // Saved/remote watchlist rows outside the account catalogue are filtered
+    // on display only: the persisted store is shared across accounts and the
+    // remote sync writes full lists, so pruning it would delete user data.
+    const persistedSymbols = useMemo(() => {
+      if (!shouldMergePersistedSymbols) return [];
+      const saved = activeWatchlist?.symbols ?? [];
+      if (accountUniverseActive) return pruneSymbolsToUniverse(saved, quoteEligibleSymbols);
+      return uniqueSymbols(saved)
+        .map((symbol) => resolveMarketWatchSymbolInput(quoteEligibleSymbols, symbol) ?? symbol);
+    }, [
+      accountUniverseActive,
       activeWatchlist?.symbols,
       quoteEligibleSymbols,
       shouldMergePersistedSymbols,
@@ -526,14 +542,21 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       [activeWatchlist?.id, manualSymbols.symbols, manualSymbols.watchlistId],
     );
     const hiddenSymbolSet = useMemo(() => new Set(uniqueSymbols(hiddenSymbols)), [hiddenSymbols]);
-    const rows = useMemo(() => uniqueSymbols([
-      ...(shouldMergePersistedSymbols ? persistedSymbols : defaultSymbols),
-      ...activeManualSymbols,
-    ]).filter((symbol) => shouldMergePersistedSymbols || !hiddenSymbolSet.has(symbol)), [
+    const rows = useMemo(() => {
+      const nextRows = uniqueSymbols([
+        ...(shouldMergePersistedSymbols ? persistedSymbols : defaultSymbols),
+        ...activeManualSymbols,
+      ]).filter((symbol) => shouldMergePersistedSymbols || !hiddenSymbolSet.has(symbol));
+      // Rows drive quote demand (only visible rows subscribe), so restricting
+      // them to the account catalogue also restricts live streaming.
+      return accountUniverseActive ? pruneSymbolsToUniverse(nextRows, quoteEligibleSymbols) : nextRows;
+    }, [
+      accountUniverseActive,
       activeManualSymbols,
       defaultSymbols,
       hiddenSymbolSet,
       persistedSymbols,
+      quoteEligibleSymbols,
       shouldMergePersistedSymbols,
     ]);
     const {

@@ -101,3 +101,46 @@ describe('OrderPanelDialog market status', () => {
     expect(screen.getByText(message)).not.toBeNull();
   });
 });
+
+describe('OrderPanelDialog symbol dropdown', () => {
+  beforeEach(() => {
+    setupTick();
+    setMarketStatus('open');
+    useAppStore.getState().setTicks({
+      ...useAppStore.getState().ticks,
+      BTCUSD: { symbol: 'BTCUSD', bid: 108000, ask: 108010, spread: 10, timestamp: Date.now(), digits: 2 },
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  const getSymbolOptions = () => Array.from(
+    (screen.getByLabelText('Symbol') as HTMLSelectElement).options,
+  ).map((option) => ({ value: option.value, disabled: option.disabled }));
+
+  it('offers only the account symbols instead of every quote in the tick store', () => {
+    render(
+      <OrderPanelDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="EURUSD"
+        currentPrice={{ bid: 1.085, ask: 1.0852 }}
+        onSubmitOrder={vi.fn()}
+        symbols={['XAUUSD', 'EURUSD']}
+      />,
+    );
+
+    expect(getSymbolOptions()).toEqual([
+      { value: 'XAUUSD', disabled: false },
+      { value: 'EURUSD', disabled: false },
+    ]);
+  });
+
+  it('keeps the legacy tick-store list for callers without an account catalogue', () => {
+    renderDialog();
+
+    expect(getSymbolOptions().map((option) => option.value).sort()).toEqual(['BTCUSD', 'EURUSD']);
+  });
+});

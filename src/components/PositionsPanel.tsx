@@ -3,14 +3,14 @@
  *
  * Data flow (as per RTX5 Gateway spec):
  *  1. REST  GET /api/v2/positions/{login}   — initial load on mount
- *  2. WS    positions.{login}               — patches profit + price_current only (never replaces row)
+ *  2. WS    positions.{login}               — applies versioned position lifecycle snapshots and quote deltas
  *  3. WS    metrics.{login}                 — single source of truth for equity/margin/pnl summary bar
  *  4. WS    ticks.{SYMBOL}                  — live bid/ask display per open symbol
  *  5. REST  POST /api/v2/positions/{ticket}/close  — close position
  *
  * Rules enforced:
  *  - REST first; never wait for WS for initial list
- *  - WS only patches profit + price_current (never replaces full row)
+ *  - WS closes remove rows immediately; tombstones reject delayed snapshots
  *  - metrics WS is the sole source of equity/free-margin/margin-level
  *  - ticks subscribed only for symbols with open positions
  *  - Reconnect after 3 s; re-subscribe all channels on reconnect
@@ -31,6 +31,8 @@ import { tradingV2Api } from '../api/trade';
 import { API_V2_BASE_URL } from '../config/api';
 import { buildBrokerWsV2Uri } from '../services/brokerSession';
 import type { Position as AppPosition } from '../store/useAppStore';
+import { reconcilePanelPositions, reconcilePanelSnapshot } from '../services/positionsPanelStream';
+import { extractAccountMetrics } from '../services/accountMetrics';
 import {
   normalizeExactBrokerSymbol,
   parseExactTickChannelSymbol,
@@ -41,6 +43,7 @@ import {
 // ─────────────────────────────────────────────
 
 interface GatewayPosition {
+  pnl_available?: boolean;
   ticket: number;
   account_login: number;
   symbol: string;
@@ -222,12 +225,15 @@ class TradeWsManager {
   private handler: WsMessageHandler;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
+  private openedOnce = false;
+  private connectionChanged: (connected: boolean, reconnect: boolean) => void;
 
-  constructor(url: string, token: string, channels: string[], handler: WsMessageHandler) {
+  constructor(url: string, token: string, channels: string[], handler: WsMessageHandler, connectionChanged: (connected: boolean, reconnect: boolean) => void) {
     this.url = url;
     this.token = token;
     this.channels = channels;
     this.handler = handler;
+    this.connectionChanged = connectionChanged;
     this.connect();
   }
 
@@ -240,11 +246,15 @@ class TradeWsManager {
       this.ws = new WebSocket(fullUrl);
 
       this.ws.onopen = () => {
+        if (this.destroyed) return;
         console.log('[TradeWS] Connected');
+        this.connectionChanged(true, this.openedOnce);
+        this.openedOnce = true;
         this.channels.forEach(ch => this.sendSubscribe(ch));
       };
 
       this.ws.onmessage = (evt) => {
+        if (this.destroyed) return;
         try {
           const msg = JSON.parse(evt.data);
           if (msg && typeof msg.channel === 'string') {
@@ -259,6 +269,7 @@ class TradeWsManager {
 
       this.ws.onclose = () => {
         if (this.destroyed) return;
+        this.connectionChanged(false, false);
         console.log('[TradeWS] Closed — reconnecting in 3 s');
         this.scheduleReconnect();
       };
@@ -423,7 +434,7 @@ const PositionRow = React.memo(({
 
       {/* profit (WS patched) */}
       <td className={`px-1.5 py-[3px] text-right font-semibold text-[11px] tabular-nums ${pos.profit >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>
-        {fmtMoney(pos.profit, true)}
+        {pos.pnl_available === false ? '\u2014' : fmtMoney(pos.profit, true)}
       </td>
 
       {/* time_create converted from Unix seconds */}
@@ -588,6 +599,10 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
   const closingRef = useRef<Set<number>>(new Set());
   const accountLoginRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
+  const closedTicketsRef = useRef(new Set<number>());
+  const positionRevisionRef = useRef(0);
+  const positionRequestRef = useRef(0);
+  const metricsTokenRef = useRef('');
 
   // Resolve account_login number
   const accountLogin = useMemo(() => {
@@ -614,6 +629,9 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
   const fetchPositions = useCallback(async () => {
     const login = accountLoginRef.current;
     if (!login) { setPositions([]); return; }
+    const revision = positionRevisionRef.current;
+    const requestId = ++positionRequestRef.current;
+    const isCurrent = () => mountedRef.current && accountLoginRef.current === login && requestId === positionRequestRef.current;
 
     try {
       setLoading(true);
@@ -636,17 +654,17 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
       const data = await res.json();
       const list: GatewayPosition[] = Array.isArray(data) ? data : (data?.positions ?? []);
 
-      if (mountedRef.current) {
-        setPositions(list);
+      if (isCurrent()) {
+        setPositions(previous => reconcilePanelSnapshot(previous, list, login, closedTicketsRef.current, revision !== positionRevisionRef.current));
         console.log(`[TradeTab] Loaded ${list.length} open position(s) via REST`);
       }
     } catch (err) {
       console.error('[TradeTab] REST positions failed:', err);
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError((err as Error)?.message || 'Failed to load positions');
       }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, []);
 
@@ -680,6 +698,12 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
   // Initial load
   useEffect(() => {
     mountedRef.current = true;
+    closedTicketsRef.current = new Set();
+    positionRevisionRef.current++;
+    positionRequestRef.current++;
+    metricsTokenRef.current = '';
+    setPositions([]);
+    setMetrics(null);
     fetchPositions();
     fetchOrders();
 
@@ -695,7 +719,7 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
       clearInterval(ordPoll);
       window.removeEventListener('rtx:force-refresh-positions', onForceRefresh);
     };
-  }, [fetchPositions, fetchOrders]);
+  }, [accountLogin, fetchPositions, fetchOrders]);
 
   // ─────────────────────────────────────────────
   // Tasks 2 & 3 — own WebSocket with subscribe/patch/reconnect
@@ -719,30 +743,12 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
     ];
 
     const handleMsg: WsMessageHandler = ({ channel, data }) => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || accountLoginRef.current !== accountLogin) return;
 
       // ─── positions.{login} — patch profit + price_current per ticket ───
       if (channel === `positions.${accountLogin}`) {
-        const payload = data as { login: number; positions: Array<{ ticket: number; profit: number; price_current: number; swap: number }> };
-        const updates = payload?.positions;
-        if (!Array.isArray(updates)) return;
-
-        setPositions(prev => {
-          const next = [...prev];
-          updates.forEach(upd => {
-            const idx = next.findIndex(p => p.ticket === upd.ticket);
-            if (idx >= 0) {
-              // Spec: update only profit and price_current — never replace full row
-              next[idx] = {
-                ...next[idx],
-                profit: upd.profit,
-                price_current: upd.price_current,
-                swap: upd.swap ?? next[idx].swap,
-              };
-            }
-          });
-          return next;
-        });
+        positionRevisionRef.current++;
+        setPositions(previous => reconcilePanelPositions(previous, { channel, data }, accountLogin, closedTicketsRef.current));
         return;
       }
 
@@ -750,15 +756,12 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
       if (channel === `metrics.${accountLogin}`) {
         // Spec shape: { channel, data: { type: "metrics_update", data: { balance, equity, ... } } }
         // So 'data' here = { type: "metrics_update", data: { ... } }
-        const outer = data as any;
-        const metricsPayload =
-          // Unwrap double-nested: data.data (when type === "metrics_update")
-          (outer?.type === 'metrics_update' && outer?.data) ? outer.data
-            // Already flat (no outer type wrapper)
-            : (typeof outer?.balance === 'number') ? outer
-              // Unknown shape — skip
-              : null;
-
+        const metricsPayload = extractAccountMetrics({ channel, data });
+        const rawToken = metricsPayload?.publication_token;
+        const token = typeof rawToken === 'string' && /^[0-9]{20}$/.test(rawToken) && rawToken !== '00000000000000000000' ? rawToken : '';
+        if (rawToken !== undefined && !token) return;
+        if (metricsTokenRef.current && (!token || token <= metricsTokenRef.current)) return;
+        if (token) metricsTokenRef.current = token;
         if (metricsPayload && typeof metricsPayload.balance === 'number') {
           setMetrics({
             login: toNum(metricsPayload.login ?? accountLogin),
@@ -787,12 +790,16 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
 
     setWsStatus('connecting');
     // Token is already embedded in wsUrl by buildBrokerWsV2Uri — pass '' to avoid double-encoding
-    const manager = new TradeWsManager(wsUrl, '', baseChannels, handleMsg);
+    const manager = new TradeWsManager(wsUrl, '', baseChannels, handleMsg, (connected) => {
+      if (!mountedRef.current || accountLoginRef.current !== accountLogin) return;
+      setWsStatus(connected ? 'connected' : 'disconnected');
+      if (connected) { fetchPositions(); fetchOrders(); }
+    });
 
     // Patch status based on WS open/close
     // (TradeWsManager logs but doesn't expose state — we mirror via a lightweight wrapper)
     wsManagerRef.current = manager;
-    setWsStatus('connected'); // optimistic; will reconnect if it fails
+
 
     return () => {
       manager.destroy();

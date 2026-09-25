@@ -11,7 +11,6 @@ export type WebRuntimeConfig = {
   BROKER_ID: string
   VITE_BROKER_ID: string
   FEED_BROKER_ID: string
-  FEED_BROKER_TOKEN: string
   USE_MOCK_DISCOVERY: boolean
 }
 
@@ -56,15 +55,14 @@ export const createWebRuntimeConfig = (env: Record<string, string>): WebRuntimeC
     BROKER_DISCOVERY_URL: withoutTrailingSlash(first(env.VITE_BROKER_DISCOVERY_URL, discoveryBase)),
     BROKER_ID: brokerId,
     VITE_BROKER_ID: brokerId,
+    // Only explicitly browser-public deployment settings belong here. Never
+    // copy server-only secrets or arbitrary environment entries into the page.
     FEED_BROKER_ID: first(env.VITE_FEED_BROKER_ID, brokerId),
-    // VITE_ credentials are already explicitly browser-public. Never copy a
-    // server-only FEED_BROKER_TOKEN or arbitrary environment entries here.
-    FEED_BROKER_TOKEN: first(env.VITE_FEED_BROKER_TOKEN),
     USE_MOCK_DISCOVERY: first(env.VITE_USE_MOCK_DISCOVERY).toLowerCase() === 'true',
   }
 }
 
-export const renderWebRuntimeConfig = (config: WebRuntimeConfig): string => {
+export const renderWebRuntimeConfig = (config: WebRuntimeConfig, localNginxPreview = true): string => {
   const serialized = JSON.stringify(config, null, 2)
     .replace(/</g, '\\u003c')
     .replace(/\u2028/g, '\\u2028')
@@ -86,14 +84,14 @@ export const renderWebRuntimeConfig = (config: WebRuntimeConfig): string => {
   var isLocalWeb = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
     && (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
       || hostname === '[::1]' || hostname.endsWith('.localhost'));
-  if (isLocalWeb) {
+  if (isLocalWeb && ${localNginxPreview}) {
     var localOrigin = window.location.origin;
     config = Object.assign({}, config, {
       BACKEND_TARGET: 'desktop', BACKEND_MODE: 'desktop',
       API_HOST: localOrigin, API_HOST_EXT: localOrigin,
       WS_HOST: localOrigin.replace(/^http/i, 'ws'),
       DEFAULT_MT5_SERVER: 'TEST', BROKER_ID: 'TEST', VITE_BROKER_ID: 'TEST',
-      FEED_BROKER_ID: 'TEST', FEED_BROKER_TOKEN: '',
+      FEED_BROKER_ID: 'TEST',
       DISCOVERY_BASE_URL: 'https://fxtrustsuperbackned.orrnn.com',
       BROKER_DISCOVERY_URL: 'https://fxtrustsuperbackned.orrnn.com',
       USE_MOCK_DISCOVERY: false
@@ -108,7 +106,10 @@ export const renderWebRuntimeConfig = (config: WebRuntimeConfig): string => {
 
 /** Serve the same configuration in development and in the resulting build. */
 export const webRuntimeConfigPlugin = (env: Record<string, string>): Plugin => {
-  const source = renderWebRuntimeConfig(createWebRuntimeConfig(env))
+  const source = renderWebRuntimeConfig(
+    createWebRuntimeConfig(env),
+    env.VITE_LOCAL_NGINX_PREVIEW?.trim().toLowerCase() !== 'false',
+  )
 
   return {
     name: 'rtx5-web-runtime-config',

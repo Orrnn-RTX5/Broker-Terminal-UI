@@ -302,7 +302,7 @@ class AccountSocketManager {
     const batch = readPositionStreamBatch(raw);
     if (batch) {
       const result = reconcilePositionStreamBatch(store.positions, batch);
-      store.setPositions(result.positions);
+      store.setPositions(result.positions, { closedTickets: result.closedTickets });
       if (result.needsRevalidation) requestPositionSnapshotRevalidation();
       return;
     }
@@ -313,7 +313,7 @@ class AccountSocketManager {
       mode: 'delta',
       positions: [POSITION_CLOSED_EVENTS.has(event) ? { ...position, closed: true } : position],
     });
-    store.setPositions(result.positions);
+    store.setPositions(result.positions, { closedTickets: result.closedTickets });
     if (result.needsRevalidation || event === 'position_partial_close') requestPositionSnapshotRevalidation();
   }
 

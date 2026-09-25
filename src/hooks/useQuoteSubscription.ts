@@ -13,8 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getQuoteSocketManager } from '../services/quoteSocketManager';
 import { onSessionChange } from '../services/brokerSession';
 import { debugLog } from '../utils/debugLogging';
-import { useAppStore } from '../store/useAppStore';
-import { isDesktopBackendTarget } from '../config/backendTarget.js';
+import { useWebSocketStore } from '../store/useWebSocketStore';
 
 const normalizeSymbol = (v: unknown): string =>
   typeof v === 'string' ? v.trim().toUpperCase() : '';
@@ -32,8 +31,10 @@ export function useQuoteSubscription(
   sourceId: string,
   options: UseQuoteSubscriptionOptions = {},
 ): UseQuoteSubscriptionReturn {
-  const authenticated = useAppStore(state => state.isAuthenticated);
-  const enabled = options.enabled !== false && (authenticated || isDesktopBackendTarget());
+  // Public quote channels do not require an account session. The socket
+  // manager selects anonymous v2 or the broker's authenticated transport.
+  const enabled = options.enabled !== false;
+  const isConnected = useWebSocketStore(state => state.fixConnectionState === 'connected');
   const [sessionRevision, setSessionRevision] = useState(0);
 
   useEffect(() => {
@@ -69,6 +70,6 @@ export function useQuoteSubscription(
   }, [enabled, normalizedSymbols.join('|'), sourceId, sessionRevision]);
 
   return {
-    isConnected: managerRef.current.isConnected(),
+    isConnected: enabled && isConnected,
   };
 }

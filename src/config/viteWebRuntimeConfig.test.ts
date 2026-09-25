@@ -43,7 +43,7 @@ describe('environment-based web runtime configuration', () => {
     expect(runtime.RUNTIME_CONFIG).toEqual(expect.objectContaining({
       BACKEND_TARGET: 'desktop', BROKER_ID: 'TEST',
       API_HOST: 'http://localhost:5175', API_HOST_EXT: 'http://localhost:5175',
-      WS_HOST: 'ws://localhost:5175', FEED_BROKER_TOKEN: '',
+      WS_HOST: 'ws://localhost:5175',
     }))
   })
 
@@ -61,8 +61,21 @@ describe('environment-based web runtime configuration', () => {
     expect(config.FEED_BROKER_ID).toBe(brokerId)
   })
 
+  it('can keep the configured broker on localhost instead of the nginx TEST preview', () => {
+    const config = createWebRuntimeConfig({
+      VITE_BACKEND_TARGET: 'web',
+      VITE_API_HOST: 'https://trivanta.orrnn.com',
+      VITE_BROKER_ID: 'trivanta-markets',
+    })
+    const location = { protocol: 'http:', hostname: '127.0.0.1', origin: 'http://127.0.0.1:5173' }
+    expect(executeConfig(renderWebRuntimeConfig(config, false), { location }).RUNTIME_CONFIG)
+      .toEqual(expect.objectContaining({ API_HOST: 'https://trivanta.orrnn.com', BROKER_ID: 'trivanta-markets', BACKEND_TARGET: 'web' }))
+    expect(executeConfig(renderWebRuntimeConfig(config), { location }).RUNTIME_CONFIG)
+      .toEqual(expect.objectContaining({ API_HOST: location.origin, BROKER_ID: 'TEST' }))
+  })
+
   it('derives all broker endpoints without retaining the prior broker', () => {
-    createWebRuntimeConfig({ ...testEnvironment, VITE_FEED_BROKER_TOKEN: 'test-public-token' })
+    createWebRuntimeConfig(testEnvironment)
     const config = createWebRuntimeConfig(achieverEnvironment)
 
     expect(config).toMatchObject({
@@ -71,7 +84,7 @@ describe('environment-based web runtime configuration', () => {
       WS_HOST: 'wss://service.achieverfinancials.com',
       DEFAULT_MT5_SERVER: 'Achiever Financials',
       DISCOVERY_BASE_URL: 'https://superbackend.orrnn.com',
-      FEED_BROKER_TOKEN: '',
+      FEED_BROKER_ID: 'achiever-financials',
       USE_MOCK_DISCOVERY: false,
     })
     expect(JSON.stringify(config)).not.toContain('TEST')
@@ -83,7 +96,6 @@ describe('environment-based web runtime configuration', () => {
       VITE_API_HOST_EXT: ' https://external.example.com/ ',
       VITE_WS_HOST: 'wss://feed.example.com/',
       VITE_FEED_BROKER_ID: 'backend-feed-id',
-      VITE_FEED_BROKER_TOKEN: 'explicit-public-token',
       VITE_USE_MOCK_DISCOVERY: ' TRUE ',
     })
     expect(config).toMatchObject({
@@ -91,7 +103,6 @@ describe('environment-based web runtime configuration', () => {
       WS_HOST: 'wss://feed.example.com',
       BROKER_ID: 'achiever-financials',
       FEED_BROKER_ID: 'backend-feed-id',
-      FEED_BROKER_TOKEN: 'explicit-public-token',
       USE_MOCK_DISCOVERY: true,
     })
   })
@@ -101,13 +112,14 @@ describe('environment-based web runtime configuration', () => {
       ...achieverEnvironment,
       DATABASE_PASSWORD: 'database-secret',
       FEED_BROKER_TOKEN: 'server-only-secret',
+      VITE_FEED_BROKER_TOKEN: 'retired-feed-secret',
       VITE_UNRELATED_SECRET: 'unrelated-secret',
       PATH: 'private-machine-path',
     }))
-    for (const value of ['database-secret', 'server-only-secret', 'unrelated-secret', 'private-machine-path']) {
+    for (const value of ['database-secret', 'server-only-secret', 'retired-feed-secret', 'unrelated-secret', 'private-machine-path']) {
       expect(source).not.toContain(value)
     }
-    expect(executeConfig(source).RUNTIME_CONFIG).toEqual(expect.objectContaining({ FEED_BROKER_TOKEN: '' }))
+    expect(source).not.toContain('FEED_BROKER_TOKEN')
   })
 
   it('escapes source text while preserving the exact configured value', () => {

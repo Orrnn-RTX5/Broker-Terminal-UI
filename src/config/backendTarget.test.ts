@@ -86,6 +86,21 @@ describe('backend target resolver', () => {
     expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://services.growtradingacademy.com/ws/feed');
   });
 
+  it('routes Trivanta public APIs and quote sockets to its configured backend', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      BROKER_ID: 'trivanta-markets',
+      API_HOST: 'https://trivanta.orrnn.com',
+      WS_HOST: 'wss://trivanta.orrnn.com',
+      DISCOVERY_BASE_URL: 'https://superadmin-prod.orrnn.com',
+    };
+
+    expect(getBackendTarget()).toBe('https://trivanta.orrnn.com');
+    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://trivanta.orrnn.com/ws/v2');
+    expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://trivanta.orrnn.com/ws/feed');
+    expect(getRuntimeDiscoveryBaseUrl()).toBe('https://superadmin-prod.orrnn.com');
+  });
+
   it('keeps the selected broker authoritative in Electron even when the web runtime script is present', () => {
     runtimeWindow.electron = { window: {} };
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
@@ -187,7 +202,6 @@ describe('backend target resolver', () => {
       DISCOVERY_BASE_URL: 'https://superbackend.orrnn.com',
       WS_HOST: 'wss://service.achieverfinancials.com',
       FEED_BROKER_ID: 'achiever-financials',
-      FEED_BROKER_TOKEN: 'feed-secret',
     };
 
     expect(getBackendTarget()).toBe('https://service.achieverfinancials.com');

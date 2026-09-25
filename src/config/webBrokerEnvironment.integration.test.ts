@@ -120,8 +120,8 @@ describe('real .env.web broker selection over Vite HTTP', () => {
       BROKER_ID: selected.brokerId,
       VITE_BROKER_ID: selected.brokerId,
       FEED_BROKER_ID: selected.brokerId,
-      FEED_BROKER_TOKEN: '',
     })
+    expect(context.window.RUNTIME_CONFIG).not.toHaveProperty('FEED_BROKER_TOKEN')
     expect(context.window.__RTX_RUNTIME_CONFIG__).toBe(context.window.RUNTIME_CONFIG)
     expect(context.window.__RUNTIME_CONFIG__).toBe(context.window.RUNTIME_CONFIG)
   }, 30_000)

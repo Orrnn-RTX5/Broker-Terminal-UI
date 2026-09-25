@@ -32,7 +32,7 @@ const ACTIVE_SESSION_KEYS = [
   'auth_token', 'refresh_token', 'token_expires_at', 'api_base_url',
   'account_login', 'rtx_last_login', 'rtx_saved_username', 'rtx_saved_password',
   'rtx_user', 'mt5_credentials', 'mt5_auto_login',
-  'feed_broker_token', 'broker_feed_token', 'feed_token', 'ws_feed_token', 'feed_broker_id',
+  'feed_broker_id',
   'rtx_last_authenticated_broker_id',
 ];
 

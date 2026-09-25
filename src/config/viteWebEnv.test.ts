@@ -28,7 +28,7 @@ describe('one active broker block', () => {
     expect(() => validateWebBrokerEnvironment(selected, directory)).toThrow('Uncomment only one broker block');
   });
   it('reports duplicate key locations without revealing credentials', () => {
-    const directory = fixture('VITE_FEED_BROKER_TOKEN=first-secret\nVITE_FEED_BROKER_TOKEN=second-secret');
+    const directory = fixture('VITE_API_HOST=first-secret\nVITE_API_HOST=second-secret');
     expect(() => validateWebBrokerEnvironment(selected, directory)).toThrow('lines 1 and 2');
     try { validateWebBrokerEnvironment(selected, directory); } catch (error) {
       expect(String(error)).not.toContain('secret');

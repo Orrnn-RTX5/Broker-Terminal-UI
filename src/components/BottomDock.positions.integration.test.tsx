@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BottomDock } from './BottomDock';
 import { useAppStore } from '../store/useAppStore';
 import { normalizePosition, readPositionStreamBatch, reconcilePositionStreamBatch } from '../services/positionStream';
+import { EnhancedWebSocketService } from '../services/websocket-enhanced';
 
 describe('Trade table across symbol updates', () => {
   beforeEach(() => {
@@ -35,5 +36,26 @@ describe('Trade table across symbol updates', () => {
       expect(screen.getByText('XAUUSD')).toBeInTheDocument();
       expect(screen.getByText('BTCUSD')).toBeInTheDocument();
     }
+  });
+
+  it.each([false,true])('removes Manager closes through the actual socket and BottomDock, legacy wrapper=%s',async(legacy)=>{
+    render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    const service=new EnhancedWebSocketService('ws://example.test/ws/v2');
+    const handle=(service as any).handleMessage.bind(service);
+    try {
+      for(const ticket of [20165,20166]) {
+        await act(async()=>handle({...(legacy?{type:'channel_message'}:{}),channel:'positions.200001',data:{
+          type:'position_closed',data:{ticket,account_login:200001,status:'closed',volume:0.01,state_version:1,state_version_text:'1'},
+        }}));
+        await waitFor(()=>expect(screen.queryByText(String(ticket))).toBeNull());
+      }
+      expect(useAppStore.getState().positions).toEqual([]);
+      // A delayed full REST row and price patch must not recreate either trade.
+      await act(async()=>{
+        useAppStore.getState().setPositions([normalizePosition({ticket:20166,symbol:'BTCUSD',side:'sell',volume:0.02,price_open:110000,state_version:'0'})]);
+        handle({channel:'positions.200001',data:{type:'position_update',data:[{ticket:20166,update_kind:'pnl',state_version:'0',profit:99,price_time_msc:1800000000000}]}});
+      });
+      expect(screen.queryByText('20166')).toBeNull();
+    } finally {service.destroy();}
   });
 });
