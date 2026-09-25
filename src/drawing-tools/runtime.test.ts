@@ -36,11 +36,11 @@ describe('drawing-tools runtime detection', () => {
   });
 
   it.each([
-    { name: 'preload window bridge', electron: { window: {} } },
-    { name: 'legacy Electron API bridge', electronAPI: {} },
-    { name: 'file protocol', protocol: 'file:' },
-    { name: 'Electron user agent', userAgent: 'Mozilla/5.0 Electron/40.8.0' },
-  ])('enables the shared rail for the $name signal', ({ name: _name, ...runtime }) => {
+    { name: 'preload window bridge', runtime: { electron: { window: {} } } },
+    { name: 'legacy Electron API bridge', runtime: { electronAPI: {} } },
+    { name: 'file protocol', runtime: { protocol: 'file:' } },
+    { name: 'Electron user agent', runtime: { userAgent: 'Mozilla/5.0 Electron/40.8.0' } },
+  ])('enables the shared rail for the $name signal', ({ runtime }) => {
     installRuntime(runtime);
 
     expect(isElectronDrawingToolsRuntime()).toBe(true);

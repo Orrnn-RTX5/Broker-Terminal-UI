@@ -5,8 +5,52 @@ const runtimeWindow = window as Window & { __RTX_RUNTIME_CONFIG__?: Record<strin
 describe('broker login policy', () => {
   afterEach(() => {
     delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+    localStorage.clear();
     vi.unstubAllEnvs();
     vi.resetModules();
+  });
+
+  it('prefers the active session broker (Navigator) over the env-configured broker', async () => {
+    vi.stubEnv('VITE_LOCAL_DESKTOP_BUILD', 'false');
+    vi.stubEnv('VITE_BACKEND_TARGET', 'web');
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BROKER_ID: 'TEST' };
+    localStorage.setItem('broker_id', 'Nexa');
+    vi.resetModules();
+    const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
+
+    expect(resolveBrokerLoginPolicy([
+      { broker_id: 'TEST', broker_name: 'TEST', server_url: 'https://test-broker.example' },
+      { broker_id: 'Nexa', broker_name: 'Nexa', server_url: 'https://nexa.example' },
+    ], { hostname: 'localhost' })).toMatchObject({
+      status: 'ready', brokerId: 'Nexa', displayName: 'Nexa', locked: true,
+    });
+  });
+
+  it('ignores a stored session broker that discovery does not list', async () => {
+    vi.stubEnv('VITE_LOCAL_DESKTOP_BUILD', 'false');
+    vi.stubEnv('VITE_BACKEND_TARGET', 'web');
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BROKER_ID: 'TEST' };
+    localStorage.setItem('broker_id', 'ghost-broker');
+    vi.resetModules();
+    const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
+
+    expect(resolveBrokerLoginPolicy([
+      { broker_id: 'TEST', broker_name: 'TEST' },
+    ], { hostname: 'localhost' })).toMatchObject({ status: 'ready', brokerId: 'TEST' });
+  });
+
+  it('fails closed when the session broker differs from the deployment domain broker', async () => {
+    vi.stubEnv('VITE_LOCAL_DESKTOP_BUILD', 'false');
+    vi.stubEnv('VITE_BACKEND_TARGET', 'web');
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BROKER_ID: 'broker-a' };
+    localStorage.setItem('broker_id', 'broker-b');
+    vi.resetModules();
+    const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
+
+    expect(resolveBrokerLoginPolicy([
+      { broker_id: 'broker-a', broker_name: 'Broker A', webterminal_domain: 'terminal.broker-a.test' },
+      { broker_id: 'broker-b', broker_name: 'Broker B' },
+    ], { hostname: 'terminal.broker-a.test' })).toMatchObject({ status: 'error', brokerId: '' });
   });
 
   it('locks a live terminal to the exact verified runtime/domain broker', async () => {

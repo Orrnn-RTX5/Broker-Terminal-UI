@@ -14,7 +14,6 @@ import type {
   CommandHandler,
   CommandBus,
   Unsubscribe,
-  PayloadFor,
 } from '../types/commands';
 
 /**

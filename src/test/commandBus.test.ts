@@ -107,7 +107,7 @@ describe('CommandBus', () => {
       const handler2 = vi.fn();
 
       const unsub1 = commandBus.subscribe('ZOOM_IN', handler1);
-      const unsub2 = commandBus.subscribe('ZOOM_IN', handler2);
+      commandBus.subscribe('ZOOM_IN', handler2);
 
       commandBus.dispatch({ type: 'ZOOM_IN', payload: {} });
       expect(handler1).toHaveBeenCalledTimes(1);

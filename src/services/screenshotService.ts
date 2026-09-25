@@ -37,31 +37,12 @@ const loadScreenshotRenderer = (): Promise<ScreenshotRenderer> => {
   return rendererPromise;
 };
 
-/** Warm the split renderer chunk before the first camera click. */
+/** Optional explicit warmup; importing the service does not load the renderer. */
 const preloadScreenshotRenderer = (): Promise<void> => loadScreenshotRenderer()
   .then(() => undefined)
   .catch((error) => {
     console.warn('[Screenshot] Renderer preload failed; the next capture will retry.', error);
   });
-
-const scheduleRendererPreload = (): void => {
-  if (typeof window === 'undefined') return;
-
-  const idleWindow = window as Window & {
-    requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
-  };
-
-  if (typeof idleWindow.requestIdleCallback === 'function') {
-    idleWindow.requestIdleCallback(() => {
-      void preloadScreenshotRenderer();
-    }, { timeout: 2_000 });
-    return;
-  }
-
-  window.setTimeout(() => {
-    void preloadScreenshotRenderer();
-  }, 0);
-};
 
 const canvasToPngBlob = (canvas: HTMLCanvasElement): Promise<Blob> => new Promise((resolve, reject) => {
   canvas.toBlob((blob) => {
@@ -484,8 +465,6 @@ function captureFullPage(): Promise<void> {
   captureInFlight = trackedCapture;
   return trackedCapture;
 }
-
-scheduleRendererPreload();
 
 // Subscribe at module load so toolbar commands work regardless of component lifecycle.
 commandBus.subscribe('EXPORT_CHART', () => {

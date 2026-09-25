@@ -3,10 +3,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const workerMocks = vi.hoisted(() => ({
-  aggregateMultipleTimeframes: vi.fn(),
+  aggregateSymbols: vi.fn(),
 }));
 
 vi.mock('../services/aggregationWorkerManager', () => ({
+  cancelPendingAggregations: vi.fn(),
   getWorkerManager: () => workerMocks,
 }));
 
@@ -45,7 +46,7 @@ const workerRow = (overrides: Partial<OHLCV> = {}): OHLCV => ({
 
 describe('MarketDataStore authoritative candle updates', () => {
   beforeEach(() => {
-    workerMocks.aggregateMultipleTimeframes.mockReset();
+    workerMocks.aggregateSymbols.mockReset();
     useMarketDataStore.getState().clearAllData();
   });
 
@@ -165,12 +166,12 @@ describe('MarketDataStore authoritative candle updates', () => {
 
   it('does not let a delayed local worker result replace an authoritative server bucket', () => {
     let workerCallback: ((results: Record<string, OHLCV[]>) => void) | undefined;
-    workerMocks.aggregateMultipleTimeframes.mockImplementation((
+    workerMocks.aggregateSymbols.mockImplementation((
       _ticks: unknown,
       _timeframes: unknown,
       callback: (results: Record<string, OHLCV[]>) => void,
     ) => {
-      workerCallback = callback;
+      workerCallback = (results) => (callback as any)([{ symbol: 'XAUUSD.RAW', results }]);
     });
 
     useMarketDataStore.getState().updateTick('XAUUSD.RAW', {

@@ -67,7 +67,7 @@ interface AlertState {
 export const useAlertStore = create<AlertState>()(
   devtools(
     persist(
-      (set, get) => ({
+      (set) => ({
         alerts: [],
 
         addAlert: (alert) => {

@@ -243,8 +243,8 @@ const QuoteMetric = ({
   tone?: 'positive' | 'negative' | 'neutral';
 }) => { const tr = useUiTranslation(); return ((
   <div className="min-w-[132px] flex-1 rounded border border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-3 py-2.5">
-    <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-secondary)]">{tr(label)}</div>
-    <div className={`mt-1 truncate font-mono text-[15px] font-semibold ${
+    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">{tr(label)}</div>
+    <div className={`mt-1 truncate font-mono text-[14px] font-semibold tabular-nums ${
       tone === 'positive' ? 'text-emerald-400' : tone === 'negative' ? 'text-rose-400' : 'text-[var(--text-primary)]'
     }`}>
       {value}
@@ -273,7 +273,7 @@ const SpecificationSection = ({
       <div className="flex h-9 items-center gap-2 border-b border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-3">
         <span className="text-[var(--color-info)]" aria-hidden="true">{icon}</span>
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--text-primary)]">{tr(title)}</h3>
-        <span className="ml-auto text-[10px] tabular-nums text-[var(--text-secondary)]">
+        <span className="ml-auto text-[10px] font-medium tabular-nums text-[var(--text-secondary)]">
           {availableRows.length > 0 ? tr("{{value0}} fields", { value0: availableRows.length }) : tr("Unavailable")}
         </span>
       </div>
@@ -287,9 +287,9 @@ const SpecificationSection = ({
                 : 'grid min-h-9 grid-cols-[minmax(0,1fr)_minmax(112px,1fr)] items-center gap-3'
               }`}
             >
-              <dt className="text-[11px] text-[var(--text-secondary)]">{tr(row.label)}</dt>
+              <dt className="text-[12px] text-[var(--text-secondary)]">{tr(row.label)}</dt>
               <dd
-                className={`${grid ? 'mt-1 text-left text-[13px]' : 'truncate text-right text-[12px]'} font-mono font-medium text-[var(--text-primary)]`}
+                className={`${grid ? 'mt-1 text-left text-[12px]' : 'truncate text-right text-[12px]'} font-mono font-medium tabular-nums text-[var(--text-primary)]`}
                 title={row.value}
               >
                 {row.value}
@@ -298,7 +298,7 @@ const SpecificationSection = ({
           ))}
         </dl>
       ) : (
-        <div className="flex min-h-[64px] items-center gap-2.5 px-3 py-3 text-[11px] text-[var(--text-secondary)]">
+        <div className="flex min-h-[64px] items-center gap-2.5 px-3 py-3 text-[12px] text-[var(--text-secondary)]">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--bg-quaternary)] text-[var(--text-muted)]" aria-hidden="true">
             <Icon name="info" size="xs" />
           </span>
@@ -451,9 +451,9 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
               <Icon name="file-text" size="sm" />
             </div>
             <div className="min-w-0">
-              <h2 id="rtx-symbol-specification-title" className="truncate text-[16px] font-semibold">
+              <h2 id="rtx-symbol-specification-title" className="truncate text-[14px] font-semibold leading-5">
                 {symbol} {tr(" Specification")}</h2>
-              <p className="mt-0.5 truncate text-[12px] text-[var(--text-secondary)]">
+              <p className="mt-0.5 truncate text-[11px] text-[var(--text-secondary)]">
                 {snapshot.description ?? tr('Broker contract details and current market data')}
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">

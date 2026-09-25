@@ -174,12 +174,12 @@ afterEach(() => {
 });
 
 describe('unavailable terminal services', () => {
-    it.each(['web', 'desktop'])('locks unsupported Tools entries in the %s menu and keeps working actions available', (surface) => {
+    it.each(['web', 'desktop'])('locks unsupported Tools entries in the %s menu and keeps working actions available', async (surface) => {
         if (surface === 'desktop') installElectronBridge();
         render(<MenuBar />);
         const openTools = () => {
             if (surface === 'desktop') {
-                fireEvent.click(screen.getByRole('menuitem', { name: 'Tools', exact: true }));
+                fireEvent.click(screen.getByRole('menuitem', { name: 'Tools' }));
             } else {
                 fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
                 fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Algo Trading' }));
@@ -208,15 +208,15 @@ describe('unavailable terminal services', () => {
         const options = screen.getByRole('menuitem', { name: 'menu.tools.options' });
         expect(options).toBeEnabled();
         fireEvent.click(options);
-        expect(screen.getByRole('dialog', { name: 'Options' })).toBeInTheDocument();
+        expect(await screen.findByRole('dialog', { name: 'Options' })).toBeInTheDocument();
     });
 
     it('also locks duplicate service entries under desktop View and Help', () => {
         installElectronBridge();
         render(<MenuBar />);
-        fireEvent.click(screen.getByRole('menuitem', { name: 'View', exact: true }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
         expect(screen.getByRole('menuitem', { name: 'menu.view.strategyTester' })).toBeDisabled();
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Help', exact: true }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Help' }));
         for (const key of ['marketplace', 'signals', 'cloudHosting']) {
             expect(screen.getByRole('menuitem', { name: `menu.help.${key}` })).toBeDisabled();
         }
@@ -353,7 +353,7 @@ describe('MenuBar hamburger launcher', () => {
         }
     });
 
-    it('wires chart close, restore, profile restore, and trade login to live application owners', () => {
+    it('wires chart close, restore, profile restore, and trade login to live application owners', async () => {
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
         render(<MenuBar />);
         const launcher = screen.getByRole('button', { name: 'Open application menu' });
@@ -387,7 +387,7 @@ describe('MenuBar hamburger launcher', () => {
 
         openFileMenu();
         fireEvent.click(screen.getByRole('button', { name: 'Login trade account' }));
-        expect(screen.getByRole('dialog', { name: 'Trade account login' })).toBeVisible();
+        expect(await screen.findByRole('dialog', { name: 'Trade account login' })).toBeVisible();
         expect(screen.queryByTestId('file-menu')).not.toBeInTheDocument();
         expect(launcher).toHaveAttribute('aria-expanded', 'false');
 
@@ -488,7 +488,8 @@ describe('MenuBar hamburger launcher', () => {
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
 
-    it('keeps the original actions reachable through the professional launcher', () => {
+    it('keeps the original actions reachable through the professional launcher', async () => {
+        // Walks ~35 role queries across the full launcher menu tree; jsdom role lookups make this exceed the 10s default.
         const onSetAdvancedViewEnabled = vi.fn();
         const onSetAdvancedFontSize = vi.fn();
         const onSetFocusChart = vi.fn();
@@ -539,7 +540,7 @@ describe('MenuBar hamburger launcher', () => {
         fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Search Symbols' }));
-        expect(screen.getByRole('dialog', { name: 'Symbols dialog' })).toBeInTheDocument();
+        expect(await screen.findByRole('dialog', { name: 'Symbols dialog' })).toBeInTheDocument();
 
         fireEvent.click(launcher);
         fireEvent.click(screen.getByRole('menuitem', { name: 'Chart settings' }));
@@ -581,11 +582,11 @@ describe('MenuBar hamburger launcher', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
         expect(onLogout).toHaveBeenCalledTimes(1);
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
-    });
+    }, 30_000);
 });
 
 describe('MenuBar Electron desktop menubar', () => {
-    it('opens, closes, and reopens trade account login without a status bar', () => {
+    it('opens, closes, and reopens trade account login without a status bar', async () => {
         installElectronBridge();
         render(<MenuBar />);
 
@@ -596,7 +597,7 @@ describe('MenuBar Electron desktop menubar', () => {
         };
 
         openTradeLogin();
-        expect(screen.getByRole('dialog', { name: 'Trade account login' })).toBeVisible();
+        expect(await screen.findByRole('dialog', { name: 'Trade account login' })).toBeVisible();
         expect(screen.queryByRole('menu', { name: 'File menu' })).not.toBeInTheDocument();
         expect(fileButton).toHaveAttribute('aria-expanded', 'false');
 
@@ -621,7 +622,7 @@ describe('MenuBar Electron desktop menubar', () => {
                 onStatus: (listener: typeof notify) => { notify = listener; return unsubscribe; } },
         });
         const view = render(<MenuBar />);
-        const openView = () => fireEvent.click(screen.getByRole('menuitem', { name: 'View', exact: true }));
+        const openView = () => fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
         openView();
         expect(screen.getByText('Version 1.0.24')).toBeInTheDocument();
         expect(screen.queryByText('menu.view.statusBar')).not.toBeInTheDocument();
@@ -850,10 +851,10 @@ describe('MenuBar Electron desktop menubar', () => {
         }
     });
 
-    it('opens Options through the shared command while the application menu is closed', () => {
+    it('opens Options through the shared command while the application menu is closed', async () => {
         render(<MenuBar />);
         fireEvent(window, new CustomEvent('open-terminal-options'));
-        expect(screen.getByRole('dialog', { name: 'Options' })).toBeInTheDocument();
+        expect(await screen.findByRole('dialog', { name: 'Options' })).toBeInTheDocument();
     });
 
     it.each(['web', 'desktop'])('enables Arrange Icons only for minimized floating windows in %s', surface => {

@@ -1,3 +1,5 @@
+import { TIMEFRAME_SECONDS, type BoundaryTimeframe } from './timeframeBoundary';
+
 export interface MarketClosedGapCandle {
   time: number;
   open: number;
@@ -31,21 +33,8 @@ interface ClosedMarketRun {
   price: number;
 }
 
-const SECONDS_PER_DAY = 24 * 60 * 60;
+const SECONDS_PER_DAY = TIMEFRAME_SECONDS.D1;
 const DEFAULT_MIN_GAP_SECONDS = 2 * 60 * 60;
-const D1_SECONDS = SECONDS_PER_DAY;
-
-const TIMEFRAME_SECONDS: Record<string, number> = {
-  M1: 60,
-  M5: 5 * 60,
-  M15: 15 * 60,
-  M30: 30 * 60,
-  H1: 60 * 60,
-  H4: 4 * 60 * 60,
-  D1: D1_SECONDS,
-  W1: 7 * D1_SECONDS,
-  MN: 30 * D1_SECONDS,
-};
 
 const FRIDAY_CLOSE_HOUR = 22;
 const SUNDAY_OPEN_HOUR = 23;
@@ -69,7 +58,7 @@ const CRYPTO_BASE_ASSETS = [
 ] as const;
 
 export const getMarketGapTimeframeSeconds = (timeframe: string): number | null => {
-  const seconds = TIMEFRAME_SECONDS[timeframe.toUpperCase()];
+  const seconds = TIMEFRAME_SECONDS[timeframe.toUpperCase() as BoundaryTimeframe];
   return Number.isFinite(seconds) ? seconds : null;
 };
 
@@ -80,7 +69,7 @@ export const isCryptoMarketSymbol = (symbol: string): boolean => {
 
 const isIntradayNonCryptoMarket = (symbol: string, timeframe: string): boolean => {
   const timeframeSeconds = getMarketGapTimeframeSeconds(timeframe);
-  return !!timeframeSeconds && timeframeSeconds < D1_SECONDS && !isCryptoMarketSymbol(symbol);
+  return !!timeframeSeconds && timeframeSeconds < SECONDS_PER_DAY && !isCryptoMarketSymbol(symbol);
 };
 
 const getBrokerDate = (time: number, brokerOffsetSeconds: number): Date => (
@@ -242,7 +231,7 @@ export const buildMarketClosedGapSeries = <TCandle extends MarketClosedGapCandle
   const timeframeSeconds = getMarketGapTimeframeSeconds(options.timeframe);
   if (
     !timeframeSeconds ||
-    timeframeSeconds >= D1_SECONDS ||
+    timeframeSeconds >= SECONDS_PER_DAY ||
     isCryptoMarketSymbol(options.symbol)
   ) {
     return { candles: [...candles], gaps: [] };

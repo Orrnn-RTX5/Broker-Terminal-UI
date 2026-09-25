@@ -2,7 +2,7 @@
  * SavePictureDialog Component Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { SavePictureDialog } from './SavePictureDialog';
 import { ChartExporter } from '../../services/chartExporter';
@@ -11,13 +11,13 @@ vi.mock('../../services/chartExporter');
 
 describe('SavePictureDialog', () => {
   let mockCanvas: HTMLCanvasElement;
-  let mockOnClose: ReturnType<typeof vi.fn>;
+  let mockOnClose: Mock<() => void>;
 
   beforeEach(() => {
     mockCanvas = document.createElement('canvas');
     mockCanvas.width = 800;
     mockCanvas.height = 600;
-    mockOnClose = vi.fn();
+    mockOnClose = vi.fn<() => void>();
 
     // Mock ChartExporter methods
     vi.mocked(ChartExporter.getPreview).mockReturnValue('data:image/png;base64,test');

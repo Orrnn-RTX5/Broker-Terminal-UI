@@ -3,7 +3,7 @@ import type { DockLayout, DockPanelConfig } from './dockManager';
 import { getPanelIdFromChartContextId } from './chartCommandTarget';
 
 const chartTypes: readonly ChartType[] = ['bar', 'candlestick', 'line', 'area'];
-const findChartPanel = (layout: DockLayout, id: string): DockPanelConfig | undefined => {
+export const findChartPanel = (layout: DockLayout, id: string): DockPanelConfig | undefined => {
   const find = (node: DockLayout['root']): DockPanelConfig | undefined => {
     for (const child of node.children) {
       if ('children' in child) { const result = find(child); if (result) return result; }

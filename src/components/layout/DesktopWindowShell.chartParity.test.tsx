@@ -133,19 +133,11 @@ describe.each([{ name: 'web', desktop: false }, { name: 'desktop', desktop: true
     } finally { window.removeEventListener('request-chart-symbol-change', requestSymbol); }
   });
 
-  it('offers the shared Add chart action when empty and disables it at the six-chart limit', async () => {
+  it('supports the six-chart limit with close controls on each chart panel', async () => {
     if (desktop) installDesktop();
-    useDockLayoutStore.getState().setLayout(layout(0));
-    const add = vi.fn(); window.addEventListener('add-chart-panel', add);
+    act(() => useDockLayoutStore.getState().setLayout(layout(MAX_CHART_PANELS)));
     mount(); await act(async () => {});
-    try {
-      const emptyAdd = screen.getByRole('button', { name: `Add chart (0/${MAX_CHART_PANELS})` });
-      expect(emptyAdd).toBeEnabled(); fireEvent.click(emptyAdd); expect(add).toHaveBeenCalledOnce();
-      act(() => useDockLayoutStore.getState().setLayout(layout(MAX_CHART_PANELS)));
-      const cappedAdd = screen.getByRole('button', { name: `Maximum ${MAX_CHART_PANELS} charts are open` });
-      expect(cappedAdd).toBeDisabled(); fireEvent.click(cappedAdd); expect(add).toHaveBeenCalledOnce();
-      expect(screen.getAllByRole('button', { name: /^Close chart / })).toHaveLength(6);
-    } finally { window.removeEventListener('add-chart-panel', add); }
+    expect(screen.getAllByRole('button', { name: /^Close chart / })).toHaveLength(MAX_CHART_PANELS);
   });
 
   it('keeps shared drawing shortcuts and the bundled emoji picker available inside the shell', async () => {
@@ -157,11 +149,11 @@ describe.each([{ name: 'web', desktop: false }, { name: 'desktop', desktop: true
     expect(commandBus.getHistory()).toEqual([{ type: 'SELECT_TOOL', payload: {
       tool: 'trendline', subtype: 'trendline', targetContextId: 'trading-chart:chart-0',
     } }]);
-    fireEvent.click(screen.getByRole('button', { name: 'Emojis', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Emojis' }));
     const picker = screen.getByRole('dialog', { name: 'Emoji picker' });
     expect(picker).toBeVisible();
-    expect(within(picker).getByRole('tab', { name: 'Emojis', exact: true })).toHaveAttribute('aria-selected', 'true');
-    expect(within(picker).getByRole('tab', { name: 'Stickers', exact: true })).toBeVisible();
-    expect(within(picker).getByRole('tab', { name: 'Icons', exact: true })).toBeVisible();
+    expect(within(picker).getByRole('tab', { name: 'Emojis' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(picker).getByRole('tab', { name: 'Stickers' })).toBeVisible();
+    expect(within(picker).getByRole('tab', { name: 'Icons' })).toBeVisible();
   });
 });

@@ -4,6 +4,7 @@ import {
   formatTradeHistoryGmtTime,
   getTradeHistoryLabelMaxWidth,
   getTradeHistoryExecutionSide,
+  getTradeHistoryMarkerPrice,
   resolveTradeHistoryLabelPlacement,
   resolveTradeHistoryLabelVerticalPlacement,
 } from './chartTradeHistoryPresentation';
@@ -52,6 +53,20 @@ describe('chart trade-history presentation', () => {
     expect(getTradeHistoryExecutionSide('BUY', 'CLOSE')).toBe('SELL');
     expect(getTradeHistoryExecutionSide('SELL', 'OPEN')).toBe('SELL');
     expect(getTradeHistoryExecutionSide('SELL', 'CLOSE')).toBe('BUY');
+  });
+
+  it('places buy executions below the wick and sell executions above it', () => {
+    const candle = { high: 81300, low: 81200 };
+    expect(getTradeHistoryMarkerPrice('BUY', 81250, candle)).toBe(81200);
+    expect(getTradeHistoryMarkerPrice('SELL', 81250, candle)).toBe(81300);
+    expect(getTradeHistoryMarkerPrice(getTradeHistoryExecutionSide('BUY', 'CLOSE'), 81260, candle)).toBe(81300);
+    expect(getTradeHistoryMarkerPrice(getTradeHistoryExecutionSide('SELL', 'CLOSE'), 81260, candle)).toBe(81200);
+  });
+
+  it('uses the execution price while the candle is unavailable', () => {
+    expect(getTradeHistoryMarkerPrice('BUY', 81250, null)).toBe(81250);
+    expect(getTradeHistoryMarkerPrice('SELL', 81250, { high: Number.NaN, low: 81200 })).toBe(81250);
+    expect(getTradeHistoryMarkerPrice('BUY', 0, { high: 1, low: -1 })).toBe(-1);
   });
 
   it('flips labels before the price scale and clamps them inside the plot', () => {

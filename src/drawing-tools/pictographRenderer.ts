@@ -1,5 +1,5 @@
 import type { Drawing } from '../services/drawingManager';
-import { getPictographStamp } from './pictographCatalog';
+import { getPictographStamp, getResolvedPictographDataUrl, resolvePictographDataUrl } from './pictographCatalog';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -30,7 +30,16 @@ export function renderPictographStamp(
   asset.setAttribute('data-geometry-role', 'pictograph-image');
   // Only the fixed catalogue can supply an asset. Saved drawing text/URLs are
   // never interpreted as an image source or inserted as markup.
-  asset.setAttribute('href', stamp.assetUrl);
+  // The on-screen overlay can load the catalogue URL directly, but exports
+  // rasterize this SVG in a context that cannot fetch, so prefer the inlined
+  // data URI and swap it in as soon as the artwork resolves.
+  const resolvedDataUrl = getResolvedPictographDataUrl(stamp);
+  asset.setAttribute('href', resolvedDataUrl ?? stamp.assetUrl);
+  if (resolvedDataUrl === undefined) {
+    void resolvePictographDataUrl(stamp).then((dataUrl) => {
+      if (asset.isConnected) asset.setAttribute('href', dataUrl);
+    }).catch(() => undefined);
+  }
   asset.setAttribute('width', String(stamp.size));
   asset.setAttribute('height', String(stamp.size));
   asset.setAttribute('preserveAspectRatio', 'xMidYMid meet');

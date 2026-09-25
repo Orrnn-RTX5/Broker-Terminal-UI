@@ -115,7 +115,7 @@ describe('trend drawing input priority', () => {
       expect(panel.manager.unselectAll).not.toHaveBeenCalled();
       expect(panel.manager.updateActiveDrawing).not.toHaveBeenCalled();
       panel.dispatch({ tool: type, targetContextId: 'desktop-chart' });
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      panel.dispatch({ tool: 'cursor', targetContextId: 'desktop-chart' }); // what GlobalShortcuts' Escape dispatches
       expect(panel.activeToolRef.current).toBeNull();
       expect(panel.manager.getActiveDrawing()).toBeNull();
     } finally {
@@ -135,7 +135,7 @@ describe('trend drawing input priority', () => {
     expect(panel.manager.getActiveDrawing()?.type).toBe('freehand');
     expect(panel.manager.getActiveDrawing()?.subtype).toBe(subtype);
     expect(panel.manager.updateActiveDrawing).toHaveBeenCalledWith({ lineWidth: 4, lineStyle: 'dotted', fillColor: '#ffcc00', fillOpacity: .4 });
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    panel.dispatch({ tool: 'cursor', targetContextId: 'chart-brush' }); // what GlobalShortcuts' Escape dispatches
     expect(panel.activeToolRef.current).toBeNull();
     expect(isTrendDrawingInputActive(panel.container)).toBe(false);
     expect(panel.container.style.touchAction).toBe('');
@@ -226,7 +226,7 @@ describe('trend drawing input priority', () => {
     const overlay = document.createElement('div');
     const findClosestTradeLevel = vi.fn(() => ({ tradeObj: { key: 'trade:1', entryPrice: 100 }, grabbedType: 'ENTRY' }));
     const beginPointerCapture = vi.fn();
-    const handler = execute(`let dragState = null, dragLineOverlay = null, dragBadgeOverlay = null;
+    const handler = execute(`let dragState = null, dragLineOverlay = null, dragBadgeOverlay = null, dragZoneOverlay = null;
       return ${tradePointerHandler};`, {
       container, isTrendDrawingInputActive, cancelQueuedTradeHover: vi.fn(), setTradeHoverCursor: vi.fn(),
       seriesRef: { current: {} }, tradeAllowed: true, chartSettingsRef: { current: { showTradeLevels: true } },
@@ -252,6 +252,6 @@ describe('trend drawing input priority', () => {
     expect(tradePress.defaultPrevented).toBe(true);
     expect(findClosestTradeLevel).toHaveBeenCalledOnce();
     expect(beginPointerCapture).toHaveBeenCalledOnce();
-    expect(overlay.children).toHaveLength(2);
+    expect(overlay.children).toHaveLength(3);
   });
 });

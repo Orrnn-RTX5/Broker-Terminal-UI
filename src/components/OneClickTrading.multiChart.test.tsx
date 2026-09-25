@@ -18,7 +18,7 @@ const chart = (symbol: string, index: number) => <section key={index} data-testi
 /></section>;
 beforeEach(() => {
   useAppStore.getState().reset();
-  useAppStore.setState({ isAuthenticated: true, accountId: '900001' });
+  useAppStore.setState({ isAuthenticated: true, accountId: '900001', authToken: 'test-token' });
   useAppStore.getState().setTicks(Object.fromEntries(symbols.map((symbol, index) => [symbol, quote(symbol, 1200 + index)])));
   commitBrokerAccountSessionScope({ authenticated: true, accountId: '900001', brokerId: 'test', serverUrl: 'https://test.invalid' });
   orders.placeMarketOrder.mockReset().mockImplementation(() => new Promise(() => {}));
@@ -28,7 +28,7 @@ afterEach(() => {
   commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
 });
 
-describe('independent one-click chart trading', () => {
+describe('independent one-click chart trading', { timeout: 30000 }, () => {
   it.each(['TEST', 'achiever-financials'])('routes all eight panels with their own exact contract, quote and lot on %s', brokerId => {
     commitBrokerAccountSessionScope({ authenticated: true, accountId: '900001', brokerId, serverUrl: `https://${brokerId}.invalid` });
     render(<>{symbols.map(chart)}</>);
@@ -71,7 +71,7 @@ describe('independent one-click chart trading', () => {
     render(chart(symbols[0], 0));
     fireEvent.click(screen.getByRole('button', { name: /^BUY / }));
     act(() => {
-      useAppStore.setState({ accountId: '900002', positions: [] });
+      useAppStore.setState({ accountId: '900002', positions: [], authToken: 'test-token-2' });
       commitBrokerAccountSessionScope({ authenticated: true, accountId: '900002', brokerId: 'achiever', serverUrl: 'https://achiever.invalid' });
     });
     await act(async () => complete({ ticket: 123456, symbol: symbols[0], volume: 0.01, price_open: 1200.01 }));

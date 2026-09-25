@@ -186,4 +186,31 @@ describe('ModifyPositionDialog chart toolbar', () => {
         await user.click(screen.getByRole('button', { name: /modify #166/i }));
         await waitFor(() => expect(mocks.modifyPosition).toHaveBeenCalledWith(166, { ...patch, comment: '' }));
     });
+
+    it('renders the 5 points difference notice and enhanced left chart elements', () => {
+        render(
+            <ModifyPositionDialog
+                isOpen
+                onClose={vi.fn()}
+                position={{
+                    id: 167,
+                    symbol: 'BTCUSD',
+                    side: 'BUY',
+                    volume: 0.01,
+                    openPrice: 85981.44,
+                    sl: 0,
+                    tp: 0,
+                    comment: '',
+                }}
+            />
+        );
+
+        // Requirement 1: 5 points notice
+        expect(screen.getByText(/Stop Loss or Take Profit you set must differ from market price by at least 5 points\./i)).toBeInTheDocument();
+        expect(screen.getByText(/Stops processing is performed on the broker side\./i)).toBeInTheDocument();
+
+        // Requirement 2: Left side chart elements
+        expect(screen.getByText('TICK')).toBeInTheDocument();
+        expect(screen.getByRole('img', { name: /btcusd bid and ask tick chart/i })).toBeInTheDocument();
+    });
 });

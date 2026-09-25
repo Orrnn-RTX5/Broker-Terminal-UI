@@ -13,6 +13,10 @@ import {
   flushMarketWatchDailyChangeCache,
   rememberCurrentMarketWatchDailyChange,
 } from './marketWatchDailyChangeCache';
+import {
+  flushMarketWatchQuoteCache,
+  rememberCurrentMarketWatchQuote,
+} from './marketWatchQuoteCache';
 
 // A logged-in account's quote is widened by its group spread markup here, once;
 // `rawBid`/`rawAsk` keep the feed sides for raw-bid consumers (chart candles).
@@ -213,6 +217,19 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
 
   const dailyChange = fullTick.dailyChange;
   const asOf = getCanonicalTickTimestamp(fullTick);
+  if (typeof fullTick.sourceTimestamp === 'number' && Number.isFinite(fullTick.sourceTimestamp)) {
+    try {
+      // Keep recovery separate from live stores and preserve broker event time;
+      // a receipt-time fallback cannot establish when a last quote was priced.
+      rememberCurrentMarketWatchQuote(normalizeFreezeKey(symbol), {
+        bid: fullTick.bid,
+        ask: fullTick.ask,
+        asOf: fullTick.sourceTimestamp,
+      });
+    } catch (error) {
+      console.error('[LiveTickDispatcher] Last quote cache write failed:', error);
+    }
+  }
   if (typeof dailyChange === 'number' && Number.isFinite(dailyChange) && asOf !== null) {
     try {
       // Preserve the broker's exact symbol identity (including punctuation),
@@ -291,6 +308,11 @@ export const resetLiveMarketDataSession = (): void => {
   } catch (error) {
     // A storage failure must not prevent the broker/account boundary reset.
     console.error('[LiveTickDispatcher] Daily Change cache flush failed:', error);
+  }
+  try {
+    flushMarketWatchQuoteCache();
+  } catch (error) {
+    console.error('[LiveTickDispatcher] Last quote cache flush failed:', error);
   }
   clearDispatcherRuntime();
   if (typeof window !== 'undefined') window.rtxTickCache?.clear();

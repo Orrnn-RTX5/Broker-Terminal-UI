@@ -585,8 +585,6 @@ export const renderGannFibonacciDrawing = (input: GannFibonacciRenderInput): voi
         return;
       }
 
-      const dx = second.x - first.x;
-      const dy = second.y - first.y;
       // Level 1 begins at the third anchor. A perpendicular projection has the
       // same infinite line but the wrong ray origin and wrong displayed price.
       const offsetX = third.x - first.x;

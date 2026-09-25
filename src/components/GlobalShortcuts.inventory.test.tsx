@@ -86,7 +86,7 @@ describe('complete terminal shortcut inventory', () => {
     expect(timeframes.map(cmd => cmd.payload.timeframe)).toEqual(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN']);
     timeframes.forEach(cmd => expect(cmd.payload).toMatchObject({ targetContextId: 'trading-chart:eurusd', panelId: 'eurusd' }));
     press('p', { altKey: true, shiftKey: true }); press('l', { altKey: true, shiftKey: true });
-    expect(useChartSettingsStore.getState().symbolProperties.EURUSD).toMatchObject({ showPeriodSeparators: false, showOHLC: true });
+    expect(useChartSettingsStore.getState().symbolProperties.EURUSD).toMatchObject({ showPeriodSeparators: false, showOHLC: false });
     expect(useChartSettingsStore.getState().symbolProperties.XAUUSD).toBeUndefined();
   });
 

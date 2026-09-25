@@ -104,6 +104,16 @@ export const getTradeHistoryExecutionSide = (
     : positionSide === 'BUY' ? 'SELL' : 'BUY'
 );
 
+/** Display markers outside their candle; execution prices remain in the tooltip. */
+export const getTradeHistoryMarkerPrice = (
+  executionSide: TradeHistoryPositionSide,
+  executionPrice: number,
+  candle?: { high: number; low: number } | null,
+): number => {
+  const candleEdge = executionSide === 'BUY' ? candle?.low : candle?.high;
+  return candleEdge != null && Number.isFinite(candleEdge) ? candleEdge : executionPrice;
+};
+
 /**
  * Places a history badge on the right of its marker when possible, otherwise
  * flips it to the left and clamps it inside the candle plot (before the scale).

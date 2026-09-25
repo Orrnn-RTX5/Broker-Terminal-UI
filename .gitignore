@@ -27,14 +27,21 @@ release-rtxbackend/
 release-final-cors/
 release-final-latest/
 
+# Generated desktop splash installers and isolated verification profiles
+artifacts/desktop-splash*/package/
+artifacts/desktop-splash*/*isolated-profile/
+
 # Environment files
 .env
 .env.local
 .env.*.local
 .env_*
+.env.web*
+.env.desktop*
+.env.electron*
+.env.normal*
+.env.*
 !.env.example
-!.env.production
-!.env.staging
 
 # Test and report outputs
 coverage/

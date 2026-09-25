@@ -53,12 +53,21 @@ const createRestoreHarness = () => {
   const getAccountSummary = vi.fn(() => accountRequest);
   const bindings = {
     sessionRestoreStartedRef: { current: false },
+    // The merged restore effect bails out if a newer auth session started
+    // mid-restore. A stable generation keeps that guard inert here.
+    authSessionGenerationRef: { current: 0 },
     freshSessionHandoff: null,
     setIsAutoAuthenticating: vi.fn(),
     setAutoAuthError: vi.fn(),
     updateDynamicUrls: vi.fn(),
+    // Module-level imports used by the merged restore success path.
+    seedValidatedSessionAccountSummary: vi.fn(),
+    chartDataService: { preloadStartupHistory: vi.fn() },
     useAppStore: { getState: () => state, setState: vi.fn() },
     getStoredTokenExpiryMs: () => null,
+    // Module-level helper in App.tsx; the success path is the only branch that
+    // reaches it, so an unbound reference was silently swallowed by the catch.
+    getStoredAuthToken: () => localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'),
     getCommittedBrokerAccountSessionScope: () => scope,
     hasTokenExpiryElapsed: () => false,
     parsePositiveInt: (value: unknown) => Number.parseInt(String(value), 10) || null,

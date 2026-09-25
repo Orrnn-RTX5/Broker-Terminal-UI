@@ -42,6 +42,21 @@ const dailyCandle = (isoDate: string, close: number) => ({
   closed: true,
 });
 
+const createRecentCompletedWeekdayTimestamps = (): [string, string] => {
+  const d2 = new Date();
+  d2.setUTCHours(0, 0, 0, 0);
+  d2.setUTCDate(d2.getUTCDate() - 1);
+  while (d2.getUTCDay() === 0 || d2.getUTCDay() === 6) {
+    d2.setUTCDate(d2.getUTCDate() - 1);
+  }
+  const d1 = new Date(d2.getTime());
+  d1.setUTCDate(d1.getUTCDate() - 1);
+  while (d1.getUTCDay() === 0 || d1.getUTCDay() === 6) {
+    d1.setUTCDate(d1.getUTCDate() - 1);
+  }
+  return [d1.toISOString(), d2.toISOString()];
+};
+
 describe('useClosedMarketDailyChanges', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,9 +86,10 @@ describe('useClosedMarketDailyChanges', () => {
   });
 
   it('computes, persists, and publishes the last completed D1 change including zero', async () => {
+    const [priorDate, lastDate] = createRecentCompletedWeekdayTimestamps();
     chartHarness.fetchCandles.mockResolvedValue([
-      dailyCandle('2026-09-03T00:00:00.000Z', 100),
-      dailyCandle('2026-09-04T00:00:00.000Z', 100),
+      dailyCandle(priorDate, 100),
+      dailyCandle(lastDate, 100),
     ]);
 
     const { result, unmount } = renderHook(() => useClosedMarketDailyChanges({
@@ -96,6 +112,7 @@ describe('useClosedMarketDailyChanges', () => {
   });
 
   it('aborts the old request and never leaks values across a scope or symbol change', async () => {
+    const [priorDate, lastDate] = createRecentCompletedWeekdayTimestamps();
     const eurusdHistory = deferred<ReturnType<typeof dailyCandle>[]>();
     chartHarness.fetchCandles.mockImplementation(({ symbol }: { symbol: string }) => (
       symbol === 'EURUSD' ? eurusdHistory.promise : neverResolving()
@@ -123,8 +140,8 @@ describe('useClosedMarketDailyChanges', () => {
 
     await act(async () => {
       eurusdHistory.resolve([
-        dailyCandle('2026-09-03T00:00:00.000Z', 100),
-        dailyCandle('2026-09-04T00:00:00.000Z', 110),
+        dailyCandle(priorDate, 100),
+        dailyCandle(lastDate, 110),
       ]);
       await eurusdHistory.promise;
     });

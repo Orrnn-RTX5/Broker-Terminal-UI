@@ -137,7 +137,9 @@ export const useLogin = () => {
       const selectedServer = credentials.server || getStoredBrokerServer();
       const loginTarget = resolveLoginBrokerTarget(selectedServer);
       const brokerId = credentials.broker_id || loginTarget.broker_id;
-      const { server: _server, broker_id: _brokerId, ...loginPayload } = credentials;
+      const loginPayload = { ...credentials };
+      delete loginPayload.server;
+      delete loginPayload.broker_id;
       const response = await authApi.login(
         {
           ...loginPayload,
@@ -395,7 +397,7 @@ export const useClosePosition = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
 
-  const closePosition = useCallback(async (positionId: string, volume?: number) => {
+  const closePosition = useCallback(async (positionId: string) => {
     setLoading(true);
     setError(null);
     try {

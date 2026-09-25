@@ -22,6 +22,7 @@ import {
   type MarketOrderPlacementStateDetail,
 } from '../services/marketOrderPlacementEvents';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
+import { readBackendNumber } from '../services/backendAccountMetrics';
 
 type TradeWsState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -31,6 +32,7 @@ export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'>
   contractSize?: number;
   contract_size?: number;
   hasBackendProfit?: boolean;
+  hasBackendCurrentPrice?: boolean;
   profitSource?: TradeProfitSource;
   price_open?: number;
   price_current?: number;
@@ -105,9 +107,11 @@ const toNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(next) ? next : fallback;
 };
 
-export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Account => {
-  return normalizeAccountMetrics(raw, previous);
-};
+// Retained for tests; the production account path normalizes via `applyMetrics`.
+// `partial` preserves the previous value for any field a packet omits.
+export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Account => (
+  normalizeAccountMetrics(raw, previous, { partial: true })
+);
 
 const getPositionTicket = (position: any): number => (
   toNumber(position?.ticket ?? position?.position_id ?? position?.position_ticket ?? position?.id, 0)
@@ -120,17 +124,15 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     raw?.price_open ?? raw?.open_price ?? raw?.openPrice ?? raw?.entryPrice ?? raw?.chartEntryPrice ?? raw?.price ?? normalized.openPrice,
     normalized.openPrice || 0,
   );
-  let priceCurrent = toNumber(
-    raw?.price_current ?? raw?.current_price ?? raw?.currentPrice ?? raw?.livePrice ?? normalized.currentPrice,
-    normalized.currentPrice || 0,
+  const rawCurrentPrice = readBackendNumber(
+    raw?.price_current ?? raw?.current_price ?? raw?.currentPrice,
   );
-  if (!priceCurrent || priceCurrent <= 0) {
-    priceCurrent = openPrice;
-  }
+  const hasBackendCurrentPrice = raw?.hasBackendCurrentPrice !== false && rawCurrentPrice !== undefined;
+  const priceCurrent = hasBackendCurrentPrice ? rawCurrentPrice! : 0;
   const rawProfit = raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL;
-  const hasBackendProfit = raw?.pnl_available !== false && raw?.hasBackendProfit !== false
-    && rawProfit !== undefined && rawProfit !== null && rawProfit !== '' && Number.isFinite(Number(rawProfit));
-  const profit = hasBackendProfit ? toNumber(rawProfit, 0) : normalized.unrealizedPnL;
+  const backendProfit = readBackendNumber(rawProfit);
+  const hasBackendProfit = raw?.pnl_available !== false && raw?.hasBackendProfit !== false && backendProfit !== undefined;
+  const profit = hasBackendProfit ? backendProfit! : 0;
   const openTime = resolvePositionOpenTime(raw, normalized.openTime || (typeof normalized.time_create === 'string' ? normalized.time_create : undefined));
 
   return {
@@ -144,6 +146,7 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     price_open: openPrice,
     open_price: openPrice,
     currentPrice: priceCurrent,
+    hasBackendCurrentPrice,
     price_current: priceCurrent,
     current_price: priceCurrent,
     openTime,
@@ -174,6 +177,7 @@ const positionSignature = (position: ToolboxTradePosition): string => [
   position.volume,
   position.contractSize ?? position.contract_size ?? '',
   position.hasBackendProfit ?? '',
+  position.hasBackendCurrentPrice ?? '',
   position.price_open ?? position.openPrice,
   position.price_current ?? position.currentPrice,
   position.price_sl ?? position.sl,
@@ -209,6 +213,10 @@ const accountSignature = (account: Account | null): string => (
       account.unrealizedPL,
       account.credit ?? 0,
       account.hasBackendEquity ?? '',
+      account.hasBackendBalance ?? '',
+      account.hasBackendMargin ?? '',
+      account.hasBackendUnrealizedPL ?? '',
+      account.hasBackendCredit ?? '',
       account.hasBackendFreeMargin ?? '',
       account.hasBackendMarginLevel ?? '',
       account.currency,
@@ -227,20 +235,28 @@ const mergePatchIntoPosition = (
   raw: any,
 ): ToolboxTradePosition => {
   const next: ToolboxTradePosition = { ...existing };
-  const hasPricePatch = raw?.price_current !== undefined || raw?.current_price !== undefined || raw?.currentPrice !== undefined;
-  const hasProfitPatch = raw?.profit !== undefined || raw?.unrealized_pl !== undefined || raw?.unrealizedPnL !== undefined;
+  const pricePatch = readBackendNumber(raw?.price_current ?? raw?.current_price ?? raw?.currentPrice);
+  const profitPatch = readBackendNumber(raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL);
+  const hasPricePatch = raw?.price_current !== undefined || raw?.current_price !== undefined
+    || raw?.currentPrice !== undefined || raw?.hasBackendCurrentPrice !== undefined;
+  const hasProfitPatch = raw?.profit !== undefined || raw?.unrealized_pl !== undefined
+    || raw?.unrealizedPnL !== undefined || raw?.hasBackendProfit !== undefined;
 
   if (hasPricePatch) {
-    const price = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, existing.currentPrice);
+    const supplied = raw?.hasBackendCurrentPrice !== false && pricePatch !== undefined;
+    const price = supplied ? pricePatch! : 0;
     next.currentPrice = price;
     next.price_current = price;
+    next.current_price = price;
+    next.hasBackendCurrentPrice = supplied;
   }
 
   if (hasProfitPatch) {
-    const profit = toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, existing.unrealizedPnL);
+    const supplied = raw?.hasBackendProfit !== false && profitPatch !== undefined;
+    const profit = supplied ? profitPatch! : 0;
     next.unrealizedPnL = profit;
     next.profit = profit;
-    next.hasBackendProfit = true;
+    next.hasBackendProfit = supplied;
   }
 
   if (raw?.swap !== undefined || raw?.storage !== undefined) {
@@ -799,7 +815,7 @@ export function useToolboxTradeData() {
         if (metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
         if (useAppStore.getState().authToken !== startedAuthToken) return;
         const current = useAppStore.getState().account ?? accountRef.current;
-        const next = normalizeAccountMetrics(body, current, { scope: metricsScope, login });
+        const next = normalizeAccountMetrics(body, current, { partial: true, scope: metricsScope, login });
         commitAccount(next);
         if (next !== current) useAppStore.getState().setAccount(next);
       };

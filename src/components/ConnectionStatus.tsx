@@ -5,25 +5,39 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  * Includes Login, Network Rescan, VPS Hosting, and Access Server options
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { lazy, useState, useRef, useEffect } from 'react';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { useAppStore } from '../store/useAppStore';
 import { Wifi, RefreshCw, WifiOff, AlertTriangle, LogIn, Globe, Zap, Server } from 'lucide-react';
-import { LoginDialog } from './LoginDialog';
+import { RetainedLazyFeature } from '../startup/RetainedLazyFeature';
+
+const LoginDialog = lazy(() => import('./LoginDialog').then(module => ({ default: module.LoginDialog })));
 
 interface ConnectionStatusProps {
   wsRef?: React.RefObject<WebSocket | null>;
   reconnectCallback?: () => void;
 }
 
-export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusProps) {
+export function ConnectionStatus({ reconnectCallback }: ConnectionStatusProps) {
     const tr = useUiTranslation();
-  const storeState = useWebSocketStore();
-  const tradeWsConnected = useAppStore((state) => state.wsConnected);
-  const tradeApiStatus = useAppStore((state) => state.tradeApiStatus);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [now, setNow] = useState(Date.now);
+  // Subscribe to primitives only so unrelated message counters never repaint the
+  // indicator. `latencyMeasuredAt` is read so an aged sample can be hidden.
+  const state = useWebSocketStore((snapshot) => snapshot.connectionState);
+  const isStale = useWebSocketStore((snapshot) => snapshot.isStale);
+  const lastLatency = useWebSocketStore((snapshot) => snapshot.fixConnectionState === 'connected'
+    ? snapshot.fixMetrics.lastLatency
+    : snapshot.legacyMetrics.lastLatency);
+  const latencyMeasuredAt = useWebSocketStore((snapshot) => (snapshot.fixConnectionState === 'connected'
+    ? snapshot.fixMetrics.latencyMeasuredAt
+    : snapshot.legacyMetrics.latencyMeasuredAt) ?? null);
+  // Read the latest diagnostics when opened without repainting a closed menu
+  // whenever account polling changes its status or completion timestamp.
+  const tradeWsConnected = useAppStore((snapshot) => showDropdown && snapshot.wsConnected);
+  const tradeApiError = useAppStore((snapshot) => showDropdown ? snapshot.tradeApiStatus.error : null);
+  const tradeApiLoading = useAppStore((snapshot) => showDropdown && snapshot.tradeApiStatus.loading);
   const dropdownRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -54,14 +68,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
     return () => window.removeEventListener('rtx:openLoginDialog', handleOpenLogin);
   }, []);
 
-  const state = storeState.connectionState;
-  const isStale = storeState.isStale;
   const accountStreamConnected = tradeWsConnected || state === 'connected';
-  
-  // Prefer FIX metrics if it's connected, otherwise use the legacy background socket's metrics
-  const metrics = storeState.fixConnectionState === 'connected' 
-    ? storeState.fixMetrics 
-    : storeState.legacyMetrics;
 
   // Determine display based on state
   const getStatusDisplay = () => {
@@ -90,7 +97,11 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
 
   const handleLogin = () => {
     setShowDropdown(false);
-    setShowLoginDialog(true);
+    if (typeof window !== 'undefined' && (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__) {
+      window.dispatchEvent(new CustomEvent('rtx:openTradeAuth'));
+    } else {
+      setShowLoginDialog(true);
+    }
   };
 
   const handleNetworkRescan = () => {
@@ -98,12 +109,14 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
     setShowDropdown(false);
   };
 
-  const latencyMs = metrics.latencyMeasuredAt && now - metrics.latencyMeasuredAt <= 60_000 && state === 'connected'
-    ? metrics.lastLatency : null;
-  const tradeApiLabel = tradeApiStatus.error ? 'REST error' : tradeApiStatus.loading ? 'syncing' : 'ready';
-  const tradeApiColor = tradeApiStatus.error
+  // A latency figure is only trustworthy when it was actually measured, is recent,
+  // and belongs to a live connection.
+  const latencyMs = lastLatency > 0 && latencyMeasuredAt !== null && now - latencyMeasuredAt <= 60_000 && state === 'connected'
+    ? lastLatency : null;
+  const tradeApiLabel = tradeApiError ? 'REST error' : tradeApiLoading ? 'syncing' : 'ready';
+  const tradeApiColor = tradeApiError
     ? 'text-red-400'
-    : tradeApiStatus.loading
+    : tradeApiLoading
       ? 'text-yellow-400'
       : 'text-green-400';
 
@@ -168,7 +181,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
               </div>
               <span
                 className={`text-[10px] font-mono ${tradeApiColor}`}
-                title={tradeApiStatus.error ?? undefined}
+                title={tradeApiError ?? undefined}
               >
                 {tr(tradeApiLabel)}
               </span>
@@ -195,10 +208,12 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
       )}
 
       {/* Login Dialog */}
+      <RetainedLazyFeature active={showLoginDialog}>
       <LoginDialog
         isOpen={showLoginDialog}
         onClose={() => setShowLoginDialog(false)}
       />
+      </RetainedLazyFeature>
     </div>
   );
 }

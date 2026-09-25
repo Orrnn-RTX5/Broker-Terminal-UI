@@ -47,7 +47,15 @@ describe('broker server URL normalization', () => {
 
 describe('position close adapter', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ok: true })));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      const parsedBody = init?.body ? JSON.parse(String(init.body)) : {};
+      return Promise.resolve(jsonResponse({
+        status: 'closed',
+        client_order_id: parsedBody.client_order_id,
+        position_id: '900719925474099312345',
+        ticket: '900719925474099312345',
+      }));
+    }));
     clearStoredRouting();
   });
 
@@ -58,7 +66,9 @@ describe('position close adapter', () => {
 
     expect(lastFetchCall()).toMatchObject({
       url: `${API_V2_BASE_URL}/positions/${ticket}/close`,
-      body: { mode: 'full' },
+      body: expect.objectContaining({
+        client_order_id: expect.any(String),
+      }),
     });
   });
 });
@@ -432,6 +442,37 @@ describe('journalApi.getLogs authentication', () => {
     expect(JSON.parse(String(calls[1][1]?.body))).toEqual({ refresh_token: 'journal-refresh-token' });
     expect(new Headers(calls[2][1]?.headers).get('Authorization')).toBe('Bearer renewed-journal-jwt');
     expect(localStorage.getItem('auth_token')).toBe('renewed-journal-jwt');
+  });
+});
+
+describe('position REST display normalization', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    clearStoredRouting();
+  });
+
+  it.each([
+    ['missing', {}, false],
+    ['zero', { profit: 0, price_current: 0 }, true],
+    ['numeric strings', { unrealized_pnl: '-1.25', current_price: '82000.5' }, true],
+    ['invalid', { profit: 'invalid', price_current: false }, false],
+    ['unavailable snapshot', { profit: 3, price_current: 82000, pnl_available: false }, false],
+    ['previous placeholders', { profit: 0, price_current: 0, hasBackendProfit: false, hasBackendCurrentPrice: false }, false],
+  ])('preserves %s provenance and position versions through REST normalization', async (_name, display, available) => {
+    const raw = { ticket: 41, symbol: 'BTCUSD', price_open: 81000, state_version: '9007199254740993123', ...display };
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([raw]));
+    const first = await api.positions.getPositions(100001);
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(first));
+    const second = await api.positions.getPositions(100001);
+    for (const result of [first[0], second[0]]) {
+      expect(result).toMatchObject({
+        ticket: 41,
+        state_version: raw.state_version,
+        hasBackendProfit: available,
+        hasBackendCurrentPrice: available,
+      });
+      if (!available) expect(result).toMatchObject({ currentPrice: 0, unrealizedPnL: 0 });
+    }
   });
 });
 

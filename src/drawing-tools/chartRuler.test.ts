@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createChartRuler, renderChartRuler, rulerDuration, rulerMetrics, type RulerPoint } from './chartRuler';
 
 const start: RulerPoint = { logical: 10, time: 1000, price: 2000 };
@@ -54,8 +54,8 @@ describe('ruler rendering', () => {
 describe('ruler pointer lifecycle', () => {
   let container: HTMLDivElement;
   let ruler: ReturnType<typeof createChartRuler>;
-  let finish: ReturnType<typeof vi.fn>;
-  let select: ReturnType<typeof vi.fn>;
+  let finish: Mock<() => void>;
+  let select: Mock<() => void>;
   let historyOffset = 0;
   const pointer = (type: string, x: number, y: number, extra: Record<string, unknown> = {}) => {
     const event = new MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true, cancelable: true, ...extra });
@@ -70,8 +70,8 @@ describe('ruler pointer lifecycle', () => {
     vi.stubGlobal('cancelAnimationFrame', clearTimeout);
     container = document.createElement('div'); document.body.appendChild(container);
     container.setPointerCapture = vi.fn(); container.releasePointerCapture = vi.fn();
-    finish = vi.fn(() => ruler.select(false));
-    select = vi.fn(() => ruler.select(true));
+    finish = vi.fn<() => void>(() => ruler.select(false));
+    select = vi.fn<() => void>(() => ruler.select(true));
     ruler = createChartRuler({ container, finish, select, canStartShortcut: () => true, geometry: () => geometry,
       point: (x, y) => ({ logical: Math.round(x / 10), time: 1000 + Math.round(x / 10) * 60, price: 2200 - y }),
       metrics: (a, b) => rulerMetrics(a, b, [], 2, .01),

@@ -20,11 +20,16 @@ export const PICTOGRAPH_CATEGORIES: ReadonlyArray<Readonly<{ id: PictographCateg
   { id: 'flags', label: 'Flags' },
 ];
 
-// Inline assets keep saved charts, image exports and print previews independent
-// of the host platform's emoji fonts and of any external image service.
+// Emoji artwork ships as same-origin hashed assets fetched on demand, keeping
+// hundreds of SVGs out of the startup-critical JavaScript. Saved charts stay
+// independent of platform emoji fonts and of any external image service; image
+// exports and print previews (which rasterize the overlay in a context that
+// cannot fetch URLs) go through resolvePictographDataUrl() below.
 const emojiAssets = import.meta.glob<string>('../assets/pictographs/twemoji/*.svg', {
   eager: true,
-  query: '?inline',
+  // '?no-inline' keeps even sub-4KB artwork out of the JavaScript bundle;
+  // a plain '?url' would still inline those as data URIs.
+  query: '?no-inline',
   import: 'default',
 });
 
@@ -217,5 +222,45 @@ export const getPictographItems = (tab: PictographTab, category: string): readon
 export const getPictographStamp = (subtype: string | undefined): PictographStamp | undefined => (
   typeof subtype === 'string' ? stampsById.get(subtype) : undefined
 );
+
+const pendingDataUrls = new Map<string, Promise<string>>();
+const resolvedDataUrls = new Map<string, string>();
+
+/** Synchronous data-URI lookup for stamps whose artwork already resolved. */
+export const getResolvedPictographDataUrl = (stamp: PictographStamp): string | undefined => (
+  stamp.assetUrl.startsWith('data:') ? stamp.assetUrl : resolvedDataUrls.get(stamp.assetUrl)
+);
+
+/**
+ * Inline a stamp's artwork as a data URI. Image exports and print previews
+ * rasterize the drawing overlay through an SVG-in-image context that cannot
+ * fetch URLs, so chart stamps swap their href to this once resolved.
+ */
+export const resolvePictographDataUrl = (stamp: PictographStamp): Promise<string> => {
+  const resolved = getResolvedPictographDataUrl(stamp);
+  if (resolved !== undefined) return Promise.resolve(resolved);
+
+  let pending = pendingDataUrls.get(stamp.assetUrl);
+  if (!pending) {
+    pending = Promise.resolve()
+      .then(() => fetch(stamp.assetUrl, { credentials: 'omit' }))
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
+      .then((svgText) => {
+        const dataUrl = `data:image/svg+xml,${encodeURIComponent(svgText)}`;
+        resolvedDataUrls.set(stamp.assetUrl, dataUrl);
+        pendingDataUrls.delete(stamp.assetUrl);
+        return dataUrl;
+      })
+      .catch((error) => {
+        pendingDataUrls.delete(stamp.assetUrl);
+        throw error;
+      });
+    pendingDataUrls.set(stamp.assetUrl, pending);
+  }
+  return pending;
+};
 
 export const isPictographStamp = (subtype: string | undefined): boolean => Boolean(getPictographStamp(subtype));

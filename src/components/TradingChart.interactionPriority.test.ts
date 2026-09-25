@@ -31,12 +31,27 @@ describe('TradingChart interaction-priority contract', () => {
     const firstRender = load.indexOf("reason: 'initial-history'");
     const background = load.indexOf('void (async () =>');
     const expansion = load.indexOf('const extendedHistory = await chartDataService.fetchCandles(');
+    const terminalPaint = load.indexOf('if (!await waitForTerminalReady(historyRequest.signal)) return;');
     expect(background).toBeGreaterThan(firstRender);
+    expect(terminalPaint).toBeGreaterThan(background);
+    expect(terminalPaint).toBeLessThan(load.indexOf('await waitForProgressiveHistoryIdleTurn(historyRequest.signal);', background));
     expect(expansion).toBeGreaterThan(background);
     expect(load.slice(expansion)).toContain('signal: historyRequest.signal');
     expect(load.slice(expansion)).toContain("if (!isCurrentHistoryLoad()) return;\n              const addedCount = applyAdditionalHistory");
     expect(load.indexOf('warmOtherTimeframeCaches();')).toBeGreaterThan(background);
     expect(load).toContain('if (useProgressiveInitialHistory && receivedHistoryCount >= FIRST_PAINT_HISTORY_COUNT)');
+  });
+
+  it('keeps startup readiness out of initial and user-requested history loaders', () => {
+    const initialStart = source.indexOf('const loadHistory = useCallback');
+    const background = source.indexOf('void (async () =>', initialStart);
+    expect(source.slice(initialStart, background)).not.toContain('waitForTerminalReady(');
+    const olderStart = source.indexOf('const fetchOlderHistoryPage = useCallback');
+    expect(source.slice(olderStart, initialStart)).not.toContain('waitForTerminalReady(');
+    const loadMoreStart = source.indexOf('const loadMoreHistory = useCallback');
+    const loadMoreEnd = source.indexOf('// Keep ref pointing to the latest loadMoreHistory', loadMoreStart);
+    expect(loadMoreEnd).toBeGreaterThan(loadMoreStart);
+    expect(source.slice(loadMoreStart, loadMoreEnd)).not.toContain('waitForTerminalReady(');
   });
 
   it('uses M1-derived history as the primary source for every higher timeframe', () => {
@@ -243,7 +258,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(badgeMarkup).toContain("fontSize: 'var(--rtx-ui-font-size, 14px)'");
     expect(badgeMarkup).toContain("opacity: 1");
     expect(badgeMarkup).toContain("textAlign: 'center'");
-    expect(badgeMarkup).toContain('transform: `translateY(-${LIVE_PRICE_BADGE_PRICE_ROW_OFFSET_PX}px)`');
+    expect(badgeMarkup).toContain("transform: 'translateY(-50%)'");
 
     expect(paint).toContain('livePriceValueRef.current.textContent = formatChartAxisPrice(livePrice, digits)');
     expect(paint).not.toContain('badge.textContent =');
@@ -504,7 +519,7 @@ describe('TradingChart interaction-priority contract', () => {
     const markupEnd = source.indexOf('ref={livePriceBadgeRef}', markupStart);
     const markup = source.slice(markupStart, markupEnd);
     const relayoutStart = source.indexOf('chartSettingsRef.current.showBidPriceLine', source.indexOf('const updateLabelPositions = useCallback'));
-    const relayoutEnd = source.indexOf('}, [applyStableLivePriceHorizontalGeometry, hideLivePriceOverlay]);', relayoutStart);
+    const relayoutEnd = source.indexOf('repaintTradeOverlayGeometryRef.current =', relayoutStart);
     const relayout = source.slice(relayoutStart, relayoutEnd);
 
     expect(stableGeometryStart).toBeGreaterThan(-1);
@@ -559,7 +574,8 @@ describe('TradingChart interaction-priority contract', () => {
     expect(drag).not.toContain('renderTradeOverlay');
     expect(drag).not.toContain('repaintLivePriceOverlayFromCurrentPrice');
     expect(drag).not.toContain('flushPostInteractionWork');
-    expect(source).toContain('repaintTradeOverlayGeometryRef.current = updateLabelPositions;');
+    expect(source).toContain('repaintTradeOverlayGeometryRef.current = () => updateLabelPositions(false);');
+    expect(source).toContain('if (refreshMetrics) {');
 
     expect(heldMoveStart).toBeGreaterThan(-1);
     expect(heldMoveEnd).toBeGreaterThan(heldMoveStart);
@@ -580,33 +596,44 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).toContain('window.cancelAnimationFrame(priceBoundOverlayGeometryRepaintFrame)');
   });
 
-  it('adds cursor-anchored price zoom to plot wheels while preserving native time zoom', () => {
+  it('lets native plot wheels zoom and pan time without overriding the price range or autoscale', () => {
+    const startStart = source.indexOf('const handleWheelInteractionStart =');
+    const startEnd = source.indexOf('const repaintLivePriceOverlayGeometry =', startStart);
+    const start = source.slice(startStart, startEnd);
     const wheelStart = source.indexOf('const handleWheelInteraction = (event: WheelEvent) => {');
-    const wheelEnd = source.indexOf('const handleDocumentVisibilityChange =', wheelStart);
+    const wheelEnd = source.indexOf('const clearLocalChartPointerState =', wheelStart);
     const wheel = source.slice(wheelStart, wheelEnd);
 
+    expect(startStart).toBeGreaterThan(-1);
+    expect(startEnd).toBeGreaterThan(startStart);
+    expect(start).toContain('visibleRangeHistoryUserInitiatedRef.current = true;');
+    expect(start).toContain('interactionOwnership.noteWheelActivity();');
     expect(wheelStart).toBeGreaterThan(-1);
     expect(wheelEnd).toBeGreaterThan(wheelStart);
-    expect(wheel).toContain('chart.timeScale().options().barSpacing');
-    expect(wheel).toContain('barSpacingBefore / barSpacingAfter');
-    expect(wheel).toContain('priceScale.getVisibleRange()');
-    expect(wheel).toContain('series.coordinateToPrice((event.clientY - rect.top) as any)');
-    expect(wheel).toContain('const minimumSpan = getMinimumVisiblePriceSpan();');
-    expect(wheel).toContain('anchorPrice + (from - anchorPrice) * priceSpanFactor');
-    expect(wheel).toContain('priceScale.setVisibleRange({ from: nextFrom, to: nextTo })');
+    expect(wheel).toContain('if (!isChartPaneWheel(event)) return;');
     expect(wheel).toContain('queuePriceBoundOverlayGeometryRepaint()');
-    expect(wheel).not.toContain('preventDefault');
+    // A wheel must not force autoscale off or resize the manually chosen Y range.
+    // Repainting also runs for deltaX, so horizontal trackpad pans keep labels aligned.
+    for (const handler of [start, wheel]) {
+      expect(handler).not.toContain('setVisibleRange');
+      expect(handler).not.toContain('applyOptions');
+      expect(handler).not.toContain('autoScale');
+      expect(handler).not.toContain('barSpacing');
+      expect(handler).not.toContain('deltaY === 0');
+      expect(handler).not.toContain('preventDefault');
+      expect(handler).not.toContain('stopPropagation');
+      expect(handler).not.toContain('isDesktopBackendTarget');
+    }
 
-    expect(source).toContain('if (event.deltaY === 0 || !isChartPaneWheel(event)) return;');
-    expect(source).toContain('visibleRangeHistoryUserInitiatedRef.current = true;');
-    expect(source).toContain('interactionOwnership.noteWheelActivity();');
-    expect(source).toContain("chartContainer.addEventListener('wheel', captureChartWheelTimeScaleState, { passive: true, capture: true })");
+    expect(source).not.toContain('wheelTimeScaleBarSpacingBefore');
+    expect(source).not.toContain('captureChartWheelTimeScaleState');
+    expect(source).toContain("chartContainer.addEventListener('wheel', handleWheelInteractionStart, { passive: true, capture: true })");
     expect(source).toContain("chartContainer.addEventListener('wheel', handleWheelInteraction, { passive: true })");
-    expect(source).toContain("chartContainer.removeEventListener('wheel', captureChartWheelTimeScaleState, true)");
+    expect(source).toContain("chartContainer.removeEventListener('wheel', handleWheelInteractionStart, true)");
     expect(source).toContain("chartContainer.removeEventListener('wheel', handleWheelInteraction)");
   });
 
-  it('shares the one-point label-density zoom floor between axis and plot gestures', () => {
+  it('preserves the right-axis label-density zoom floor without applying it to plot wheels', () => {
     const floorStart = source.indexOf('const getMinimumVisiblePriceSpan = (): number => {');
     const floorEnd = source.indexOf('const isRightPriceScalePointer =', floorStart);
     const floor = source.slice(floorStart, floorEnd);
@@ -623,8 +650,11 @@ describe('TradingChart interaction-priority contract', () => {
     expect(floor).toContain("chart.priceScale('right').options().scaleMargins");
     expect(floor).toContain('chart.timeScale().height()');
     expect(floor).toContain('computeMinimumVisiblePriceSpan({');
-    expect(axis).toContain('minSpan: getMinimumVisiblePriceSpan()');
-    expect(wheel).toContain('const minimumSpan = getMinimumVisiblePriceSpan();');
+    expect(source).toContain('minSpan: getMinimumVisiblePriceSpan()');
+    expect(axis).toContain('...rightPriceScaleDragGeometry,');
+    expect(axis).toContain("chart.priceScale('right').setVisibleRange(nextRange)");
+    expect(wheel).not.toContain('getMinimumVisiblePriceSpan');
+    expect(wheel).not.toContain('setVisibleRange');
   });
 
   it('keeps held-pointer ownership authoritative across sparse range events', () => {

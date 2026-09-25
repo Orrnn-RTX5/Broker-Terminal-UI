@@ -5,7 +5,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  */
 
 import { Icon } from './ui/Icon';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 
@@ -23,16 +23,13 @@ interface Transaction {
   method?: string;
 }
 
-export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnection }) => {
+export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose }) => {
     const tr = useUiTranslation();
   const { account, accountId } = useAppStore();
-  const [showDepositModal, setShowDepositModal] = useState(false);
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [leverage, setLeverage] = useState<number>(100);
-  const [oneClickTrading, setOneClickTrading] = useState(false);
+  const [oneClickTrading] = useState(false);
   const [accountInfo, setAccountInfo] = useState({
     accountNumber: '...',
     accountType: '...',
@@ -326,213 +323,6 @@ const TransactionRow: React.FC<TransactionRowProps> = ({ transaction }) => {
       </div>
       <div className={`text-[14px] leading-[21px] font-semibold font-mono ${typeColor}`}>
         {transaction.type === 'deposit' ? '+' : '-'}${transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-      </div>
-    </div>
-  );
-};
-
-/**
- * Payment Modal (Deposit/Withdrawal)
- */
-interface PaymentModalProps {
-  type: 'deposit' | 'withdrawal';
-  onClose: () => void;
-}
-
-const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
-    const tr = useUiTranslation();
-  const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState('card');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(false);
-    setSuccess(false);
-    setError(`${type === 'deposit' ? 'Deposits' : 'Withdrawals'} are not supported by the trade-facing API contract.`);
-  };
-
-  const title = type === 'deposit' ? 'Deposit Funds' : 'Withdraw Funds';
-  const buttonColor = type === 'deposit' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-rose-500 hover:bg-rose-600';
-
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]" onClick={onClose}>
-      <div className="bg-[#131316] border border-zinc-800 rounded-lg shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] leading-[24px] font-semibold text-zinc-200">{tr(title)}</h3>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
-            <Icon name="x-close" size="sm" className="w-5 h-5" />
-          </button>
-        </div>
-
-        {success ? (
-          <div className="py-8 text-center">
-            <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <p className="text-[14px] leading-[21px] text-zinc-300 font-normal">
-              {type === 'deposit' ? tr("Deposit") : tr("Withdrawal")} {tr(" request submitted successfully!")}</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Amount Input */}
-            <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("Amount (USD)")}</label>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-                required
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
-              />
-            </div>
-
-            {/* Payment Method */}
-            <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("Payment Method")}</label>
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
-              >
-                <option value="card">{tr("Credit/Debit Card")}</option>
-                <option value="bank">{tr("Bank Transfer")}</option>
-                <option value="crypto">{tr("Cryptocurrency")}</option>
-              </select>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded text-[12px] leading-[18px] font-normal text-rose-400">
-                {error}
-              </div>
-            )}
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loading || !amount}
-              className={`w-full py-2.5 ${buttonColor} text-white text-[14px] leading-[21px] font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {loading ? tr("Processing...") : tr("Submit {{value0}}", { value0: type === 'deposit' ? 'Deposit' : 'Withdrawal' })}
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
-  );
-};
-
-/**
- * Password Change Modal
- */
-interface PasswordModalProps {
-  onClose: () => void;
-}
-
-const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
-    const tr = useUiTranslation();
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSuccess(false);
-    setError('Password changes are not supported by the trade-facing API contract.');
-
-    if (newPassword !== confirmPassword) {
-      setError('New passwords do not match');
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
-
-    setLoading(false);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]" onClick={onClose}>
-      <div className="bg-[#131316] border border-zinc-800 rounded-lg shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] leading-[24px] font-semibold text-zinc-200">{tr("Change Password")}</h3>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
-            <Icon name="x-close" size="sm" className="w-5 h-5" />
-          </button>
-        </div>
-
-        {success ? (
-          <div className="py-8 text-center">
-            <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <p className="text-[14px] leading-[21px] text-zinc-300 font-normal">{tr("Password changed successfully!")}</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("Current Password")}</label>
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                required
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("New Password")}</label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("Confirm New Password")}</label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
-              />
-            </div>
-
-            {error && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded text-[12px] leading-[18px] font-normal text-rose-400">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 bg-zinc-700 hover:bg-zinc-600 text-white text-[14px] leading-[21px] font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? tr("Updating...") : tr("Change Password")}
-            </button>
-          </form>
-        )}
       </div>
     </div>
   );

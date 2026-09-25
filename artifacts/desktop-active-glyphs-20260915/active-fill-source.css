@@ -1,3 +1,0 @@
-html.rtx-desktop-shell-active .rtx-desktop-command-row .rtx-toolbar-icon-button:is([aria-checked='true'], [aria-pressed='true']) .rtx-chart-command-icon__active-fill {
-  fill: currentColor;
-}

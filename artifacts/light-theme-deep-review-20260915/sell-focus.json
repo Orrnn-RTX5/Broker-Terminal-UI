@@ -1,9 +1,0 @@
-{
-  "background": "rgb(220, 38, 38)",
-  "boxShadow": "none",
-  "focusVisible": true,
-  "label": "SELL BTCUSD at 77293.48",
-  "outline": "rgb(67, 56, 202) solid 2px",
-  "outlineOffset": "-2px",
-  "tag": "BUTTON"
-}

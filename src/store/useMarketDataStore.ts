@@ -10,7 +10,7 @@
 
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
-import { getWorkerManager } from '../services/aggregationWorkerManager';
+import { cancelPendingAggregations, getWorkerManager, type SymbolAggregationRequest, type SymbolAggregationResult } from '../services/aggregationWorkerManager';
 import {
   isStructurallyValidPriceCandle,
   repairPriceCandle,
@@ -302,10 +302,24 @@ export function appendBoundedTick(
   return [...ticks.slice(firstRetainedIndex), tick];
 }
 
-interface PendingAggregation {
-  symbol: string;
-  tickBuffer: Tick[];
+interface PendingAggregation extends SymbolAggregationRequest {
+  owner: number;
+  revision: number;
 }
+
+let aggregationSession = 0;
+let aggregationRevision = 0;
+const latestAggregationRevision = new Map<string, number>();
+const aggregationOwners = new Map<string, number>();
+
+const ownPendingAggregation = (request: SymbolAggregationRequest, isCorrection: boolean): PendingAggregation => {
+  const revision = ++aggregationRevision;
+  // An equal-time correction replaces a tick in the same buffer. Its pending
+  // predecessor is known obsolete and must not seed a wrong local wick/open.
+  const owner = (isCorrection ? undefined : aggregationOwners.get(request.symbol)) ?? revision;
+  aggregationOwners.set(request.symbol, owner);
+  return { ...request, owner, revision };
+};
 
 const replaceSameTimestampTick = (ticks: readonly Tick[], tick: Tick): Tick[] => {
   const timestamp = getCanonicalTickTimestamp(tick);
@@ -463,7 +477,7 @@ const applyMarketTick = (
   tick: Tick,
   data: SymbolData,
   now: number,
-): { data: SymbolData; aggregation: PendingAggregation | null } | null => {
+): { data: SymbolData; aggregation: SymbolAggregationRequest | null; isCorrection: boolean } | null => {
   const freshness = data.currentTick
     ? compareCanonicalTickFreshness(data.currentTick, tick)
     : 1;
@@ -485,6 +499,7 @@ const applyMarketTick = (
     : data.stats;
 
   return {
+    isCorrection,
     data: {
       ...data,
       currentTick: tick,
@@ -499,30 +514,39 @@ const applyMarketTick = (
 
 const schedulePendingAggregations = (
   requests: readonly PendingAggregation[],
-  commit: (symbol: string, results: Record<string, OHLCV[]>) => void,
+  session: number,
+  commit: (results: SymbolAggregationResult[]) => void,
 ): void => {
-  requests.forEach(({ symbol, tickBuffer }) => {
-    try {
-      getWorkerManager().aggregateMultipleTimeframes(
-        tickBuffer,
-        [
-          { name: '1m', ms: 60 * 1_000 },
-          { name: '5m', ms: 5 * 60 * 1_000 },
-          { name: '15m', ms: 15 * 60 * 1_000 },
-          { name: '1h', ms: 60 * 60 * 1_000 },
-        ],
-        (results) => {
-          try {
-            commit(symbol, results);
-          } catch (error) {
-            console.error(`[MarketDataStore] Worker result failed for ${symbol}:`, error);
-          }
-        },
-      );
-    } catch (error) {
-      console.error(`[MarketDataStore] Worker scheduling failed for ${symbol}:`, error);
-    }
-  });
+  if (requests.length === 0 || session !== aggregationSession) return;
+  const ownedRequests = requests.filter(({ symbol, owner }) => aggregationOwners.get(symbol) === owner);
+  if (ownedRequests.length === 0) return;
+  const revisions = new Map(ownedRequests.map(request => [request.symbol, request]));
+  try {
+    getWorkerManager().aggregateSymbols(ownedRequests, [
+      { name: '1m', ms: 60 * 1_000 },
+      { name: '5m', ms: 5 * 60 * 1_000 },
+      { name: '15m', ms: 15 * 60 * 1_000 },
+      { name: '1h', ms: 60 * 60 * 1_000 },
+    ], (results) => {
+      if (session !== aggregationSession) return;
+      const currentResults = results.filter(({ symbol, error }) => {
+        if (error) console.error(`[MarketDataStore] Worker result failed for ${symbol}:`, error);
+        const request = revisions.get(symbol);
+        return !error && request && request.owner === aggregationOwners.get(symbol)
+          && request.revision > (latestAggregationRevision.get(symbol) ?? 0);
+      });
+      if (currentResults.length > 0) {
+        // Mark before publishing: a synchronous subscriber can trigger another
+        // aggregation. FIFO replies still retain older buckets when a later
+        // request has trimmed its rolling buffer, while stale replies cannot
+        // overwrite an already committed correction.
+        currentResults.forEach(({ symbol }) => latestAggregationRevision.set(symbol, revisions.get(symbol)!.revision));
+        commit(currentResults);
+      }
+    });
+  } catch (error) {
+    console.error('[MarketDataStore] Worker scheduling failed:', error);
+  }
 };
 
 // ============================================
@@ -538,100 +562,10 @@ export const useMarketDataStore = create<MarketDataState>()(
 
         updateTick: (symbol, tick, options = {}) => {
           get().updateTicksBatch([[symbol, tick]], options);
-          return;
-          const { syncAppStore = true } = options;
-
-          set((state) => {
-            const data = state.symbolData[symbol] || createEmptySymbolData();
-
-            // Replayed websocket frames sometimes contain the exact same event.
-            // Avoid publishing a new global snapshot (and copying the rolling
-            // buffer) for those frames, while retaining same-price freshness
-            // events because their timestamps differ.
-            if (areMarketTicksIdentical(data.currentTick, tick)) return state;
-
-            // Update ticks
-            const previousTick = data.currentTick;
-            const currentTick = tick;
-
-            // Add to tick buffer (keep last 10,000 ticks per symbol)
-            const tickBuffer = appendBoundedTick(data.tickBuffer, tick);
-
-            // PERFORMANCE FIX: Aggregate OHLCV in Web Worker (async, non-blocking)
-            const now = Date.now();
-            const shouldAggregate = now - data.lastAggregation > 60000;
-
-            const ohlcv1m = data.ohlcv1m;
-            const ohlcv5m = data.ohlcv5m;
-            const ohlcv15m = data.ohlcv15m;
-            const ohlcv1h = data.ohlcv1h;
-
-            if (shouldAggregate && tickBuffer.length > 0) {
-              // Offload to Web Worker (non-blocking)
-              const worker = getWorkerManager();
-              worker.aggregateMultipleTimeframes(
-                tickBuffer,
-                [
-                  { name: '1m', ms: 60 * 1000 },
-                  { name: '5m', ms: 5 * 60 * 1000 },
-                  { name: '15m', ms: 15 * 60 * 1000 },
-                  { name: '1h', ms: 60 * 60 * 1000 },
-                ],
-                (results) => {
-                  // Update store with worker results (async)
-                  set((state) => {
-                    const currentData = state.symbolData[symbol];
-                    if (!currentData) return state;
-
-                    return {
-                      symbolData: {
-                        ...state.symbolData,
-                        [symbol]: {
-                          ...currentData,
-                          ohlcv1m: [...currentData.ohlcv1m, ...results['1m']].slice(-1000),
-                          ohlcv5m: [...currentData.ohlcv5m, ...results['5m']].slice(-500),
-                          ohlcv15m: [...currentData.ohlcv15m, ...results['15m']].slice(-300),
-                          ohlcv1h: [...currentData.ohlcv1h, ...results['1h']].slice(-200),
-                        },
-                      },
-                    };
-                  });
-                }
-              );
-            }
-
-            // Stats scan the rolling buffer, so avoid doing that work for every
-            // high-frequency tick while keeping UI stats fresh.
-            const shouldUpdateStats = !data.stats || now - data.stats.lastUpdate > 1000;
-            const stats = shouldUpdateStats
-              ? calculateStats(symbol, currentTick, previousTick, tickBuffer, ohlcv1h)
-              : data.stats;
-
-            return {
-              symbolData: {
-                ...state.symbolData,
-                [symbol]: {
-                  ...data,
-                  currentTick,
-                  previousTick,
-                  stats,
-                  tickBuffer,
-                  lastAggregation: shouldAggregate ? now : data.lastAggregation,
-                },
-              },
-            };
-          });
-
-          // ─── Cross-store sync: TradingChart polls useAppStore.ticks ───────────
-          // Dynamically import to avoid circular dep. Fire-and-forget.
-          if (syncAppStore) {
-            import('../store/useAppStore').then(({ useAppStore }) => {
-              useAppStore.getState().setTick(symbol, tick as any);
-            }).catch(() => {/* ignore */});
-          }
         },
 
         updateTicksBatch: (ticks, options = {}) => {
+          const session = aggregationSession;
           const { syncAppStore = true } = options;
           const latestTicks = coalesceFreshestTickEntries(ticks, (symbol, error) => {
             console.error(`[MarketDataStore] Ignoring invalid tick for ${symbol}:`, error);
@@ -653,7 +587,9 @@ export const useMarketDataStore = create<MarketDataState>()(
                 if (!changed) nextSymbolData = { ...state.symbolData };
                 nextSymbolData[symbol] = transition.data;
                 changed = true;
-                if (transition.aggregation) pendingAggregations.push(transition.aggregation);
+                // Capture ownership before set() notifies subscribers. A
+                // reentrant correction/clear must supersede this exact snapshot.
+                if (transition.aggregation) pendingAggregations.push(ownPendingAggregation(transition.aggregation, transition.isCorrection));
               } catch (error) {
                 console.error(`[MarketDataStore] Tick transition failed for ${symbol}:`, error);
               }
@@ -662,25 +598,29 @@ export const useMarketDataStore = create<MarketDataState>()(
             return changed ? { symbolData: nextSymbolData } : state;
           });
 
-          schedulePendingAggregations(pendingAggregations, (symbol, results) => {
+          schedulePendingAggregations(pendingAggregations, session, (rows) => {
             set((state) => {
-              const currentData = state.symbolData[symbol];
-              if (!currentData) return state;
-
-              return {
-                symbolData: {
-                  ...state.symbolData,
-                  [symbol]: {
+              let symbolData = state.symbolData;
+              rows.forEach(({ symbol, results }) => {
+                const currentData = symbolData[symbol];
+                if (!currentData || !results) return;
+                try {
+                  const nextData = {
                     ...currentData,
-                    // FIX: A worker callback may finish after a server candle.
-                    // Merge by bucket and retain every authoritative server row.
+                    // Backend rows remain authoritative even if they arrived
+                    // between the worker request and this batched response.
                     ohlcv1m: mergeLocalAggregation(currentData.ohlcv1m, results['1m'], 1000),
                     ohlcv5m: mergeLocalAggregation(currentData.ohlcv5m, results['5m'], 500),
                     ohlcv15m: mergeLocalAggregation(currentData.ohlcv15m, results['15m'], 300),
                     ohlcv1h: mergeLocalAggregation(currentData.ohlcv1h, results['1h'], 200),
-                  },
-                },
-              };
+                  };
+                  if (symbolData === state.symbolData) symbolData = { ...state.symbolData };
+                  symbolData[symbol] = nextData;
+                } catch (error) {
+                  console.error(`[MarketDataStore] Worker result failed for ${symbol}:`, error);
+                }
+              });
+              return symbolData === state.symbolData ? state : { symbolData };
             });
           });
 
@@ -688,6 +628,7 @@ export const useMarketDataStore = create<MarketDataState>()(
           // frame to the app store in one state transition.
           if (syncAppStore) {
             import('../store/useAppStore').then(({ useAppStore }) => {
+              if (session !== aggregationSession) return;
               useAppStore.getState().setTicksBatch(latestTicks);
             }).catch(() => {/* ignore */});
           }
@@ -750,6 +691,8 @@ export const useMarketDataStore = create<MarketDataState>()(
         },
 
         aggregateOHLCV: (symbol) => {
+          aggregationOwners.delete(symbol);
+          latestAggregationRevision.delete(symbol);
           set((state) => {
             const data = state.symbolData[symbol];
             if (!data || data.tickBuffer.length === 0) return state;
@@ -778,6 +721,8 @@ export const useMarketDataStore = create<MarketDataState>()(
         },
 
         clearSymbolData: (symbol) => {
+          aggregationOwners.delete(symbol);
+          latestAggregationRevision.delete(symbol);
           set((state) => {
             const newData = { ...state.symbolData };
             delete newData[symbol];
@@ -786,6 +731,10 @@ export const useMarketDataStore = create<MarketDataState>()(
         },
 
         clearAllData: () => {
+          aggregationSession += 1;
+          aggregationOwners.clear();
+          latestAggregationRevision.clear();
+          cancelPendingAggregations();
           set({
             symbolData: {},
             subscribedSymbols: new Set(),

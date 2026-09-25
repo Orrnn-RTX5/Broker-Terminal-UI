@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { WS_ENDPOINTS, buildApiUrl } from '../config/api';
+import { buildApiUrl } from '../config/api';
 
 // ============================================
 // Types

@@ -12,8 +12,7 @@ import { useWebSocketStore, type ConnectionState } from '../store/useWebSocketSt
 import { enqueueLiveTick } from './liveTickDispatcher';
 import { MARKET_WS_URL } from '../config/api';
 import { buildBrokerWsV2Uri } from './brokerSession';
-
-const FIX_SOCKET_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
+import { readFirstFiniteNumber, readFirstNonEmptyString } from '../utils/recordFields';
 
 export type FixSocketState = ConnectionState;
 
@@ -72,32 +71,6 @@ export interface FixCandleMessage {
 }
 
 export type FixSocketMessage = FixTickMessage | FixCandleMessage;
-
-const readFirstFiniteNumber = (
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): number | undefined => {
-  for (const key of keys) {
-    const value = record[key];
-    if (value === null || value === undefined || value === '') continue;
-    const numeric = Number(value);
-    if (Number.isFinite(numeric)) return numeric;
-  }
-  return undefined;
-};
-
-const readFirstNonEmptyString = (
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): string | undefined => {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value !== 'string') continue;
-    const normalized = value.trim();
-    if (normalized) return normalized;
-  }
-  return undefined;
-};
 
 type MessageHandler = (data: FixSocketMessage) => void;
 type StateHandler = (state: FixSocketState) => void;

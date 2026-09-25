@@ -504,6 +504,7 @@ declare global {
     electron?: {
       appVersion: string;
       isPackaged: boolean;
+      startupReady?: () => void;
       shell: {
         openPath: (path: string) => Promise<string>;
         openDataFolder: () => Promise<string>;

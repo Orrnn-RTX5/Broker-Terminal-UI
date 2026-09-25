@@ -57,7 +57,7 @@ describe('BottomDock trade type presentation', () => {
         expect(tradeTable).not.toContain('text-left');
     });
 
-    it('pins Close Winners, Close Losers, and Close All to the bottom tab strip', () => {
+    it('pins Close In-Profit, Close In-Loss, and Close All to the bottom tab strip', () => {
         const tabs = source.slice(
             source.indexOf('{/* Bottom Tabs */}'),
             source.indexOf('function ToolboxTab'),
@@ -67,14 +67,14 @@ describe('BottomDock trade type presentation', () => {
             source.indexOf('{footerMetricMenu &&'),
         );
 
-        expect(tabs).toContain('Close Winners');
-        expect(tabs).toContain('Close Losers');
+        expect(tabs).toContain('Close In-Profit');
+        expect(tabs).toContain('Close In-Loss');
         expect(tabs).toContain('Close All');
         expect(tabs).toContain('rtx-dock-tab-actions');
         expect(tabs).toContain('rtx-dock-tab rtx-trade-bulk-close');
         expect(source).toContain("{ id: 'Toolbox' }");
         expect(tabs).not.toContain('rtx-trade-footer-action');
-        expect(footer).not.toContain('Close Winners');
+        expect(footer).not.toContain('Close In-Profit');
         expect(footer).not.toContain('rtx-trade-footer-actions');
     });
 

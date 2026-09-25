@@ -56,8 +56,7 @@ const BrokerAvatar: React.FC<{ broker: BrokerServer; index: number; isSelected: 
             <div
                 className="rtx-open-account-dialog__logo w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden bg-white flex-shrink-0"
                 style={{
-                    border: isSelected ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: isSelected ? '0 0 12px rgba(99,102,241,0.35)' : '0 4px 12px rgba(0,0,0,0.2)',
+                    border: isSelected ? '1px solid #6366f1' : '1px solid #303542',
                 }}
             >
                 <img
@@ -75,7 +74,6 @@ const BrokerAvatar: React.FC<{ broker: BrokerServer; index: number; isSelected: 
             className="rtx-open-account-dialog__avatar w-10 h-10 rounded-xl flex items-center justify-center text-white font-semibold text-[14px] flex-shrink-0"
             style={{
                 background: `linear-gradient(135deg, ${grad.from} 0%, ${grad.to} 100%)`,
-                boxShadow: isSelected ? `0 6px 20px ${grad.from}55` : '0 4px 12px rgba(0,0,0,0.3)',
             }}
         >
             {initials(broker.broker_name)}
@@ -221,12 +219,6 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [isCreating, setIsCreating] = useState(false);
     const [createError, setCreateError] = useState('');
     const [validationError, setValidationError] = useState('');
-
-    // FileMenu mounts this dialog closed. Warm the shared directory before the
-    // user opens the wizard; a recent sign-in response needs no new request.
-    useEffect(() => {
-        void loadAppBrokerDirectory({ desktop: isDesktopBackendTarget() }).catch(() => undefined);
-    }, []);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -488,23 +480,23 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         placeholder={tr("Search broker name or server address…")}
                         className="w-full rounded-lg py-2 pl-9 pr-3 text-[14px] font-normal text-zinc-300 transition-all placeholder:text-zinc-600 focus:outline-none"
                         style={{
-                            background: 'rgba(255,255,255,0.04)',
-                            border: '1px solid rgba(255,255,255,0.08)',
+                            background: '#1e222a',
+                            border: '1px solid #303542',
                         }}
-                        onFocus={e => (e.currentTarget.style.borderColor = 'rgba(180,180,190,0.5)')}
-                        onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')}
+                        onFocus={e => (e.currentTarget.style.borderColor = '#6366f1')}
+                        onBlur={e => (e.currentTarget.style.borderColor = '#303542')}
                     />
                 </div>
             </div>
 
             {/* Section header */}
             <div className="rtx-open-account-dialog__list-heading flex items-center gap-2">
-                <span className="text-[14px] font-normal uppercase tracking-widest text-zinc-500">
+                <span className="text-[12px] font-semibold uppercase tracking-wider text-zinc-500">
                     {tr("Available Brokers")}</span>
-                <div className="flex-1 h-px opacity-30" style={{ background: 'linear-gradient(90deg, rgba(180,180,190,0.3), transparent)' }} />
+                <div className="flex-1 h-px" style={{ background: '#232833' }} />
                 <span
-                    className="rtx-open-account-dialog__badge px-1.5 py-0.5 rounded text-[12px] font-semibold"
-                    style={{ background: 'rgba(180,180,190,0.15)', color: '#818cf8' }}
+                    className="rtx-open-account-dialog__badge px-2 py-0.5 rounded-full text-[12px] font-semibold"
+                    style={{ background: '#232838', color: '#a5b4fc' }}
                 >
                     {loadingBrokers ? '…' : filteredBrokers.length}
                 </span>
@@ -550,12 +542,11 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 className={`rtx-open-account-dialog__broker flex items-center gap-4 px-4 py-3 rounded-xl cursor-pointer transition-all duration-150 select-none text-left`}
                                 style={{
                                     background: isSelected
-                                        ? 'linear-gradient(135deg, rgba(180,180,190,0.2) 0%, rgba(79,70,229,0.15) 100%)'
-                                        : isHovered ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
+                                        ? '#222839'
+                                        : isHovered ? '#20242d' : '#1b1f27',
                                     border: isSelected
-                                        ? '1px solid rgba(180,180,190,0.4)'
-                                        : isHovered ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.04)',
-                                    boxShadow: isSelected ? '0 4px 20px rgba(180,180,190,0.15), inset 0 1px 0 rgba(255,255,255,0.05)' : 'none',
+                                        ? '1px solid #4f46e5'
+                                        : isHovered ? '1px solid #323845' : '1px solid #272c37',
                                 }}
                             >
                                 {/* Avatar */}
@@ -570,7 +561,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                         {broker.region && (
                                             <span
                                                 className="rtx-open-account-dialog__badge px-1.5 py-0.5 rounded-full text-[12px] font-medium flex-shrink-0"
-                                                style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}
+                                                style={{ background: '#232838', color: '#a5b4fc' }}
                                             >
                                                 {broker.region}
                                             </span>
@@ -593,7 +584,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             {selectedBroker && !isDesktopShell && (
                 <div
                     className="rtx-open-account-dialog__surface flex items-center gap-2 px-3 py-2 rounded-lg"
-                    style={{ background: 'rgba(180,180,190,0.06)', border: '1px solid rgba(180,180,190,0.12)' }}
+                    style={{ background: '#1b1f27', border: '1px solid #272c37' }}
                 >
                     <ExternalLink className="w-3 h-3 text-zinc-400 flex-shrink-0" />
                     <p className="text-[14px] font-normal text-zinc-500">
@@ -655,11 +646,14 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                     <span className="w-16 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Password:")}</span>
                                     <input
                                         aria-label={tr("Existing account password")}
-                                        autoComplete="current-password"
-                                        type="password"
+                                        autoComplete="off"
+                                        spellCheck={false}
+                                        autoCorrect="off"
+                                        autoCapitalize="none"
+                                        type="text"
                                         value={existingPassword}
                                         onChange={e => setExistingPassword(e.target.value)}
-                                        className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1 text-[14px] font-normal text-white outline-none focus:border-indigo-500"
+                                        className="rtx-secret-input flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1 text-[14px] font-normal text-white outline-none focus:border-indigo-500"
                                         placeholder={tr("Password")}
                                     />
                                 </div>
@@ -970,22 +964,18 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 data-step={step}
                 className={`rtx-open-account-dialog ${isDesktopShell ? 'rtx-open-account-dialog--desktop' : ''} relative w-[580px] max-w-[calc(100vw-24px)] flex flex-col overflow-hidden transition-all duration-300`}
                 style={{
-                    background: 'linear-gradient(145deg, rgba(22, 24, 31, 0.65) 0%, rgba(28, 30, 40, 0.6) 40%, rgba(20, 22, 32, 0.65) 100%)',
-                    border: '1px solid rgba(255,255,255,0.12)',
+                    background: '#171a21',
+                    border: '1px solid #2a2f3a',
                     borderRadius: '12px',
-                    boxShadow: '0 40px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(180,180,190,0.1), inset 0 1px 0 rgba(255,255,255,0.05)',
+                    boxShadow: '0 24px 64px rgba(0,0,0,0.55)',
                     maxHeight: '90vh',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
                 }}
             >
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-px opacity-60" style={{ background: 'linear-gradient(90deg, transparent, #6366f1, transparent)' }} />
-
                 {/* Header */}
-                <div className="rtx-open-account-dialog__header flex shrink-0 items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="rtx-open-account-dialog__header flex shrink-0 items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid #232833' }}>
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                         {step === 0 && (
-                            <div className="rtx-open-account-dialog__header-icon w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', boxShadow: '0 4px 12px rgba(180,180,190,0.4)' }}>
+                            <div className="rtx-open-account-dialog__header-icon w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#4f46e5' }}>
                                 <Building2 className="w-4 h-4 text-white" />
                             </div>
                         )}
@@ -1038,7 +1028,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                             </div>
                         </div>
                     </div>
-                ) : <div className="rtx-open-account-dialog__footer flex shrink-0 flex-wrap items-center justify-between gap-3 px-5 py-4 mt-auto" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                ) : <div className="rtx-open-account-dialog__footer flex shrink-0 flex-wrap items-center justify-between gap-3 px-5 py-4 mt-auto" style={{ borderTop: '1px solid #232833', background: '#14171d' }}>
                     <div className="max-w-[280px] text-[14px] font-normal">
                         {validationError ? <span role="alert" className="text-red-400">{tr(validationError)}</span> : (
                             <span className="text-zinc-600">{step === 0 ? tr("Double-click to proceed immediately") : ''}</span>
@@ -1048,23 +1038,23 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         {step > 0 && step < 4 && (
                             <button
                                 onClick={handleBack}
-                                className="rounded-lg px-5 py-2 text-[14px] leading-5 font-medium text-zinc-400 transition-all hover:text-zinc-200"
-                                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+                                className="rounded-lg px-5 py-2 text-[14px] leading-5 font-medium text-zinc-300 transition-all hover:text-white hover:brightness-110"
+                                style={{ background: '#232733', border: '1px solid #323845' }}
                             >
                                 {tr("< Back")}</button>
                         )}
                         <button
                             onClick={handleNext}
                             disabled={!isStepValid || isCreating}
-                            className="rtx-open-account-dialog__primary flex items-center gap-2 rounded-lg px-5 py-2 text-[14px] leading-5 font-medium text-white transition-all disabled:cursor-not-allowed disabled:opacity-40"
-                            style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', boxShadow: '0 4px 20px rgba(180,180,190,0.4), inset 0 1px 0 rgba(255,255,255,0.15)' }}
+                            className="rtx-open-account-dialog__primary flex items-center gap-2 rounded-lg px-5 py-2 text-[14px] leading-5 font-medium text-white transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                            style={{ background: '#4f46e5', border: '1px solid #4f46e5' }}
                         >
                             {tr(actionLabel)}
                         </button>
                         <button
                             onClick={closeDialog}
-                            className="ml-1 rounded-lg px-5 py-2 text-[14px] leading-5 font-medium text-zinc-400 transition-all hover:text-zinc-200"
-                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+                            className="ml-1 rounded-lg px-5 py-2 text-[14px] leading-5 font-medium text-zinc-300 transition-all hover:text-white hover:brightness-110"
+                            style={{ background: '#232733', border: '1px solid #323845' }}
                         >
                             {tr("Cancel")}</button>
                     </div>

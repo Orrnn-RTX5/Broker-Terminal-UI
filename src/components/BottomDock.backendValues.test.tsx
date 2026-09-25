@@ -1,0 +1,94 @@
+// @vitest-environment jsdom
+
+import React from 'react';
+import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BottomDock } from './BottomDock';
+import { useAppStore } from '../store/useAppStore';
+
+const trade = vi.hoisted(() => ({
+  account: null as any,
+  positions: [] as any[],
+  refresh: vi.fn(),
+}));
+
+vi.mock('../hooks/useToolboxTradeData', () => ({
+  useToolboxTradeData: () => ({
+    account: trade.account, positions: trade.positions, pendingPositions: [],
+    loading: false, error: null, login: 1, restBaseUrl: '', wsUrl: '',
+    wsState: 'connected', lastRestAt: null, lastWsAt: null, debug: [],
+    refresh: trade.refresh, removePosition: vi.fn(), removePositionsByMode: vi.fn(),
+  }),
+}));
+
+describe('Trade backend financial rendering', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    trade.account = {
+      balance: 1000, equity: 1100, margin: 20, freeMargin: 1080, marginLevel: 5500,
+      unrealizedPL: -81.4, hasBackendUnrealizedPL: true, currency: 'USD',
+    };
+    trade.positions = [{
+      id: 71, symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 80000,
+      price_current: 81000, currentPrice: 81000, hasBackendCurrentPrice: true,
+      profit: 7, unrealizedPnL: 7, hasBackendProfit: true,
+      openTime: '2026-09-21T10:00:00.000Z', sl: 0, tp: 0, swap: 0, commission: 0,
+    }];
+  });
+
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it('renders backend row profit and the separate account total, then applies fresh backend updates', () => {
+    const { container, rerender } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(screen.getByTitle('Profit: 7.00')).toHaveTextContent('7.00');
+    expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('-81.40');
+
+    act(() => useAppStore.getState().setTicks({
+      BTCUSD: { symbol: 'BTCUSD', bid: 90000, ask: 90001, spread: 1, timestamp: Date.now() },
+    }));
+    expect(screen.getByTitle('Profit: 7.00')).toHaveTextContent('7.00');
+    expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('-81.40');
+
+    trade.positions = [{ ...trade.positions[0], profit: -12, unrealizedPnL: -12 }];
+    trade.account = { ...trade.account, unrealizedPL: -90.5 };
+    rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(screen.getByTitle('Profit: -12.00')).toHaveTextContent('-12.00');
+    expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('-90.50');
+  });
+
+  it('shows unavailable monetary fields instead of a calculated profit or zero placeholders', () => {
+    trade.account = {
+      ...trade.account, balance: 0, margin: 0, unrealizedPL: 0,
+      hasBackendBalance: false, hasBackendMargin: false, hasBackendUnrealizedPL: false,
+    };
+    trade.positions = [{ ...trade.positions[0], profit: 0, unrealizedPnL: 0, hasBackendProfit: false }];
+    const { container } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(container.querySelector('.rtx-trade-footer-floating')).not.toHaveTextContent('0.00');
+    expect(container.querySelector('.rtx-trade-footer-floating [title="Not reported by the trading server"]')).toBeInTheDocument();
+    expect(screen.queryByTitle('Profit: 0.00')).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.rtx-trade-footer-metrics [title="Not reported by the trading server"]')).toHaveLength(2);
+  });
+
+  it('displays backend zero floating profit and margin level verbatim for an empty account', () => {
+    trade.positions = [];
+    trade.account = { ...trade.account, unrealizedPL: 0, marginLevel: 0 };
+    const { container } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('0.00');
+    expect(container.querySelector('.rtx-trade-footer-metrics')).toHaveTextContent('0.00%');
+    expect(container.querySelector('.rtx-trade-footer-metrics')).not.toHaveTextContent('∞');
+  });
+
+  it('does not substitute a quote or entry price for a missing backend current price', () => {
+    useAppStore.getState().setTicks({
+      BTCUSD: { symbol: 'BTCUSD', bid: 90000, ask: 90001, spread: 1, timestamp: Date.now() },
+    });
+    trade.positions = [{ ...trade.positions[0], price_current: 0, currentPrice: 0, hasBackendCurrentPrice: false }];
+    render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(screen.getByTitle('Current price: —')).toHaveTextContent('—');
+    expect(screen.queryByTitle('Current price: 90000.00')).not.toBeInTheDocument();
+  });
+});

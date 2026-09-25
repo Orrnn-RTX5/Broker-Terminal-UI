@@ -63,7 +63,11 @@ const singleChartLayout = (): DockLayout => ({
 const charts = (layout: DockLayout) => [layout.root, ...layout.floatingPanels]
   .flatMap(panels).filter(panel => panel.component === 'Chart');
 const center = (layout: DockLayout) => layout.root.children.find(child => child.id === 'center-main') as DockContainer;
-const withoutRatio = ({ ratio: _ratio, ...panel }: DockPanelConfig) => panel;
+const withoutRatio = (panel: DockPanelConfig) => {
+  const rest = { ...panel };
+  delete rest.ratio;
+  return rest;
+};
 
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
 
@@ -196,7 +200,7 @@ describe('chart window arrangements', () => {
     manager.resetWindows();
     expect(charts(manager.getLayout())).toHaveLength(1);
     expect(charts(manager.getLayout())[0]).toMatchObject({
-      component: 'Chart', title: 'XAUUSD,M1', props: { symbol: 'XAUUSD', timeframe: 'M1' },
+      component: 'Chart', title: 'BTCUSD,M1', props: { symbol: 'BTCUSD', timeframe: 'M1' },
     });
     expect(panels(manager.getLayout().root).some(panel => panel.component === 'EmptyChartArea')).toBe(false);
   });

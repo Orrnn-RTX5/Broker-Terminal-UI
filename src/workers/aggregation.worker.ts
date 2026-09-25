@@ -26,7 +26,7 @@ export interface OHLCV {
 }
 
 export interface WorkerMessage {
-  type: 'aggregate' | 'sma' | 'ema' | 'vwap' | 'indicators' | 'rsi' | 'bollinger' | 'macd';
+  type: 'aggregate' | 'aggregate-batch' | 'sma' | 'ema' | 'vwap' | 'indicators' | 'rsi' | 'bollinger' | 'macd';
   data: unknown;
   requestId: string;
 }
@@ -34,6 +34,11 @@ export interface WorkerMessage {
 export interface AggregateRequest {
   ticks: Tick[];
   timeframeMs: number;
+}
+
+export interface AggregateBatchRequest {
+  requests: { symbol: string; tickBuffer: Tick[] }[];
+  timeframes: { name: string; ms: number }[];
 }
 
 export interface MovingAverageRequest {
@@ -54,15 +59,19 @@ export interface IndicatorsRequest {
 
 
 function aggregateOHLCV(ticks: Tick[], timeframeMs: number): OHLCV[] {
+  return aggregateSortedOHLCV([...ticks].sort((left, right) => (
+    (left.sourceTimestamp ?? left.timestamp) - (right.sourceTimestamp ?? right.timestamp)
+  )), timeframeMs);
+}
+
+function aggregateSortedOHLCV(ticks: Tick[], timeframeMs: number): OHLCV[] {
   if (ticks.length === 0) return [];
 
   const ohlcvMap = new Map<number, OHLCV>();
 
   // FIX: Aggregate in broker event-time order; UI receipt order may be delayed
   // or reordered during reconnect and must not own candle Close.
-  [...ticks].sort((left, right) => (
-    (left.sourceTimestamp ?? left.timestamp) - (right.sourceTimestamp ?? right.timestamp)
-  )).forEach((tick) => {
+  ticks.forEach((tick) => {
     const eventTime = tick.sourceTimestamp ?? tick.timestamp;
     const bucketTime = Math.floor(eventTime / timeframeMs) * timeframeMs;
     const bid = Number.isFinite(tick.bid) && tick.bid > 0 ? tick.bid : null;
@@ -274,8 +283,8 @@ function calculateIndicators(ohlcv: OHLCV[], indicators: string[]): Record<strin
 
 
 
-self.onmessage = (event: MessageEvent<WorkerMessage>) => {
-  const { type, data, requestId } = event.data;
+export function processWorkerMessage(message: WorkerMessage) {
+  const { type, data, requestId } = message;
 
   try {
     let result: unknown;
@@ -284,6 +293,28 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       case 'aggregate': {
         const { ticks, timeframeMs } = data as AggregateRequest;
         result = aggregateOHLCV(ticks, timeframeMs);
+        break;
+      }
+
+      case 'aggregate-batch': {
+        const { requests, timeframes } = data as AggregateBatchRequest;
+        result = requests.map(({ symbol, tickBuffer }) => {
+          try {
+            // Sort once per symbol, retaining the same stable source-time
+            // ordering used by the individual aggregation endpoint.
+            const orderedTicks = [...tickBuffer].sort((left, right) => (
+              (left.sourceTimestamp ?? left.timestamp) - (right.sourceTimestamp ?? right.timestamp)
+            ));
+            const results: Record<string, OHLCV[]> = {};
+            timeframes.forEach(({ name, ms }) => {
+              results[name] = aggregateSortedOHLCV(orderedTicks, ms);
+            });
+            return { symbol, results };
+          } catch (error) {
+            // One malformed symbol must not discard healthy siblings.
+            return { symbol, error: error instanceof Error ? error.message : 'Unknown error' };
+          }
+        });
         break;
       }
 
@@ -333,18 +364,22 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         throw new Error(`Unknown message type: ${type}`);
     }
 
-    self.postMessage({
+    return {
       type: 'success',
       requestId,
       result,
-    });
+    };
   } catch (error) {
-    self.postMessage({
+    return {
       type: 'error',
       requestId,
       error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    };
   }
+}
+
+self.onmessage = (event: MessageEvent<WorkerMessage>) => {
+  self.postMessage(processWorkerMessage(event.data));
 };
 
 

@@ -1,18 +1,15 @@
 import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { lazy, useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Menu as MenuIcon } from 'lucide-react';
 import { Icon, type IconName } from '../ui/Icon';
-import { OptionsDialog } from '../settings/OptionsDialog';
+import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { FileMenu } from './FileMenu';
 import { useTranslation } from 'react-i18next';
-import { SymbolsDialog } from '../SymbolsDialog';
-import { LoginDialog } from '../LoginDialog';
 import { commandBus } from '../../services/commandBus';
 import { useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
-import { useAppStore } from '../../store/useAppStore';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import type { PayloadFor } from '../../types/commands';
 import { STAMP_OPTIONS } from './stampOptions';
@@ -25,6 +22,10 @@ import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
 import { BUILTIN_WORKSPACE_PROFILE_NAMES, restoreBuiltinWorkspaceProfile } from '../../services/localWorkspaceProfiles';
+
+const OptionsDialog = lazy(() => import('../settings/OptionsDialog').then(module => ({ default: module.OptionsDialog })));
+const SymbolsDialog = lazy(() => import('../SymbolsDialog').then(module => ({ default: module.SymbolsDialog })));
+const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
 
 // Local interface definition to avoid export issues
 interface MenuItem {
@@ -40,12 +41,6 @@ interface MenuItem {
     translateLabel?: boolean;
     action?: () => void;
     scrollableChildren?: boolean;
-}
-
-interface MenuSymbol {
-    name: string;
-    symbol?: string;
-    category?: string;
 }
 
 interface ApplicationLauncherItem {
@@ -184,39 +179,8 @@ export const MenuBar = ({
         };
     }, [closeMenu, isFileDialogOpen, isMenuOpen]);
 
-    // Dynamic Symbol Loading
-    const [availableSymbols, setAvailableSymbols] = useState<MenuSymbol[]>([]);
-    const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
-    const isAuthenticated = useAppStore(state => state.isAuthenticated);
     const globalChartProperties = useChartSettingsStore(state => state.globalProperties);
     const symbolChartProperties = useChartSettingsStore(state => state.symbolProperties);
-
-    useEffect(() => {
-        if (!isAuthenticated) {
-            setAvailableSymbols([]);
-            setIsLoadingSymbols(false);
-            return;
-        }
-
-        const fetchSymbols = async () => {
-            try {
-                // Dynamically import API to avoid circular deps if any, or just use global
-                // Assuming api is exported from services/api
-                const { default: api } = await import('../../services/api');
-                setIsLoadingSymbols(true);
-                const symbols = await api.market.getSymbols();
-                if (symbols && symbols.length > 0) {
-                    setAvailableSymbols(symbols);
-                }
-            } catch (error) {
-                console.error('Failed to load menu symbols:', error);
-            } finally {
-                setIsLoadingSymbols(false);
-            }
-        };
-
-        fetchSymbols();
-    }, [isAuthenticated]);
 
     const languageList: MenuItem[] = supportedLanguages.map(({ code, name }) => ({
         label: name,
@@ -313,70 +277,8 @@ export const MenuBar = ({
 
     const menuItems: { [key: string]: MenuItem[] } = {
         File: [
-            {
-                label: t('menu.file.newChart'),
-                icon: <Icon name="plus" size="sm" className="text-emerald-500" />,
-                children: isLoadingSymbols
-                    ? [{ label: 'Loading...' }]
-                    : availableSymbols.length > 0
-                        ? (() => {
-                            const buildNestedMenu = (symbols: typeof availableSymbols): MenuItem[] => {
-                                const root: MenuItem[] = [];
-                                const groups: Record<string, typeof availableSymbols> = {};
-
-                                symbols.forEach(sym => {
-                                    // If category is empty, it's a root item
-                                    if (!sym.category || sym.category.trim() === '') {
-                                        root.push({
-                                            label: sym.name,
-                                            action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: sym.symbol ?? sym.name } }))
-                                        });
-                                        return;
-                                    }
-
-                                    const parts = sym.category.split('.');
-                                    const topLevel = parts[0];
-                                    if (!groups[topLevel]) groups[topLevel] = [];
-
-                                    if (parts.length > 1) {
-                                        groups[topLevel].push({ ...sym, category: parts.slice(1).join('.') });
-                                    } else {
-                                        groups[topLevel].push({ ...sym, category: '' });
-                                    }
-                                });
-
-                                // Add grouped items (folders) after root items
-                                Object.keys(groups).sort().forEach(key => {
-                                    const groupSymbols = groups[key];
-                                    // Recurse
-                                    root.push({
-                                        label: key,
-                                        children: buildNestedMenu(groupSymbols)
-                                    });
-                                });
-                                return root;
-                            };
-                            return buildNestedMenu(availableSymbols);
-                        })()
-                        : [
-                            // Fallback: YoForex submenu with all major pairs
-                            {
-                                label: 'YoForex',
-                                children: [
-                                    'EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'USDCAD', 'NZDUSD',
-                                    'EURGBP', 'EURJPY', 'EURCHF', 'EURAUD', 'EURCAD', 'EURNZD',
-                                    'GBPJPY', 'GBPCHF', 'GBPAUD', 'GBPCAD', 'GBPNZD',
-                                    'AUDJPY', 'AUDCHF', 'AUDCAD', 'AUDNZD',
-                                    'CADJPY', 'CADCHF', 'NZDJPY', 'NZDCHF', 'CHFJPY', 'USDNOK'
-                                ].map(sym => ({ label: sym, action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: sym } })) }))
-                            },
-                            { label: 'EURUSD', action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: 'EURUSD' } })) },
-                            { label: 'GBPUSD', action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: 'GBPUSD' } })) },
-                            { label: 'USDJPY', action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: 'USDJPY' } })) },
-                            { label: 'XAUUSD', action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: 'XAUUSD' } })) },
-                            { label: 'BTCUSD', action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: 'BTCUSD' } })) },
-                        ]
-            },
+            // New Chart was removed on web and desktop: charts open from the
+            // searchable Symbols dialog instead of a menu entry.
             { label: t('menu.file.openDeleted'), disabled: true },
             {
                 label: t('menu.file.profiles'),
@@ -593,6 +495,7 @@ export const MenuBar = ({
             { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" />, checked: menuChartProperties.chartAutoScroll, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const enabled = !current.chartAutoScroll; updateActiveChartProperty('chartAutoScroll', enabled, target.symbol); commandBus.dispatch({ type: 'SET_AUTO_SCROLL', payload: { enabled, targetContextId: target.targetContextId } }); setActiveMenu(null); } },
             { label: t('menu.charts.chartShift'), icon: <Icon name="chart-shift" size="sm" />, checked: menuChartProperties.chartShift, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const enabled = !current.chartShift; updateActiveChartProperty('chartShift', enabled, target.symbol); commandBus.dispatch({ type: 'SET_CHART_SHIFT', payload: { enabled, targetContextId: target.targetContextId } }); setActiveMenu(null); } },
             { label: t('menu.charts.volumes'), shortcut: 'Ctrl+K', icon: <Icon name="bar-chart-3" size="sm" />, checked: menuChartProperties.showTickVolumes || menuChartProperties.showRealVolumes, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const visible = !(current.showTickVolumes || current.showRealVolumes); updateActiveChartProperty('showTickVolumes', visible, target.symbol); updateActiveChartProperty('showRealVolumes', false, target.symbol); setActiveMenu(null); } },
+            { label: t('menu.charts.ohlc', 'Show OHLC'), shortcut: 'Alt+Shift+L', icon: <Icon name="activity" size="sm" />, checked: menuChartProperties.showOHLC, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; updateActiveChartProperty('showOHLC', !current.showOHLC, target.symbol); setActiveMenu(null); } },
             { divider: true, label: '' },
             { label: t('menu.charts.zoomIn'), shortcut: '+', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_IN', payload: { targetContextId } }); setActiveMenu(null); } },
             { label: t('menu.charts.zoomOut'), shortcut: '-', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_OUT', payload: { targetContextId } }); setActiveMenu(null); } },
@@ -856,8 +759,12 @@ export const MenuBar = ({
                 console.log('Print setup');
             }}
             onLoginTrade={() => {
-                setTradeLoginRequested(false);
-                setIsLoginDialogOpen(true);
+                if (typeof window !== 'undefined' && (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__) {
+                    window.dispatchEvent(new CustomEvent('rtx:openTradeAuth'));
+                } else {
+                    setTradeLoginRequested(false);
+                    setIsLoginDialogOpen(true);
+                }
                 closeMenu();
             }}
             onLoginWebTrader={async () => {
@@ -1240,16 +1147,21 @@ export const MenuBar = ({
             )}
 
             {/* Options Dialog Modal */}
+            <RetainedLazyFeature active={isOptionsOpen}>
             <OptionsDialog isOpen={isOptionsOpen} onClose={() => setIsOptionsOpen(false)} />
+            </RetainedLazyFeature>
 
             {/* Keep account login available when the desktop status bar is absent. */}
+            <RetainedLazyFeature active={isLoginDialogOpen}>
             <LoginDialog
                 reason={tradeLoginRequested ? 'trade' : undefined}
                 isOpen={isLoginDialogOpen}
                 onClose={() => setIsLoginDialogOpen(false)}
             />
+            </RetainedLazyFeature>
 
             {/* Symbols Dialog */}
+            <RetainedLazyFeature active={isSymbolsOpen}>
             <SymbolsDialog
                 isOpen={isSymbolsOpen}
                 onClose={() => setIsSymbolsOpen(false)}
@@ -1260,6 +1172,7 @@ export const MenuBar = ({
                     window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol } }));
                 }}
             />
+            </RetainedLazyFeature>
         </>
     );
 };

@@ -269,7 +269,7 @@ interface TreeItemProps {
 }
 
 const TreeItem: React.FC<TreeItemProps> = ({ name, node, depth = 0, selectedSymbol, onSelectSymbol, searchQuery, watchlistSymbols }) => {
-    const tr = useUiTranslation();
+    useUiTranslation();
   const [expanded, setExpanded] = useState(depth < 2);
   const hasChildren = node.children && Object.keys(node.children).length > 0;
   const hasSymbols = node.symbols && node.symbols.length > 0;
@@ -1217,7 +1217,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                         const wsService = getEnhancedWebSocketService(MARKET_WS_URL);
                         wsService.sendMessage({ action: 'subscribe', channel: `ticks.${symName}` });
                         useMarketDataStore.getState().subscribeSymbol(symName);
-                      } catch (err) {}
+                      } catch {}
                       onShowSymbol?.(symName);
                     }
                   }}

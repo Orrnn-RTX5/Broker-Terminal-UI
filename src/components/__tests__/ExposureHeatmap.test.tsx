@@ -36,7 +36,7 @@ describe('ExposureHeatmap', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSubscribe.mockReturnValue(vi.fn())
-    HTMLCanvasElement.prototype.getContext = vi.fn(() => mockCanvasContext as unknown as CanvasRenderingContext2D) as HTMLCanvasElement['getContext']
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => mockCanvasContext as unknown as CanvasRenderingContext2D) as unknown as HTMLCanvasElement['getContext']
     global.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => window.setTimeout(() => cb(performance.now()), 16))
     global.cancelAnimationFrame = vi.fn()
   })

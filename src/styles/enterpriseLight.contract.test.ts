@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parse } from 'postcss';
+import { parse, type Node, type Rule } from 'postcss';
 import { describe, expect, it } from 'vitest';
 
 const readSource = (path: string): string => readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -203,10 +203,10 @@ describe('enterprise light visual-system contract', () => {
 
         // Walk ancestors so nested dialog rules and media-query overrides are
         // checked too. Dark-only :not(...) selectors are not light scopes.
-        let parent = declaration.parent;
+        let parent: Node['parent'] = declaration.parent;
         while (parent) {
           if (parent.type === 'rule') {
-            const selector = parent.selector.replace(/:not\([^)]*\)/g, '');
+            const selector = (parent as Rule).selector.replace(/:not\([^)]*\)/g, '');
             if (/\.(?:rtx-skin-untitled-light|theme-light)\b/.test(selector)) {
               overrides.push(`${path}:${declaration.source?.start?.line} ${property}: ${declaration.value}`);
               break;

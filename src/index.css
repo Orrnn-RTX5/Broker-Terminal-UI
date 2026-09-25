@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source(".");
 @import "./styles/theme.css";
 @import "./styles/advanced-untitled-light.css";
 @import "./styles/enterprise-light.css";
@@ -6,6 +6,11 @@
 @import "./styles/history-downloader.css";
 @import "./styles/calendar-tab.css";
 @import "./styles/research-tabs.css";
+@import "./styles/bulk-close-dialog.css";
+
+/* Scan the app only. Saved builds and diagnostics under artifacts/ can grow
+   to hundreds of MB and must not become CSS inputs on every cold start. */
+@source "../index.html";
 
 /* RTX Terminal — Global Base Styles */
 html, body, #root {
@@ -85,6 +90,8 @@ html:not(.rtx-skin-untitled-light) :is(.rtx-bottom-dock, .rtx-bottom-dock__conte
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   border-radius: 0 !important;
+  container-type: inline-size;
+  container-name: rtx-dock-tabs;
 }
 
 .bg-\[\#131316\], .bg-\[\#0e0e12\], .bg-\[\#191a1e\], .bg-\[\#0f0f12\] {
@@ -490,11 +497,6 @@ html:not(.rtx-skin-untitled-light) .rtx-dock-tab-actions {
   border: none;
 }
 
-html:not(.rtx-skin-untitled-light) .rtx-dock-tab-actions .rtx-dock-tab {
-  padding-left: 10px !important;
-  padding-right: 10px !important;
-}
-
 html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab {
   display: inline-flex !important;
   align-items: center !important;
@@ -525,12 +527,63 @@ html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab.active-t
   box-shadow: none !important;
 }
 
-html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab--danger {
-  color: #fecaca !important;
+/* Bulk close actions share the adjacent tabs' geometry and theme styles. */
+.rtx-bottom-dock__tabs .rtx-bulk-close--winners .rtx-bulk-close__label {
+  color: var(--color-profit) !important;
 }
 
-html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab--danger:hover:not(:disabled) {
-  color: #ffffff !important;
+.rtx-bottom-dock__tabs .rtx-bulk-close--losers .rtx-bulk-close__label {
+  color: var(--color-loss) !important;
+}
+
+html:root .rtx-bottom-dock__tabs .rtx-dock-tab-actions .rtx-dock-tab.rtx-bulk-close:disabled {
+  color: var(--text-secondary) !important;
+  background: transparent !important;
+  opacity: 0.55;
+}
+
+html .rtx-bottom-dock__tabs .rtx-dock-tab.rtx-bulk-close:focus-visible {
+  outline: 1px solid #0284c7;
+  outline-offset: -2px;
+}
+
+/* Continue the light-theme separators across the two tab groups. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab-scroller .rtx-dock-tab:last-child:not(.active-tab)::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 0;
+  bottom: 4px;
+  width: 1px;
+  background: #b7b7b7;
+  pointer-events: none;
+}
+
+/* Tighten every tab equally while keeping the close action labels visible. */
+@container rtx-dock-tabs (max-width: 1550px) {
+  html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab,
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+}
+
+@container rtx-dock-tabs (max-width: 1350px) {
+  html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab,
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+}
+
+/* Market Watch "Grid" toggles visible table grid lines. */
+.rtx-market-watch__grid--lines tbody td {
+  border-bottom: 1px solid var(--border-tertiary);
+}
+
+.rtx-market-watch__grid--lines tbody td:not(:first-child),
+.rtx-market-watch__grid--lines thead th:not(:first-child) {
+  border-left: 1px solid var(--border-tertiary);
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-market-watch,
@@ -912,4 +965,13 @@ html.rtx-skin-untitled-light .rtx-journal-toolbar .rtx-journal-auto[aria-pressed
   border-radius: 4px;
   backdrop-filter: blur(4px);
   box-shadow: var(--shadow-md);
+}
+
+/* Broker credential fields are masked locally instead of using
+   type="password", so the browser password manager never classifies the
+   account key as a web credential — no save prompts and no post-login
+   "password found in a data breach" popup. Supported in all Chromium
+   builds (including the desktop shell) and Firefox 132+. */
+.rtx-secret-input {
+  -webkit-text-security: disc;
 }

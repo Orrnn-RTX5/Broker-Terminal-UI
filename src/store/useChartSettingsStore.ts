@@ -81,7 +81,7 @@ export const defaultChartProperties: ChartProperties = {
   fixedMinimum: 0,
 
   showTicker: true,
-  showOHLC: false,
+  showOHLC: true,
   showQuickTradingButtons: true,
   showBidPriceLine: true,
   showAskPriceLine: false,
@@ -119,6 +119,7 @@ export const defaultChartProperties: ChartProperties = {
 const VOLUME_BARS_DEFAULT_MIGRATION_VERSION = 1;
 const PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION = 1;
 const CHART_SHIFT_DEFAULT_MIGRATION_VERSION = 1;
+const OHLC_DEFAULT_MIGRATION_VERSION = 1;
 
 export const clampChartOpacityPercent = (value: unknown, fallback: number): number => {
   const numeric = Number(value);
@@ -332,6 +333,40 @@ export const applyPeriodSeparatorsDefaultMigration = (
   };
 };
 
+const showOHLC = (properties: ChartProperties): ChartProperties => ({
+  ...properties,
+  showOHLC: true,
+});
+
+export const applyOhlcDefaultMigration = (
+  globalProperties: ChartProperties,
+  symbolProperties: Record<string, ChartProperties>,
+  migrationVersion?: number,
+): {
+  globalProperties: ChartProperties;
+  symbolProperties: Record<string, ChartProperties>;
+  ohlcDefaultMigrationVersion: number;
+} => {
+  if ((migrationVersion ?? 0) >= OHLC_DEFAULT_MIGRATION_VERSION) {
+    return {
+      globalProperties,
+      symbolProperties,
+      ohlcDefaultMigrationVersion: OHLC_DEFAULT_MIGRATION_VERSION,
+    };
+  }
+
+  return {
+    globalProperties: showOHLC(globalProperties),
+    symbolProperties: Object.fromEntries(
+      Object.entries(symbolProperties).map(([symbol, properties]) => [
+        symbol,
+        showOHLC(properties),
+      ]),
+    ),
+    ohlcDefaultMigrationVersion: OHLC_DEFAULT_MIGRATION_VERSION,
+  };
+};
+
 export const getPresetSchemeColors = (
   scheme: ColorScheme,
   fallbackColors: ChartProperties["colors"] = defaultChartProperties.colors,
@@ -464,6 +499,7 @@ interface ChartSettingsState {
   volumeBarsDefaultMigrationVersion: number;
   periodSeparatorsDefaultMigrationVersion: number;
   chartShiftDefaultMigrationVersion: number;
+  ohlcDefaultMigrationVersion: number;
 
   updateGlobalProperty: <K extends keyof ChartProperties>(
     key: K,
@@ -498,6 +534,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
       periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
       chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
+      ohlcDefaultMigrationVersion: OHLC_DEFAULT_MIGRATION_VERSION,
 
       updateGlobalProperty: (key, value) => {
         set((state) => ({
@@ -605,6 +642,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
           periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
           chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
+          ohlcDefaultMigrationVersion: OHLC_DEFAULT_MIGRATION_VERSION,
         });
       },
     }),
@@ -623,10 +661,15 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           volumeMigrated.symbolProperties,
           persistedState?.chartShiftDefaultMigrationVersion,
         );
-        const migrated = applyPeriodSeparatorsDefaultMigration(
+        const periodMigrated = applyPeriodSeparatorsDefaultMigration(
           chartShiftMigrated.globalProperties,
           chartShiftMigrated.symbolProperties,
           persistedState?.periodSeparatorsDefaultMigrationVersion,
+        );
+        const ohlcMigrated = applyOhlcDefaultMigration(
+          periodMigrated.globalProperties,
+          periodMigrated.symbolProperties,
+          persistedState?.ohlcDefaultMigrationVersion,
         );
 
         return {
@@ -634,7 +677,9 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           ...persistedState,
           volumeBarsDefaultMigrationVersion: volumeMigrated.volumeBarsDefaultMigrationVersion,
           chartShiftDefaultMigrationVersion: chartShiftMigrated.chartShiftDefaultMigrationVersion,
-          ...migrated,
+          periodSeparatorsDefaultMigrationVersion: periodMigrated.periodSeparatorsDefaultMigrationVersion,
+          ohlcDefaultMigrationVersion: ohlcMigrated.ohlcDefaultMigrationVersion,
+          ...ohlcMigrated,
         };
       },
     },

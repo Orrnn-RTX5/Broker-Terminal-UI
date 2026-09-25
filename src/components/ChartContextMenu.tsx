@@ -14,8 +14,8 @@ import type { ChartTemplate } from '../store/useTemplateStore';
 import {
     CandlestickChart, BarChart2, LineChart, AreaChart, ZoomIn, ZoomOut,
     Grid3X3, RefreshCw, Camera, Settings, ChevronRight,
-    Activity, Crosshair, AlignJustify, Volume2, Layers,
-    Save, FolderOpen, Trash2, FileText, TrendingUp,
+    Activity, AlignJustify, Volume2, Layers,
+    Trash2, FileText, TrendingUp,
     ArrowUpDown, Type, Shapes, MoveHorizontal, MoveVertical,
     Eye, EyeOff,
 } from 'lucide-react';
@@ -35,6 +35,7 @@ interface ChartContextMenuProps {
     chartShift?: boolean;
     showTradeLevels?: boolean;
     showTradeHistory?: boolean;
+    showOHLC?: boolean;
     onChangeChartType: (type: ChartType) => void;
     onChangeTimeframe: (tf: Timeframe) => void;
     onToggleOneClickTrading: () => void;
@@ -44,6 +45,7 @@ interface ChartContextMenuProps {
     onToggleChartShift: () => void;
     onToggleTradeLevels?: () => void;
     onToggleTradeHistory?: () => void;
+    onToggleOHLC?: () => void;
     onOpenProperties: () => void;
     onSaveAsPicture: () => void;
     onPrintChart: () => void;
@@ -75,7 +77,6 @@ const C_ACTIVE_FG = 'var(--ctx-active-fg, #ffffff)';
 const C_ITEM_ACTIVE_BG = 'var(--ctx-item-active-bg, rgba(59, 130, 246, 0.15))';
 const C_ITEM_ACTIVE_FG = 'var(--ctx-item-active-fg, #60a5fa)';
 const C_TEXT = 'var(--ctx-text, #e4e4e7)';
-const C_MUTED = 'var(--ctx-muted, #71717a)';
 const C_HEADER = 'var(--ctx-header, #a1a1aa)';
 const C_DISABLED = 'var(--ctx-disabled, rgba(161, 161, 170, 0.3))';
 const MENU_VIEWPORT_MARGIN = 8;
@@ -306,6 +307,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     chartShift = false,
     showTradeLevels = true,
     showTradeHistory = true,
+    showOHLC = true,
     onChangeChartType,
     onChangeTimeframe,
     onToggleOneClickTrading,
@@ -315,9 +317,9 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     onToggleChartShift,
     onToggleTradeLevels,
     onToggleTradeHistory,
+    onToggleOHLC,
     onOpenProperties,
     onSaveAsPicture,
-    onPrintChart,
     onRefresh,
     onZoomIn,
     onZoomOut,
@@ -329,7 +331,6 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     onClose,
     onLoadTemplate,
     currentIndicators = [],
-    currentDrawingTools = [],
 }) => {
     const tr = useUiTranslation();
     const templates = useTemplates();
@@ -442,16 +443,6 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
         if (confirm(`Delete template "${name}"?`)) {
             deleteTemplate(id);
         }
-    };
-
-    const currentConfig = {
-        chartType: currentChartType,
-        timeframe: currentTimeframe,
-        showGrid,
-        showVolumes,
-        indicators: currentIndicators,
-        drawingTools: currentDrawingTools,
-        colors: { background: '#0e0e12', grid: '#222226', candle: { up: '#00c896', down: '#ff4d4f', border: '#378658' }, volume: { up: '#00c896', down: '#ff4d4f' } },
     };
 
     const menuContent = (
@@ -736,6 +727,15 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 onClick={() => { onToggleVolumes(); onClose(); }}
             />
 
+            {/* ── Show OHLC ── */}
+            <MenuItem
+                icon={<Activity size={13} strokeWidth={1.5} style={{ color: showOHLC ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
+                label={tr("Show OHLC")}
+                shortcut="Alt+Shift+L"
+                checked={showOHLC}
+                onClick={() => { onToggleOHLC?.(); onClose(); }}
+            />
+
             <MenuSeparator />
 
             {/* ── Zoom ── */}
@@ -791,7 +791,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                             background: 'transparent',
                         }}
                         onMouseDown={onClose}
-                        onWheel={(e) => {
+                        onWheel={() => {
                             // Close the menu so the chart can scroll uninterrupted
                             onClose();
                             // Allow the wheel event to propagate to the chart's window handler

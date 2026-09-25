@@ -54,7 +54,7 @@ describe('locked drawing filtering', () => {
     expect(countRemovableDrawings(drawings, true)).toBe(3);
   });
   it('treats legacy drawings without a lock flag as unlocked', () => {
-    const legacyDrawings = [...drawings, { id: 'legacy' }];
+    const legacyDrawings: Array<{ id: string; locked?: boolean }> = [...drawings, { id: 'legacy' }];
     expect(selectRemovableDrawings(legacyDrawings, false).map(d => d.id)).toEqual(['a', 'c', 'legacy']);
     expect(countRemovableDrawings(legacyDrawings, false)).toBe(3);
   });

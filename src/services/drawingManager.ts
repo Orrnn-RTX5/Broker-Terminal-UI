@@ -796,16 +796,16 @@ export class DrawingManager {
       if (context.contextId !== ownerContextId || !context.seriesDataProvider) continue;
       const candles = context.seriesDataProvider();
       if (!candles.length) return null;
-      let low = 0;
-      let high = candles.length - 1;
-      while (high - low > 1) {
-        const mid = (low + high) >> 1;
-        if (Number(candles[mid].time) <= time) low = mid;
-        else high = mid;
+      let leftIndex = 0;
+      let rightIndex = candles.length - 1;
+      while (rightIndex - leftIndex > 1) {
+        const mid = (leftIndex + rightIndex) >> 1;
+        if (Number(candles[mid].time) <= time) leftIndex = mid;
+        else rightIndex = mid;
       }
-      return Math.abs(Number(candles[low].time) - time) <= Math.abs(Number(candles[high].time) - time)
-        ? candles[low]
-        : candles[high];
+      return Math.abs(Number(candles[leftIndex].time) - time) <= Math.abs(Number(candles[rightIndex].time) - time)
+        ? candles[leftIndex]
+        : candles[rightIndex];
     }
     return null;
   }
@@ -1574,9 +1574,17 @@ export class DrawingManager {
     if (!getBrushShapeTool(drawing) || !this.chart || !this.series || point.logicalIndex === undefined) return point;
     const x = drawingLogicalToCoordinate(this.chart.timeScale(), point.logicalIndex);
     const y = this.series.priceToCoordinate(point.price);
+    if (x === null || y === null) return point;
+    if (drawing.subtype === 'arc' && drawing.points.length === 2) {
+      const a = this.px(drawing.points[0]), b = this.px(drawing.points[1]);
+      if (a && b) {
+        const bend = arcGeometry(a, b, { x, y }).bend;
+        return freehandPointAt(this.chart, this.series, bend.x, bend.y) ?? point;
+      }
+    }
     // Keep the placed coordinate. Arc/ellipse/rotated-rectangle handles are
     // projected onto their geometry, but axis coordinates belong to the anchor.
-    return x !== null && y !== null ? freehandPointAt(this.chart, this.series, x, y) ?? point : point;
+    return freehandPointAt(this.chart, this.series, x, y) ?? point;
   }
 
   private shapeLabelTime(point: DrawingPoint, x: number): number {
@@ -2160,7 +2168,7 @@ export class DrawingManager {
         if (!screen) return;
         const isProfile = isForecasting && (this.activeDrawing?.subtype === 'fixed_range_volume_profile'
           || this.activeDrawing?.subtype === 'anchored_volume_profile');
-        if (!isProfile && screen.y >= 0 && screen.y <= plotH) {
+        if ((!isProfile || role === 'cursor') && screen.y >= 0 && screen.y <= plotH) {
           this.appendPriceScaleLabel(construction, plotW, screen.y, point.price, accent, `${role}-price-scale-label`);
         }
         if (screen.x >= 0 && screen.x <= plotW) {
@@ -3607,9 +3615,7 @@ export class DrawingManager {
         this.appendChannelScaleLabels(g, d, plotW, plotH, false);
       }
       if (trendTool && d.subtype === 'regression_trend') {
-        const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
-        const plotH = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
-        const regression = this.getRegressionSegments(d, plotW, plotH);
+        const regression = this.getRegressionSegments(d);
         if (regression) {
           this.appendTrendSelectionHandle(g, d, regression.center.start, 0, 'selection-anchor-start');
           this.appendTrendSelectionHandle(g, d, regression.center.end, 1, 'selection-anchor-end');
@@ -4119,7 +4125,7 @@ export class DrawingManager {
       times.push({ x, time, accent, role });
     };
     const regression = !isPreview && drawing.subtype === 'regression_trend'
-      ? this.getRegressionSegments(drawing, plotW, plotH)
+      ? this.getRegressionSegments(drawing)
       : null;
     const channel = this.getTrendChannelGeometry({ ...drawing, points }, !isPreview);
     if (regression) {
@@ -4438,7 +4444,7 @@ export class DrawingManager {
         group.appendChild(handle);
         return true;
       }
-      const regression = this.getRegressionSegments(drawing, plotW, plotH);
+      const regression = this.getRegressionSegments(drawing);
       if (!regression) {
         return true;
       }
@@ -4662,8 +4668,6 @@ export class DrawingManager {
 
   private getRegressionSegments(
     drawing: Drawing,
-    _width: number,
-    _height: number,
   ): {
     center: ScreenSegment;
     upper: ScreenSegment;
@@ -4741,6 +4745,9 @@ export class DrawingManager {
 
   private beginDrag(e: PointerEvent, id: string, nodeIndex: number | null): void {
     e.stopPropagation();
+    // A secondary press opens the context menu without starting a drag or
+    // reducing an existing multi-selection to the drawing under the pointer.
+    if (e.button > 0) return;
     e.preventDefault();
     const context = this.activateContextFromEventTarget(e.target);
 
@@ -5102,7 +5109,8 @@ export class DrawingManager {
     e.preventDefault();
     e.stopPropagation();
     const context = this.activateContextFromEventTarget(e.target);
-    this.selectDrawing(id);
+    const drawing = this.drawings.find(candidate => candidate.id === id);
+    this.selectDrawing(id, drawing?.selected === true);
     window.dispatchEvent(new CustomEvent('drawing:contextmenu', {
       detail: {
         x: e.clientX,

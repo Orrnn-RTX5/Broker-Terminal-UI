@@ -33,7 +33,7 @@ it.each([{ ctrlKey: true }, { metaKey: true }])('prints from the focused preview
 it.each([{ isLoading: true }, { error: 'Capture failed' }])('honors disabled print state for both modifier keys: %j', async state => {
   const print = vi.fn().mockResolvedValue(undefined);
   const target = open(print, state);
-  expect(screen.getByRole('button', { name: 'Print', exact: true })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
   await act(async () => {
     fireEvent.keyDown(target, { key: 'p', ctrlKey: true });
     fireEvent.keyDown(target, { key: 'p', metaKey: true });
@@ -53,5 +53,5 @@ it('does not open a second print while the first print request is pending', asyn
   expect(print).toHaveBeenCalledOnce();
   expect(screen.getByRole('button', { name: 'Opening print dialog...' })).toBeDisabled();
   await act(async () => { finish(); await pending; });
-  expect(screen.getByRole('button', { name: 'Print', exact: true })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Print' })).toBeEnabled();
 });

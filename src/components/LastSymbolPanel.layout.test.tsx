@@ -32,6 +32,12 @@ import { useAppStore } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { LastSymbolPanel } from './LastSymbolPanel';
 
+const firePointer = (element: Element, type: string, clientX: number, clientY: number) => {
+  const event = new MouseEvent(type, { bubbles: true, button: 0, clientX, clientY });
+  Object.defineProperty(event, 'pointerId', { value: 1 });
+  fireEvent(element, event);
+};
+
 const setEmptyPanelState = () => {
   useAppStore.getState().reset();
   useAppStore.setState({ accountId: '200002', isAuthenticated: true, authToken: 'layout-test-token' });
@@ -66,6 +72,7 @@ describe('LastSymbolPanel enterprise layout', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('presents a clear, accessible idle state', () => {
@@ -82,15 +89,43 @@ describe('LastSymbolPanel enterprise layout', () => {
     expect(screen.getByRole('spinbutton', { name: 'Order volume in lots' })).toHaveValue(0.01);
   });
 
-  it('clamps a saved panel position to the current viewport', () => {
+  it('opens centered on physical pixels without a text transform or restoring an old position', () => {
     localStorage.setItem('lst_panel_pos', JSON.stringify({ x: 9999, y: 9999 }));
+    vi.stubGlobal('devicePixelRatio', 1.25);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 368, 461));
 
     render(<LastSymbolPanel />);
 
-    expect(screen.getByRole('region', { name: 'Last symbol trader' })).toHaveStyle({
-      left: `${Math.max(16, window.innerWidth - 320 - 16)}px`,
-      top: `${Math.max(16, window.innerHeight - 96)}px`,
+    const panel = screen.getByRole('region', { name: 'Last symbol trader' });
+    expect(panel).toHaveStyle({
+      left: `${Math.round((window.innerWidth - 368) / 2 * 1.25) / 1.25}px`,
+      top: `${Math.round((window.innerHeight - 461) / 2 * 1.25) / 1.25}px`,
     });
+    expect(panel.style.transform).toBe('');
+  });
+
+  it('drags by the title bar without jumping, keeps the new position on resize, and stops on cancellation', () => {
+    render(<LastSymbolPanel />);
+    const panel = screen.getByRole('region', { name: 'Last symbol trader' });
+    const header = screen.getByText('Last Symbol Trader').closest('header')!;
+    vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 368, 460));
+    Object.defineProperty(panel, 'offsetWidth', { configurable: true, value: 368 });
+    Object.defineProperty(panel, 'offsetHeight', { configurable: true, value: 460 });
+    const capture = vi.fn();
+    Object.defineProperty(header, 'setPointerCapture', { configurable: true, value: capture });
+
+    firePointer(header, 'pointerdown', 125, 115);
+    firePointer(header, 'pointermove', 205, 165);
+    expect(capture).toHaveBeenCalledWith(1);
+    expect(panel).toHaveStyle({ left: '180px', top: '150px' });
+    fireEvent(window, new Event('resize'));
+    expect(panel).toHaveStyle({ left: '180px', top: '150px' });
+    firePointer(header, 'pointercancel', 205, 165);
+    firePointer(header, 'pointermove', 300, 200);
+    expect(panel).toHaveStyle({ left: '180px', top: '150px' });
+    expect(panel).not.toHaveClass('is-dragging');
+    expect(mocks.placeMarketOrder).not.toHaveBeenCalled();
+    expect(mocks.closePosition).not.toHaveBeenCalled();
   });
 
   it('exposes settings and panel controls with explicit state', () => {

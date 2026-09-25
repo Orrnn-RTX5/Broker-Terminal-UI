@@ -3,6 +3,7 @@ import { api } from './api';
 import {
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
+  onSessionChange,
 } from './brokerSession';
 
 type StartupAccount = Awaited<ReturnType<typeof api.account.getAccountSummary>>;
@@ -20,6 +21,20 @@ export interface SessionTradeSnapshotRequests {
 }
 
 const inFlightSnapshots = new Map<string, SessionTradeSnapshotRequests>();
+const VALIDATED_ACCOUNT_HANDOFF_MS = 1_000;
+let validatedAccountHandoff: {
+  requestKey: string;
+  account: StartupAccount;
+  expiresAt: number;
+  timeout: ReturnType<typeof setTimeout>;
+} | null = null;
+
+const clearValidatedAccountHandoff = () => {
+  if (validatedAccountHandoff) clearTimeout(validatedAccountHandoff.timeout);
+  validatedAccountHandoff = null;
+};
+
+onSessionChange(clearValidatedAccountHandoff);
 
 const normalizeLogin = (value: string | number): number | null => {
   const normalized = String(value ?? '').trim();
@@ -48,19 +63,9 @@ const settleRequest = <T,>(request: Promise<T>): Promise<PromiseSettledResult<T>
   )
 );
 
-/**
- * Coalesces only the concurrent account and position reads that hydrate the
- * first authenticated viewport. The key includes the runtime broker/account
- * scope and current access token, so a broker switch, account switch, logout,
- * or new login cannot reuse another session's in-flight request.
- *
- * The shared request intentionally has no consumer AbortSignal. A StrictMode
- * cleanup or unmounted panel may ignore its result, but it must not cancel the
- * root App consumer that owns the same startup snapshot.
- */
-export const getSessionTradeSnapshotRequests = (
+const getSnapshotRequestIdentity = (
   requestedLogin: string | number,
-): SessionTradeSnapshotRequests => {
+): { login: number; requestKey: string; accessToken: string } => {
   const login = normalizeLogin(requestedLogin);
   if (!login) throw invalidSessionError('A positive account login is required');
 
@@ -78,12 +83,59 @@ export const getSessionTradeSnapshotRequests = (
 
   const scopeKey = getCommittedBrokerAccountSessionScopeKey(scope);
   const requestKey = `${scopeKey}\u0000${accessToken}`;
+  return { login, requestKey, accessToken };
+};
+
+/** Reuse only the summary that just validated this exact restored session. */
+export const seedValidatedSessionAccountSummary = (
+  requestedLogin: string | number,
+  account: StartupAccount,
+  validatedAccessToken: string,
+): boolean => {
+  clearValidatedAccountHandoff();
+  try {
+    const { login, requestKey, accessToken } = getSnapshotRequestIdentity(requestedLogin);
+    if (accessToken !== validatedAccessToken || inFlightSnapshots.has(requestKey)) return false;
+    // Broker payloads may omit identity, since the request itself identifies
+    // the account. Every supplied identity must still agree with that request.
+    const record = account as StartupAccount & { login?: unknown; account_login?: unknown };
+    const suppliedIds = [record.id, record.login, record.account_login]
+      .filter((value) => value !== undefined && value !== null && value !== '');
+    if (suppliedIds.some((value) => normalizeLogin(String(value)) !== login)) return false;
+
+    validatedAccountHandoff = {
+      requestKey,
+      account,
+      expiresAt: Date.now() + VALIDATED_ACCOUNT_HANDOFF_MS,
+      timeout: setTimeout(clearValidatedAccountHandoff, VALIDATED_ACCOUNT_HANDOFF_MS),
+    };
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Coalesces concurrent account and position reads for one committed session.
+ * The restore-only handoff saves a duplicate summary request; positions always
+ * load fresh. Token and broker/account ownership guard both paths.
+ *
+ * The shared request intentionally has no consumer AbortSignal. A StrictMode
+ * cleanup may ignore its result without cancelling another live consumer.
+ */
+export const getSessionTradeSnapshotRequests = (
+  requestedLogin: string | number,
+): SessionTradeSnapshotRequests => {
+  const { login, requestKey } = getSnapshotRequestIdentity(requestedLogin);
   const existing = inFlightSnapshots.get(requestKey);
   if (existing) return existing;
 
-  const accountResultPromise = settleRequest(
-    startSettledRequest(() => api.account.getAccountSummary(login)),
-  );
+  const handoff = validatedAccountHandoff;
+  clearValidatedAccountHandoff();
+  const canUseHandoff = handoff?.requestKey === requestKey && Date.now() < handoff.expiresAt;
+  const accountResultPromise = canUseHandoff
+    ? Promise.resolve<PromiseSettledResult<StartupAccount>>({ status: 'fulfilled', value: handoff.account })
+    : settleRequest(startSettledRequest(() => api.account.getAccountSummary(login)));
   const positionsResultPromise = settleRequest(
     startSettledRequest(() => api.positions.getPositions(login)),
   );

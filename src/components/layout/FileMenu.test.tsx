@@ -19,6 +19,12 @@ import { getTerminalShortcutHint, TERMINAL_SHORTCUTS } from '../../services/shor
 const savePictureDialogMock = vi.hoisted(() => ({
     props: [] as any[],
 }));
+const catalogApiMock = vi.hoisted(() => ({
+    getSymbols: vi.fn(async (): Promise<Array<Record<string, string>>> => []),
+}));
+const appStoreMock = vi.hoisted(() => ({
+    selectedSymbol: 'EURUSD', timeframe: '5m', isAuthenticated: false, logout: vi.fn(),
+}));
 const workspaceProfilesMock = vi.hoisted(() => ({
     listWorkspaceProfiles: vi.fn(() => [] as Array<Record<string, string>>),
     restoreWorkspaceProfile: vi.fn(),
@@ -57,11 +63,7 @@ vi.mock('react-i18next', async (importOriginal) => {
 
 // 2. Mock useAppStore Zustand store
 vi.mock('../../store/useAppStore', () => {
-    const mockStoreState = {
-        selectedSymbol: 'EURUSD',
-        timeframe: '5m',
-        logout: vi.fn()
-    };
+    const mockStoreState = appStoreMock;
 
     const mockUseAppStore = vi.fn((selector) => {
         return selector ? selector(mockStoreState) : mockStoreState;
@@ -77,7 +79,7 @@ vi.mock('../../store/useAppStore', () => {
 vi.mock('../../services/api', () => ({
     default: {
         market: {
-            getSymbols: vi.fn().mockResolvedValue([])
+            getSymbols: catalogApiMock.getSymbols
         }
     }
 }));
@@ -187,6 +189,8 @@ describe('FileMenu Component', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        appStoreMock.isAuthenticated = false;
+        catalogApiMock.getSymbols.mockResolvedValue([]);
         savePictureDialogMock.props = [];
         clearActiveChartSources();
         useDockLayoutStore.setState({ recentlyClosedCharts: [] });
@@ -195,6 +199,19 @@ describe('FileMenu Component', () => {
     });
 
     describe('Rendering', () => {
+        it('carries no New Chart entry and never loads an inline symbol menu', async () => {
+            appStoreMock.isAuthenticated = true;
+            catalogApiMock.getSymbols.mockResolvedValue([{ id: 'EURUSD', name: 'EURUSD', category: 'Forex' }]);
+            render(<><FileMenu shortcutsOnly /><FileMenu /></>);
+            await act(async () => {});
+
+            // Charts open from the symbol search on web and desktop; the menu
+            // holds neither the entry nor an inline symbol/group listing.
+            expect(screen.queryByText('New Chart')).toBeNull();
+            expect(screen.queryByText('Forex')).toBeNull();
+            expect(catalogApiMock.getSymbols).not.toHaveBeenCalled();
+        });
+
         it('renders all menu items', () => {
             render(<FileMenu {...mockHandlers} />);
 
@@ -257,12 +274,12 @@ describe('FileMenu Component', () => {
             render(<FileMenu {...mockHandlers} accountId="200002" onLogout={onLogout} />);
 
             const accountHeader = screen.getByTestId('file-menu-account-header');
-            const newChartButton = screen.getByText('New Chart').closest('button');
+            const profilesButton = screen.getByText('Profiles').closest('button');
             const logoutButton = within(accountHeader).getByRole('menuitem', { name: 'Log Out' });
 
             expect(accountHeader).toHaveAttribute('aria-label', 'Current trading account 200002');
             expect(within(accountHeader).getByText('200002')).toBeInTheDocument();
-            expect(accountHeader.compareDocumentPosition(newChartButton!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(accountHeader.compareDocumentPosition(profilesButton!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
             expect(screen.getAllByRole('menuitem', { name: 'Log Out' })).toHaveLength(1);
             expect(logoutButton.querySelector('svg')).not.toBeNull();
             expect(logoutButton).not.toHaveAttribute('data-desktop-logout');
@@ -292,12 +309,12 @@ describe('FileMenu Component', () => {
             }
         });
 
-        it('saves the named workspace through the canonical dialog', () => {
+        it('saves the named workspace through the canonical dialog', async () => {
             render(<FileMenu {...mockHandlers} hasUnsavedChanges={false} />);
 
             const saveBtn = screen.getByText('Save').closest('button');
             fireEvent.click(saveBtn!);
-            expect(screen.getByTestId('save-workspace-dialog')).toBeInTheDocument();
+            expect(await screen.findByTestId('save-workspace-dialog')).toBeInTheDocument();
             expect(mockHandlers.onSave).not.toHaveBeenCalled();
 
             fireEvent.click(screen.getByText('Confirm Save'));
@@ -305,7 +322,7 @@ describe('FileMenu Component', () => {
             expect(mockHandlers.onSave).toHaveBeenCalledWith('Default');
         });
 
-        it('calls onSaveAsPicture when Save As Picture is clicked', () => {
+        it('calls onSaveAsPicture when Save As Picture is clicked', async () => {
             const chartContainer = document.createElement('div');
             const chartCanvas = document.createElement('canvas');
             chartCanvas.width = 800;
@@ -326,7 +343,7 @@ describe('FileMenu Component', () => {
             fireEvent.click(saveAsPictureBtn!);
 
             expect(mockHandlers.onSaveAsPicture).toHaveBeenCalledTimes(1);
-            expect(screen.getByTestId('save-picture-dialog')).toBeInTheDocument();
+            expect(await screen.findByTestId('save-picture-dialog')).toBeInTheDocument();
             expect(savePictureDialogMock.props.at(-1)).toMatchObject({
                 chartCanvas,
                 chartContainer,
@@ -445,13 +462,13 @@ describe('FileMenu Component', () => {
             expect(onProfileRestored).toHaveBeenCalled();
         });
 
-        it('opens Save Workspace dialog from Save As... in Profiles submenu', () => {
+        it('opens Save Workspace dialog from Save As... in Profiles submenu', async () => {
             render(<FileMenu {...mockHandlers} accountId="200002" />);
 
             const saveAsBtn = screen.getByText('Save As...').closest('button')!;
             fireEvent.click(saveAsBtn);
 
-            expect(screen.getByTestId('save-workspace-dialog')).toBeInTheDocument();
+            expect(await screen.findByTestId('save-workspace-dialog')).toBeInTheDocument();
         });
 
         it('deletes custom profile when selected in Delete submenu', () => {
@@ -522,7 +539,7 @@ describe('FileMenu Component', () => {
             render(<FileMenu shortcutsOnly />);
             expect(screen.queryByText('Print Preview')).not.toBeInTheDocument();
             await act(async () => { window.dispatchEvent(new CustomEvent('open-print-preview')); });
-            expect(screen.getAllByTestId('print-preview-dialog')).toHaveLength(1);
+            expect(await screen.findAllByTestId('print-preview-dialog')).toHaveLength(1);
             expect(chartPrinter.captureActiveChartData).toHaveBeenCalledOnce();
             fireEvent.click(screen.getByText('Close Preview'));
 
@@ -531,7 +548,7 @@ describe('FileMenu Component', () => {
             container.appendChild(canvas); document.body.appendChild(container);
             const unregister = registerActiveChartSource({ id: 'shortcut-export', getContainer: () => container, getCanvas: () => canvas, getSymbol: () => 'EURUSD', getTimeframe: () => 'M5' });
             act(() => { window.dispatchEvent(new CustomEvent('open-save-picture')); });
-            expect(screen.getByTestId('save-picture-dialog')).toBeInTheDocument();
+            expect(await screen.findByTestId('save-picture-dialog')).toBeInTheDocument();
             expect(savePictureDialogMock.props.at(-1)).toMatchObject({ symbol: 'EURUSD', timeframe: 'M5', chartCanvas: canvas });
             unregister(); container.remove();
         });

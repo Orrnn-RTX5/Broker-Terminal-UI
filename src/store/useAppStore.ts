@@ -47,9 +47,7 @@ export interface Tick {
 export type AppTickEntry = readonly [symbol: string, tick: Tick];
 
 export interface Position {
-  state_version?: string | number;
   protection_version?: string | number;
-  price_time_msc?: number;
   id: number;
   symbol: string;
   side: 'BUY' | 'SELL';
@@ -63,6 +61,11 @@ export interface Position {
   commission: number;
   unrealizedPnL: number;
   hasBackendProfit?: boolean;
+  hasBackendCurrentPrice?: boolean;
+  state_version?: string | number;
+  state_version_text?: string;
+  price_time_msc?: string | number;
+  pnl_available?: boolean;
   comment?: string;
   // Backend wire-format aliases (snake_case). Optional — preserves existing defensive fallback logic.
   open_price?: number;
@@ -138,6 +141,7 @@ export interface Account {
   credit?: number;
   hasBackendBalance?: boolean;
   hasBackendMargin?: boolean;
+  hasBackendUnrealizedPL?: boolean;
   hasBackendCredit?: boolean;
   hasBackendFloatingPnL?: boolean;
   hasBackendEquity?: boolean;
@@ -328,7 +332,8 @@ const dispatchAuthTokenUpdated = () => {
 
 const sanitizeSavedAccount = (account: SavedAccount | (SavedAccount & { password?: unknown })): SavedAccount | null => {
   if (!account || typeof account !== 'object') return null;
-  const { password: _password, ...safeAccount } = account as SavedAccount & { password?: unknown };
+  const safeAccount = { ...(account as SavedAccount & { password?: unknown }) };
+  delete safeAccount.password;
   return safeAccount;
 };
 
@@ -376,6 +381,7 @@ const updateTickLookup = (
   currentTicks: Record<string, Tick>,
   storeSymbol: string,
   tick: Tick,
+  previousLookup: Record<string, string>,
 ): Record<string, string> => {
   const normalizedStoreSymbol = normalizeTickLookupKey(storeSymbol);
   const normalizedTickSymbol = normalizeTickLookupKey(tick?.symbol);
@@ -385,7 +391,9 @@ const updateTickLookup = (
   let nextLookup = currentLookup;
   const setLookup = (key: string, value: string) => {
     if (nextLookup[key] === value) return;
-    if (nextLookup === currentLookup) nextLookup = { ...currentLookup };
+    // One batch owns one copy. Cloning the growing dictionary for every new
+    // symbol makes the initial catalog quote batch quadratic.
+    if (nextLookup === previousLookup) nextLookup = { ...previousLookup };
     nextLookup[key] = value;
   };
 
@@ -491,7 +499,7 @@ const applyAppTickBatch = (
 
     if (!changed) nextTicks = { ...state.ticks };
     nextTicks[symbol] = nextTick;
-    nextLookup = updateTickLookup(nextLookup, nextTicks, symbol, nextTick);
+    nextLookup = updateTickLookup(nextLookup, nextTicks, symbol, nextTick, state.tickLookup);
     changed = true;
   });
 

@@ -49,9 +49,11 @@ describe('trade gateway normalization', () => {
       marginLevel: '4000',
       currency: 'USD',
       leverage: '500',
-    })).toMatchObject({
+      // Wire payloads can carry numeric strings; normalizeAccount must coerce them.
+    } as unknown as Parameters<typeof normalizeAccount>[0])).toMatchObject({
       balance: 10000.5,
       equity: 0,
+      hasBackendBalance: true,
       hasBackendEquity: false,
       margin: 250,
       freeMargin: 9750.5,
@@ -722,6 +724,58 @@ describe('trade gateway normalization', () => {
       closePrice: 1.08765,
       openTime: new Date(1760000000 * 1000).toISOString(),
       closeTime: new Date(1760000000 * 1000).toISOString(),
+    });
+  });
+
+  it('preserves sparse backend account metrics and accepts an explicit zero balance', () => {
+    const previous = normalizeAccount({ balance: 100, equity: 102, used_margin: 10, free_margin: 92 });
+    expect(normalizeAccount({ balance: 0 }, previous)).toMatchObject({
+      balance: 0,
+      hasBackendBalance: true,
+      equity: 102,
+      hasBackendEquity: true,
+      margin: 10,
+      freeMargin: 92,
+    });
+    const unavailable = normalizeAccount({ balance: 100 });
+    expect(unavailable).toMatchObject({ equity: 0, hasBackendEquity: false });
+    // Re-applying the same sparse packet must not resurrect the absent metric.
+    expect(normalizeAccount({ balance: 100 }, unavailable)).toMatchObject({
+      equity: 0,
+      hasBackendEquity: false,
+    });
+  });
+
+  it.each([
+    ['missing', {}, false],
+    ['zero', { profit: 0, price_current: 0 }, true],
+    ['numeric strings', { profit: '-1.25', price_current: '82000.5' }, true],
+    ['invalid', { profit: false, price_current: '' }, false],
+    ['unavailable snapshot', { profit: 3, price_current: 82000, pnl_available: false }, false],
+    ['previous placeholders', { profit: 0, price_current: 0, hasBackendProfit: false, hasBackendCurrentPrice: false }, false],
+  ])('keeps %s position display provenance through repeated normalization', (_name, display, available) => {
+    const raw = { ticket: 41, symbol: 'BTCUSD', price_open: 81000, state_version: '9007199254740993123', ...display };
+    const first = normalizePosition(raw as Parameters<typeof normalizePosition>[0]);
+    const second = normalizePosition(first as unknown as Parameters<typeof normalizePosition>[0]); // re-normalizing app-shaped output is intentional
+    for (const result of [first, second]) {
+      expect(result).toMatchObject({
+        id: 41,
+        state_version: raw.state_version,
+        hasBackendProfit: available,
+        hasBackendCurrentPrice: available,
+      });
+      if (!available) expect(result).toMatchObject({ currentPrice: 0, unrealizedPnL: 0 });
+    }
+  });
+
+  it('tracks position profit and current price availability independently', () => {
+    expect(normalizePosition({ ticket: 42, profit: 0 })).toMatchObject({
+      hasBackendProfit: true,
+      hasBackendCurrentPrice: false,
+    });
+    expect(normalizePosition({ ticket: 42, price_current: 82000 })).toMatchObject({
+      hasBackendProfit: false,
+      hasBackendCurrentPrice: true,
     });
   });
 

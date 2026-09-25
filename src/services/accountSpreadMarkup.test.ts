@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const workerMocks = vi.hoisted(() => ({
   aggregateMultipleTimeframes: vi.fn(),
+  aggregateSymbols: vi.fn(),
 }));
 vi.mock('./aggregationWorkerManager', () => ({
+  cancelPendingAggregations: vi.fn(),
   getWorkerManager: () => workerMocks,
 }));
 vi.mock('./marketWatchDailyChangeCache', () => ({

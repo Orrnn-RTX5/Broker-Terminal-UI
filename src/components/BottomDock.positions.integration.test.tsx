@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BottomDock } from './BottomDock';
 import { useAppStore } from '../store/useAppStore';
 import { normalizePosition, readPositionStreamBatch, reconcilePositionStreamBatch } from '../services/positionStream';
-import { EnhancedWebSocketService } from '../services/websocket-enhanced';
+import { AccountSocketManager } from '../services/accountSocketManager';
 
 describe('Trade table across symbol updates', () => {
   beforeEach(() => {
@@ -38,9 +38,12 @@ describe('Trade table across symbol updates', () => {
     }
   });
 
-  it.each([false,true])('removes Manager closes through the actual socket and BottomDock, legacy wrapper=%s',async(legacy)=>{
+  // The shared EnhancedWebSocketService no longer writes trade state; the
+  // account socket consumer owns positions, so drive its real frame handler.
+  it.each([false,true])('removes Manager closes through the account socket consumer and BottomDock, legacy wrapper=%s',async(legacy)=>{
     render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
-    const service=new EnhancedWebSocketService('ws://example.test/ws/v2');
+    const service=new AccountSocketManager();
+    (service as any).login=200001;
     const handle=(service as any).handleMessage.bind(service);
     try {
       for(const ticket of [20165,20166]) {

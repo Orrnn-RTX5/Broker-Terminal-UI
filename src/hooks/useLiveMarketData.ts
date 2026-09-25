@@ -10,6 +10,8 @@ import { API_V2_BASE_URL, MARKET_WS_URL, toLocalDevProxyUrl } from '../config/ap
 import { isDesktopBackendTarget } from '../config/backendTarget.js';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { enqueueLiveTick } from '../services/liveTickDispatcher';
+import { loadPublicMarketCatalog } from '../services/publicMarketCatalog';
+import { loadSharedAuthenticatedInstruments } from '../services/authenticatedInstruments';
 import { getAccessToken, getServerUrl, onSessionChange } from '../services/brokerSession';
 import { resolveTickFromLookup, useAppStore, type Tick as AppTick } from '../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../store/useMarketDataStore';
@@ -459,6 +461,7 @@ interface ApiSessionDescriptor {
   v2BaseUrl: string;
   apiRootBaseUrl: string;
   accountId: string;
+  brokerId: string;
 }
 
 interface CapturedApiSession extends ApiSessionDescriptor {
@@ -508,10 +511,11 @@ const getApiSessionDescriptor = (accountId: string): ApiSessionDescriptor => {
     ? `${toLocalDevProxyUrl(serverUrl)}/api/v2`
     : API_V2_BASE_URL;
   const apiRootBaseUrl = v2BaseUrl.replace(/\/api\/v2\/?$/, '');
-  const storageScopeKey = [v2BaseUrl, getStoredBrokerId(), accountId]
+  const brokerId = getStoredBrokerId();
+  const storageScopeKey = [v2BaseUrl, brokerId, accountId]
     .map(normalizeWatchlistScopePart)
     .join('|');
-  return { storageScopeKey, v2BaseUrl, apiRootBaseUrl, accountId };
+  return { storageScopeKey, v2BaseUrl, apiRootBaseUrl, accountId, brokerId };
 };
 
 const captureApiSession = (
@@ -970,7 +974,7 @@ export function useActiveMarketSymbols() {
   return { symbols, loading, settled, current, error, reload };
 }
 
-export function useMarketInstruments(): MarketInstrumentsSnapshot {
+export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot {
   // Every published list/status is tagged with the catalog scope that produced
   // it, so a login, logout or account switch never renders the previous universe.
   const [symbolsState, setSymbolsState] = useState<ScopedValue<MarketInstrument[]>>(
@@ -1019,6 +1023,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
   } | null>(null);
 
   const reload = useCallback(async () => {
+    if (!enabled) return;
     const setSymbols = (value: MarketInstrument[]) => setSymbolsState({ scope: catalogScope, value });
     const setAccountCatalogStatus = (value: AccountCatalogStatus) => (
       setAccountCatalogState({ scope: catalogScope, value })
@@ -1056,86 +1061,104 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
     setAuthorizationSettled(false);
     setCompletedCatalogScope(null);
 
-    const isCurrentRequest = () => (
-      requestGeneration === requestGenerationRef.current && !controller.signal.aborted
-    );
+    const isCurrentRequest = () => requestGeneration === requestGenerationRef.current
+      && !controller.signal.aborted;
+    // The public catalogue carries prices/specifications. For a logged-in
+    // account it only enriches the account rows; its failure must not block
+    // the account catalogue.
+    let publicCatalog: MarketInstrument[] = [];
+    let publicCatalogError: unknown = null;
+    // Assigned by the concurrent requests below (a plain `null` initializer
+    // would make TypeScript narrow it to null after the await).
+    let authenticatedCatalog = null as MarketInstrument[] | null;
+    let accountCatalogError: unknown = null;
 
-    try {
-      // The public catalogue carries prices/specifications. For a logged-in
-      // account it only enriches the account rows; its failure must not block
-      // the account catalogue.
-      let publicCatalog: MarketInstrument[] = [];
-      let publicCatalogError: unknown = null;
+    const publishPublicCatalog = (catalog: MarketInstrument[]) => {
+      retainedCatalogRef.current = { scope: catalogScope, symbols: catalog, source: 'public' };
+      setSymbols(catalog);
+      upsertInstrumentTickSnapshots(catalog);
+      setLoading(false);
+    };
+    const publishAccountUniverse = (authorizedCatalog: MarketInstrument[], session: CapturedApiSession) => {
+      // The backend already filters this list by the account's group and
+      // returns it in the group's order: it is the account symbol universe.
+      const accountUniverse = mergeAccountCatalogWithPublic(authorizedCatalog, publicCatalog);
+      // Publish the group's spread markup before seeding quotes so the seed
+      // and every later tick are widened; a changed markup (new catalogue
+      // revision) re-widens the already cached quotes.
+      setAccountSpreadMarkups(
+        session.accountId,
+        buildAccountSpreadMarkupMap(authorizedCatalog, accountUniverse),
+      );
+      retainedCatalogRef.current = { scope: catalogScope, symbols: accountUniverse, source: 'account' };
+      setSymbols(accountUniverse);
+      upsertInstrumentTickSnapshots(accountUniverse);
+      setLoading(false);
+    };
+
+    // Neither catalog depends on the other. Start both together so a slow or
+    // unavailable public endpoint cannot delay the broker's authorized list.
+    const publicRequest = (async () => {
       try {
-        const response = await apiClient.get<unknown>('/api/v1/market/symbols', {
-          baseUrl: publicApiRootBaseUrl,
-          skipAuth: true,
-          skipDynamicUrl: true,
-          signal: controller.signal,
-        });
+        const response = await loadPublicMarketCatalog(publicApiRootBaseUrl, controller.signal);
         if (!isCurrentRequest()) return;
-        publicCatalog = extractInstrumentRows(response)
+
+        const catalog = extractInstrumentRows(response)
           .map(normalizeInstrument)
           .filter(Boolean) as MarketInstrument[];
-        if (publicCatalog.length === 0) {
+        if (catalog.length === 0) {
           throw new ApiError(0, 'No symbols returned by /api/v1/market/symbols');
         }
-      } catch (publicError) {
-        if (!isCurrentRequest()) return;
-        if (!loadsAccountCatalog) throw publicError;
-        publicCatalogError = publicError;
-        publicCatalog = [];
-      }
+        publicCatalog = catalog;
 
-      if (!loadsAccountCatalog) {
-        // Guests (and an authenticated state without a usable session) never
-        // carry an account's spread markup.
-        clearAccountSpreadMarkups();
-        retainedCatalogRef.current = { scope: catalogScope, symbols: publicCatalog, source: 'public' };
-        setSymbols(publicCatalog);
-        upsertInstrumentTickSnapshots(publicCatalog);
-        setLoading(false);
-        setAuthorizationSettled(true);
-        if (!isAuthenticated) {
-          setCompletedCatalogScope(catalogScope);
-        } else {
-          // Authenticated without a usable session: read-only public fallback,
-          // trading stays disabled (no authorized symbols).
-          setAccountCatalogStatus('failed');
+        if (!loadsAccountCatalog) {
+          // Guests (and an authenticated state without a usable session) never
+          // carry an account's spread markup.
+          clearAccountSpreadMarkups();
+          publishPublicCatalog(catalog);
+          if (!isAuthenticated) {
+            setCompletedCatalogScope(catalogScope);
+          } else {
+            // Authenticated without a usable session: read-only public fallback,
+            // trading stays disabled (no authorized symbols).
+            setAccountCatalogStatus('failed');
+          }
+        } else if (authenticatedCatalog && requestSession) {
+          // The account universe arrived first: enrich it with the public
+          // prices/specifications without widening it to the public list.
+          publishAccountUniverse(authenticatedCatalog, requestSession);
         }
-        return;
+      } catch (err) {
+        if (!isCurrentRequest()) return;
+        publicCatalogError = err;
+      } finally {
+        if (isCurrentRequest() && !loadsAccountCatalog) {
+          setAuthorizationSettled(true);
+        }
       }
+    })();
 
-      const session = requestSession!;
+    const authorizationRequest = (async () => {
+      if (!loadsAccountCatalog || !requestSession) return;
+      const session = requestSession;
       try {
-        const authorizedResponse = await apiClient.get<unknown>(
-          '/instruments',
+        const authorizedResponse = await loadSharedAuthenticatedInstruments(
           getCapturedRequestOptions(session, session.v2BaseUrl, controller.signal),
+          session,
         );
         if (!isCurrentRequest()) return;
         const authorizedCatalog = extractInstrumentRows(authorizedResponse)
           .map(normalizeInstrument)
           .filter(Boolean) as MarketInstrument[];
-        // The backend already filters this list by the account's group and
-        // returns it in the group's order: it is the account symbol universe.
-        const accountUniverse = mergeAccountCatalogWithPublic(authorizedCatalog, publicCatalog);
-        // Publish the group's spread markup before seeding quotes so the seed
-        // and every later tick are widened; a changed markup (new catalogue
-        // revision) re-widens the already cached quotes.
-        setAccountSpreadMarkups(
-          session.accountId,
-          buildAccountSpreadMarkupMap(authorizedCatalog, accountUniverse),
-        );
-        retainedCatalogRef.current = { scope: catalogScope, symbols: accountUniverse, source: 'account' };
-        setSymbols(accountUniverse);
-        upsertInstrumentTickSnapshots(accountUniverse);
+        authenticatedCatalog = authorizedCatalog;
+        publishAccountUniverse(authorizedCatalog, session);
         // FIX: Retain authenticated broker specifications, not only their names,
         // so order controls can enforce each exact symbol's volume grid.
         setAuthorizedInstruments(authorizedCatalog);
         const disabled = authorizedCatalog
           .filter((instrument) => instrument.tradingEnabled === false)
           .map((instrument) => instrument.symbol);
-        const enabled = authorizedCatalog
+        const tradable = authorizedCatalog
           .filter((instrument) => instrument.tradingEnabled !== false)
           .map((instrument) => instrument.symbol);
         const watchlistScope = remoteWatchlistScopes.get(session.runtimeKey);
@@ -1144,64 +1167,72 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
             authorizedCatalog.map((instrument) => instrument.symbol),
           );
         }
-        setAuthorizedSymbols(uniqueSymbols(enabled));
+        setAuthorizedSymbols(uniqueSymbols(tradable));
         setDisabledSymbols(uniqueSymbols(disabled));
         setAccountCatalogStatus('loaded');
-        setCompletedCatalogScope(catalogScope);
-        setLoading(false);
-      } catch (accountError) {
+      } catch (err) {
         if (!isCurrentRequest()) return;
+        accountCatalogError = err;
+        // Trading actions stay disabled until the authenticated catalog can
+        // prove that a symbol is authorized.
         setAuthorizedSymbols([]);
         setDisabledSymbols([]);
         setAuthorizedInstruments([]);
-        if (retained?.source === 'account') {
-          // Keep this account's last known universe; never widen it to the
-          // public list. Trading stays disabled until authorization succeeds.
-          setSymbols(retained.symbols);
-          setAccountCatalogStatus('loaded');
-          setLoading(false);
-          return;
-        }
-        if (publicCatalog.length === 0) throw publicCatalogError ?? accountError;
-        // Fallback: read-only public catalogue. Trading actions stay disabled
-        // until the authenticated catalog can prove that a symbol is authorized.
-        retainedCatalogRef.current = { scope: catalogScope, symbols: publicCatalog, source: 'public' };
-        setSymbols(publicCatalog);
-        upsertInstrumentTickSnapshots(publicCatalog);
-        setAccountCatalogStatus('failed');
-        setLoading(false);
       } finally {
         if (isCurrentRequest()) {
           setAuthorizationSettled(true);
         }
       }
-    } catch (err) {
+    })();
+
+    try {
+      await Promise.all([publicRequest, authorizationRequest]);
       if (!isCurrentRequest()) return;
-      setSymbols(retainedCatalog);
-      setAuthorizedInstruments([]);
-      setAuthorizedSymbols([]);
-      setDisabledSymbols([]);
-      setAuthorizationSettled(true);
-      if (isAuthenticated) {
-        setAccountCatalogStatus(retained?.source === 'account' ? 'loaded' : 'failed');
+      if (loadsAccountCatalog) {
+        if (authenticatedCatalog) {
+          // Preserve saved pane selections until both sources settle before
+          // allowing reconciliation against the account universe.
+          setCompletedCatalogScope(catalogScope);
+        } else if (retained?.source === 'account') {
+          // Keep this account's last known universe; never widen it to the
+          // public list. Trading stays disabled until authorization succeeds.
+          setSymbols(retained.symbols);
+          setAccountCatalogStatus('loaded');
+        } else if (publicCatalog.length > 0) {
+          // Fallback: read-only public catalogue. Trading actions stay disabled
+          // until the authenticated catalog can prove that a symbol is authorized.
+          publishPublicCatalog(publicCatalog);
+          setAccountCatalogStatus('failed');
+        } else {
+          const err = publicCatalogError ?? accountCatalogError;
+          setSymbols(retainedCatalog);
+          setAccountCatalogStatus('failed');
+          setError(err instanceof Error ? err.message : 'Failed to load symbols');
+        }
+      } else if (publicCatalogError) {
+        setSymbols(retainedCatalog);
+        if (isAuthenticated) {
+          setAccountCatalogStatus(retained?.source === 'account' ? 'loaded' : 'failed');
+        }
+        setError(publicCatalogError instanceof Error ? publicCatalogError.message : 'Failed to load symbols');
       }
-      setError(err instanceof ApiError ? err.message : 'Failed to load symbols');
     } finally {
       if (isCurrentRequest()) {
         requestAbortRef.current = null;
         setLoading(false);
       }
     }
-  }, [catalogScope, isAuthenticated, publicApiRootBaseUrl, requestSession]);
+  }, [catalogScope, enabled, isAuthenticated, publicApiRootBaseUrl, requestSession]);
 
   useEffect(() => {
+    if (!enabled) return;
     void reload();
     return () => {
       requestGenerationRef.current += 1;
       requestAbortRef.current?.abort();
       requestAbortRef.current = null;
     };
-  }, [reload]);
+  }, [enabled, reload]);
 
   // Derive synchronously so a login/logout/account switch never renders one
   // frame with the previous session's symbols or universe classification.
@@ -1216,13 +1247,13 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
 
   return {
     symbols: visibleSymbols,
-    authorizedInstruments,
-    authorizedSymbols,
-    disabledSymbols,
-    authorizationSettled,
-    chartCatalogCurrent: completedCatalogScope === catalogScope && authorizationSettled,
+    authorizedInstruments: enabled ? authorizedInstruments : [],
+    authorizedSymbols: enabled ? authorizedSymbols : [],
+    disabledSymbols: enabled ? disabledSymbols : [],
+    authorizationSettled: enabled && authorizationSettled,
+    chartCatalogCurrent: enabled && completedCatalogScope === catalogScope && authorizationSettled,
     accountCatalogStatus: effectiveAccountCatalogStatus,
-    loading: loading || (effectiveAccountCatalogStatus === 'loading' && visibleSymbols.length === 0),
+    loading: !enabled || loading || (effectiveAccountCatalogStatus === 'loading' && visibleSymbols.length === 0),
     error,
     reload,
   };

@@ -10,20 +10,16 @@
 
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
-import { buildBrokerWsV2Uri, getAccessToken, onSessionChange, getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from './brokerSession';
-import { extractAccountMetrics, normalizeAccountMetrics } from './accountMetrics';
+import { buildBrokerWsV2Uri, getAccessToken, onSessionChange } from './brokerSession';
 import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
 import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
+import { readFirstFiniteNumber, readFirstNonEmptyString } from '../utils/recordFields';
 import {
   asUnknownRecord,
   normalizeBrokerTimestampMs,
   readBrokerTimestampMs,
   readCandleFinality,
 } from '../utils/brokerStreamSemantics';
-import {
-  requestPositionSnapshotRevalidation,
-} from './positionSnapshotSafety';
-import { POSITION_CLOSED_EVENTS, readPositionStreamEvent, readPositionStreamBatch, reconcilePositionStreamBatch } from './positionStream';
 
 const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
@@ -87,32 +83,6 @@ export const isExactAccountStreamChannel = (
   return channelLogin.length > 0 && expectedLogin.length > 0 && channelLogin === expectedLogin;
 };
 
-const readFirstFiniteNumber = (
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): number | undefined => {
-  for (const key of keys) {
-    const value = record[key];
-    if (value === null || value === undefined || value === '') continue;
-    const numeric = Number(value);
-    if (Number.isFinite(numeric)) return numeric;
-  }
-  return undefined;
-};
-
-const readFirstNonEmptyString = (
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): string | undefined => {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value !== 'string') continue;
-    const normalized = value.trim();
-    if (normalized) return normalized;
-  }
-  return undefined;
-};
-
 const resolveTickSourceTimestampMs = (...values: unknown[]): number | undefined => {
   // FIX: Normalize every supported broker alias and seconds/ms/us/ns/ISO form
   // before freshness ordering; receipt time remains a distinct fallback.
@@ -153,8 +123,6 @@ export class EnhancedWebSocketService {
 
   // Connection management
   private reconnectAttempts = 0;
-  // Unlimited retries — never get permanently stuck in 'error' state
-  private maxReconnectAttempts = 999;
   private baseReconnectDelay = 1000;
   private maxReconnectDelay = 30000;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -761,55 +729,9 @@ export class EnhancedWebSocketService {
     if (type === 'channel_message' || typeof data.channel === 'string') {
       try {
         const payload = data.data as any;
-        let batch = readPositionStreamBatch(data);
-        if (!batch && data.channel?.startsWith('positions.')) {
-          const { event, position } = readPositionStreamEvent(data);
-          if (position) batch = { mode: 'delta', positions: [POSITION_CLOSED_EVENTS.has(event) ? { ...position, closed: true } : position] };
-        }
-        if (data.channel?.startsWith('positions.') && batch) {
-          const positionBatch = batch;
-          const positionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
-          const positionToken = getAccessToken();
-          import('../store/useAppStore').then(({ useAppStore }) => {
-            const store = useAppStore.getState();
-            // FIX: A positions snapshot is authoritative only for the login in
-            // its exact channel. Delayed frames from a previous account must
-            // never replace the active account's positions.
-            if (!isExactAccountStreamChannel(data.channel, 'positions', store.accountId)) return;
-            if (positionScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
-            if (positionToken !== getAccessToken()) return;
-
-            const result = reconcilePositionStreamBatch(store.positions, positionBatch);
-            store.setPositions(result.positions, { closedTickets: result.closedTickets });
-            if (result.needsRevalidation) requestPositionSnapshotRevalidation();
-          });
-
-          // Also update MT5 store
-          const mt5Data = { ...data, type: 'mt5_positions', positions: payload.positions };
-          this.handleMT5Update(mt5Data);
-        } else if (data.channel?.startsWith('account.')) {
-          const accRecord = extractAccountMetrics(data);
-          const metricsScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
-          if (accRecord) {
-            import('../store/useAppStore').then(({ useAppStore }) => {
-              const store = useAppStore.getState();
-              // Filter: only accept data for the current account
-              if (!isExactAccountStreamChannel(data.channel, 'account', store.accountId)) return;
-              if (metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
-
-              const curAccount = store.account;
-              store.setAccount(normalizeAccountMetrics(data, curAccount, {
-                partial: !accRecord.publication_token,
-                login: Number(store.accountId),
-                scope: metricsScope,
-              }));
-            });
-
-            // Also update MT5 store
-            const mt5Data = { ...data, type: 'mt5_account', account: accRecord };
-            this.handleMT5Update(mt5Data);
-          }
-        } else if (isEnhancedStoreHandledTickFrame(data) && data.channel?.startsWith('ticks.') && payload) {
+        // App owns account/position state. Transport-side async store writes
+        // could overwrite its sparse merges and financial availability flags.
+        if (isEnhancedStoreHandledTickFrame(data) && data.channel?.startsWith('ticks.') && payload) {
           const channelSymbol = data.channel.slice('ticks.'.length).trim().toUpperCase();
           const sourceTimestamp = resolveTickSourceTimestampMs(payload, data);
           this.handleFixTick({
@@ -1247,7 +1169,7 @@ export class EnhancedWebSocketService {
     // regardless of React effect subscription lifecycle timing.
     try {
       useWebSocketStore.getState().setConnectionState(state, 'legacy_mt5');
-    } catch (e) {
+    } catch {
       // Fallback: store not available yet during initial module load
     }
 

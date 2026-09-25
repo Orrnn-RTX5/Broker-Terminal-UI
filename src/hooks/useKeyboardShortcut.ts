@@ -73,7 +73,9 @@ export function useKeyboardShortcuts(
     }
     return { ...shortcut, id };
   });
-  const signature = JSON.stringify(declarations.map(({ handler: _handler, ...metadata }) => metadata));
+  const signature = JSON.stringify(declarations.map((declaration) => (
+    Object.fromEntries(Object.entries(declaration).filter(([key]) => key !== 'handler'))
+  )));
 
   useLayoutEffect(() => {
     latestHandlers.current = new Map(declarations.map(({ id, handler }) => [id, handler]));

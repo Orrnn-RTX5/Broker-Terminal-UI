@@ -9,18 +9,24 @@ import { useState, useEffect, useReducer, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
     Activity,
-    ChartCandlestick,
+    ChevronDown,
+    ChevronUp,
     Crosshair,
     Grid3X3,
+    Info,
     RotateCcw,
+    X,
     ZoomIn,
     ZoomOut,
 } from 'lucide-react';
+import '../styles/modify-position-dialog.css';
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useAppStore } from '../store/useAppStore';
 import api from '../services/api';
 import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { formatOrderError } from '../utils/orderError';
+import { getSymbolDigits } from '../utils/symbolUtils';
+import { getFallbackSymbolDescription } from '../utils/symbolDescription';
 
 interface ModifyPositionDialogProps {
     isOpen: boolean;
@@ -105,31 +111,17 @@ const miniChartReducer = (state: MiniChartState, action: MiniChartAction): MiniC
     }
 };
 
-const getSymbolDigits = (symbol: string) => {
-    if (symbol.includes('JPY')) return 3;
-    if (symbol.startsWith('BTC') || symbol.startsWith('ETH')) return 2;
-    if (symbol.startsWith('XAU')) return 2;
-    if (symbol.startsWith('XAG')) return 3;
-    return 5;
-};
-
 const getSymbolFullName = (symbol: string) => {
-    const names: Record<string, string> = {
-        'EURUSD': 'EURUSD, Euro vs US Dollar',
-        'GBPUSD': 'GBPUSD, Great Britain Pound vs US Dollar',
-        'USDJPY': 'USDJPY, US Dollar vs Japanese Yen',
-        'XAUUSD': 'XAUUSD, Gold vs US Dollar',
-        'XAGUSD': 'XAGUSD, Silver vs US Dollar',
-        'BTCUSD': 'BTCUSD, Bitcoin vs US Dollar',
-        'ETHUSD': 'ETHUSD, Ethereum vs US Dollar',
-    };
-    return names[symbol] || symbol;
+    const desc = getFallbackSymbolDescription(symbol);
+    return desc ? `${symbol}, ${desc}` : symbol;
 };
 
 const getContractSize = (symbol: string) => {
-    if (symbol.startsWith('XAU')) return 100;
-    if (symbol.startsWith('XAG')) return 5000;
-    if (symbol.startsWith('BTC') || symbol.startsWith('ETH')) return 1;
+    const sym = symbol.toUpperCase();
+    if (sym.includes('XAU')) return 100;
+    if (sym.includes('XAG')) return 5000;
+    if (sym.includes('BTC') || sym.includes('ETH')) return 1;
+    if (sym.includes('OIL')) return 1000;
     return 100000;
 };
 
@@ -255,9 +247,27 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
     const miniChartKey = isOpen && position ? getMiniChartKey(position, kind) : null;
     const [miniChartState, dispatchMiniChart] = useReducer(miniChartReducer, initialMiniChartState);
 
+    const chartContainerRef = useRef<HTMLDivElement | null>(null);
+    const [chartDimensions, setChartDimensions] = useState({ width: 450, height: 460 });
+
+    useEffect(() => {
+        const container = chartContainerRef.current;
+        if (!container || typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const { width, height } = entry.contentRect;
+                if (width > 50 && height > 50) {
+                    setChartDimensions({ width: Math.round(width), height: Math.round(height) });
+                }
+            }
+        });
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, [isDialogVisible, showMiniChart, showMiniMarketDepth]);
+
     useEffect(() => {
         if (isOpen && position) {
-            const digits = getSymbolDigits(position.symbol);
+            const digits = (tick as any)?.digits ?? (position as any)?.digits ?? getSymbolDigits(position.symbol);
             setSl(position.sl > 0 ? position.sl.toFixed(digits) : '0.00');
             setTp(position.tp > 0 ? position.tp.toFixed(digits) : '0.00');
             initialLevelsRef.current = {
@@ -385,7 +395,12 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
     if (!isOpen || !position) return null;
 
-    const digits = getSymbolDigits(position.symbol);
+    const digits = (tick as any)?.digits ?? (position as any)?.digits ?? getSymbolDigits(position.symbol);
+    const stopsLevel = (position as any)?.stopsLevel 
+        ?? (position as any)?.stops_level 
+        ?? (tick as any)?.stopsLevel 
+        ?? (tick as any)?.stops_level 
+        ?? 5;
     const previousMiniChartSample = miniChartKey && miniChartState.key === miniChartKey
         ? miniChartState.samples[miniChartState.samples.length - 1]
         : undefined;
@@ -593,13 +608,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 title={tr(label)}
                 aria-label={tr(label)}
                 aria-pressed={active}
-                className={[
-                    'flex h-[23px] w-[24px] shrink-0 items-center justify-center border text-[11px] transition-colors',
-                    active
-                        ? 'border-[#334f7d] bg-[#193a63] text-[#78b8ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
-                        : 'border-transparent bg-transparent text-[#9aa5b5] hover:border-[#314057] hover:bg-[#182130] hover:text-[#e5eefc]',
-                    disabled ? 'cursor-not-allowed opacity-35 hover:border-transparent hover:bg-transparent hover:text-[#9aa5b5]' : '',
-                ].join(' ')}
+                className="rtx-modify-tool-btn"
             >
                 {icon}
             </button>
@@ -607,7 +616,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
     };
 
     const renderMiniChartToolbar = () => (
-        <div className="flex h-[31px] shrink-0 items-center gap-1 border-b border-[#263142] bg-[#111827] px-2">
+        <div className="rtx-modify-chart-toolbar">
             {renderChartToolButton(
                 showMiniMarketDepth ? 'Hide market depth' : 'Show market depth',
                 <MarketDepthIcon />,
@@ -620,8 +629,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 () => setShowMiniChart(value => !value),
                 { active: showMiniChart }
             )}
-            {renderChartToolButton('Candlestick chart', <ChartCandlestick size={14} strokeWidth={1.8} />, undefined, { disabled: true })}
-            <div className="mx-1 h-5 w-px bg-[#2d3a4f]" />
+            <div className="rtx-modify-tool-divider" />
             {renderChartToolButton(
                 showMiniChartGrid ? 'Hide grid' : 'Show grid',
                 <Grid3X3 size={14} strokeWidth={1.8} />,
@@ -634,7 +642,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 () => setShowMiniChartPriceLines(value => !value),
                 { active: showMiniChartPriceLines, disabled: !showMiniChart }
             )}
-            <div className="mx-1 h-5 w-px bg-[#2d3a4f]" />
+            <div className="rtx-modify-tool-divider" />
             {renderChartToolButton(
                 'Zoom in',
                 <ZoomIn size={14} strokeWidth={1.8} />,
@@ -648,7 +656,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 { disabled: !showMiniChart || !canZoomOutMiniChart }
             )}
             {renderChartToolButton('Fit chart', <RotateCcw size={14} strokeWidth={1.8} />, resetMiniChartView)}
-            <div className="ml-auto min-w-0 truncate font-mono text-[12px] font-normal text-[#718096]">
+            <div className="rtx-modify-tool-zoom">
                 {MINI_CHART_ZOOM_LEVELS[miniChartZoomIndex].toFixed(2)}x
             </div>
         </div>
@@ -742,40 +750,47 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
             : [latestMiniChartSample.timestamp - 60_000, latestMiniChartSample.timestamp];
 
         const allPrices = [...effectiveBidData, ...effectiveAskData, bid, ask];
-        const rawMin = Math.min(...allPrices);
-        const rawMax = Math.max(...allPrices);
-        const rawRange = rawMax - rawMin;
-        const minimumRangePadding = Math.pow(10, -digits) * 6;
-        const rangePadding = Math.max(rawRange * 0.18, minimumRangePadding);
+        let rawMin = Math.min(...allPrices);
+        let rawMax = Math.max(...allPrices);
+        const priceStep = Math.pow(10, -digits);
+        const observedRange = rawMax - rawMin;
+        const currentSpread = Math.max(priceStep, ask - bid);
+        const minimumRange = Math.max(priceStep * 10, currentSpread * 3.2);
+        if (observedRange < minimumRange) {
+            const midpoint = (rawMax + rawMin) / 2;
+            rawMin = midpoint - minimumRange / 2;
+            rawMax = midpoint + minimumRange / 2;
+        }
+        const rangePadding = Math.max((rawMax - rawMin) * 0.12, priceStep * 4);
         const min = rawMin - rangePadding;
         const max = rawMax + rangePadding;
         const range = max - min || 1;
 
-        const w = 280;
-        const h = 430;
-        const plotLeft = 10;
-        const plotTop = 12;
-        const plotRight = 208;
-        const plotBottom = h - 28;
+        const w = Math.max(220, chartDimensions.width);
+        const h = Math.max(180, chartDimensions.height);
+        const plotLeft = 6;
+        const plotTop = 8;
+        const samplePriceStr = max.toFixed(digits);
+        const tagWidth = Math.max(80, Math.round(samplePriceStr.length * 8.2) + 16);
+        const plotRight = Math.max(plotLeft + 60, w - tagWidth - 8);
+        const plotBottom = Math.max(plotTop + 60, h - 28);
         const plotWidth = plotRight - plotLeft;
         const plotHeight = plotBottom - plotTop;
-        const timeAxisY = h - 12;
-        const tagX = plotRight + 6;
-        const tagWidth = 62;
-        const tagHeight = 16;
+        const timeAxisY = h - 9;
+        const tagX = plotRight + 4;
+        const tagHeight = 22;
         const minTagY = plotTop + 1;
         const maxTagY = plotBottom - tagHeight - 1;
         const gridFractions = [0, 0.25, 0.5, 0.75, 1];
         const timeFractions = [0, 0.5, 1];
-        const chartBackground = '#0a0f18';
-        const plotBackground = '#0d1420';
-        const gridColor = '#263244';
-        const axisColor = '#8da0bb';
-        const borderColor = '#40506a';
-        const askColor = '#ff4d57';
-        const bidColor = '#2f8cff';
-        const labelColor = '#d7e2f2';
-        const mutedLabelColor = '#8fa2bd';
+        const chartBackground = '#101216';
+        const plotBackground = '#0c0e12';
+        const gridColor = '#222632';
+        const axisColor = '#cbd2dc';
+        const axisBg = '#121519';
+        const borderColor = '#252932';
+        const askColor = '#ff5b6b';
+        const bidColor = '#00d2ff';
 
         const toPath = (data: number[]) => {
             return data.map((v, i) => {
@@ -783,6 +798,23 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 const y = plotBottom - ((v - min) / range) * plotHeight;
                 return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
             }).join(' ');
+        };
+
+        const toSpreadBandPath = (asks: number[], bids: number[]) => {
+            if (asks.length === 0 || bids.length === 0) return '';
+            const n = Math.min(asks.length, bids.length);
+            const askPoints = asks.slice(0, n).map((v, i) => {
+                const x = plotLeft + (i / (n - 1)) * plotWidth;
+                const y = plotBottom - ((v - min) / range) * plotHeight;
+                return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+            }).join(' ');
+            const bidReversePoints = bids.slice(0, n).reverse().map((v, i) => {
+                const origIndex = n - 1 - i;
+                const x = plotLeft + (origIndex / (n - 1)) * plotWidth;
+                const y = plotBottom - ((v - min) / range) * plotHeight;
+                return `L${x.toFixed(1)},${y.toFixed(1)}`;
+            }).join(' ');
+            return `${askPoints} ${bidReversePoints} Z`;
         };
 
         const toY = (price: number) => plotBottom - ((price - min) / range) * plotHeight;
@@ -810,23 +842,34 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
             tagY: number,
             fill: string,
             textColor = '#ffffff'
-        ) => (
-            <g key={fill}>
-                <line x1={plotRight} y1={y} x2={tagX} y2={tagY + tagHeight / 2} stroke={fill} strokeWidth="1" />
-                <rect x={tagX} y={tagY} width={tagWidth} height={tagHeight} rx={1} fill={fill} />
-                <text
-                    x={tagX + tagWidth / 2}
-                    y={tagY + 11}
-                    fill={textColor}
-                    fontSize="9"
-                    fontWeight="700"
-                    fontFamily="Consolas, monospace"
-                    textAnchor="middle"
-                >
-                    {tr(label)}
-                </text>
-            </g>
-        );
+        ) => {
+            const centerY = tagY + tagHeight / 2;
+            const arrowTipX = plotRight;
+            const arrowBaseX = tagX;
+            return (
+                <g key={fill}>
+                    {Math.abs(centerY - y) > 3 && (
+                        <line x1={plotRight} y1={y} x2={arrowBaseX} y2={centerY} stroke={fill} strokeWidth="1" strokeOpacity="0.7" strokeDasharray="2 2" />
+                    )}
+                    <polygon
+                        points={`${arrowTipX},${y} ${arrowBaseX},${clamp(y - 4, tagY + 1, tagY + tagHeight - 1)} ${arrowBaseX},${clamp(y + 4, tagY + 1, tagY + tagHeight - 1)}`}
+                        fill={fill}
+                    />
+                    <rect x={tagX} y={tagY} width={tagWidth} height={tagHeight} rx={3} fill={fill} />
+                    <text
+                        x={tagX + tagWidth / 2}
+                        y={tagY + 15}
+                        fill={textColor}
+                        fontSize="12"
+                        fontWeight="700"
+                        fontFamily="Consolas, monospace"
+                        textAnchor="middle"
+                    >
+                        {tr(label)}
+                    </text>
+                </g>
+            );
+        };
 
         return (
             <svg
@@ -836,24 +879,40 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 className="h-full w-full"
                 role="img"
                 aria-label={tr("{{value0}} bid and ask tick chart", { value0: position.symbol })}
-                preserveAspectRatio="xMidYMid meet"
+                preserveAspectRatio="none"
             >
-                <rect x={0} y={0} width={w} height={h} fill={chartBackground} />
-                <rect x={plotLeft} y={plotTop} width={plotWidth} height={plotHeight} fill={plotBackground} stroke={borderColor} strokeWidth="1" />
+                <defs>
+                    <linearGradient id="rtx-spread-corridor-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#ff5b6b" stopOpacity="0.22" />
+                        <stop offset="100%" stopColor="#00d2ff" stopOpacity="0.16" />
+                    </linearGradient>
+                    <clipPath id="rtx-plot-clip">
+                        <rect x={plotLeft} y={plotTop} width={plotWidth} height={plotHeight} />
+                    </clipPath>
+                </defs>
 
+                <rect x={0} y={0} width={w} height={h} fill={chartBackground} />
+                <rect x={plotLeft} y={plotTop} width={plotWidth} height={plotHeight} fill={plotBackground} stroke={borderColor} strokeWidth="1" rx={3} />
+
+                {/* Right Axis Background */}
+                <rect x={plotRight} y={plotTop} width={w - plotRight} height={plotHeight} fill={axisBg} />
+
+                {/* Grid Lines */}
                 {gridFractions.map(f => {
                     const y = plotTop + f * plotHeight;
                     const price = max - f * range;
                     return (
                         <g key={`price-${f}`}>
                             {showMiniChartGrid && (
-                                <line x1={plotLeft} y1={y} x2={plotRight} y2={y} stroke={gridColor} strokeWidth="0.75" strokeDasharray="3 3" />
+                                <line x1={plotLeft} y1={y} x2={plotRight} y2={y} stroke={gridColor} strokeWidth="0.8" strokeDasharray="3 3" />
                             )}
+                            <line x1={plotRight} y1={y} x2={plotRight + 4} y2={y} stroke="#3b4049" strokeWidth="1" />
                             <text
-                                x={plotRight + 5}
-                                y={clamp(y + 3, plotTop + 7, plotBottom - 2)}
+                                x={plotRight + 6}
+                                y={clamp(y + 4, plotTop + 12, plotBottom - 4)}
                                 fill={axisColor}
-                                fontSize="8"
+                                fontSize="12"
+                                fontWeight="600"
                                 fontFamily="Consolas, monospace"
                             >
                                 {price.toFixed(digits)}
@@ -872,7 +931,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                             x2={x}
                             y2={plotBottom}
                             stroke={gridColor}
-                            strokeWidth="0.75"
+                            strokeWidth="0.8"
                             strokeDasharray="3 3"
                         />
                     );
@@ -881,16 +940,31 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 <line x1={plotRight} y1={plotTop} x2={plotRight} y2={plotBottom} stroke={borderColor} strokeWidth="1" />
                 <line x1={plotLeft} y1={plotBottom} x2={plotRight} y2={plotBottom} stroke={borderColor} strokeWidth="1" />
 
-                {showMiniChartPriceLines && (
-                    <>
-                        <line x1={plotLeft} y1={askY} x2={plotRight} y2={askY} stroke={askColor} strokeWidth="1" strokeDasharray="4 2" opacity="0.85" />
-                        <line x1={plotLeft} y1={bidY} x2={plotRight} y2={bidY} stroke={bidColor} strokeWidth="1" strokeDasharray="4 2" opacity="0.85" />
-                    </>
-                )}
+                {/* Clipped curves & area fills */}
+                <g clipPath="url(#rtx-plot-clip)">
+                    {/* Clear, subtle Spread Corridor Band between Ask & Bid */}
+                    <path d={toSpreadBandPath(effectiveAskData, effectiveBidData)} fill="url(#rtx-spread-corridor-grad)" />
 
-                <path d={toPath(effectiveAskData)} fill="none" stroke={askColor} strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
-                <path d={toPath(effectiveBidData)} fill="none" stroke={bidColor} strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+                    {/* Reference Price Horizontal Dashed Lines */}
+                    {showMiniChartPriceLines && (
+                        <>
+                            <line x1={plotLeft} y1={askY} x2={plotRight} y2={askY} stroke={askColor} strokeWidth="1.2" strokeDasharray="3 3" opacity="0.9" />
+                            <line x1={plotLeft} y1={bidY} x2={plotRight} y2={bidY} stroke={bidColor} strokeWidth="1.2" strokeDasharray="3 3" opacity="0.9" />
+                        </>
+                    )}
 
+                    {/* Price Curves */}
+                    <path d={toPath(effectiveAskData)} fill="none" stroke={askColor} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d={toPath(effectiveBidData)} fill="none" stroke={bidColor} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+
+                    {/* Live Current Tick Dots with soft glowing halo */}
+                    <circle cx={plotRight} cy={askY} r="3.5" fill={askColor} />
+                    <circle cx={plotRight} cy={askY} r="8" fill={askColor} fillOpacity="0.32" />
+                    <circle cx={plotRight} cy={bidY} r="3.5" fill={bidColor} />
+                    <circle cx={plotRight} cy={bidY} r="8" fill={bidColor} fillOpacity="0.32" />
+                </g>
+
+                {/* Price Tags on Right Axis */}
                 {showMiniChartPriceLines && (
                     <>
                         {renderPriceTag(ask.toFixed(digits), askY, askTagY, askColor)}
@@ -898,43 +972,41 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                     </>
                 )}
 
+                {/* Time Axis */}
                 {timeFractions.map(f => {
                     const x = plotLeft + f * plotWidth;
                     const anchor = f === 0 ? 'start' : f === 1 ? 'end' : 'middle';
                     return (
-                        <text
-                            key={`time-${f}`}
-                            x={x}
-                            y={timeAxisY}
-                            fill={axisColor}
-                            fontSize="8"
-                            fontFamily="Consolas, monospace"
-                            textAnchor={anchor}
-                        >
-                            {getAxisTime(f)}
-                        </text>
+                        <g key={`time-${f}`}>
+                            <line x1={x} y1={plotBottom} x2={x} y2={plotBottom + 5} stroke="#3b4049" strokeWidth="1" />
+                            <text
+                                x={x}
+                                y={timeAxisY}
+                                fill={axisColor}
+                                fontSize="12"
+                                fontWeight="600"
+                                fontFamily="Consolas, monospace"
+                                textAnchor={anchor}
+                            >
+                                {getAxisTime(f)}
+                            </text>
+                        </g>
                     );
                 })}
-
-                <text x={plotLeft + 3} y={plotTop + 10} fill={labelColor} fontSize="9" fontWeight="700" fontFamily="Consolas, monospace">
-                    {position.symbol}
-                </text>
-                <text x={plotLeft + 3} y={plotTop + 21} fill={mutedLabelColor} fontSize="8" fontFamily="Consolas, monospace">
-                    {bid.toFixed(digits)} / {ask.toFixed(digits)}
-                </text>
             </svg>
         );
     };
 
-    // Format the big price with last digit enlarged
-    const formatBigPrice = (price: number, color: string) => {
+    // Format the big price with last digits emphasized
+    const formatBigPrice = (price: number, colorClass = '') => {
         const str = price.toFixed(digits);
-        const main = str.slice(0, -1);
-        const last = str.slice(-1);
+        const splitIdx = digits >= 2 ? str.length - 2 : Math.max(0, str.length - 1);
+        const main = str.slice(0, splitIdx);
+        const pips = str.slice(splitIdx);
         return (
-            <span className={`font-mono font-bold ${color}`}>
-                <span className="text-2xl">{main}</span>
-                <span className="text-3xl">{last}</span>
+            <span className={`font-mono ${colorClass}`}>
+                <span>{main}</span>
+                <strong>{pips}</strong>
             </span>
         );
     };
@@ -966,88 +1038,109 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
     if (typeof document === 'undefined') return null;
 
-    const dialogWidthClass = showMiniMarketDepth ? 'w-[860px]' : 'w-[720px]';
-    const chartPanelWidthClass = showMiniMarketDepth ? 'w-[430px]' : 'w-[300px]';
+    const dialogWidthClass = showMiniMarketDepth ? 'w-[980px]' : 'w-[880px]';
+    const chartPanelWidthClass = showMiniMarketDepth ? 'w-[520px]' : 'w-[450px]';
 
     return createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 p-3 backdrop-blur-[3px] rtx-modify-dialog-overlay sm:p-4">
+        <div className="rtx-modify-overlay sm:p-4">
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={dialogTitleId}
                 tabIndex={-1}
-                className={`rtx-modify-dialog flex max-h-[calc(100vh-24px)] ${dialogWidthClass} max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-md border border-[#3f424a] bg-[#111217] shadow-[0_22px_70px_rgba(0,0,0,0.65)] sm:max-h-[calc(100vh-48px)] sm:max-w-[calc(100vw-32px)]`}
+                className={`rtx-modify-dialog ${dialogWidthClass}`}
             >
-                {/* Title Bar - MT5 style with position info */}
-                <div className="flex h-[43px] shrink-0 items-center justify-between border-b border-[#3f424a] bg-[#2b2b2e] px-4">
-                    <span id={dialogTitleId} className="min-w-0 truncate text-[14px] font-semibold text-[#d9dde5]">
-                        {tr("Position: #")}{position.id} {position.side.toLowerCase()} {position.volume.toFixed(2)} {position.symbol} {position.openPrice.toFixed(digits)}
-                    </span>
+                {/* Title Bar */}
+                <div className="rtx-modify-header">
+                    <div className="rtx-modify-title-group">
+                        <span id={dialogTitleId} className="rtx-modify-title text-[14px] font-normal">
+                            {tr("Position: #")}{position.id}
+                        </span>
+                        <span className={`rtx-modify-badge-side ${position.side === 'SELL' ? 'rtx-modify-badge-side--sell' : 'rtx-modify-badge-side--buy'}`}>
+                            {position.side}
+                        </span>
+                        <span className="rtx-modify-meta-detail">
+                            {position.volume.toFixed(2)} {position.symbol} @ {position.openPrice.toFixed(digits)}
+                        </span>
+                    </div>
                     <button
+                        type="button"
                         onClick={() => onClose()}
-                        className="ml-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-lg leading-none text-zinc-400 transition-colors hover:bg-[#3b3d42] hover:text-white"
+                        className="rtx-modify-close-btn"
                         aria-label={tr("Close modify position dialog")}
                     >
-                        &times;
+                        <X size={16} strokeWidth={2} />
                     </button>
                 </div>
 
                 {/* Content */}
-                <div className="flex min-h-0 flex-1 overflow-hidden max-[640px]:flex-col">
+                <div className="rtx-modify-body">
                     {/* Left: Mini Chart */}
-                    <div className={`flex ${chartPanelWidthClass} shrink-0 flex-col border-r border-[#353842] bg-[#0a0f18] max-[640px]:h-[220px] max-[640px]:w-full max-[640px]:border-r-0 max-[640px]:border-b`}>
-                        <div className="flex h-[30px] min-w-0 items-center border-b border-[#263142] bg-[#0f1724] px-3 font-mono text-[14px] font-normal text-[#b8c4d6]">
-                            <span className="min-w-0 truncate font-semibold text-[#e6eefb]">{position.symbol}</span>
-                            <span className="ml-2 shrink-0 text-[#4ea4ff]">{bid.toFixed(digits)}</span>
-                            <span className="mx-1 text-[#697891]">/</span>
-                            <span className="shrink-0 text-[#ff5d66]">{ask.toFixed(digits)}</span>
+                    <div className={`rtx-modify-chart-panel ${chartPanelWidthClass}`}>
+                        <div className="rtx-modify-chart-header">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="rtx-modify-chart-symbol">{position.symbol}</span>
+                                <span className="rtx-modify-chart-badge">TICK</span>
+                                <span className="rtx-modify-chart-spread-pill">
+                                    {tr("Spread ")}{Math.max(0, Math.round((ask - bid) * Math.pow(10, digits)))} pts
+                                </span>
+                            </div>
+                            <div className="rtx-modify-chart-quote-pills">
+                                <span className="rtx-modify-chart-quote--bid">{bid.toFixed(digits)}</span>
+                                <span className="text-[#555a64]">/</span>
+                                <span className="rtx-modify-chart-quote--ask">{ask.toFixed(digits)}</span>
+                            </div>
                         </div>
                         {renderMiniChartToolbar()}
-                        <div className="min-h-0 flex-1 bg-[#0a0f18] p-1.5">
+                        <div className="min-h-0 flex-1 bg-[#101216] p-0 flex flex-col items-stretch overflow-hidden">
                             {showMiniMarketDepth ? (
                                 <div className={showMiniChart ? 'grid h-full min-h-0 grid-cols-[minmax(0,1fr)_154px] gap-1.5' : 'h-full'}>
                                     {showMiniChart && (
-                                        <div className="min-h-0 overflow-hidden">
+                                        <div ref={chartContainerRef} className="h-full min-h-0 w-full overflow-hidden">
                                             {renderMiniChart()}
                                         </div>
                                     )}
                                     {renderMiniMarketDepth()}
                                 </div>
                             ) : (
-                                showMiniChart ? renderMiniChart() : null
+                                showMiniChart ? (
+                                    <div ref={chartContainerRef} className="h-full min-h-0 w-full overflow-hidden">
+                                        {renderMiniChart()}
+                                    </div>
+                                ) : null
                             )}
                         </div>
                     </div>
 
                     {/* Right: Form */}
-                    <div className="min-w-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain bg-[#101116] p-4 max-[420px]:p-3">
+                    <div className="rtx-modify-form-panel">
                         {/* Symbol */}
-                        <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <label htmlFor={symbolFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">{tr("Symbol:")}</label>
+                        <div className="rtx-modify-field-row">
+                            <label htmlFor={symbolFieldId} className="rtx-modify-label text-[14px] font-normal">{tr("Symbol:")}</label>
                             <select
                                 id={symbolFieldId}
                                 value={position.symbol}
                                 onChange={() => undefined}
-                                className="h-[31px] min-w-0 flex-1 rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-[14px] font-normal text-[#e4e7ee] shadow-inner shadow-black/20 outline-none transition-colors focus:border-[#666b78]"
+                                className="rtx-modify-input"
                             >
                                 <option value={position.symbol}>{getSymbolFullName(position.symbol)}</option>
                             </select>
                         </div>
 
                         {/* Type */}
-                        <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <span id={typeLabelId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">{tr("Type:")}</span>
-                            <div id={typeValueId} aria-labelledby={`${typeLabelId} ${typeValueId}`} className="flex h-[31px] min-w-0 flex-1 items-center truncate rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-[14px] font-normal text-[#e4e7ee] shadow-inner shadow-black/20">
+                        <div className="rtx-modify-field-row">
+                            <span id={typeLabelId} className="rtx-modify-label text-[14px] font-normal">{tr("Type:")}</span>
+                            <div id={typeValueId} aria-labelledby={`${typeLabelId} ${typeValueId}`} className="rtx-modify-input rtx-modify-input--static">
                                 {kind === 'pending-order' ? tr("Modify Pending Order") : tr("Modify Position")}
                             </div>
                         </div>
 
                         {/* Volume */}
-                        <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <label htmlFor={volumeFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">{tr("Volume:")}</label>
+                        <div className="rtx-modify-field-row">
+                            <label htmlFor={volumeFieldId} className="rtx-modify-label text-[14px] font-normal">{tr("Volume:")}</label>
                             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                                <div className="flex h-[31px] w-[96px] items-stretch overflow-hidden rounded-sm border border-[#434650] bg-[#1f2026] shadow-inner shadow-black/20">
+                                <div className="rtx-modify-volume-compound">
                                     <input
                                         id={volumeFieldId}
                                         type="text"
@@ -1060,150 +1153,182 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                             }
                                         }}
                                         onBlur={() => setVolumeStr(normalizeVolume(volumeStr))}
-                                        className="min-w-0 flex-1 bg-transparent px-2 text-right font-mono text-[14px] font-normal text-[#f3f4f6] focus:outline-none"
+                                        className="rtx-modify-volume-input"
                                     />
-                                    <div className="flex w-[18px] flex-col border-l border-[#434650] bg-[#272931]">
+                                    <div className="rtx-modify-volume-stepper">
                                         <button
                                             type="button"
                                             onClick={() => adjustVolume(0.01)}
-                                            className="h-1/2 text-[8px] leading-none text-zinc-400 hover:bg-[#3c404b] hover:text-white"
+                                            className="rtx-modify-stepper-btn"
                                             aria-label={tr("Increase volume")}
                                         >
-                                            &#9650;
+                                            <ChevronUp size={11} strokeWidth={2.5} />
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => adjustVolume(-0.01)}
-                                            className="h-1/2 text-[8px] leading-none text-zinc-400 hover:bg-[#3c404b] hover:text-white"
+                                            className="rtx-modify-stepper-btn"
                                             aria-label={tr("Decrease volume")}
                                         >
-                                            &#9660;
+                                            <ChevronDown size={11} strokeWidth={2.5} />
                                         </button>
                                     </div>
                                 </div>
-                                <span className="min-w-0 break-words text-[12px] font-normal text-[#aeb5c3]">{volumeDescription}</span>
+                                <span className="rtx-modify-volume-desc text-[12px] font-normal">{volumeDescription}</span>
                             </div>
                         </div>
 
                         {/* Stop Loss with Points */}
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <label htmlFor={slFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#ff626a] max-[420px]:w-full max-[420px]:text-left">{tr("Stop Loss:")}</label>
-                            <input
-                                id={slFieldId}
-                                type="number"
-                                step={Math.pow(10, -digits).toString()}
-                                value={sl}
-                                onChange={(e) => setSl(e.target.value)}
-                                className="h-[31px] w-[96px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
-                            />
-                            <input
-                                id={slPointsFieldId}
-                                aria-label={tr("Stop Loss points")}
-                                type="number"
-                                value={slPoints}
-                                onChange={(e) => handleSlPointsChange(parseInt(e.target.value) || 0)}
-                                className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
-                            />
-                            <span className="text-[12px] font-normal text-[#7f8796]">{tr("points")}</span>
+                        <div className="rtx-modify-field-row">
+                            <label htmlFor={slFieldId} className="rtx-modify-label rtx-modify-label--sl text-[14px] font-normal">
+                                <span className="rtx-modify-label-dot--sl" aria-hidden="true" />
+                                {tr("Stop Loss:")}
+                            </label>
+                            <div className="rtx-modify-points-group">
+                                <input
+                                    id={slFieldId}
+                                    type="number"
+                                    step={Math.pow(10, -digits).toString()}
+                                    value={sl}
+                                    onChange={(e) => setSl(e.target.value)}
+                                    className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price"
+                                />
+                                <input
+                                    id={slPointsFieldId}
+                                    aria-label={tr("Stop Loss points")}
+                                    type="number"
+                                    value={slPoints}
+                                    onChange={(e) => handleSlPointsChange(parseInt(e.target.value) || 0)}
+                                    className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--points"
+                                />
+                                <span className="rtx-modify-points-label text-[12px] font-normal">{tr("points")}</span>
+                            </div>
                         </div>
 
                         {/* Take Profit with Points */}
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <label htmlFor={tpFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#1fd79b] max-[420px]:w-full max-[420px]:text-left">{tr("Take Profit:")}</label>
-                            <input
-                                id={tpFieldId}
-                                type="number"
-                                step={Math.pow(10, -digits).toString()}
-                                value={tp}
-                                onChange={(e) => setTp(e.target.value)}
-                                className="h-[31px] w-[96px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
-                            />
-                            <input
-                                id={tpPointsFieldId}
-                                aria-label={tr("Take Profit points")}
-                                type="number"
-                                value={tpPoints}
-                                onChange={(e) => handleTpPointsChange(parseInt(e.target.value) || 0)}
-                                className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
-                            />
-                            <span className="text-[12px] font-normal text-[#7f8796]">{tr("points")}</span>
+                        <div className="rtx-modify-field-row">
+                            <label htmlFor={tpFieldId} className="rtx-modify-label rtx-modify-label--tp text-[14px] font-normal">
+                                <span className="rtx-modify-label-dot--tp" aria-hidden="true" />
+                                {tr("Take Profit:")}
+                            </label>
+                            <div className="rtx-modify-points-group">
+                                <input
+                                    id={tpFieldId}
+                                    type="number"
+                                    step={Math.pow(10, -digits).toString()}
+                                    value={tp}
+                                    onChange={(e) => setTp(e.target.value)}
+                                    className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price"
+                                />
+                                <input
+                                    id={tpPointsFieldId}
+                                    aria-label={tr("Take Profit points")}
+                                    type="number"
+                                    value={tpPoints}
+                                    onChange={(e) => handleTpPointsChange(parseInt(e.target.value) || 0)}
+                                    className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--points"
+                                />
+                                <span className="rtx-modify-points-label text-[12px] font-normal">{tr("points")}</span>
+                            </div>
                         </div>
 
                         {/* Comment */}
-                        <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <label htmlFor={commentFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">{tr("Comment:")}</label>
+                        <div className="rtx-modify-field-row">
+                            <label htmlFor={commentFieldId} className="rtx-modify-label text-[14px] font-normal">{tr("Comment:")}</label>
                             <input
                                 id={commentFieldId}
                                 type="text"
                                 maxLength={64}
                                 value={comment}
+                                placeholder="Optional comment"
                                 onChange={(e) => setComment(e.target.value)}
-                                className="h-[31px] min-w-0 flex-1 rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-[14px] font-normal text-[#e4e7ee] shadow-inner shadow-black/20 outline-none transition-colors focus:border-[#666b78]"
+                                className="rtx-modify-input"
                             />
                         </div>
 
-                        {/* Live Price Display */}
-                        <div className="mt-3 border-t border-[#3a3d45] py-4 text-center">
-                            <div className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
-                                {formatBigPrice(bid, 'text-zinc-100')}
-                                <span className="text-lg text-[#707784]">/</span>
-                                {formatBigPrice(ask, 'text-zinc-100')}
+                        {/* Live Quote Strip */}
+                        <div className="rtx-modify-quote-strip">
+                            <div className="rtx-modify-quote-side">
+                                <span className="rtx-modify-quote-tag rtx-modify-quote-tag--bid">SELL / BID</span>
+                                <div className="rtx-modify-quote-price rtx-modify-quote-price--bid">
+                                    {formatBigPrice(bid)}
+                                </div>
+                            </div>
+                            <div className="rtx-modify-quote-spread">
+                                {tr("Spread ")}{Math.max(0, Math.round((ask - bid) * Math.pow(10, digits)))} pts
+                            </div>
+                            <div className="rtx-modify-quote-side rtx-modify-quote-side--ask">
+                                <span className="rtx-modify-quote-tag rtx-modify-quote-tag--ask">BUY / ASK</span>
+                                <div className="rtx-modify-quote-price rtx-modify-quote-price--ask">
+                                    {formatBigPrice(ask)}
+                                </div>
                             </div>
                         </div>
 
-                        {/* Modify Button */}
-                        <button
-                            onClick={handleSubmit}
-                            disabled={isSubmitting}
-                            className="min-h-[36px] w-full break-words rounded-sm border border-[#51535d] bg-[#4a4b53] px-2 py-2 text-[14px] font-bold leading-tight text-white transition-colors hover:bg-[#565861] active:bg-[#3f4047] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            {isSubmitting ? tr("Processing...") : tr("Modify #{{value0}} {{value1}} {{value2}} {{value3}} {{value4}}", { value0: position.id, value1: position.side.toLowerCase(), value2: position.volume.toFixed(2), value3: position.symbol, value4: position.openPrice.toFixed(digits) })}
-                        </button>
+                        {/* Action Buttons */}
+                        <div className="rtx-modify-actions-stack">
+                            {/* Modify Button */}
+                            <button
+                                type="button"
+                                onClick={handleSubmit}
+                                disabled={isSubmitting}
+                                className="rtx-modify-btn--submit"
+                            >
+                                {isSubmitting ? tr("Processing...") : tr("Modify #{{value0}} {{value1}} {{value2}} {{value3}} {{value4}}", { value0: position.id, value1: position.side.toLowerCase(), value2: position.volume.toFixed(2), value3: position.symbol, value4: position.openPrice.toFixed(digits) })}
+                            </button>
 
-                        {kind === 'position' && (
-                            <div className="space-y-2">
-                                <div className="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1 max-[420px]:gap-2">
+                            {kind === 'position' && (
+                                <>
+                                    <div className="rtx-modify-market-grid">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleMarketOrder('SELL')}
+                                            disabled={isSubmitting || bid <= 0}
+                                            className="rtx-modify-btn--market rtx-modify-btn--sell"
+                                        >
+                                            {tr("Sell by Market")}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleMarketOrder('BUY')}
+                                            disabled={isSubmitting || ask <= 0}
+                                            className="rtx-modify-btn--market rtx-modify-btn--buy"
+                                        >
+                                            {tr("Buy by Market")}
+                                        </button>
+                                    </div>
                                     <button
                                         type="button"
-                                        onClick={() => handleMarketOrder('SELL')}
-                                        disabled={isSubmitting || bid <= 0}
-                                        className="min-h-[34px] rounded-sm bg-[#f23f45] px-2 py-2 text-[14px] font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#ff5258] active:bg-[#d8393f] disabled:cursor-not-allowed disabled:opacity-50"
+                                        onClick={handleCloseByMarket}
+                                        disabled={isSubmitting}
+                                        className="rtx-modify-btn--close"
                                     >
-                                        {tr("Sell by Market")}</button>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleMarketOrder('BUY')}
-                                        disabled={isSubmitting || ask <= 0}
-                                        className="min-h-[34px] rounded-sm bg-[#3f73f1] px-2 py-2 text-[14px] font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#5486ff] active:bg-[#315fd1] disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        {tr("Buy by Market")}</button>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={handleCloseByMarket}
-                                    disabled={isSubmitting}
-                                    className="min-h-[31px] w-full break-words rounded-sm border border-[#d8c889] bg-[#fff8dc] px-2 py-2 text-[14px] font-semibold leading-tight text-zinc-900 transition-colors hover:bg-[#fff1b8] active:bg-[#f1df9b] disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    {tr("Close #")}{position.id} {position.side.toLowerCase()} {actionVolume > 0 ? actionVolume.toFixed(2) : '0.00'} {position.symbol} {position.openPrice.toFixed(digits)} {tr(" by Market")}</button>
-                            </div>
-                        )}
+                                        {tr("Close #")}{position.id} {position.side.toLowerCase()} {actionVolume > 0 ? actionVolume.toFixed(2) : '0.00'} {position.symbol} {position.openPrice.toFixed(digits)} {tr(" by Market")}
+                                    </button>
+                                </>
+                            )}
+                        </div>
 
                         {/* Error / Success */}
                         {error && (
-                            <div className="break-words rounded-sm border border-red-700/80 bg-red-950/40 px-3 py-2 text-center text-[12px] font-normal text-red-200">
+                            <div className="rtx-modify-alert rtx-modify-alert--error">
                                 {error}
                             </div>
                         )}
                         {successMessage && (
-                            <div className="break-words rounded-sm border border-emerald-700/80 bg-emerald-950/35 px-3 py-2 text-center text-[12px] font-normal text-emerald-200">
+                            <div className="rtx-modify-alert rtx-modify-alert--success">
                                 {successMessage}
                             </div>
                         )}
 
-                        {/* MT5 Quote Text */}
-                        <div className="px-2 pt-1 text-center text-[12px] font-normal leading-relaxed text-[#777f8d]">
-                            {tr("Stop Loss or Take Profit you set must differ from market price by at least 0 points.")}<br />
-                            {tr("Stops processing is performed on the broker side.")}</div>
+                        {/* Information Note */}
+                        <div className="rtx-modify-notice">
+                            <Info size={14} className="rtx-modify-notice-icon" aria-hidden="true" />
+                            <div className="rtx-modify-notice-text">
+                                <div className="text-[12px] font-normal">{tr("Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.", { value0: stopsLevel })}</div>
+                                <div className="mt-0.5 text-[#737882] text-[12px] font-normal">{tr("Stops processing is performed on the broker side.")}</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -44,6 +44,26 @@
       };
       window.__RTX_STARTUP_METRICS__ = metrics;
 
+      // Measure the first usable workspace independently of HTML/module load.
+      // Stop watching as soon as the startup boundary reveals its real UI.
+      try {
+        var terminalReadyObserver = new MutationObserver(function () {
+          if (!document.querySelector('[data-terminal-startup="ready"]')) return;
+          terminalReadyObserver.disconnect();
+          window.requestAnimationFrame(function () {
+            window.setTimeout(function () {
+              publish('terminal-ready', performance.now());
+            }, 0);
+          });
+        });
+        terminalReadyObserver.observe(root, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['data-terminal-startup']
+        });
+      } catch (_) { /* Startup measurement must never delay the terminal. */ }
+
       function loginFormForEvent(event) {
         var target = event.target;
         if (!(target instanceof Element)) return null;
@@ -199,10 +219,71 @@
         root.setAttribute('data-theme', 'dark');
       }
 
-      var runtime = window.__RTX_RUNTIME_CONFIG__ || window.RUNTIME_CONFIG || {};
-      var desktopLogin = Boolean((window.electron && window.electron.window) || window.electronAPI || location.protocol === 'file:' || navigator.userAgent.includes('Electron'));
-      root.setAttribute('data-rtx-initial-view', !desktopLogin || sessionCandidate ? 'terminal' : 'login');
-      if (desktopLogin && !sessionCandidate) {
+      // Web visitors enter the guest terminal even without a saved account.
+      // Keep this choice aligned with AppShell so its static status can paint
+      // while the terminal modules load, without requesting unused login art.
+      var runtimeConfig = Object.assign({}, window.RUNTIME_CONFIG || {}, window.__RTX_RUNTIME_CONFIG__ || {});
+      function firstConfiguredValue(values) {
+        for (var index = 0; index < values.length; index++) {
+          var value = String(values[index] || '').trim().toLowerCase();
+          if (value) return value;
+        }
+        return '';
+      }
+      var runtimeTarget = firstConfiguredValue([
+        runtimeConfig.backendTarget, runtimeConfig.backend_target,
+        runtimeConfig.BACKEND_TARGET, runtimeConfig.VITE_BACKEND_TARGET,
+        runtimeConfig.runtimeTarget, runtimeConfig.runtime_target,
+        runtimeConfig.target, runtimeConfig.platform, '%VITE_BACKEND_TARGET%'
+      ]);
+      var runtimeMode = firstConfiguredValue([
+        runtimeConfig.backendMode, runtimeConfig.backend_mode,
+        runtimeConfig.BACKEND_MODE, runtimeConfig.VITE_BACKEND_MODE
+      ]);
+      var desktopRuntime = Boolean(
+        (window.electron && window.electron.window)
+        || window.electronAPI
+        || window.location.protocol === 'file:'
+        || navigator.userAgent.indexOf('Electron') !== -1
+        || /^(desktop|electron|direct)$/.test(runtimeTarget)
+        || /^(desktop|electron|direct)$/.test(runtimeMode)
+      );
+      var initialTerminal = sessionCandidate || !desktopRuntime;
+      root.setAttribute('data-rtx-initial-view', initialTerminal ? 'terminal' : 'login');
+
+      // Open the broker connections (DNS + TLS/QUIC) while the terminal
+      // JavaScript is still downloading, so the first market-data request
+      // does not pay the handshake. Origins come only from the deployment's
+      // own runtime configuration.
+      try {
+        var preconnected = {};
+        [
+          runtimeConfig.API_HOST, runtimeConfig.api_host,
+          runtimeConfig.VITE_API_HOST, runtimeConfig.API_HOST_EXT,
+          runtimeConfig.api_host_ext, runtimeConfig.VITE_API_URL,
+          runtimeConfig.VITE_BACKEND_URL,
+          runtimeConfig.WS_HOST, runtimeConfig.ws_host, runtimeConfig.VITE_WS_URL
+        ].forEach(function (value) {
+          var raw = String(value || '').trim();
+          if (!raw) return;
+          if (!/^[a-z][a-z\d+.-]*:\/\//i.test(raw)) raw = 'https://' + raw;
+          raw = raw.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://');
+          var origin;
+          try {
+            var parsed = new URL(raw);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return;
+            origin = parsed.origin;
+          } catch (_) { return; }
+          if (origin === window.location.origin || preconnected[origin]) return;
+          preconnected[origin] = true;
+          var connectHint = document.createElement('link');
+          connectHint.rel = 'preconnect';
+          connectHint.href = origin;
+          connectHint.crossOrigin = '';
+          document.head.appendChild(connectHint);
+        });
+      } catch (_) { /* Connection warmup must never delay the terminal. */ }
+      if (!initialTerminal) {
         var wordmarkPreload = document.createElement('link');
         wordmarkPreload.rel = 'preload';
         wordmarkPreload.as = 'image';
@@ -264,20 +345,20 @@
     body { margin: 0; overflow: hidden; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; font-weight: 400; line-height: 20px; }
     * { box-sizing: border-box; }
 
-    .rtx-instant-terminal { display: flex; flex-direction: column; width: 100%; height: 100vh; background: #0d0d11; color: #cbd5e1; }
-    .rtx-instant-titlebar { display: flex; align-items: center; height: 34px; padding: 0 12px; border-bottom: 1px solid #28282e; font-size: 14px; font-weight: 600; }
-    .rtx-instant-toolbar { display: flex; align-items: center; gap: 20px; height: 46px; padding: 0 14px; border-bottom: 1px solid #28282e; color: #94a3b8; font-size: 14px; font-weight: 500; }
-    .rtx-instant-workspace { display: grid; flex: 1; grid-template-columns: 280px minmax(0, 1fr); min-height: 0; }
-    .rtx-instant-sidebar { display: grid; grid-template-rows: 45% 55%; border-right: 1px solid #28282e; background: #111117; }
-    .rtx-instant-sidebar div { padding: 10px; color: #64748b; font-size: 14px; font-weight: 600; }
-    .rtx-instant-sidebar div:first-child { border-bottom: 1px solid #28282e; }
-    .rtx-instant-main { display: grid; grid-template-rows: minmax(0, 1fr) 250px; min-width: 0; }
-    .rtx-instant-chart { border-bottom: 1px solid #28282e; background: radial-gradient(circle at 50% 45%, rgba(20, 35, 55, .25), transparent 52%), #07090d; }
-    .rtx-instant-toolbox { background: #101116; }
+    .rtx-terminal-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; width: 100%; height: 100%; min-height: 0; padding: 24px; background: #0d0d11; color: #cbd5e1; text-align: center; }
+    .rtx-terminal-loading__brand { font-size: 22px; font-weight: 600; letter-spacing: .08em; }
+    .rtx-terminal-loading__spinner { width: 22px; height: 22px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rtx-terminal-loading-spin .8s linear infinite; }
+    .rtx-terminal-loading__message { max-width: 420px; font-size: 14px; line-height: 20px; }
+    .rtx-terminal-loading__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+    .rtx-terminal-loading__actions button { min-height: 36px; padding: 8px 14px; border: 1px solid #454550; border-radius: 6px; background: #202026; color: inherit; font: inherit; cursor: pointer; }
+    .rtx-terminal-loading__actions button:hover { border-color: currentColor; }
+    .rtx-terminal-loading__actions button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 3px; }
+    @keyframes rtx-terminal-loading-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .rtx-terminal-loading__spinner { animation: none; } }
 
     [data-rtx-static-shell] { width: 100%; height: 100%; background: #050608; }
-    [data-rtx-static-shell] > .rtx-instant-terminal { display: none; }
-    html[data-rtx-initial-view="terminal"] [data-rtx-static-shell] > .rtx-instant-terminal { display: flex; }
+    [data-rtx-static-shell] > .rtx-terminal-loading { display: none; }
+    html[data-rtx-initial-view="terminal"] [data-rtx-static-shell] > .rtx-terminal-loading { display: flex; }
 
     /* Light Theme instantaneous pre-paint styles */
     html.rtx-skin-untitled-light,
@@ -295,63 +376,26 @@
       background: #f7f8fa;
       color: #111827;
     }
-    html.rtx-skin-untitled-light .rtx-instant-terminal,
-    html[data-theme="light"] .rtx-instant-terminal {
+    html.rtx-skin-untitled-light .rtx-terminal-loading,
+    html[data-theme="light"] .rtx-terminal-loading {
       background: #f7f8fa;
       color: #111827;
     }
-    html.rtx-skin-untitled-light .rtx-instant-titlebar,
-    html[data-theme="light"] .rtx-instant-titlebar {
+    html.rtx-skin-untitled-light .rtx-terminal-loading__actions button,
+    html[data-theme="light"] .rtx-terminal-loading__actions button {
       background: #ffffff;
-      border-bottom: 1px solid #e3e8f0;
-      color: #111827;
-    }
-    html.rtx-skin-untitled-light .rtx-instant-toolbar,
-    html[data-theme="light"] .rtx-instant-toolbar {
-      background: #fafafa;
-      border-bottom: 1px solid #e3e8f0;
-      color: #4b5563;
-    }
-    html.rtx-skin-untitled-light .rtx-instant-sidebar,
-    html[data-theme="light"] .rtx-instant-sidebar {
-      background: #fafafa;
-      border-right: 1px solid #e3e8f0;
-    }
-    html.rtx-skin-untitled-light .rtx-instant-sidebar div,
-    html[data-theme="light"] .rtx-instant-sidebar div {
-      color: #5f6b7a;
-    }
-    html.rtx-skin-untitled-light .rtx-instant-sidebar div:first-child,
-    html[data-theme="light"] .rtx-instant-sidebar div:first-child {
-      border-bottom: 1px solid #e3e8f0;
-    }
-    html.rtx-skin-untitled-light .rtx-instant-chart,
-    html[data-theme="light"] .rtx-instant-chart {
-      background: #ffffff;
-      border-bottom: 1px solid #e3e8f0;
-    }
-    html.rtx-skin-untitled-light .rtx-instant-toolbox,
-    html[data-theme="light"] .rtx-instant-toolbox {
-      background: #fafafa;
-    }
-
-    @media (max-width: 900px) {
-      .rtx-instant-workspace { grid-template-columns: 1fr; }
-      .rtx-instant-sidebar { display: none; }
+      border-color: #cbd5e1;
     }
   </style>
 </head>
 
 <body>
   <div id="root">
-    <div data-rtx-static-shell aria-busy="true" inert>
-      <div class="rtx-instant-terminal" aria-label="Terminal shell">
-        <div class="rtx-instant-titlebar">RTX 5 Web Terminal</div>
-        <div class="rtx-instant-toolbar"><span>File</span><span>View</span><span>Insert</span><span>Charts</span><span>Tools</span><span>Window</span><span>Help</span></div>
-        <div class="rtx-instant-workspace">
-          <div class="rtx-instant-sidebar"><div>MARKET WATCH</div><div>NAVIGATOR</div></div>
-          <div class="rtx-instant-main"><div class="rtx-instant-chart"></div><div class="rtx-instant-toolbox"></div></div>
-        </div>
+    <div data-rtx-static-shell>
+      <div class="rtx-terminal-loading" role="status" aria-live="polite" aria-busy="true">
+        <div class="rtx-terminal-loading__brand">RTX 5</div>
+        <div class="rtx-terminal-loading__spinner" aria-hidden="true"></div>
+        <div class="rtx-terminal-loading__message">Loading terminal…</div>
       </div>
     </div>
   </div>

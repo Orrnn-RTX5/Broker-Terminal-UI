@@ -5,6 +5,32 @@ import { computePriceAxisDragRange, PRICE_AXIS_DRAG_EFOLD_PX } from './priceAxis
 describe('computePriceAxisDragRange', () => {
   const start = { startFrom: 0.978, startTo: 0.998 }; // span 0.02, like the MT probe
 
+  it.each([
+    [459, 100, 1.34],
+    [159, 100, 1.17],
+    [559, -300, 0.50],
+  ])('matches TradingView drag at y=%s with travel %s', (startY, dragDeltaY, expectedFactor) => {
+    const result = computePriceAxisDragRange({ ...start, paneHeight: 714, startY, dragDeltaY })!;
+    expect((result.to - result.from) / 0.02).toBeCloseTo(expectedFactor, 2);
+    expect((result.from + result.to) / 2).toBeCloseTo(0.988, 12);
+  });
+
+  it('restores the starting range when a web drag reverses to its origin', () => {
+    const result = computePriceAxisDragRange({ ...start, paneHeight: 714, startY: 459, dragDeltaY: 0 })!;
+    expect(result.from).toBeCloseTo(start.startFrom, 12);
+    expect(result.to).toBeCloseTo(start.startTo, 12);
+    const subpixel = computePriceAxisDragRange({ ...start, paneHeight: 714, startY: 459, dragDeltaY: 0.5 })!;
+    expect(subpixel.to - subpixel.from).toBeGreaterThan(0.02);
+  });
+
+  it('stays finite past the bottom edge and respects broker minimum zoom', () => {
+    const beyond = computePriceAxisDragRange({ ...start, paneHeight: 714, startY: 459, dragDeltaY: 10000 })!;
+    const atEdge = computePriceAxisDragRange({ ...start, paneHeight: 714, startY: 459, dragDeltaY: 255 })!;
+    expect(beyond).toEqual(atEdge);
+    const tiny = computePriceAxisDragRange({ ...start, paneHeight: 714, startY: 459, dragDeltaY: -10000, minSpan: 0.005 })!;
+    expect(tiny.to - tiny.from).toBeCloseTo(0.005, 12);
+  });
+
   it('matches the measured MT web curve: ~x1.22 per 200px down, ~x1.49 per 400px', () => {
     const down200 = computePriceAxisDragRange({ ...start, dragDeltaY: 200 });
     const down400 = computePriceAxisDragRange({ ...start, dragDeltaY: 400 });

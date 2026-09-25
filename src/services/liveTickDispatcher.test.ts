@@ -3,16 +3,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const workerMocks = vi.hoisted(() => ({
-  aggregateMultipleTimeframes: vi.fn(),
+  aggregateSymbols: vi.fn(),
 }));
 const dailyChangeCacheMocks = vi.hoisted(() => ({
   flushMarketWatchDailyChangeCache: vi.fn(),
   rememberCurrentMarketWatchDailyChange: vi.fn(),
 }));
+const quoteCacheMocks = vi.hoisted(() => ({
+  flushMarketWatchQuoteCache: vi.fn(),
+  rememberCurrentMarketWatchQuote: vi.fn(),
+}));
 vi.mock('./aggregationWorkerManager', () => ({
+  cancelPendingAggregations: vi.fn(),
   getWorkerManager: () => workerMocks,
 }));
 vi.mock('./marketWatchDailyChangeCache', () => dailyChangeCacheMocks);
+vi.mock('./marketWatchQuoteCache', () => quoteCacheMocks);
 
 import {
   enqueueLiveTick,
@@ -41,9 +47,11 @@ const tick = (symbol: string, bid: number, timestamp = 1_788_176_700_000): LiveT
 describe('liveTickDispatcher market data freeze', () => {
   beforeEach(() => {
     resetLiveTickDispatcherForTests();
-    workerMocks.aggregateMultipleTimeframes.mockReset();
+    workerMocks.aggregateSymbols.mockReset();
     dailyChangeCacheMocks.flushMarketWatchDailyChangeCache.mockReset();
     dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange.mockReset();
+    quoteCacheMocks.flushMarketWatchQuoteCache.mockReset();
+    quoteCacheMocks.rememberCurrentMarketWatchQuote.mockReset();
     window.rtxTickCache = new Map();
     useMarketDataStore.setState({ updateTicksBatch: originalMarketBatch });
     useAppStore.setState({ setTicksBatch: originalAppBatch });
@@ -124,6 +132,53 @@ describe('liveTickDispatcher market data freeze', () => {
       timestamp,
       'quote',
     );
+  });
+
+  it('remembers the accepted quote with original source time without using local receipt time', () => {
+    const sourceTimestamp = 1_788_176_700_123;
+    enqueueLiveTick('eurusd.r', {
+      ...tick('ignored', 1.125, sourceTimestamp),
+      timestamp: sourceTimestamp + 60_000,
+    });
+    expect(quoteCacheMocks.rememberCurrentMarketWatchQuote).toHaveBeenCalledWith('EURUSD.R', {
+      bid: 1.125,
+      ask: 1.1252,
+      asOf: sourceTimestamp,
+    });
+    quoteCacheMocks.rememberCurrentMarketWatchQuote.mockClear();
+    enqueueLiveTick('GBPUSD', {
+      ...tick('GBPUSD', 1.33, sourceTimestamp),
+      sourceTimestamp: undefined,
+    });
+    expect(quoteCacheMocks.rememberCurrentMarketWatchQuote).not.toHaveBeenCalled();
+    expect(window.rtxTickCache.get('GBPUSD')?.bid).toBe(1.33);
+  });
+
+  it('does not persist rejected, duplicate, or frozen quote events', () => {
+    const accepted = tick('EURUSD', 1.17);
+    enqueueLiveTick('EURUSD', accepted);
+    quoteCacheMocks.rememberCurrentMarketWatchQuote.mockClear();
+    enqueueLiveTick('EURUSD', accepted);
+    enqueueLiveTick('EURUSD', tick('EURUSD', 1.16, accepted.timestamp - 1));
+    setLiveMarketDataFrozen('test', 'GBPUSD', true);
+    enqueueLiveTick('GBPUSD', tick('GBPUSD', 1.33));
+    expect(quoteCacheMocks.rememberCurrentMarketWatchQuote).not.toHaveBeenCalled();
+  });
+
+  it('keeps live delivery and session reset working when quote persistence fails', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    quoteCacheMocks.rememberCurrentMarketWatchQuote.mockImplementation(() => {
+      throw new Error('write failed');
+    });
+    enqueueLiveTick('EURUSD', tick('EURUSD', 1.17));
+    expect(window.rtxTickCache.get('EURUSD')?.bid).toBe(1.17);
+    quoteCacheMocks.flushMarketWatchQuoteCache.mockImplementation(() => {
+      expect(window.rtxTickCache.size).toBe(1);
+      throw new Error('flush failed');
+    });
+    expect(() => resetLiveMarketDataSession()).not.toThrow();
+    expect(quoteCacheMocks.flushMarketWatchQuoteCache).toHaveBeenCalledOnce();
+    expect(window.rtxTickCache.size).toBe(0);
   });
 
   it('does not remember Daily Change from rejected, duplicate, or non-finite ticks', () => {

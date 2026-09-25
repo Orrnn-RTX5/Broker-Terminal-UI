@@ -85,7 +85,7 @@ describe('DockContainer lazy tab mounting', () => {
     fireEvent.click(view.getByText('Chart B'));
 
     await waitFor(() => expect(view.getByLabelText('chart-b state')).toBeTruthy());
-    expect(view.getByLabelText<HTMLInputElement>('chart-a state').value).toBe('preserve-a');
+    expect((view.getByLabelText('chart-a state') as HTMLInputElement).value).toBe('preserve-a');
     expect(view.queryByLabelText('chart-c state')).toBeNull();
     expect(mounted.mock.calls).toEqual([['chart-a'], ['chart-b']]);
     expect(unmounted).not.toHaveBeenCalled();
@@ -94,8 +94,8 @@ describe('DockContainer lazy tab mounting', () => {
     fireEvent.click(view.getByText('Chart A'));
 
     await waitFor(() => {
-      expect(view.getByLabelText<HTMLInputElement>('chart-a state').value).toBe('preserve-a');
-      expect(view.getByLabelText<HTMLInputElement>('chart-b state').value).toBe('preserve-b');
+      expect((view.getByLabelText('chart-a state') as HTMLInputElement).value).toBe('preserve-a');
+      expect((view.getByLabelText('chart-b state') as HTMLInputElement).value).toBe('preserve-b');
     });
     expect(mounted.mock.calls).toEqual([['chart-a'], ['chart-b']]);
     expect(unmounted).not.toHaveBeenCalled();

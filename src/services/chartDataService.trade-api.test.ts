@@ -6,7 +6,6 @@ import {
   CANDLE_STREAM_OPEN_TIMEOUT_MS,
   CANDLE_STREAM_PONG_TIMEOUT_MS,
   CANDLE_STREAM_SUBSCRIPTION_ACK_TIMEOUT_MS,
-  CandleAuthBrokerMismatchError,
   ChartDataService,
 } from './chartDataService';
 import {

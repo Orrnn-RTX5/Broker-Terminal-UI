@@ -2,6 +2,7 @@ import type { Plugin, ProxyOptions } from 'vite'
 import { defineConfig, loadEnv } from 'vite'
 import { validateWebBrokerEnvironment } from './viteWebEnv'
 import { webRuntimeConfigPlugin } from './viteWebRuntimeConfig'
+import { terminalPreloadPlugin } from './viteTerminalPreload'
 import react from '@vitejs/plugin-react'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import * as http from 'node:http'
@@ -9,6 +10,7 @@ import * as https from 'node:https'
 import * as net from 'node:net'
 import { isIP, type Socket } from 'node:net'
 import * as tls from 'node:tls'
+import { resolve } from 'node:path'
 import {
   createPinnedConnectionOptions,
   normalizeProxyAccessOrigin,
@@ -536,8 +538,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: './',
+    resolve: {
+      alias: mode === 'desktop' || mode === 'electron'
+        ? [{ find: './startup/WelcomeTerminalEntry', replacement: resolve(process.cwd(), 'src/startup/DesktopWelcomeTerminal.ts') }]
+        : [],
+    },
     plugins: [
-      ...(mode === 'web' ? [webRuntimeConfigPlugin(env)] : []),
+      ...(mode === 'web' ? [webRuntimeConfigPlugin(env), terminalPreloadPlugin()] : []),
       retiredServiceWorkerDevPlugin(),
       dynamicBrokerProxyPlugin(['/__broker_api', '/__broker_discovery'], brokerProxyAccess),
       dynamicBrokerWsProxyPlugin('/__broker_feed_ws', brokerProxyAccess),

@@ -1,0 +1,26 @@
+services:
+  broker-terminal-ui:
+    image: ghcr.io/orrnn-rtx5/broker-terminal-ui:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_MODE: web
+    container_name: broker-terminal-ui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8103:80"
+    environment:
+      - BACKEND_TARGET=web
+      - API_HOST=https://service.orrnn.com
+      - API_HOST_EXT=https://service.orrnn.com
+      - WS_HOST=wss://service.orrnn.com
+      - DEFAULT_MT5_SERVER=Orrnn
+      - DISCOVERY_BASE_URL=https://superadmin-prod.orrnn.com
+      - BROKER_ID=orrnn
+      - FEED_BROKER_ID=orrnn
+      - USE_MOCK_DISCOVERY=false
+    labels:
+      - "rtx5.component=webterminal"
+      - "rtx5.broker_id=orrnn"
+      - "rtx5.domain=webterminal.orrnn.com"

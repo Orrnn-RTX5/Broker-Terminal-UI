@@ -102,7 +102,6 @@ const upsertImmediatePosition = (position: Position) => {
 export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     symbol,
     visible,
-    timeframe,
     tradeAllowed = false,
     marketStatus,
     minVolume,
@@ -370,25 +369,6 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const bidPrice = formatPrice(bid, digits);
     const askPrice = formatPrice(ask, digits);
 
-    // Symbol description for header
-    const descriptions: Record<string, string> = {
-        'BTCUSD': 'Bitcoin vs US Dollar',
-        'ETHUSD': 'Ethereum vs US Dollar',
-        'XAUUSD': 'Gold vs US Dollar',
-        'EURUSD': 'Euro vs US Dollar',
-        'GBPUSD': 'Pound vs US Dollar',
-        'USDJPY': 'Dollar vs Japanese Yen',
-        'AUDUSD': 'Australian Dollar vs USD',
-        'NZDUSD': 'New Zealand Dollar vs USD',
-        'USDCAD': 'US Dollar vs Canadian Dollar',
-        'USDCHF': 'US Dollar vs Swiss Franc',
-        'XAGUSD': 'Silver vs US Dollar',
-        'SOLUSD': 'Solana vs US Dollar',
-        'LTCUSD': 'Litecoin vs US Dollar',
-        'XRPUSD': 'Ripple vs US Dollar',
-    };
-    const desc = descriptions[symbol] || symbol;
-
     const btnWidth = isAdvancedMode ? 110 : 104;
     const btnHeight = 34;
     const centerWidth = isAdvancedMode ? 114 : 110;
@@ -490,7 +470,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     backdropFilter: 'none',
                     WebkitBackdropFilter: 'none',
                     border: '1px solid rgba(255,255,255,0.18)',
-                    borderRadius: '0px',
+                    borderRadius: '3px',
                     overflow: 'hidden',
                     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 20px rgba(0,0,0,0.42)',
                 }}

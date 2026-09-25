@@ -54,8 +54,8 @@ describe('interface language changes', () => {
         try {
             render(<><MenuBar /><DraftPanel /></>);
             fireEvent.change(screen.getByTestId('draft'), { target: { value: 'Preserved desktop draft' } });
-            fireEvent.click(screen.getByRole('menuitem', { name: 'View', exact: true }));
-            fireEvent.click(screen.getByRole('menuitem', { name: 'Languages', exact: true }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Languages' }));
             const portal = document.querySelector('[data-rtx-desktop-submenu]');
             expect(portal?.parentElement).toBe(document.body);
             const french = (await import('./config/supportedLanguages')).supportedLanguages.find(l => l.code === 'fr')!;
@@ -66,12 +66,12 @@ describe('interface language changes', () => {
             expect(document.documentElement.lang).toBe('fr');
             expect(localStorage.getItem('i18nextLng')).toBe('fr');
             expect(screen.getByTestId('draft')).toHaveValue('Preserved desktop draft');
-            expect(screen.getByRole('menuitem', { name: translateUi('View'), exact: true })).toBeInTheDocument();
-            expect(screen.queryByRole('menuitem', { name: 'View', exact: true })).not.toBeInTheDocument();
-            fireEvent.click(screen.getByRole('menuitem', { name: translateUi('View'), exact: true }));
-            fireEvent.click(screen.getByRole('menuitem', { name: i18n.t('menu.view.languages'), exact: true }));
+            expect(screen.getByRole('menuitem', { name: translateUi('View') })).toBeInTheDocument();
+            expect(screen.queryByRole('menuitem', { name: 'View' })).not.toBeInTheDocument();
+            fireEvent.click(screen.getByRole('menuitem', { name: translateUi('View') }));
+            fireEvent.click(screen.getByRole('menuitem', { name: i18n.t('menu.view.languages') }));
             fireEvent.click(screen.getByRole('menuitemradio', { name: 'English' }));
-            await waitFor(() => expect(screen.getByRole('menuitem', { name: 'View', exact: true })).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByRole('menuitem', { name: 'View' })).toBeInTheDocument());
         } finally { cleanup(); delete window.electron; }
     });
 
@@ -80,7 +80,7 @@ describe('interface language changes', () => {
         const draft = screen.getByTestId('draft');
         fireEvent.change(draft, { target: { value: 'Keep my draft 123' } });
         fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Language', exact: true }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Language' }));
         fireEvent.click(screen.getByRole('menuitemradio', { name: 'Français' }));
         await waitFor(() => expect(screen.getByRole('heading')).toHaveTextContent('Nouvel ordre'));
         expect(document.documentElement.lang).toBe('fr');
@@ -90,7 +90,7 @@ describe('interface language changes', () => {
         expect(draft).toHaveValue('Keep my draft 123');
         expect(screen.getByTestId('broker-value')).toHaveTextContent('XAUUSD · 200001 · 4,414.650');
         fireEvent.click(screen.getByRole('button', { name: 'Ouvrir le menu des applications' }));
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Langue', exact: true }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Langue' }));
         expect(screen.getByRole('menuitemradio', { name: 'Français' })).toHaveAttribute('aria-checked', 'true');
         // Autonyms remain readable regardless of the active interface language.
         expect(screen.getByRole('menuitemradio', { name: 'English' })).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe('interface language changes', () => {
 
     it('keeps the current language when loading fails or the requested language is unsupported', async () => {
         const load = vi.spyOn(i18n, 'loadLanguages').mockImplementation((_language, callback) => {
-            callback?.(new Error('Chunk unavailable'));
+            callback?.(new Error('Chunk unavailable'), i18n.t);
             return Promise.resolve();
         });
         await expect(changeInterfaceLanguage('de')).rejects.toThrow('Chunk unavailable');
@@ -127,7 +127,7 @@ describe('interface language changes', () => {
         await changeInterfaceLanguage('de');
         const callbacks: Array<() => void> = [];
         vi.spyOn(i18n, 'loadLanguages').mockImplementation((_language, callback) => {
-            callbacks.push(() => callback?.());
+            callbacks.push(() => callback?.(null, i18n.t));
             return Promise.resolve();
         });
         const first = changeInterfaceLanguage('fr');

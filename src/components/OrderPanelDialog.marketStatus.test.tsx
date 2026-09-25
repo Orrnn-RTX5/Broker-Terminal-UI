@@ -71,8 +71,8 @@ describe('OrderPanelDialog market status', () => {
   it('enables market execution buttons when the market is open', () => {
     renderDialog();
 
-    expect(screen.getByRole('button', { name: /sell by market/i }).disabled).toBe(false);
-    expect(screen.getByRole('button', { name: /buy by market/i }).disabled).toBe(false);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /sell by market/i }).disabled).toBe(false);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /buy by market/i }).disabled).toBe(false);
   });
 
   it('exposes the themed order surface and live chart accessibly', () => {
@@ -96,8 +96,8 @@ describe('OrderPanelDialog market status', () => {
     setMarketStatus(status);
     renderDialog();
 
-    expect(screen.getByRole('button', { name: /sell by market/i }).disabled).toBe(true);
-    expect(screen.getByRole('button', { name: /buy by market/i }).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /sell by market/i }).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /buy by market/i }).disabled).toBe(true);
     expect(screen.getByText(message)).not.toBeNull();
   });
 });

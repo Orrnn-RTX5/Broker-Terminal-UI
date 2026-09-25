@@ -4,7 +4,6 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  * Individual alert display with severity indicator and actions
  */
 
-import { Icon } from './ui/Icon';
 import { useState } from 'react';
 import { Info, AlertCircle, AlertTriangle } from 'lucide-react';
 export type AlertSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';

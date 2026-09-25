@@ -464,7 +464,7 @@ class CandleSocketManager {
     };
 
     // Fan out to all consumers that have this symbol (any timeframe)
-    this.consumers.forEach((entry, key) => {
+    this.consumers.forEach((entry) => {
       if (entry.symbol === tick.symbol) {
         entry.tickCallbacks.forEach((cb) => {
           try { cb(tick); } catch (e) { console.error('[CandleSocket] tick cb error:', e); }

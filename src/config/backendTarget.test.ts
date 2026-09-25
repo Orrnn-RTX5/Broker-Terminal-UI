@@ -15,7 +15,7 @@ import {
   resolveBrokerWsUrl,
 } from './backendTarget.js';
 
-type RuntimeWindow = Window & {
+type RuntimeWindow = Omit<Window, 'electron' | 'electronAPI'> & {
   electron?: { window?: unknown };
   electronAPI?: unknown;
   RUNTIME_CONFIG?: Record<string, unknown>;
@@ -70,8 +70,8 @@ describe('backend target resolver', () => {
 
     expect(broker.server_url).toBe(WEB_BACKEND_FALLBACK);
     expect(broker.market_api_url).toBe(WEB_BACKEND_FALLBACK);
-    expect(broker.ws_url).toBe('wss://backend.orrnn.com/ws/v2');
-    expect(broker.feed_url).toBe('wss://backend.orrnn.com/ws/feed');
+    expect(broker.ws_url).toBe('wss://service.orrnn.com/ws/v2');
+    expect(broker.feed_url).toBe('wss://service.orrnn.com/ws/feed');
   });
 
   it('uses safe runtime broker API and derives web websocket paths from runtime WS origin', () => {
@@ -216,7 +216,7 @@ describe('backend target resolver', () => {
 
     expect(getBackendTarget()).toBe(WEB_BACKEND_FALLBACK);
     expect(getRuntimeDiscoveryBaseUrl()).toBe(SHARED_DISCOVERY_FALLBACK);
-    expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://backend.orrnn.com/ws/feed');
+    expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://service.orrnn.com/ws/feed');
 
     const source = readFileSync(backendTargetSourcePath, 'utf8');
     expect(source).not.toMatch(/import\.meta\.env(?:\?\.)?\s*\[/);
@@ -253,7 +253,7 @@ describe('backend target resolver', () => {
     };
 
     expect(getBackendTarget()).toBe(WEB_BACKEND_FALLBACK);
-    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://backend.orrnn.com/ws/v2');
+    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://service.orrnn.com/ws/v2');
   });
 
   it('honors uppercase runtime target and mode keys', () => {

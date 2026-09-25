@@ -12,6 +12,14 @@ const appSource = readFileSync(
   'utf8',
 ).replace(/\r\n/g, '\n');
 
+const chartSection = (startText: string, endText: string) => {
+  const start = chartSource.indexOf(startText);
+  const end = chartSource.indexOf(endText, start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return chartSource.slice(start, end);
+};
+
 describe('cTrader-style position controls contract', () => {
   it('replaces live-trade text labels with control bars in the active overlay', () => {
     expect(chartSource).toContain("labelVariant: showTradeControls ? 'none' : 'lineText'");
@@ -39,36 +47,44 @@ describe('cTrader-style position controls contract', () => {
     expect(hitAreaAppend).toBeLessThan(noneGuard);
   });
 
-  it('docks SL/TP drag handles beside the entry bar until a level exists', () => {
-    expect(chartSource).toContain('createDockedLevelChip({');
-    expect(chartSource).toContain('if (!(levels.sl > 0)) {');
-    expect(chartSource).toContain('if (!(levels.tp > 0)) {');
-    expect(chartSource).toContain("const slDockOffset = trade.side === 'SELL' ? -22 : 22;");
-    // Docked chips ride the entry price with a pixel offset.
-    expect(chartSource).toContain('pixelOffsetY: slDockOffset');
-    expect(chartSource).toContain('pixelOffsetY: -slDockOffset');
-    expect(chartSource).toContain('${snappedY + (node.pixelOffsetY ?? 0)}px');
-    // Bars anchor exactly on their price line: bar, dashed line and the
-    // right-scale price box always share one horizontal line (no stagger).
-    expect(chartSource).toContain("appendOverlayNode(controlBar.root, { kind: 'price-badge', price: trade.entryPrice }, 'active');");
+  it('uses the same inline entry controls and SL/TP shortcuts on web and desktop', () => {
+    const entryControls = chartSection('const createEntryControlsForTrade =', 'const createLevelControlsForTrade =');
+    expect(entryControls).not.toContain('isDesktopBackendTarget');
+    expect(entryControls).toContain('plainLabel: true');
+    expect(entryControls).toContain('createDockedLevelChip({');
+    expect(entryControls).toContain('if (!(levels.sl > 0)) {');
+    expect(entryControls).toContain('if (!(levels.tp > 0)) {');
+    expect(entryControls).toContain("appendDockChip(slChip, 'SL');");
+    expect(entryControls).toContain("appendDockChip(tpChip, 'TP');");
+    expect(entryControls).toContain("label: 'SL'");
+    expect(entryControls).toContain("label: 'TP'");
+    expect(entryControls).not.toContain('dockSuffix');
+    expect(entryControls).not.toContain('slDockOffset');
+    // Controls stay at their actual price and above the line's drag target.
+    expect(entryControls).toContain("appendActiveInteractionNode(controlBar.root, { kind: 'price-badge', price: trade.entryPrice });");
     expect(chartSource).toContain("appendOverlayNode(levelBar, { kind: 'price-badge', price: levelPrice }, 'active');");
     // Relayout must restore each node's own display mode — forcing 'block'
     // onto the flex control bars drops their buttons onto the text baseline.
     expect(chartSource).toContain("el.style.display = el.dataset.display || 'block';");
   });
 
-  it('keeps native trade prices on their exact right-axis coordinates', () => {
-    expect(chartSource).toContain('const addTradeAxisPriceLine = (');
-    expect(chartSource).toContain('axisLabelVisible: true');
-    expect(chartSource).toContain('lineVisible: false');
+  it('keeps outlined trade prices on exact axis coordinates on web and desktop', () => {
+    const axisBadge = chartSection('const addTradeAxisPriceLine = (', 'const submitTradeLevelChange = (');
+    expect(axisBadge).not.toContain('isDesktopBackendTarget');
+    expect(axisBadge).not.toContain('createPriceLine');
+    expect(axisBadge).toContain("badge.className = 'rtx-trade-axis-price-badge';");
+    expect(axisBadge).toContain("appendActiveInteractionNode(badge, { kind: 'axis-price-badge', price });");
+    expect(axisBadge).toContain('badge.textContent = seriesRef.current.priceFormatter().format(price);');
+    expect(axisBadge).toContain('isChartSurfaceLight()');
+    expect(chartSource).toContain("if (node.kind === 'axis-price-badge')");
+    expect(chartSource).toContain('el.style.width = `${priceScaleWidth}px`;');
+    expect(chartSource).toContain('snappedY + 10 > plotHeight');
+    expect(chartSource).toContain('pointer-events:none;z-index:8;');
     expect(chartSource).toContain('addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side));');
-    expect(chartSource).toContain('tradeAxisPriceLinesRef.current.set(key, priceLine);');
     // Disable native collision shifting in both chart creation and hot apply.
     // Close prices then overlap at their real coordinate instead of forming a
     // misleading vertical stack when the visible price range is very wide.
     expect(chartSource.match(/alignLabels: false/g)).toHaveLength(2);
-    // Native labels are torn down whenever the active overlay layer clears.
-    expect(chartSource).toContain('series?.removePriceLine(priceLine);');
   });
 
   it('keeps control-bar buttons out of the capture-phase drag handler', () => {
@@ -93,14 +109,30 @@ describe('cTrader-style position controls contract', () => {
     expect(chartSource).toContain("onRemove: () => submitTradeLevelChange(");
   });
 
-  it('shows live Pips/USD in the drag preview and hides the stale level bar', () => {
-    // While dragging, the floating badge recomputes pips and projected money.
-    expect(chartSource).toContain('const previewMoney = estimateTradeLevelMoney({');
-    expect(chartSource).toContain('const previewPips = computeSignedPips(tradeObj.side, tradeObj.entryPrice, price, digits);');
-    expect(chartSource).toContain("previewBadge.textContent = `${tr(role)} ${price.toFixed(digits)}  ${tr('pips')}: ${formatPipsLabel(previewPips)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;");
+  it('shows projected money without pips during SL/TP dragging on both platforms', () => {
+    const preview = chartSection('const previewState = useAppStore.getState();', 'dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${drawY}px))`;');
+    expect(preview).not.toContain('isDesktopBackendTarget');
+    expect(preview).toContain('const previewMoney = estimateTradeLevelMoney({');
+    expect(preview).not.toContain('previewPips');
+    expect(preview).toContain("previewBadge.textContent = `${tr(role)} ${price.toFixed(digits)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;");
+    const dragOverlays = chartSection("dragLineOverlay = document.createElement('div');", 'const handlePointerMove = (e: PointerEvent) => {');
+    expect(dragOverlays).not.toContain('isDesktopBackendTarget');
+    expect(dragOverlays).toContain("dragZoneOverlay.className = 'rtx-trade-drag-zone';");
+    expect(dragOverlays).toContain('overlayRef.current?.appendChild(dragZoneOverlay);');
     // The stale bar hides during the drag and is restored on release/cancel.
     expect(chartSource).toContain('hideDraggedLevelControls(closestTrade.key, grabbedType);');
     expect(chartSource.match(/restoreDraggedLevelControls\(\);/g)).toHaveLength(2);
+  });
+
+  it('supplies the same SL/TP hover details and interaction targets on both platforms', () => {
+    const levelControls = chartSection('const createLevelControlsForTrade = (', 'const pruneCloseSuppressedTradeKeys = (');
+    expect(levelControls).not.toContain('isDesktopBackendTarget');
+    expect(levelControls).toContain('hoverDetails: {');
+    expect(levelControls).toContain('entryPrice: trade.entryPrice');
+    expect(levelControls).toContain('tickSize: getPricePointFromDigits(digits)');
+    expect(levelControls).toContain("levelBar.setAttribute('aria-label', title);");
+    expect(levelControls).toContain('bindTradeLevelHoverTarget(levelBar, node)');
+    expect(levelControls).toContain('onHoverChange: active => {');
   });
 
   it('colors entry lines by side: dotted blue for BUY, dotted red for SELL', () => {
@@ -153,7 +185,7 @@ describe('cTrader-style position controls contract', () => {
     expect(chartSource).toContain('crossCloseGuessedTradeKeysRef.current.delete(key);');
   });
 
-  it('drives the right price-scale drag with the MT5-style gentle curve', () => {
+  it('uses the same pane-relative price-axis scaling on web and desktop', () => {
     // Native hyperbolic axis drag is off; the custom exponential drives it.
     expect(chartSource).toContain('axisPressedMouseMove: { time: true, price: false }');
     expect(chartSource).toContain("import { computePriceAxisDragRange } from '../utils/priceAxisDragZoom';");
@@ -161,6 +193,11 @@ describe('cTrader-style position controls contract', () => {
     // Range is captured at press time and applied against absolute drag travel.
     expect(chartSource).toContain('rightPriceScaleDragStartRange = { from: startFrom, to: startTo };');
     expect(chartSource).toContain('const dragDeltaY = event.clientY - rightPriceScaleDragStartY;');
+    const dragGeometry = chartSection('rightPriceScaleDragGeometry = {', 'const handleRightPriceScalePointerMove =');
+    expect(dragGeometry).not.toContain('isDesktopBackendTarget');
+    expect(dragGeometry).toContain('paneHeight: Math.max(1, rect.height - chart.timeScale().height())');
+    expect(dragGeometry).toContain('startY: event.clientY - rect.top');
+    expect(chartSource).toContain('...rightPriceScaleDragGeometry,');
     expect(chartSource).toContain("chart.priceScale('right').setVisibleRange(nextRange);");
     // Double-click reset stays native.
     expect(chartSource).toContain('axisDoubleClickReset: { time: true, price: true }');

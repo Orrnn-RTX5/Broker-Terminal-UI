@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { runAfterTerminalReady } from '../startup/runAfterTerminalReady';
 import {
   FALLBACK_DESKTOP_RELEASE,
   loadLatestDesktopRelease,
@@ -33,21 +34,24 @@ export const useDesktopRelease = (options: { enabled?: boolean } = {}): UseDeskt
     setStatus('loading');
     setError(null);
 
-    loadLatestDesktopRelease()
-      .then((latestRelease) => {
-        if (cancelled) return;
-        setRelease(latestRelease);
-        setStatus('ready');
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setRelease(FALLBACK_DESKTOP_RELEASE);
-        setError(err instanceof Error ? err : new Error('Desktop release lookup failed'));
-        setStatus('error');
-      });
+    const cancelScheduledLookup = runAfterTerminalReady(() => {
+      void loadLatestDesktopRelease()
+        .then((latestRelease) => {
+          if (cancelled) return;
+          setRelease(latestRelease);
+          setStatus('ready');
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setRelease(FALLBACK_DESKTOP_RELEASE);
+          setError(err instanceof Error ? err : new Error('Desktop release lookup failed'));
+          setStatus('error');
+        });
+    });
 
     return () => {
       cancelled = true;
+      cancelScheduledLookup();
     };
   }, [enabled]);
 

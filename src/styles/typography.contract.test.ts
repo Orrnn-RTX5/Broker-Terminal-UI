@@ -8,7 +8,7 @@ const authenticatedStylesSource = readSource('src/authenticatedStyles.ts');
 const appSource = readSource('src/App.tsx');
 const themeCss = readSource('src/styles/theme.css');
 const indexCss = readSource('src/index.css');
-const loginCss = readSource('src/styles/login.css');
+const loginCss = readSource('src/styles/login-dialog.css');
 const advancedCss = readSource('src/styles/advanced-untitled-light.css');
 const lightCss = readSource('src/styles/enterprise-light.css');
 const orderDialogCss = readSource('src/styles/order-panel-dialog.css');
@@ -175,7 +175,7 @@ describe('enterprise typography contract', () => {
     expect(appSource).toContain('minWidth: 360');
     expect(accountPanelSource).toContain('text-[14px] leading-[21px] font-normal');
     expect(accountPanelSource).toContain('text-[12px] leading-[18px] font-normal');
-    expect(accountPanelSource).toContain('text-[16px] leading-[24px] font-semibold');
+    expect(accountPanelSource).toContain('text-[14px] leading-[21px] font-semibold');
     expect(themeCss).toMatch(/\.data-grid th \{[\s\S]*padding: 4px var\(--space-3\);/);
     expect(themeCss).toMatch(/\.data-grid td \{[\s\S]*padding: 4px var\(--space-3\);/);
   });
@@ -192,7 +192,7 @@ describe('enterprise typography contract', () => {
     expect(optionsDialogSource).toContain('text-[12px] font-normal');
     expect(openAccountDialogSource).toContain('text-[14px] font-normal');
     expect(openAccountDialogSource).toContain('rtx-reading-text');
-    expect(loginDialogSource).toContain('text-right text-[14px] leading-5 font-medium');
+    expect(loginDialogSource).toContain('rtx-login-label text-[14px] leading-5 font-medium');
     expect(loginDialogSource).toContain('rtx-dialog-title');
     expect(welcomeSource).toContain('fontSize: 14');
     expect(welcomeSource).toContain("fontWeight: 'var(--rtx-font-weight-body, 400)'");

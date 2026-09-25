@@ -134,7 +134,6 @@ const createChartPanel = (symbol: string, timeframe: string, chartType: NonNulla
   };
 };
 
-const MIN_PANEL_SIZE = 100;
 const DEFAULT_RATIO = 0.5;
 const DOCK_LAYOUT_PREVIOUS_DESKTOP_DEFAULT_MIGRATION_PREFIX = 'dock-layout-desktop-mt5-v2:';
 const DOCK_LAYOUT_DESKTOP_WEB_PARITY_MIGRATION_PREFIX = 'dock-layout-desktop-web-parity-v3:';

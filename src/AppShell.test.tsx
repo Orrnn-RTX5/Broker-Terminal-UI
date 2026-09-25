@@ -12,6 +12,7 @@ const runtimeWindow = window as Window & {
 
 const shellMocks = vi.hoisted(() => ({
   terminalRender: vi.fn(),
+  terminalUnmount: vi.fn(),
   electron: true,
 }));
 
@@ -29,6 +30,7 @@ vi.mock('./App', () => ({
     onSessionEnded?: () => void;
   }) => {
     shellMocks.terminalRender(initialSessionHandoff);
+    React.useEffect(() => () => shellMocks.terminalUnmount(), []);
     return (
       <div data-testid="authenticated-terminal">
         <button data-testid="terminal-logout" onClick={onSessionEnded}>Log Out</button>
@@ -77,6 +79,7 @@ describe('AppShell startup boundary', () => {
     localStorage.clear();
     sessionStorage.clear();
     shellMocks.terminalRender.mockClear();
+    shellMocks.terminalUnmount.mockClear();
     delete runtimeWindow.RUNTIME_CONFIG;
     delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
     vi.stubEnv('VITE_BROKER_ID', '');
@@ -229,6 +232,20 @@ describe('AppShell startup boundary', () => {
     expect(view.queryByTestId('login-input')).toBeNull();
     expect(shellMocks.terminalRender).toHaveBeenCalledWith(null);
     expect(localStorage.getItem('auth_token')).toBeNull();
+  });
+
+  it('discards the account terminal instance on web logout while keeping guest markets available', async () => {
+    shellMocks.electron = false;
+    localStorage.setItem('rtx_last_login', '200002');
+    localStorage.setItem('auth_token', 'active-token');
+    const view = render(<AppShell />);
+    await view.findByTestId('authenticated-terminal');
+
+    fireEvent.click(view.getByTestId('terminal-logout'));
+
+    expect(shellMocks.terminalUnmount).toHaveBeenCalledOnce();
+    expect(view.getByTestId('authenticated-terminal')).toBeTruthy();
+    expect(view.queryByTestId('login-input')).toBeNull();
   });
 
   it('keeps web guests in the terminal after their session ends', async () => {

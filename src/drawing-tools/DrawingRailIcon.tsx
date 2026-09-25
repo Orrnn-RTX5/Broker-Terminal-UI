@@ -4,7 +4,7 @@ import { ReferenceToolbarGlyph, type ReferenceToolbarGlyphName } from '../compon
 type DrawingRailIconName = ReferenceToolbarGlyphName | 'lock' | 'eye-off' | 'zoom-out' | 'trade-stamps';
 
 export function DrawingRailIcon({ name }: { name: DrawingRailIconName }) {
-    const tr = useUiTranslation();
+    useUiTranslation();
   if (name === 'trade-stamps') {
     return <svg className="web-drawing-tools-rail__glyph" width="28" height="28" viewBox="0 0 28 28"
       fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

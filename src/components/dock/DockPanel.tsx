@@ -44,7 +44,6 @@ export const DockPanel: React.FC<DockPanelProps> = ({
   className,
   children,
   onClose,
-  onFloat,
   onActivate,
   onMinimizedChange,
   onDragStart,

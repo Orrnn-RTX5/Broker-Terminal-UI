@@ -24,12 +24,6 @@ interface ContextMenuProps {
 
 type ContextMenuVariant = 'dark' | 'mt5-light' | 'mt5-dark';
 
-interface SubMenuState {
-  parentId: string;
-  items: ContextMenuItemConfig[];
-  triggerRect: DOMRect;
-}
-
 // ============================================================================
 // VIEWPORT COLLISION DETECTION
 // ============================================================================
@@ -178,7 +172,6 @@ const MenuItem: React.FC<MenuItemProps> = ({
   onSubmenuOpen,
   onSubmenuClose,
   isSubmenuActive,
-  itemId,
   itemIndex,
   variant,
   isPointerHovered = false,
@@ -283,7 +276,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
     hoverIntent.onMouseMove(e);
   };
 
-  const handleMouseLeave = (e: React.MouseEvent) => {
+  const handleMouseLeave = () => {
     setIsHovered(false);
     onPointerLeaveItem?.();
     hoverIntent.onMouseLeave();

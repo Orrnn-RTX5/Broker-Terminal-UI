@@ -16,33 +16,46 @@ const propertiesDialogSource = fs.readFileSync(
 );
 
 describe('TradingChart trade-history presentation contract', () => {
-  it('renders clean outlined entry and close arrows joined by a thin high-contrast trade segment', () => {
+  it('retains both execution markers while a closing position lingers in the feed', () => {
+    const start = chartSource.indexOf('getTradeOverlayOptimisticClosedSnapshots(normalizedChartSymbol).forEach');
+    const end = chartSource.indexOf('closedHistorySnapshots.forEach', start);
+    const optimisticHistory = chartSource.slice(start, end);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(optimisticHistory).toContain('if (activeTradeKeys.has(trade.key))');
+    expect(optimisticHistory).toContain('if (activeTradeKeys.has(key))');
+    expect(optimisticHistory).not.toContain('rawActiveTradeKeys.has(');
+    expect(chartSource).toContain('filterActiveTradeKeysForHistory(rawActiveTradeKeys, closeSuppressedTradeKeys)');
+  });
+
+  it('uses the same execution chevrons for active and closed trades on web and desktop', () => {
+    const arrowStart = chartSource.indexOf('const createArrowSvg =');
+    const markerStart = chartSource.indexOf('const createTradeMarker =');
+    const markerEnd = chartSource.indexOf('const createPriceLevel =', markerStart);
+    expect(arrowStart).toBeGreaterThan(-1);
+    expect(markerStart).toBeGreaterThan(arrowStart);
+    expect(markerEnd).toBeGreaterThan(markerStart);
+    const arrowBuilder = chartSource.slice(arrowStart, markerStart);
+    const markerBuilder = chartSource.slice(markerStart, markerEnd);
+    expect(arrowBuilder).not.toContain('isDesktopBackendTarget');
+    expect(markerBuilder).not.toContain('isDesktopBackendTarget');
+    expect(arrowBuilder).toContain("const color = side === 'BUY' ? '#2962ff' : '#f23645';");
+    expect(arrowBuilder).toContain('viewBox="0 0 14 20" fill="none"');
+    expect(arrowBuilder).toContain('stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"');
+    expect(arrowBuilder).toContain("'M3 7 7 3l4 4M3 11l4-4 4 4M7 8v9'");
+    expect(arrowBuilder).toContain("'M3 13l4 4 4-4M3 9l4 4 4-4M7 3v9'");
+    expect(markerBuilder).toContain('marker.innerHTML = createArrowSvg(side);');
+    expect(markerBuilder).toContain("markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? 3 : -3");
+    expect(chartSource).toContain('getTradeHistoryMarkerPrice(node.markerSide, node.price, tradeMarkerCandles.get(markerTime))');
+    expect(chartSource).toContain('markerTime = fallbackTime;');
     expect(chartSource).toContain("getTradeHistoryExecutionSide(trade.side, 'CLOSE')");
-    expect(chartSource).toContain("createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', 'history', trade.exitPrice, trade.exitTime");
-    expect(chartSource).toContain("createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, entryPriceLabel, entryColor, 'history', 1, undefined, 'open', trade.side, trade.entryExecutionTime)");
-    expect(chartSource).toContain("createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, getHistoryExitColor(trade.side), 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime)");
-    expect(chartSource).toContain("const TRADE_HISTORY_PROFIT_COLOR = '#00e6a8';");
-    expect(chartSource).toContain("const TRADE_HISTORY_LOSS_COLOR = '#ff5a67';");
-    expect(chartSource).toContain("const TRADE_HISTORY_LIGHT_PROFIT_COLOR = '#047857';");
-    expect(chartSource).toContain("const TRADE_HISTORY_LIGHT_LOSS_COLOR = '#b91c1c';");
-    expect(chartSource).toContain('const entryColor = getHistoryEntryColor(trade.side);');
-    expect(chartSource).toContain('const width = emphasized ? 11 : 16;');
-    expect(chartSource).toContain('const height = emphasized ? 14 : 20;');
-    expect(chartSource).toContain('const viewBoxWidth = 22;');
-    expect(chartSource).toContain('const viewBoxHeight = 28;');
-    expect(chartSource).toContain('viewBox="0 0 ${viewBoxWidth} ${viewBoxHeight}"');
-    expect(chartSource).toContain('const strokeWidth = emphasized ? 1.8 : 1.5;');
-    expect(chartSource).toContain("'M11 3L18.5 14.5H13.6V25H8.4V14.5H3.5Z'");
-    expect(chartSource).toContain("'M11 25L18.5 13.5H13.6V3H8.4V13.5H3.5Z'");
-    expect(chartSource).toContain('stroke-linejoin="miter"');
-    expect(chartSource).toContain('paint-order="stroke fill"');
-    expect(chartSource).toContain('return pnl >= 0 ? chartThemeRef.current.candleUp : chartThemeRef.current.candleDown;');
-    expect(chartSource).toContain("const thickness = isHistoryLine ? 1 : lineStyle === 'solid' ? 2 : 1;");
-    expect(chartSource).toContain('const renderedOpacity = safeOpacity;');
-    expect(chartSource).not.toContain('0.78 + safeOpacity * 0.22');
-    expect(chartSource).not.toContain('const historyGlow');
-    expect(chartSource).toContain("el.style.transformOrigin = isHistoryLine ? '0 50%' : '0 0';");
-    expect(chartSource).toContain("const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v8-clean-arrows';");
+    expect(chartSource).toContain('const showAnyTradeHistoryOverlay = showTradeHistoryArrows;');
+    expect(chartSource).not.toContain('const showTradeHistory =');
+    expect(chartSource).not.toContain('createTradeSegment');
+    expect(chartSource).not.toContain('deriveClosedTradeColor');
+    expect(chartSource).toContain("createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, entryPriceLabel, 'history', 1, undefined, 'open', trade.side, trade.entryExecutionTime)");
+    expect(chartSource).toContain("createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime)");
+    expect(chartSource).toContain("const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v12-shared-trade-presentation';");
     expect((chartSource.match(/TRADE_HISTORY_PRESENTATION_VERSION/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(chartSource).not.toContain('createTradeHistoryLabel');
   });
@@ -53,9 +66,9 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(chartSource).toContain('hoverTarget.dataset.positionSide = historyPositionSide;');
     expect(chartSource).toContain('formatTradeHistoryGmtTime(executionTime, { includeSeconds: true })');
     expect(chartSource).toContain('buildTradeHistoryBadgeText({');
-    expect(chartSource).toContain('const markerWidth = isHistoryMarker ? 11 : 16;');
-    expect(chartSource).toContain('const markerHeight = isHistoryMarker ? 14 : 20;');
-    expect(chartSource).toContain('filter:drop-shadow(0 1px 0 rgba(15,23,42,0.28))');
+    expect(chartSource).toContain('const markerWidth = 14;');
+    expect(chartSource).toContain('const markerHeight = 20;');
+    expect(chartSource).toContain('pointer-events:none;opacity:${opacity};filter:none;');
     expect(chartSource).toContain("hoverTarget.style.cssText = 'position:absolute;display:none;width:32px;height:36px;z-index:22;pointer-events:auto;");
     expect(chartSource).toContain("tooltip.className = 'rtx-trade-marker__price-tooltip';");
     expect(chartSource).toContain("tooltipHeader.textContent = `${tr(historyPositionSide)} ${tr(lifecycle === 'open' ? 'Open' : 'Close')}`;");
@@ -76,5 +89,19 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(toolbarSource).not.toContain('tradeHistoryBoxOpacity');
     expect(propertiesDialogSource).not.toContain('Show trade history boxes');
     expect(propertiesDialogSource).not.toContain('tradeHistoryBoxOpacity');
+  });
+
+  it('removes connector settings from both platform presentation menus', () => {
+    expect(toolbarSource).not.toContain('supportsHistoryLines');
+    expect(toolbarSource).not.toContain('tradeHistoryLineOpacity');
+    expect(propertiesDialogSource).not.toContain('supportsHistoryLines');
+    expect(propertiesDialogSource).not.toContain('tradeHistoryLineOpacity');
+    const historyToggleStart = chartSource.indexOf('const handleCtxToggleTradeHistory =');
+    const historyToggleEnd = chartSource.indexOf('}, [symbol]);', historyToggleStart);
+    expect(historyToggleStart).toBeGreaterThan(-1);
+    expect(historyToggleEnd).toBeGreaterThan(historyToggleStart);
+    const historyToggle = chartSource.slice(historyToggleStart, historyToggleEnd);
+    expect(historyToggle).not.toContain('isDesktopBackendTarget');
+    expect(historyToggle).toContain("store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', next);");
   });
 });

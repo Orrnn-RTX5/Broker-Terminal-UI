@@ -203,7 +203,7 @@ describe('DockWorkspace chart diagnostic attributes', () => {
       globalChartType="candlestick" globalTimeframe="M5" selectedSymbol="BTCUSD"
       allSymbols={symbols} chartSymbols={symbols} tradeSymbols={symbols}
       activeMarketSnapshot={createActiveMarketSnapshot({ symbols })}
-      marketInstrumentsSnapshot={createMarketInstrumentsSnapshot({ symbols })}
+      marketInstrumentsSnapshot={createMarketInstrumentsSnapshot({ symbols: symbols.map(symbol => ({ symbol })) })}
       onSymbolSelect={vi.fn()} onClosePosition={vi.fn()} onModifyPosition={vi.fn()}
       onCancelOrder={vi.fn()} onCloseBulk={vi.fn()} />;
     const view = render(workspace(['BTCUSD']));

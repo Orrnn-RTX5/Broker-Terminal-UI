@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAppStore } from '../../store/useAppStore';
 import { MarketWatchPanel } from './MarketWatchPanel';
 import { keyboardShortcutManager } from '../../services/keyboardShortcutManager';
+import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 
 const CORE_DEFAULT_SYMBOLS = ['XAUUSD', 'BTCUSD', 'EURUSD'];
 const DEFAULT_SYMBOLS = [...CORE_DEFAULT_SYMBOLS, 'GBPUSD', 'USDJPY'];
@@ -24,6 +25,18 @@ interface MockMarketInstrument {
 const closedDailyChangeHook = vi.hoisted(() => ({
   values: new Map<string, number>(),
   useHook: vi.fn(),
+}));
+
+const lastMarketWatchQuotesHook = vi.hoisted(() => ({
+  values: new Map<string, MarketWatchLastPrice>(),
+  useHook: vi.fn(),
+}));
+
+vi.mock('../../hooks/useLastMarketWatchQuotes', () => ({
+  useLastMarketWatchQuotes: (options: unknown) => {
+    lastMarketWatchQuotesHook.useHook(options);
+    return lastMarketWatchQuotesHook.values;
+  },
 }));
 
 vi.mock('../../hooks/useClosedMarketDailyChanges', () => ({
@@ -164,6 +177,8 @@ describe('MarketWatchPanel symbol visibility', () => {
     marketHooks.useLiveQuotes.mockReturnValue({ loading: false, error: null });
     closedDailyChangeHook.values.clear();
     closedDailyChangeHook.useHook.mockClear();
+    lastMarketWatchQuotesHook.values.clear();
+    lastMarketWatchQuotesHook.useHook.mockClear();
     act(() => {
       useAppStore.setState({ isAuthenticated: false });
       useAppStore.getState().setTicks({
@@ -232,7 +247,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -292,8 +307,157 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
+    }
+  });
+
+  it('shows retained bid and ask without enabling New Order for an inactive symbol', () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(379);
+    marketHooks.activeSymbols = [];
+    const asOf = Date.parse('2026-09-18T21:59:00Z');
+    lastMarketWatchQuotesHook.values.set('XAUUSD', { kind: 'quote', bid: 4385.2, ask: 4385.4, asOf });
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+
+    try {
+      render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} chartSymbols={DEFAULT_SYMBOLS} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />);
+      const row = screen.getByText('XAUUSD').closest('tr')!;
+      expect(row.querySelector('.rtx-market-watch__price--bid')).toHaveTextContent('4385.20');
+      expect(row.querySelector('.rtx-market-watch__price--ask')).toHaveTextContent('4385.40');
+      expect(row.querySelector('.rtx-market-watch__price--bid')?.closest('td')).toHaveAttribute('title', 'Last quote · Fri, 18 Sep 2026 21:59:00 UTC');
+      expect(row).toHaveClass('rtx-market-watch__row--stale');
+      expect(useAppStore.getState().ticks).toEqual({});
+      fireEvent.contextMenu(row);
+      expect(screen.getByText('New Order').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true');
+    } finally {
+      width.mockRestore();
+    }
+  });
+
+  it.each([379, 180])('aligns the numeric last close beneath Bid at width %i without fabricating an Ask', (panelWidth) => {
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(panelWidth);
+    marketHooks.activeSymbols = [];
+    lastMarketWatchQuotesHook.values.set('XAUUSD', {
+      kind: 'close', close: 4385.2, asOf: Date.parse('2026-09-18T21:59:00Z'),
+    });
+    closedDailyChangeHook.values.set('XAUUSD', 1.75);
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+
+    try {
+      render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />);
+      const row = screen.getByText('XAUUSD').closest('tr')!;
+      const closeCell = row.querySelector('.rtx-market-watch__last-close')?.closest('td');
+      const cells = within(row).getAllByRole('cell');
+      expect(within(row).queryByText('Last close')).not.toBeInTheDocument();
+      expect(cells[1]).toBe(closeCell);
+      expect(closeCell).not.toHaveAttribute('colspan');
+      expect(closeCell).toHaveAttribute('title', 'Last close · Fri, 18 Sep 2026 21:59:00 UTC');
+      expect(closeCell).toHaveTextContent('4385.20');
+      expect(row.querySelector('.rtx-market-watch__price--bid')).toBeNull();
+      if (panelWidth >= 300) {
+        expect(cells).toHaveLength(4);
+        const askPrice = row.querySelector('.rtx-market-watch__price--ask');
+        expect(askPrice).toHaveClass('rtx-market-watch__price--empty');
+        expect(askPrice).toHaveTextContent('\u2014');
+        expect(askPrice?.closest('td')).toBe(cells[2]);
+        expect(row.querySelector('.rtx-market-watch__daily')?.closest('td')).toBe(cells[3]);
+        expect(row.querySelector('.rtx-market-watch__daily')).toHaveTextContent('1.75%');
+      } else {
+        expect(cells).toHaveLength(2);
+        expect(row.querySelector('.rtx-market-watch__price--ask')).toBeNull();
+        expect(row.querySelector('.rtx-market-watch__daily')).toBeNull();
+      }
+      expect(row).toHaveClass('rtx-market-watch__row--stale');
+      expect(useAppStore.getState().ticks).toEqual({});
+    } finally {
+      width.mockRestore();
+    }
+  });
+
+  it('replaces a last close immediately when a usable current quote arrives', () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(379);
+    lastMarketWatchQuotesHook.values.set('XAUUSD', { kind: 'close', close: 4385.2, asOf: Date.now() - 86_400_000 });
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+    try {
+      render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />);
+      const row = screen.getByText('XAUUSD').closest('tr')!;
+      expect(row.querySelector('.rtx-market-watch__last-close')).toHaveTextContent('4385.20');
+      expect(within(row).queryByText('Last close')).not.toBeInTheDocument();
+      act(() => useAppStore.getState().setTick('XAUUSD', {
+        symbol: 'XAUUSD', bid: 4400.1, ask: 4400.3, spread: 0.2, timestamp: Date.now(),
+      }));
+      expect(row.querySelector('.rtx-market-watch__last-close')).toBeNull();
+      expect(row.querySelector('.rtx-market-watch__price--bid')).toHaveTextContent('4400.10');
+      expect(row.querySelector('.rtx-market-watch__price--ask')).toHaveTextContent('4400.30');
+      expect(lastMarketWatchQuotesHook.useHook.mock.calls.at(-1)?.[0].symbols).not.toContain('XAUUSD');
+    } finally {
+      width.mockRestore();
+    }
+  });
+
+  it('requests missing visible quotes independently of Daily Change and excludes crypto candles', () => {
+    marketHooks.activeSymbols = ['EURUSD'];
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({
+        XAUUSD: { symbol: 'XAUUSD', bid: 0, ask: 0, spread: 0, dailyChange: 1.75, timestamp: Date.now() },
+      });
+    });
+    render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />);
+    expect(lastMarketWatchQuotesHook.useHook.mock.calls.at(-1)?.[0]).toEqual({
+      enabled: true,
+      scopeKey: 'authenticated|test-account|test-broker|https://broker.test',
+      symbols: CORE_DEFAULT_SYMBOLS,
+      candleSymbols: ['XAUUSD'],
+    });
+    expect(closedDailyChangeHook.useHook.mock.calls.at(-1)?.[0].symbols).not.toContain('XAUUSD');
+  });
+
+  it.each([
+    { now: '2026-09-18T12:00:00Z', expectedCandles: [] },
+    { now: '2026-09-19T12:00:00Z', expectedCandles: ['XAUUSD', 'EURUSD'] },
+  ])('limits missing-quote candle requests while feed status is unknown on $now', ({ now, expectedCandles }) => {
+    vi.setSystemTime(new Date(now));
+    marketHooks.activeSymbolsCurrent = false;
+    marketHooks.activeSymbolsSettled = false;
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+    render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />);
+    expect(lastMarketWatchQuotesHook.useHook.mock.calls.at(-1)?.[0].candleSymbols).toEqual(expectedCandles);
+  });
+
+  it('exports displayed fallback quotes and labels a candle close without exporting it as an ask', async () => {
+    marketHooks.activeSymbols = [];
+    lastMarketWatchQuotesHook.values.set('XAUUSD', { kind: 'close', close: 4385.2, asOf: Date.now() - 86_400_000 });
+    lastMarketWatchQuotesHook.values.set('EURUSD', { kind: 'quote', bid: 1.17, ask: 1.1702, asOf: Date.now() - 86_400_000 });
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    try {
+      render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />);
+      fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+      fireEvent.click(screen.getByText('Export'));
+      await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      expect(writeText.mock.calls[0][0]).toContain('XAUUSD\tLast close: 4385.2\t-\t-');
+      expect(writeText.mock.calls[0][0]).toContain('EURUSD\t1.17\t1.1702\t-');
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
     }
   });
 
@@ -341,7 +505,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -368,7 +532,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -418,7 +582,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -476,7 +640,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -526,7 +690,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
     }
   });
@@ -648,6 +812,92 @@ describe('MarketWatchPanel symbol visibility', () => {
     fireEvent.contextMenu(eurRow);
     expect(screen.getByText('New Order').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('Chart Window').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  it('requests an independent chart window from the Chart Window context action', () => {
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+    setMarketCatalog(CORE_DEFAULT_SYMBOLS, ['XAUUSD']);
+    marketHooks.activeSymbols = [...CORE_DEFAULT_SYMBOLS];
+    const openChartListener = vi.fn();
+    window.addEventListener('openChart', openChartListener);
+
+    render(
+      <MarketWatchPanel
+        allSymbols={['XAUUSD']}
+        chartSymbols={CORE_DEFAULT_SYMBOLS}
+        selectedSymbol="BTCUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText('EURUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Chart Window'));
+
+    expect(openChartListener).toHaveBeenCalledTimes(1);
+    const [event] = openChartListener.mock.calls[0];
+    expect((event as CustomEvent).detail).toEqual({ symbol: 'EURUSD', newWindow: true });
+
+    window.removeEventListener('openChart', openChartListener);
+  });
+
+  it('toggles Market Watch table grid lines from the Grid context action', () => {
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+    setMarketCatalog(CORE_DEFAULT_SYMBOLS, ['XAUUSD']);
+    marketHooks.activeSymbols = [...CORE_DEFAULT_SYMBOLS];
+
+    const { container } = render(
+      <MarketWatchPanel
+        allSymbols={['XAUUSD']}
+        chartSymbols={CORE_DEFAULT_SYMBOLS}
+        selectedSymbol="BTCUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('.rtx-market-watch__grid')).toHaveClass('rtx-market-watch__grid--lines');
+    fireEvent.contextMenu(screen.getByText('EURUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Grid'));
+    expect(container.querySelector('.rtx-market-watch__grid')).not.toHaveClass('rtx-market-watch__grid--lines');
+    fireEvent.click(screen.getByText('Grid'));
+    expect(container.querySelector('.rtx-market-watch__grid')).toHaveClass('rtx-market-watch__grid--lines');
+  });
+
+  it('exports the Market Watch with visible feedback instead of failing silently', async () => {
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+    setMarketCatalog(CORE_DEFAULT_SYMBOLS, ['XAUUSD']);
+    marketHooks.activeSymbols = [...CORE_DEFAULT_SYMBOLS];
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const feedback = vi.fn();
+    window.addEventListener('rtx:order-feedback', feedback);
+
+    try {
+      render(
+        <MarketWatchPanel
+          allSymbols={['XAUUSD']}
+          chartSymbols={CORE_DEFAULT_SYMBOLS}
+          selectedSymbol="BTCUSD"
+          onSymbolSelect={vi.fn()}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText('EURUSD').closest('tr')!);
+      fireEvent.click(screen.getByText('Export'));
+
+      await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      expect(String(writeText.mock.calls[0][0])).toContain('Symbol\tBid\tAsk\tDaily Change');
+      await vi.waitFor(() => expect(feedback).toHaveBeenCalled());
+      const [feedbackEvent] = feedback.mock.calls[0];
+      expect((feedbackEvent as CustomEvent).detail).toMatchObject({ type: 'success' });
+    } finally {
+      window.removeEventListener('rtx:order-feedback', feedback);
+      if (originalClipboard) {
+        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      } else {
+        delete (navigator as { clipboard?: unknown }).clipboard;
+      }
+    }
   });
 
   it('uses an injected freshness snapshot without starting a second status owner', () => {
@@ -1177,7 +1427,7 @@ describe('MarketWatchPanel symbol visibility', () => {
 
     const btcRow = screen.getByText('BTCUSD').closest('tr');
     expect(btcRow).toHaveAttribute('aria-disabled', 'true');
-    expect(within(btcRow!).getByLabelText(/^BTCUSD unknown(?:,|$)/)).toHaveAttribute('title', expect.stringMatching(/^BTCUSD unknown(?:,|$)/));
+    expect(btcRow?.querySelector('.rtx-market-watch__status')).toBeNull();
     expect(btcRow).toHaveTextContent('65000');
     expect(container.querySelectorAll('tbody tr[aria-disabled="false"]')).toHaveLength(0);
   });
@@ -1333,7 +1583,7 @@ describe('MarketWatchPanel symbol visibility', () => {
 
     const row = screen.getByText('ETHUSD').closest('tr');
     expect(row).toHaveAttribute('aria-disabled', 'true');
-    expect(within(row!).getByLabelText(/^ETHUSD unavailable(?:,|$)/)).toHaveAttribute('title', expect.stringMatching(/^ETHUSD unavailable(?:,|$)/));
+    expect(row?.querySelector('.rtx-market-watch__status')).toBeNull();
     expect(row).toHaveTextContent('3500');
     fireEvent.click(row!);
     expect(onSymbolSelect).toHaveBeenCalledWith('ETHUSD');
@@ -1451,7 +1701,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(JSON.parse(localStorage.getItem('rtx5_hidden_symbols') ?? '[]')).toEqual([]);
   });
 
-  it('opens an in-app specification dialog instead of a browser alert', () => {
+  it('opens an in-app specification dialog instead of a browser alert', async () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
     setMarketCatalog([{
       symbol: 'XAUUSD',
@@ -1478,6 +1728,7 @@ describe('MarketWatchPanel symbol visibility', () => {
 
     fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
     fireEvent.click(screen.getByText('Specification'));
+    await act(async () => { await vi.dynamicImportSettled(); });
 
     expect(screen.getByRole('dialog', { name: 'XAUUSD Specification' })).toBeInTheDocument();
     expect(screen.getByText('Gold Spot')).toBeInTheDocument();

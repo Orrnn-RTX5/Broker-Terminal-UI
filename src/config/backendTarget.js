@@ -1,4 +1,4 @@
-export const WEB_BACKEND_FALLBACK = 'https://backend.orrnn.com';
+export const WEB_BACKEND_FALLBACK = 'https://service.orrnn.com';
 export const SHARED_DISCOVERY_FALLBACK = 'https://superbackend.orrnn.com';
 // Last-resort desktop default. Must NOT hardcode a public broker IP: doing so
 // leaks infra detail and sends the Bearer JWT in cleartext to a public host,
@@ -125,6 +125,7 @@ const isAllowedPublicBrokerHostname = (hostname = '') => {
     || normalized === 'fxtrusts-broker.orrnn.com'
     || normalized === 'nexa.orrnn.com'
     || normalized === 'trivanta.orrnn.com'
+    || normalized === 'service.orrnn.com'
     || normalized === 'backend.orrnn.com'
     || normalized === 'testbrokerbackend.orrnn.com'
     || normalized === 'fxtrustbrokerbackend.orrnn.com'

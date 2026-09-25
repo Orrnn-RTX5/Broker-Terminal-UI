@@ -65,6 +65,21 @@ const parseTokenExpiryMs = (expiresAt: unknown): number | null => {
 
 export class BrokerAPI {
   private refreshPromise: Promise<string> | null = null;
+  private refreshSessionKey: string | null = null;
+  private refreshAttempt: object | null = null;
+
+  private getSessionKey(): string {
+    return JSON.stringify([
+      this.getBaseUrl(),
+      useAppStore.getState().accountId,
+      localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'),
+      localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token'),
+    ]);
+  }
+
+  private sessionChangedError(): BrokerApiError {
+    return new BrokerApiError(401, 'SESSION_CHANGED', 'The account session changed during the request.');
+  }
 
   // Resolve base server URL from localStorage dynamically
   private getBaseUrl(): string {
@@ -145,11 +160,14 @@ export class BrokerAPI {
 
   // Coalesce concurrent refresh triggers into a single shared Promise
   private coalesceRefresh(refreshToken: string): Promise<string> {
-    if (this.refreshPromise) {
+    const sessionKey = this.getSessionKey();
+    if (this.refreshPromise && this.refreshSessionKey === sessionKey) {
       return this.refreshPromise;
     }
 
-    this.refreshPromise = (async () => {
+    const attempt = {};
+    this.refreshAttempt = attempt;
+    const refreshPromise: Promise<string> = (async () => {
       try {
         const url = `${this.getBaseUrl()}/api/v2/auth/refresh`;
         const response = await fetch(url, {
@@ -163,6 +181,9 @@ export class BrokerAPI {
         }
 
         const data = await response.json();
+        // Logout and account/broker changes invalidate the old refresh even
+        // when its HTTP response succeeds after the user has already moved on.
+        if (this.getSessionKey() !== sessionKey) throw this.sessionChangedError();
         const nextToken = data.access_token || data.token;
         if (!nextToken) {
           throw new Error('Refresh response did not return an access token');
@@ -185,15 +206,22 @@ export class BrokerAPI {
         console.log('[BrokerAPI] Proactive token refresh succeeded');
         return nextToken;
       } catch (err) {
+        if (this.getSessionKey() !== sessionKey) throw this.sessionChangedError();
         console.error('[BrokerAPI] Token refresh failed. Logging out...', err);
         this.forceLogout('refresh_failed');
         throw err;
       } finally {
-        this.refreshPromise = null;
+        if (this.refreshAttempt === attempt) {
+          this.refreshPromise = null;
+          this.refreshSessionKey = null;
+          this.refreshAttempt = null;
+        }
       }
     })();
 
-    return this.refreshPromise;
+    this.refreshSessionKey = sessionKey;
+    this.refreshPromise = refreshPromise;
+    return refreshPromise;
   }
 
   private forceLogout(reason = 'session_expired') {
@@ -218,7 +246,7 @@ export class BrokerAPI {
         errData = await response.json();
         errCode = errData.error || errData.code || errCode;
         errMsg = errData.message || errData.error || errMsg;
-      } catch (e) {
+      } catch {
         // Fallback for non-JSON or blank responses
       }
 
@@ -291,6 +319,7 @@ export class BrokerAPI {
             // Retry the original request
             response = await this.executeFetch(url, requestInit, skipAuth);
           } catch (refreshErr) {
+            if (refreshErr instanceof BrokerApiError && refreshErr.code === 'SESSION_CHANGED') throw refreshErr;
             console.error('[BrokerAPI] Reactive refresh failed, throwing 401 error.', refreshErr);
             this.forceLogout();
             throw new BrokerApiError(401, 'UNAUTHORIZED', mapBrokerError('UNAUTHORIZED'));

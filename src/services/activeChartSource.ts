@@ -123,11 +123,17 @@ const resolveLegacyWindowSource = (): ResolvedActiveChartSource | null => {
   };
 };
 
-const publishLegacyWindowSource = (source: ResolvedActiveChartSource | null): void => {
+const publishLegacyWindowSource = (source: ResolvedActiveChartSource | null, defer = false): void => {
   const nextSourceId = source?.id ?? null;
   if (publishedActiveSourceId !== nextSourceId) {
     publishedActiveSourceId = nextSourceId;
-    activeSourceListeners.forEach((listener) => listener());
+    if (defer) {
+      queueMicrotask(() => {
+        activeSourceListeners.forEach((listener) => listener());
+      });
+    } else {
+      activeSourceListeners.forEach((listener) => listener());
+    }
   }
   if (typeof window === 'undefined') return;
   const legacyWindow = window as LegacyChartSourceWindow;
@@ -214,7 +220,7 @@ export const getActiveChartSource = (): ResolvedActiveChartSource | null => {
     const active = sources.get(activeSourceId);
     const resolved = active ? resolveRegisteredSource(active) : null;
     if (resolved && isResolvedSourceVisible(resolved)) {
-      publishLegacyWindowSource(resolved);
+      publishLegacyWindowSource(resolved, true);
       return resolved;
     }
 
@@ -226,7 +232,7 @@ export const getActiveChartSource = (): ResolvedActiveChartSource | null => {
     const resolved = resolveRegisteredSource(source);
     if (resolved && isResolvedSourceVisible(resolved)) {
       activeSourceId = source.id;
-      publishLegacyWindowSource(resolved);
+      publishLegacyWindowSource(resolved, true);
       return resolved;
     }
 
@@ -235,7 +241,7 @@ export const getActiveChartSource = (): ResolvedActiveChartSource | null => {
 
   const legacy = resolveLegacyWindowSource();
   const visibleLegacy = legacy && isResolvedSourceVisible(legacy) ? legacy : null;
-  publishLegacyWindowSource(visibleLegacy);
+  publishLegacyWindowSource(visibleLegacy, true);
   return visibleLegacy;
 };
 

@@ -10,12 +10,7 @@
 
 import React, { createContext, useContext, ReactNode } from 'react';
 import { commandBus } from '../services/commandBus';
-import type {
-  Command,
-  CommandType,
-  CommandHandler,
-  CommandBus,
-} from '../types/commands';
+import type { CommandBus } from '../types/commands';
 
 /**
  * Context for the command bus

@@ -59,7 +59,7 @@ describe('TradeAuthDialog', () => {
       />,
     );
 
-    expect(screen.getByText(/order will not be sent after login/i)).toBeInTheDocument();
+    expect(screen.getByText(/order will not be sent automatically/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /create demo account/i }));
     await user.type(screen.getByLabelText(/full name/i), 'Demo User');
     await user.type(screen.getByLabelText(/^email$/i), 'demo@example.com');
@@ -91,7 +91,7 @@ describe('TradeAuthDialog', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /login real account/i }));
+    await user.click(screen.getByRole('button', { name: /login to real account/i }));
     const serverInput = await screen.findByPlaceholderText(/search broker/i);
     expect(serverInput).toHaveAttribute('readonly');
     await waitFor(() => expect(serverInput).toHaveValue('Runtime Broker'));
@@ -162,10 +162,10 @@ describe('TradeAuthDialog', () => {
         await user.click(screen.getByRole('button', { name: /^close$/i }));
       } else if (action === 'back') {
         await user.click(screen.getByRole('button', { name: /^back$/i }));
-        expect(screen.getByText('Login required to trade')).toBeInTheDocument();
+        expect(screen.getByText('Account required to trade')).toBeInTheDocument();
       } else if (action === 'escape') {
         await user.keyboard('{Escape}');
-        expect(screen.getByText('Login required to trade')).toBeInTheDocument();
+        expect(screen.getByText('Account required to trade')).toBeInTheDocument();
       } else {
         view.unmount();
       }

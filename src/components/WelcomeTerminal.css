@@ -40,6 +40,43 @@
     font-family: inherit;
 }
 
+/* The desktop login stays dark independently of the saved terminal theme. */
+.rtx-desktop-shell .rtx-login-overlay {
+    color-scheme: dark;
+}
+
+.rtx-desktop-shell .rtx-login-overlay .rtx-broker-input-wrap.is-selectable input {
+    background: rgba(8, 18, 20, 0.76) !important;
+    border: 1px solid #24424a !important;
+    color: #f4f5f7 !important;
+    box-shadow: none !important;
+}
+
+.rtx-desktop-shell .rtx-login-overlay .rtx-broker-input-wrap.is-selectable input:focus {
+    border-color: #35d8b2 !important;
+}
+
+.rtx-desktop-shell .rtx-login-overlay--achiever .rtx-broker-input-wrap.is-selectable input {
+    background: rgba(6, 16, 31, 0.8) !important;
+    border-color: #1d3f68 !important;
+}
+
+.rtx-desktop-shell .rtx-login-overlay--achiever .rtx-broker-input-wrap.is-selectable input:focus {
+    border-color: #2f8cff !important;
+}
+
+.rtx-desktop-shell .rtx-login-overlay :is(.rtx-input-shell, .rtx-broker-input-wrap) input::placeholder {
+    color: rgba(255, 255, 255, 0.48) !important;
+}
+
+.rtx-desktop-shell .rtx-login-overlay :is(.rtx-input-shell, .rtx-broker-input-wrap) input:-webkit-autofill {
+    box-shadow: 0 0 0 1000px #0b1518 inset !important;
+}
+
+.rtx-desktop-shell .rtx-login-overlay--achiever :is(.rtx-input-shell, .rtx-broker-input-wrap) input:-webkit-autofill {
+    box-shadow: 0 0 0 1000px #071326 inset !important;
+}
+
 .rtx-login-window-controls {
     position: fixed;
     top: max(12px, env(safe-area-inset-top));

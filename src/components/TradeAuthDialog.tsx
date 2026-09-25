@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LogIn, ShieldCheck, UserPlus, X } from 'lucide-react';
+import { AlertCircle, Info, LogIn, UserPlus, X } from 'lucide-react';
+import '../styles/trade-auth-dialog.css';
 import { LoginDialog } from './LoginDialog';
 import { registerRuntimeBrokerDemoAccount } from '../api/demoRegistration';
 import { parseTokenExpiresAt, setRefreshToken, setToken } from '../api/client';
@@ -165,17 +166,13 @@ export function TradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: Tr
   }
 
   const isMutationIntent = intent?.kind === 'mutation';
-  const intentLabel = isMutationIntent
-    ? intent.actionLabel
-    : intent
-      ? `${intent.side} ${intent.volume} ${intent.symbol}`
-      : 'your trade';
+  const isDemo = mode === 'demo';
 
   return createPortal(
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center px-4">
+    <div className="rtx-auth-backdrop">
       <button
         type="button"
-        className="absolute inset-0 bg-black/70"
+        className="rtx-auth-backdrop__dismiss"
         aria-label="Close authentication dialog"
         onClick={closeDialog}
       />
@@ -184,120 +181,184 @@ export function TradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: Tr
         role="dialog"
         aria-modal="true"
         aria-labelledby="trade-auth-title"
-        className="relative w-full max-w-[460px] overflow-hidden rounded-xl border border-[#454a59] bg-[#20232d] text-zinc-200 shadow-2xl"
+        className="rtx-auth-dialog"
       >
-        <header className="flex items-center justify-between border-b border-[#3a3e4a] bg-[#292d39] px-4 py-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck size={18} className="text-emerald-400" />
-            <h2 id="trade-auth-title" className="text-sm font-semibold">
-              {mode === 'demo' ? 'Create demo account' : 'Login required to trade'}
-            </h2>
-          </div>
-          <button type="button" onClick={closeDialog} className="rounded p-1 hover:bg-white/10" aria-label="Close">
+        <header className="rtx-auth-dialog__header">
+          <h2 id="trade-auth-title" className="rtx-auth-dialog__title">
+            {isDemo ? 'Create demo account' : 'Account required to trade'}
+          </h2>
+          <button type="button" onClick={closeDialog} className="rtx-auth-dialog__close" aria-label="Close">
             <X size={16} />
           </button>
         </header>
 
         {mode === 'choice' ? (
-          <div className="space-y-4 p-5">
-            <p className="text-sm leading-6 text-zinc-300">
-              Charts and market data stay available in guest mode. To continue with
-              <span className="mx-1 font-semibold text-white">{intentLabel}</span>
-              choose an account option below.
-            </p>
-            <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-100/80">
-              {isMutationIntent
-                ? 'This action will not run after login. Review the freshly loaded account data, then choose the action again.'
-                : 'Your order will not be sent after login. The order ticket will reopen so you can review and confirm it.'}
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setMode('login')}
-                disabled={!brokerId}
-                className="flex min-h-24 flex-col items-start gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-4 text-left hover:bg-blue-500/20"
-              >
-                <LogIn size={20} className="text-blue-400" />
-                <span className="font-semibold text-white">Login real account</span>
-                <span className="text-xs text-zinc-400">Use an existing valid trading login.</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('demo')}
-                disabled={!brokerId}
-                className="flex min-h-24 flex-col items-start gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-4 text-left hover:bg-emerald-500/20"
-              >
-                <UserPlus size={20} className="text-emerald-400" />
-                <span className="font-semibold text-white">Create demo account</span>
-                <span className="text-xs text-zinc-400">Open a virtual-money account for this broker.</span>
-              </button>
-            </div>
-            {!brokerId && (
-              <div role="alert" className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-                {brokerPolicy?.error || 'Verifying this terminal broker configuration...'}
+          <>
+            <div className="rtx-auth-dialog__body">
+              {intent && (
+                <div className="rtx-auth-order-card">
+                  <div className="rtx-auth-order-info">
+                    <div className="rtx-auth-order-lead">
+                      {isMutationIntent ? (
+                        <span className="rtx-auth-badge rtx-auth-badge--action">Action</span>
+                      ) : (
+                        <span className={`rtx-auth-badge rtx-auth-badge--${intent.side.toLowerCase()}`}>
+                          {intent.side}
+                        </span>
+                      )}
+                      <span className="rtx-auth-order-symbol">
+                        {isMutationIntent ? intent.actionLabel : intent.symbol}
+                      </span>
+                      {!isMutationIntent && intent.volume && (
+                        <>
+                          <span className="rtx-auth-order-dot" aria-hidden="true">·</span>
+                          <span className="rtx-auth-order-volume">{intent.volume} lots</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rtx-auth-order-note">
+                    <Info size={13} className="rtx-auth-order-note-icon" aria-hidden="true" />
+                    <span className="rtx-auth-order-note-text">
+                      {isMutationIntent
+                        ? 'This action will not run automatically after login. Review your account data, then choose it again.'
+                        : 'This order will not be sent automatically. The ticket reopens after login so you can confirm it.'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="rtx-auth-actions">
+                <button
+                  type="button"
+                  className="rtx-auth-action rtx-auth-action--primary"
+                  onClick={() => setMode('login')}
+                  disabled={!brokerId}
+                >
+                  <LogIn size={16} strokeWidth={2} aria-hidden="true" />
+                  <span>Login to real account</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="rtx-auth-action rtx-auth-action--secondary"
+                  onClick={() => setMode('demo')}
+                  disabled={!brokerId}
+                >
+                  <UserPlus size={16} strokeWidth={2} aria-hidden="true" />
+                  <span>Create demo account</span>
+                </button>
               </div>
-            )}
-          </div>
+
+              {!brokerId && (
+                <div role="alert" className="rtx-auth-alert">
+                  <AlertCircle size={13} strokeWidth={2.2} />
+                  <span>{brokerPolicy?.error || 'Verifying this terminal broker configuration…'}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="rtx-auth-dialog__footer rtx-auth-dialog__footer--choice">
+              <button
+                type="button"
+                onClick={closeDialog}
+                className="rtx-auth-guest-link"
+              >
+                Continue browsing in guest mode
+              </button>
+            </div>
+          </>
         ) : (
-          <form onSubmit={handleDemoSubmit} className="space-y-3 p-5">
-            <div className="rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-xs text-zinc-400">
-              Broker: <span className="font-mono text-zinc-200">{brokerPolicy?.displayName || 'Not configured'}</span>
-            </div>
-            <label className="block text-xs text-zinc-400">
-              Full name
-              <input
-                autoFocus
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                autoComplete="name"
-                className="mt-1 w-full rounded-md border border-[#4b5060] bg-[#15171e] px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
-              />
-            </label>
-            <label className="block text-xs text-zinc-400">
-              Email
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                autoComplete="email"
-                className="mt-1 w-full rounded-md border border-[#4b5060] bg-[#15171e] px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
-              />
-            </label>
-            <label className="block text-xs text-zinc-400">
-              Password
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="new-password"
-                className="mt-1 w-full rounded-md border border-[#4b5060] bg-[#15171e] px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
-              />
-            </label>
-            <label className="block text-xs text-zinc-400">
-              Confirm password
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                autoComplete="new-password"
-                className="mt-1 w-full rounded-md border border-[#4b5060] bg-[#15171e] px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
-              />
-            </label>
-            {error && (
-              <div role="alert" className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-                {error}
+          <form onSubmit={handleDemoSubmit}>
+            <div className="rtx-auth-dialog__body">
+              <div className="rtx-auth-broker">
+                <span className="rtx-auth-broker__label">Broker</span>
+                <span className="rtx-auth-broker__value">
+                  {brokerPolicy?.displayName || 'Not configured'}
+                </span>
               </div>
-            )}
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={leaveDemo} className="rounded-md px-4 py-2 text-sm hover:bg-white/10">
+
+              <div className="rtx-auth-form">
+                <label className="rtx-auth-field">
+                  <span className="rtx-auth-field__label">Full name</span>
+                  <input
+                    autoFocus
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    autoComplete="name"
+                    placeholder="Your name"
+                  />
+                </label>
+
+                <label className="rtx-auth-field">
+                  <span className="rtx-auth-field__label">Email</span>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                  />
+                </label>
+
+                <div className="rtx-auth-grid">
+                  <label className="rtx-auth-field">
+                    <span className="rtx-auth-field__label">Password</span>
+                    <input
+                      type="text"
+                      className="rtx-secret-input"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      placeholder="••••••••"
+                    />
+                  </label>
+
+                  <label className="rtx-auth-field">
+                    <span className="rtx-auth-field__label">Confirm password</span>
+                    <input
+                      type="text"
+                      className="rtx-secret-input"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      placeholder="••••••••"
+                    />
+                  </label>
+                </div>
+
+                <span className="rtx-auth-field__hint">
+                  At least 8 characters, including one letter and one number.
+                </span>
+              </div>
+
+              {error && (
+                <div role="alert" className="rtx-auth-alert">
+                  <AlertCircle size={13} strokeWidth={2.2} />
+                  <span>{error}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="rtx-auth-dialog__footer">
+              <button type="button" onClick={leaveDemo} className="rtx-auth-button" data-variant="ghost">
                 Back
               </button>
               <button
                 type="submit"
                 disabled={submitting || !brokerId}
-                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rtx-auth-button"
+                data-variant="primary"
               >
-                {submitting ? 'Creating...' : 'Create and continue'}
+                {submitting && <span className="rtx-auth-spinner" aria-hidden="true" />}
+                {submitting ? 'Creating…' : 'Create and continue'}
               </button>
             </div>
           </form>

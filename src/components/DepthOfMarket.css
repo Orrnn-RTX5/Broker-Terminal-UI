@@ -1,0 +1,233 @@
+/* Depth of Market — enterprise finish.
+   The panel is a floating dark instrument; its palette mirrors the inline
+   charcoal theme in DepthOfMarket.tsx. Interactive states live here so the
+   markup carries no JS hover handlers. */
+
+.rtx-depth-of-market {
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px #28282e;
+}
+
+/* ── Title-bar controls ─────────────────────────────────────────────── */
+.rtx-dom-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #808088;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.rtx-dom-icon-btn:hover {
+  color: #e2e2e8;
+  background: #2a2a30;
+}
+.rtx-dom-icon-btn--danger:hover {
+  color: #fda4a6;
+  background: rgba(255, 77, 79, 0.14);
+}
+.rtx-dom-icon-btn:focus-visible {
+  outline: 1px solid #4d6bfe;
+  outline-offset: 1px;
+}
+
+.rtx-dom-drag-hint {
+  display: flex;
+  align-items: center;
+  color: #50505a;
+}
+
+/* ── Toolbar ────────────────────────────────────────────────────────── */
+.rtx-dom-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.rtx-dom-toolbar-btn:hover {
+  background: #2a2a30;
+}
+.rtx-dom-toolbar-btn:active {
+  background: #333339;
+}
+.rtx-dom-toolbar-btn.is-active {
+  background: #2e2e36;
+  box-shadow: inset 0 0 0 1px #45454e;
+}
+.rtx-dom-toolbar-btn:focus-visible {
+  outline: 1px solid #4d6bfe;
+  outline-offset: 1px;
+}
+
+/* ── Ladder ─────────────────────────────────────────────────────────── */
+.rtx-dom-level {
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.rtx-dom-level:hover {
+  background: #26262d !important;
+}
+.rtx-dom-level--best-ask {
+  box-shadow: inset 2px 0 0 #ff4d4f;
+}
+.rtx-dom-level--best-bid {
+  box-shadow: inset 2px 0 0 #00c896;
+}
+
+.rtx-dom-volbar {
+  border-radius: 2px 0 0 2px;
+  transition: width 160ms ease;
+}
+
+.rtx-dom-trade-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 100ms ease, transform 100ms ease;
+}
+.rtx-dom-trade-btn:hover {
+  background: #35353d;
+  transform: scale(1.2);
+}
+.rtx-dom-trade-btn:focus-visible {
+  outline: 1px solid #4d6bfe;
+  outline-offset: 1px;
+}
+
+/* ── Steppers (SL / Volume / TP) ────────────────────────────────────── */
+.rtx-dom-stepper {
+  display: flex;
+  align-items: stretch;
+  height: 24px;
+  border: 1px solid #333338;
+  border-radius: 6px;
+  background: #222226;
+  overflow: hidden;
+}
+.rtx-dom-stepper:focus-within {
+  border-color: #1d4ed8;
+}
+.rtx-dom-stepper__btn {
+  width: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #808088;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.rtx-dom-stepper__btn:hover {
+  background: #2e2e36;
+  color: #e2e2e8;
+}
+.rtx-dom-stepper__input {
+  width: 46px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  text-align: center;
+  color: #e2e2e8;
+  font-size: 13px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.rtx-dom-stepper__input::-webkit-outer-spin-button,
+.rtx-dom-stepper__input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.rtx-dom-stepper__label {
+  font-size: 12px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6a6a74;
+}
+
+/* ── Execution footer ───────────────────────────────────────────────── */
+.rtx-dom-exec-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 5px 4px 6px;
+  border: 0;
+  cursor: pointer;
+  color: #ffffff;
+  transition: background 120ms ease, color 120ms ease;
+}
+.rtx-dom-exec-btn:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.35);
+  outline-offset: -2px;
+}
+.rtx-dom-exec-btn__caption {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 15px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.rtx-dom-exec-btn__price {
+  font-family: var(--font-mono, 'Roboto Mono', 'Courier New', monospace);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.rtx-dom-exec-btn--sell {
+  background: #c93a41;
+  border-radius: 0 0 0 10px;
+}
+.rtx-dom-exec-btn--sell:hover {
+  background: #d8474e;
+}
+.rtx-dom-exec-btn--sell:active {
+  background: #b93239;
+}
+.rtx-dom-exec-btn--buy {
+  background: #1e62dd;
+  border-radius: 0 0 10px 0;
+}
+.rtx-dom-exec-btn--buy:hover {
+  background: #2d70ea;
+}
+.rtx-dom-exec-btn--buy:active {
+  background: #1b58c7;
+}
+.rtx-dom-exec-btn--flat {
+  background: #232329;
+  color: #9a9aa4;
+}
+.rtx-dom-exec-btn--flat:hover {
+  background: #2c2c33;
+  color: #e2e2e8;
+}
+.rtx-dom-exec-btn--flat:active {
+  background: #212127;
+}

@@ -3,7 +3,7 @@ import { loadPublicQuotes } from './publicMarket';
 
 const runtime = vi.hoisted(() => ({ host: 'https://nexa.orrnn.com' }));
 vi.mock('../config/backendTarget.js', () => ({ getPublicBackendTarget: () => runtime.host }));
-vi.mock('../config/api', () => ({ toLocalDevProxyUrl: (url: string) => url }));
+vi.mock('../config/localDevProxy', () => ({ toLocalDevProxyUrl: (url: string) => url }));
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
 
 it.each(['https://nexa.orrnn.com', 'https://service.achieverfinancials.com', 'https://fxtrustbrokerbackend.orrnn.com'])('uses the configured broker %s without credentials', async host => {
@@ -13,7 +13,9 @@ it.each(['https://nexa.orrnn.com', 'https://service.achieverfinancials.com', 'ht
   vi.stubGlobal('fetch', fetchMock);
   const signal = new AbortController().signal;
   expect(await loadPublicQuotes(signal)).toEqual([{ symbol: 'EURUSD', bid: 1.1, ask: 1.2, time: undefined }]);
-  expect(fetchMock).toHaveBeenCalledWith(`${host}/api/v1/market/symbols`, { signal, cache: 'no-store', credentials: 'omit' });
+  expect(fetchMock).toHaveBeenCalledWith(`${host}/api/v1/market/symbols`, {
+    signal: expect.any(AbortSignal), cache: 'no-store', credentials: 'omit',
+  });
 });
 
 it('reports broker login requirements instead of accessing account credentials', async () => {

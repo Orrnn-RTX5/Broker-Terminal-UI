@@ -1,11 +1,11 @@
 import { brokerDisplayName } from '../../services/brokerDisplayName';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { lazy, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore, type SavedAccount } from '../../store/useAppStore';
 import { FileCode } from 'lucide-react';
 import { ContextMenu } from '../ui/ContextMenu';
-import { LoginDialog } from '../LoginDialog';
+import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { ChangePasswordDialog } from '../ChangePasswordDialog';
 import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
@@ -14,8 +14,11 @@ import { RTX5_API_URL, normalizeServerUrl } from '../../config/api';
 import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
 import { buildBrokerDirectoryLogoUrl } from '../BrokerLogoImage';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
+import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
 import type { Broker, BrokerServer } from '../../types/api';
 import type { BrokerDiscoveryItem } from '../../services/brokerDiscovery';
+
+const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
 
 type BrokerLogoInfo = {
     logoUrl: string;
@@ -246,6 +249,11 @@ export const NavigatorPanel: React.FC = () => {
     const addSavedAccount = useAppStore(state => state.addSavedAccount);
     const isAuthenticated = useAppStore(state => state.isAuthenticated);
 
+    // Saved accounts persist across logout for quick re-login, but the tree
+    // must not present them as an active session. Once the user logs out the
+    // Navigator returns to its logged-out placeholder ("Click to login...").
+    const visibleAccounts = isAuthenticated ? savedAccounts : [];
+
     const [loginDialogOpen, setLoginDialogOpen] = useState(false);
     const [selectedAccountForLogin, setSelectedAccountForLogin] = useState<SavedAccount | null>(null);
     const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
@@ -262,7 +270,7 @@ export const NavigatorPanel: React.FC = () => {
 
 
     // Group accounts by server
-    const servers = Array.from(new Set(savedAccounts.map(a => a.server)));
+    const servers = Array.from(new Set(visibleAccounts.map(a => a.server)));
     const serverNamesForLogos = servers.length > 0 ? servers : [getStoredBrokerServer()];
     const serverLogoKey = serverNamesForLogos.join('\u001f');
 
@@ -319,20 +327,24 @@ export const NavigatorPanel: React.FC = () => {
             }
         };
 
-        loadBrokerLogos();
+        const cancelScheduledLogos = runAfterTerminalReady(() => { void loadBrokerLogos(); });
 
         return () => {
             active = false;
+            cancelScheduledLogos();
         };
     }, [serverLogoKey]);
 
     const handleLoginToAccount = (acc?: SavedAccount) => {
         if (acc) {
             setSelectedAccountForLogin(acc);
+            setLoginDialogOpen(true);
+        } else if (typeof window !== 'undefined' && (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__) {
+            window.dispatchEvent(new CustomEvent('rtx:openTradeAuth'));
         } else {
             setSelectedAccountForLogin(null);
+            setLoginDialogOpen(true);
         }
-        setLoginDialogOpen(true);
     };
 
     // Switch account: require interactive login unless this account is already active.
@@ -407,16 +419,16 @@ export const NavigatorPanel: React.FC = () => {
                 <ContextMenu items={getGeneralAccountContextMenuItems()}>
                     <TreeItem label={tr("Accounts")} icon={<Icon name="user" size="sm" />} defaultOpen>
                         {servers.map((serverName, sIdx) => {
-                            const accountsInServer = savedAccounts.filter(a => a.server === serverName);
+                            const accountsInServer = visibleAccounts.filter(a => a.server === serverName);
                             const isLive = accountsInServer[0]?.isLive; // Restore original logic checking if the server represents live accounts
-                            const isLastServer = sIdx === servers.length - 1 && savedAccounts.length > 0;
+                            const isLastServer = sIdx === servers.length - 1 && visibleAccounts.length > 0;
                             return (
                                 <TreeItem
                                     key={serverName}
                                     label={brokerDisplayName(serverName, brokerLogos[serverName]?.brokerName)}
                                     icon={<BrokerServerIcon serverName={serverName} logoInfo={brokerLogos[serverName]} />}
                                     defaultOpen
-                                    isLast={isLastServer && savedAccounts.length > 0}
+                                    isLast={isLastServer && visibleAccounts.length > 0}
                                 >
                                     {accountsInServer.map((acc, aIdx) => {
                                         const isActive = acc.login.toString() === accountId;
@@ -444,7 +456,7 @@ export const NavigatorPanel: React.FC = () => {
                         })}
 
                         {/* Add Account Placeholder if empty */}
-                        {savedAccounts.length === 0 && (
+                        {visibleAccounts.length === 0 && (
                             <TreeItem
                                 label={brokerDisplayName(getStoredBrokerServer(), brokerLogos[getStoredBrokerServer()]?.brokerName)}
                                 icon={
@@ -511,12 +523,14 @@ export const NavigatorPanel: React.FC = () => {
                 </TreeItem>
             </div>
 
+            <RetainedLazyFeature active={loginDialogOpen}>
             <LoginDialog
                 isOpen={loginDialogOpen}
                 onClose={() => setLoginDialogOpen(false)}
                 initialLogin={selectedAccountForLogin?.login.toString()}
                 initialServer={selectedAccountForLogin?.server}
             />
+            </RetainedLazyFeature>
 
             <ChangePasswordDialog
                 isOpen={changePasswordDialogOpen}
@@ -590,7 +604,7 @@ function BrokerServerIcon({
 }
 
 /** MT5-style account icon - person silhouette with color */
-function AccountIcon({ isActive, isLive }: { isActive: boolean; isLive: boolean }) {
+function AccountIcon({ isActive }: { isActive: boolean; isLive: boolean }) {
     const color = '#fbbf24'; // always yellow for both real and demo
     return (
         <svg width={14} height={14} viewBox="0 0 16 16" fill="none" className={`inline-block flex-shrink-0 ${isActive ? 'opacity-100' : 'opacity-60'}`}>

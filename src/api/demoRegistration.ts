@@ -24,21 +24,35 @@ export interface DemoRegistrationResponse {
   username?: string;
 }
 
+const getStoredSessionBrokerId = (): string => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return String(window.localStorage.getItem('broker_id') || window.localStorage.getItem('rtx_broker_id') || '').trim();
+  } catch {
+    return '';
+  }
+};
+
 /**
- * Registers against this terminal deployment's broker. The caller cannot pass
- * broker_id or group: the runtime-configured broker and the backend's enabled
- * default demo group are the authority for both values.
+ * Registers against this terminal's broker. The caller cannot pass group: the
+ * resolved broker and the backend's enabled default demo group are the
+ * authority. The broker is the active session broker (the one the Navigator
+ * shows) when present, otherwise the runtime-configured deployment broker.
  */
 export const registerRuntimeBrokerDemoAccount = async (
   input: DemoRegistrationInput,
   policyBrokerId?: string,
 ): Promise<DemoRegistrationResponse> => {
   const configuredBrokerId = getRuntimeConfiguredBrokerId();
-  const brokerId = String(policyBrokerId || configuredBrokerId).trim();
+  const sessionBrokerId = getStoredSessionBrokerId();
+  const brokerId = String(policyBrokerId || sessionBrokerId || configuredBrokerId).trim();
   if (!brokerId) {
     throw new Error('Demo registration is unavailable because this terminal has no broker configured.');
   }
-  if (configuredBrokerId && configuredBrokerId.toLowerCase() !== brokerId.toLowerCase()) {
+  const allowedBrokerIds = [sessionBrokerId, configuredBrokerId]
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  if (allowedBrokerIds.length && !allowedBrokerIds.includes(brokerId.toLowerCase())) {
     throw new Error('Demo registration broker does not match this terminal deployment.');
   }
 

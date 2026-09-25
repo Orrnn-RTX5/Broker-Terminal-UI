@@ -96,6 +96,12 @@ export interface TradingViewChartTheme {
   line: string;
   areaTop: string;
   areaBottom: string;
+  areaUpLine: string;
+  areaUpTop: string;
+  areaUpBottom: string;
+  areaDownLine: string;
+  areaDownTop: string;
+  areaDownBottom: string;
   volumeUp: string;
   volumeDown: string;
 }
@@ -115,6 +121,75 @@ export const getLivePriceSeriesColor = (
   if (chartType === 'bar') return direction === 'up' ? colors.barUp : colors.barDown;
   return direction === 'up' ? colors.bullCandle : colors.bearCandle;
 };
+
+export type AreaTrendDirection = 'up' | 'down';
+
+const DAY_SECONDS = 24 * 60 * 60;
+
+// TradingView's symbol-page range buttons pair a change period with a data
+// granularity (1 day→minute bars, 5 days→5-minute, 1 month→30-minute,
+// 6 months→hourly, 1 year→daily, 5 years→weekly, 10 years→monthly). The
+// terminal's timeframe implies the change period the same way.
+const AREA_TREND_PERIOD_DAYS: Record<string, number> = {
+  M1: 1,
+  M5: 5,
+  M15: 30,
+  M30: 30,
+  H1: 182,
+  H4: 182,
+  D1: 365,
+  W1: 5 * 365,
+  MN: 10 * 365,
+};
+
+export const getAreaTrendPeriodDays = (timeframe: string | undefined): number =>
+  AREA_TREND_PERIOD_DAYS[timeframe ?? ''] ?? 1;
+
+// TradingView-style Area coloring: the line and gradient take the bull color
+// while the current price is at or above the close from the start of the
+// timeframe's change period (broker time) — the previous day's close on M1,
+// five days back on M5, a year back on D1, and so on — and the bear color
+// while it is below. When the loaded history does not reach that far back,
+// the oldest loaded candle's open stands in as the reference.
+export const getAreaTrendDirection = (
+  candles: readonly { time: number; open: number; close: number }[],
+  brokerOffsetSeconds = 0,
+  latestClose?: number,
+  timeframe?: string,
+): AreaTrendDirection | null => {
+  const last = candles[candles.length - 1];
+  if (!last) return null;
+
+  const offset = Number.isFinite(brokerOffsetSeconds) ? brokerOffsetSeconds : 0;
+  const dayStart = Math.floor((last.time + offset) / DAY_SECONDS) * DAY_SECONDS - offset;
+  const periodStart = dayStart - (getAreaTrendPeriodDays(timeframe) - 1) * DAY_SECONDS;
+
+  // Newest candle that closed before the period began → the period's
+  // reference close (the previous daily close for a 1-day period).
+  let reference: number | null = null;
+  for (let i = candles.length - 1; i >= 0; i--) {
+    if (candles[i].time < periodStart) {
+      reference = candles[i].close;
+      break;
+    }
+  }
+  if (reference === null) reference = candles[0].open;
+
+  // The forming candle streams through series.update() and may not be in the
+  // rendered snapshot yet, so callers pass the live close.
+  const latest = Number.isFinite(latestClose) ? (latestClose as number) : last.close;
+  if (!Number.isFinite(reference) || !Number.isFinite(latest)) return null;
+  return latest >= reference ? 'up' : 'down';
+};
+
+export const getAreaTrendSeriesOptions = (
+  theme: TradingViewChartTheme,
+  direction: AreaTrendDirection,
+): { lineColor: string; topColor: string; bottomColor: string } => (
+  direction === 'down'
+    ? { lineColor: theme.areaDownLine, topColor: theme.areaDownTop, bottomColor: theme.areaDownBottom }
+    : { lineColor: theme.areaUpLine, topColor: theme.areaUpTop, bottomColor: theme.areaUpBottom }
+);
 
 const SESSION_GAP_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4']);
 const DENSE_MINUTE_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5']);
@@ -535,6 +610,8 @@ export const shouldResetInitialHistoryVisibleRange = ({
 export const TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS = {
   shiftVisibleRangeOnNewBar: false,
   allowShiftVisibleRangeOnWhitespaceReplacement: false,
+  // Match chart-wheel zoom: keep the visible right edge, even in history.
+  rightBarStaysOnScroll: true,
 } as const;
 
 export const shouldRestoreProtectedHistoryForFullRender = ({

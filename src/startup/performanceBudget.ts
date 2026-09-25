@@ -159,27 +159,37 @@ export const scheduleAuthenticatedShellPaintMeasurement = (): (() => void) => {
   let frameId: number | undefined;
   let paintTaskId: number | undefined;
 
+  const hasVisibleTerminal = (): boolean => Array.from(document.querySelectorAll(selector)).some(
+    (viewport) => !viewport.closest('[data-terminal-startup="pending"]'),
+  );
+
   const cleanup = () => {
     observer?.disconnect();
     if (timeoutId !== undefined) window.clearTimeout(timeoutId);
   };
 
   const schedulePaintConfirmation = () => {
-    if (cancelled || frameId !== undefined || !document.querySelector(selector)) return;
-    observer?.disconnect();
+    if (cancelled || frameId !== undefined || !hasVisibleTerminal()) return;
     frameId = window.requestAnimationFrame(() => {
       paintTaskId = window.setTimeout(() => {
-        if (!cancelled && document.querySelector(selector)) {
+        frameId = undefined;
+        paintTaskId = undefined;
+        if (!cancelled && hasVisibleTerminal()) {
           publishStartupMetric('auth-shell', performance.now() - authAcceptedAt);
+          cleanup();
         }
-        cleanup();
       }, 0);
     });
   };
 
   if (typeof MutationObserver !== 'undefined') {
     observer = new MutationObserver(schedulePaintConfirmation);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-terminal-startup'],
+    });
   }
   const timeoutId = window.setTimeout(cleanup, 5_000);
   schedulePaintConfirmation();

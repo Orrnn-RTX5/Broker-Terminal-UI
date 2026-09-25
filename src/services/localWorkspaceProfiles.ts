@@ -61,6 +61,7 @@ export interface WorkspaceChartSettingsSnapshot {
   volumeBarsDefaultMigrationVersion: number;
   periodSeparatorsDefaultMigrationVersion: number;
   chartShiftDefaultMigrationVersion: number;
+  ohlcDefaultMigrationVersion: number;
 }
 
 export interface WorkspaceMarketWatchOptions {
@@ -298,6 +299,7 @@ const normalizeChartSettings = (value: unknown): WorkspaceChartSettingsSnapshot 
     volumeBarsDefaultMigrationVersion: Math.max(0, Number(value.volumeBarsDefaultMigrationVersion) || 0),
     periodSeparatorsDefaultMigrationVersion: Math.max(0, Number(value.periodSeparatorsDefaultMigrationVersion) || 0),
     chartShiftDefaultMigrationVersion: Math.max(0, Number(value.chartShiftDefaultMigrationVersion) || 0),
+    ohlcDefaultMigrationVersion: Math.max(0, Number(value.ohlcDefaultMigrationVersion) || 0),
   };
 };
 
@@ -494,6 +496,7 @@ export class LocalWorkspaceProfileService {
           volumeBarsDefaultMigrationVersion: chartSettings.volumeBarsDefaultMigrationVersion,
           periodSeparatorsDefaultMigrationVersion: chartSettings.periodSeparatorsDefaultMigrationVersion,
           chartShiftDefaultMigrationVersion: chartSettings.chartShiftDefaultMigrationVersion,
+          ohlcDefaultMigrationVersion: chartSettings.ohlcDefaultMigrationVersion,
         },
         marketWatch: {
           watchlists: cloneJson(watchlistState.watchlists),
@@ -577,6 +580,7 @@ export class LocalWorkspaceProfileService {
       volumeBarsDefaultMigrationVersion: normalized.state.chartSettings.volumeBarsDefaultMigrationVersion,
       periodSeparatorsDefaultMigrationVersion: normalized.state.chartSettings.periodSeparatorsDefaultMigrationVersion,
       chartShiftDefaultMigrationVersion: normalized.state.chartSettings.chartShiftDefaultMigrationVersion,
+      ohlcDefaultMigrationVersion: normalized.state.chartSettings.ohlcDefaultMigrationVersion,
     });
     useWatchlistStore.setState({
       watchlists: cloneJson(normalized.state.marketWatch.watchlists),
@@ -782,6 +786,7 @@ export const createBuiltinWorkspaceProfile = (
         volumeBarsDefaultMigrationVersion: chartSettings.volumeBarsDefaultMigrationVersion,
         periodSeparatorsDefaultMigrationVersion: chartSettings.periodSeparatorsDefaultMigrationVersion,
         chartShiftDefaultMigrationVersion: chartSettings.chartShiftDefaultMigrationVersion,
+        ohlcDefaultMigrationVersion: chartSettings.ohlcDefaultMigrationVersion,
       },
       marketWatch: {
         watchlists: cloneJson(watchlistState.watchlists),

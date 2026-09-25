@@ -4,7 +4,6 @@ import { useUiTranslation } from '../../hooks/useUiTranslation';
  * MT5-style docking with compass rose indicator and blue preview
  */
 
-import { Icon } from '../ui/Icon';
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx, type ClassValue } from 'clsx';
@@ -238,10 +237,8 @@ const DockContainerContent: React.FC<DockContainerProps> = ({
   const {
     layout,
     dragState,
-    dragInfo,
     dropTargetId,
     compassDir,
-    setDropIntent,
     startDrag,
     endDrag,
     cancelDrag,

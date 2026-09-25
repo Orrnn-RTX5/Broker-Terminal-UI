@@ -98,10 +98,14 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                         <div className="space-y-1">
                             <label className="text-xs text-zinc-400">{tr("Current Password")}</label>
                             <input
-                                type="password"
+                                type="text"
+                                autoComplete="off"
+                                spellCheck={false}
+                                autoCorrect="off"
+                                autoCapitalize="none"
                                 value={oldPassword}
                                 onChange={(e) => setOldPassword(e.target.value)}
-                                className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                                className="rtx-secret-input w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
                                 placeholder={tr("Enter current password")}
                             />
                         </div>
@@ -110,10 +114,14 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                     <div className="space-y-1">
                         <label className="text-xs text-zinc-400">{tr("New Password")}</label>
                         <input
-                            type="password"
+                            type="text"
+                            autoComplete="off"
+                            spellCheck={false}
+                            autoCorrect="off"
+                            autoCapitalize="none"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                            className="rtx-secret-input w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
                             placeholder={tr("Enter new password")}
                         />
                     </div>
@@ -121,10 +129,14 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                     <div className="space-y-1">
                         <label className="text-xs text-zinc-400">{tr("Confirm New Password")}</label>
                         <input
-                            type="password"
+                            type="text"
+                            autoComplete="off"
+                            spellCheck={false}
+                            autoCorrect="off"
+                            autoCapitalize="none"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                            className="rtx-secret-input w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
                             placeholder={tr("Confirm new password")}
                         />
                     </div>

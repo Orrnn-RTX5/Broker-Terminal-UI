@@ -175,9 +175,8 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud {
-  max-width: calc(100% - 120px);
-  white-space: nowrap;
-  overflow: hidden;
+  max-width: calc(100% - 40px);
+  flex-wrap: wrap;
 }
 
 /* Grow fixed form chrome so two text lines and longer labels remain visible. */
@@ -213,10 +212,6 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct {
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-trade-button :is(.rtx-oct-price, .rtx-oct-side-label) {
   line-height: 1.25 !important;
-}
-
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-price-badge {
-  transform: translateY(-12px) !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-price-badge span {

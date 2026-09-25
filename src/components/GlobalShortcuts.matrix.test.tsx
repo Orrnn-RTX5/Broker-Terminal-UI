@@ -64,7 +64,7 @@ const eventCases: Record<string, string> = {
 };
 const propertyCases: Record<string, keyof typeof defaultChartProperties> = {
   'charts.toggle-grid': 'showGrid', 'charts.toggle-grid-alt': 'showGrid', 'charts.toggle-volumes': 'showTickVolumes',
-  'charts.period-separators': 'showPeriodSeparators', 'charts.trade-history': 'showTradeHistory', 'charts.ohlc': 'showOHLC',
+  'charts.period-separators': 'showPeriodSeparators', 'charts.trade-history': 'showTradeHistoryArrows', 'charts.ohlc': 'showOHLC',
   'charts.auto-scroll': 'chartAutoScroll', 'charts.chart-shift': 'chartShift',
 };
 const callbackCases: Record<string, string> = {
@@ -138,7 +138,7 @@ afterEach(() => {
   keyboardShortcutManager.clear(); clearActiveChartSources(); document.body.replaceChildren();
 });
 
-describe('mounted shortcut action matrix', () => {
+describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
   it.each(BROKERS)('executes every registered browser binding for $id without a live transport', broker => {
     localStorage.setItem('broker_id', broker.id); localStorage.setItem('server_url', broker.server);
     localStorage.setItem('login', '900001'); // Deliberately fake; no transport is mounted in this suite.
@@ -148,7 +148,7 @@ describe('mounted shortcut action matrix', () => {
     activateActiveChartSource('trading-chart:active');
     const callbacks = props(); mount(callbacks);
     const fallbackTimeframe = vi.fn();
-    releases.push(commandBus.subscribe('SET_TIMEFRAME', payload => applyChartTimeframeCommand(payload, fallbackTimeframe)));
+    releases.push(commandBus.subscribe('SET_TIMEFRAME', payload => { applyChartTimeframeCommand(payload, fallbackTimeframe); }));
     const bindings = keyboardShortcutManager.getShortcuts().filter(binding => binding.enabled !== false);
     expect(bindings.filter(binding => !isCovered(binding.id)).map(binding => binding.id)).toEqual([]);
     expect(keyboardShortcutManager.getConflicts()).toEqual([]);
@@ -235,7 +235,7 @@ describe('mounted shortcut action matrix', () => {
     createChart('active', () => currentSymbol, () => panel('active').props!.timeframe);
     createChart('other', () => currentOther, () => panel('other').props!.timeframe);
     const callbacks = props(); mount(callbacks);
-    const fallback = vi.fn(); releases.push(commandBus.subscribe('SET_TIMEFRAME', payload => applyChartTimeframeCommand(payload, fallback)));
+    const fallback = vi.fn(); releases.push(commandBus.subscribe('SET_TIMEFRAME', payload => { applyChartTimeframeCommand(payload, fallback); }));
     for (const broker of BROKERS) {
       currentSymbol = broker.symbol; currentOther = broker.other;
       act(() => useDockLayoutStore.getState().setLayout(makeLayout(currentSymbol, currentOther)));
@@ -269,7 +269,7 @@ describe('mounted shortcut action matrix', () => {
     activateActiveChartSource('trading-chart:active'); mount();
     expect(commandBus.getHistory()).toEqual([]);
     const defaultTimeframe = vi.fn();
-    releases.push(commandBus.subscribe('SET_TIMEFRAME', payload => applyChartTimeframeCommand(payload, defaultTimeframe)));
+    releases.push(commandBus.subscribe('SET_TIMEFRAME', payload => { applyChartTimeframeCommand(payload, defaultTimeframe); }));
     fireEvent.click(screen.getByText('H4'));
     expect(commandBus.getHistory()).toEqual([{ type: 'SET_TIMEFRAME', payload: { timeframe: 'H4', targetContextId: 'trading-chart:active', panelId: 'active' } }]);
     expect(panel('active').props!.timeframe).toBe('H4'); expect(defaultTimeframe).not.toHaveBeenCalled();

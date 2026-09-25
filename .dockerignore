@@ -1,5 +1,6 @@
 node_modules
 dist
+artifacts
 draft
 jscpd-report
 build
@@ -8,4 +9,7 @@ build
 .claude
 .codex
 .agents
-docker-compose*.yml
+.env*
+.npmrc
+docker-compose*.override.yml
+coverage

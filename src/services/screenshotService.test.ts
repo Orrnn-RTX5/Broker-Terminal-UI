@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { html2canvasMock } = vi.hoisted(() => ({
+const { html2canvasMock, rendererModuleLoaded } = vi.hoisted(() => ({
   html2canvasMock: vi.fn(),
+  rendererModuleLoaded: vi.fn(),
 }));
 
-vi.mock('html2canvas-pro', () => ({
-  default: html2canvasMock,
-}));
+vi.mock('html2canvas-pro', () => {
+  rendererModuleLoaded();
+  return { default: html2canvasMock };
+});
 
 import { captureFullPage, preloadScreenshotRenderer } from './screenshotService';
 
@@ -80,6 +82,18 @@ describe('screenshotService performance path', () => {
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  it('keeps the renderer unloaded at startup and opens a preview immediately on the first capture', async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    expect(rendererModuleLoaded).not.toHaveBeenCalled();
+
+    const capture = captureFullPage();
+    expect(openSpy).toHaveBeenCalledWith('', '_blank');
+    expect(preview.documentWrite.mock.calls[0][0]).toContain('Capturing screenshot...');
+    await capture;
+    expect(rendererModuleLoaded).toHaveBeenCalledTimes(1);
+    expect(html2canvasMock).toHaveBeenCalledTimes(1);
   });
 
   it('opens an immediate preview status before starting the full-resolution render', async () => {
@@ -312,7 +326,7 @@ describe('screenshotService performance path', () => {
     expect(preview.documentWrite.mock.calls.some(([html]) => String(html).includes('Screenshot failed'))).toBe(true);
   });
 
-  it('exposes an awaitable, idempotent preload hook for idle startup warming', async () => {
+  it('exposes an awaitable, idempotent explicit preload hook', async () => {
     await expect(preloadScreenshotRenderer()).resolves.toBeUndefined();
     await expect(preloadScreenshotRenderer()).resolves.toBeUndefined();
   });

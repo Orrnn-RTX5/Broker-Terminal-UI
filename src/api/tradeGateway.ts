@@ -7,6 +7,7 @@ import { decodeJwtPayload } from '../utils/jwt';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import { enrichTradesWithCachedLevels } from '../utils/tradeHistoryLevelCache';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
+import { readBackendNumber } from '../services/backendAccountMetrics';
 
 export type GatewayAccount = {
   login?: number;
@@ -34,10 +35,8 @@ export type GatewayAccount = {
 };
 
 export type GatewayPosition = {
-  state_version?: string | number;
   state_version_text?: string;
   protection_version?: string | number;
-  price_time_msc?: number;
   ticket?: number;
   position_id?: number;
   account_login?: number;
@@ -67,6 +66,11 @@ export type GatewayPosition = {
   time_ms?: number;
   time?: number;
   comment?: string;
+  state_version?: string | number;
+  price_time_msc?: number;
+  pnl_available?: boolean;
+  hasBackendProfit?: boolean;
+  hasBackendCurrentPrice?: boolean;
 };
 
 export type GatewayDeal = {
@@ -161,11 +165,6 @@ const toIsoFromSeconds = (value?: number | string | null): string => {
   if (!Number.isFinite(numeric) || numeric <= 0) return '';
   const ms = numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
   return new Date(ms).toISOString();
-};
-
-const numberOr = (value: unknown, fallback: number): number => {
-  const next = Number(value);
-  return Number.isFinite(next) ? next : fallback;
 };
 
 const finiteNumberOrUndefined = (value: unknown): number | undefined => {
@@ -382,19 +381,25 @@ export const collapseDealHistory = (deals: Trade[]): Trade[] => {
   return closedHistory;
 };
 
-export const normalizeAccount = (raw: GatewayAccount, previous?: Account | null): Account => normalizeAccountMetrics(raw, previous);
+// REST account snapshots may omit fields. `partial` preserves the previous
+// value for anything absent instead of reporting it as an unavailable zero,
+// and cannot roll a value back because it only ever fills gaps.
+export const normalizeAccount = (raw: GatewayAccount, previous?: Account | null): Account =>
+  normalizeAccountMetrics(raw, previous, { partial: true });
 
 export const normalizePosition = (raw: GatewayPosition): Position => {
   const side = String(raw.side ?? raw.action ?? '').toLowerCase();
   const volume = Number(raw.volume_lots ?? raw.volume ?? (raw as any).quantity ?? 0);
   const openPrice = Number(raw.price_open ?? raw.open_price ?? (raw as any).openPrice ?? (raw as any).entryPrice ?? (raw as any).chartEntryPrice ?? (raw as any).price ?? 0);
-  const currentPrice = Number(raw.price_current ?? raw.current_price ?? (raw as any).currentPrice ?? (raw as any).livePrice ?? openPrice ?? 0);
-  const rawProfit: unknown = raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL;
-  const hasBackendProfit = (raw as any).pnl_available !== false && (raw as any).hasBackendProfit !== false
-    && rawProfit !== undefined && rawProfit !== null && rawProfit !== '' && Number.isFinite(Number(rawProfit));
-  const profit = hasBackendProfit ? Number(rawProfit) : 0;
+  const backendCurrentPrice = readBackendNumber(raw.price_current ?? raw.current_price ?? (raw as any).currentPrice ?? (raw as any).livePrice);
+  const backendProfit = readBackendNumber(raw.profit ?? (raw as any).unrealized_pl ?? (raw as any).unrealized_pnl ?? (raw as any).unrealizedPnL);
+  const hasBackendCurrentPrice = raw.pnl_available !== false && raw.hasBackendCurrentPrice !== false && backendCurrentPrice !== undefined;
+  const hasBackendProfit = raw.pnl_available !== false && raw.hasBackendProfit !== false && backendProfit !== undefined;
+  const currentPrice = hasBackendCurrentPrice ? backendCurrentPrice : 0;
+  const profit = hasBackendProfit ? backendProfit : 0;
   const openTime = resolvePositionOpenTime(raw);
   return {
+    ...raw,
     id: Number(raw.ticket ?? raw.position_id ?? (raw as any).id ?? 0),
     state_version: raw.state_version_text ?? raw.state_version,
     protection_version: raw.protection_version,
@@ -404,13 +409,14 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
     volume,
     openPrice,
     currentPrice,
+    hasBackendCurrentPrice,
+    hasBackendProfit,
     openTime,
     sl: Number(raw.price_sl ?? raw.sl ?? 0),
     tp: Number(raw.price_tp ?? raw.tp ?? 0),
     swap: Number(raw.swap ?? raw.storage ?? 0),
     commission: Number(raw.commission ?? 0),
     unrealizedPnL: profit,
-    hasBackendProfit,
     comment: raw.comment ?? '',
     open_price: openPrice,
     price_open: openPrice,
