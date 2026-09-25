@@ -30,7 +30,9 @@ describe('same-document logout transition source contract', () => {
     const store = readSource('src/store/useAppStore.ts');
 
     expect(store).toContain("emitSessionChange('logout')");
-    expect(store).toContain("localStorage.removeItem('feed_broker_token')");
-    expect(store).toContain("localStorage.removeItem('ws_feed_token')");
+    expect(store).toContain("localStorage.removeItem('feed_broker_id')");
+    expect(store).toContain("sessionStorage.removeItem('feed_broker_id')");
+    // The market-data feed has no credential; logout must not resurrect one.
+    expect(store).not.toContain('feed_broker_token');
   });
 });

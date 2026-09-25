@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getQuoteSocketManager } from '../services/quoteSocketManager';
 import { onSessionChange } from '../services/brokerSession';
 import { debugLog } from '../utils/debugLogging';
+import { useWebSocketStore } from '../store/useWebSocketStore';
 
 const normalizeSymbol = (v: unknown): string =>
   typeof v === 'string' ? v.trim().toUpperCase() : '';
@@ -35,7 +36,10 @@ export function useQuoteSubscription(
   sourceId: string,
   options: UseQuoteSubscriptionOptions = {},
 ): UseQuoteSubscriptionReturn {
+  // Public quote channels do not require an account session. The socket
+  // manager selects anonymous v2 or the broker's authenticated transport.
   const enabled = options.enabled !== false;
+  const isConnected = useWebSocketStore(state => state.fixConnectionState === 'connected');
   const [sessionRevision, setSessionRevision] = useState(0);
 
   useEffect(() => {
@@ -55,7 +59,7 @@ export function useQuoteSubscription(
     if (!enabled) return undefined;
 
     const manager = managerRef.current;
-    debugLog(`[useQuoteSubscription] demand - symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
+    debugLog(`[useQuoteSubscription] public v2 demand - symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
 
     if (normalizedSymbols.length === 0) {
       manager.removeDemand(sourceId);
@@ -71,6 +75,6 @@ export function useQuoteSubscription(
   }, [enabled, normalizedSymbols.join('|'), sourceId, sessionRevision]);
 
   return {
-    isConnected: managerRef.current.isConnected(),
+    isConnected: enabled && isConnected,
   };
 }

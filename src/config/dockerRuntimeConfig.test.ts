@@ -136,7 +136,6 @@ describe.skipIf(!existsSync(shell))('container broker environment', {
       BROKER_ID: 'Orrnn',
       VITE_BROKER_ID: 'Orrnn',
       FEED_BROKER_ID: 'Orrnn',
-      FEED_BROKER_TOKEN: '',
       USE_MOCK_DISCOVERY: false,
     });
   });

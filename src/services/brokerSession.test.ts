@@ -126,51 +126,51 @@ describe('broker websocket URL builder', () => {
     expect(buildBrokerWsFeedUri()).toBe('wss://feed-broker.example/custom/feed');
   });
 
-  it('appends broker feed query auth when a feed token is configured', () => {
+  it('labels the quote feed socket with the active broker id and never a credential', () => {
     localStorage.setItem('broker_id', 'gta_broker');
-    localStorage.setItem('feed_broker_token', 'feed-secret');
     localStorage.setItem('server_url', 'https://services.growtradingacademy.com');
 
-    expect(buildBrokerWsFeedUri()).toBe(
-      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
+    const feedUri = buildBrokerWsFeedUri();
+    expect(feedUri).toBe(
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker'
     );
+    expect(feedUri).not.toContain('token=');
   });
 
-  it('uses runtime-config feed auth for deployed web quote sockets', () => {
+  it('uses the runtime-config broker id for deployed web quote sockets', () => {
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
       API_HOST: 'https://services.growtradingacademy.com',
       WS_HOST: 'wss://services.growtradingacademy.com',
       BROKER_ID: 'gta_broker',
       VITE_BROKER_ID: 'grow-trading-academy',
-      FEED_BROKER_TOKEN: 'feed-secret',
     };
 
     expect(buildBrokerWsFeedUri()).toBe(
-      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker'
     );
   });
 
-  it('uses build-time feed auth for the matching packaged broker', () => {
+  it('uses the build-time broker id for the matching packaged broker', () => {
     vi.stubEnv('VITE_FEED_BROKER_ID', 'TEST');
     vi.stubEnv('VITE_BROKER_ID', 'TEST');
-    vi.stubEnv('VITE_FEED_BROKER_TOKEN', 'feed-secret');
     localStorage.setItem('broker_id', 'TEST');
     localStorage.setItem('server_url', 'https://fxtrustbrokerbackend.orrnn.com');
 
     expect(buildBrokerWsFeedUri()).toBe(
-      'wss://fxtrustbrokerbackend.orrnn.com/ws/feed?broker_id=TEST&token=feed-secret'
+      'wss://fxtrustbrokerbackend.orrnn.com/ws/feed?broker_id=TEST'
     );
   });
 
-  it('does not attach a build-time broker credential to a different selected broker', () => {
+  it('labels the feed with the selected broker, not the packaged build-time broker', () => {
     vi.stubEnv('VITE_FEED_BROKER_ID', 'TEST');
     vi.stubEnv('VITE_BROKER_ID', 'TEST');
-    vi.stubEnv('VITE_FEED_BROKER_TOKEN', 'feed-secret');
     localStorage.setItem('broker_id', 'achiever-financials');
     localStorage.setItem('server_url', 'https://service.achieverfinancials.com');
 
-    expect(buildBrokerWsFeedUri()).toBe('wss://service.achieverfinancials.com/ws/feed');
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://service.achieverfinancials.com/ws/feed?broker_id=achiever-financials'
+    );
   });
 
   it('uses FX Trust public broker hosts in web mode', () => {
@@ -186,7 +186,9 @@ describe('broker websocket URL builder', () => {
     expect(buildBrokerWsV2Uri('access-token')).toBe(
       'wss://fxtrustbrokerbackend.orrnn.com/ws/v2?token=access-token'
     );
-    expect(buildBrokerWsFeedUri()).toBe('wss://fxtrustbrokerbackend.orrnn.com/ws/feed');
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://fxtrustbrokerbackend.orrnn.com/ws/feed?broker_id=TEST'
+    );
   });
 
   it('derives local same-origin websocket paths from runtime WS_HOST', () => {
@@ -201,30 +203,27 @@ describe('broker websocket URL builder', () => {
     expect(buildBrokerWsV2Uri('access-token')).toBe(
       'ws://127.0.0.1:5175/ws/v2?token=access-token'
     );
-    expect(buildBrokerWsFeedUri()).toBe('ws://127.0.0.1:5175/ws/feed');
+    expect(buildBrokerWsFeedUri()).toBe('ws://127.0.0.1:5175/ws/feed?broker_id=TEST');
   });
 
-  it('prefers runtime feed/backend broker id over localStorage deploy alias for feed WS auth', () => {
+  it('prefers runtime feed/backend broker id over localStorage deploy alias for the feed label', () => {
     localStorage.setItem('broker_id', 'grow-trading-academy');
     localStorage.setItem('rtx_broker_id', 'grow-trading-academy');
-    localStorage.setItem('feed_broker_token', 'feed-secret');
     localStorage.setItem('server_url', 'https://services.growtradingacademy.com');
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'desktop',
       BROKER_ID: 'gta_broker',
       FEED_BROKER_ID: 'gta_broker',
-      FEED_BROKER_TOKEN: 'feed-secret',
       VITE_BROKER_ID: 'grow-trading-academy',
     };
 
     expect(buildBrokerWsFeedUri()).toBe(
-      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker'
     );
   });
 
-  it('maps localStorage deploy alias grow-trading-academy to gta_broker for feed WS auth', () => {
+  it('maps localStorage deploy alias grow-trading-academy to gta_broker for the feed label', () => {
     localStorage.setItem('broker_id', 'grow-trading-academy');
-    localStorage.setItem('feed_broker_token', 'feed-secret');
     localStorage.setItem('server_url', 'https://services.growtradingacademy.com');
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'desktop',
@@ -232,29 +231,31 @@ describe('broker websocket URL builder', () => {
     };
 
     expect(buildBrokerWsFeedUri()).toBe(
-      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker'
     );
   });
 
-  it('persists discovery-provided feed token for quote feed sockets', () => {
-    persistBrokerSessionDiscovery({
+  it('never persists or replays a feed credential from discovery', () => {
+    // Legacy discovery payloads may still carry these; they must be ignored.
+    const legacyDiscoveryPayload = {
       broker_id: 'gta_broker',
       backend_url: 'https://services.growtradingacademy.com',
       feed_broker_token: 'feed-secret',
-    });
+      feed_token: 'feed-secret',
+    };
+    persistBrokerSessionDiscovery(legacyDiscoveryPayload);
 
-    expect(localStorage.getItem('feed_broker_token')).toBe('feed-secret');
-    expect(localStorage.getItem('feed_broker_id')).toBe('gta_broker');
+    expect(localStorage.getItem('feed_broker_token')).toBeNull();
+    expect(localStorage.getItem('feed_token')).toBeNull();
     expect(buildBrokerWsFeedUri()).toBe(
-      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker'
     );
   });
 
-  it('clears a previous broker feed credential when login switches brokers without issuing a replacement', () => {
+  it('relabels the feed for the new broker when login switches brokers', () => {
     localStorage.setItem('broker_id', 'TEST');
     localStorage.setItem('server_url', 'https://fxtrustbrokerbackend.orrnn.com');
     localStorage.setItem('feed_broker_id', 'TEST');
-    localStorage.setItem('feed_broker_token', 'old-feed-secret');
 
     persistBrokerSessionDiscovery({
       access_token: 'new-account-token',
@@ -263,9 +264,10 @@ describe('broker websocket URL builder', () => {
       server_url: 'https://service.achieverfinancials.com',
     });
 
-    expect(localStorage.getItem('feed_broker_token')).toBeNull();
     expect(localStorage.getItem('feed_broker_id')).toBeNull();
-    expect(buildBrokerWsFeedUri()).toBe('wss://service.achieverfinancials.com/ws/feed');
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://service.achieverfinancials.com/ws/feed?broker_id=achiever-financials'
+    );
   });
 
   it('uses broker-provided ws_url when feed_url is absent', () => {
@@ -321,7 +323,7 @@ describe('broker websocket URL builder', () => {
 
     expect(getServerUrl()).toBe('http://103.91.186.142:8090');
     expect(buildBrokerApiV2()).toBe('http://103.91.186.142:8090/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('ws://103.91.186.142:8090/ws/feed');
+    expect(buildBrokerWsFeedUri()).toBe('ws://103.91.186.142:8090/ws/feed?broker_id=gta_broker');
     expect(localStorage.getItem('feed_status_url')).toBe('http://103.91.186.142:8090/feed/status');
   });
 
@@ -347,7 +349,7 @@ describe('broker websocket URL builder', () => {
     expect(localStorage.getItem('feed_url')).toBe('ws://103.91.186.142:8090/ws/feed');
 
     expect(buildBrokerApiV2()).toBe('http://103.91.186.142:8090/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('ws://103.91.186.142:8090/ws/feed');
+    expect(buildBrokerWsFeedUri()).toBe('ws://103.91.186.142:8090/ws/feed?broker_id=gta_broker');
     expect(buildBrokerWsV2Uri('access-token')).toBe('ws://103.91.186.142:8090/ws/v2?token=access-token');
     expect([
       getServerUrl(),
@@ -558,12 +560,13 @@ describe('broker websocket URL builder', () => {
 
     expect(localStorage.getItem('feed_url')).toBeNull();
     expect(localStorage.getItem('ws_url')).toBeNull();
-    expect(buildBrokerWsFeedUri()).toBe('ws://103.91.186.142/ws/feed');
+    expect(buildBrokerWsFeedUri()).toBe('ws://103.91.186.142/ws/feed?broker_id=gta_broker');
     expect(buildBrokerWsV2Uri('access-token')).toBe('ws://103.91.186.142/ws/v2?token=access-token');
+    // The broker name may only appear as the feed label, never as an origin.
     expect([
       buildBrokerWsFeedUri(),
       buildBrokerWsV2Uri('access-token'),
-    ].join('\n')).not.toContain('gta_broker');
+    ].join('\n')).not.toContain('//gta_broker');
   });
 
   it('persists valid backend_url when discovery also includes broker-name market fields', () => {
@@ -579,7 +582,7 @@ describe('broker websocket URL builder', () => {
     expect(localStorage.getItem('server_url')).toBe('http://103.91.186.142');
     expect(getServerUrl()).toBe('http://103.91.186.142');
     expect(buildBrokerApiV2()).toBe('http://103.91.186.142/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('ws://103.91.186.142/ws/feed');
+    expect(buildBrokerWsFeedUri()).toBe('ws://103.91.186.142/ws/feed?broker_id=gta_broker');
     expect(buildBrokerWsV2Uri('access-token')).toBe('ws://103.91.186.142/ws/v2?token=access-token');
   });
 

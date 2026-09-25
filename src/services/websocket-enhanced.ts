@@ -23,6 +23,9 @@ import {
 
 const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
+/** Channels that exist only as local listeners and are never sent to the server. */
+export const isLocalOnlyChannel = (channel: string): boolean => channel === '*';
+
 export type SubscriptionCallback = (data: unknown) => void;
 export type ConnectionStateCallback = (state: ConnectionState) => void;
 export type MetricsCallback = (metrics: ConnectionMetrics) => void;
@@ -512,6 +515,18 @@ export class EnhancedWebSocketService {
 
     this.subscribers.get(channel)!.add(callback);
 
+    // The wildcard is a client-side listener for every received frame. Never
+    // ask the server for `channel: '*'`: that would stream every symbol,
+    // bypassing the account's group-scoped per-symbol demand.
+    if (isLocalOnlyChannel(channel)) {
+      return () => {
+        const callbacks = this.subscribers.get(channel);
+        if (!callbacks) return;
+        callbacks.delete(callback);
+        if (callbacks.size === 0) this.subscribers.delete(channel);
+      };
+    }
+
     // Send subscription message if connected
     if (this.ws?.readyState === WebSocket.OPEN) {
       console.log(`[WS] Sending subscribe request for channel: ${channel}`);
@@ -711,7 +726,7 @@ export class EnhancedWebSocketService {
     }
 
     // Broadcast to subscribers
-    if (type === 'channel_message') {
+    if (type === 'channel_message' || typeof data.channel === 'string') {
       try {
         const payload = data.data as any;
         // App owns account/position state. Transport-side async store writes
@@ -1129,7 +1144,7 @@ export class EnhancedWebSocketService {
     console.log(`[WS] Resubscribing to ${this.subscribers.size} channels`);
 
     this.subscribers.forEach((_, channel) => {
-      if (channel === '*') return;
+      if (isLocalOnlyChannel(channel)) return;
 
       if (channel.startsWith('symbols:')) return;
 

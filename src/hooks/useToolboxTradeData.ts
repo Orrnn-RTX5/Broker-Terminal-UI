@@ -9,7 +9,7 @@ import {
   getCommittedBrokerAccountSessionScopeKey,
   getServerUrl,
 } from '../services/brokerSession';
-import { useAppStore } from '../store/useAppStore';
+import { isConfirmedClosedPosition, useAppStore } from '../store/useAppStore';
 import { TRADE_OVERLAY_CLOSE_STATE_EVENT } from '../services/tradeOverlayHistory';
 import {
   requestPositionSnapshotRevalidation,
@@ -131,7 +131,7 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
   const priceCurrent = hasBackendCurrentPrice ? rawCurrentPrice! : 0;
   const rawProfit = raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL;
   const backendProfit = readBackendNumber(rawProfit);
-  const hasBackendProfit = raw?.hasBackendProfit !== false && backendProfit !== undefined;
+  const hasBackendProfit = raw?.pnl_available !== false && raw?.hasBackendProfit !== false && backendProfit !== undefined;
   const profit = hasBackendProfit ? backendProfit! : 0;
   const openTime = resolvePositionOpenTime(raw, normalized.openTime || (typeof normalized.time_create === 'string' ? normalized.time_create : undefined));
 
@@ -192,6 +192,9 @@ const positionSignature = (position: ToolboxTradePosition): string => [
   position.placementErrorCode ?? '',
   position.placementErrorMessage ?? '',
   position.comment ?? '',
+  position.state_version ?? '',
+  position.protection_version ?? '',
+  position.price_time_msc ?? '',
 ].join(':');
 
 const positionsSignature = (positions: ToolboxTradePosition[]): string => (
@@ -679,17 +682,22 @@ export function useToolboxTradeData() {
 
   const commitPositions = useCallback((positions: ToolboxTradePosition[]) => {
     const previousSig = positionsSignature(positionsRef.current);
-    const nextSig = positionsSignature(positions);
-    positionsRef.current = positions;
+    positions = positions.filter((position) => !isConfirmedClosedPosition(position.id));
+    let nextSig = positionsSignature(positions);
     const storePositions = Array.isArray(useAppStore.getState().positions)
       ? useAppStore.getState().positions as ToolboxTradePosition[]
       : [];
     if (positionsSignature(storePositions) !== nextSig) {
-      useAppStore.getState().setPositions(positions as Position[]);
+      useAppStore.getState().setPositions(positions as Position[], {
+        removedTickets: [...optimisticallyClosedPositionsRef.current.keys()],
+      });
+      positions = useAppStore.getState().positions as ToolboxTradePosition[];
+      nextSig = positionsSignature(positions);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
       }
     }
+    positionsRef.current = positions;
     if (previousSig === nextSig) return;
     setState((prev) => ({ ...prev, positions }));
   }, []);
@@ -701,6 +709,8 @@ export function useToolboxTradeData() {
     activeRefreshControllerRef.current?.abort();
     const controller = new AbortController();
     const metricsScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+    const startedPositions = useAppStore.getState().positions;
+    const startedAuthToken = useAppStore.getState().authToken;
     activeRefreshControllerRef.current = controller;
 
     setState((prev) => ({
@@ -733,11 +743,18 @@ export function useToolboxTradeData() {
       const positionsResult = await startupRequests.positionsResultPromise;
 
       if (seq !== refreshSeqRef.current || controller.signal.aborted) return;
+      if (useAppStore.getState().authToken !== startedAuthToken) return;
+      if (metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
       if (positionsResult.status === 'rejected') {
         throw positionsResult.reason;
       }
       const positionsBody = positionsResult.value;
-      const rawPositions = arrayFrom(positionsBody, 'positions');
+      let rawPositions = arrayFrom(positionsBody, 'positions');
+      const livePositions = useAppStore.getState().positions;
+      if (livePositions !== startedPositions) {
+        const currentTickets = new Set(livePositions.map((position) => position.id));
+        rawPositions = [...livePositions, ...rawPositions.filter((position) => !currentTickets.has(getPositionTicket(position)))];
+      }
       const rawPositionTickets = new Set(rawPositions.map(getPositionTicket).filter(Boolean));
       const now = Date.now();
       const confirmedClientOrderIds = new Set(rawPositions
@@ -796,6 +813,7 @@ export function useToolboxTradeData() {
       const accountBody = accountResult.value;
       const applyMetrics = (body: unknown) => {
         if (metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
+        if (useAppStore.getState().authToken !== startedAuthToken) return;
         const current = useAppStore.getState().account ?? accountRef.current;
         const next = normalizeAccountMetrics(body, current, { partial: true, scope: metricsScope, login });
         commitAccount(next);
@@ -888,8 +906,8 @@ export function useToolboxTradeData() {
         Array.isArray(centralPositions) ? centralPositions : [],
       ),
       Array.from(retainedImmediatePositionsRef.current.values()),
-    );
-    if (shouldDeferEmptyPositionSnapshot(positionsRef.current, nextPositions)) {
+    ).filter((position) => !isConfirmedClosedPosition(position.id));
+    if (shouldDeferEmptyPositionSnapshot(positionsRef.current.filter((position) => !isConfirmedClosedPosition(position.id)), nextPositions)) {
       // Preserve the last REST-confirmed rows while a stale shared-store/WS
       // update is reconciled. The hook's own REST refresh can still clear the
       // list once the account is genuinely flat.
@@ -1021,6 +1039,7 @@ export function useToolboxTradeData() {
       }
 
       if (detail.status === 'confirmed') {
+        useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: ticketIds });
         ticketIds.forEach((ticket) => {
           const existing = optimisticallyClosedPositionsRef.current.get(ticket);
           if (existing) {
@@ -1032,6 +1051,7 @@ export function useToolboxTradeData() {
           }
           retainedImmediatePositionsRef.current.delete(ticket);
         });
+        commitPositions(positionsRef.current.filter((position) => !ticketIds.includes(position.id)));
         return;
       }
 

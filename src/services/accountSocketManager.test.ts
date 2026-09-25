@@ -392,7 +392,7 @@ describe('AccountSocketManager session and transport contract', () => {
         currentPrice: 4_473.5,
         unrealizedPnL: 3.5,
       }),
-    ]);
+    ], { closedTickets: [12] });
     expect(appStoreMock.positions.map(position => position.id)).toEqual([11]);
 
     const reconciliationEvents: Event[] = [];
@@ -407,7 +407,7 @@ describe('AccountSocketManager session and transport contract', () => {
       // is flat. The REST-backed Trade reader must confirm it first.
       expect(appStoreMock.setPositions).toHaveBeenLastCalledWith([
         expect.objectContaining({ id: 11 }),
-      ]);
+      ], { closedTickets: [] });
       expect(appStoreMock.positions.map(position => position.id)).toEqual([11]);
       expect(reconciliationEvents).toHaveLength(1);
     } finally {

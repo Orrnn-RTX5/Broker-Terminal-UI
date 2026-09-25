@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom';
 import { Search, ChevronRight, ChevronDown, FolderOpen, Folder, X } from 'lucide-react';
 import { useWatchlistStore } from '../store/useWatchlistStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
+import { useAppStore } from '../store/useAppStore';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { API_ENDPOINTS, API_V2_BASE_URL, MARKET_WS_URL } from '../config/api';
 import { normalizeExactBrokerSymbol } from '../utils/exactBrokerSymbol';
@@ -176,6 +177,9 @@ const buildSymbolEndpointUrl = (endpoint: string): string =>
     : `${getApiRootBaseUrl()}${endpoint}`;
 
 const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v1/market/symbols', '/api/v1/market/symbol-list'];
+// A logged-in account may only browse its own group catalogue; never fall back
+// to the public broker list.
+const ACCOUNT_SYMBOL_ENDPOINTS = ['/api/v2/instruments'];
 
 const extractInstrumentRows = (payload: unknown): any[] =>
   asArray<any>(payload, ['symbols', 'instruments', 'data', 'result']);
@@ -430,6 +434,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showExpired, setShowExpired] = useState(false);
   const [allSymbols, setAllSymbols] = useState<SymbolSpec[]>([]);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
   const [loading, setLoading] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<SymbolSpec | null>(null);
   const [bars, setBars] = useState<BarRow[]>([]);
@@ -544,7 +549,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
     const loadSymbols = async () => {
       let lastError: unknown = null;
 
-      for (const endpoint of SYMBOL_ENDPOINTS) {
+      for (const endpoint of isAuthenticated ? ACCOUNT_SYMBOL_ENDPOINTS : SYMBOL_ENDPOINTS) {
         try {
           const payload = await fetchJson<unknown>(buildSymbolEndpointUrl(endpoint));
           const instruments = extractInstrumentRows(payload);
@@ -589,7 +594,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [isOpen, symbolsFetchTrigger, instruments, initialSymbol]);
+  }, [isOpen, symbolsFetchTrigger, instruments, initialSymbol, isAuthenticated]);
 
   // ── Filter symbols by search (memoized) ───────────────────────────────────
   const filteredSymbols = useMemo(() => {

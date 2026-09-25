@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { onSessionChange } from '../services/brokerSession';
 import { useAppStore } from '../store/useAppStore';
 import { useQuoteSubscription } from './useQuoteSubscription';
+import { useWebSocketStore } from '../store/useWebSocketStore';
 
 const managerMock = vi.hoisted(() => ({
   setDemand: vi.fn(),
@@ -12,7 +13,6 @@ const managerMock = vi.hoisted(() => ({
 
 const brokerSessionMock = vi.hoisted(() => ({
   token: null as string | null,
-  hasFeedToken: false,
   serverUrl: '',
   listener: null as null | ((reason: 'token_rotation' | 'login' | 'logout' | 'broker_url_change' | 'account_change') => void),
   unsubscribe: vi.fn(),
@@ -25,7 +25,6 @@ vi.mock('../services/quoteSocketManager', () => ({
 vi.mock('../services/brokerSession', () => ({
   getAccessToken: vi.fn(() => brokerSessionMock.token),
   getServerUrl: vi.fn(() => brokerSessionMock.serverUrl),
-  hasFeedBrokerToken: vi.fn(() => brokerSessionMock.hasFeedToken),
   onSessionChange: vi.fn((cb) => {
     brokerSessionMock.listener = cb;
     return brokerSessionMock.unsubscribe;
@@ -41,12 +40,26 @@ describe('useQuoteSubscription', () => {
     managerMock.removeDemand.mockClear();
     managerMock.isConnected.mockClear();
     brokerSessionMock.token = null;
-    brokerSessionMock.hasFeedToken = false;
     brokerSessionMock.serverUrl = '';
     brokerSessionMock.listener = null;
     brokerSessionMock.unsubscribe.mockClear();
     vi.mocked(onSessionChange).mockClear();
     useAppStore.setState({ isAuthenticated: false, authToken: null });
+    useWebSocketStore.setState({ fixConnectionState: 'disconnected' });
+  });
+
+  it('streams public quotes in a web guest session without account or feed tokens', () => {
+    const { result, unmount } = renderHook(() => useQuoteSubscription(['eurusd'], 'guest-watchlist'));
+
+    expect(managerMock.setDemand).toHaveBeenCalledWith('guest-watchlist', ['EURUSD']);
+    expect(result.current.isConnected).toBe(false);
+    act(() => useWebSocketStore.getState().setConnectionState('connected', 'fix_socket'));
+    expect(result.current.isConnected).toBe(true);
+    act(() => useWebSocketStore.getState().setConnectionState('disconnected', 'fix_socket'));
+    expect(result.current.isConnected).toBe(false);
+
+    unmount();
+    expect(managerMock.removeDemand).toHaveBeenCalledWith('guest-watchlist');
   });
 
   it('installs neither session listener nor quote demand while disabled', () => {
@@ -139,8 +152,7 @@ describe('useQuoteSubscription', () => {
     unmount();
   });
 
-  it('registers quote demand when only a broker feed token is ready', () => {
-    brokerSessionMock.hasFeedToken = true;
+  it('registers quote demand for an anonymous session with no account token', () => {
     brokerSessionMock.serverUrl = 'http://broker.example';
 
     const { unmount } = renderHook(() => useQuoteSubscription(['btcusd'], 'watchlist'));
@@ -155,6 +167,7 @@ describe('useQuoteSubscription', () => {
     brokerSessionMock.serverUrl = 'http://broker.example';
 
     const { unmount } = renderHook(() => useQuoteSubscription(['gbpusd'], 'chart:3'));
+    managerMock.removeDemand.mockClear();
     managerMock.setDemand.mockClear();
 
     brokerSessionMock.token = null;
@@ -162,6 +175,7 @@ describe('useQuoteSubscription', () => {
       brokerSessionMock.listener?.('logout');
     });
 
+    expect(managerMock.removeDemand).toHaveBeenCalledWith('chart:3');
     expect(managerMock.setDemand).toHaveBeenLastCalledWith('chart:3', ['GBPUSD']);
 
     unmount();

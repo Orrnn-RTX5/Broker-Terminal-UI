@@ -80,7 +80,6 @@ shared_discovery_base_url="${SHARED_DISCOVERY_BASE_URL:-${VITE_SHARED_DISCOVERY_
 discovery_base_url="${DISCOVERY_BASE_URL:-${VITE_DISCOVERY_BASE_URL:-${VITE_BROKER_DISCOVERY_URL:-$shared_discovery_base_url}}}"
 broker_id="${BROKER_ID:-${VITE_BROKER_ID:-${FEED_BROKER_ID:-${VITE_FEED_BROKER_ID:-}}}}"
 feed_broker_id="${FEED_BROKER_ID:-${VITE_FEED_BROKER_ID:-$broker_id}}"
-feed_broker_token="${FEED_BROKER_TOKEN:-${VITE_FEED_BROKER_TOKEN:-${BROKER_FEED_TOKEN:-${VITE_BROKER_FEED_TOKEN:-${WS_FEED_TOKEN:-${VITE_WS_FEED_TOKEN:-}}}}}}"
 if [ "$(trim_url "$discovery_base_url")" = "$(trim_url "$api_host")" ] || [ "$(trim_url "$discovery_base_url")" = "$(trim_url "$api_host_ext")" ]; then
   discovery_base_url="$shared_discovery_base_url"
 fi
@@ -96,7 +95,6 @@ js_default_mt5_server="$(js_string "$default_mt5_server")"
 js_discovery_base_url="$(js_string "$discovery_base_url")"
 js_broker_id="$(js_string "$broker_id")"
 js_feed_broker_id="$(js_string "$feed_broker_id")"
-js_feed_broker_token="$(js_string "$feed_broker_token")"
 js_use_mock_discovery="$(js_bool "$use_mock_discovery")"
 
 cat > "${runtime_tmp}" <<EOF
@@ -113,7 +111,6 @@ cat > "${runtime_tmp}" <<EOF
     BROKER_ID: '${js_broker_id}',
     VITE_BROKER_ID: '${js_broker_id}',
     FEED_BROKER_ID: '${js_feed_broker_id}',
-    FEED_BROKER_TOKEN: '${js_feed_broker_token}',
     USE_MOCK_DISCOVERY: ${js_use_mock_discovery}
   };
 

@@ -33,6 +33,30 @@ describe('useAppStore setPositions burst merge', () => {
     useAppStore.getState().reset();
   });
 
+  it('removes a fresh fill immediately and never resurrects a confirmed close from lagged snapshots', () => {
+    const fresh = position(91, { chartEntryTime: new Date().toISOString() });
+    useAppStore.getState().setPositions([fresh]);
+    useAppStore.getState().setPositions([], { removedTickets: [91] });
+    expect(useAppStore.getState().positions).toEqual([]);
+    // Failed commands can restore an optimistic removal.
+    useAppStore.getState().setPositions([fresh]);
+    expect(useAppStore.getState().positions).toHaveLength(1);
+    useAppStore.getState().setPositions([], { closedTickets: [91] });
+    useAppStore.getState().setPositions([fresh]);
+    expect(useAppStore.getState().positions).toEqual([]);
+    useAppStore.setState({ accountId: 'another-account' });
+    useAppStore.getState().setPositions([fresh]);
+    expect(useAppStore.getState().positions).toHaveLength(1);
+  });
+
+  it('does not let lagged structural snapshots undo cleared SLTP or newer quote profit', () => {
+    useAppStore.getState().setPositions([position(92, { state_version: '9007199254740993', sl: 0, tp: 0, profit: 7, unrealizedPnL: 7, price_time_msc: 2000 })]);
+    useAppStore.getState().setPositions([position(92, { state_version: '9007199254740992', sl: 10, tp: 20 })]);
+    expect(useAppStore.getState().positions[0]).toMatchObject({ sl: 0, tp: 0, profit: 7 });
+    useAppStore.getState().setPositions([position(92, { state_version: '9007199254740993', profit: 1, unrealizedPnL: 1 })]);
+    expect(useAppStore.getState().positions[0]).toMatchObject({ profit: 7, price_time_msc: 2000 });
+  });
+
   it('preserves immediate chart metadata across full and partial server updates', () => {
     useAppStore.getState().setPositions([position(1, {
       chartEntryPrice: 80_001.25,

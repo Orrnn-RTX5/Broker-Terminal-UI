@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { useSystemJournalStore } from './useSystemJournalStore';
 import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
+import { isOlderPositionVersion, mergePositionRecord } from '../services/positionStream';
 import {
   commitBrokerAccountSessionScope,
   emitSessionChange,
@@ -46,6 +47,7 @@ export interface Tick {
 export type AppTickEntry = readonly [symbol: string, tick: Tick];
 
 export interface Position {
+  protection_version?: string | number;
   id: number;
   symbol: string;
   side: 'BUY' | 'SELL';
@@ -83,6 +85,17 @@ export interface Position {
 
 export const RECENT_OPEN_POSITION_RETENTION_MS = 30_000;
 
+// Closed tickets must survive duplicate sockets and lagged REST snapshots.
+// Scope includes credentials so a new login session never inherits tombstones.
+let closedPositionScope = '';
+const closedPositionTickets = new Set<number>();
+
+export const isConfirmedClosedPosition = (ticket: number): boolean => {
+  const state = useAppStore.getState();
+  return closedPositionScope === `${state.accountId ?? ''}:${state.authToken ?? ''}`
+    && closedPositionTickets.has(Number(ticket));
+};
+
 export const isRecentlyAdmittedOpenPosition = (position: Position, now = Date.now()): boolean => {
   const admittedAt = Date.parse(String(position.chartEntryTime ?? ''));
   if (!Number.isFinite(admittedAt)) return false;
@@ -93,7 +106,7 @@ export const isRecentlyAdmittedOpenPosition = (position: Position, now = Date.no
 // Tickets the terminal is closing or has seen closed. Recent-open retention must
 // never bring one of these back onto the chart or into Trade.
 const CLOSED_POSITION_TICKET_TTL_MS = 5 * 60_000;
-const closedPositionTickets = new Map<number, number>();
+const markedClosedPositionTickets = new Map<number, number>();
 
 const toPositionTicket = (value: unknown): number | null => {
   const ticket = Number(value);
@@ -103,7 +116,7 @@ const toPositionTicket = (value: unknown): number | null => {
 export const markPositionsClosed = (ticketIds: readonly unknown[], now = Date.now()): void => {
   for (const value of ticketIds) {
     const ticket = toPositionTicket(value);
-    if (ticket !== null) closedPositionTickets.set(ticket, now + CLOSED_POSITION_TICKET_TTL_MS);
+    if (ticket !== null) markedClosedPositionTickets.set(ticket, now + CLOSED_POSITION_TICKET_TTL_MS);
   }
 };
 
@@ -111,17 +124,17 @@ export const markPositionsClosed = (ticketIds: readonly unknown[], now = Date.no
 export const unmarkPositionsClosed = (ticketIds: readonly unknown[]): void => {
   for (const value of ticketIds) {
     const ticket = toPositionTicket(value);
-    if (ticket !== null) closedPositionTickets.delete(ticket);
+    if (ticket !== null) markedClosedPositionTickets.delete(ticket);
   }
 };
 
 export const isPositionMarkedClosed = (ticketId: unknown, now = Date.now()): boolean => {
   const ticket = toPositionTicket(ticketId);
   if (ticket === null) return false;
-  const expiresAt = closedPositionTickets.get(ticket);
+  const expiresAt = markedClosedPositionTickets.get(ticket);
   if (expiresAt === undefined) return false;
   if (expiresAt > now) return true;
-  closedPositionTickets.delete(ticket);
+  markedClosedPositionTickets.delete(ticket);
   return false;
 };
 
@@ -290,7 +303,7 @@ interface AppState {
   setTicksBatch: (ticks: readonly AppTickEntry[]) => void;
   setTicks: (ticks: Record<string, Tick>) => void;
   setSelectedSymbol: (symbol: string) => void;
-  setPositions: (positions: Position[]) => void;
+  setPositions: (positions: Position[], options?: { closedTickets?: number[]; removedTickets?: number[] }) => void;
   setOrders: (orders: Order[]) => void;
   setTrades: (trades: Trade[]) => void;
   setAccount: (account: Account | null) => void;
@@ -681,15 +694,7 @@ export const useAppStore = create<AppState>()(
             localStorage.removeItem('rtx_last_login');
             localStorage.removeItem('rtx_saved_username');
             localStorage.removeItem('rtx_saved_password');
-            localStorage.removeItem('feed_broker_token');
-            localStorage.removeItem('broker_feed_token');
-            localStorage.removeItem('feed_token');
-            localStorage.removeItem('ws_feed_token');
             localStorage.removeItem('feed_broker_id');
-            sessionStorage.removeItem('feed_broker_token');
-            sessionStorage.removeItem('broker_feed_token');
-            sessionStorage.removeItem('feed_token');
-            sessionStorage.removeItem('ws_feed_token');
             sessionStorage.removeItem('feed_broker_id');
             // NOTE: Do NOT remove 'trading-app-storage' — it holds savedAccounts
           }
@@ -720,14 +725,24 @@ export const useAppStore = create<AppState>()(
 
         setSelectedSymbol: (symbol) => set({ selectedSymbol: symbol }),
 
-        setPositions: (positions) =>
+        setPositions: (positions, options = {}) =>
           set((state) => {
+            const scope = `${state.accountId ?? ''}:${state.authToken ?? ''}`;
+            if (scope !== closedPositionScope) {
+              closedPositionScope = scope;
+              closedPositionTickets.clear();
+            }
+            for (const ticket of options.closedTickets ?? []) closedPositionTickets.add(Number(ticket));
+            while (closedPositionTickets.size > 4096) closedPositionTickets.delete(closedPositionTickets.values().next().value!);
+            const removed = new Set(options.removedTickets ?? []);
             // Position streams can update on every tick. Index once so a burst
             // of filled orders merges in O(n), instead of doing an O(n) find
             // for every incoming row and blocking the next Buy/Sell click.
             const existingById = new Map(state.positions.map((position) => [position.id, position]));
             const nextPositions = positions.flatMap((incoming): Position[] => {
+              if (closedPositionTickets.has(Number(incoming.id)) || removed.has(Number(incoming.id))) return [];
               const existing = existingById.get(incoming.id);
+              if (existing && isOlderPositionVersion(incoming, existing)) return [existing];
               if (!existing) {
                 // Price/P&L deltas can arrive before the authoritative open-
                 // position snapshot. Do not expose those sparse records as
@@ -755,7 +770,7 @@ export const useAppStore = create<AppState>()(
               if (isFullUpdate) {
                 return [{
                   ...existing,
-                  ...incoming,
+                  ...mergePositionRecord(incoming, existing),
                   symbol: incoming.symbol || existing.symbol,
                   chartEntryPrice: incoming.chartEntryPrice ?? existing.chartEntryPrice,
                   chartEntryTime: incoming.chartEntryTime ?? existing.chartEntryTime,
@@ -793,6 +808,7 @@ export const useAppStore = create<AppState>()(
             const retained = new Set<number>();
             let retentionEndsAt = Number.POSITIVE_INFINITY;
             for (const existing of state.positions) {
+              if (closedPositionTickets.has(Number(existing.id)) || removed.has(Number(existing.id))) continue;
               if (nextIds.has(existing.id)) continue;
               if (!isRenderableOpenPosition(existing) || !isRetainableOpenPosition(existing, now)) continue;
               nextPositions.push(existing);
@@ -902,7 +918,11 @@ export const useAppStore = create<AppState>()(
         setBootstrapping: (isBootstrapping, step = '') =>
           set({ isBootstrapping, bootstrapStep: isBootstrapping ? step : '' }),
 
-        reset: () => set(initialState),
+        reset: () => {
+          closedPositionTickets.clear();
+          closedPositionScope = '';
+          set(initialState);
+        },
       }),
       {
         name: 'trading-app-storage',

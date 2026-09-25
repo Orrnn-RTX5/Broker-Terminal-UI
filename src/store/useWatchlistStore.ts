@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
+import { filterSymbolsExactlyInUniverse } from '../utils/accountSymbolUniverse';
 
 export interface Watchlist {
   id: string;
@@ -208,20 +209,21 @@ export const useWatchlistStore = create<WatchlistState>()(
           });
         },
 
+        // Destructive prune of the persisted (cross-account) watchlists. Market
+        // Watch deliberately filters on display instead (see
+        // pruneSymbolsToUniverse) so another account's rows and the remote
+        // watchlist are never deleted by a narrower group catalogue.
         sanitizeSymbols: (allowedSymbols) => {
-          const allowedSet = new Set(
-            allowedSymbols
-              .map((symbol) => String(symbol || '').trim().toUpperCase())
-              .filter(Boolean)
-          );
-
-          set((state) => ({
-            watchlists: state.watchlists.map((watchlist) => ({
-              ...watchlist,
-              symbols: watchlist.symbols.filter((symbol) => allowedSet.has(String(symbol || '').trim().toUpperCase())),
-              updatedAt: Date.now(),
-            })),
-          }));
+          set((state) => {
+            let changed = false;
+            const watchlists = state.watchlists.map((watchlist) => {
+              const symbols = filterSymbolsExactlyInUniverse(watchlist.symbols, allowedSymbols);
+              if (symbols.length === watchlist.symbols.length) return watchlist;
+              changed = true;
+              return { ...watchlist, symbols, updatedAt: Date.now() };
+            });
+            return changed ? { watchlists } : state;
+          });
         },
 
         getActiveWatchlist: () => {

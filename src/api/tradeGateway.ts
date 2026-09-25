@@ -35,6 +35,8 @@ export type GatewayAccount = {
 };
 
 export type GatewayPosition = {
+  state_version_text?: string;
+  protection_version?: string | number;
   ticket?: number;
   position_id?: number;
   account_login?: number;
@@ -64,7 +66,7 @@ export type GatewayPosition = {
   time_ms?: number;
   time?: number;
   comment?: string;
-  state_version?: string;
+  state_version?: string | number;
   price_time_msc?: number;
   pnl_available?: boolean;
   hasBackendProfit?: boolean;
@@ -399,6 +401,9 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
   return {
     ...raw,
     id: Number(raw.ticket ?? raw.position_id ?? (raw as any).id ?? 0),
+    state_version: raw.state_version_text ?? raw.state_version,
+    protection_version: raw.protection_version,
+    price_time_msc: raw.price_time_msc,
     symbol: (raw.symbol ?? '').toUpperCase(),
     side: side.includes('sell') || side === '1' ? 'SELL' : 'BUY',
     volume,

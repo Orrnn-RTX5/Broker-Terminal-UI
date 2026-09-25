@@ -13,17 +13,17 @@ const setConnectionState = vi.fn();
 const enqueueLiveTick = vi.hoisted(() => vi.fn());
 const brokerSessionMock = vi.hoisted(() => ({
   accessToken: 'access-token' as string | null,
-  hasFeedToken: false,
+  // Empty when the deployment exposes no broker /ws/feed endpoint.
+  feedUri: '' as string,
   sessionListener: null as null | ((reason: 'token_rotation' | 'login' | 'logout' | 'broker_url_change' | 'account_change') => void),
 }));
 
 vi.mock('./brokerSession', () => ({
-  buildBrokerWsFeedUri: vi.fn(() => 'wss://broker.example/ws/feed'),
+  buildBrokerWsFeedUri: vi.fn(() => brokerSessionMock.feedUri),
   buildBrokerWsV2Uri: vi.fn((token?: string | null) => (
     `wss://broker.example/ws/v2${token ? `?token=${token}` : ''}`
   )),
   getAccessToken: vi.fn(() => brokerSessionMock.accessToken),
-  hasFeedBrokerToken: vi.fn(() => brokerSessionMock.hasFeedToken),
   onSessionChange: vi.fn((cb) => {
     brokerSessionMock.sessionListener = cb;
     return vi.fn();
@@ -108,7 +108,7 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
   beforeEach(() => {
     FakeWebSocket.instances = [];
     brokerSessionMock.accessToken = 'access-token';
-    brokerSessionMock.hasFeedToken = false;
+    brokerSessionMock.feedUri = '';
     brokerSessionMock.sessionListener = null;
     setConnectionState.mockClear();
     enqueueLiveTick.mockClear();
@@ -158,9 +158,9 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
     manager.destroy();
   });
 
-  it('streams guest prices through a broker feed credential without an account session', () => {
+  it('streams guest prices over the anonymous broker feed without an account session', () => {
     brokerSessionMock.accessToken = null;
-    brokerSessionMock.hasFeedToken = true;
+    brokerSessionMock.feedUri = 'wss://broker.example/ws/feed';
     const manager = new QuoteSocketManager();
     manager.setDemand('guest-chart', ['BTCUSD']);
 
@@ -178,6 +178,20 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
       bid: 76000, ask: 76001,
     }));
     expect(internals(manager).subscribedSymbols.has('BTCUSD')).toBe(true);
+    manager.destroy();
+  });
+
+  it('prefers the broker feed whenever a feed endpoint resolves, with no credential gate', () => {
+    brokerSessionMock.accessToken = 'access-token';
+    brokerSessionMock.feedUri = 'wss://broker.example/ws/feed';
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+
+    expect(FakeWebSocket.instances[0].url).toBe('wss://broker.example/ws/feed');
+    expect(manager.getTransport()).toBe('feed');
+    expect(manager.isFallbackActive()).toBe(false);
+
     manager.destroy();
   });
 

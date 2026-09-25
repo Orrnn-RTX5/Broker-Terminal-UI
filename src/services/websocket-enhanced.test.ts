@@ -281,7 +281,9 @@ describe('EnhancedWebSocketService trade state ownership', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(received).toEqual(frames);
     expect(useAppStore.getState().account).toEqual(consumerAccount);
-    expect(useAppStore.getState().positions).toEqual([consumerPosition]);
+    // The store normalizes merged rows (wire aliases, P&L availability); only
+    // the consumer's row may be present, carrying the consumer's values.
+    expect(useAppStore.getState().positions).toMatchObject([consumerPosition]);
     service.destroy();
     useAppStore.setState({ account: null, positions: [], accountId: null });
   });
@@ -463,6 +465,30 @@ describe('EnhancedWebSocketService connection startup', () => {
       channel: 'ticks.EURUSD.r',
       channels: ['ticks.EURUSD.r'],
     });
+    service.destroy();
+  });
+
+  it('keeps the wildcard listener local and never subscribes the server to every channel', () => {
+    const service = new EnhancedWebSocketService('wss://example.test/ws/v2');
+    service.connect();
+    const socket = ConnectingWebSocket.instances[0];
+    socket.open();
+    const wildcard = vi.fn();
+
+    const unsubscribeWildcard = service.subscribe('*', wildcard);
+    service.subscribe('ticks.EURUSD', vi.fn());
+    const sent = socket.sent.map((payload) => JSON.parse(payload));
+    expect(sent.some((message) => message.channel === '*' || message.channels?.includes('*'))).toBe(false);
+    expect(sent).toContainEqual({ action: 'subscribe', channel: 'ticks.EURUSD', channels: ['ticks.EURUSD'] });
+
+    (service as unknown as TestableService).handleMessage({
+      type: 'channel_message', channel: 'state.123', data: { entity: 'groups' },
+    } as WebSocketMessage);
+    expect(wildcard).toHaveBeenCalled();
+
+    unsubscribeWildcard();
+    expect(socket.sent.map((payload) => JSON.parse(payload))
+      .some((message) => message.channel === '*')).toBe(false);
     service.destroy();
   });
 

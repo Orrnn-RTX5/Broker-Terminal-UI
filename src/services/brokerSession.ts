@@ -249,10 +249,6 @@ export interface BrokerSessionDiscoveryInput {
   broker_name?: string | null;
   brokerName?: string | null;
   name?: string | null;
-  feed_token?: string | null;
-  feed_broker_token?: string | null;
-  broker_feed_token?: string | null;
-  ws_feed_token?: string | null;
   backend_url?: string | null;
   market_api_url?: string | null;
   server_url?: string | null;
@@ -545,9 +541,9 @@ const isDeployOnlyBrokerAlias = (brokerId: string): boolean => {
 };
 
 /**
- * Broker id used ONLY for feed WS query auth (`broker_id` + feed token).
+ * Broker id used ONLY to label the feed WS connection (`broker_id` query).
  * Prefer runtime feed/backend ids over localStorage deploy aliases that are
- * written after login/discovery (e.g. grow-trading-academy → 401 on /ws/feed).
+ * written after login/discovery (e.g. grow-trading-academy).
  */
 const getFeedBrokerId = (): string => {
   if (typeof window === 'undefined') return '';
@@ -589,39 +585,6 @@ const getFeedBrokerId = (): string => {
 
   return '';
 };
-
-const getFeedBrokerToken = (): string => {
-  if (typeof window === 'undefined') return '';
-  const sessionToken = String(
-    getLocalStorageItem('feed_broker_token')
-    || getLocalStorageItem('broker_feed_token')
-    || getLocalStorageItem('feed_token')
-    || getLocalStorageItem('ws_feed_token')
-    || getRuntimeConfigValue([
-      'FEED_BROKER_TOKEN',
-      'VITE_FEED_BROKER_TOKEN',
-      'BROKER_FEED_TOKEN',
-      'VITE_BROKER_FEED_TOKEN',
-      'WS_FEED_TOKEN',
-      'VITE_WS_FEED_TOKEN',
-    ])
-    || ''
-  ).trim();
-  if (sessionToken) return sessionToken;
-
-  // Vite injects a deployment feed credential into broker-specific builds.
-  // Never attach that credential after the user selects a different broker.
-  const buildTimeToken = String(import.meta.env.VITE_FEED_BROKER_TOKEN || '').trim();
-  if (!buildTimeToken) return '';
-
-  const activeBrokerId = getFeedBrokerId();
-  const buildTimeBrokerId = getBuildTimeFeedBrokerId();
-  return !activeBrokerId || !buildTimeBrokerId || activeBrokerId === buildTimeBrokerId
-    ? buildTimeToken
-    : '';
-};
-
-export const hasFeedBrokerToken = (): boolean => Boolean(getFeedBrokerToken());
 
 const shouldKeepCurrentMarketOrigin = (
   nextUrl: string,
@@ -707,13 +670,6 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   const normalizedInput = normalizeBrokerInfoForTarget(input) as BrokerSessionDiscoveryInput;
   const token = String(normalizedInput.access_token || normalizedInput.token || '').trim();
   const brokerId = String(normalizedInput.broker_id || '').trim();
-  const feedToken = String(
-    normalizedInput.feed_token
-    || normalizedInput.feed_broker_token
-    || normalizedInput.broker_feed_token
-    || normalizedInput.ws_feed_token
-    || ''
-  ).trim();
   const hasToken = Boolean(token);
   const sameBroker = isSameOrUnknownBroker(brokerId);
   const currentMarketOrigin = getCurrentValidMarketOrigin();
@@ -749,7 +705,6 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
       'account_login',
       'rtx_last_login',
       'rtx_saved_username',
-      'feed_broker_token',
       'feed_broker_id',
       'broker_name',
     ].forEach((key) => {
@@ -770,21 +725,11 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   setOrRemove('ws_url', wsUrl);
   setOrRemove('feed_url', feedUrl);
   setOrRemove('feed_status_url', feedStatusUrl);
-  if (feedToken) {
-    setLocalStorageItem('feed_broker_token', feedToken);
-    const feedBrokerId = mapFeedBrokerAlias(brokerId || getFeedBrokerId());
-    if (feedBrokerId) setLocalStorageItem('feed_broker_id', feedBrokerId);
-  } else if (brokerChanged) {
-    [
-      'feed_broker_token',
-      'broker_feed_token',
-      'feed_token',
-      'ws_feed_token',
-      'feed_broker_id',
-    ].forEach((key) => {
-      removeLocalStorageItem(key);
-      removeSessionStorageItem(key);
-    });
+  if (brokerChanged) {
+    // A different broker invalidates the previous feed label. `broker_id` above
+    // is the fallback source for the `/ws/feed` broker_id query parameter.
+    removeLocalStorageItem('feed_broker_id');
+    removeSessionStorageItem('feed_broker_id');
   }
   if (logoUrl) setLocalStorageItem('logo_url', logoUrl);
   setOrRemove('broker_theme_color', themeColor);
@@ -996,27 +941,27 @@ const pickStoredWsUrl = (candidates: string[], marketOrigin: string): string => 
   return '';
 };
 
-const appendFeedAuthToWsUrl = (url: string): string => {
+/**
+ * Label the quote feed socket with the active broker id.
+ *
+ * The bridge accepts `/ws/feed` without any credential; `broker_id` is only a
+ * plain identifier used for backend logging and subscription acknowledgements.
+ */
+const appendFeedBrokerIdToWsUrl = (url: string): string => {
   if (!url) return '';
-  const token = getFeedBrokerToken();
-  if (!token) return url;
-
   const brokerId = getFeedBrokerId();
+  if (!brokerId) return url;
+
   try {
     const parsed = new URL(url);
-    if (brokerId && !parsed.searchParams.has('broker_id')) {
+    if (!parsed.searchParams.has('broker_id')) {
       parsed.searchParams.set('broker_id', brokerId);
-    }
-    if (!parsed.searchParams.has('token')) {
-      parsed.searchParams.set('token', token);
     }
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    const params = new URLSearchParams();
-    if (brokerId) params.set('broker_id', brokerId);
-    params.set('token', token);
+    if (/[?&]broker_id=/.test(url)) return url;
     const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}${params.toString()}`;
+    return `${url}${separator}broker_id=${encodeURIComponent(brokerId)}`;
   }
 };
 
@@ -1057,12 +1002,12 @@ export function buildBrokerWsFeedUri(): string {
   const server = getRuntimeMarketOrigin();
   const providedFeedUrl = normalizeWsUrl(getStoredUrlByKeys(['feed_url']));
   if (canUseStoredWsUrl(providedFeedUrl, server)) {
-    return toLocalDevProxyWsUrl(appendFeedAuthToWsUrl(forceWssForHttpsFrontend(providedFeedUrl)));
+    return toLocalDevProxyWsUrl(appendFeedBrokerIdToWsUrl(forceWssForHttpsFrontend(providedFeedUrl)));
   }
 
   const providedWsUrl = normalizeWsUrlToFeed(getStoredUrlByKeys(['ws_url']));
   if (canUseStoredWsUrl(providedWsUrl, server)) {
-    return toLocalDevProxyWsUrl(appendFeedAuthToWsUrl(forceWssForHttpsFrontend(providedWsUrl)));
+    return toLocalDevProxyWsUrl(appendFeedBrokerIdToWsUrl(forceWssForHttpsFrontend(providedWsUrl)));
   }
 
   const fallback = normalizeWsUrlToFeed(
@@ -1071,8 +1016,8 @@ export function buildBrokerWsFeedUri(): string {
     || import.meta.env.VITE_RTX5_WS_URL as string
     || ''
   );
-  if (!server) return toLocalDevProxyWsUrl(appendFeedAuthToWsUrl(forceWssForHttpsFrontend(fallback)));
-  return toLocalDevProxyWsUrl(appendFeedAuthToWsUrl(forceWssForHttpsFrontend(appendWsFeedPath(httpToWss(server)))));
+  if (!server) return toLocalDevProxyWsUrl(appendFeedBrokerIdToWsUrl(forceWssForHttpsFrontend(fallback)));
+  return toLocalDevProxyWsUrl(appendFeedBrokerIdToWsUrl(forceWssForHttpsFrontend(appendWsFeedPath(httpToWss(server)))));
 }
 
 /** Build REST API v2 base URL. */

@@ -7,6 +7,8 @@ import {
   upsertFreshestTick,
 } from '../utils/liveTickSemantics';
 import { onSessionChange } from './brokerSession';
+import { applyAccountSpreadMarkup, onAccountSpreadMarkupChange } from './accountSpreadMarkup';
+import type { SpreadMarkupQuoteTag } from '../utils/spreadMarkup';
 import {
   flushMarketWatchDailyChangeCache,
   rememberCurrentMarketWatchDailyChange,
@@ -16,7 +18,9 @@ import {
   rememberCurrentMarketWatchQuote,
 } from './marketWatchQuoteCache';
 
-export type LiveTick = MarketTick & Partial<AppTick>;
+// A logged-in account's quote is widened by its group spread markup here, once;
+// `rawBid`/`rawAsk` keep the feed sides for raw-bid consumers (chart candles).
+export type LiveTick = MarketTick & Partial<AppTick> & SpreadMarkupQuoteTag;
 
 declare global {
   interface Window {
@@ -190,7 +194,11 @@ const retainFailedBatch = (
 export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
   if (!symbol) return;
   if (isLiveMarketDataFrozen(symbol)) return;
-  const fullTick = { ...tick, symbol };
+  // Every quote transport (quote socket, REST seed, catalogue seed, legacy WS,
+  // FIX, guest refresh) enters here, so the account markup is applied exactly
+  // once and every store consumer sees the same effective bid/ask. The widening
+  // is recomputed from the raw sides, so a re-enqueued tick never compounds.
+  const fullTick = applyAccountSpreadMarkup(symbol, { ...tick, symbol });
   const cachedTick = typeof window !== 'undefined' && window.rtxTickCache
     ? window.rtxTickCache.get(symbol)
     : undefined;
@@ -311,6 +319,27 @@ export const resetLiveMarketDataSession = (): void => {
   useMarketDataStore.getState().clearAllData();
   useAppStore.getState().setTicks({});
 };
+
+/**
+ * Re-publish every cached quote under the current account markup (a new
+ * catalogue revision, or markup cleared at logout/account switch). Each tick is
+ * rebuilt from its raw sides and delivered as a same-time correction.
+ */
+export const reapplyAccountSpreadMarkupToCachedTicks = (): void => {
+  if (typeof window === 'undefined' || !window.rtxTickCache) return;
+  const seen = new Set<LiveTick>();
+  const cached: LiveTick[] = [];
+  window.rtxTickCache.forEach((tick) => {
+    if (!tick || seen.has(tick)) return;
+    seen.add(tick);
+    cached.push(tick);
+  });
+  cached.forEach((tick) => {
+    if (tick.symbol) enqueueLiveTick(tick.symbol, tick);
+  });
+};
+
+onAccountSpreadMarkupChange(reapplyAccountSpreadMarkupToCachedTicks);
 
 /** Test-only reset for module-level frame and retry ownership. */
 export const resetLiveTickDispatcherForTests = (): void => {

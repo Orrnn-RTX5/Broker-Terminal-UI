@@ -12,6 +12,37 @@ const bitcoin = { ticket: 20166, symbol: 'BTCUSD', side: 'sell', volume: 0.02, p
 const initial = () => [gold, bitcoin].map(normalizePosition);
 
 describe('account position stream reconciliation', () => {
+  it('uses exact bigint version text to reject stale closes and accept a newer close', () => {
+    const current = [normalizePosition({ ...gold, state_version: 9007199254740992, state_version_text: '9007199254740993' })];
+    const stale = reconcilePositionStreamBatch(current, { mode: 'delta', positions: [{ ticket: gold.ticket, closed: true, state_version: 9007199254740992, state_version_text: '9007199254740992' }] });
+    expect(stale.positions).toHaveLength(1);
+    expect(stale.closedTickets).toEqual([]);
+    const advanced = reconcilePositionStreamBatch(current, { mode: 'delta', positions: [{ ticket: gold.ticket, state_version: '9007199254740995', price_sl: 4100 }] });
+    expect(advanced.positions[0]).toMatchObject({ state_version: '9007199254740995', state_version_text: '9007199254740995' });
+    expect(reconcilePositionStreamBatch(advanced.positions, { mode: 'delta', positions: [{ ticket: gold.ticket, closed: true, state_version_text: '9007199254740994' }] }).closedTickets).toEqual([]);
+    const closed = reconcilePositionStreamBatch(current, { mode: 'delta', positions: [{ ticket: gold.ticket, closed: true, state_version: 9007199254740994, state_version_text: '9007199254740994' }] });
+    expect(closed.positions).toEqual([]);
+    expect(closed.closedTickets).toEqual([gold.ticket]);
+  });
+  it('marks prior volume profit unavailable until the new structural version receives its own price', () => {
+    const old = normalizePosition({ ...gold, state_version: '12', profit: 38 });
+    const changed = reconcilePositionStreamBatch([old], { mode: 'delta', positions: [{ ticket: gold.ticket, state_version: '13', update_kind: 'snapshot', volume: 0.005, price_sl: null, price_tp: null, pnl_available: false }] });
+    expect(changed.positions[0]).toMatchObject({ volume: 0.005, sl: 0, tp: 0, hasBackendProfit: false });
+    const priced = reconcilePositionStreamBatch(changed.positions, { mode: 'delta', positions: [{ ticket: gold.ticket, state_version: '13', update_kind: 'pnl', profit: 19, price_current: 4329, price_time_msc: 2000 }] });
+    expect(priced.positions[0]).toMatchObject({ profit: 19, pnl_available: true, hasBackendProfit: true });
+    const duplicate = reconcilePositionStreamBatch(priced.positions, { mode: 'delta', positions: [{ ticket: gold.ticket, state_version: '13', update_kind: 'snapshot', volume: 0.005, pnl_available: false }] });
+    expect(duplicate.positions[0]).toMatchObject({ profit: 19, pnl_available: true, hasBackendProfit: true });
+  });
+  it('applies ordered display profit without changing protection or creating unknown tickets', () => {
+    const current = [normalizePosition({ ...gold, state_version: '12', price_time_msc: 1000 })];
+    const apply = (rows: any[]) => reconcilePositionStreamBatch(current, { mode: 'delta', positions: rows });
+    const result = apply([{ ticket: gold.ticket, state_version: '12', update_kind: 'pnl', price_time_msc: 2000, profit: 9, volume: 99, price_sl: 0 }]);
+    expect(result.positions[0]).toMatchObject({ profit: 9, volume: 0.01, sl: 4200 });
+    const stale = reconcilePositionStreamBatch(result.positions, { mode: 'delta', positions: [{ ticket: gold.ticket, state_version: '12', update_kind: 'pnl', price_time_msc: 1500, profit: 1 }] });
+    expect(stale.positions[0].profit).toBe(9);
+    expect(apply([{ ...bitcoin, update_kind: 'pnl', state_version: '12' }])).toMatchObject({ positions: current, needsRevalidation: true });
+    expect(apply([{ ticket: gold.ticket, update_kind: 'pnl', state_version: '13', profit: 40 }])).toMatchObject({ positions: current, needsRevalidation: true });
+  });
   it.each([
     ['gateway v2', (rows: any[]) => ({ channel: 'positions.200001', data: { type: 'position_update', data: rows } })],
     ['legacy envelope', (rows: any[]) => ({ type: 'channel_message', channel: 'positions.200001', data: { type: 'position_update', data: rows } })],
