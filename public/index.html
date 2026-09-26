@@ -255,6 +255,23 @@
       var initialTerminal = sessionCandidate || !desktopRuntime;
       root.setAttribute('data-rtx-initial-view', initialTerminal ? 'terminal' : 'login');
 
+      // Start the public catalog and the first chart page while the terminal
+      // modules are still downloading. The app consumes each response once.
+      try {
+        if (initialTerminal && typeof fetch === 'function') {
+          var apiHost = String(runtimeConfig.API_HOST || runtimeConfig.API_HOST_EXT || '').trim().replace(/\/+$/, '');
+          if (/^https:\/\//i.test(apiHost)) {
+            var startupRequests = { symbolsUrl: apiHost + '/api/v1/market/symbols' };
+            startupRequests.symbols = fetch(startupRequests.symbolsUrl, { credentials: 'omit', cache: 'no-store' });
+            if (!sessionCandidate) {
+              startupRequests.candlesUrl = apiHost + '/api/v2/candles/BTCUSD?timeframe=M1&limit=500';
+              startupRequests.candles = fetch(startupRequests.candlesUrl, { credentials: 'omit', cache: 'no-store' });
+            }
+            window.__RTX_EARLY_PUBLIC_STARTUP__ = startupRequests;
+          }
+        }
+      } catch (_) { /* A failed warmup must fall through to the normal request. */ }
+
       // Open the broker connections (DNS + TLS/QUIC) while the terminal
       // JavaScript is still downloading, so the first market-data request
       // does not pay the handshake. Origins come only from the deployment's

@@ -1,6 +1,7 @@
 import { getPublicBackendTarget, isDesktopBackendTarget } from '../config/backendTarget.js';
 import { toLocalDevProxyUrl } from '../config/localDevProxy';
 import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME, FIRST_PAINT_HISTORY_COUNT } from '../constants/chartDefaults';
+import { fetchEarlyPublicStartup } from './earlyPublicStartup';
 
 type Prefetch = {
   controller: AbortController;
@@ -30,9 +31,9 @@ export function preloadPublicStartupHistory(): void {
   const controller = new AbortController();
   const entry: Prefetch = {
     controller,
-    promise: new Promise<Response>((resolve) => resolve(fetch(url, {
-      signal: controller.signal, credentials: 'omit', cache: 'no-store',
-    }))).then(response => {
+    promise: new Promise<Response>((resolve) => resolve(
+      fetchEarlyPublicStartup('candles', url, controller.signal),
+    )).then(response => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json();
     }),

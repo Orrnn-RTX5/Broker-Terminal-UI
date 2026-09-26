@@ -93,7 +93,7 @@ describe('TerminalStartupBoundary', () => {
     expect(screen.getByLabelText('Workspace state')).toBeVisible();
 
     view.rerender(startup({ dataReady: false, marketWatchReady: false, chartReady: false }));
-    act(() => vi.advanceTimersByTime(15_000));
+    act(() => vi.advanceTimersByTime(2_000));
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Workspace state')).toBeVisible();
@@ -108,9 +108,9 @@ describe('TerminalStartupBoundary', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('auto-opens the pending workspace after 15 seconds without recovery buttons', () => {
+  it('auto-opens the pending workspace after 2 seconds without recovery buttons', () => {
     render(startup());
-    act(() => vi.advanceTimersByTime(14_999));
+    act(() => vi.advanceTimersByTime(1_999));
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Workspace state')).not.toBeVisible();
 
@@ -126,12 +126,12 @@ describe('TerminalStartupBoundary', () => {
   it('clears the slow-connection timer when readiness arrives before the deadline', () => {
     const view = render(startup());
     expect(vi.getTimerCount()).toBe(1);
-    act(() => vi.advanceTimersByTime(5_000));
+    act(() => vi.advanceTimersByTime(500));
 
     view.rerender(startup({ dataReady: true, marketWatchReady: true, chartReady: true }));
 
     expect(vi.getTimerCount()).toBe(0);
-    act(() => vi.advanceTimersByTime(15_000));
+    act(() => vi.advanceTimersByTime(2_000));
     expect(screen.getByLabelText('Workspace state')).toBeVisible();
   });
 
