@@ -26,6 +26,26 @@ const toolbarProps = (): ComponentProps<typeof TopToolbar> => ({
   feedStatus: { symbols: [], loading: false, settled: true, current: true, error: null },
 });
 
+const setTradeHistorySettings = (showTradeHistory: boolean, showTradeHistoryArrows: boolean) => {
+  useChartSettingsStore.setState({
+    globalProperties: {
+      ...originalChartSettings.globalProperties,
+      showTradeHistory,
+      showTradeHistoryArrows,
+    },
+    symbolProperties: {},
+  });
+};
+
+const openTradeHistoryDialog = () => {
+  const trigger = screen.getByRole('button', { name: 'Trade History Overlays' });
+  fireEvent.click(trigger);
+  return {
+    trigger,
+    dialog: screen.getByRole('dialog', { name: 'Trade History' }),
+  };
+};
+
 const desktopChartLayout = (type: 'tabs' | 'split' = 'tabs', activeTab = 'chart-a'): DockLayout => ({
   version: originalLayout.version,
   root: {
@@ -184,5 +204,108 @@ describe('toolbar selection synchronization', () => {
     expect(screen.getByRole('button', { name: 'Show Period Separators' })).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(screen.getByRole('button', { name: 'Show Period Separators' }));
     expect(screen.getByRole('button', { name: 'Hide Period Separators' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('opens the trade history dialog with its trigger and controls correctly associated', () => {
+    setTradeHistorySettings(true, true);
+    render(<TopToolbar {...toolbarProps()} />);
+    const trigger = screen.getByRole('button', { name: 'Trade History Overlays' });
+
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).not.toHaveAttribute('aria-controls');
+    expect(trigger).not.toHaveAttribute('aria-pressed');
+
+    const { dialog } = openTradeHistoryDialog();
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(trigger).toHaveAttribute('aria-controls', dialog.id);
+    expect(trigger).not.toHaveAttribute('aria-pressed');
+    expect(screen.getByRole('group', { name: 'Trade history overlay controls' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Entry / close line' })).toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Entry / close arrows' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Reset to Defaults' })).toBeDisabled();
+  });
+
+  it('updates the line and arrow switches independently and flushes each overlay change', () => {
+    setTradeHistorySettings(true, true);
+    const handleFlush = vi.fn();
+    window.addEventListener('rtx:flush-trade-overlay', handleFlush);
+
+    try {
+      render(<TopToolbar {...toolbarProps()} />);
+      openTradeHistoryDialog();
+      const lineSwitch = screen.getByRole('switch', { name: 'Entry / close line' });
+      const arrowsSwitch = screen.getByRole('switch', { name: 'Entry / close arrows' });
+
+      fireEvent.click(lineSwitch);
+      expect(lineSwitch).not.toBeChecked();
+      expect(arrowsSwitch).toBeChecked();
+      expect(useChartSettingsStore.getState().globalProperties.showTradeHistory).toBe(false);
+      expect(useChartSettingsStore.getState().globalProperties.showTradeHistoryArrows).toBe(true);
+      expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistory).toBe(false);
+      expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistoryArrows).toBe(true);
+      expect(handleFlush).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(arrowsSwitch);
+      expect(lineSwitch).not.toBeChecked();
+      expect(arrowsSwitch).not.toBeChecked();
+      expect(useChartSettingsStore.getState().globalProperties.showTradeHistory).toBe(false);
+      expect(useChartSettingsStore.getState().globalProperties.showTradeHistoryArrows).toBe(false);
+      expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistory).toBe(false);
+      expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistoryArrows).toBe(false);
+      expect(handleFlush).toHaveBeenCalledTimes(2);
+    } finally {
+      window.removeEventListener('rtx:flush-trade-overlay', handleFlush);
+    }
+  });
+
+  it('resets both trade history switches to their defaults and disables Reset', () => {
+    setTradeHistorySettings(false, false);
+    render(<TopToolbar {...toolbarProps()} />);
+    openTradeHistoryDialog();
+    const lineSwitch = screen.getByRole('switch', { name: 'Entry / close line' });
+    const arrowsSwitch = screen.getByRole('switch', { name: 'Entry / close arrows' });
+    const resetButton = screen.getByRole('button', { name: 'Reset to Defaults' });
+
+    expect(lineSwitch).not.toBeChecked();
+    expect(arrowsSwitch).not.toBeChecked();
+    expect(resetButton).toBeEnabled();
+
+    fireEvent.click(resetButton);
+
+    expect(lineSwitch).toBeChecked();
+    expect(arrowsSwitch).toBeChecked();
+    expect(useChartSettingsStore.getState().globalProperties.showTradeHistory).toBe(true);
+    expect(useChartSettingsStore.getState().globalProperties.showTradeHistoryArrows).toBe(true);
+    expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistory).toBe(true);
+    expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.showTradeHistoryArrows).toBe(true);
+    expect(resetButton).toBeDisabled();
+  });
+
+  it('closes the trade history dialog on Escape and restores focus to its trigger', () => {
+    setTradeHistorySettings(true, true);
+    render(<TopToolbar {...toolbarProps()} />);
+    const { trigger } = openTradeHistoryDialog();
+    const lineSwitch = screen.getByRole('switch', { name: 'Entry / close line' });
+    lineSwitch.focus();
+    expect(lineSwitch).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Trade History' })).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveFocus();
+  });
+
+  it('closes the trade history dialog on an outside mousedown', () => {
+    setTradeHistorySettings(true, true);
+    render(<TopToolbar {...toolbarProps()} />);
+    const { trigger } = openTradeHistoryDialog();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole('dialog', { name: 'Trade History' })).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
 });

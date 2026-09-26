@@ -368,6 +368,21 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu,
   backdrop-filter: none !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-overlay-menu {
+  --rtx-history-overlay-focus: #005a9e;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-overlay-menu__reset:not(:disabled):is(:hover, :focus-visible) {
+  border-color: var(--rtx-history-overlay-accent) !important;
+  background: color-mix(in srgb, var(--rtx-history-overlay-accent) 8%, var(--rtx-light-elevated)) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-overlay-menu__reset:not(:disabled):active {
+  border-color: var(--rtx-history-overlay-accent-pressed) !important;
+  background: color-mix(in srgb, var(--rtx-history-overlay-accent-pressed) 13%, var(--rtx-light-elevated)) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-item,
   .rtx-menu-row,
   [role="menuitem"],

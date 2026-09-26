@@ -4,7 +4,7 @@ import { Icon } from '../ui/Icon';
 import { ChartCommandIcon, type ChartCommandIconName } from './ChartCommandIcon';
 import type { ChartType, Timeframe } from '../TradingChart';
 import {
-    Minus, Square, Copy, X
+    Minus, Square, Copy, RotateCcw, X
 } from 'lucide-react';
 import { useToolbarState } from '../../hooks/useToolbarState';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcut';
@@ -73,6 +73,27 @@ const getLogoutBase = (): string => {
     if (serverUrl) return serverUrl;
     if (fallback) return fallback;
     return '';
+};
+
+const TRADE_HISTORY_OVERLAY_DIALOG_ID = 'rtx-trade-history-overlay-dialog';
+const TRADE_HISTORY_OVERLAY_TITLE_ID = 'rtx-trade-history-overlay-title';
+const TRADE_HISTORY_OVERLAY_WIDTH = 288;
+
+const getTradeHistoryOverlayPosition = (anchor: HTMLElement | null): React.CSSProperties => {
+    if (typeof window === 'undefined') return {};
+
+    const viewportPadding = 8;
+    const anchorRect = anchor?.getBoundingClientRect();
+    const availableWidth = Math.max(0, window.innerWidth - viewportPadding * 2);
+    const panelWidth = Math.min(TRADE_HISTORY_OVERLAY_WIDTH, availableWidth);
+    const maximumLeft = Math.max(viewportPadding, window.innerWidth - panelWidth - viewportPadding);
+    const top = (anchorRect?.bottom ?? 0) + 6;
+
+    return {
+        top,
+        left: Math.max(viewportPadding, Math.min(anchorRect?.left ?? viewportPadding, maximumLeft)),
+        maxHeight: Math.max(0, window.innerHeight - top - viewportPadding),
+    };
 };
 
 export const TopToolbar: React.FC<TopToolbarProps> = ({
@@ -381,6 +402,7 @@ const MainToolbar = ({
     const tr = useUiTranslation();
 
     const [showHistoryOverlayMenu, setShowHistoryOverlayMenu] = useState(false);
+    const [, setHistoryOverlayLayoutVersion] = useState(0);
     const [advancedViewEnabled, setAdvancedViewEnabled] = useState(() => {
         try {
             return localStorage.getItem('rtx5-advanced-view-enabled') === 'true';
@@ -401,6 +423,12 @@ const MainToolbar = ({
     const activeSavedAccount = savedAccounts.find((account) => String(account.login) === accountId);
     const savedAccountCount = new Set(savedAccounts.map((account) => account.login)).size;
     const tradeHistorySettings = useChartSettingsStore((state) => state.symbolProperties[symbol] || state.globalProperties);
+    const tradeHistoryLineEnabled = tradeHistorySettings.showTradeHistory !== false;
+    const tradeHistoryArrowsEnabled = tradeHistorySettings.showTradeHistoryArrows !== false;
+    const tradeHistorySettingsAreDefault = (
+        tradeHistoryLineEnabled === defaultChartProperties.showTradeHistory
+        && tradeHistoryArrowsEnabled === defaultChartProperties.showTradeHistoryArrows
+    );
 
     const dispatchTargetedChartType = (nextChartType: ChartType) => {
         const { targetContextId } = getActiveChartCommandTarget(symbol, timeframe);
@@ -465,18 +493,54 @@ const MainToolbar = ({
         };
     }, [advancedViewEnabled, advancedOptions]);
 
-    // Close dropdown on outside click
+    // Close the portalled settings surface on outside interaction or Escape.
     useEffect(() => {
+        let viewportFrame = 0;
         const handleClickOutside = (e: MouseEvent) => {
             const target = e.target as Node;
             const clickedHistoryOverlay = !!historyOverlayRef.current?.contains(target) || !!historyOverlayDropdownRef.current?.contains(target);
 
             if (!clickedHistoryOverlay) setShowHistoryOverlayMenu(false);
         };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+
+            event.preventDefault();
+            setShowHistoryOverlayMenu(false);
+            historyOverlayRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+        };
+        const refreshOverlayPosition = () => {
+            window.cancelAnimationFrame(viewportFrame);
+            viewportFrame = window.requestAnimationFrame(() => {
+                setHistoryOverlayLayoutVersion((version) => version + 1);
+            });
+        };
+
         if (showHistoryOverlayMenu) {
             document.addEventListener('mousedown', handleClickOutside);
+            document.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('resize', refreshOverlayPosition);
+            window.addEventListener('scroll', refreshOverlayPosition, true);
         }
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('resize', refreshOverlayPosition);
+            window.removeEventListener('scroll', refreshOverlayPosition, true);
+            window.cancelAnimationFrame(viewportFrame);
+        };
+    }, [showHistoryOverlayMenu]);
+
+    useEffect(() => {
+        if (!showHistoryOverlayMenu) return;
+
+        const focusFrame = window.requestAnimationFrame(() => {
+            historyOverlayDropdownRef.current
+                ?.querySelector<HTMLElement>('input:not(:disabled)')
+                ?.focus();
+        });
+
+        return () => window.cancelAnimationFrame(focusFrame);
     }, [showHistoryOverlayMenu]);
 
     const updateAdvancedOptions = (patch: Partial<AdvancedViewOptions>) => {
@@ -669,10 +733,10 @@ const MainToolbar = ({
                                 <CommandIconButton
                                     icon="sliders-horizontal"
                                     className="rtx-trade-history-overlay-button"
-                                    title="Trade History Overlays"
-                                    active={showHistoryOverlayMenu}
-                                    ariaHasPopup="menu"
+                                    title={tr("Trade History Overlays")}
+                                    ariaHasPopup="dialog"
                                     ariaExpanded={showHistoryOverlayMenu}
+                                    ariaControls={showHistoryOverlayMenu ? TRADE_HISTORY_OVERLAY_DIALOG_ID : undefined}
                                     onClick={() => {
                                         setShowHistoryOverlayMenu((open) => !open);
                                     }}
@@ -680,49 +744,50 @@ const MainToolbar = ({
 
                                 {showHistoryOverlayMenu && ReactDOM.createPortal(
                                     <div
+                                        id={TRADE_HISTORY_OVERLAY_DIALOG_ID}
                                         ref={historyOverlayDropdownRef}
-                                        className="fixed z-[9999] w-[236px] rounded-[5px] border border-zinc-700/80 bg-[#151820] p-3 text-[14px] font-normal text-zinc-200 shadow-2xl shadow-black/50 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:bg-white [.rtx-advanced-view_&]:text-gray-800 [.rtx-advanced-view_&]:shadow-xl"
-                                        style={{
-                                            top: (historyOverlayRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
-                                            left: Math.min(
-                                                historyOverlayRef.current?.getBoundingClientRect().left ?? 0,
-                                                Math.max(8, window.innerWidth - 244),
-                                            ),
-                                        }}
-                                        role="menu"
-                                        aria-label="Trade history overlay controls"
+                                        className="rtx-menu-surface rtx-history-overlay-menu fixed z-[9999]"
+                                        style={getTradeHistoryOverlayPosition(historyOverlayRef.current)}
+                                        role="dialog"
+                                        aria-labelledby={TRADE_HISTORY_OVERLAY_TITLE_ID}
                                     >
-                                        <div className="mb-2 flex items-center justify-between border-b border-zinc-700/70 pb-2 [.rtx-advanced-view_&]:border-gray-100">
-                                            <span className="text-[12px] font-medium uppercase tracking-wide text-zinc-400 [.rtx-advanced-view_&]:text-gray-500">Trade History</span>
+                                        <div className="rtx-history-overlay-menu__header">
+                                            <span className="rtx-history-overlay-menu__header-icon" aria-hidden="true">
+                                                <ChartCommandIcon name="sliders-horizontal" />
+                                            </span>
+                                            <span className="rtx-history-overlay-menu__heading">
+                                                <span className="rtx-history-overlay-menu__eyebrow">{tr("Chart settings")}</span>
+                                                <span id={TRADE_HISTORY_OVERLAY_TITLE_ID} className="rtx-history-overlay-menu__title">{tr("Trade History")}</span>
+                                            </span>
                                             <button
                                                 type="button"
-                                                className="rounded-[3px] border border-zinc-700 px-1.5 py-0.5 text-[12px] font-normal text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:text-gray-600 [.rtx-advanced-view_&]:hover:bg-gray-50"
+                                                className="rtx-history-overlay-menu__reset"
                                                 onClick={resetTradeHistorySettings}
+                                                disabled={tradeHistorySettingsAreDefault}
+                                                aria-label={tr("Reset to Defaults")}
+                                                title={tr("Reset to Defaults")}
                                             >
-                                                Reset
+                                                <RotateCcw size={13} strokeWidth={1.8} aria-hidden="true" />
+                                                <span>{tr("Reset")}</span>
                                             </button>
                                         </div>
 
-                                        <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry / close line</span>
-                                            <input
-                                                type="checkbox"
-                                                checked={tradeHistorySettings.showTradeHistory !== false}
-                                                onChange={(event) => updateTradeHistorySetting('showTradeHistory', event.target.checked)}
-                                                className="h-3.5 w-3.5 accent-blue-500"
+                                        <div className="rtx-history-overlay-menu__options" role="group" aria-label={tr("Trade history overlay controls")}>
+                                            <TradeHistoryOverlayOption
+                                                kind="line"
+                                                label={tr("Entry / close line")}
+                                                checked={tradeHistoryLineEnabled}
+                                                statusLabel={tr(tradeHistoryLineEnabled ? "On" : "Off")}
+                                                onChange={(checked) => updateTradeHistorySetting('showTradeHistory', checked)}
                                             />
-                                        </label>
-
-                                        <label className="mb-1 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry / close arrows</span>
-                                            <input
-                                                type="checkbox"
-                                                checked={tradeHistorySettings.showTradeHistoryArrows !== false}
-                                                onChange={(event) => updateTradeHistorySetting('showTradeHistoryArrows', event.target.checked)}
-                                                className="h-3.5 w-3.5 accent-blue-500"
+                                            <TradeHistoryOverlayOption
+                                                kind="arrows"
+                                                label={tr("Entry / close arrows")}
+                                                checked={tradeHistoryArrowsEnabled}
+                                                statusLabel={tr(tradeHistoryArrowsEnabled ? "On" : "Off")}
+                                                onChange={(checked) => updateTradeHistorySetting('showTradeHistoryArrows', checked)}
                                             />
-                                        </label>
-
+                                        </div>
                                     </div>,
                                     document.body,
                                 )}
@@ -783,6 +848,55 @@ const MainToolbar = ({
 
 
 
+type TradeHistoryOverlayOptionKind = 'line' | 'arrows';
+
+interface TradeHistoryOverlayOptionProps {
+    kind: TradeHistoryOverlayOptionKind;
+    label: string;
+    checked: boolean;
+    statusLabel: string;
+    onChange: (checked: boolean) => void;
+}
+
+const TradeHistoryOverlayOption = ({
+    kind,
+    label,
+    checked,
+    statusLabel,
+    onChange,
+}: TradeHistoryOverlayOptionProps) => (
+    <label className="rtx-history-overlay-menu__option" data-enabled={checked ? 'true' : 'false'}>
+        <span className="rtx-history-overlay-menu__preview" aria-hidden="true">
+            {kind === 'line' ? (
+                <svg viewBox="0 0 24 16" focusable="false">
+                    <circle cx="4" cy="12" r="2" fill="currentColor" />
+                    <path d="M6 11L18 5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                    <circle cx="20" cy="4" r="2" fill="currentColor" />
+                </svg>
+            ) : (
+                <svg viewBox="0 0 24 16" fill="none" focusable="false">
+                    <path d="M6 13V4M3 7l3-3 3 3M18 3v9m-3-3 3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            )}
+        </span>
+        <span className="rtx-history-overlay-menu__option-copy">
+            <span className="rtx-history-overlay-menu__option-label">{label}</span>
+            <span className="rtx-history-overlay-menu__option-status">{statusLabel}</span>
+        </span>
+        <span className="rtx-history-overlay-menu__control">
+            <input
+                type="checkbox"
+                role="switch"
+                aria-label={label}
+                checked={checked}
+                onChange={(event) => onChange(event.currentTarget.checked)}
+            />
+            <span className="rtx-history-overlay-menu__switch" aria-hidden="true" />
+        </span>
+    </label>
+);
+
+
 const MT5Group = ({ children, label, role }: { children: React.ReactNode; label?: string; role?: 'group' | 'radiogroup' }) => (
     <div className="rtx-toolbar-group flex items-center" role={role || (label ? 'group' : undefined)} aria-label={label}>
         {children}
@@ -803,9 +917,10 @@ interface CommandIconButtonProps {
     className?: string;
     ariaHasPopup?: React.AriaAttributes['aria-haspopup'];
     ariaExpanded?: boolean;
+    ariaControls?: string;
 }
 
-const CommandIconButton = ({ icon, title, active, selectionRole, onClick, className, ariaHasPopup, ariaExpanded }: CommandIconButtonProps) => (
+const CommandIconButton = ({ icon, title, active, selectionRole, onClick, className, ariaHasPopup, ariaExpanded, ariaControls }: CommandIconButtonProps) => (
     <button
         type="button"
         onClick={onClick}
@@ -816,6 +931,7 @@ const CommandIconButton = ({ icon, title, active, selectionRole, onClick, classN
         aria-pressed={selectionRole ? undefined : active === undefined ? undefined : active}
         aria-haspopup={ariaHasPopup}
         aria-expanded={ariaExpanded}
+        aria-controls={ariaControls}
         className={['rtx-toolbar-icon-button', className].filter(Boolean).join(' ')}
     >
         <ChartCommandIcon name={icon} />

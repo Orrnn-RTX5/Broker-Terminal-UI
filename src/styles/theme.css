@@ -365,6 +365,7 @@ body {
 
 .rtx-toolbar-action[aria-pressed='true'],
 .rtx-toolbar-icon-button[aria-pressed='true']:not(.rtx-period-separator-toggle),
+.rtx-trade-history-overlay-button[aria-expanded='true'],
 .rtx-toolbar-icon-button[aria-checked='true'] {
   background: var(--color-info-dim);
   border-color: var(--border-tertiary);
@@ -1420,6 +1421,14 @@ html.rtx-desktop-shell-active .rtx-desktop-command-row .rtx-toolbar-icon-button:
   color: var(--color-blue-300, #93c5fd);
 }
 
+html.rtx-desktop-shell-active .rtx-desktop-command-row .rtx-trade-history-overlay-button[aria-expanded='true'] {
+  background: rgb(59 130 246 / 0.15);
+  border-color: rgb(59 130 246 / 0.5);
+  border-radius: 3px;
+  box-shadow: none;
+  color: var(--color-blue-300, #93c5fd);
+}
+
 /* Solid candle bodies keep the enabled chart type legible inside the frame. */
 html.rtx-desktop-shell-active .rtx-desktop-command-row .rtx-toolbar-icon-button:is([aria-checked='true'], [aria-pressed='true']) .rtx-chart-command-icon__active-fill {
   fill: currentColor;
@@ -1822,25 +1831,306 @@ html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
 }
 
 .rtx-history-overlay-menu {
+  --rtx-history-overlay-accent: #0078d4;
+  --rtx-history-overlay-accent-hover: #026ec1;
+  --rtx-history-overlay-accent-pressed: #005a9e;
+  --rtx-history-overlay-focus: #66b7f0;
+  --rtx-type-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
+  --rtx-type-weight: 400;
+  width: min(288px, calc(100vw - 16px));
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--bg-secondary);
   background-image: var(--rtx-chrome-sheen);
-  border-color: var(--border-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
   color: var(--text-primary);
-  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
   box-shadow: var(--shadow-xl);
+  font-family: var(--rtx-type-family);
+  font-size: var(--rtx-type-size);
+  font-weight: var(--rtx-type-weight);
+  animation: rtx-application-menu-enter 120ms ease-out;
+  transform-origin: top left;
 }
-.rtx-history-overlay-menu__header { border-color: var(--border-primary); }
-.rtx-history-overlay-menu__slider {
-  background: var(--bg-primary);
-  border-color: var(--border-primary);
+
+.rtx-history-overlay-menu__header {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  min-height: 58px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border-primary);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--rtx-history-overlay-accent) 8%, transparent), transparent 72%),
+    var(--bg-tertiary);
 }
-.rtx-history-overlay-menu span { color: inherit; }
-.rtx-history-overlay-menu button {
+
+.rtx-history-overlay-menu__header-icon {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--rtx-history-overlay-accent) 38%, var(--border-secondary));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--rtx-history-overlay-accent) 11%, var(--bg-secondary));
+  color: var(--rtx-history-overlay-accent);
+}
+
+.rtx-history-overlay-menu__header-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.25;
+}
+
+.rtx-history-overlay-menu__heading,
+.rtx-history-overlay-menu__option-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.rtx-history-overlay-menu__heading {
+  gap: 1px;
+}
+
+.rtx-history-overlay-menu__eyebrow {
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 3px);
+  --rtx-type-weight: 600;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--text-primary) 72%, var(--text-secondary));
+  font-size: var(--rtx-type-size);
+  font-weight: var(--rtx-type-weight);
+  letter-spacing: 0.075em;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.rtx-history-overlay-menu__title {
+  --rtx-type-size: var(--rtx-ui-font-size, 14px);
+  --rtx-type-weight: 600;
+  overflow: hidden;
   color: var(--text-primary);
-  border-color: var(--border-secondary);
+  font-size: var(--rtx-type-size);
+  font-weight: var(--rtx-type-weight);
+  line-height: 19px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.rtx-history-overlay-menu button:hover,
-.rtx-history-overlay-menu label:hover { background: var(--bg-quaternary); }
+
+.rtx-history-overlay-menu__reset {
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 2px);
+  --rtx-type-weight: 500;
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 5px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--rtx-type-size);
+  font-weight: var(--rtx-type-weight);
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.rtx-history-overlay-menu__reset:not(:disabled):hover {
+  border-color: var(--rtx-history-overlay-accent);
+  background: color-mix(in srgb, var(--rtx-history-overlay-accent) 10%, var(--bg-secondary));
+  color: var(--text-primary);
+}
+
+.rtx-history-overlay-menu__reset:not(:disabled):active {
+  border-color: var(--rtx-history-overlay-accent-pressed);
+  background: color-mix(in srgb, var(--rtx-history-overlay-accent-pressed) 16%, var(--bg-secondary));
+}
+
+.rtx-history-overlay-menu__reset:focus-visible {
+  outline: 2px solid var(--rtx-history-overlay-accent);
+  outline-offset: 2px;
+}
+
+.rtx-history-overlay-menu__reset:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.rtx-history-overlay-menu__options {
+  padding: 8px;
+}
+
+.rtx-history-overlay-menu__option {
+  display: grid;
+  min-height: 50px;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.rtx-history-overlay-menu__option + .rtx-history-overlay-menu__option {
+  margin-top: 4px;
+}
+
+.rtx-history-overlay-menu__option:hover,
+.rtx-history-overlay-menu__option:focus-within {
+  border-color: var(--border-primary);
+  background: var(--bg-quaternary);
+}
+
+.rtx-history-overlay-menu__preview {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.rtx-history-overlay-menu__preview svg {
+  width: 22px;
+  height: 16px;
+}
+
+.rtx-history-overlay-menu__option[data-enabled='true'] .rtx-history-overlay-menu__preview {
+  border-color: color-mix(in srgb, var(--rtx-history-overlay-accent) 42%, var(--border-secondary));
+  background: color-mix(in srgb, var(--rtx-history-overlay-accent) 11%, var(--bg-tertiary));
+  color: var(--rtx-history-overlay-accent);
+}
+
+.rtx-history-overlay-menu__option-copy {
+  gap: 2px;
+}
+
+.rtx-history-overlay-menu__option-label {
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
+  --rtx-type-weight: 500;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--rtx-type-size);
+  font-weight: var(--rtx-type-weight);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtx-history-overlay-menu__option-status {
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 3px);
+  color: color-mix(in srgb, var(--text-primary) 72%, var(--text-secondary));
+  font-size: var(--rtx-type-size);
+  line-height: 15px;
+}
+
+.rtx-history-overlay-menu__option[data-enabled='true'] .rtx-history-overlay-menu__option-status {
+  color: color-mix(in srgb, var(--text-primary) 78%, var(--text-secondary));
+}
+
+.rtx-history-overlay-menu__control {
+  position: relative;
+  display: inline-flex;
+  width: 36px;
+  height: 20px;
+  flex: 0 0 36px;
+}
+
+.rtx-history-overlay-menu__control input {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.rtx-history-overlay-menu__switch {
+  position: relative;
+  display: block;
+  width: 36px;
+  height: 20px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 999px;
+  background: var(--bg-primary);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.rtx-history-overlay-menu__switch::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 28%);
+  content: '';
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.rtx-history-overlay-menu__control input:checked + .rtx-history-overlay-menu__switch {
+  border-color: var(--rtx-history-overlay-accent);
+  background: var(--rtx-history-overlay-accent);
+}
+
+.rtx-history-overlay-menu__control input:checked + .rtx-history-overlay-menu__switch::after {
+  background: #ffffff;
+  transform: translateX(16px);
+}
+
+.rtx-history-overlay-menu__control input:focus-visible + .rtx-history-overlay-menu__switch {
+  border-color: var(--rtx-history-overlay-accent);
+  box-shadow:
+    0 0 0 2px var(--bg-secondary),
+    0 0 0 4px var(--rtx-history-overlay-focus);
+}
+
+.rtx-history-overlay-menu__option:hover .rtx-history-overlay-menu__switch {
+  border-color: color-mix(in srgb, var(--rtx-history-overlay-accent) 58%, var(--border-secondary));
+}
+
+.rtx-history-overlay-menu__option:hover .rtx-history-overlay-menu__control input:checked + .rtx-history-overlay-menu__switch {
+  border-color: var(--rtx-history-overlay-accent-hover);
+  background: var(--rtx-history-overlay-accent-hover);
+}
+
+.rtx-history-overlay-menu__control input:active + .rtx-history-overlay-menu__switch {
+  border-color: var(--rtx-history-overlay-accent-pressed);
+}
+
+.rtx-history-overlay-menu__control input:checked:active + .rtx-history-overlay-menu__switch {
+  background: var(--rtx-history-overlay-accent-pressed);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtx-history-overlay-menu {
+    animation: none;
+  }
+
+  .rtx-history-overlay-menu *,
+  .rtx-history-overlay-menu *::after {
+    transition: none;
+  }
+}
 
 /* Desktop groups use the same spacing as their controls, without pipe dividers. */
 html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {

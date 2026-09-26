@@ -14,6 +14,10 @@ const propertiesDialogSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/components/dialogs/ChartPropertiesDialog.tsx'),
   'utf8',
 );
+const themeSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/styles/theme.css'),
+  'utf8',
+);
 
 describe('TradingChart trade-history presentation contract', () => {
   it('retains both execution markers while a closing position lingers in the feed', () => {
@@ -98,7 +102,7 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(chartSource).toContain('if (showTradeHistoryArrows) {');
     expect(chartSource).toContain("currentProperties.showTradeHistory !== previousProperties.showTradeHistory");
     expect(toolbarSource).toContain('Entry / close line');
-    expect(toolbarSource).toContain("updateTradeHistorySetting('showTradeHistory', event.target.checked)");
+    expect(toolbarSource).toContain("updateTradeHistorySetting('showTradeHistory', checked)");
     expect(toolbarSource).toContain('Entry / close arrows');
     expect(propertiesDialogSource).toContain("{ key: 'showTradeHistory', label: 'Show entry/close line' }");
     expect(propertiesDialogSource).toContain("{ key: 'showTradeHistoryArrows', label: 'Show entry/close arrows' }");
@@ -109,6 +113,21 @@ describe('TradingChart trade-history presentation contract', () => {
     const historyToggle = chartSource.slice(historyToggleStart, historyToggleEnd);
     expect(historyToggle).not.toContain('isDesktopBackendTarget');
     expect(historyToggle).toContain("store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', next);");
+  });
+
+  it('uses the terminal theme and accessible switches for the trade-history settings popover', () => {
+    expect(toolbarSource).toContain('className="rtx-menu-surface rtx-history-overlay-menu fixed z-[9999]"');
+    expect(toolbarSource).toContain('role="dialog"');
+    expect(toolbarSource).toContain('ariaHasPopup="dialog"');
+    expect(toolbarSource).toContain('role="switch"');
+    expect(toolbarSource).toContain('disabled={tradeHistorySettingsAreDefault}');
+    expect(toolbarSource).toContain("event.key !== 'Escape'");
+    expect(toolbarSource).not.toContain('bg-[#151820]');
+    expect(toolbarSource).not.toContain('accent-blue-500');
+
+    expect(themeSource).toMatch(/\.rtx-history-overlay-menu \{[\s\S]*--rtx-history-overlay-accent: #0078d4;[\s\S]*background: var\(--bg-secondary\);/);
+    expect(themeSource).toMatch(/\.rtx-history-overlay-menu__control input:checked \+ \.rtx-history-overlay-menu__switch \{[\s\S]*background: var\(--rtx-history-overlay-accent\);/);
+    expect(themeSource).toContain('@media (prefers-reduced-motion: reduce)');
   });
 
   it('joins the entry-close line to the arrow tips when arrows are shown', () => {
