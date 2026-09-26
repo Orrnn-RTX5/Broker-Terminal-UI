@@ -100,4 +100,42 @@ describe('Toolbox title-bar close control', () => {
 
         expect(onCloseBulk).not.toHaveBeenCalled();
     });
+
+    it('keeps News through Experts visible and locked', () => {
+        render(
+            <BottomDock
+                height={300}
+                onClosePosition={vi.fn()}
+                onModifyPosition={vi.fn()}
+            />,
+        );
+
+        const lockedTabs = [
+            'News',
+            'Mailbox',
+            'Calendar',
+            'Company',
+            'Alerts',
+            'Articles',
+            'Code Base',
+            'Experts',
+        ];
+
+        for (const label of lockedTabs) {
+            const tab = screen.getByRole('button', { name: label });
+            expect(tab).toBeDisabled();
+            expect(tab).toHaveClass('rtx-dock-tab--locked');
+            expect(tab.querySelector('[aria-hidden="true"]')).toBeTruthy();
+            expect(tab.getAttribute('aria-description')).toContain('currently unavailable');
+            fireEvent.click(tab);
+        }
+
+        expect(screen.getByRole('button', { name: 'Open positions and live account summary' })).toHaveClass('active-tab');
+        fireEvent.click(screen.getByRole('button', { name: 'Terminal logs and connection events' }));
+        expect(screen.getByRole('button', { name: 'Terminal logs and connection events' })).toHaveClass('active-tab');
+
+        window.dispatchEvent(new CustomEvent('rtx:open-bottom-dock-tab', { detail: { tab: 'Calendar' } }));
+        expect(screen.getByRole('button', { name: 'Terminal logs and connection events' })).toHaveClass('active-tab');
+        expect(screen.getByRole('button', { name: 'Calendar' })).toBeDisabled();
+    });
 });

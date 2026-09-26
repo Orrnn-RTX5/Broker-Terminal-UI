@@ -611,6 +611,79 @@ const historyRequestError = (error: unknown): string => (
   error instanceof Error ? error.message : 'History request failed'
 );
 
+const settledHistoryReads = new Map<string, unknown>();
+const inflightHistoryReads = new Map<string, Promise<unknown>>();
+
+// History opens again after startup already read the same deals and closed
+// positions. Reuse that result until a fill, close, or explicit refresh.
+export const clearTradeHistoryRequestCache = (): void => {
+  settledHistoryReads.clear();
+  inflightHistoryReads.clear();
+};
+
+const cachedTradeRead = <T>(key: string, force: boolean, load: () => Promise<T>): Promise<T> => {
+  const flightKey = force ? `${key}\u0000force` : key;
+  if (!force) {
+    if (settledHistoryReads.has(key)) return Promise.resolve(settledHistoryReads.get(key) as T);
+    const pending = inflightHistoryReads.get(key);
+    if (pending) return pending as Promise<T>;
+  } else {
+    const pending = inflightHistoryReads.get(flightKey);
+    if (pending) return pending as Promise<T>;
+  }
+
+  const promise = load()
+    .then((value) => {
+      if (inflightHistoryReads.get(flightKey) === promise) settledHistoryReads.set(key, value);
+      return value;
+    })
+    .finally(() => {
+      if (inflightHistoryReads.get(flightKey) === promise) inflightHistoryReads.delete(flightKey);
+    });
+  inflightHistoryReads.set(flightKey, promise);
+  return promise;
+};
+
+const composeTradeHistoryDataSet = (
+  login: number,
+  closedResult: PromiseSettledResult<Trade[]>,
+  dealsResult: PromiseSettledResult<Trade[]>,
+  ordersResult: PromiseSettledResult<Trade[]> | null,
+): TradeHistoryDataSet => {
+  const closedPositions = closedResult.status === 'fulfilled' ? closedResult.value : [];
+  const deals = dealsResult.status === 'fulfilled' ? sortHistoryRows(dealsResult.value) : [];
+  const orders = ordersResult?.status === 'fulfilled' ? sortHistoryRows(ordersResult.value) : [];
+  const dealPositions = dealsResult.status === 'fulfilled'
+    ? buildClosedPositionHistory([], dealsResult.value, login)
+    : [];
+  const positions = dealPositions.length > 0
+    ? dealPositions
+    : closedResult.status === 'fulfilled'
+      ? buildClosedPositionHistory(closedPositions, [], login)
+      : [];
+
+  return {
+    positions,
+    deals,
+    orders,
+    errors: {
+      positions: dealsResult.status === 'rejected'
+        ? closedResult.status === 'fulfilled' && closedPositions.length > 0
+          ? `${historyRequestError(dealsResult.reason)}; showing closed-position fallback`
+          : historyRequestError(dealsResult.reason)
+        : dealPositions.length === 0 && closedResult.status === 'rejected'
+          ? historyRequestError(closedResult.reason)
+        : null,
+      deals: dealsResult.status === 'rejected' ? historyRequestError(dealsResult.reason) : null,
+      orders: ordersResult === null
+        ? null
+        : ordersResult.status === 'rejected'
+          ? historyRequestError(ordersResult.reason)
+          : null,
+    },
+  };
+};
+
 const ARRAY_WRAPPER_KEYS = ['data', 'items', 'results'] as const;
 
 const arrayFrom = <T>(data: unknown, key?: string): T[] => {
@@ -668,30 +741,36 @@ export const tradeGatewayApi = {
     return arrayFrom<GatewayPosition>(data, 'positions').map(normalizePosition);
   },
 
-  async getDeals(login?: number): Promise<Trade[]> {
+  async getDeals(login?: number, options?: { force?: boolean }): Promise<Trade[]> {
     const endpoint = login ? `/deals/${login}` : '/account/deals';
-    const data = await apiClient.get<GatewayDeal[] | { deals: GatewayDeal[] }>(endpoint, {
-      baseUrl: API_V2_BASE_URL,
-      params: { limit: 500, offset: 0 },
+    return cachedTradeRead(`deals:${login ?? 'session'}`, options?.force === true, async () => {
+      const data = await apiClient.get<GatewayDeal[] | { deals: GatewayDeal[] }>(endpoint, {
+        baseUrl: API_V2_BASE_URL,
+        params: { limit: 500, offset: 0 },
+      });
+      return arrayFrom<GatewayDeal>(data, 'deals').map(normalizeDeal);
     });
-    return arrayFrom<GatewayDeal>(data, 'deals').map(normalizeDeal);
   },
 
-  async getClosedPositions(login: number): Promise<Trade[]> {
-    const data = await apiClient.get<GatewayClosedPosition[] | { positions: GatewayClosedPosition[] }>(
-      `/positions/${login}/history`,
-      { baseUrl: API_V2_BASE_URL, params: { limit: 500, offset: 0 } }
-    );
-    return arrayFrom<GatewayClosedPosition>(data, 'positions').map(normalizeClosedPosition);
+  async getClosedPositions(login: number, options?: { force?: boolean }): Promise<Trade[]> {
+    return cachedTradeRead(`closed:${login}`, options?.force === true, async () => {
+      const data = await apiClient.get<GatewayClosedPosition[] | { positions: GatewayClosedPosition[] }>(
+        `/positions/${login}/history`,
+        { baseUrl: API_V2_BASE_URL, params: { limit: 500, offset: 0 } }
+      );
+      return arrayFrom<GatewayClosedPosition>(data, 'positions').map(normalizeClosedPosition);
+    });
   },
 
-  async getOrders(login?: number): Promise<Trade[]> {
+  async getOrders(login?: number, options?: { force?: boolean }): Promise<Trade[]> {
     const endpoint = login ? `/orders/${login}` : '/account/orders';
-    const data = await apiClient.get<GatewayOrder[] | { orders: GatewayOrder[] }>(endpoint, {
-      baseUrl: API_V2_BASE_URL,
-      params: { limit: 500, offset: 0 },
+    return cachedTradeRead(`orders:${login ?? 'session'}`, options?.force === true, async () => {
+      const data = await apiClient.get<GatewayOrder[] | { orders: GatewayOrder[] }>(endpoint, {
+        baseUrl: API_V2_BASE_URL,
+        params: { limit: 500, offset: 0 },
+      });
+      return arrayFrom<GatewayOrder>(data, 'orders').map(normalizeOrder);
     });
-    return arrayFrom<GatewayOrder>(data, 'orders').map(normalizeOrder);
   },
 
   async getOrderHistory(login: number): Promise<Trade[]> {
@@ -702,41 +781,20 @@ export const tradeGatewayApi = {
     return buildClosedPositionHistory(closedPositions, deals, login);
   },
 
-  async getHistoryDataSet(login: number): Promise<TradeHistoryDataSet> {
-    const [closedResult, dealsResult, ordersResult] = await Promise.allSettled([
-      this.getClosedPositions(login),
-      this.getDeals(login),
-      this.getOrders(login),
-    ]);
-
-    const closedPositions = closedResult.status === 'fulfilled' ? closedResult.value : [];
-    const deals = dealsResult.status === 'fulfilled' ? sortHistoryRows(dealsResult.value) : [];
-    const orders = ordersResult.status === 'fulfilled' ? sortHistoryRows(ordersResult.value) : [];
-    const dealPositions = dealsResult.status === 'fulfilled'
-      ? buildClosedPositionHistory([], dealsResult.value, login)
-      : [];
-    const positions = dealPositions.length > 0
-      ? dealPositions
-      : closedResult.status === 'fulfilled'
-        ? buildClosedPositionHistory(closedPositions, [], login)
-        : [];
-
-    return {
-      positions,
-      deals,
-      orders,
-      errors: {
-        positions: dealsResult.status === 'rejected'
-          ? closedResult.status === 'fulfilled' && closedPositions.length > 0
-            ? `${historyRequestError(dealsResult.reason)}; showing closed-position fallback`
-            : historyRequestError(dealsResult.reason)
-          : dealPositions.length === 0 && closedResult.status === 'rejected'
-            ? historyRequestError(closedResult.reason)
-          : null,
-        deals: dealsResult.status === 'rejected' ? historyRequestError(dealsResult.reason) : null,
-        orders: ordersResult.status === 'rejected' ? historyRequestError(ordersResult.reason) : null,
-      },
-    };
+  async getHistoryDataSet(login: number, options?: {
+    force?: boolean;
+    onPartial?: (data: TradeHistoryDataSet) => void;
+  }): Promise<TradeHistoryDataSet> {
+    const force = options?.force === true;
+    // Start every source before waiting so a slow orders response cannot
+    // delay the closed-position rows the History tab shows first.
+    const closedPromise = this.getClosedPositions(login, { force });
+    const dealsPromise = this.getDeals(login, { force });
+    const ordersPromise = this.getOrders(login, { force });
+    const [closedResult, dealsResult] = await Promise.allSettled([closedPromise, dealsPromise]);
+    options?.onPartial?.(composeTradeHistoryDataSet(login, closedResult, dealsResult, null));
+    const [ordersResult] = await Promise.allSettled([ordersPromise]);
+    return composeTradeHistoryDataSet(login, closedResult, dealsResult, ordersResult);
   },
 
   async getBalanceHistory(login: number, limit = 10) {

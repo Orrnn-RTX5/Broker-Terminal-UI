@@ -37,13 +37,15 @@ const resolveMenuSkin = (variant: ContextMenuVariant): MenuSkin => (
 
 const menuPanelStyle = (skin: MenuSkin): React.CSSProperties => ({
   background: skin === 'light'
-    ? 'linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-secondary) 100%)'
-    : 'linear-gradient(180deg, var(--bg-quaternary) 0%, var(--bg-tertiary) 100%)',
-  borderColor: skin === 'light' ? 'var(--border-secondary)' : 'var(--border-tertiary)',
+    ? 'rgba(255, 255, 255, 0.98)'
+    : 'rgba(20, 21, 26, 0.96)',
+  borderColor: skin === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.10)',
   color: 'var(--text-primary)',
   boxShadow: skin === 'light'
-    ? '0 16px 40px rgba(15,23,42,0.16), 0 3px 10px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.85)'
-    : '0 16px 40px rgba(0,0,0,0.50), 0 3px 10px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)',
+    ? '0 16px 36px -4px rgba(15, 23, 42, 0.14), 0 6px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.85)'
+    : '0 20px 48px -6px rgba(0, 0, 0, 0.75), 0 8px 20px -3px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+  backdropFilter: 'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
 });
 
 // ============================================================================
@@ -105,11 +107,11 @@ function calculateSubmenuPosition(
   viewportHeight: number
 ): Position {
   const EDGE_PADDING = 8;
-  const SUBMENU_OVERLAP = 4; // Slight overlap for better UX
+  const SUBMENU_OVERLAP = 2; // Subtle overlap for seamless cursor transit
   const MIN_GAP = 8; // Minimum gap to prevent parent/submenu overlap at corners
 
   let x = triggerRect.right - SUBMENU_OVERLAP;
-  let y = triggerRect.top;
+  let y = triggerRect.top - 4; // Align first submenu item with trigger row accounting for 4px padding
   let horizontalFlipped = false;
 
   // MT5-style horizontal flip: Try right first, then left
@@ -313,37 +315,47 @@ const MenuItem: React.FC<MenuItemProps> = ({
     return (
       <div
         role="separator"
-        className="mx-2 my-1 h-px"
-        style={{ background: skin === 'light' ? 'var(--border-primary)' : 'var(--border-secondary)' }}
+        className="mx-1.5 my-1 h-px"
+        style={{
+          background: skin === 'light'
+            ? 'linear-gradient(90deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.09) 15%, rgba(0,0,0,0.09) 85%, rgba(0,0,0,0.02) 100%)'
+            : 'linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.08) 15%, rgba(255,255,255,0.08) 85%, rgba(255,255,255,0.02) 100%)',
+        }}
       />
     );
   }
 
   const isActive = !item.disabled && (isSubmenuActive || isFocused || isPointerHovered || isHovered);
   const glyphColor = item.disabled
-    ? (skin === 'light' ? 'var(--text-quaternary)' : 'var(--text-tertiary)')
+    ? (skin === 'light' ? 'rgba(0, 0, 0, 0.28)' : 'rgba(255, 255, 255, 0.25)')
     : isActive
-      ? 'var(--text-primary)'
-      : 'var(--text-secondary)';
+      ? (skin === 'light' ? '#0f172a' : '#ffffff')
+      : (skin === 'light' ? '#475569' : 'rgba(255, 255, 255, 0.70)');
+
   const rowStyle: React.CSSProperties = {
-    height: isCompact ? 24 : 28,
+    height: isCompact ? 26 : 30,
     color: item.disabled
-      ? (skin === 'light' ? 'var(--text-quaternary)' : 'var(--text-tertiary)')
-      : 'var(--text-primary)',
+      ? (skin === 'light' ? 'rgba(0, 0, 0, 0.32)' : 'rgba(255, 255, 255, 0.28)')
+      : isActive
+        ? (skin === 'light' ? '#0f172a' : '#ffffff')
+        : (skin === 'light' ? '#1e293b' : 'rgba(255, 255, 255, 0.90)'),
     background: isActive
-      ? (skin === 'light' ? 'var(--bg-quaternary)' : 'var(--bg-elevated)')
+      ? (skin === 'light' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)')
       : 'transparent',
     boxShadow: isActive
       ? (skin === 'light'
-        ? 'inset 0 1px 0 rgba(255,255,255,0.70)'
+        ? 'inset 0 1px 0 rgba(255,255,255,0.80)'
         : 'inset 0 1px 0 rgba(255,255,255,0.05)')
       : undefined,
+    borderRadius: 4,
+    cursor: item.disabled ? 'not-allowed' : 'pointer',
+    transition: 'background-color 80ms ease, color 80ms ease',
   };
 
   return (
     <div
       ref={itemRef}
-      className="relative flex cursor-default select-none items-center px-1.5"
+      className="group relative flex cursor-default select-none items-center px-2 py-0.5 text-[12px] font-medium"
       style={rowStyle}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
@@ -357,27 +369,61 @@ const MenuItem: React.FC<MenuItemProps> = ({
     >
       {/* Check and icon keep their own reserved gutters so every label,
           checked or not, starts on the same column. */}
-      <span className="flex w-4 shrink-0 items-center justify-center" aria-hidden="true">
+      <span className="flex w-[18px] shrink-0 items-center justify-center mr-0.5" aria-hidden="true">
         {item.checked ? (
-          <span className="text-[11px] leading-none" style={{ color: glyphColor }}>{'\u2713'}</span>
+          <svg
+            className="w-3.5 h-3.5"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{
+              color: item.disabled
+                ? 'inherit'
+                : (skin === 'light' ? '#0284c7' : '#38bdf8'),
+            }}
+          >
+            <polyline points="3 8.5 6.5 12 13 4.5" />
+          </svg>
         ) : null}
       </span>
-      <span className="flex w-[18px] shrink-0 items-center justify-center" aria-hidden="true">
-        {item.icon ? <span style={{ color: glyphColor }}>{item.icon}</span> : null}
+      <span className="flex w-5 shrink-0 items-center justify-center mr-2" aria-hidden="true">
+        {item.icon ? (
+          <span
+            className="flex items-center justify-center transition-colors"
+            style={{ color: glyphColor }}
+          >
+            {item.icon}
+          </span>
+        ) : null}
       </span>
-      <span className="min-w-0 flex-1 whitespace-nowrap pr-2 text-[12px] leading-none">
+      <span className="min-w-0 flex-1 whitespace-nowrap pr-2 text-[12px] font-medium tracking-[-0.005em] select-none leading-none">
         {tr(item.label)}
       </span>
       {item.shortcut && (
         <span
-          className="ml-auto whitespace-nowrap pl-4 pr-1 text-[11px] leading-none"
-          style={{ color: glyphColor }}
+          className="ml-auto whitespace-nowrap pl-4 pr-1 font-mono text-[11px] font-normal tracking-wide tabular-nums select-none leading-none transition-colors"
+          style={{
+            color: item.disabled
+              ? (skin === 'light' ? 'rgba(0, 0, 0, 0.25)' : 'rgba(255, 255, 255, 0.20)')
+              : isActive
+                ? (skin === 'light' ? 'rgba(0, 0, 0, 0.60)' : 'rgba(255, 255, 255, 0.70)')
+                : (skin === 'light' ? 'rgba(0, 0, 0, 0.42)' : 'rgba(255, 255, 255, 0.40)'),
+          }}
         >
           {item.shortcut}
         </span>
       )}
       {hasSubmenu && (
-        <span className="ml-1 mr-0.5" style={{ color: glyphColor }}>
+        <span
+          className="ml-2 -mr-0.5 flex items-center justify-center transition-opacity"
+          style={{
+            color: glyphColor,
+            opacity: isActive ? 1 : 0.65,
+          }}
+        >
           <Icon name="chevron-right" size="xs" />
         </span>
       )}
@@ -612,7 +658,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
     <>
       <div
         ref={menuRef}
-        className="fixed w-max min-w-[208px] max-w-[min(420px,calc(100vw-16px))] max-h-[calc(100vh-16px)] rounded-[4px] border py-1 text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent"
+        className="fixed w-max min-w-[256px] max-w-[min(440px,calc(100vw-16px))] max-h-[calc(100vh-16px)] rounded-lg border p-1 text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent shadow-2xl"
         style={{
           ...menuPanelStyle(panelSkin),
           left: `${adjustedPosition.x}px`,
@@ -780,7 +826,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     <div ref={menuRef}>
       {triggerSymbol && (
         <div
-          className="fixed w-max min-w-[208px] rounded-[4px] border py-1 text-[12px] font-normal"
+          className="fixed w-max min-w-[256px] rounded-lg border p-1 text-[12px] font-normal shadow-2xl"
           style={{
             ...menuPanelStyle(resolveMenuSkin(variant)),
             top: position.y,

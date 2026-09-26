@@ -5,12 +5,14 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../api/client';
 import {
+    clearTradeHistoryRequestCache,
     tradeGatewayApi,
     type GatewayClosedPosition,
     type GatewayDeal,
     type TradeHistoryDataSet,
 } from '../api/tradeGateway';
 import { useAppStore, type Trade } from '../store/useAppStore';
+import { resetTerminalHistorySession } from '../services/terminalHistory';
 import { BottomDock } from './BottomDock';
 
 const toolboxMocks = vi.hoisted(() => ({
@@ -204,6 +206,8 @@ const openHistorySurfaceMenu = async (): Promise<HTMLElement> => {
 describe('BottomDock History live-deal integration', () => {
     beforeEach(() => {
         localStorage.clear();
+        resetTerminalHistorySession();
+        clearTradeHistoryRequestCache();
         useAppStore.getState().reset();
         useAppStore.setState({ accountId: '200001' });
         toolboxMocks.refresh.mockClear();
@@ -254,9 +258,19 @@ describe('BottomDock History live-deal integration', () => {
 
         await waitFor(() => expect(screen.getByText('72 records')).toBeInTheDocument());
 
-        expect(container.querySelectorAll('.rtx-history-tab tbody tr.rtx-trade-row')).toHaveLength(72);
+        const renderedRows = () => container.querySelectorAll('.rtx-history-tab tbody tr.rtx-trade-row');
+        expect(renderedRows().length).toBeGreaterThan(0);
+        expect(renderedRows().length).toBeLessThan(LIVE_PAIR_COUNT);
         expect(container.querySelector(`[title="Ticket: ${FALLBACK_POSITION_TICKET}"]`)).toBeNull();
-        expect(container.querySelector('[title="Ticket: 500000"]')).not.toBeNull();
+        expect(container.querySelector('[title="Ticket: 500142"]')).not.toBeNull();
+        expect(container.querySelector('[title="Ticket: 500000"]')).toBeNull();
+
+        const scroller = screen.getByLabelText('History records');
+        scroller.scrollTop = 5_000;
+        fireEvent.scroll(scroller);
+        await waitFor(() => expect(container.querySelector('[title="Ticket: 500000"]')).not.toBeNull());
+        expect(renderedRows().length).toBeLessThan(LIVE_PAIR_COUNT);
+        expect(container.querySelector(`[title="Ticket: ${FALLBACK_POSITION_TICKET}"]`)).toBeNull();
         expect(getSpy).toHaveBeenCalledWith(
             '/positions/200001/history',
             expect.objectContaining({ params: { limit: 500, offset: 0 } }),
@@ -485,5 +499,22 @@ describe('BottomDock History live-deal integration', () => {
         expect(screen.getByTitle('Ticket: 620014')).toBeInTheDocument();
         expect(screen.queryByTitle('Ticket: 620013')).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog', { name: 'Custom history period' })).not.toBeInTheDocument();
+    });
+
+    it('opens a cached History tab again without requesting it a second time', async () => {
+        useAppStore.setState({ accountId: '300006', positions: [] });
+        const getHistory = vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet());
+
+        renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+        await screen.findByTitle('Ticket: 610001');
+        expect(getHistory).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Open positions and live account summary' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+
+        expect(screen.getByTitle('Ticket: 610001')).toBeInTheDocument();
+        expect(screen.queryByText('Loading trade history…')).not.toBeInTheDocument();
+        expect(getHistory).toHaveBeenCalledTimes(1);
     });
 });

@@ -389,6 +389,9 @@ const TRADE_LEVEL_OVERRIDE_TTL_MS = 5 * 60 * 1000;
 const TRADE_LEVEL_OPTIMISTIC_GRACE_MS = 15_000;
 const TRADE_LEVEL_HIT_AREA_PX = 24;
 const TRADE_LEVEL_MIN_DRAG_PX = 2;
+// A single SL/TP press/release stays a pure drag gesture; the Modify Position
+// dialog opens only on a double click of the same level.
+const CHART_LEVEL_MODIFY_DOUBLE_CLICK_MS = 500;
 const TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS = 15_000;
 // A level-cross close is only GUESSED once the position has been missing this
 // long. Routine feed gaps (REST refresh races, WS commits) are shorter, so a
@@ -9720,6 +9723,7 @@ export const TradingChart = React.memo(function TradingChart({
       pointerDownY: number;
       didDrag: boolean;
     } | null = null;
+    let lastLevelClick: { tradeKey: string; role: 'SL' | 'TP'; at: number } | null = null;
     // Level bars hidden while their level is being dragged (the live preview
     // replaces them); restored on release/cancel, and rebuilt on flush anyway.
     let hiddenDragControlBars: HTMLElement[] = [];
@@ -9988,6 +9992,13 @@ export const TradingChart = React.memo(function TradingChart({
       // Position control buttons (reverse/double/close/remove) handle their own
       // clicks; this capture-phase handler must never turn them into drags.
       if (e.target instanceof Element && e.target.closest('.rtx-trade-control-btn')) return;
+      // Overlaid chart UI (one-click trading panel, menus, popovers) shares the
+      // interaction root, so a BUY/SELL press must never become a level drag or
+      // a Modify Position request. Only the chart surface and the trade-level
+      // controls themselves may start the gesture.
+      if (e.target instanceof Element
+        && !e.target.closest('.rtx-trade-controls, .rtx-trade-level-badge, .rtx-trade-level-hit-area, .rtx-trade-level-line')
+        && !container.contains(e.target)) return;
       if (!tradeAllowed) return;
       if (chartSettingsRef.current.showTradeLevels === false) return;
 
@@ -10212,13 +10223,25 @@ export const TradingChart = React.memo(function TradingChart({
         const isLevelClick = grabbedType !== 'ENTRY' && !didLevelDrag;
 
         if (isLevelClick) {
-          const ticket = Number.parseInt(tradeObj.key.replace(/^trade:/, ''), 10);
-          dispatchChartPositionModify({
-            ticket,
-            symbol: tradeObj.symbol,
-            sessionScope: brokerAccountSessionScope,
-          });
+          const role = grabbedType as 'SL' | 'TP';
+          const clickedAt = Date.now();
+          const isDoubleLevelClick = lastLevelClick !== null
+            && lastLevelClick.tradeKey === tradeObj.key
+            && lastLevelClick.role === role
+            && clickedAt - lastLevelClick.at <= CHART_LEVEL_MODIFY_DOUBLE_CLICK_MS;
+          lastLevelClick = isDoubleLevelClick
+            ? null
+            : { tradeKey: tradeObj.key, role, at: clickedAt };
+          if (isDoubleLevelClick) {
+            const ticket = Number.parseInt(tradeObj.key.replace(/^trade:/, ''), 10);
+            dispatchChartPositionModify({
+              ticket,
+              symbol: tradeObj.symbol,
+              sessionScope: brokerAccountSessionScope,
+            });
+          }
         } else if (rawFinalPrice !== null) {
+          lastLevelClick = null;
           const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
           const hasRealEntryDrag = entryDragDirection !== null;
           if (!(grabbedType === 'ENTRY' && !hasRealEntryDrag)) {
@@ -10361,6 +10384,7 @@ export const TradingChart = React.memo(function TradingChart({
       dragLineOverlay = null;
       dragBadgeOverlay = null;
       dragState = null;
+      lastLevelClick = null;
       restoreDraggedLevelControls();
       releasePointerCapture();
       endDragCursor();

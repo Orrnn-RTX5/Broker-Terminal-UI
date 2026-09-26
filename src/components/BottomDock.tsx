@@ -1,12 +1,13 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { Icon } from './ui/Icon';
-import { lockedTerminalTool } from '../config/terminalToolAvailability';
+import { isUnavailableDockSection, lockedTerminalTool, unavailableDockSections } from '../config/terminalToolAvailability';
 import { ContextMenu, type ContextMenuItemConfig } from './ui/ContextMenu';
-import { lazy, memo, Suspense, useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { lazy, memo, Suspense, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { RetainedLazyFeature } from '../startup/RetainedLazyFeature';
 import { useAppStore, type Trade } from '../store/useAppStore';
 import { useToolboxTradeData, type ToolboxTradePosition } from '../hooks/useToolboxTradeData';
-import { getStoredAccountLogin, tradeGatewayApi, type TradeHistoryDataSet } from '../api/tradeGateway';
+import { getStoredAccountLogin, type TradeHistoryDataSet } from '../api/tradeGateway';
+import { loadTerminalHistory, peekTerminalHistory, resetTerminalHistorySession } from '../services/terminalHistory';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
 import { formatPrice, getSymbolDigits } from '../utils/symbolUtils';
 import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
@@ -331,20 +332,20 @@ const escapeHtml = (value: unknown): string => (
         .replace(/'/g, '&#39;')
 );
 
-const TABS: { id: TabType; icon?: any }[] = [
+const TABS: { id: TabType; locked?: boolean }[] = [
     { id: 'Trade' },
     { id: 'History' },
     { id: 'Exposure' },
     { id: 'Toolbox' },
     { id: 'Historical Data' },
-    { id: 'News' },
-    { id: 'Mailbox' },
-    { id: 'Calendar' },
-    { id: 'Company' },
-    { id: 'Alerts' },
-    { id: 'Articles' },
-    { id: 'Code Base' },
-    { id: 'Experts' },
+    { id: 'News', locked: true },
+    { id: 'Mailbox', locked: true },
+    { id: 'Calendar', locked: true },
+    { id: 'Company', locked: true },
+    { id: 'Alerts', locked: true },
+    { id: 'Articles', locked: true },
+    { id: 'Code Base', locked: true },
+    { id: 'Experts', locked: true },
     { id: 'Journal' },
 ];
 
@@ -470,6 +471,8 @@ export function BottomDock({
     }, []);
 
     const [activeTab, setActiveTab] = useState<TabType>(() => getRequestedBottomDockTab() ?? 'Trade');
+    const [historyMounted, setHistoryMounted] = useState(activeTab === 'History');
+    const historyAccountId = useAppStore(state => state.accountId);
     const isTradeSurfaceLive = activeTab === 'Trade';
     const isExposureSurfaceLive = activeTab === 'Exposure';
 
@@ -535,6 +538,25 @@ export function BottomDock({
     }, [activeTab]);
 
     useEffect(() => {
+        if (activeTab === 'History') setHistoryMounted(true);
+    }, [activeTab]);
+
+    // Read history with the account session so the History click paints from
+    // memory instead of waiting to start three requests.
+    useEffect(() => {
+        const prefetch = () => {
+            const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+            if (!Number.isFinite(login) || login <= 0) return;
+            void loadTerminalHistory(login, getCurrentBrokerAccountSessionScopeKey()).catch(() => undefined);
+        };
+        prefetch();
+        return onCommittedBrokerAccountSessionScopeChange(() => {
+            resetTerminalHistorySession();
+            prefetch();
+        });
+    }, [historyAccountId]);
+
+    useEffect(() => {
         const pendingTab = getRequestedBottomDockTab();
         if (pendingTab) {
             setActiveTab(pendingTab);
@@ -542,7 +564,7 @@ export function BottomDock({
         }
         const handleOpenBottomDockTab = (event: Event) => {
             const requestedTab = (event as CustomEvent<{ tab?: TabType }>).detail?.tab;
-            if (!requestedTab || !TABS.some(tab => tab.id === requestedTab)) return;
+            if (!requestedTab || !TABS.some(tab => tab.id === requestedTab) || isUnavailableDockSection(requestedTab)) return;
             setActiveTab(requestedTab);
             acknowledgeBottomDockTab(requestedTab);
         };
@@ -659,7 +681,7 @@ export function BottomDock({
                     hidden={activeTab !== 'History'}
                     aria-hidden={activeTab !== 'History'}
                 >
-                    {activeTab === 'History' && (
+                    {historyMounted && (
                         <MemoHistoryTab
                             formatMoney={formatMoney}
                             instrumentCatalog={historyInstrumentCatalog}
@@ -718,20 +740,36 @@ export function BottomDock({
             {/* Bottom Tabs */}
             <div className="rtx-bottom-dock__tabs relative flex h-[30px] min-h-[30px] max-h-[30px] flex-nowrap items-stretch overflow-hidden bg-[#080c18] border-t border-zinc-700/80 select-none p-0">
                 <div className="rtx-dock-tab-scroller flex h-full min-w-0 flex-nowrap items-stretch overflow-x-auto overflow-y-hidden">
-                    {TABS.map((tab) => (
-                        <button
-                            key={tab.id}
-                            title={tr(TAB_HOVER_COMMENTS[tab.id])}
-                            aria-label={tr(TAB_HOVER_COMMENTS[tab.id])}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`rtx-dock-tab inline-flex h-full items-center justify-center px-4 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t transition-colors duration-75 relative
+                    {TABS.map((tab) => {
+                        const unavailableReason = tab.locked && isUnavailableDockSection(tab.id)
+                            ? unavailableDockSections[tab.id]
+                            : undefined;
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                disabled={Boolean(unavailableReason)}
+                                aria-disabled={unavailableReason ? true : undefined}
+                                title={tr(unavailableReason || TAB_HOVER_COMMENTS[tab.id])}
+                                aria-label={unavailableReason ? tr(tab.id) : tr(TAB_HOVER_COMMENTS[tab.id])}
+                                aria-description={tr(unavailableReason || TAB_HOVER_COMMENTS[tab.id])}
+                                onClick={() => {
+                                    if (unavailableReason) return;
+                                    setActiveTab(tab.id);
+                                }}
+                                className={`rtx-dock-tab inline-flex h-full items-center justify-center gap-1 px-4 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t transition-colors duration-75 relative
+                        ${unavailableReason ? 'rtx-dock-tab--locked cursor-not-allowed' : ''}
                         ${activeTab === tab.id
                                     ? 'active-tab'
                                     : 'border-t-transparent'}`}
-                        >
-                            {tr(tab.id)}
-                        </button>
-                    ))}
+                            >
+                                {tr(tab.id)}
+                                {unavailableReason ? (
+                                    <span className="inline-flex shrink-0" aria-hidden="true"><Icon name="lock" size="xs" /></span>
+                                ) : null}
+                            </button>
+                        );
+                    })}
                 </div>
                 <div className="rtx-dock-tab-actions rtx-bulk-close-group flex h-full shrink-0 flex-nowrap items-stretch">
                     <button
@@ -1965,6 +2003,13 @@ ${rows}
                                                 event.stopPropagation();
                                                 if (isPendingPlacement) return;
                                                 setSelectedPositionKey(positionKey);
+                                                // Keyboard activation (detail 0) keeps dialog access without a mouse.
+                                                if (event.detail === 0) openModifyPosition(pos);
+                                            }}
+                                            onDoubleClick={(event) => {
+                                                event.stopPropagation();
+                                                if (isPendingPlacement) return;
+                                                setSelectedPositionKey(positionKey);
                                                 openModifyPosition(pos);
                                             }}
                                         >
@@ -1987,6 +2032,13 @@ ${rows}
                                             className="rtx-trade-tp-cell px-0 py-[2px] border-r border-zinc-800 text-center tabular-nums"
                                             title={`${tr("Take Profit: {{value0}}", { value0: tpLabel })} · ${tr("Modify Position")}`}
                                             onClick={(event) => {
+                                                event.stopPropagation();
+                                                if (isPendingPlacement) return;
+                                                setSelectedPositionKey(positionKey);
+                                                // Keyboard activation (detail 0) keeps dialog access without a mouse.
+                                                if (event.detail === 0) openModifyPosition(pos);
+                                            }}
+                                            onDoubleClick={(event) => {
                                                 event.stopPropagation();
                                                 if (isPendingPlacement) return;
                                                 setSelectedPositionKey(positionKey);
@@ -2374,10 +2426,6 @@ const getHistoryPeriodStart = (period: HistoryPeriodFilter, now: number): number
     return start.getTime();
 };
 
-type HistoryCacheEntry = { login: number; scopeKey: string; data: TradeHistoryDataSet };
-let historyCache: HistoryCacheEntry | null = null;
-const historyFetchPromises = new Map<string, Promise<TradeHistoryDataSet>>();
-
 const EMPTY_HISTORY_DATA_SET: TradeHistoryDataSet = {
     positions: [],
     deals: [],
@@ -2385,19 +2433,9 @@ const EMPTY_HISTORY_DATA_SET: TradeHistoryDataSet = {
     errors: { positions: null, deals: null, orders: null },
 };
 
-// Coalesces concurrent history requests and caches the last result so the
-// tab renders instantly on revisit instead of re-fetching both gateways.
-const loadHistoryDataSet = (login: number, scopeKey: string, force = false): Promise<TradeHistoryDataSet> => {
-    const requestKey = `${scopeKey}\u0000${login}`;
-    const inFlight = historyFetchPromises.get(requestKey);
-    if (!force && inFlight) return inFlight;
-    const request = tradeGatewayApi.getHistoryDataSet(login)
-        .finally(() => {
-            if (historyFetchPromises.get(requestKey) === request) historyFetchPromises.delete(requestKey);
-        });
-    historyFetchPromises.set(requestKey, request);
-    return request;
-};
+const HISTORY_ROW_HEIGHT = 30;
+const HISTORY_OVERSCAN = 8;
+const HISTORY_VIEWPORT_FALLBACK = 360;
 
 type HistoryTabProps = {
     formatMoney: (value: number | undefined | null) => string;
@@ -2410,13 +2448,10 @@ function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabProps) {
     const activeChartSymbol = useAppStore((state) => state.selectedSymbol);
     const activeLogin = Number.parseInt(String(accountId ?? getStoredAccountLogin() ?? ''), 10);
     const activeScopeKey = getCurrentBrokerAccountSessionScopeKey();
-    const cachedHistory = historyCache
-        && historyCache.login === activeLogin
-        && historyCache.scopeKey === activeScopeKey
-        ? historyCache.data
-        : null;
-    const [historyData, setHistoryData] = useState<TradeHistoryDataSet>(() => cachedHistory ?? EMPTY_HISTORY_DATA_SET);
+    const cachedHistory = peekTerminalHistory(activeLogin, activeScopeKey);
+    const [historyData, setHistoryData] = useState<TradeHistoryDataSet>(() => cachedHistory?.data ?? EMPTY_HISTORY_DATA_SET);
     const [loading, setLoading] = useState(() => !cachedHistory);
+    const [ordersPending, setOrdersPending] = useState(() => cachedHistory?.ordersPending ?? false);
     const [error, setError] = useState<string | null>(null);
     const [historyView, setHistoryView] = useState<HistoryViewMode>('positions');
     const [periodFilter, setPeriodFilter] = useState<HistoryPeriodFilter>('all');
@@ -2448,6 +2483,8 @@ function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabProps) {
     const [isLightSkin, setIsLightSkin] = useState(false);
     const historyRequestSerialRef = useRef(0);
     const historyMountedRef = useRef(false);
+    const historyScrollRef = useRef<HTMLDivElement>(null);
+    const [historyViewport, setHistoryViewport] = useState({ scrollTop: 0, height: HISTORY_VIEWPORT_FALLBACK });
 
     useEffect(() => {
         historyMountedRef.current = true;
@@ -2457,7 +2494,7 @@ function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabProps) {
         };
     }, []);
 
-    const fetchHistory = useCallback(async (opts?: { force?: boolean; background?: boolean }) => {
+    const fetchHistory = useCallback(async (opts?: { force?: boolean; background?: boolean; refresh?: boolean }) => {
         const requestSerial = ++historyRequestSerialRef.current;
         const login = Number.isFinite(activeLogin) && activeLogin > 0 ? activeLogin : null;
         if (!login) {
@@ -2467,45 +2504,65 @@ function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabProps) {
         }
         if (!opts?.background) setLoading(true);
         setError(null);
+        const stillCurrent = () => (
+            historyMountedRef.current
+            && requestSerial === historyRequestSerialRef.current
+            && Number.parseInt(String(useAppStore.getState().accountId ?? getStoredAccountLogin() ?? ''), 10) === login
+            && getCurrentBrokerAccountSessionScopeKey() === activeScopeKey
+        );
         try {
-            const data = await loadHistoryDataSet(login, activeScopeKey, opts?.force);
-            const currentLogin = Number.parseInt(String(useAppStore.getState().accountId ?? getStoredAccountLogin() ?? ''), 10);
-            if (
-                !historyMountedRef.current
-                || requestSerial !== historyRequestSerialRef.current
-                || currentLogin !== login
-                || getCurrentBrokerAccountSessionScopeKey() !== activeScopeKey
-            ) return;
-            historyCache = { login, scopeKey: activeScopeKey, data };
+            const data = await loadTerminalHistory(login, activeScopeKey, {
+                force: opts?.force,
+                refresh: opts?.refresh,
+                onUpdate: (next, pending) => {
+                    if (!stillCurrent()) return;
+                    setHistoryData(next);
+                    setOrdersPending(pending);
+                    if (!pending || next.positions.length > 0 || next.deals.length > 0 || next.orders.length > 0) {
+                        setLoading(false);
+                    }
+                },
+            });
+            if (!stillCurrent()) return;
             setHistoryData(data);
+            setOrdersPending(false);
         } catch (err: unknown) {
-            if (!historyMountedRef.current || requestSerial !== historyRequestSerialRef.current) return;
+            if (!stillCurrent()) return;
             console.warn('[History] Failed to load:', err);
+            setOrdersPending(false);
             if (!opts?.background) setError(err instanceof Error ? err.message : 'Failed to load history');
         } finally {
-            if (
-                historyMountedRef.current
-                && requestSerial === historyRequestSerialRef.current
-                && !opts?.background
-            ) setLoading(false);
+            if (stillCurrent() && !opts?.background) setLoading(false);
         }
     }, [activeLogin, activeScopeKey]);
 
     useEffect(() => {
-        if (historyCache && historyCache.login === activeLogin && historyCache.scopeKey === activeScopeKey) {
-            setHistoryData(historyCache.data);
-            void fetchHistory({ background: true });
+        const cached = peekTerminalHistory(activeLogin, activeScopeKey);
+        if (cached) {
+            setHistoryData(cached.data);
+            setOrdersPending(cached.ordersPending);
+            setLoading(false);
         } else {
             setHistoryData(EMPTY_HISTORY_DATA_SET);
-            void fetchHistory();
+            setOrdersPending(false);
         }
+        void fetchHistory({ background: Boolean(cached) });
     }, [activeLogin, activeScopeKey, fetchHistory]);
+
+    useEffect(() => {
+        const handleCompleted = (event: Event) => {
+            const detail = (event as CustomEvent<{ login?: number; ok?: boolean }>).detail;
+            if (!detail || detail.ok === false || detail.login !== activeLogin) return;
+            void fetchHistory({ background: true, refresh: true });
+        };
+        window.addEventListener('rtx:trade-history-refresh-completed', handleCompleted);
+        return () => window.removeEventListener('rtx:trade-history-refresh-completed', handleCompleted);
+    }, [activeLogin, fetchHistory]);
 
     useEffect(() => onCommittedBrokerAccountSessionScopeChange(() => {
         historyRequestSerialRef.current += 1;
-        historyCache = null;
-        historyFetchPromises.clear();
         setHistoryData(EMPTY_HISTORY_DATA_SET);
+        setOrdersPending(false);
         setHistoryContextMenu(null);
         setSelectedTradeKey(null);
         setHistoryView('positions');
@@ -2907,12 +2964,27 @@ ${rows}
 
     useEffect(() => {
         if (!showOnChartsAutoUpdate || filteredPositionHistory.length === 0) return;
-        const store = useChartSettingsStore.getState();
-        Array.from(new Set(filteredPositionHistory.map(order => String(order.symbol ?? '').trim()).filter(Boolean))).forEach(symbol => {
-            store.updateSymbolProperty(symbol, 'showTradeHistory', true);
-            store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', true);
+        const symbols = Array.from(new Set(
+            filteredPositionHistory.map(order => String(order.symbol ?? '').trim()).filter(Boolean),
+        ));
+        const needsChartHistory = symbols.some(symbol => {
+            const store = useChartSettingsStore.getState();
+            const properties = store.symbolProperties[symbol] ?? store.globalProperties;
+            return properties.showTradeHistory !== true || properties.showTradeHistoryArrows !== true;
         });
-        window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
+        // Opening History must not redraw the chart when entry and close
+        // markers are already enabled for these symbols.
+        if (!needsChartHistory) return;
+        const frame = window.requestAnimationFrame(() => {
+            const store = useChartSettingsStore.getState();
+            symbols.forEach(symbol => {
+                const properties = store.symbolProperties[symbol] ?? store.globalProperties;
+                if (properties.showTradeHistory !== true) store.updateSymbolProperty(symbol, 'showTradeHistory', true);
+                if (properties.showTradeHistoryArrows !== true) store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', true);
+            });
+            window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
+        });
+        return () => window.cancelAnimationFrame(frame);
     }, [filteredPositionHistory, showOnChartsAutoUpdate]);
 
     const buildHistoryContextMenuItems = (trade?: Trade): ContextMenuItemConfig[] => {
@@ -3030,6 +3102,57 @@ ${rows}
         setHistoryContextMenu({ x: event.clientX, y: event.clientY, ...(trade ? { trade } : {}) });
     };
 
+    const syncHistoryViewport = useCallback(() => {
+        const element = historyScrollRef.current;
+        if (!element) return;
+        const scrollTop = element.scrollTop;
+        const measured = element.clientHeight;
+        setHistoryViewport(current => {
+            const height = measured > 0 ? measured : current.height;
+            if (current.scrollTop === scrollTop && current.height === height) return current;
+            return { scrollTop, height };
+        });
+    }, []);
+
+    useLayoutEffect(() => {
+        const element = historyScrollRef.current;
+        if (element && element.scrollTop !== 0) element.scrollTop = 0;
+        setHistoryViewport(current => current.scrollTop === 0 ? current : { ...current, scrollTop: 0 });
+    }, [historyView, periodFilter, symbolFilter, customPeriod]);
+
+    useLayoutEffect(() => {
+        syncHistoryViewport();
+        const element = historyScrollRef.current;
+        if (!element || typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(() => syncHistoryViewport());
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [syncHistoryViewport, filteredOrders.length]);
+
+    const historyVirtualWindow = useMemo(() => {
+        const count = filteredOrders.length;
+        const { scrollTop, height } = historyViewport;
+        if (count === 0) {
+            return { startIndex: 0, endIndex: 0, topSpacerHeight: 0, bottomSpacerHeight: 0 };
+        }
+        const rawStart = Math.max(0, Math.floor(scrollTop / HISTORY_ROW_HEIGHT) - HISTORY_OVERSCAN);
+        const startIndex = Math.min(rawStart, count - 1);
+        const endIndex = Math.min(
+            count,
+            Math.max(startIndex + 1, Math.ceil((scrollTop + height) / HISTORY_ROW_HEIGHT) + HISTORY_OVERSCAN),
+        );
+        return {
+            startIndex,
+            endIndex,
+            topSpacerHeight: startIndex * HISTORY_ROW_HEIGHT,
+            bottomSpacerHeight: Math.max(0, count - endIndex) * HISTORY_ROW_HEIGHT,
+        };
+    }, [filteredOrders.length, historyViewport]);
+    const visibleHistoryOrders = filteredOrders.slice(historyVirtualWindow.startIndex, historyVirtualWindow.endIndex);
+    const historyRowsLoading = filteredOrders.length === 0 && (
+        loading || (ordersPending && (historyView === 'orders' || historyView === 'orders-and-deals'))
+    );
+
     const headerDividerClass = showGrid ? 'border-r border-zinc-700/70' : '';
     const cellDividerClass = showGrid ? 'border-r border-zinc-800' : '';
     const rowDividerClass = showGrid ? 'divide-y divide-zinc-800/90' : '';
@@ -3084,12 +3207,15 @@ ${rows}
             )}
 
             <div
+                ref={historyScrollRef}
                 className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700"
                 aria-label={tr('History records')}
+                onScroll={syncHistoryViewport}
                 onContextMenu={(event) => handleHistoryContextMenu(event)}
             >
                 <table
                     className="rtx-trade-table rtx-history-table w-full text-center border-collapse"
+                    aria-rowcount={filteredOrders.length + 1}
                     data-auto-arrange={autoArrange ? 'true' : 'false'}
                     data-grid={showGrid ? 'true' : 'false'}
                     style={{
@@ -3124,11 +3250,17 @@ ${rows}
                         {filteredOrders.length === 0 && (
                             <tr>
                                 <td colSpan={Math.max(1, visibleColumnCount)} className="h-16 text-center text-zinc-600 text-xs italic">
-                                    {loading ? tr("Loading trade history…") : displayError ? displayError : tr("No history records for the selected filters")}
+                                    {historyRowsLoading ? tr("Loading trade history…") : displayError ? displayError : tr("No history records for the selected filters")}
                                 </td>
                             </tr>
                         )}
-                        {filteredOrders.map((order, index) => {
+                        {historyVirtualWindow.topSpacerHeight > 0 && (
+                            <tr aria-hidden="true" className="rtx-history-spacer-row" style={{ height: historyVirtualWindow.topSpacerHeight }}>
+                                <td colSpan={Math.max(1, visibleColumnCount)} style={{ height: historyVirtualWindow.topSpacerHeight, padding: 0, border: 0, lineHeight: 0 }} />
+                            </tr>
+                        )}
+                        {visibleHistoryOrders.map((order, visibleIndex) => {
+                            const index = historyVirtualWindow.startIndex + visibleIndex;
                             const sideLabel = String(order.orderType || order.side || order.type || '-').toLowerCase();
                             const tradeKey = getTradeKey(order);
                             const isSelected = tradeKey === selectedTradeKey;
@@ -3174,6 +3306,11 @@ ${rows}
                                 </tr>
                             );
                         })}
+                        {historyVirtualWindow.bottomSpacerHeight > 0 && (
+                            <tr aria-hidden="true" className="rtx-history-spacer-row" style={{ height: historyVirtualWindow.bottomSpacerHeight }}>
+                                <td colSpan={Math.max(1, visibleColumnCount)} style={{ height: historyVirtualWindow.bottomSpacerHeight, padding: 0, border: 0, lineHeight: 0 }} />
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>

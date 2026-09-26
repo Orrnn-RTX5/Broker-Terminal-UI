@@ -377,7 +377,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-i
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu :is(.rtx-application-menu__root-item,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu :is(.rtx-application-menu__root-item:not(:disabled):not(.is-disabled),
   .rtx-menu-row:not(.is-disabled),
   .rtx-file-menu button.text-\[14px\]:not(:disabled)) {
   color: var(--rtx-light-text) !important;

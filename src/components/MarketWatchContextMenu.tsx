@@ -43,8 +43,8 @@ export const MarketWatchContextMenu: React.FC<MarketWatchContextMenuProps> = ({
 
     return (
         <div
-            className="fixed z-[1000] bg-[#131316] border border-zinc-800 rounded shadow-2xl py-1 w-56 animate-in fade-in zoom-in-95 duration-100"
-            style={{ left: x, top: y }}
+            className="fixed z-[1000] bg-[rgba(20,21,26,0.96)] backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl p-1 min-w-[256px] animate-in fade-in zoom-in-95 duration-100"
+            style={{ left: x, top: y, boxShadow: '0 20px 48px -6px rgba(0, 0, 0, 0.75), 0 8px 20px -3px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.08)' }}
             onMouseLeave={onClose}
             onClick={(e) => e.stopPropagation()}
         >
@@ -88,7 +88,7 @@ export const MarketWatchContextMenu: React.FC<MarketWatchContextMenuProps> = ({
                 }}
             />
 
-            <div className="h-[1px] bg-zinc-800 my-1 mx-2" />
+            <div className="h-px bg-white/[0.08] my-1 mx-1.5" />
 
             {/* Symbol Specification */}
             <ContextMenuItem
@@ -100,7 +100,7 @@ export const MarketWatchContextMenu: React.FC<MarketWatchContextMenuProps> = ({
                 }}
             />
 
-            <div className="h-[1px] bg-zinc-800 my-1 mx-2" />
+            <div className="h-px bg-white/[0.08] my-1 mx-1.5" />
 
             {/* Columns Submenu */}
             <div className="group/submenu relative">
@@ -109,7 +109,7 @@ export const MarketWatchContextMenu: React.FC<MarketWatchContextMenuProps> = ({
                     label="Columns"
                     hasSubmenu
                 />
-                <div className="absolute left-full top-0 ml-1 hidden group-hover/submenu:block bg-[#131316] border border-zinc-800 rounded shadow-2xl py-1 w-40 animate-in fade-in slide-in-from-left-2 duration-100">
+                <div className="absolute left-full top-0 ml-1 hidden group-hover/submenu:block bg-[rgba(20,21,26,0.96)] backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl p-1 min-w-[180px] animate-in fade-in slide-in-from-left-2 duration-100">
                     {columns.map((col) => (
                         <ContextMenuItem
                             key={col.key}
@@ -143,7 +143,7 @@ const ContextMenuItem: React.FC<ContextMenuItemProps> = ({
     active
 }) => (
     <div
-        className={`flex min-h-[30px] items-center justify-between px-3 py-1.5 text-[14px] font-normal text-zinc-300 hover:bg-[#2d2d2d] hover:text-white cursor-pointer transition-colors ${active ? 'bg-[#2d2d2d] text-white' : ''
+        className={`flex min-h-[26px] items-center justify-between px-2 py-0.5 rounded-[4px] text-[12px] font-medium text-zinc-300 hover:bg-white/[0.08] hover:text-white cursor-pointer transition-colors ${active ? 'bg-white/[0.08] text-white' : ''
             }`}
         onClick={(e) => {
             e.stopPropagation();

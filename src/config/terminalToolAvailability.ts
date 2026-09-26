@@ -14,3 +14,20 @@ export const unavailableTerminalTools = {
 export function lockedTerminalTool(tool: keyof typeof unavailableTerminalTools) {
     return { disabled: true, unavailableReason: unavailableTerminalTools[tool] } as const;
 }
+
+// Bottom-dock sections from News through Experts have no connected service.
+// Keep the tabs visible and locked until that functionality exists.
+export const unavailableDockSections = {
+    News: 'News is currently unavailable.',
+    Mailbox: 'Mailbox is currently unavailable.',
+    Calendar: 'Calendar is currently unavailable.',
+    Company: 'Company is currently unavailable.',
+    Alerts: 'Alerts is currently unavailable.',
+    Articles: 'Articles is currently unavailable.',
+    'Code Base': 'Code Base is currently unavailable.',
+    Experts: 'Experts is currently unavailable.',
+} as const;
+
+export function isUnavailableDockSection(tab: string): tab is keyof typeof unavailableDockSections {
+    return Object.prototype.hasOwnProperty.call(unavailableDockSections, tab);
+}

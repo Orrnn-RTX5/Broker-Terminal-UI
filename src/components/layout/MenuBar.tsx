@@ -18,7 +18,7 @@ import { getActiveChartCommandTarget, getPanelIdFromChartContextId } from '../..
 import { getChartPanelCount, MAX_CHART_PANELS } from '../../services/dockManager';
 import { useDrawingSidebarStore } from '../../store/useDrawingSidebarStore';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
-import { lockedTerminalTool } from '../../config/terminalToolAvailability';
+import { lockedTerminalTool, unavailableDockSections } from '../../config/terminalToolAvailability';
 import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
@@ -54,6 +54,8 @@ interface ApplicationLauncherItem {
     opensFileMenu?: boolean;
     action?: () => void;
     dividerBefore?: boolean;
+    disabled?: boolean;
+    unavailableReason?: string;
 }
 
 const DESKTOP_MENU_KEYS = ['File', 'View', 'Insert', 'Charts', 'Tools', 'Window', 'Help'] as const;
@@ -257,10 +259,6 @@ export const MenuBar = ({
 
     const toggleOneClickTrading = () => {
         runTerminalShortcutAction('trading.toggle-one-click');
-    };
-
-    const openEconomicCalendar = () => {
-        window.dispatchEvent(new CustomEvent('rtx:open-bottom-dock-tab', { detail: { tab: 'Calendar' } }));
     };
 
     const openShortcutHelp = () => {
@@ -671,7 +669,8 @@ export const MenuBar = ({
             {
                 label: 'Economic Calendar',
                 icon: <Icon name="calendar" size="sm" />,
-                action: openEconomicCalendar,
+                disabled: true,
+                unavailableReason: unavailableDockSections.Calendar,
             },
             ...menuItems.View.slice(-2),
             { divider: true, label: '' },
@@ -869,10 +868,8 @@ export const MenuBar = ({
             label: 'Economic Calendar',
             icon: 'calendar',
             dividerBefore: true,
-            action: () => {
-                openEconomicCalendar();
-                closeMenu();
-            },
+            disabled: true,
+            unavailableReason: unavailableDockSections.Calendar,
         },
         {
             id: 'language',
@@ -1060,7 +1057,7 @@ export const MenuBar = ({
                     onKeyDown={(event) => {
                         const target = event.target as HTMLElement;
                         if (target.dataset.rootMenuItem !== 'true') return;
-                        const rootItems = Array.from(menuPopupRef.current?.querySelectorAll<HTMLButtonElement>('[data-root-menu-item="true"]') ?? []);
+                        const rootItems = Array.from(menuPopupRef.current?.querySelectorAll<HTMLButtonElement>('[data-root-menu-item="true"]:not(:disabled)') ?? []);
                         const currentIndex = rootItems.indexOf(target as HTMLButtonElement);
                         if (currentIndex < 0) return;
 
@@ -1110,26 +1107,35 @@ export const MenuBar = ({
                                         <button
                                             type="button"
                                             role="menuitem"
+                                            disabled={item.disabled}
+                                            aria-disabled={item.disabled || undefined}
+                                            aria-description={item.unavailableReason ? tr(item.unavailableReason) : undefined}
+                                            title={item.unavailableReason ? tr(item.unavailableReason) : undefined}
                                             data-root-menu-item="true"
                                             data-menu-key={item.id}
                                             aria-haspopup={hasSubmenu ? 'menu' : undefined}
                                             aria-expanded={hasSubmenu ? activeMenu === item.id : undefined}
                                             onClick={() => {
+                                                if (item.disabled) return;
                                                 if (hasSubmenu) {
                                                     setActiveMenu(activeMenu === item.id ? null : item.id);
                                                     return;
                                                 }
                                                 item.action?.();
                                             }}
-                                            className={`rtx-application-menu__root-item ${activeMenu === item.id ? 'is-active' : ''}`}
+                                            className={`rtx-application-menu__root-item ${item.disabled ? 'is-disabled cursor-not-allowed' : ''} ${activeMenu === item.id ? 'is-active' : ''}`}
                                         >
                                             <span className="rtx-application-menu__root-icon" aria-hidden="true">
                                                 <Icon name={item.icon} size={18} />
                                             </span>
                                             <span className="min-w-0 flex-1 truncate">{item.translateLabel === false ? item.label : tr(item.label)}</span>
-                                            {hasSubmenu && (
+                                            {item.unavailableReason ? (
+                                                <span className="rtx-menu-row__lock" aria-hidden="true">
+                                                    <Icon name="lock" size="xs" />
+                                                </span>
+                                            ) : hasSubmenu ? (
                                                 <Icon name="chevron-right" size="xs" className="rtx-application-menu__chevron" />
-                                            )}
+                                            ) : null}
                                         </button>
 
                                         {activeMenu === item.id && hasSubmenu && (

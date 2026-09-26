@@ -139,15 +139,29 @@ describe('cTrader-style position controls contract', () => {
     expect(levelControls).toContain('onHoverChange: active => {');
   });
 
-  it('opens Modify Position on an SL/TP click without replacing drag-to-edit', () => {
+  it('opens Modify Position only on an SL/TP double click without replacing drag-to-edit', () => {
     const pointerRelease = chartSection('const handlePointerUp = (e: PointerEvent) => {', 'const handlePointerCancel = () => {');
     expect(pointerRelease).toContain("const isLevelClick = grabbedType !== 'ENTRY'");
     expect(pointerRelease).toContain('hasChartTradeLevelGestureDragged(pointerDownY, y, dragState.didDrag)');
+    expect(pointerRelease).toContain('const isDoubleLevelClick = lastLevelClick !== null');
+    expect(pointerRelease).toContain('clickedAt - lastLevelClick.at <= CHART_LEVEL_MODIFY_DOUBLE_CLICK_MS');
+    expect(pointerRelease).toContain('if (isDoubleLevelClick) {');
     expect(pointerRelease).toContain('dispatchChartPositionModify({');
     expect(pointerRelease).toContain('sessionScope: brokerAccountSessionScope');
     expect(pointerRelease).toContain('} else if (rawFinalPrice !== null) {');
     expect(pointerRelease).toContain('applyTradeLevelDragUpdate({');
     expect(pointerRelease).toContain('api.positions.modifyPosition(ticket, tradeLevelModifyPatch(update.role, update.price))');
+  });
+
+  it('never starts a trade-level gesture from UI overlaid on the chart', () => {
+    const pointerPress = chartSection(
+      'const handlePointerDown = (e: PointerEvent) => {\n      cancelQueuedTradeHover();',
+      'const handlePointerUp = (e: PointerEvent) => {',
+    );
+    // The one-click BUY/SELL panel, menus, and popovers live inside the same
+    // interaction root; only the chart surface and level controls may grab.
+    expect(pointerPress).toContain("e.target.closest('.rtx-trade-controls, .rtx-trade-level-badge, .rtx-trade-level-hit-area, .rtx-trade-level-line')");
+    expect(pointerPress).toContain('container.contains(e.target)');
   });
 
   it('scopes every chart level-modified event to its ticket and symbol owner', () => {
