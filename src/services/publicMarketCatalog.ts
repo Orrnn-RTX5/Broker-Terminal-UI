@@ -1,4 +1,5 @@
 import { toLocalDevProxyUrl } from '../config/localDevProxy';
+import { fetchEarlyPublicStartup } from '../startup/earlyPublicStartup';
 
 interface PublicCatalogRequest {
   controller: AbortController;
@@ -41,11 +42,7 @@ const requestPublicMarketCatalog = (
     // Promise construction also captures a synchronous transport failure so
     // the timeout and map entry follow the normal rejection cleanup.
     const promise = new Promise<Response>((resolve) => {
-      resolve(fetch(url, {
-        signal: controller.signal,
-        credentials: 'omit',
-        cache: 'no-store',
-      }));
+      resolve(fetchEarlyPublicStartup('symbols', url, controller.signal));
     }).then((response) => {
       if (!response.ok) throw new Error(response.status === 401 || response.status === 403
         ? 'This broker requires login to view market data.'

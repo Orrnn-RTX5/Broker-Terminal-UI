@@ -50,7 +50,7 @@ export const terminalPreloadPlugin = (): Plugin => {
         return {
           html,
           tags: [{
-            tag: 'script', injectTo: 'body',
+            tag: 'script', injectTo: 'head',
             // Preloading fetches code without mounting the authenticated app.
             // A desktop login keeps its existing lightweight entry path.
             children: `(function(){if(document.documentElement.getAttribute('data-rtx-initial-view')!=='terminal')return;${JSON.stringify(assets).replaceAll('<', '\\u003c')}.forEach(function(asset){var link=document.createElement('link');link.rel=asset.style?'preload':'modulepreload';if(asset.style)link.as='style';link.crossOrigin='';link.href=asset.href;document.head.appendChild(link);});})();`,

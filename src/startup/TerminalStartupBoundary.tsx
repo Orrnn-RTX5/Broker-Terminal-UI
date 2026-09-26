@@ -13,6 +13,11 @@ export function useTerminalStartupReady(part: StartupPart, ready: boolean) {
   }, [part, ready, reportReady]);
 }
 
+// The chart keeps its own loading surface. Do not leave the whole terminal
+// on the startup screen for a slow candle response; two seconds after the
+// workspace mounts, show it and let the remaining data fill in.
+const STARTUP_REVEAL_CAP_MS = 2_000;
+
 /** Keep the real workspace mounted and measured while its first data arrives. */
 export function TerminalStartupBoundary({
   dataReady,
@@ -40,7 +45,7 @@ export function TerminalStartupBoundary({
   // screen: open the terminal anyway and let data stream in when it arrives.
   useEffect(() => {
     if (!pending) return;
-    const timer = window.setTimeout(() => setRevealed(true), 15_000);
+    const timer = window.setTimeout(() => setRevealed(true), STARTUP_REVEAL_CAP_MS);
     return () => window.clearTimeout(timer);
   }, [pending]);
 

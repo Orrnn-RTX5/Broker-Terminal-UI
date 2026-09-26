@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
@@ -13,6 +13,7 @@ const runInstantShell = ({
   protocol = 'https:',
   animationFrames = [],
   afterPaintTasks = [],
+  fetch,
 }: {
   runtimeConfig?: Record<string, unknown>;
   storedSession?: boolean;
@@ -21,6 +22,7 @@ const runInstantShell = ({
   protocol?: string;
   animationFrames?: FrameRequestCallback[];
   afterPaintTasks?: Array<() => void>;
+  fetch?: (...args: unknown[]) => unknown;
 } = {}) => {
   const html = readSource('index.html');
   const script = html.match(/<script>\s*([\s\S]*?)<\/script>/)?.[1];
@@ -33,21 +35,26 @@ const runInstantShell = ({
   } : {};
   const localStorage = { getItem: (key: string) => storage[key] ?? null };
   const sessionStorage = { getItem: () => null };
+  const startupWindow = {
+    RUNTIME_CONFIG: runtimeConfig,
+    location: { protocol, hostname: 'terminal.test' },
+    addEventListener: () => undefined,
+    requestAnimationFrame: (callback: FrameRequestCallback) => animationFrames.push(callback),
+    setTimeout: (callback: () => void) => afterPaintTasks.push(callback),
+    fetch,
+    __RTX_EARLY_PUBLIC_STARTUP__: undefined as undefined | { symbolsUrl?: string; candlesUrl?: string },
+  };
   runInNewContext(script, {
     document: shellDocument,
-    window: {
-      RUNTIME_CONFIG: runtimeConfig,
-      location: { protocol, hostname: 'terminal.test' },
-      addEventListener: () => undefined,
-      requestAnimationFrame: (callback: FrameRequestCallback) => animationFrames.push(callback),
-      setTimeout: (callback: () => void) => afterPaintTasks.push(callback),
-    },
+    window: startupWindow,
+    fetch,
     navigator: { userAgent },
     localStorage,
     sessionStorage,
     MutationObserver,
     performance: { mark: () => undefined, now: () => 1234.5 },
   });
+  Object.assign(shellDocument, { startupWindow });
   return shellDocument;
 };
 
@@ -112,6 +119,40 @@ describe('instant startup shell source contract', () => {
     const shell = runInstantShell({ runtimeConfig: { BACKEND_TARGET: 'electron' }, storedSession: true, expiredSession: true });
 
     expect(shell.documentElement.getAttribute('data-rtx-initial-view')).toBe('login');
+  });
+
+  it('starts the public catalog and first chart page before the terminal modules download', () => {
+    const fetch = vi.fn(() => Promise.resolve({ ok: true }));
+    const shell = runInstantShell({
+      runtimeConfig: { BACKEND_TARGET: 'web', API_HOST: 'https://service.example' },
+      fetch,
+    }) as Document & { startupWindow: { __RTX_EARLY_PUBLIC_STARTUP__?: { symbolsUrl: string; candlesUrl: string } } };
+
+    expect(shell.documentElement.getAttribute('data-rtx-initial-view')).toBe('terminal');
+    expect(fetch).toHaveBeenCalledWith('https://service.example/api/v1/market/symbols', {
+      credentials: 'omit',
+      cache: 'no-store',
+    });
+    expect(fetch).toHaveBeenCalledWith('https://service.example/api/v2/candles/BTCUSD?timeframe=M1&limit=500', {
+      credentials: 'omit',
+      cache: 'no-store',
+    });
+    expect(shell.startupWindow.__RTX_EARLY_PUBLIC_STARTUP__).toMatchObject({
+      symbolsUrl: 'https://service.example/api/v1/market/symbols',
+      candlesUrl: 'https://service.example/api/v2/candles/BTCUSD?timeframe=M1&limit=500',
+    });
+
+    const restored = vi.fn(() => Promise.resolve({ ok: true }));
+    runInstantShell({
+      runtimeConfig: { BACKEND_TARGET: 'web', API_HOST: 'https://service.example' },
+      storedSession: true,
+      fetch: restored,
+    });
+    expect(restored).toHaveBeenCalledTimes(1);
+    expect(restored).toHaveBeenCalledWith('https://service.example/api/v1/market/symbols', {
+      credentials: 'omit',
+      cache: 'no-store',
+    });
   });
 
   it('ships a neutral startup status without an empty terminal before React executes', () => {

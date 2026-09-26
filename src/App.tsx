@@ -3671,7 +3671,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     <TerminalStartupBoundary
       dataReady={!marketInstrumentsSnapshot.loading
         && (!isAuthenticated || (hasInitialAccountSnapshot && initialTradeSnapshotSettledFor === accountId))}
-      waitForChart={chartEligibleSymbolNames.length > 0}
+      waitForChart={false}
     >
     <CommandBusProvider>
       <KeyboardShortcutProvider>
