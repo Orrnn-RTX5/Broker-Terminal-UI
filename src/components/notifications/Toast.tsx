@@ -126,16 +126,20 @@ export const Toast: React.FC<ToastProps> = ({ notification }) => {
 
 interface ToastContainerProps {
   notifications: ToastNotification[];
+  avoidActionFeedback?: boolean;
 }
 
-export const ToastContainer: React.FC<ToastContainerProps> = ({ notifications }) => {
+export const ToastContainer: React.FC<ToastContainerProps> = ({
+  notifications,
+  avoidActionFeedback = false,
+}) => {
   // Limit to 5 visible toasts
   const visibleToasts = notifications.slice(0, 5);
 
   if (visibleToasts.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[9999] pointer-events-none">
+    <div className={`rtx-notification-toast-region${avoidActionFeedback ? ' rtx-notification-toast-region--below-action' : ''} fixed right-4 pointer-events-none`}>
       <div className="pointer-events-auto space-y-0">
         {visibleToasts.map((notification) => (
           <Toast key={notification.id} notification={notification} />

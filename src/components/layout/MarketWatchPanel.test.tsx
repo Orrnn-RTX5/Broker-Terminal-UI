@@ -5,6 +5,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { MarketWatchPanel } from './MarketWatchPanel';
 import { keyboardShortcutManager } from '../../services/keyboardShortcutManager';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
+import type { MarketWatchExportResult } from '../../utils/marketWatchExport';
 
 const CORE_DEFAULT_SYMBOLS = ['XAUUSD', 'BTCUSD', 'EURUSD'];
 const DEFAULT_SYMBOLS = [...CORE_DEFAULT_SYMBOLS, 'GBPUSD', 'USDJPY'];
@@ -468,8 +469,8 @@ describe('MarketWatchPanel symbol visibility', () => {
       fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
       fireEvent.click(screen.getByText('Export'));
       await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-      expect(writeText.mock.calls[0][0]).toContain('XAUUSD\tLast close: 4385.2\t-\t-');
-      expect(writeText.mock.calls[0][0]).toContain('EURUSD\t1.17\t1.1702\t-');
+      expect(writeText.mock.calls[0][0]).toContain('XAUUSD\tLast close: 4385.20\t-\t-');
+      expect(writeText.mock.calls[0][0]).toContain('EURUSD\t1.17000\t1.17020\t-');
     } finally {
       if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
       else delete (navigator as { clipboard?: unknown }).clipboard;
@@ -1082,7 +1083,24 @@ describe('MarketWatchPanel symbol visibility', () => {
       expect(String(writeText.mock.calls[0][0])).toContain('Symbol\tBid\tAsk\tDaily Change');
       await vi.waitFor(() => expect(feedback).toHaveBeenCalled());
       const [feedbackEvent] = feedback.mock.calls[0];
-      expect((feedbackEvent as CustomEvent).detail).toMatchObject({ type: 'success' });
+      expect((feedbackEvent as CustomEvent).detail).toMatchObject({
+        type: 'success',
+        notice: {
+          title: 'Market Watch',
+          description: 'Market Watch exported to clipboard (3 symbols)',
+          metaLabel: 'Destination',
+          meta: 'System clipboard',
+          metaIcon: 'copy',
+          hint: 'No file was created. Press Ctrl+V to paste into Excel or another app.',
+          exportResult: {
+            destination: 'clipboard',
+            symbolCount: 3,
+            columnCount: 4,
+            fileName: expect.stringMatching(/^market-watch-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.csv$/),
+            csv: expect.stringContaining('Symbol,Bid,Ask,Daily Change'),
+          },
+        },
+      });
     } finally {
       window.removeEventListener('rtx:order-feedback', feedback);
       if (originalClipboard) {
@@ -1090,6 +1108,166 @@ describe('MarketWatchPanel symbol visibility', () => {
       } else {
         delete (navigator as { clipboard?: unknown }).clipboard;
       }
+    }
+  });
+
+  it('downloads a CSV and reports the real destination when clipboard access is unavailable', async () => {
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+    setMarketCatalog(CORE_DEFAULT_SYMBOLS, ['XAUUSD']);
+    marketHooks.activeSymbols = [...CORE_DEFAULT_SYMBOLS];
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
+    const writeText = vi.fn().mockRejectedValue(new Error('Clipboard permission denied'));
+    const execCommand = vi.fn().mockReturnValue(false);
+    const createObjectURL = vi.fn().mockReturnValue('blob:market-watch-export');
+    const revokeObjectURL = vi.fn();
+    let downloadedFileName = '';
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloadedFileName = this.download;
+    });
+    const feedback = vi.fn();
+
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true });
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true });
+    window.addEventListener('rtx:order-feedback', feedback);
+
+    try {
+      render(
+        <MarketWatchPanel
+          allSymbols={['XAUUSD']}
+          chartSymbols={CORE_DEFAULT_SYMBOLS}
+          selectedSymbol="BTCUSD"
+          onSymbolSelect={vi.fn()}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText('EURUSD').closest('tr')!);
+      fireEvent.click(screen.getByText('Export'));
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+      expect(anchorClick).toHaveBeenCalledTimes(1);
+      expect(document.querySelector('a[download^="market-watch-"]')).not.toBeInTheDocument();
+      expect(feedback).toHaveBeenCalledTimes(1);
+      const [feedbackEvent] = feedback.mock.calls[0];
+      const detail = (feedbackEvent as CustomEvent).detail as {
+        notice: { meta: string; exportResult: MarketWatchExportResult };
+        type: string;
+      };
+      expect(detail).toMatchObject({
+        type: 'success',
+        notice: {
+          title: 'Market Watch',
+          metaLabel: 'Destination',
+          meta: expect.stringMatching(/^Browser download: market-watch-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.csv$/),
+          metaIcon: 'download',
+          exportResult: {
+            destination: 'download',
+            symbolCount: 3,
+            columnCount: 4,
+            fileName: expect.stringMatching(/^market-watch-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.csv$/),
+            csv: expect.stringContaining('Symbol,Bid,Ask,Daily Change'),
+          },
+        },
+      });
+      expect(downloadedFileName).toBe(detail.notice.exportResult.fileName);
+      expect(detail.notice.meta).toBe(`Browser download: ${detail.notice.exportResult.fileName}`);
+      expect(detail.notice.exportResult.csv.split('\n')).toHaveLength(detail.notice.exportResult.symbolCount + 1);
+      const downloadedBlob = createObjectURL.mock.calls[0][0] as Blob;
+      expect(downloadedBlob.type).toBe('text/csv;charset=utf-8');
+      expect(downloadedBlob.size).toBe(new Blob([detail.notice.exportResult.csv]).size);
+
+      act(() => vi.advanceTimersByTime(0));
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:market-watch-export');
+    } finally {
+      window.removeEventListener('rtx:order-feedback', feedback);
+      anchorClick.mockRestore();
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+      if (originalExecCommand) Object.defineProperty(document, 'execCommand', originalExecCommand);
+      else Reflect.deleteProperty(document, 'execCommand');
+      if (originalCreateObjectUrl) Object.defineProperty(URL, 'createObjectURL', originalCreateObjectUrl);
+      else Reflect.deleteProperty(URL, 'createObjectURL');
+      if (originalRevokeObjectUrl) Object.defineProperty(URL, 'revokeObjectURL', originalRevokeObjectUrl);
+      else Reflect.deleteProperty(URL, 'revokeObjectURL');
+    }
+  });
+
+  it('reports the captured export snapshot when clipboard and CSV download both fail', async () => {
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+    setMarketCatalog(CORE_DEFAULT_SYMBOLS, ['XAUUSD']);
+    marketHooks.activeSymbols = [...CORE_DEFAULT_SYMBOLS];
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    const writeText = vi.fn().mockRejectedValue(new Error('Clipboard permission denied'));
+    const execCommand = vi.fn().mockReturnValue(false);
+    const createObjectURL = vi.fn(() => {
+      throw new Error('Download blocked');
+    });
+    const feedback = vi.fn();
+
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true });
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true });
+    window.addEventListener('rtx:order-feedback', feedback);
+
+    try {
+      render(
+        <MarketWatchPanel
+          allSymbols={['XAUUSD']}
+          chartSymbols={CORE_DEFAULT_SYMBOLS}
+          selectedSymbol="BTCUSD"
+          onSymbolSelect={vi.fn()}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText('EURUSD').closest('tr')!);
+      fireEvent.click(screen.getByText('Export'));
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(feedback).toHaveBeenCalledTimes(1);
+      const [feedbackEvent] = feedback.mock.calls[0];
+      expect((feedbackEvent as CustomEvent).detail).toMatchObject({
+        type: 'error',
+        notice: {
+          title: 'Market Watch',
+          description: 'Market Watch export failed',
+          meta: 'Failed',
+          metaIcon: 'error',
+          exportResult: {
+            destination: 'failed',
+            symbolCount: 3,
+            columnCount: 4,
+            fileName: expect.stringMatching(/^market-watch-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.csv$/),
+            csv: expect.stringContaining('Symbol,Bid,Ask,Daily Change'),
+          },
+        },
+      });
+    } finally {
+      window.removeEventListener('rtx:order-feedback', feedback);
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+      if (originalExecCommand) Object.defineProperty(document, 'execCommand', originalExecCommand);
+      else Reflect.deleteProperty(document, 'execCommand');
+      if (originalCreateObjectUrl) Object.defineProperty(URL, 'createObjectURL', originalCreateObjectUrl);
+      else Reflect.deleteProperty(URL, 'createObjectURL');
     }
   });
 

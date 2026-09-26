@@ -28,7 +28,7 @@ import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME } from './constants/chart
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OrderPanelDialog } from './components/OrderPanelDialog';
 import { AlertsContainer } from './components/AlertsContainer';
-import { markPositionsClosed, resolveTickFromLookup, shouldReplaceOpenPositionSnapshot, useAppStore, type Account, type Position } from './store/useAppStore';
+import { getPositionCloseScope, markPositionsClosed, resolveTickFromLookup, shouldReplaceOpenPositionSnapshot, unmarkPositionsClosed, useAppStore, type Account, type Position } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
 import { enqueueLiveTick } from './services/liveTickDispatcher';
@@ -80,7 +80,7 @@ import { tradingV2Api } from './api/trade';
 import { collapseDealHistory, tradeGatewayApi } from './api/tradeGateway';
 import { beginTradeHistoryRefresh } from './services/terminalHistory';
 import { readBackendPositionProfit } from './components/BottomDock.trade';
-import type { TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
+import { dispatchTradeOverlayCloseState, type TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
 import { formatOrderError } from './utils/orderError';
 import {
@@ -143,8 +143,8 @@ import { GlobalShortcuts } from './components/GlobalShortcuts';
 // Notifications
 import { useNotifications } from './hooks/useNotifications';
 import { ToastContainer } from './components/notifications/Toast';
-import { ActionFeedbackToast, resolveActionFeedbackDurationMs, resolveActionFeedbackTone, type ActionFeedbackType } from './components/notifications/ActionFeedbackToast';
-import { buildPositionCloseReport, type PositionCloseReport, type PositionCloseReportRow } from './components/notifications/positionCloseReport';
+import { ActionFeedbackToast, resolveActionFeedbackDurationMs, resolveActionFeedbackTone, type ActionFeedbackNotice, type ActionFeedbackType } from './components/notifications/ActionFeedbackToast';
+import { getPositionCloseOutcome, type PositionCloseReport } from './components/notifications/positionCloseReport';
 import { useNotificationStore } from './store/useNotificationStore';
 
 // Alerts
@@ -160,19 +160,14 @@ const LazyChartObjectsDialog = lazy(() => import('./components/dialogs/ChartObje
 const LazySaveWorkspaceDialog = lazy(() => import('./components/dialogs/SaveWorkspaceDialog').then((module) => ({ default: module.SaveWorkspaceDialog })));
 const LazySymbolsDialog = lazy(() => import('./components/SymbolsDialog').then((module) => ({ default: module.SymbolsDialog })));
 
-type TradeOverlayCloseDispatcher = typeof import('./services/tradeOverlayHistory')['dispatchTradeOverlayCloseState'];
-const dispatchTradeOverlayCloseState: TradeOverlayCloseDispatcher = (...args) => {
-  void import('./services/tradeOverlayHistory').then((module) => {
-    module.dispatchTradeOverlayCloseState(...args);
-  });
-};
-
 const ORDER_FEEDBACK_EVENT = 'rtx:order-feedback';
 
 type OrderFeedbackDetail = {
   message: string;
   messageParts?: UiMessagePart[];
   type: ActionFeedbackType;
+  /** Optional structured hierarchy for compact, action-specific notices. */
+  notice?: ActionFeedbackNotice;
   /** Structured execution receipt; the toast renders it in place of the message. */
   report?: PositionCloseReport;
 };
@@ -662,29 +657,6 @@ const buildTradeOverlayCloseSnapshots = (positions: readonly Position[]): TradeO
   });
 };
 
-/** Capture what each position looked like when its close was sent, for the close receipt. */
-const buildPositionCloseReportRows = (
-  positions: readonly Position[],
-): Omit<PositionCloseReportRow, 'status'>[] => {
-  const { ticks, tickLookup } = useAppStore.getState();
-  return positions.map((position) => {
-    const side = normalizeCloseSnapshotSide(position.side);
-    const tick = resolveTickFromLookup(ticks, tickLookup, position.symbol);
-    const closePrice = getTradeExitPriceFromQuote(tick, side)
-      ?? (Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null);
-    return {
-      ticket: position.id,
-      symbol: position.symbol,
-      side,
-      volume: Number(position.volume) || 0,
-      openPrice: Number(position.openPrice) || 0,
-      closePrice,
-      profit: backendCloseProfit(position),
-      digits: Number(tick?.digits) > 0 ? Number(tick?.digits) : getSymbolDigits(position.symbol),
-    };
-  });
-};
-
 // Ayan's scope/token-aware normalizer is the only one that satisfies the
 // store's publicationToken/metricsScope gate in useAppStore.setAccount.
 const normalizeAccountSummary = normalizeAccountMetrics;
@@ -805,6 +777,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const tradeDataVersionRef = useRef(0);
   const localTradeDataVersionRef = useRef(0);
   const optimisticClosedTicketsRef = useRef<Set<number>>(new Set());
+  const optimisticClosedTicketsScopeRef = useRef(getPositionCloseScope());
   const activeMarketSnapshot = useActiveMarketSymbols();
   const marketInstrumentsSnapshot = useMarketInstruments(!isAutoAuthenticating);
   const {
@@ -931,7 +904,16 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     tradeDataVersionRef.current += 1;
   }, []);
 
+  const syncOptimisticCloseScope = useCallback(() => {
+    const currentScope = getPositionCloseScope();
+    if (optimisticClosedTicketsScopeRef.current === currentScope) return;
+    optimisticClosedTicketsScopeRef.current = currentScope;
+    optimisticClosedTicketsRef.current.clear();
+    serverClosedTicketsRef.current.clear();
+  }, []);
+
   const markLocalTradeMutation = useCallback((ticketIds: number[] = []) => {
+    syncOptimisticCloseScope();
     tradeDataVersionRef.current += 1;
     localTradeDataVersionRef.current += 1;
     ticketIds.forEach((ticketId) => {
@@ -941,9 +923,17 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     });
     // Closing tickets must not be retained on the chart as "recently opened".
     markPositionsClosed(ticketIds);
-  }, []);
+  }, [syncOptimisticCloseScope]);
+
+  const clearOptimisticClosedTickets = useCallback((ticketIds: number[], expectedScope: number) => {
+    if (expectedScope !== getPositionCloseScope()) return;
+    syncOptimisticCloseScope();
+    ticketIds.forEach((ticketId) => optimisticClosedTicketsRef.current.delete(ticketId));
+    unmarkPositionsClosed(ticketIds, expectedScope);
+  }, [syncOptimisticCloseScope]);
 
   const markServerClosedTickets = useCallback((ticketIds: number[] = []) => {
+    syncOptimisticCloseScope();
     ticketIds.forEach((ticketId) => {
       if (Number.isFinite(ticketId)) {
         optimisticClosedTicketsRef.current.add(ticketId);
@@ -951,9 +941,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       }
     });
     markPositionsClosed(ticketIds);
-  }, []);
+  }, [syncOptimisticCloseScope]);
 
   const reconcileOptimisticClosedPositions = useCallback((normalized: Position[], options: OptimisticCloseReconcileOptions = {}) => {
+    syncOptimisticCloseScope();
     normalized = normalized.filter(position => !serverClosedTicketsRef.current.has(position.id));
     const optimisticTickets = optimisticClosedTicketsRef.current;
     if (optimisticTickets.size === 0) return normalized;
@@ -969,7 +960,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     if (optimisticTickets.size === 0) return normalized;
     return normalized.filter((position) => !optimisticTickets.has(position.id));
-  }, []);
+  }, [syncOptimisticCloseScope]);
 
   const beginTradeRestRead = useCallback((): TradeRestRead => ({
     startedAt: Date.now(),
@@ -1903,7 +1894,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
   const handleClosePosition = async (
     id: number,
-    { showReceipt = true }: { showReceipt?: boolean } = {},
+    { showFailureFeedback = true }: { showFailureFeedback?: boolean } = {},
   ): Promise<boolean> => {
     // Guard against double-click: skip if already closing this ticket
     if (closingTicketsRef.current.has(id)) {
@@ -1914,45 +1905,69 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     const closingPositions = useAppStore.getState().positions.filter((position) => position.id === id) as Position[];
     const closeSnapshots = buildTradeOverlayCloseSnapshots(closingPositions);
-    const closeReportRows = buildPositionCloseReportRows(closingPositions);
-    const closingPosition = closeReportRows[0];
-    // MT5 behaviour: the row stays in the table and on the chart until the
-    // backend confirms the close; a rejected close never hides the position.
-    const publishCloseReceipt = (confirmed: boolean, failureReason?: string) => {
-      if (!showReceipt || !closingPosition) return;
-      const report = buildPositionCloseReport({
-        scope: 'SINGLE',
-        symbol: closingPosition.symbol,
-        rows: closeReportRows,
-        confirmedTicketIds: confirmed ? [id] : [],
-        failedTicketIds: confirmed ? [] : [id],
-        currency: useAppStore.getState().account?.currency,
-        failureReason,
-      });
-      const message: UiMessage = confirmed
-        ? [feedbackLabel('Position closed'), feedbackValue(` #${id}`)]
-        : [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(failureReason ? ` — ${failureReason}` : '')];
-      publishOrderFeedback(message, confirmed ? 'success' : 'error', report);
+    const closeLogin = getLiveTradingLogin();
+    const closeMarkerScope = getPositionCloseScope();
+    const closeSessionScope = getCommittedBrokerAccountSessionScopeKey(
+      getCommittedBrokerAccountSessionScope(),
+    );
+    const isCurrentCloseSession = () => Boolean(
+      closeLogin
+      && isAuthenticatedRef.current
+      && getLiveTradingLogin() === closeLogin
+      && getPositionCloseScope() === closeMarkerScope
+      && getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()) === closeSessionScope
+    );
+    const publishSingleCloseFailure = (failureReason: string) => {
+      if (!showFailureFeedback) return;
+      publishOrderFeedback(
+        [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(failureReason ? ` — ${failureReason}` : '')],
+        'error',
+      );
     };
 
+    if (!closeLogin) {
+      closingTicketsRef.current.delete(id);
+      publishSingleCloseFailure('No trading account is selected. Please sign in again.');
+      return false;
+    }
+
+    // Give immediate execution feedback without weakening broker truth: hide
+    // the pending ticket now, then restore it if the correlated close rejects.
+    markLocalTradeMutation([id]);
+    dispatchTradeOverlayCloseState([id], 'pending', { snapshots: closeSnapshots });
+    useAppStore.getState().setPositions(
+      useAppStore.getState().positions.filter((position) => position.id !== id),
+      { removedTickets: [id] },
+    );
+
     try {
-      await api.positions.closePosition(String(id));
-      // Backend confirmed: remove the row and keep lagging snapshots from restoring it.
-      markLocalTradeMutation([id]);
-      useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== id), { closedTickets: [id] });
+      await api.positions.closePosition(String(id), { account_login: closeLogin });
+      if (!isCurrentCloseSession()) {
+        clearOptimisticClosedTickets([id], closeMarkerScope);
+        return false;
+      }
+      // Backend confirmed: convert the optimistic removal into a tombstone so
+      // a lagging position snapshot cannot restore the closed ticket.
+      useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: [id] });
       dispatchTradeOverlayCloseState([id], 'confirmed', { snapshots: closeSnapshots });
       import('./utils/audio').then(m => m.playSystemSound('close'));
-      publishCloseReceipt(true);
-      const loginId = getLiveTradingLogin() || undefined;
+      const loginId = closeLogin;
       refreshPositions(loginId, { allowWsCommit: true });
-      if (loginId) {
-        refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history after close:', err));
-      }
+      refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history after close:', err));
       return true;
     } catch (err: any) {
       console.error('Failed to close position:', err);
-      publishCloseReceipt(false, formatOrderError(err));
-      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
+      clearOptimisticClosedTickets([id], closeMarkerScope);
+      const sessionCurrent = isCurrentCloseSession();
+      if (sessionCurrent) {
+        dispatchTradeOverlayCloseState([id], 'failed');
+        const store = useAppStore.getState();
+        const existingTickets = new Set(store.positions.map((position) => position.id));
+        const restoredPositions = closingPositions.filter((position) => !existingTickets.has(position.id));
+        if (restoredPositions.length > 0) store.setPositions([...store.positions, ...restoredPositions]);
+        publishSingleCloseFailure(formatOrderError(err));
+        refreshPositions(closeLogin, { allowWsCommit: true });
+      }
       return false;
     } finally {
       closingTicketsRef.current.delete(id);
@@ -1977,7 +1992,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const { symbol: positionSymbol, volume: positionVolume } = position;
     chartPositionActionBusyRef.current.add(ticket);
     try {
-      const closed = await handleClosePosition(ticket, { showReceipt: false });
+      const closed = await handleClosePosition(ticket, { showFailureFeedback: false });
       if (!closed) {
         publishOrderFeedback([feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Failed'), feedbackValue(' · '), feedbackLabel(reverseSide === 'buy' ? 'Buy Market' : 'Sell Market'), feedbackValue(': '), feedbackLabel('cancelled')]);
         return;
@@ -2125,16 +2140,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     bulkCloseInFlightRef.current = true;
 
     let claimedBulkTicketIds: number[] = [];
-    const closeReportRows: Omit<PositionCloseReportRow, 'status'>[] = [];
     const closeSnapshotsByTicket = new Map<number, TradeOverlayCloseSnapshotPayload[]>();
+    const closeCandidatesByTicket = new Map<number, Position>();
     try {
       const accId = getLiveTradingLogin();
       if (!accId) return;
+      const closeMarkerScope = getPositionCloseScope();
       const closeSessionScope = getCommittedBrokerAccountSessionScopeKey(
         getCommittedBrokerAccountSessionScope(),
       );
       const getCurrentCloseSessionKey = () => {
-        if (!isAuthenticatedRef.current || getLiveTradingLogin() !== accId) return null;
+        if (!isAuthenticatedRef.current || getLiveTradingLogin() !== accId
+          || getPositionCloseScope() !== closeMarkerScope) return null;
         return getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
       };
       const selectMatchingCandidates = (openPositions: readonly Position[]) => openPositions.filter((position) => {
@@ -2156,35 +2173,47 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         loadAuthoritativeCandidates: async () => selectMatchingCandidates(normalizePositions(await tradingV2Api
           .getPositions(accId, { limit: 500, offset: 0 })
           .catch(() => api.positions.getPositions(accId) as any))),
-        closePosition: (ticketId) => api.positions.closePosition(String(ticketId)),
+        closePosition: (ticketId) => api.positions.closePosition(String(ticketId), { account_login: accId }),
         tryClaimTicket: (ticketId) => {
           if (closingTicketsRef.current.has(ticketId)) return false;
           closingTicketsRef.current.add(ticketId);
           claimedBulkTicketIds.push(ticketId);
           return true;
         },
-        // MT5 behaviour: every row stays visible while its close is in flight.
+        // Remove every claimed row immediately. The close coordinator still
+        // waits for correlated backend confirmation and restores rejections.
         onCandidatesStarted: (candidates) => {
-          closeReportRows.push(...buildPositionCloseReportRows(candidates));
+          if (getCurrentCloseSessionKey() !== closeSessionScope) return;
+          const ticketIds = candidates.map((position) => position.id);
           candidates.forEach((position) => {
+            closeCandidatesByTicket.set(position.id, position);
             closeSnapshotsByTicket.set(position.id, buildTradeOverlayCloseSnapshots([position]));
           });
+          markLocalTradeMutation(ticketIds);
+          dispatchTradeOverlayCloseState(ticketIds, 'pending', {
+            snapshots: buildTradeOverlayCloseSnapshots(candidates),
+          });
+          const ticketSet = new Set(ticketIds);
+          useAppStore.getState().setPositions(
+            useAppStore.getState().positions.filter((position) => !ticketSet.has(position.id)),
+            { removedTickets: ticketIds },
+          );
         },
-        // ...and leaves the table and chart only once the backend confirms it.
+        // Convert each pending row into a durable closed-ticket tombstone as
+        // soon as that ticket receives correlated terminal confirmation.
         onTicketConfirmed: (ticketId) => {
           if (getCurrentCloseSessionKey() !== closeSessionScope) return;
-          markLocalTradeMutation([ticketId]);
-          useAppStore.getState().setPositions(
-            useAppStore.getState().positions.filter((position) => position.id !== ticketId),
-            { closedTickets: [ticketId] },
-          );
+          useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: [ticketId] });
           dispatchTradeOverlayCloseState([ticketId], 'confirmed', {
             snapshots: closeSnapshotsByTicket.get(ticketId),
           });
         },
       });
 
-      if (!closeResult.sessionCurrent) return;
+      if (!closeResult.sessionCurrent) {
+        clearOptimisticClosedTickets(closeResult.attemptedTicketIds, closeMarkerScope);
+        return;
+      }
 
       if (closeResult.attemptedTicketIds.length === 0) {
         if (closeResult.authoritativeSnapshotError) throw closeResult.authoritativeSnapshotError;
@@ -2199,29 +2228,20 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
       const { confirmedTicketIds, failedTicketIds, failedReasons } = closeResult;
 
-      const failureMessage = failedTicketIds.length > 0 ? formatOrderError(failedReasons[0]) : undefined;
-      const closeReport = buildPositionCloseReport({
-        scope: type,
-        symbol,
-        rows: closeReportRows,
-        confirmedTicketIds,
-        failedTicketIds,
-        currency: useAppStore.getState().account?.currency,
-        failureReason: failureMessage,
-      });
       if (failedTicketIds.length > 0) {
-        // Failed tickets were never hidden, so they are still shown as open.
+        const failureMessage = formatOrderError(failedReasons[0]);
+        clearOptimisticClosedTickets(failedTicketIds, closeMarkerScope);
+        dispatchTradeOverlayCloseState(failedTicketIds, 'failed');
+        const store = useAppStore.getState();
+        const existingTickets = new Set(store.positions.map((position) => position.id));
+        const restoredPositions = failedTicketIds
+          .map((ticketId) => closeCandidatesByTicket.get(ticketId))
+          .filter((position): position is Position => position !== undefined && !existingTickets.has(position.id));
+        if (restoredPositions.length > 0) store.setPositions([...store.positions, ...restoredPositions]);
         console.error(`Bulk close failed for ${failedTicketIds.length} position(s):`, failedReasons[0]);
         publishOrderFeedback(
           [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length} · `), feedbackLabel('Failed'), feedbackValue(`: ${failedTicketIds.length} — ${failureMessage}`)],
           'error',
-          closeReport,
-        );
-      } else {
-        publishOrderFeedback(
-          [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}`)],
-          'success',
-          closeReport,
         );
       }
       if (closeResult.authoritativeSnapshotError) {
@@ -3208,6 +3228,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [feedbackToast, setFeedbackToast] = useState<{
     id: number;
     message: UiMessage;
+    notice?: ActionFeedbackNotice;
     type: ActionFeedbackType;
     report?: PositionCloseReport;
   } | null>(null);
@@ -3217,9 +3238,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     message: UiMessage,
     type: ActionFeedbackType = 'success',
     report?: PositionCloseReport,
+    notice?: ActionFeedbackNotice,
   ) => {
     feedbackToastSeqRef.current += 1;
-    setFeedbackToast({ id: feedbackToastSeqRef.current, message, type, report });
+    setFeedbackToast({ id: feedbackToastSeqRef.current, message, notice, type, report });
   }, []);
 
   const dismissFeedbackToast = useCallback((id: number) => {
@@ -3230,7 +3252,20 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const handleOrderFeedback = (event: Event) => {
       const detail = (event as CustomEvent<OrderFeedbackDetail>).detail;
       if (!detail?.message) return;
-      displayToast(detail.messageParts ?? detail.message, detail.type || 'error', detail.report);
+      const completedPositionCloseReport = Boolean(
+        detail.report
+        && detail.type === 'success'
+        && getPositionCloseOutcome(detail.report) === 'completed'
+      );
+      if (completedPositionCloseReport) return;
+      displayToast(
+        detail.messageParts ?? detail.message,
+        detail.type || 'error',
+        // Close execution details are never rendered as a second modal sheet.
+        // Errors remain visible as a compact, non-modal action notice.
+        undefined,
+        detail.notice,
+      );
     };
 
     window.addEventListener(ORDER_FEEDBACK_EVENT, handleOrderFeedback);
@@ -3915,7 +3950,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             </ErrorBoundary>
           )}
 
-          <ChartModifyPositionDialogHost resolveAllowedSymbol={getAllowedSymbol} />
+          <ChartModifyPositionDialogHost
+            onClosePosition={handleClosePosition}
+            resolveAllowedSymbol={getAllowedSymbol}
+          />
 
           <TradeAuthDialog
             isOpen={tradeAuthOpen}
@@ -3976,12 +4014,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             </Suspense>
           ))}
 
-          {/* Non-blocking workspace and order feedback */}
+          {/* Compact action notices; successful position closes intentionally stay silent. */}
           {feedbackToast && (
             <ActionFeedbackToast
               key={feedbackToast.id}
               durationMs={resolveActionFeedbackDurationMs(feedbackToast.type, feedbackToast.report)}
               message={feedbackToast.message}
+              notice={feedbackToast.notice}
               onDismiss={() => dismissFeedbackToast(feedbackToast.id)}
               report={feedbackToast.report}
               tone={resolveActionFeedbackTone(feedbackToast.type, feedbackToast.report)}
@@ -3996,7 +4035,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           )}
 
           {/* Notification Toast Container */}
-          <ToastContainer notifications={activeToasts} />
+          <ToastContainer
+            avoidActionFeedback={Boolean(feedbackToast && !feedbackToast.report && !feedbackToast.notice)}
+            notifications={activeToasts}
+          />
 
           {/* Global Confirm Dialog */}
           <ConfirmDialog />

@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { formatUiMessage, type UiMessage } from '../../utils/uiFeedback';
 import { Icon, type IconName } from '../ui/Icon';
+import type { MarketWatchExportResult } from '../../utils/marketWatchExport';
+import { MarketWatchExportSheet } from './MarketWatchExportSheet';
 import {
   getPositionCloseOutcome,
   type PositionCloseReport,
@@ -11,15 +14,33 @@ import {
 export type ActionFeedbackTone = 'success' | 'warning' | 'error' | 'loss';
 export type ActionFeedbackType = 'success' | 'error';
 
+export interface ActionFeedbackNotice {
+  /** Short action or workspace name, used as the notice heading. */
+  title: UiMessage;
+  /** Human-readable result summary shown below the heading. */
+  description?: UiMessage;
+  /** Compact outcome/destination label, for example "Copied" or "CSV". */
+  meta?: UiMessage;
+  /** Label paired with meta when the notice needs to identify a destination. */
+  metaLabel?: UiMessage;
+  metaIcon?: IconName;
+  /** Brief next step or clarification shown below the destination. */
+  hint?: UiMessage;
+  /** Captured export data for the persistent result sheet and CSV action. */
+  exportResult?: MarketWatchExportResult;
+}
+
 interface ActionFeedbackToastProps {
   durationMs: number;
   message: UiMessage;
+  notice?: ActionFeedbackNotice;
   onDismiss: () => void;
   report?: PositionCloseReport;
   tone: ActionFeedbackTone;
 }
 
 const EXIT_ANIMATION_MS = 160;
+const CLOSE_RECEIPT_TOTAL_LIFETIME_MS = 1000;
 const MAX_REPORT_ROWS = 4;
 
 const TONE_ICON: Record<ActionFeedbackTone, IconName> = {
@@ -29,13 +50,13 @@ const TONE_ICON: Record<ActionFeedbackTone, IconName> = {
   error: 'error',
 };
 
-/** Reports stay longer than one-line notices, and anything needing attention longer still. */
+/** Close receipts have a strict one-second mount-to-dismiss lifetime. */
 export const resolveActionFeedbackDurationMs = (
   type: ActionFeedbackType,
   report?: PositionCloseReport,
 ): number => {
-  if (report) return getPositionCloseOutcome(report) === 'completed' ? 6000 : 10000;
-  return type === 'success' ? 4000 : 7000;
+  if (report) return CLOSE_RECEIPT_TOTAL_LIFETIME_MS;
+  return type === 'success' ? 6000 : 9000;
 };
 
 export const resolveActionFeedbackTone = (
@@ -70,14 +91,11 @@ const formatClockTime = (timestamp: number): string => new Date(timestamp).toLoc
   hour12: false,
 });
 
-const isEditableElement = (element: Element | null): boolean => element instanceof HTMLElement
-  && (element.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName));
-
 /**
  * Keeps the toast alive while the trader is reading or tabbing through it.
  * Returns hold handlers plus the paused/exiting flags that drive the CSS.
  */
-function useToastLifetime(durationMs: number, onDismiss: () => void) {
+function useToastLifetime(durationMs: number, onDismiss: () => void, autoDismiss = true) {
   const [exiting, setExiting] = useState(false);
   const [paused, setPaused] = useState(false);
   const onDismissRef = useRef(onDismiss);
@@ -112,12 +130,12 @@ function useToastLifetime(durationMs: number, onDismiss: () => void) {
   }, [clearTimer, dismiss]);
 
   useEffect(() => {
-    schedule();
+    if (autoDismiss) schedule();
     return clearTimer;
-  }, [clearTimer, schedule]);
+  }, [autoDismiss, clearTimer, schedule]);
 
   const setHold = useCallback((source: 'hover' | 'focus', held: boolean) => {
-    if (exitingRef.current) return;
+    if (!autoDismiss || exitingRef.current) return;
     const wasHeld = holdRef.current.hover || holdRef.current.focus;
     holdRef.current[source] = held;
     const isHeld = holdRef.current.hover || holdRef.current.focus;
@@ -129,7 +147,7 @@ function useToastLifetime(durationMs: number, onDismiss: () => void) {
       schedule();
     }
     setPaused(isHeld);
-  }, [clearTimer, schedule]);
+  }, [autoDismiss, clearTimer, schedule]);
 
   return { dismiss, exiting, paused, setHold };
 }
@@ -233,9 +251,9 @@ function PositionCloseDetails({ row }: { row: PositionCloseReportRow }) {
 }
 
 /**
- * Centered execution receipt for a single or bulk position close. It opens once
- * the broker has answered, auto-closes after its lifetime (paused on hover or
- * keyboard focus), and closes on Done, Esc, the close button or the backdrop.
+ * Centered execution receipt for a bulk position close. It opens once the
+ * broker has answered, closes within one second, and can be dismissed sooner
+ * with Esc, the close button, or the backdrop.
  */
 function PositionCloseReceipt({
   durationMs,
@@ -246,9 +264,15 @@ function PositionCloseReceipt({
   const tr = useUiTranslation();
   const titleId = useId();
   const summaryId = useId();
-  const { dismiss, exiting, paused, setHold } = useToastLifetime(durationMs, onDismiss);
-  const doneRef = useRef<HTMLButtonElement>(null);
-  const autoFocusingRef = useRef(false);
+  // durationMs is the total visibility budget. Begin the fade early enough for
+  // the existing exit animation and final unmount to finish inside that budget,
+  // and cap legacy/direct callers so a receipt can never exceed one second.
+  const { dismiss, exiting } = useToastLifetime(
+    Math.max(0, Math.min(durationMs, CLOSE_RECEIPT_TOTAL_LIFETIME_MS) - EXIT_ANIMATION_MS),
+    onDismiss,
+  );
+  const dismissRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   // Esc belongs to the topmost layer, so it closes the receipt and stops there.
   useEffect(() => {
@@ -262,13 +286,18 @@ function PositionCloseReceipt({
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [dismiss]);
 
-  // Put focus on Done so Enter acknowledges, unless the trader is typing in a
-  // field. This initial focus must not count as a hold on the countdown.
+  // A modal always owns focus while open. Restore the trader's prior target
+  // after acknowledgement so keyboard workflows continue where they started.
   useEffect(() => {
-    if (isEditableElement(document.activeElement)) return;
-    autoFocusingRef.current = true;
-    doneRef.current?.focus({ preventScroll: true });
-    autoFocusingRef.current = false;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    dismissRef.current?.focus({ preventScroll: true });
+    return () => {
+      if (previousFocusRef.current?.isConnected) {
+        previousFocusRef.current.focus({ preventScroll: true });
+      }
+    };
   }, []);
 
   const trapFocus = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -319,7 +348,6 @@ function PositionCloseReceipt({
     breakeven ? 'rtx-action-feedback--breakeven' : '',
     single ? 'rtx-action-feedback--single' : '',
     exiting ? 'is-exiting' : '',
-    paused ? 'is-paused' : '',
   ].filter(Boolean).join(' ');
 
   return (
@@ -337,15 +365,8 @@ function PositionCloseReceipt({
           className={className}
           data-testid="action-feedback-toast"
           data-tone={tone}
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHold('focus', false);
-          }}
-          onFocus={() => { if (!autoFocusingRef.current) setHold('focus', true); }}
           onKeyDown={trapFocus}
-          onMouseEnter={() => setHold('hover', true)}
-          onMouseLeave={() => setHold('hover', false)}
           role="dialog"
-          style={{ '--rtx-action-feedback-duration': `${durationMs}ms` } as React.CSSProperties}
         >
           <header className="rtx-action-feedback__header">
             <span className="rtx-action-feedback__icon" aria-hidden="true">
@@ -366,6 +387,7 @@ function PositionCloseReceipt({
               aria-label={tr('Dismiss')}
               className="rtx-action-feedback__dismiss"
               onClick={dismiss}
+              ref={dismissRef}
               title={tr('Dismiss')}
               type="button"
             >
@@ -406,12 +428,8 @@ function PositionCloseReceipt({
             <span className="rtx-action-feedback__footnote">
               {tr('{{closed}} of {{total}} closed at market', { closed: report.closed, total: report.requested })}
             </span>
-            <button className="rtx-action-feedback__done" onClick={dismiss} ref={doneRef} type="button">
-              {tr('Done')}
-            </button>
           </footer>
 
-          <span className="rtx-action-feedback__lifetime" aria-hidden="true" />
         </section>
       </div>
     </>
@@ -425,17 +443,27 @@ function PositionCloseReceipt({
 export function ActionFeedbackToast({
   durationMs,
   message,
+  notice,
   onDismiss,
   report,
   tone,
 }: ActionFeedbackToastProps) {
-  if (report) {
-    return <PositionCloseReceipt durationMs={durationMs} onDismiss={onDismiss} report={report} tone={tone} />;
+  if (notice?.exportResult) {
+    return <MarketWatchExportSheet result={notice.exportResult} onDismiss={onDismiss} />;
   }
-  return <CompactToast durationMs={durationMs} message={message} onDismiss={onDismiss} tone={tone} />;
+  if (report) {
+    const receipt = <PositionCloseReceipt durationMs={durationMs} onDismiss={onDismiss} report={report} tone={tone} />;
+    return typeof document === 'undefined' ? receipt : createPortal(receipt, document.body);
+  }
+  const compactToast = <CompactToast durationMs={durationMs} message={message} notice={notice} onDismiss={onDismiss} tone={tone} />;
+  // Structured action results belong at the visual center and must not inherit
+  // a transformed application ancestor as their fixed-position containing box.
+  return notice && typeof document !== 'undefined'
+    ? createPortal(compactToast, document.body)
+    : compactToast;
 }
 
-function CompactToast({ durationMs, message, onDismiss, tone }: Omit<ActionFeedbackToastProps, 'report'>) {
+function CompactToast({ durationMs, message, notice, onDismiss, tone }: Omit<ActionFeedbackToastProps, 'report'>) {
   const tr = useUiTranslation();
   const [shownAt] = useState(() => Date.now());
   const { dismiss, exiting, paused, setHold } = useToastLifetime(durationMs, onDismiss);
@@ -448,7 +476,7 @@ function CompactToast({ durationMs, message, onDismiss, tone }: Omit<ActionFeedb
   ].filter(Boolean).join(' ');
 
   return (
-    <div className="rtx-action-feedback-region">
+    <div className={`rtx-action-feedback-region${notice ? ' rtx-action-feedback-region--notice-center' : ''}`}>
       <section
         aria-atomic="true"
         aria-live={tone === 'success' ? 'polite' : 'assertive'}
@@ -475,7 +503,28 @@ function CompactToast({ durationMs, message, onDismiss, tone }: Omit<ActionFeedb
               {formatClockTime(shownAt)}
             </time>
           </div>
-          <p className="rtx-action-feedback__title">{formatUiMessage(message, tr)}</p>
+          <div aria-level={2} className="rtx-action-feedback__title" role="heading">
+            {formatUiMessage(notice?.title ?? message, tr)}
+          </div>
+          {notice?.description && (
+            <p className="rtx-action-feedback__description">{formatUiMessage(notice.description, tr)}</p>
+          )}
+          {notice?.meta && (
+            <div className={`rtx-action-feedback__channel${notice.metaLabel ? ' is-destination' : ''}`}>
+              {notice.metaLabel && (
+                <span className="rtx-action-feedback__channel-label">
+                  {formatUiMessage(notice.metaLabel, tr)}
+                </span>
+              )}
+              <span className="rtx-action-feedback__channel-value">
+                {notice.metaIcon && <span aria-hidden="true"><Icon name={notice.metaIcon} size="xs" /></span>}
+                <span>{formatUiMessage(notice.meta, tr)}</span>
+              </span>
+            </div>
+          )}
+          {notice?.hint && (
+            <p className="rtx-action-feedback__hint">{formatUiMessage(notice.hint, tr)}</p>
+          )}
         </div>
 
         <button

@@ -241,6 +241,9 @@ export const formatMarketWatchTime = (timestamp: unknown, showMilliseconds: bool
 
 const neutralizeSpreadsheetFormula = (value: unknown): string => {
   const text = String(value ?? '');
+  // The Market Watch uses a lone dash for unavailable values. It is display
+  // data, not a formula, and should remain a clean dash in exported tables.
+  if (/^\s*-\s*$/u.test(text)) return text;
   return /^\s*[=+\-@]/u.test(text) ? `'${text}` : text;
 };
 

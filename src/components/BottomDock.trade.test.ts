@@ -499,7 +499,11 @@ describe('live account metrics between backend snapshots', () => {
 
   it('keeps backend values when a row has no backend profit or a metric is unavailable', () => {
     expect(applyLivePositionProfit(metrics, [...positions, { ...positions[0], hasBackendProfit: false }])).toBe(metrics);
-    expect(applyLivePositionProfit(metrics, [])).toBe(metrics);
+    expect(applyLivePositionProfit(metrics, [])).toEqual({
+      ...metrics,
+      floatingPnL: 0,
+      unrealizedPL: 0,
+    });
     const partial = applyLivePositionProfit({ ...metrics, freeMargin: null, marginLevel: null }, positions);
     expect(partial).toMatchObject({ freeMargin: null, marginLevel: null });
     expect(partial.equity).toBeCloseTo(10024.2336, 10);

@@ -115,6 +115,7 @@ export interface AdminAccount {
 
 import { ApiError, apiClient, getAuthToken, type ApiRequestContext } from '../api/client';
 import * as endpoints from '../api/endpoints';
+import type { ClosePositionRequestOptions } from '../api/trade';
 import {
   createTradeOrderUuid,
   getTradeWebSocketClient,
@@ -528,8 +529,8 @@ export const positionsApi = {
       .map((position) => normalizeGatewayPositionForApp(position as unknown as LooseRecord)) as unknown as endpoints.Position[];
   },
 
-  async closePosition(positionId: string): Promise<void> {
-    await endpoints.tradingApi.closePosition(positionId);
+  async closePosition(positionId: string, options?: ClosePositionRequestOptions): Promise<void> {
+    await endpoints.tradingApi.closePosition(positionId, options);
   },
 
   async modifyPosition(positionId: string | number, data: endpoints.ModifyPositionRequest): Promise<endpoints.Position> {

@@ -61,6 +61,37 @@ describe('Trade backend financial rendering', () => {
     expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('-12.00');
   });
 
+  it('keeps the floating P/L color tied to its sign while the value changes', () => {
+    trade.positions = [{ ...trade.positions[0], profit: -2.3, unrealizedPnL: -2.3 }];
+    const { container, rerender } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    const floatingAmount = () => container.querySelector(
+      '.rtx-trade-footer-floating > span:not(.rtx-trade-footer-currency)',
+    );
+
+    expect(floatingAmount()).toHaveClass('text-[#ff2d2d]');
+
+    trade.positions = [{ ...trade.positions[0], profit: -2.2, unrealizedPnL: -2.2 }];
+    rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(floatingAmount()).toHaveTextContent('-2.20');
+    expect(floatingAmount()).toHaveClass('text-[#ff2d2d]');
+    expect(floatingAmount()).not.toHaveClass('text-[#22c55e]');
+
+    trade.positions = [{ ...trade.positions[0], profit: 2.3, unrealizedPnL: 2.3 }];
+    rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(floatingAmount()).toHaveClass('text-[#22c55e]');
+
+    trade.positions = [{ ...trade.positions[0], profit: 2.2, unrealizedPnL: 2.2 }];
+    rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(floatingAmount()).toHaveTextContent('2.20');
+    expect(floatingAmount()).toHaveClass('text-[#22c55e]');
+    expect(floatingAmount()).not.toHaveClass('text-[#ff2d2d]');
+
+    trade.positions = [{ ...trade.positions[0], profit: 0, unrealizedPnL: 0 }];
+    rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(floatingAmount()).toHaveTextContent('0.00');
+    expect(floatingAmount()).toHaveClass('text-zinc-100');
+  });
+
   it('shows unavailable monetary fields instead of a calculated profit or zero placeholders', () => {
     trade.account = {
       ...trade.account, balance: 0, margin: 0, unrealizedPL: 0,
@@ -81,6 +112,17 @@ describe('Trade backend financial rendering', () => {
     expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('0.00');
     expect(container.querySelector('.rtx-trade-footer-metrics')).toHaveTextContent('0.00%');
     expect(container.querySelector('.rtx-trade-footer-metrics')).not.toHaveTextContent('∞');
+  });
+
+  it('clears stale floating P/L as soon as the last visible position closes', () => {
+    trade.positions = [];
+    trade.account = { ...trade.account, unrealizedPL: -81.4 };
+
+    const { container } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    const floatingProfit = container.querySelector('.rtx-trade-footer-floating');
+
+    expect(floatingProfit).toHaveTextContent('0.00');
+    expect(floatingProfit).not.toHaveTextContent('-81.40');
   });
 
   it('does not substitute a quote or entry price for a missing backend current price', () => {

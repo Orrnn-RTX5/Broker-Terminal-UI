@@ -109,6 +109,7 @@ interface MissingActiveTradeOverlayOptions {
   tradeKey: string;
   closeSuppressedTradeKeys?: ReadonlySet<string>;
   closedHistoryTradeKeys?: ReadonlySet<string>;
+  brokerMarkedClosed?: boolean;
 }
 
 interface ClosedTradeSnapshotReplacementOptions {
@@ -412,8 +413,10 @@ export const shouldKeepMissingActiveTradeOverlay = ({
   tradeKey,
   closeSuppressedTradeKeys,
   closedHistoryTradeKeys,
+  brokerMarkedClosed,
 }: MissingActiveTradeOverlayOptions): boolean => (
-  !closeSuppressedTradeKeys?.has(tradeKey)
+  !brokerMarkedClosed
+  && !closeSuppressedTradeKeys?.has(tradeKey)
   && !closedHistoryTradeKeys?.has(tradeKey)
 );
 

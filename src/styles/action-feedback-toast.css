@@ -24,11 +24,24 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
 
 .rtx-action-feedback-region {
   position: fixed;
-  inset-block-start: max(12px, env(safe-area-inset-top));
-  inset-inline-end: max(12px, env(safe-area-inset-right));
+  /* Keep action receipts below the 40px web command bar. */
+  inset-block-start: max(52px, env(safe-area-inset-top));
+  inset-inline-end: max(14px, env(safe-area-inset-right));
   z-index: calc(var(--z-tooltip, 1070) + 1);
-  width: min(360px, calc(100vw - 24px));
+  width: min(388px, calc(100vw - 28px));
   pointer-events: none;
+}
+
+/* The legacy notification stack shares this corner. Keep it below terminal
+   chrome and move it down while a compact action receipt is visible. */
+.rtx-notification-toast-region {
+  top: 52px;
+  z-index: calc(var(--z-tooltip, 1070) + 2);
+  transition: top var(--transition-fast);
+}
+
+.rtx-notification-toast-region--below-action {
+  top: 180px;
 }
 
 /* Full-viewport flex box that centers the receipt; clicks outside it fall
@@ -44,11 +57,30 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   box-sizing: border-box;
 }
 
+/* Structured action results are centered without becoming modal. The region
+   ignores pointer input, while the card itself remains dismissible. */
+.rtx-action-feedback-region--notice-center {
+  inset: max(40px, env(safe-area-inset-top)) 0 0;
+  z-index: calc(var(--z-tooltip, 1070) + 3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+.rtx-action-feedback-region--notice-center .rtx-action-feedback:not(.rtx-action-feedback--report) {
+  width: min(448px, 100%);
+}
+
 /* ── Shared surface ─────────────────────────────────────────────────────── */
 
 .rtx-action-feedback {
   --rtx-action-feedback-accent: var(--color-info);
+  --rtx-action-feedback-accent-text: var(--rtx-action-feedback-accent);
   --rtx-action-feedback-accent-soft: var(--color-info-dim);
+  --rtx-action-feedback-muted: color-mix(in srgb, var(--text-primary) 72%, var(--bg-elevated));
   --rtx-af-text-xs: calc(var(--rtx-ui-font-size, 14px) - 3px);
   --rtx-af-text-sm: calc(var(--rtx-ui-font-size, 14px) - 2px);
   --rtx-af-text-md: calc(var(--rtx-ui-font-size, 14px) - 1px);
@@ -56,17 +88,19 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   --rtx-af-text-xl: calc(var(--rtx-ui-font-size, 14px) + 10px);
   position: relative;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 24px;
-  column-gap: 10px;
+  grid-template-columns: 32px minmax(0, 1fr) 26px;
+  column-gap: 12px;
   align-items: start;
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  padding: 12px 10px 12px 14px;
+  padding: 14px 11px 14px 15px;
   color: var(--text-primary);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--radius-md, 6px);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--rtx-action-feedback-accent) 5%, transparent), transparent 42%),
+    var(--bg-elevated);
+  border: 1px solid color-mix(in srgb, var(--border-secondary) 88%, var(--rtx-action-feedback-accent));
+  border-radius: 8px;
   box-shadow: var(--shadow-xl);
   pointer-events: auto;
   isolation: isolate;
@@ -84,7 +118,7 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   inset-block: 0;
   inset-inline-start: 0;
   width: 2px;
-  background: var(--rtx-action-feedback-accent);
+  background: var(--rtx-action-feedback-accent-text);
 }
 
 .rtx-action-feedback--success {
@@ -103,6 +137,20 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   --rtx-action-feedback-accent-soft: var(--color-warning-dim);
 }
 
+/* Bright quote colors need darker semantic variants when used as small text
+   on the light toast surface. */
+html.rtx-skin-untitled-light .rtx-action-feedback--success {
+  --rtx-action-feedback-accent-text: #027a48;
+}
+
+html.rtx-skin-untitled-light :is(.rtx-action-feedback--loss, .rtx-action-feedback--error) {
+  --rtx-action-feedback-accent-text: #b42318;
+}
+
+html.rtx-skin-untitled-light .rtx-action-feedback--warning {
+  --rtx-action-feedback-accent-text: #b54708;
+}
+
 /* A close at exactly 0.00 is neither a win nor a loss. */
 .rtx-action-feedback--breakeven {
   --rtx-action-feedback-accent: var(--text-secondary);
@@ -112,20 +160,20 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
 .rtx-action-feedback__icon {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  margin-top: 1px;
-  color: var(--rtx-action-feedback-accent);
+  width: 32px;
+  height: 32px;
+  color: var(--rtx-action-feedback-accent-text);
   background: var(--rtx-action-feedback-accent-soft);
-  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--rtx-action-feedback-accent) 28%, transparent);
+  border-radius: 7px;
 }
 
 .rtx-action-feedback__dismiss {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  margin: -4px -2px 0 0;
+  width: 26px;
+  height: 26px;
+  margin: -5px -3px 0 0;
   padding: 0;
   color: var(--text-secondary);
   background: transparent;
@@ -164,7 +212,7 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  margin: 0 0 2px;
+  margin: 0 0 3px;
   line-height: 16px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -172,7 +220,7 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
 
 .rtx-action-feedback__status {
   flex: 0 0 auto;
-  color: var(--rtx-action-feedback-accent);
+  color: var(--rtx-action-feedback-accent-text);
 }
 
 .rtx-action-feedback__time {
@@ -180,7 +228,7 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   flex: 0 0 auto;
   margin-inline-start: auto;
   padding-inline-start: 8px;
-  color: var(--text-secondary);
+  color: var(--rtx-action-feedback-muted);
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
@@ -190,7 +238,75 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   --rtx-type-weight: 600;
   margin: 0;
   color: var(--text-primary);
-  line-height: 20px;
+  line-height: 19px;
+  overflow-wrap: anywhere;
+}
+
+.rtx-action-feedback__description {
+  --rtx-type-size: var(--rtx-af-text-sm);
+  margin: 2px 0 0;
+  color: var(--rtx-action-feedback-muted);
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.rtx-action-feedback__channel {
+  --rtx-type-size: var(--rtx-af-text-xs);
+  --rtx-type-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 3px 7px;
+  color: var(--rtx-action-feedback-accent-text);
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  background: var(--rtx-action-feedback-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--rtx-action-feedback-accent) 26%, transparent);
+  border-radius: 4px;
+}
+
+.rtx-action-feedback__channel > span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.rtx-action-feedback__channel.is-destination {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 16px;
+  width: 100%;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border-radius: 6px;
+}
+
+.rtx-action-feedback__channel-label {
+  --rtx-type-size: var(--rtx-af-text-xs);
+  color: var(--rtx-action-feedback-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rtx-action-feedback__channel-value {
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--rtx-action-feedback-accent-text);
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+
+.rtx-action-feedback__channel-value > span {
+  min-width: 0;
+}
+
+.rtx-action-feedback__hint {
+  --rtx-type-size: var(--rtx-af-text-xs);
+  margin: 6px 0 0;
+  color: var(--rtx-action-feedback-muted);
+  line-height: 16px;
   overflow-wrap: anywhere;
 }
 
@@ -286,7 +402,7 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   align-items: center;
   gap: 0 6px;
   margin: 2px 0 0;
-  color: var(--text-secondary);
+  color: var(--rtx-action-feedback-muted);
   line-height: 18px;
   font-variant-numeric: tabular-nums;
 }
@@ -585,7 +701,7 @@ html .rtx-action-feedback .rtx-action-feedback__table tr.is-rejected td {
 .rtx-action-feedback__footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   padding: 12px 14px 12px 18px;
   background: var(--rtx-chrome-sheen, none), var(--bg-tertiary);
@@ -598,31 +714,6 @@ html .rtx-action-feedback .rtx-action-feedback__table tr.is-rejected td {
   color: var(--text-secondary);
   line-height: 18px;
   font-variant-numeric: tabular-nums;
-}
-
-.rtx-action-feedback .rtx-action-feedback__done {
-  --rtx-type-size: var(--rtx-af-text-md);
-  --rtx-type-weight: 600;
-  flex: 0 0 auto;
-  min-width: 88px;
-  height: 32px;
-  padding: 0 18px;
-  color: var(--text-primary);
-  background: var(--bg-quaternary);
-  border: 1px solid var(--border-secondary);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast);
-}
-
-.rtx-action-feedback .rtx-action-feedback__done:hover {
-  background: color-mix(in srgb, var(--text-primary) 8%, var(--bg-quaternary));
-  border-color: var(--border-tertiary);
-}
-
-.rtx-action-feedback .rtx-action-feedback__done:focus-visible {
-  outline: 2px solid var(--color-info);
-  outline-offset: 2px;
 }
 
 /* ── Lifetime ───────────────────────────────────────────────────────────── */
@@ -683,8 +774,8 @@ html .rtx-action-feedback .rtx-action-feedback__table tr.is-rejected td {
 }
 
 @media (max-width: 480px) {
-  .rtx-action-feedback-region:not(.rtx-action-feedback-region--center) {
-    inset-block-start: max(8px, env(safe-area-inset-top));
+  .rtx-action-feedback-region:not(.rtx-action-feedback-region--center):not(.rtx-action-feedback-region--notice-center) {
+    inset-block-start: max(48px, env(safe-area-inset-top));
     inset-inline: 8px;
     width: auto;
   }
@@ -693,9 +784,32 @@ html .rtx-action-feedback .rtx-action-feedback__table tr.is-rejected td {
     padding: 16px;
   }
 
+  .rtx-action-feedback-region--notice-center {
+    inset-block-start: max(48px, env(safe-area-inset-top));
+    padding: 12px;
+  }
+
+  .rtx-notification-toast-region {
+    top: 48px;
+  }
+
+  .rtx-notification-toast-region--below-action {
+    top: 176px;
+  }
+
   .rtx-action-feedback:not(.rtx-action-feedback--report) {
     column-gap: 9px;
     padding-inline: 11px 9px;
+  }
+
+  .rtx-action-feedback__channel.is-destination {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .rtx-action-feedback__channel-value {
+    justify-content: flex-start;
+    text-align: start;
   }
 
   /* Phone width: drop the open price column, keep the fill and the result. */
@@ -712,13 +826,26 @@ html .rtx-action-feedback .rtx-action-feedback__table tr.is-rejected td {
   .rtx-action-feedback__lifetime {
     animation: none;
   }
+
+  .rtx-notification-toast-region {
+    transition: none;
+  }
 }
 
 /* Desktop: the frameless window's 36px title bar (DesktopWindowShell.css)
    paints above page content, so notices and the receipt start below it and
    the window controls stay usable. Kept last so it wins over the offsets above. */
 .rtx-desktop-shell-active .rtx-action-feedback-region {
-  inset-block-start: calc(36px + 12px);
+  /* Title bar (36px) + menu row (30px) + command row (40px) + gap. */
+  inset-block-start: calc(36px + 30px + 40px + 12px);
+}
+
+.rtx-desktop-shell-active .rtx-notification-toast-region {
+  top: calc(36px + 30px + 40px + 12px);
+}
+
+.rtx-desktop-shell-active .rtx-notification-toast-region--below-action {
+  top: calc(36px + 30px + 40px + 140px);
 }
 
 .rtx-desktop-shell-active .rtx-action-feedback-region--center,

@@ -211,6 +211,34 @@ describe('ModifyPositionDialog chart toolbar', () => {
         expect(screen.getByText('Trading session changed. Reopen the position and try again.')).toBeInTheDocument();
     });
 
+    it('routes Close by Market through the shared fast-close coordinator and closes immediately', async () => {
+        let resolveClose: ((value: boolean) => void) | null = null;
+        const pendingClose = new Promise<boolean>(resolve => { resolveClose = resolve; });
+        const onClosePosition = vi.fn(() => pendingClose);
+        const onClose = vi.fn();
+
+        render(
+            <ModifyPositionDialog
+                isOpen
+                onClose={onClose}
+                onClosePosition={onClosePosition}
+                position={makePosition(171)}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /close #171 buy .* by market/i }));
+
+        expect(onClosePosition).toHaveBeenCalledWith(171);
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(mocks.closePosition).not.toHaveBeenCalled();
+        expect(mocks.setPositions).not.toHaveBeenCalled();
+
+        await act(async () => {
+            resolveClose?.(true);
+            await pendingClose;
+        });
+    });
+
     it('ignores a modify acknowledgement that resolves after the trading scope changes', async () => {
         let resolveModify: (() => void) | null = null;
         const pendingModify = new Promise<void>(resolve => { resolveModify = resolve; });

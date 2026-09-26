@@ -41,9 +41,24 @@ describe('App market-order feedback source contract', () => {
     expect(source).toContain('onDismiss={() => dismissFeedbackToast(feedbackToast.id)}');
   });
 
-  it('publishes a structured execution report for bulk closes', () => {
-    expect(source).toContain('closeReportRows.push(...buildPositionCloseReportRows(candidates));');
-    expect(source).toContain('const closeReport = buildPositionCloseReport({');
-    expect(source).toContain("displayToast(detail.messageParts ?? detail.message, detail.type || 'error', detail.report);");
+  it('never renders a completed position-close receipt as a second action sheet', () => {
+    const listenerStart = source.indexOf('const handleOrderFeedback = (event: Event) => {');
+    const listenerEnd = source.indexOf('window.addEventListener(ORDER_FEEDBACK_EVENT', listenerStart);
+    const listener = source.slice(listenerStart, listenerEnd);
+
+    expect(listenerStart).toBeGreaterThan(-1);
+    expect(listenerEnd).toBeGreaterThan(listenerStart);
+    expect(listener).not.toContain("detail.report?.scope === 'SINGLE'");
+    expect(listener).toContain("detail.type === 'success'");
+    expect(listener).toContain('getPositionCloseOutcome(detail.report)');
+    expect(listener.indexOf('if (')).toBeLessThan(listener.indexOf('displayToast('));
+    expect(listener).toContain('// Close execution details are never rendered as a second modal sheet.');
+    expect(listener).toContain('undefined,');
+  });
+
+  it('forwards structured compact-notice details without breaking the legacy message contract', () => {
+    expect(source).toContain('notice?: ActionFeedbackNotice;');
+    expect(source).toContain('message={feedbackToast.message}');
+    expect(source).toContain('notice={feedbackToast.notice}');
   });
 });

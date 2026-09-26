@@ -230,6 +230,7 @@ describe('marketWatchView formatting', () => {
 
   it('neutralizes spreadsheet formulas before applying CSV quoting', () => {
     expect(escapeMarketWatchCsvCell('=1+1')).toBe("'=1+1");
+    expect(escapeMarketWatchCsvCell('-')).toBe('-');
     expect(escapeMarketWatchCsvCell('  +SUM(A1:A2)')).toBe("'  +SUM(A1:A2)");
     expect(escapeMarketWatchCsvCell('\t-42')).toBe("'\t-42");
     expect(escapeMarketWatchCsvCell('@malicious')).toBe("'@malicious");
@@ -241,6 +242,7 @@ describe('marketWatchView formatting', () => {
     expect(escapeMarketWatchTsvCell('EURUSD')).toBe('EURUSD');
     expect(escapeMarketWatchTsvCell(null)).toBe('');
     expect(escapeMarketWatchTsvCell('=1+1')).toBe("'=1+1");
+    expect(escapeMarketWatchTsvCell('-')).toBe('-');
     expect(escapeMarketWatchTsvCell(' \t+SUM(A1:A2)')).toBe("'  +SUM(A1:A2)");
     expect(escapeMarketWatchTsvCell('Broker\tFeed\r\nPrimary')).toBe('Broker Feed Primary');
     expect(escapeMarketWatchTsvCell('safe @value')).toBe('safe @value');

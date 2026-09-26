@@ -12,6 +12,7 @@ import {
   commitBrokerAccountSessionScope,
   emitSessionChange,
   getCommittedBrokerAccountSessionScope,
+  onCommittedBrokerAccountSessionScopeChange,
 } from '../services/brokerSession';
 import {
   areCanonicalUpstreamTicksEqual,
@@ -107,6 +108,15 @@ export const isRecentlyAdmittedOpenPosition = (position: Position, now = Date.no
 // never bring one of these back onto the chart or into Trade.
 const CLOSED_POSITION_TICKET_TTL_MS = 5 * 60_000;
 const markedClosedPositionTickets = new Map<number, number>();
+let positionCloseScope = 0;
+
+/** Capture before an asynchronous close so its cleanup cannot affect a newer session. */
+export const getPositionCloseScope = (): number => positionCloseScope;
+
+const resetMarkedClosedPositions = (): void => {
+  positionCloseScope += 1;
+  markedClosedPositionTickets.clear();
+};
 
 const toPositionTicket = (value: unknown): number | null => {
   const ticket = Number(value);
@@ -121,7 +131,11 @@ export const markPositionsClosed = (ticketIds: readonly unknown[], now = Date.no
 };
 
 /** A close that failed leaves the position open, so it may be retained again. */
-export const unmarkPositionsClosed = (ticketIds: readonly unknown[]): void => {
+export const unmarkPositionsClosed = (
+  ticketIds: readonly unknown[],
+  expectedScope = getPositionCloseScope(),
+): void => {
+  if (expectedScope !== getPositionCloseScope()) return;
   for (const value of ticketIds) {
     const ticket = toPositionTicket(value);
     if (ticket !== null) markedClosedPositionTickets.delete(ticket);
@@ -940,6 +954,7 @@ export const useAppStore = create<AppState>()(
           set({ isBootstrapping, bootstrapStep: isBootstrapping ? step : '' }),
 
         reset: () => {
+          resetMarkedClosedPositions();
           closedPositionTickets.clear();
           closedPositionScope = '';
           set(initialState);
@@ -970,6 +985,19 @@ export const useAppStore = create<AppState>()(
     )
   )
 );
+
+// Ticket numbers are only meaningful within one broker/account session. Observe
+// both stores: broker ownership may change without changing the account number,
+// and token/reset changes may leave the committed broker/account key unchanged.
+useAppStore.subscribe((state, previous) => {
+  if (
+    state.accountId !== previous.accountId
+    || state.authToken !== previous.authToken
+    || state.isAuthenticated !== previous.isAuthenticated
+  ) resetMarkedClosedPositions();
+});
+onCommittedBrokerAccountSessionScopeChange(resetMarkedClosedPositions);
+
 // Selector for a single tick
 export const useTick = (symbol: string) => useAppStore((state) => {
   return resolveTickFromLookup(state.ticks, state.tickLookup, symbol);

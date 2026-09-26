@@ -36,6 +36,8 @@ import {
 interface ModifyPositionDialogProps {
     isOpen: boolean;
     onClose: (modifiedSl?: number, modifiedTp?: number, modifiedComment?: string) => void;
+    /** Shared App close coordinator; keeps every single-close entry point consistent. */
+    onClosePosition?: (id: number) => Promise<boolean> | boolean | void;
     kind?: 'position' | 'pending-order';
     position: {
         id: number;
@@ -244,7 +246,7 @@ const getFocusableElements = (container: HTMLElement) => {
     });
 };
 
-export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'position' }: ModifyPositionDialogProps) {
+export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, position, kind = 'position' }: ModifyPositionDialogProps) {
     const tr = useUiTranslation();
     const [sl, setSl] = useState('0.00');
     const [tp, setTp] = useState('0.00');
@@ -667,13 +669,22 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
         setSuccessMessage(null);
 
         try {
+            if (onClosePosition) {
+                const closeOperation = Promise.resolve(onClosePosition(position.id));
+                // The shared coordinator removes the pending row immediately
+                // and owns failure feedback/rollback, so this dialog need not
+                // wait on the broker round trip before leaving the workspace.
+                onCloseRef.current();
+                await closeOperation;
+                return;
+            }
             await api.positions.closePosition(String(position.id));
             if (!isCurrentDialogSession(mutationContext)) return;
             const store = useAppStore.getState();
-            store.setPositions(store.positions.filter(p => p.id !== position.id));
+            store.setPositions(store.positions.filter(p => p.id !== position.id), { closedTickets: [position.id] });
             setSuccessMessage('Position closed successfully');
             refreshPositionsAfterTrade();
-            scheduleClose(mutationContext, () => onCloseRef.current());
+            onCloseRef.current();
         } catch (err: unknown) {
             if (!isCurrentDialogSession(mutationContext)) return;
             console.error('[Close by Market] Error:', err);

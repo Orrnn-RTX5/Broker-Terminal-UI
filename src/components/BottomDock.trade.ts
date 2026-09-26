@@ -232,7 +232,15 @@ export const applyLivePositionProfit = (
   metrics: TradeAccountMetricResolution,
   positions: readonly TradeProfitInput[],
 ): TradeAccountMetricResolution => {
-  if (positions.length === 0 || metrics.balance === null) return metrics;
+  // The visible position snapshot can reach zero before the backend republishes
+  // account metrics after Close All. Do not retain that stale pre-close +/- P/L.
+  // Preserve an unavailable metric as unavailable instead of inventing a zero.
+  if (positions.length === 0) {
+    return metrics.floatingPnL === null
+      ? metrics
+      : { ...metrics, floatingPnL: 0, unrealizedPL: 0 };
+  }
+  if (metrics.balance === null) return metrics;
   let floatingPnL = 0;
   for (const position of positions) {
     const profit = resolveTradeProfit(position).value;

@@ -64,7 +64,7 @@ import {
   type OHLCV,
   type Timeframe as AggTimeframe,
 } from '../services/candleAggregationService';
-import { useAppStore } from '../store/useAppStore';
+import { isPositionMarkedClosed, useAppStore } from '../store/useAppStore';
 import { updateDrawingCandle } from '../drawing-tools/drawingCandleUpdates';
 import api from '../services/api';
 import { isDesktopBackendTarget } from '../config/backendTarget.js';
@@ -8349,7 +8349,13 @@ export const TradingChart = React.memo(function TradingChart({
       );
       const rawActiveTradeKeys = new Set(
         appPositions
-          .filter((position: any) => getPositionId(position) != null && getPositionVolume(position) > 0 && isMatchingTradeSymbol(getPositionSymbol(position)))
+          .filter((position: any) => {
+            const positionId = getPositionId(position);
+            return positionId != null
+              && !isPositionMarkedClosed(positionId, now)
+              && getPositionVolume(position) > 0
+              && isMatchingTradeSymbol(getPositionSymbol(position));
+          })
           .map((position: any) => `trade:${String(getPositionId(position))}`),
       );
       const activeTradeKeys = filterActiveTradeKeysForHistory(rawActiveTradeKeys, closeSuppressedTradeKeys);
@@ -8391,7 +8397,9 @@ export const TradingChart = React.memo(function TradingChart({
         const positionSymbol = String(position.symbol || '').trim().toUpperCase();
         if (!position.id || !positionSymbol) return false;
         // FIX: Never render or manage a different suffix contract's position.
-        return Number(position.volume) > 0 && positionSymbol === normalizedChartSymbol;
+        return Number(position.volume) > 0
+          && positionSymbol === normalizedChartSymbol
+          && !isPositionMarkedClosed(position.id, now);
       });
 
       const nextActiveSnapshots = new Map<string, ActiveTradeSnapshot>();
@@ -8468,6 +8476,7 @@ export const TradingChart = React.memo(function TradingChart({
           tradeKey: key,
           closeSuppressedTradeKeys,
           closedHistoryTradeKeys: realClosedTradeKeys,
+          brokerMarkedClosed: isPositionMarkedClosed(getTradeTicket(key), now),
         })) {
           pendingMissingActiveTradesRef.current.delete(key);
           return;
@@ -8487,6 +8496,7 @@ export const TradingChart = React.memo(function TradingChart({
             tradeKey: key,
             closeSuppressedTradeKeys,
             closedHistoryTradeKeys: realClosedTradeKeys,
+            brokerMarkedClosed: isPositionMarkedClosed(getTradeTicket(key), now),
           })
         ) {
           pendingMissingActiveTradesRef.current.delete(key);

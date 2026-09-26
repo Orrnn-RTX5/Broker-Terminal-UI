@@ -175,11 +175,14 @@ describe('cTrader-style position controls contract', () => {
   });
 
   it('owns chart Modify Position requests in the persistent App shell', () => {
-    expect(appSource).toContain('<ChartModifyPositionDialogHost resolveAllowedSymbol={getAllowedSymbol} />');
+    expect(appSource).toContain('<ChartModifyPositionDialogHost');
+    expect(appSource).toContain('onClosePosition={handleClosePosition}');
+    expect(appSource).toContain('resolveAllowedSymbol={getAllowedSymbol}');
     expect(modifyDialogHostSource).toContain('window.addEventListener(CHART_POSITION_MODIFY_EVENT, handleChartPositionModify);');
     expect(modifyDialogHostSource).toContain('resolveChartPositionModifyTarget(');
     expect(modifyDialogHostSource).toContain('getCommittedBrokerAccountSessionScopeKey(');
     expect(modifyDialogHostSource).toContain('<LazyModifyPositionDialog');
+    expect(modifyDialogHostSource).toContain('onClosePosition={onClosePosition}');
     expect(modifyDialogHostSource).toContain("window.dispatchEvent(new CustomEvent('rtx:trade-modified'");
   });
 
@@ -259,13 +262,13 @@ describe('cTrader-style position controls contract', () => {
     expect(appSource).toContain('const handleReversePosition = async (ticket: number) => {');
     expect(appSource).toContain('const handleDoublePosition = async (ticket: number) => {');
     // Reverse must not send the opposite order when the close failed.
-    const closeAwait = appSource.indexOf('const closed = await handleClosePosition(ticket, { showReceipt: false });');
+    const closeAwait = appSource.indexOf('const closed = await handleClosePosition(ticket, { showFailureFeedback: false });');
     const closeGuard = appSource.indexOf('if (!closed) {', closeAwait);
     const reverseOrder = appSource.indexOf('side: reverseSide,', closeAwait);
     expect(closeAwait).toBeGreaterThan(-1);
     expect(closeGuard).toBeGreaterThan(closeAwait);
     expect(reverseOrder).toBeGreaterThan(closeGuard);
-    // Close reports success so reverse can sequence on it.
-    expect(appSource).toContain('const handleClosePosition = async (\n    id: number,\n    { showReceipt = true }: { showReceipt?: boolean } = {},\n  ): Promise<boolean> => {');
+    // Close returns a boolean so reverse can sequence without showing a single-close success sheet.
+    expect(appSource).toContain('const handleClosePosition = async (\n    id: number,\n    { showFailureFeedback = true }: { showFailureFeedback?: boolean } = {},\n  ): Promise<boolean> => {');
   });
 });

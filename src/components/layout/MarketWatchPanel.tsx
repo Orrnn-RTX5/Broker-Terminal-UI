@@ -39,9 +39,11 @@ import {
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { getChartPanels } from '../../services/chartPanelNavigation';
 import { formatSpreadDisplay } from '../../utils/spread';
+import { formatPrice } from '../../utils/symbolUtils';
 import {
   deleteMarketWatchSavedSet,
   escapeMarketWatchCsvCell,
+  escapeMarketWatchTsvCell,
   formatMarketWatchTime,
   loadMarketWatchColumns,
   loadMarketWatchOptions,
@@ -58,6 +60,9 @@ import {
   type MarketWatchSortMetadata,
   type MarketWatchSortMode,
 } from '../../utils/marketWatchView';
+import { copyTextToClipboard } from '../../utils/tradeShareLink';
+import { downloadMarketWatchCsv, type MarketWatchExportResult } from '../../utils/marketWatchExport';
+import type { ActionFeedbackNotice } from '../notifications/ActionFeedbackToast';
 import {
   getMarketWatchDisplayErrors,
   getMarketWatchSymbolLabel,
@@ -124,6 +129,12 @@ const TWO_DECIMAL_MARKET_WATCH_SYMBOLS = new Set([
 const getMarketWatchPriceDigits = (symbol: string): number | undefined => (
   TWO_DECIMAL_MARKET_WATCH_SYMBOLS.has(normalizeSymbol(symbol)) ? 2 : undefined
 );
+
+const formatMarketWatchExportPrice = (symbol: string, value: unknown): string => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed === 0) return '-';
+  return formatPrice(parsed, getMarketWatchPriceDigits(symbol) ?? symbol);
+};
 
 const uniqueSymbols = (symbols: unknown[]): string[] =>
   Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean)));
@@ -1221,8 +1232,12 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       shouldMergePersistedSymbols,
     ]);
 
-    const publishMarketWatchFeedback = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-      window.dispatchEvent(new CustomEvent('rtx:order-feedback', { detail: { message, type } }));
+    const publishMarketWatchFeedback = useCallback((
+      message: string,
+      type: 'success' | 'error' = 'success',
+      notice?: ActionFeedbackNotice,
+    ) => {
+      window.dispatchEvent(new CustomEvent('rtx:order-feedback', { detail: { message, notice, type } }));
     }, []);
 
     const handleHideSymbol = useCallback((symbol: string) => {
@@ -1353,11 +1368,15 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
         return exportColumns.map((column) => {
           switch (column) {
             case 'symbol': return sym;
-            case 'bid': return quote?.bid ?? (fallback?.kind === 'close' ? `${tr('Last close')}: ${fallback.close}` : '-');
-            case 'ask': return quote?.ask ?? '-';
-            case 'last': return tick?.last ?? '-';
-            case 'high': return tick?.high ?? tick?.high24h ?? '-';
-            case 'low': return tick?.low ?? tick?.low24h ?? '-';
+            case 'bid': return quote?.bid !== undefined
+              ? formatMarketWatchExportPrice(sym, quote.bid)
+              : fallback?.kind === 'close'
+                ? `${tr('Last close')}: ${formatMarketWatchExportPrice(sym, fallback.close)}`
+                : '-';
+            case 'ask': return formatMarketWatchExportPrice(sym, quote?.ask);
+            case 'last': return formatMarketWatchExportPrice(sym, tick?.last);
+            case 'high': return formatMarketWatchExportPrice(sym, tick?.high ?? tick?.high24h);
+            case 'low': return formatMarketWatchExportPrice(sym, tick?.low ?? tick?.low24h);
             case 'volume': return tick?.volume ?? '-';
             case 'spread': return hasMarketWatchQuote(quote)
               ? formatSpreadDisplay(sym, tick?.spread, quote?.bid, quote?.ask)
@@ -1373,34 +1392,66 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
         });
       });
       const headers = exportColumns.map((column) => tr(labels[column]));
-      const clipboardPayload = `${headers.join('\t')}\n${cells.map(cell => cell.join('\t')).join('\n')}`;
-      try {
-        await navigator.clipboard.writeText(clipboardPayload);
+      const clipboardPayload = `${headers.map(escapeMarketWatchTsvCell).join('\t')}\n${cells
+        .map(cell => cell.map(escapeMarketWatchTsvCell).join('\t'))
+        .join('\n')}`;
+      const csv = `${headers.map(escapeMarketWatchCsvCell).join(',')}\n${cells
+        .map(cell => cell.map(escapeMarketWatchCsvCell).join(','))
+        .join('\n')}`;
+      const fileName = `market-watch-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.csv`;
+      const exportSnapshot: Readonly<Omit<MarketWatchExportResult, 'destination'>> = Object.freeze({
+        symbolCount: rows.length,
+        columnCount: exportColumns.length,
+        fileName,
+        csv,
+      });
+      const copied = await copyTextToClipboard(clipboardPayload);
+      if (copied) {
+        const message = tr('Market Watch exported to clipboard ({{value0}} symbols)', { value0: exportSnapshot.symbolCount });
         publishMarketWatchFeedback(
-          tr('Market Watch exported to clipboard ({{value0}} symbols)', { value0: rows.length }),
+          message,
           'success',
+          {
+            title: tr('Market Watch'),
+            description: message,
+            metaLabel: tr('Destination'),
+            meta: tr('System clipboard'),
+            metaIcon: 'copy',
+            hint: tr('No file was created. Press Ctrl+V to paste into Excel or another app.'),
+            exportResult: { destination: 'clipboard', ...exportSnapshot },
+          },
         );
         return;
-      } catch {
-        // Clipboard can be unavailable (permissions, embedded shells); fall back to a file.
       }
+
+      // Clipboard can be unavailable (permissions, embedded shells); fall back to a file.
       try {
-        const csv = `${headers.map(escapeMarketWatchCsvCell).join(',')}\n${cells.map(cell => cell.map(escapeMarketWatchCsvCell).join(',')).join('\n')}`;
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `market-watch-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.csv`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        URL.revokeObjectURL(url);
+        downloadMarketWatchCsv(exportSnapshot.csv, exportSnapshot.fileName);
+        const message = tr('Market Watch exported to CSV ({{value0}} symbols)', { value0: exportSnapshot.symbolCount });
         publishMarketWatchFeedback(
-          tr('Market Watch exported to CSV ({{value0}} symbols)', { value0: rows.length }),
+          message,
           'success',
+          {
+            title: tr('Market Watch'),
+            description: message,
+            metaLabel: tr('Destination'),
+            meta: tr('Browser download: {{value0}}', { value0: exportSnapshot.fileName }),
+            metaIcon: 'download',
+            exportResult: { destination: 'download', ...exportSnapshot },
+          },
         );
       } catch {
-        publishMarketWatchFeedback(tr('Market Watch export failed'), 'error');
+        publishMarketWatchFeedback(
+          tr('Market Watch export failed'),
+          'error',
+          {
+            title: tr('Market Watch'),
+            description: tr('Market Watch export failed'),
+            meta: tr('Failed'),
+            metaIcon: 'error',
+            exportResult: { destination: 'failed', ...exportSnapshot },
+          },
+        );
       }
     }, [closedDailyChanges, displayedColumns, lastPrices, marketWatchOptions.showMilliseconds, publishMarketWatchFeedback, rows, tr]);
 

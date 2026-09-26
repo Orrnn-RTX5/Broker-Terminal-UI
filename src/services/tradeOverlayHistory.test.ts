@@ -492,6 +492,13 @@ describe('trade overlay close suppression helpers', () => {
       closeSuppressedTradeKeys: new Set(),
       closedHistoryTradeKeys: new Set(),
     })).toBe(true);
+
+    expect(shouldKeepMissingActiveTradeOverlay({
+      tradeKey: 'trade:270',
+      closeSuppressedTradeKeys: new Set(),
+      closedHistoryTradeKeys: new Set(),
+      brokerMarkedClosed: true,
+    })).toBe(false);
   });
 
   it('builds an immediate closed connector from a captured active trade and close point', () => {

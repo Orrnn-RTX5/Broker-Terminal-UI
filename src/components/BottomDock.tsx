@@ -478,39 +478,13 @@ export function BottomDock({
 
     const [isResizing, setIsResizing] = useState(false);
 
-    const refreshTradeSoon = useCallback(() => {
-        window.setTimeout(() => {
-            void toolboxTrade.refresh();
-        }, 1500);
-    }, [toolboxTrade.refresh]);
-
     const handleTradeClosePosition = useCallback((id: number, volume?: number) => {
-        try {
-            const result = onClosePosition(id, volume) as unknown;
-            if (result && typeof (result as any).finally === 'function') {
-                (result as any).finally(() => refreshTradeSoon());
-            } else {
-                refreshTradeSoon();
-            }
-        } catch (error) {
-            refreshTradeSoon();
-            throw error;
-        }
-    }, [onClosePosition, refreshTradeSoon]);
+        onClosePosition(id, volume);
+    }, [onClosePosition]);
 
     const handleTradeCloseBulk = useCallback((type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => {
-        try {
-            const result = onCloseBulk?.(type, symbol) as unknown;
-            if (result && typeof (result as any).finally === 'function') {
-                (result as any).finally(() => refreshTradeSoon());
-            } else {
-                refreshTradeSoon();
-            }
-        } catch (error) {
-            refreshTradeSoon();
-            throw error;
-        }
-    }, [onCloseBulk, refreshTradeSoon]);
+        onCloseBulk?.(type, symbol);
+    }, [onCloseBulk]);
 
     // Helpers
     const formatMoney = useCallback((val: number | undefined | null) => {
@@ -922,7 +896,14 @@ export function ToolboxTab() {
     );
 }
 
-function BlinkingText({ value, formatFn, prefix = '', suffix = '', defaultColor = 'text-zinc-100' }: any) {
+function BlinkingText({
+    value,
+    formatFn,
+    prefix = '',
+    suffix = '',
+    defaultColor = 'text-zinc-100',
+    flashDirection = true,
+}: any) {
     const [changeColor, setChangeColor] = useState<string | null>(null);
     const previousValueRef = useRef<number | null>(null);
     const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -932,7 +913,7 @@ function BlinkingText({ value, formatFn, prefix = '', suffix = '', defaultColor 
         if (!Number.isFinite(numericValue)) return;
 
         const previousValue = previousValueRef.current;
-        if (previousValue !== null && numericValue !== previousValue) {
+        if (flashDirection && previousValue !== null && numericValue !== previousValue) {
             setChangeColor(numericValue > previousValue ? 'text-[#22c55e]' : 'text-[#ff2d2d]');
             if (clearTimerRef.current) {
                 clearTimeout(clearTimerRef.current);
@@ -947,10 +928,10 @@ function BlinkingText({ value, formatFn, prefix = '', suffix = '', defaultColor 
                 clearTimeout(clearTimerRef.current);
             }
         };
-    }, [numericValue]);
+    }, [flashDirection, numericValue]);
 
     return (
-        <span className={`${changeColor ?? defaultColor} px-0.5 rounded-sm inline-block transition-colors duration-150`}>
+        <span className={`${flashDirection ? (changeColor ?? defaultColor) : defaultColor} px-0.5 rounded-sm inline-block transition-colors duration-150`}>
             {prefix}{formatFn ? formatFn(value) : value}{suffix}
         </span>
     );
@@ -2188,7 +2169,12 @@ ${rows}
                         >
                             {totalLivePnL === null
                                 ? <UnavailableMetric />
-                                : <BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={floatingProfitColor} />}
+                                : <BlinkingText
+                                    value={totalLivePnL}
+                                    formatFn={formatMoney}
+                                    defaultColor={floatingProfitColor}
+                                    flashDirection={false}
+                                />}
                             <span className="rtx-trade-footer-currency">{account?.currency || 'USD'}</span>
                         </span>
                         <span className="rtx-trade-footer-close-spacer shrink-0" style={{ width: footerCloseColumnWidth, flex: `0 0 ${footerCloseColumnWidth}` }} aria-hidden="true" />
@@ -2223,6 +2209,7 @@ ${rows}
             <RetainedLazyFeature active={modifyPosition !== null}>
             <ModifyPositionDialog
                 isOpen={modifyPosition !== null}
+                onClosePosition={(id) => onClosePosition(id)}
                 onClose={(modifiedSl?: number, modifiedTp?: number, modifiedComment?: string) => {
                     const closingContext = modifyPositionContext;
                     const currentPosition = closingContext

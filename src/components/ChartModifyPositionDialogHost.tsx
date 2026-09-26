@@ -17,6 +17,7 @@ const LazyModifyPositionDialog = lazy(() => import('./ModifyPositionDialog').the
 })));
 
 type ChartModifyPositionDialogHostProps = {
+  onClosePosition: (id: number) => Promise<boolean> | boolean | void;
   resolveAllowedSymbol: (symbol: unknown) => string;
 };
 
@@ -36,6 +37,7 @@ const samePositionIdentity = (position: Position, ticket: number, symbol: string
  * whole terminal shell.
  */
 export function ChartModifyPositionDialogHost({
+  onClosePosition,
   resolveAllowedSymbol,
 }: ChartModifyPositionDialogHostProps) {
   const [activeModifyPosition, setActiveModifyPosition] = useState<ActiveModifyPosition | null>(null);
@@ -86,6 +88,7 @@ export function ChartModifyPositionDialogHost({
       <Suspense fallback={null}>
         <LazyModifyPositionDialog
           isOpen
+          onClosePosition={onClosePosition}
           position={position}
           onClose={(modifiedSl?: number, modifiedTp?: number, modifiedComment?: string) => {
             const closingContext = activeModifyPosition;

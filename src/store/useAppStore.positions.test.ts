@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { commitBrokerAccountSessionScope } from '../services/brokerSession';
 
 import {
+  getPositionCloseScope,
+  isPositionMarkedClosed,
   markPositionsClosed,
   RECENT_OPEN_POSITION_RETENTION_MS,
   shouldReplaceOpenPositionSnapshot,
@@ -272,9 +274,46 @@ describe('closed positions and recent-open retention', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    useAppStore.getState().reset();
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
   });
 
   const ids = () => useAppStore.getState().positions.map(({ id }) => id).sort((a, b) => a - b);
+
+  it.each([
+    ['account', () => useAppStore.setState({ accountId: '200002' })],
+    ['token', () => useAppStore.setState({ authToken: 'session-b' })],
+    ['logout', () => useAppStore.setState({ isAuthenticated: false })],
+    ['broker', () => commitBrokerAccountSessionScope({ authenticated: true, accountId: '200001', brokerId: 'broker-b', serverUrl: 'https://broker-b.test' })],
+    ['reset', () => useAppStore.getState().reset()],
+  ] as const)('isolates reused tickets and late rollback after %s changes', (_name, changeSession) => {
+    useAppStore.setState({ accountId: '200001', authToken: 'session-a', isAuthenticated: true });
+    commitBrokerAccountSessionScope({ authenticated: true, accountId: '200001', brokerId: 'broker-a', serverUrl: 'https://broker-a.test' });
+    const oldScope = getPositionCloseScope();
+    markPositionsClosed([24155]);
+    expect(isPositionMarkedClosed(24155)).toBe(true);
+
+    changeSession();
+    expect(getPositionCloseScope()).not.toBe(oldScope);
+    expect(isPositionMarkedClosed(24155)).toBe(false);
+
+    const currentScope = getPositionCloseScope();
+    markPositionsClosed([24155]);
+    unmarkPositionsClosed([24155], oldScope);
+    expect(isPositionMarkedClosed(24155)).toBe(true);
+    unmarkPositionsClosed([24155], currentScope);
+    expect(isPositionMarkedClosed(24155)).toBe(false);
+  });
+
+  it('does not restore stale suppression when returning to a previous account', () => {
+    useAppStore.setState({ accountId: '200001' });
+    const oldScope = getPositionCloseScope();
+    markPositionsClosed([24155]);
+    useAppStore.setState({ accountId: '200002' });
+    useAppStore.setState({ accountId: '200001' });
+    expect(getPositionCloseScope()).not.toBe(oldScope);
+    expect(isPositionMarkedClosed(24155)).toBe(false);
+  });
 
   it('removes just-opened tickets from the chart when they are closed', () => {
     const recent = { chartEntryTime: new Date().toISOString() };

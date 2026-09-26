@@ -27,6 +27,8 @@ describe('Close All source contract', () => {
     expect(dockEnd).toBeGreaterThan(dockStart);
     expect(dockHandler).toContain('onCloseBulk?.(type, symbol)');
     expect(dockHandler).not.toContain('removePositionsByMode');
+    expect(dockHandler).not.toContain('setTimeout');
+    expect(dockHandler).not.toContain('toolboxTrade.refresh');
   });
 
   it('uses the current account and the working per-ticket close contract for every bulk mode', () => {
@@ -38,31 +40,65 @@ describe('Close All source contract', () => {
     expect(bulkHandler).toContain('localCandidates,');
     expect(bulkHandler).toContain('loadAuthoritativeCandidates: async () =>');
     expect(bulkHandler).toContain('onCandidatesStarted: (candidates) => {');
-    expect(bulkHandler).toContain('(ticketId) => api.positions.closePosition(String(ticketId))');
+    expect(bulkHandler).toContain("(ticketId) => api.positions.closePosition(String(ticketId), { account_login: accId })");
     expect(bulkHandler).not.toContain('for (const position of candidates)');
     expect(bulkHandler).not.toContain('accountV2Api.closeAllPositions');
   });
 
-  it('keeps every row visible until the backend confirms that ticket (MT5 behaviour)', () => {
+  it('keeps the first confirmation for Close All, In-Profit, and In-Loss', () => {
+    const confirmation = bulkHandler.indexOf('await useBulkCloseConfirmStore.getState().showBulkCloseConfirm({');
+    const execution = bulkHandler.indexOf('bulkCloseInFlightRef.current = true;');
+    const beforeConfirmation = bulkHandler.slice(0, confirmation);
+
+    expect(bulkStart).toBeGreaterThan(-1);
+    expect(bulkHandler).toContain("type: 'ALL' | 'WINNERS' | 'LOSERS'");
+    expect(bulkHandler).toContain('positions: previewPositions,');
+    expect(bulkHandler).toContain('combinedPnL: combinedProfit,');
+    expect(bulkHandler).toContain('if (!confirmed) return;');
+    expect(confirmation).toBeGreaterThan(-1);
+    expect(execution).toBeGreaterThan(confirmation);
+    expect(beforeConfirmation).not.toContain('await ');
+    expect(beforeConfirmation).not.toContain('getPositions(');
+    expect(beforeConfirmation).not.toContain('setTimeout');
+    expect(beforeConfirmation).not.toContain('requestAnimationFrame');
+  });
+
+  it('removes every claimed row immediately, then makes confirmations durable', () => {
     expect(startedStart).toBeGreaterThan(-1);
     expect(startedEnd).toBeGreaterThan(startedStart);
-    expect(candidatesStartedHandler).not.toContain('setPositions');
-    expect(candidatesStartedHandler).not.toContain('markLocalTradeMutation');
-    expect(candidatesStartedHandler).not.toContain('dispatchTradeOverlayCloseState');
-    expect(bulkHandler).not.toContain("'pending'");
+    expect(candidatesStartedHandler).toContain('markLocalTradeMutation(ticketIds);');
+    expect(candidatesStartedHandler).toContain("dispatchTradeOverlayCloseState(ticketIds, 'pending', {");
+    expect(candidatesStartedHandler).toContain('.positions.filter((position) => !ticketSet.has(position.id))');
+    expect(candidatesStartedHandler).toContain('{ removedTickets: ticketIds }');
 
     expect(bulkHandler).toContain('onTicketConfirmed: (ticketId) => {');
-    expect(bulkHandler).toContain('markLocalTradeMutation([ticketId]);');
-    expect(bulkHandler).toContain('.positions.filter((position) => position.id !== ticketId)');
+    expect(bulkHandler).toContain('{ closedTickets: [ticketId] }');
     expect(bulkHandler).toContain("dispatchTradeOverlayCloseState([ticketId], 'confirmed', {");
   });
 
-  it('leaves failed tickets open and reports them', () => {
-    expect(bulkHandler).not.toContain('clearOptimisticClosedTickets');
-    expect(bulkHandler).not.toContain("'failed'");
+  it('restores failed tickets immediately and reports them', () => {
+    expect(bulkHandler).toContain('clearOptimisticClosedTickets(failedTicketIds, closeMarkerScope);');
+    expect(bulkHandler).toContain("dispatchTradeOverlayCloseState(failedTicketIds, 'failed');");
+    expect(bulkHandler).toContain('closeCandidatesByTicket.get(ticketId)');
+    expect(bulkHandler).toContain('store.setPositions([...store.positions, ...restoredPositions]);');
     expect(bulkHandler).toContain("feedbackLabel('closed')");
     expect(bulkHandler).toContain('${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length}');
     expect(bulkHandler).toContain('${failedTicketIds.length} — ${failureMessage}');
+  });
+
+  it('keeps successful bulk closes silent and failure feedback non-modal', () => {
+    const failureStart = bulkHandler.indexOf('if (failedTicketIds.length > 0) {');
+    const failureEnd = bulkHandler.indexOf('if (closeResult.authoritativeSnapshotError)', failureStart);
+    const failureBranch = bulkHandler.slice(failureStart, failureEnd);
+
+    expect(failureStart).toBeGreaterThan(-1);
+    expect(failureEnd).toBeGreaterThan(failureStart);
+    expect(bulkHandler).not.toContain('buildPositionCloseReport(');
+    expect(bulkHandler).not.toContain('closeReportRows');
+    expect(bulkHandler).not.toContain("'success',");
+    expect(failureBranch).toContain('publishOrderFeedback(');
+    expect(failureBranch).toContain("'error',");
+    expect(failureBranch).not.toContain('closeReport');
   });
 
   it('guards duplicate submissions and stale broker-account results', () => {
@@ -75,25 +111,45 @@ describe('Close All source contract', () => {
     expect(bulkHandler).toContain('const closeSessionScope = getCommittedBrokerAccountSessionScopeKey(');
     expect(bulkHandler).toContain('getCurrentSessionKey: getCurrentCloseSessionKey,');
     expect(bulkHandler).toContain('if (getCurrentCloseSessionKey() !== closeSessionScope) return;');
-    expect(bulkHandler).toContain('if (!closeResult.sessionCurrent) return;');
+    expect(bulkHandler).toContain('if (!closeResult.sessionCurrent) {');
+    expect(bulkHandler).toContain('clearOptimisticClosedTickets(closeResult.attemptedTicketIds, closeMarkerScope);');
   });
 });
 
 describe('single position close source contract', () => {
-  it('removes the row only after the backend confirms the close', () => {
+  it('removes the row before waiting for confirmation and restores a rejection', () => {
     expect(singleStart).toBeGreaterThan(-1);
     expect(singleEnd).toBeGreaterThan(singleStart);
-    const closeRequest = singleHandler.indexOf('await api.positions.closePosition(String(id));');
+    const closeRequest = singleHandler.indexOf("await api.positions.closePosition(String(id), { account_login: closeLogin });");
     expect(closeRequest).toBeGreaterThan(-1);
-    for (const hideStep of [
+    for (const pendingStep of [
       'markLocalTradeMutation([id]);',
+      "dispatchTradeOverlayCloseState([id], 'pending'",
       'useAppStore.getState().setPositions(',
-      "dispatchTradeOverlayCloseState([id], 'confirmed'",
+      '{ removedTickets: [id] }',
     ]) {
-      expect(singleHandler.indexOf(hideStep)).toBeGreaterThan(closeRequest);
+      expect(singleHandler.indexOf(pendingStep)).toBeGreaterThan(-1);
+      expect(singleHandler.indexOf(pendingStep)).toBeLessThan(closeRequest);
     }
-    expect(singleHandler).not.toContain("'pending'");
-    expect(singleHandler).not.toContain("'failed'");
-    expect(singleHandler).not.toContain('clearOptimisticClosedTickets');
+    expect(singleHandler.indexOf("dispatchTradeOverlayCloseState([id], 'confirmed'")).toBeGreaterThan(closeRequest);
+    expect(singleHandler).toContain('clearOptimisticClosedTickets([id], closeMarkerScope);');
+    expect(singleHandler).toContain("dispatchTradeOverlayCloseState([id], 'failed');");
+    expect(singleHandler).toContain('store.setPositions([...store.positions, ...restoredPositions]);');
+  });
+
+  it('scopes close recovery and UI mutation to the initiating broker account', () => {
+    expect(singleHandler).toContain('const closeLogin = getLiveTradingLogin();');
+    expect(singleHandler).toContain('const closeSessionScope = getCommittedBrokerAccountSessionScopeKey(');
+    expect(singleHandler).toContain('const isCurrentCloseSession = () => Boolean(');
+    expect(singleHandler).toContain('{ account_login: closeLogin }');
+    expect(singleHandler).toContain('if (!isCurrentCloseSession()) {');
+  });
+
+  it('keeps successful single closes silent and reports rejections without a modal receipt', () => {
+    expect(singleHandler).not.toContain("scope: 'SINGLE'");
+    expect(singleHandler).not.toContain('publishCloseReceipt');
+    expect(singleHandler).toContain('publishSingleCloseFailure(formatOrderError(err));');
+    expect(singleHandler).toContain("[feedbackLabel('Close position')");
+    expect(singleHandler).toContain("'error',");
   });
 });
