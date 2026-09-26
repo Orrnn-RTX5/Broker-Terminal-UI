@@ -122,7 +122,7 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
     return {
       ...existing,
       pnl_available: true,
-      ...(price !== undefined ? { currentPrice: toFinite(price), current_price: toFinite(price), price_current: toFinite(price) } : {}),
+      ...(price !== undefined ? { currentPrice: toFinite(price), current_price: toFinite(price), price_current: toFinite(price), hasBackendCurrentPrice: true } : {}),
       ...(profit !== undefined ? { profit: toFinite(profit), unrealizedPnL: toFinite(profit), unrealized_pl: toFinite(profit), hasBackendProfit: true } : {}),
       ...(raw.margin !== undefined ? { margin: raw.margin } : {}),
       ...(Number.isFinite(incomingTime) ? { price_time_msc: incomingTime } : {}),
@@ -144,9 +144,8 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
   const openPrice = hasOwnValue(raw, ['price_open', 'open_price', 'openPrice', 'price'])
     ? normalized.openPrice
     : existing.openPrice;
-  const currentPrice = hasOwnValue(raw, ['price_current', 'current_price', 'currentPrice'])
-    ? normalized.currentPrice
-    : existing.currentPrice;
+  const hasCurrentPrice = hasOwnValue(raw, ['price_current', 'current_price', 'currentPrice']);
+  const currentPrice = hasCurrentPrice ? normalized.currentPrice : existing.currentPrice;
   const openTime = hasOwnValue(raw, [
     'time_create', 'time_create_ms', 'time_create_msc',
     'time_ms', 'time_msc', 'time', 'timestamp', 'timestamp_ms',
@@ -154,9 +153,8 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
   ])
     ? normalized.openTime
     : existing.openTime;
-  const unrealizedPnL = hasOwnValue(raw, ['profit', 'unrealized_pl', 'unrealizedPnL'])
-    ? normalized.unrealizedPnL
-    : existing.unrealizedPnL;
+  const hasProfit = hasOwnValue(raw, ['profit', 'unrealized_pl', 'unrealizedPnL']);
+  const unrealizedPnL = hasProfit ? normalized.unrealizedPnL : existing.unrealizedPnL;
   const sl = hasOwnField(raw, ['price_sl', 'sl', 'stopLoss', 'stop_loss']) ? normalized.sl : existing.sl;
   const tp = hasOwnField(raw, ['price_tp', 'tp', 'takeProfit', 'take_profit']) ? normalized.tp : existing.tp;
 
@@ -188,8 +186,15 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
     unrealizedPnL,
     unrealized_pl: unrealizedPnL,
     profit: unrealizedPnL,
+    // Rows admitted from an order fill have no backend price/P&L yet and are
+    // flagged unavailable. A frame that supplies them must clear those flags,
+    // or the Trade tab keeps showing dashes until a REST reload. A duplicate
+    // snapshot of an already priced version keeps its flags.
+    ...(hasCurrentPrice && !duplicatePricedSnapshot
+      ? { hasBackendCurrentPrice: raw.hasBackendCurrentPrice !== false && raw.pnl_available !== false }
+      : {}),
     hasBackendProfit: duplicatePricedSnapshot ? existing.hasBackendProfit : raw.pnl_available === false ? false
-      : hasOwnValue(raw, ['profit', 'unrealized_pl', 'unrealizedPnL']) ? normalized.hasBackendProfit : existing.hasBackendProfit,
+      : hasProfit ? normalized.hasBackendProfit : existing.hasBackendProfit,
     comment: hasOwnValue(raw, ['comment']) ? normalized.comment : existing.comment,
   };
 };

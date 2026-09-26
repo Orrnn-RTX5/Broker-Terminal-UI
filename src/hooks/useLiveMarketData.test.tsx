@@ -723,6 +723,80 @@ describe('useMarketInstruments normalization', () => {
     unmount();
   });
 
+  it('retains the complete authenticated broker row for symbol specification', async () => {
+    const brokerSpecification = {
+      symbol: 'XAUUSD',
+      trading_enabled: true,
+      volume_min: '0.01',
+      trade_mode: 'full_access',
+      execution_mode: 'market',
+      specification: {
+        calculation_mode: 'cfd_leverage',
+        stops_level: 0,
+        swap_rollover_day: 'wednesday',
+      },
+      sessions: {
+        monday: [{ from: '00:00', to: '23:00' }],
+      },
+      margin_rates: [{ order_type: 'market_buy', initial: 1, maintenance: 1 }],
+    };
+    apiGet.mockResolvedValueOnce({
+      symbols: [{ symbol: 'XAUUSD', bid: 4300, ask: 4300.2 }],
+    }).mockResolvedValueOnce({
+      symbols: [brokerSpecification],
+    });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    const retained = result.current.authorizedInstruments[0].brokerSpecification;
+    expect(retained).toEqual(brokerSpecification);
+    expect(retained).not.toBe(brokerSpecification);
+    expect(Object.isFrozen(retained)).toBe(true);
+    expect(retained?.sessions).toEqual(brokerSpecification.sessions);
+    expect(retained?.margin_rates).toEqual(brokerSpecification.margin_rates);
+
+    unmount();
+  });
+
+  it('loads a fresh exact-symbol specification with the captured account session', async () => {
+    apiGet
+      .mockResolvedValueOnce({ symbols: [{ symbol: 'XAU/USD', bid: 4300, ask: 4300.2 }] })
+      .mockResolvedValueOnce({ symbols: [{ symbol: 'XAU/USD', trading_enabled: true }] });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    apiGet.mockResolvedValueOnce({
+      symbol: 'XAU/USD',
+      specification: {
+        calc_mode: 'cfd_leverage',
+        swap_long: -12.6,
+      },
+    });
+    const controller = new AbortController();
+    let loaded: Readonly<Record<string, unknown>> | null = null;
+    await act(async () => {
+      loaded = await result.current.loadSymbolSpecification?.('xau/usd', controller.signal) ?? null;
+    });
+
+    expect(apiGet).toHaveBeenLastCalledWith(
+      '/instruments/XAU%2FUSD/specification',
+      expect.objectContaining({
+        authToken: 'instrument-test-token',
+        signal: controller.signal,
+        params: expect.objectContaining({ account_login: 'instrument-test-account' }),
+      }),
+    );
+    expect(loaded).toEqual(expect.objectContaining({
+      symbol: 'XAU/USD',
+      specification: expect.objectContaining({ swap_long: -12.6 }),
+    }));
+    expect(Object.isFrozen(loaded)).toBe(true);
+
+    unmount();
+  });
+
   it('does not invent specification values when the broker omits them', async () => {
     apiGet.mockResolvedValueOnce({
       symbols: [{

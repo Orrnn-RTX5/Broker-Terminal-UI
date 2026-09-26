@@ -240,6 +240,42 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row td {
   text-shadow: none;
 }
 
+/* History's context-menu Grid command is table-local. These scoped rules must
+   outrank the shared Trade/History skin, which otherwise removes vertical
+   borders and forces horizontal separators in both themes. */
+html .rtx-history-table[data-grid='true'] :is(thead th, tbody td) {
+  border-right: 1px solid var(--border-secondary) !important;
+  border-bottom: 1px solid var(--border-secondary) !important;
+}
+
+html.rtx-skin-untitled-light .rtx-history-table[data-grid='true'] :is(thead th, tbody td) {
+  border-right-color: var(--rtx-light-border-strong, #d1d5db) !important;
+  border-bottom-color: var(--rtx-light-border-strong, #d1d5db) !important;
+}
+
+html .rtx-history-table[data-grid='true'] :is(thead th, tbody td):last-child {
+  border-right: none !important;
+}
+
+html .rtx-history-table[data-grid='false'] tbody td {
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+}
+
+html.rtx-skin-untitled-light .rtx-history-period-dialog {
+  background: var(--rtx-light-panel, #ffffff) !important;
+  border-color: var(--rtx-light-border-strong, #d1d5db) !important;
+  color: var(--rtx-light-text, #20242c) !important;
+}
+
+html.rtx-skin-untitled-light .rtx-history-period-input {
+  background: var(--rtx-light-canvas, #f7f8fa) !important;
+  border-color: var(--rtx-light-border-strong, #d1d5db) !important;
+  color: var(--rtx-light-text, #20242c) !important;
+  color-scheme: light;
+}
+
 html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected) {
   color: var(--text-primary);
 }

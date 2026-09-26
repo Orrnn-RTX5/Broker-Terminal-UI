@@ -121,6 +121,7 @@ interface MarketDataState {
   subscribeSymbol: (symbol: string) => void;
   unsubscribeSymbol: (symbol: string) => void;
   aggregateOHLCV: (symbol: string) => void;
+  clearTickBuffer: (symbol: string) => void;
   clearSymbolData: (symbol: string) => void;
   clearAllData: () => void;
 
@@ -727,6 +728,22 @@ export const useMarketDataStore = create<MarketDataState>()(
             const newData = { ...state.symbolData };
             delete newData[symbol];
             return { symbolData: newData };
+          });
+        },
+
+        clearTickBuffer: (symbol) => {
+          set((state) => {
+            const data = state.symbolData[symbol];
+            if (!data || data.tickBuffer.length === 0) return state;
+            return {
+              symbolData: {
+                ...state.symbolData,
+                [symbol]: {
+                  ...data,
+                  tickBuffer: [],
+                },
+              },
+            };
           });
         },
 

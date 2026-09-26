@@ -28,8 +28,7 @@ describe('Toolbox provisional market-order source contract', () => {
     expect(dockSource).toContain('() => [...pendingPositions, ...sortedLivePositions]');
     expect(dockSource).toContain('const isPendingPlacement = Boolean(');
     expect(dockSource).toContain('disabled={isPendingPlacement}');
-    expect(dockSource).toContain('if (!isPendingPlacement) startEditing(pos);');
+    expect(dockSource).toContain('setModifyPosition(pos);');
     expect(dockSource).toContain('if (isPendingPlacement) return;');
   });
 });
-

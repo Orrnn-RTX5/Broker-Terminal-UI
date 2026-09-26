@@ -20,6 +20,7 @@ export type TradeOrderLatencyPhase =
   | 'status_recovery_sent'
   | 'ws_transport_error'
   | 'rest_started'
+  | 'rest_response'
   | 'rest_completed'
   | 'rest_failed'
   | 'placement_terminal';

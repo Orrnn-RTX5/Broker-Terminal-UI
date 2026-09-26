@@ -303,6 +303,7 @@ const buildApiEndpoints = () => ({
       status: `${getV2Base()}/market/status`,
       symbolStatus: (symbol: string) => `${getV2Base()}/market/status/${encodeURIComponent(symbol)}`,
       instruments: `${getV2Base()}/instruments`,
+      instrumentSpecification: (symbol: string) => `${getV2Base()}/instruments/${encodeURIComponent(symbol)}/specification`,
       quotes: `${getV2Base()}/quotes`,
       quote: (symbol: string) => `${getV2Base()}/quotes/${encodeURIComponent(symbol)}`,
       candles: (symbol: string) => `${getV2Base()}/candles/${encodeURIComponent(symbol)}`,

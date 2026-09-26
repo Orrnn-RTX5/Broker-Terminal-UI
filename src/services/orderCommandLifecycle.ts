@@ -56,6 +56,10 @@ export type PollOrderCommandOptions = {
   onPollError?: (error: unknown) => void;
   startedAtMs?: number;
   pollIntervalMs?: number;
+  /** Reconcile an already-sent uncertain order without an extra first-poll delay. */
+  pollImmediately?: boolean;
+  /** Keep a correlated terminal push authoritative while polling another transport. */
+  subscribeTerminal?: (listener: (response: unknown) => void) => (() => void);
   fallbackDeadlineMs?: number;
   now?: () => number;
   sleep?: (delayMs: number) => Promise<void>;
@@ -296,35 +300,95 @@ export const pollOrderCommandUntilTerminal = async (
   if (command.terminal) return command;
 
   let executeBeforeMs = command.executeBeforeMs ?? (startedAtMs + fallbackDeadlineMs);
+  let readImmediately = options.pollImmediately === true;
+  const push = { command: undefined as NormalizedOrderCommand | undefined, closed: false };
+  let wakeForTerminal: (() => void) | undefined;
+  const terminalSignal = options.subscribeTerminal
+    ? new Promise<void>((resolve) => { wakeForTerminal = resolve; })
+    : undefined;
+  let unsubscribeTerminal: (() => void) | undefined;
+  let sleepTimer: ReturnType<typeof setTimeout> | undefined;
+  const finishPush = (): NormalizedOrderCommand => {
+    const terminal = push.command!;
+    options.onStatus?.(terminal);
+    return terminal;
+  };
 
-  while (true) {
-    const delayMs = Math.max(0, Math.min(pollIntervalMs, executeBeforeMs - now()));
-    if (delayMs > 0) await sleep(delayMs);
+  try {
+    unsubscribeTerminal = options.subscribeTerminal?.((response) => {
+      if (push.closed || push.command) return;
+      let next: NormalizedOrderCommand;
+      try {
+        // A shared event source must provide the actual correlation id. Never
+        // fill a missing push id from this poller's expected command.
+        next = normalizeOrderCommand(response);
+      } catch {
+        return;
+      }
+      if (!next.terminal || next.clientOrderId !== clientOrderId) return;
+      push.command = next;
+      wakeForTerminal?.();
+    });
 
-    let response: unknown;
-    try {
-      response = await options.readStatus(clientOrderId);
-    } catch (error) {
-      options.onPollError?.(error);
+    while (true) {
+      if (push.command) return finishPush();
+      const delayMs = readImmediately
+        ? 0
+        : Math.max(0, Math.min(pollIntervalMs, executeBeforeMs - now()));
+      readImmediately = false;
+      if (delayMs > 0) {
+        if (terminalSignal) {
+          const delay = options.sleep
+            ? sleep(delayMs)
+            : new Promise<void>((resolve) => {
+              sleepTimer = setTimeout(() => {
+                sleepTimer = undefined;
+                resolve();
+              }, delayMs);
+            });
+          await Promise.race([delay, terminalSignal]);
+          if (push.command) return finishPush();
+        } else {
+          await sleep(delayMs);
+        }
+      }
+
+      let response: unknown;
+      try {
+        const statusRead = options.readStatus(clientOrderId);
+        // Promise.race observes both outcomes of an in-flight read even when
+        // the terminal push wins, so a later GET failure cannot go unhandled.
+        response = terminalSignal
+          ? await Promise.race([statusRead, terminalSignal])
+          : await statusRead;
+      } catch (error) {
+        if (push.command) return finishPush();
+        options.onPollError?.(error);
+        if (now() >= executeBeforeMs) {
+          const expired = createExpiredCommand(command, clientOrderId, executeBeforeMs);
+          options.onStatus?.(expired);
+          return expired;
+        }
+        continue;
+      }
+      if (push.command) return finishPush();
+
+      const next = normalizeOrderCommand(response, clientOrderId);
+      validateCorrelation(next, clientOrderId);
+      command = next;
+      if (next.executeBeforeMs !== undefined) executeBeforeMs = next.executeBeforeMs;
+      options.onStatus?.(command);
+
+      if (command.terminal) return command;
       if (now() >= executeBeforeMs) {
         const expired = createExpiredCommand(command, clientOrderId, executeBeforeMs);
         options.onStatus?.(expired);
         return expired;
       }
-      continue;
     }
-
-    const next = normalizeOrderCommand(response, clientOrderId);
-    validateCorrelation(next, clientOrderId);
-    command = next;
-    if (next.executeBeforeMs !== undefined) executeBeforeMs = next.executeBeforeMs;
-    options.onStatus?.(command);
-
-    if (command.terminal) return command;
-    if (now() >= executeBeforeMs) {
-      const expired = createExpiredCommand(command, clientOrderId, executeBeforeMs);
-      options.onStatus?.(expired);
-      return expired;
-    }
+  } finally {
+    push.closed = true;
+    if (sleepTimer !== undefined) clearTimeout(sleepTimer);
+    unsubscribeTerminal?.();
   }
 };

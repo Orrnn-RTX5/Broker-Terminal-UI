@@ -750,6 +750,99 @@ describe('trade v2 API contract calls', () => {
     expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/instruments`);
   });
 
+  it('loads the account-scoped per-symbol specification resource', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      symbol: 'XAUUSD',
+      calc_mode: 'cfd_leverage',
+      sessions: {
+        monday: {
+          quotes: [{ start: '00:00', end: '23:00' }],
+          trade: [{ start: '00:00', end: '23:00' }],
+        },
+      },
+    }));
+
+    await expect(marketV2Api.getInstrumentSpecification(' xauusd ', 123456)).resolves.toEqual(
+      expect.objectContaining({ symbol: 'XAUUSD', calc_mode: 'cfd_leverage' }),
+    );
+    expect(lastFetchCall().url).toBe(
+      `${RTX5_API_URL}/api/v2/instruments/XAUUSD/specification?account_login=123456`,
+    );
+    expect(lastFetchCall().init.cache).toBe('no-store');
+  });
+
+  it('unwraps a specification response envelope without inventing catalog defaults', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      data: {
+        symbol: 'INTC',
+        isin: 'US4581401001',
+        trade_mode: 4,
+      },
+    }));
+
+    const specification = await marketV2Api.getInstrumentSpecification('INTC', 123456);
+
+    expect(specification).toEqual({
+      symbol: 'INTC',
+      isin: 'US4581401001',
+      trade_mode: 4,
+    });
+    expect(specification).not.toHaveProperty('description');
+    expect(specification).not.toHaveProperty('enabled');
+    expect(specification).not.toHaveProperty('name');
+    expect(specification).not.toHaveProperty('id');
+  });
+
+  it('rejects a mismatched symbol from the per-symbol specification resource', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      symbol: 'EURUSD',
+      digits: 5,
+    }));
+
+    await expect(marketV2Api.getInstrumentSpecification('XAUUSD', 123456)).resolves.toBeNull();
+  });
+
+  it('falls back to the exact catalog row when the detail contract is not deployed', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ detail: 'Not Found' }, { status: 404 }))
+      .mockResolvedValueOnce(jsonResponse([
+      { symbol: 'EURUSD', digits: 5 },
+      {
+        symbol: 'XAUUSD',
+        calc_mode: 'cfd_leverage',
+        specification: {
+          exchange: 'Orrnn',
+          sessions: {
+            monday: {
+              quotes: [{ start: '00:00', end: '23:00' }],
+              trade: [{ start: '00:00', end: '23:00' }],
+            },
+          },
+        },
+      },
+      ]));
+
+    await expect(marketV2Api.getInstrumentSpecification(' xauusd ')).resolves.toEqual(
+      expect.objectContaining({
+        symbol: 'XAUUSD',
+        calc_mode: 'cfd_leverage',
+        specification: expect.objectContaining({ exchange: 'Orrnn' }),
+      }),
+    );
+    expect(lastFetchCall().url).toBe(
+      `${RTX5_API_URL}/api/v2/instruments?symbol=XAUUSD&include=specification`,
+    );
+    expect(lastFetchCall().init.cache).toBe('no-store');
+  });
+
+  it('returns null when a specification fallback omits the requested symbol', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ detail: 'Not Found' }, { status: 404 }))
+      .mockResolvedValueOnce(jsonResponse([{ symbol: 'EURUSD' }]));
+
+    await expect(marketV2Api.getInstrumentSpecification('XAUUSD')).resolves.toBeNull();
+  });
+
   it('normalizes legacy market symbols with snake_case trading flags', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       symbols: [

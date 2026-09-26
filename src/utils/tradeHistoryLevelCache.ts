@@ -137,6 +137,31 @@ const getRecordPositionId = (record: TradeLevelRecord): number | undefined => (
   ?? positiveNumber(record.id)
 );
 
+// Every value buildLookupKeys or the cached level snapshot resolves, in their
+// alias order. Quote/P&L updates can skip storage entirely when these inputs
+// are unchanged; an alias that only repeats its canonical value (a stream merge
+// adding price_sl beside sl) resolves the same and is not a change.
+const readTradeLevelInputs = (record: TradeLevelRecord): readonly unknown[] => [
+  getRecordPositionId(record),
+  record.orderTicket ?? record.order_ticket ?? record.order,
+  record.symbol,
+  record.side,
+  record.volume,
+  record.openPrice ?? record.price_open ?? record.open_price ?? record.entryPrice,
+  record.openTime ?? record.time_open ?? record.time_create ?? record.entryTime,
+  record.price_sl ?? record.sl,
+  record.price_tp ?? record.tp,
+];
+
+export const hasTradeHistoryPositionLevelChanges = (
+  previous: TradeLevelRecord | undefined,
+  next: TradeLevelRecord,
+): boolean => {
+  if (!previous) return true;
+  const previousInputs = readTradeLevelInputs(previous);
+  return readTradeLevelInputs(next).some((value, index) => value !== previousInputs[index]);
+};
+
 const buildSignatureKey = (record: TradeLevelRecord): string | null => {
   const symbol = normalizeSymbol(record.symbol);
   const side = normalizeSide(record.side);

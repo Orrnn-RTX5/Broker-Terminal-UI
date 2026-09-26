@@ -788,6 +788,27 @@ paths:
       operationId: getInstruments
       tags: [Market Data]
       summary: List all available trading instruments
+      parameters:
+        - name: symbol
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional exact symbol filter used by legacy specification clients
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [specification]
+          description: Optionally include the account-scoped specification snapshot on matching rows
+        - name: account_login
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Trading account used to resolve account-group contract terms
       responses:
         "200":
           description: Instrument list
@@ -797,6 +818,62 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Instrument"
+
+  /api/v2/instruments/{symbol}/specification:
+    get:
+      operationId: getInstrumentSpecification
+      tags: [Market Data]
+      summary: Get the current account-scoped MT5 symbol specification
+      description: >-
+        Returns broker-authoritative contract terms for the selected symbol and
+        account group. Dynamic values such as swap schedules, sessions, tick
+        values, and margin tiers are refreshed when this resource is requested.
+        Margin-per-lot values are calculated at request time. The server must
+        authorize account_login against the authenticated session, return the
+        exact requested symbol, and omit unsupported fields rather than
+        synthesizing zero/default values. Responses must not be cached.
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: account_login
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Current symbol specification snapshot
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SymbolSpecification"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Account or symbol is not authorized for this user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Symbol or specification is not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v2/quotes:
     get:
@@ -4223,6 +4300,26 @@ components:
           type: number
           format: double
           example: 100000
+        calc_mode:
+          oneOf:
+            - type: integer
+            - type: string
+          example: forex
+        tick_size:
+          type: number
+          format: double
+        tick_value:
+          type: number
+          format: double
+        margin_currency:
+          type: string
+          example: USD
+        profit_currency:
+          type: string
+          example: USD
+        currency_profit:
+          type: string
+          example: USD
         min_volume:
           type: number
           format: double
@@ -4254,6 +4351,412 @@ components:
         enabled:
           type: boolean
           example: true
+        specification:
+          $ref: "#/components/schemas/SymbolSpecification"
+
+    SymbolSpecificationSessionRange:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          oneOf:
+            - type: string
+              example: "00:00"
+            - type: integer
+              description: Seconds after midnight in broker server time
+        end:
+          oneOf:
+            - type: string
+              example: "24:00"
+            - type: integer
+              description: Seconds after midnight in broker server time
+
+    SymbolSpecificationDaySessions:
+      type: object
+      properties:
+        quotes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SymbolSpecificationSessionRange"
+        trade:
+          type: array
+          items:
+            $ref: "#/components/schemas/SymbolSpecificationSessionRange"
+
+    SymbolSpecificationMarginTier:
+      type: object
+      required: [order_type]
+      properties:
+        order_type:
+          type: string
+          example: market_buy
+        range_label:
+          type: string
+          example: 0 - 300 000
+        notional_from:
+          type: number
+          format: double
+        notional_to:
+          type: number
+          format: double
+        initial_rate:
+          type: number
+          format: double
+        initial_per_lot:
+          type: number
+          format: double
+        maintenance_rate:
+          type: number
+          format: double
+        maintenance_per_lot:
+          type: number
+          format: double
+        initial_per_lot_approximate:
+          type: boolean
+          description: Whether the displayed calculated value is indicative at the open-time market price
+        maintenance_per_lot_approximate:
+          type: boolean
+          description: Whether the displayed calculated value is indicative at the open-time market price
+        currency:
+          type: string
+          example: USD
+
+    SymbolSpecificationCommissionTier:
+      type: object
+      properties:
+        label:
+          type: string
+        range_label:
+          type: string
+          example: 0 - 10
+        volume_from:
+          type: number
+          format: double
+        volume_to:
+          type: number
+          format: double
+        turnover_from:
+          type: number
+          format: double
+        turnover_to:
+          type: number
+          format: double
+        value:
+          type: number
+          format: double
+        value_display:
+          type: string
+          example: 1.2 USD per deal
+        currency:
+          type: string
+        unit:
+          type: string
+
+    SymbolSpecificationCommissionSchedule:
+      type: object
+      required: [tiers]
+      properties:
+        title:
+          type: string
+          example: Commission
+        description:
+          type: string
+        charge_mode:
+          type: string
+          example: instant
+        basis:
+          type: string
+          example: volume
+        direction:
+          type: string
+          example: entry_exit_deals
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/SymbolSpecificationCommissionTier"
+
+    SymbolSpecificationMarginSpread:
+      type: object
+      required: [name, leg_a, leg_b]
+      properties:
+        name:
+          type: string
+        leg_a:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        leg_b:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        margin_type:
+          type: string
+          description: value, maximal, cme_inter_spread, or cme_intra_spread
+        margin_display:
+          type: string
+        initial_margin:
+          type: number
+          format: double
+        maintenance_margin:
+          type: number
+          format: double
+        currency:
+          type: string
+
+    SymbolSpecification:
+      type: object
+      required: [symbol]
+      description: >-
+        Broker-authoritative snapshot for one account group and symbol. Fields
+        not supported by that instrument are omitted, never filled with client
+        defaults.
+      properties:
+        symbol:
+          type: string
+          example: XAUUSD
+        description:
+          type: string
+        page_url:
+          type: string
+          format: uri
+          description: Broker-provided information page linked by the symbol heading
+        isin:
+          type: string
+        category:
+          type: string
+        exchange:
+          type: string
+        cfi:
+          type: string
+        sector:
+          type: string
+        industry:
+          type: string
+        country:
+          type: string
+        digits:
+          type: integer
+        contract_size:
+          type: number
+          format: double
+        contract_size_unit:
+          type: string
+          description: Optional unit suffix exactly as shown by the broker
+        contract_size_display:
+          type: string
+          description: Optional broker-formatted contract size that takes precedence over numeric formatting
+        spread:
+          type: number
+          format: double
+        spread_float:
+          type: boolean
+        trade_stops_level:
+          type: integer
+          description: Minimum stop distance in points
+        trade_freeze_level:
+          type: integer
+          description: Freeze distance in points
+        currency_base:
+          type: string
+        currency_margin:
+          type: string
+        currency_profit:
+          type: string
+        currency_deposit:
+          type: string
+          description: Account deposit currency used to resolve currency-denominated swap modes
+        calc_mode:
+          oneOf:
+            - type: integer
+            - type: string
+        tick_size:
+          type: number
+          format: double
+        tick_value:
+          type: number
+          format: double
+        tick_value_profit:
+          type: number
+          format: double
+        tick_value_loss:
+          type: number
+          format: double
+        margin_initial:
+          type: number
+          format: double
+        margin_maintenance:
+          type: number
+          format: double
+        margin_hedged:
+          type: number
+          format: double
+        margin_hedged_use_leg:
+          type: boolean
+        chart_mode:
+          oneOf:
+            - type: integer
+            - type: string
+        trade_mode:
+          oneOf:
+            - type: integer
+            - type: string
+        trade_exemode:
+          oneOf:
+            - type: integer
+            - type: string
+        order_gtc_mode:
+          oneOf:
+            - type: integer
+            - type: string
+        trade_fill_flags:
+          oneOf:
+            - type: integer
+            - type: array
+              items:
+                type: string
+        order_expiration_flags:
+          oneOf:
+            - type: integer
+            - type: array
+              items:
+                type: string
+        order_flags:
+          oneOf:
+            - type: integer
+            - type: array
+              items:
+                type: string
+        volume_min:
+          type: number
+          format: double
+        volume_max:
+          type: number
+          format: double
+        volume_step:
+          type: number
+          format: double
+        volume_limit:
+          type: number
+          format: double
+        swap_mode:
+          oneOf:
+            - type: integer
+            - type: string
+        swap_type_display:
+          type: string
+          description: Optional broker-resolved MT5 display value, such as Points or USD
+        swap_long:
+          type: number
+          format: double
+        swap_short:
+          type: number
+          format: double
+        swap_rollover3days:
+          oneOf:
+            - type: integer
+            - type: string
+        swap_rates:
+          type: object
+          additionalProperties:
+            type: number
+        sessions:
+          type: object
+          properties:
+            sunday:
+              $ref: "#/components/schemas/SymbolSpecificationDaySessions"
+            monday:
+              $ref: "#/components/schemas/SymbolSpecificationDaySessions"
+            tuesday:
+              $ref: "#/components/schemas/SymbolSpecificationDaySessions"
+            wednesday:
+              $ref: "#/components/schemas/SymbolSpecificationDaySessions"
+            thursday:
+              $ref: "#/components/schemas/SymbolSpecificationDaySessions"
+            friday:
+              $ref: "#/components/schemas/SymbolSpecificationDaySessions"
+            saturday:
+              $ref: "#/components/schemas/SymbolSpecificationDaySessions"
+        session_time_zone:
+          type: string
+          description: Broker server time zone or UTC offset used by session values
+        margin_rate_mode:
+          type: string
+          example: floating
+        margin_rate_basis:
+          type: string
+          example: notional_value_per_symbol
+        margin_rate_currency:
+          type: string
+          example: USD
+        margin_rates:
+          type: array
+          items:
+            $ref: "#/components/schemas/SymbolSpecificationMarginTier"
+        margin_rates_as_of:
+          oneOf:
+            - type: integer
+              format: int64
+            - type: string
+              format: date-time
+        subscription:
+          type: string
+          example: 15 minutes delayed
+        ticks_history:
+          type: string
+          example: None
+        liquidity_rate:
+          type: number
+          format: double
+        commission:
+          oneOf:
+            - type: number
+              format: double
+            - type: string
+        commission_schedules:
+          type: array
+          items:
+            $ref: "#/components/schemas/SymbolSpecificationCommissionSchedule"
+        margin_spreads:
+          type: array
+          items:
+            $ref: "#/components/schemas/SymbolSpecificationMarginSpread"
+        enabled:
+          type: boolean
+        start_time:
+          oneOf:
+            - type: integer
+              format: int64
+            - type: string
+              format: date-time
+        expiration_time:
+          oneOf:
+            - type: integer
+              format: int64
+            - type: string
+              format: date-time
+        face_value:
+          type: number
+          format: double
+        accrued_interest:
+          type: number
+          format: double
+        option_mode:
+          oneOf:
+            - type: integer
+            - type: string
+        option_right:
+          oneOf:
+            - type: integer
+            - type: string
+        underlying:
+          type: string
+        option_strike:
+          type: number
+          format: double
 
     InstrumentCreate:
       type: object

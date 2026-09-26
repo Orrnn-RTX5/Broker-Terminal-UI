@@ -23,6 +23,7 @@ import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
 import { BUILTIN_WORKSPACE_PROFILE_NAMES, restoreBuiltinWorkspaceProfile } from '../../services/localWorkspaceProfiles';
+import { getAppVersion } from '../../config/appVersion';
 
 const OptionsDialog = lazy(() => import('../settings/OptionsDialog').then(module => ({ default: module.OptionsDialog })));
 const SymbolsDialog = lazy(() => import('../SymbolsDialog').then(module => ({ default: module.SymbolsDialog })));
@@ -674,7 +675,7 @@ export const MenuBar = ({
             },
             ...menuItems.View.slice(-2),
             { divider: true, label: '' },
-            { label: `Version ${window.electron?.appVersion || '1.0.0'}`, icon: <Icon name="info" size="sm" />, disabled: true },
+            { label: `Version ${getAppVersion()}`, icon: <Icon name="info" size="sm" />, disabled: true },
             {
                 label: desktopUpdater.updateLabel,
                 icon: <Icon name="download" size="sm" />,

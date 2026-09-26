@@ -133,6 +133,26 @@ describe('useToolboxTradeData display lifecycle', () => {
     unmount();
   });
 
+  it('keeps a closing row until the backend confirms the close (MT5 behaviour)', () => {
+    mocks.storeState.positions = [rawPosition];
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
+    const dispatchCloseState = (status: 'confirmed' | 'failed') => act(() => {
+      window.dispatchEvent(new CustomEvent('rtx:trade-overlay-close-state', {
+        detail: { status, ticketIds: ['17'] },
+      }));
+    });
+
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    expect(result.current.positions.map((position) => position.id)).toEqual([17]);
+
+    dispatchCloseState('failed');
+    expect(result.current.positions.map((position) => position.id)).toEqual([17]);
+
+    dispatchCloseState('confirmed');
+    expect(result.current.positions).toEqual([]);
+    unmount();
+  });
+
   it('does not start a duplicate REST snapshot or raw WebSocket', () => {
     const fetchSpy = vi.fn();
     const webSocketSpy = vi.fn();

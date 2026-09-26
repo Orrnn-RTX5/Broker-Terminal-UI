@@ -276,26 +276,28 @@ export function LastSymbolPanel() {
 
         setIsClosing(true);
         try {
-            let closed = 0;
+            // Only positions the backend confirmed closed leave the list; a
+            // rejected close keeps its row open.
+            const closedIds = new Set<number>();
             for (const pos of lastSymbolPositions) {
                 try {
                     await api.positions.closePosition(String(pos.id));
-                    closed++;
+                    closedIds.add(pos.id);
                 } catch (e) {
                     console.error('Failed to close position', pos.id, e);
                 }
             }
             useAppStore.getState().setPositions(useAppStore.getState().positions.filter(
-                (position) => normalizeExactBrokerSymbol(position.symbol) !== exactLastSymbol,
+                (position) => !closedIds.has(position.id),
             ));
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-            flash(`${tr('closed')}: ${closed} · ${lastSymbol} ✓`, 'success');
+            flash(`${tr('closed')}: ${closedIds.size} · ${lastSymbol} ✓`, 'success');
         } catch (err: unknown) {
             flash(err instanceof Error ? err.message : `${tr('Close positions')}: ${tr('Failed')}`, 'error');
         } finally {
             setIsClosing(false);
         }
-    }, [isClosing, lastSymbol, exactLastSymbol, lastSymbolPositions, flash, tr]);
+    }, [isClosing, lastSymbol, lastSymbolPositions, flash, tr]);
 
     // Keyboard shortcuts
     useEffect(() => {

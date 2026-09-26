@@ -66,6 +66,9 @@ export type GatewayPosition = {
   time_ms?: number;
   time?: number;
   comment?: string;
+  magic?: number;
+  contract_size?: number;
+  contractSize?: number;
   state_version?: string | number;
   price_time_msc?: number;
   pnl_available?: boolean;
@@ -92,7 +95,10 @@ export type GatewayDeal = {
   swap?: number;
   commission?: number;
   fee?: number;
+  magic?: number;
   comment?: string;
+  contract_size?: number;
+  contractSize?: number;
   time?: number;
   time_ms?: number;
 };
@@ -123,6 +129,19 @@ export type GatewayOrder = {
   time_setup?: number;
   time_done?: number;
   magic?: number;
+  contract_size?: number;
+  contractSize?: number;
+};
+
+export type TradeHistoryDataSet = {
+  positions: Trade[];
+  deals: Trade[];
+  orders: Trade[];
+  errors: {
+    positions: string | null;
+    deals: string | null;
+    orders: string | null;
+  };
 };
 
 export type TradeGatewaySnapshot = {
@@ -170,6 +189,12 @@ const toIsoFromSeconds = (value?: number | string | null): string => {
 const finiteNumberOrUndefined = (value: unknown): number | undefined => {
   const next = Number(value);
   return Number.isFinite(next) && next > 0 ? next : undefined;
+};
+
+const finiteValueOrUndefined = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const next = Number(value);
+  return Number.isFinite(next) ? next : undefined;
 };
 
 const historyTime = (trade: Trade): number => {
@@ -241,15 +266,33 @@ const asStandaloneClosedDeal = (deal: Trade): Trade => ({
 
 const buildClosedDealHistoryTrade = (groupDeals: Trade[], id: number): Trade | null => {
   const sorted = sortDealsChronologically(groupDeals);
-  const openingDeal = sorted.find(isEntryInDeal) ?? sorted.find(isEntryInOutDeal);
+  const openingDeals = sorted.filter(isEntryInDeal);
+  const openingDeal = openingDeals[0] ?? sorted.find(isEntryInOutDeal);
   const closingDeals = sorted.filter((deal) => isEntryOutDeal(deal) || isEntryInOutDeal(deal));
   const closingDeal = closingDeals.at(-1);
   if (!openingDeal || !closingDeal) return null;
 
+  const weightedPrice = (deals: Trade[], field: 'openPrice' | 'closePrice'): number | undefined => {
+    let weightedTotal = 0;
+    let totalVolume = 0;
+    for (const deal of deals) {
+      const volume = Number(deal.volume);
+      const price = Number(deal[field] ?? deal.openPrice);
+      if (!Number.isFinite(volume) || volume <= 0 || !Number.isFinite(price) || price <= 0) continue;
+      weightedTotal += price * volume;
+      totalVolume += volume;
+    }
+    return totalVolume > 0 ? weightedTotal / totalVolume : undefined;
+  };
+
   const profit = sorted.reduce((sum, deal) => sum + Number(deal.profit ?? 0), 0);
   const commission = sorted.reduce((sum, deal) => sum + Number(deal.commission ?? 0), 0);
   const swap = sorted.reduce((sum, deal) => sum + Number(deal.swap ?? 0), 0);
+  const fee = sorted.reduce((sum, deal) => sum + Number(deal.fee ?? 0), 0);
   const closedVolume = closingDeals.reduce((sum, deal) => sum + Number(deal.volume ?? 0), 0);
+  const comment = [...sorted].reverse().find((deal) => String(deal.comment ?? '').trim())?.comment;
+  const magicNumber = openingDeal.magicNumber ?? closingDeal.magicNumber;
+  const contractSize = openingDeal.contractSize ?? closingDeal.contractSize;
 
   return {
     ...openingDeal,
@@ -258,13 +301,17 @@ const buildClosedDealHistoryTrade = (groupDeals: Trade[], id: number): Trade | n
     status: 'closed',
     side: openingDeal.side || closingDeal.side || '',
     volume: closedVolume || openingDeal.volume || closingDeal.volume || 0,
-    openPrice: openingDeal.openPrice,
-    closePrice: closingDeal.closePrice ?? closingDeal.openPrice,
+    openPrice: weightedPrice(openingDeals.length > 0 ? openingDeals : [openingDeal], 'openPrice') ?? openingDeal.openPrice,
+    closePrice: weightedPrice(closingDeals, 'closePrice') ?? closingDeal.closePrice ?? closingDeal.openPrice,
     openTime: openingDeal.openTime,
     closeTime: closingDeal.closeTime || closingDeal.openTime,
     profit,
     commission,
     swap,
+    ...(fee !== 0 ? { fee } : {}),
+    ...(comment ? { comment } : {}),
+    ...(magicNumber === undefined ? {} : { magicNumber }),
+    ...(contractSize === undefined ? {} : { contractSize }),
     historySource: 'deal',
   };
 };
@@ -441,6 +488,10 @@ export const normalizeDeal = (raw: GatewayDeal, index = 0): Trade => {
   const time = raw.time_ms ?? raw.time;
   const dealTicket = finiteNumberOrUndefined(raw.ticket ?? raw.deal ?? index);
   const positionId = finiteNumberOrUndefined(raw.position_ticket ?? raw.position_id ?? raw.position);
+  const fee = finiteValueOrUndefined(raw.fee);
+  const magicNumber = finiteValueOrUndefined(raw.magic);
+  const contractSize = finiteNumberOrUndefined(raw.contract_size ?? raw.contractSize);
+  const comment = String(raw.comment ?? '').trim();
   return {
     id: dealTicket ?? positionId ?? index,
     symbol: raw.symbol ?? '',
@@ -458,12 +509,19 @@ export const normalizeDeal = (raw: GatewayDeal, index = 0): Trade => {
     orderTicket: finiteNumberOrUndefined(raw.order_ticket ?? raw.order),
     dealTicket,
     entry: entry || undefined,
+    ...(fee === undefined ? {} : { fee }),
+    ...(magicNumber === undefined ? {} : { magicNumber }),
+    ...(comment ? { comment } : {}),
+    ...(contractSize === undefined ? {} : { contractSize }),
     historySource: 'deal',
   };
 };
 
 export const normalizeClosedPosition = (raw: GatewayClosedPosition, index = 0): Trade => {
   const side = String(raw.side ?? raw.action ?? '').toLowerCase();
+  const magicNumber = finiteValueOrUndefined(raw.magic);
+  const contractSize = finiteNumberOrUndefined(raw.contract_size ?? raw.contractSize);
+  const comment = String(raw.comment ?? '').trim();
   return {
     id: Number(raw.ticket ?? raw.position_id ?? index),
     symbol: raw.symbol ?? '',
@@ -480,6 +538,9 @@ export const normalizeClosedPosition = (raw: GatewayClosedPosition, index = 0): 
     sl: Number(raw.price_sl ?? raw.sl ?? 0),
     tp: Number(raw.price_tp ?? raw.tp ?? 0),
     status: 'closed',
+    ...(magicNumber === undefined ? {} : { magicNumber }),
+    ...(comment ? { comment } : {}),
+    ...(contractSize === undefined ? {} : { contractSize }),
     historySource: 'closed-position',
   };
 };
@@ -488,10 +549,15 @@ export const normalizeOrder = (raw: GatewayOrder, index = 0): Trade => {
   const side = String(raw.side ?? raw.type ?? '').toLowerCase();
   const setupTime = raw.time_setup ?? raw.time_create;
   const doneTime = raw.time_done ?? setupTime;
+  const ticket = Number(raw.ticket ?? index);
+  const orderType = String(raw.type ?? '').trim();
+  const magicNumber = finiteValueOrUndefined(raw.magic);
+  const contractSize = finiteNumberOrUndefined(raw.contract_size ?? raw.contractSize);
+  const comment = String(raw.comment ?? '').trim();
   return {
-    id: Number(raw.ticket ?? index),
+    id: ticket,
     symbol: raw.symbol ?? '',
-    type: raw.status ?? raw.type ?? 'order',
+    type: orderType || raw.status || 'order',
     side: side.includes('sell') ? 'SELL' : side.includes('buy') ? 'BUY' : side.toUpperCase(),
     volume: Number(raw.volume ?? 0),
     openPrice: Number(raw.price_open ?? raw.open_price ?? raw.price ?? 0),
@@ -504,9 +570,46 @@ export const normalizeOrder = (raw: GatewayOrder, index = 0): Trade => {
     sl: Number(raw.price_sl ?? 0),
     tp: Number(raw.price_tp ?? 0),
     status: raw.status,
+    orderTicket: ticket,
+    ...(orderType ? { orderType } : {}),
+    ...(magicNumber === undefined ? {} : { magicNumber }),
+    ...(comment ? { comment } : {}),
+    ...(contractSize === undefined ? {} : { contractSize }),
     historySource: 'order',
   };
 };
+
+const sortHistoryRows = (rows: Trade[]): Trade[] => (
+  [...rows]
+    .sort((a, b) => historyTime(b) - historyTime(a))
+    .slice(0, 500)
+);
+
+export const buildClosedPositionHistory = (
+  closedPositions: Trade[],
+  deals: Trade[],
+  login: number,
+): Trade[] => {
+  const dealHistory = collapseDealHistory(deals).filter(isClosedHistoryTrade);
+  const closedPositionHistory = closedPositions.filter(isClosedHistoryTrade);
+  // Deals remain the frontend source of truth while the broker's closed-
+  // position endpoint is being repaired. If both sources become populated,
+  // merging them duplicates every closed trade under unrelated identifiers.
+  const merged = dealHistory.length > 0 ? dealHistory : closedPositionHistory;
+  const seen = new Set<string>();
+  const history = merged
+    .filter((trade) => {
+      const key = historyPositionKey(trade) ?? `${trade.type}:${trade.id}:${trade.openTime}:${trade.closeTime ?? ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  return enrichTradesWithCachedLevels(sortHistoryRows(history), login);
+};
+
+const historyRequestError = (error: unknown): string => (
+  error instanceof Error ? error.message : 'History request failed'
+);
 
 const ARRAY_WRAPPER_KEYS = ['data', 'items', 'results'] as const;
 
@@ -596,23 +699,44 @@ export const tradeGatewayApi = {
       this.getClosedPositions(login).catch(() => []),
       this.getDeals(login),
     ]);
-    const dealHistory = collapseDealHistory(deals);
-    // Deals remain the frontend source of truth while the broker's closed-
-    // position endpoint is being repaired. If both sources become populated,
-    // merging them duplicates every closed trade under unrelated identifiers.
-    const merged = (dealHistory.length > 0 ? dealHistory : closedPositions)
-      .filter(isClosedHistoryTrade);
-    const seen = new Set<string>();
-    const history = merged
-      .filter((trade) => {
-        const key = historyPositionKey(trade) ?? `${trade.type}:${trade.id}:${trade.openTime}:${trade.closeTime ?? ''}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => historyTime(b) - historyTime(a))
-      .slice(0, 500);
-    return enrichTradesWithCachedLevels(history, login);
+    return buildClosedPositionHistory(closedPositions, deals, login);
+  },
+
+  async getHistoryDataSet(login: number): Promise<TradeHistoryDataSet> {
+    const [closedResult, dealsResult, ordersResult] = await Promise.allSettled([
+      this.getClosedPositions(login),
+      this.getDeals(login),
+      this.getOrders(login),
+    ]);
+
+    const closedPositions = closedResult.status === 'fulfilled' ? closedResult.value : [];
+    const deals = dealsResult.status === 'fulfilled' ? sortHistoryRows(dealsResult.value) : [];
+    const orders = ordersResult.status === 'fulfilled' ? sortHistoryRows(ordersResult.value) : [];
+    const dealPositions = dealsResult.status === 'fulfilled'
+      ? buildClosedPositionHistory([], dealsResult.value, login)
+      : [];
+    const positions = dealPositions.length > 0
+      ? dealPositions
+      : closedResult.status === 'fulfilled'
+        ? buildClosedPositionHistory(closedPositions, [], login)
+        : [];
+
+    return {
+      positions,
+      deals,
+      orders,
+      errors: {
+        positions: dealsResult.status === 'rejected'
+          ? closedResult.status === 'fulfilled' && closedPositions.length > 0
+            ? `${historyRequestError(dealsResult.reason)}; showing closed-position fallback`
+            : historyRequestError(dealsResult.reason)
+          : dealPositions.length === 0 && closedResult.status === 'rejected'
+            ? historyRequestError(closedResult.reason)
+          : null,
+        deals: dealsResult.status === 'rejected' ? historyRequestError(dealsResult.reason) : null,
+        orders: ordersResult.status === 'rejected' ? historyRequestError(ordersResult.reason) : null,
+      },
+    };
   },
 
   async getBalanceHistory(login: number, limit = 10) {

@@ -76,6 +76,28 @@ describe('account position stream reconciliation', () => {
     expect(result.positions[1]).toBe(current[1]);
   });
 
+  it('makes price and profit available once a live frame supplies them for a freshly filled row', () => {
+    // An order fill carries no current price/profit, so the row is admitted
+    // with both flagged unavailable (the Trade tab renders dashes).
+    const filled = {
+      ...normalizePosition({ ticket: 1276529, symbol: 'BTCUSD', side: 'sell', volume: 0.01, price_open: 84130.7 }),
+      hasBackendCurrentPrice: false,
+      hasBackendProfit: false,
+    };
+    const batch = readPositionStreamBatch({ channel: 'positions.200003', data: { type: 'pnl_update', symbol: 'BTCUSD', positions: [{ ticket: 1276529, price_current: 84150.2, profit: -0.2 }] } })!;
+    const [live] = reconcilePositionStreamBatch([filled], batch).positions;
+    expect(live).toMatchObject({
+      price_current: 84150.2, profit: -0.2, hasBackendCurrentPrice: true, hasBackendProfit: true,
+    });
+
+    // Frames without price/P&L (for example an SL edit) leave the flags alone,
+    // and an explicit backend "unavailable" still wins.
+    const slOnly = reconcilePositionStreamBatch([filled], { mode: 'delta', positions: [{ ticket: 1276529, price_sl: 84500 }] }).positions[0];
+    expect(slOnly).toMatchObject({ hasBackendCurrentPrice: false, hasBackendProfit: false });
+    const unavailable = reconcilePositionStreamBatch([live], { mode: 'delta', positions: [{ ticket: 1276529, price_current: 84160, profit: -0.3, pnl_available: false }] }).positions[0];
+    expect(unavailable).toMatchObject({ hasBackendCurrentPrice: false, hasBackendProfit: false });
+  });
+
   it('adds complete new trades and revalidates unknown sparse tickets without blank rows', () => {
     const result = reconcilePositionStreamBatch(initial(), {
       mode: 'delta', positions: [{ ...gold, ticket: 20167 }, { ticket: 20168, profit: 12 }],

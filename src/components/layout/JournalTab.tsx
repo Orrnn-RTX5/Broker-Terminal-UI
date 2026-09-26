@@ -726,11 +726,21 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
     const scopeFetchError = !isFilterSettling && errorRequestKey === requestKey
         ? fetchError
         : null;
+    // Scope again during render so an account switch cannot briefly expose the
+    // previous account's retained samples before the synchronization effect runs.
+    const scopedTerminalTradeSamples = useMemo(
+        () => getScopedPlacementTerminalSamples(terminalTradeSamples, sessionScope),
+        [terminalTradeSamples, sessionScope],
+    );
+    const hasLocalJournalData = scopedTerminalTradeSamples.length > 0;
+    const canRenderJournalContent = scopeHasLoaded || hasLocalJournalData;
+    const canUseFilteredLogs = ownsCurrentRequest
+        || (!scopeHasLoaded && hasLocalJournalData && !isFilterSettling);
 
     // Client-side filtering
     const filteredLogs = useMemo(() => {
         const scopedServerLogs = loadedSessionScope === sessionScope ? serverLogs : [];
-        const scopedLogs = mergeTerminalTradeJournalLogs(scopedServerLogs, terminalTradeSamples);
+        const scopedLogs = mergeTerminalTradeJournalLogs(scopedServerLogs, scopedTerminalTradeSamples);
         if (scopedLogs.length === 0) return scopedLogs;
 
         let filtered = scopedLogs;
@@ -759,7 +769,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
         }
 
         return filtered;
-    }, [loadedRequestKey, requestKey, loadedSessionScope, sessionScope, serverLogs, terminalTradeSamples, deferredTimeRange, deferredLogType, deferredLogMode, deferredSearch]);
+    }, [loadedRequestKey, requestKey, loadedSessionScope, sessionScope, serverLogs, scopedTerminalTradeSamples, deferredTimeRange, deferredLogType, deferredLogMode, deferredSearch]);
 
     useEffect(() => () => {
         copySequenceRef.current += 1;
@@ -863,7 +873,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                 <button
                     type="button"
                     onClick={() => { void copyFilteredJournal(); }}
-                    disabled={!ownsCurrentRequest || filteredLogs.length === 0}
+                    disabled={!canUseFilteredLogs || filteredLogs.length === 0}
                     aria-label={tr("Copy filtered journal")}
                     title={tr("Copy {{value0}} filtered journal {{value1}}", { value0: filteredLogs.length, value1: filteredLogs.length === 1 ? tr('entry') : tr('entries') })}
                     className={`rtx-journal-control rtx-journal-primary-action flex h-[22px] min-w-[72px] shrink-0 items-center justify-center gap-1.5 border px-2 py-0 text-[12px] font-normal transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${copyStatus === 'copied'
@@ -956,13 +966,20 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                 </div>
             )}
 
-            {isAuthenticated && !scopeHasLoaded && (isLoading || !scopeFetchError) && (
+            {isAuthenticated && !scopeHasLoaded && !hasLocalJournalData && (isLoading || !scopeFetchError) && (
                 <div role="status" className="flex flex-1 items-center justify-center gap-2 text-xs text-zinc-500">
                     <Icon name="refresh" size="sm" className="animate-spin" />
                     {tr("Loading server journal…")}</div>
             )}
 
-            {isAuthenticated && !scopeHasLoaded && !isLoading && scopeFetchError && (
+            {isAuthenticated && !scopeHasLoaded && hasLocalJournalData && (isLoading || !scopeFetchError) && (
+                <div role="status" className="flex shrink-0 items-center gap-2 border-b border-zinc-700 bg-zinc-900/70 px-3 py-1 text-[12px] font-normal text-zinc-400">
+                    <Icon name="refresh" size="sm" className="animate-spin" />
+                    <span>{tr("Loading server journal. Showing local trade diagnostics.")}</span>
+                </div>
+            )}
+
+            {isAuthenticated && !scopeHasLoaded && !hasLocalJournalData && !isLoading && scopeFetchError && (
                 <div role="alert" className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
                     <span className="text-xs text-red-400">{tr("Unable to load the server journal")}</span>
                     <span className="max-w-xl text-[12px] font-normal text-zinc-500">{tr(scopeFetchError)}</span>
@@ -971,13 +988,21 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                 </div>
             )}
 
-            {isAuthenticated && scopeHasLoaded && filteredLogs.length === 0 && (
+            {isAuthenticated && !scopeHasLoaded && hasLocalJournalData && !isLoading && scopeFetchError && (
+                <div role="alert" className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-[12px] font-normal text-amber-300">
+                    <span>{tr("Unable to load the server journal. Showing local trade diagnostics.")}</span>
+                    <button type="button" onClick={refreshJournal} className="underline underline-offset-2 hover:text-amber-100">
+                        {tr("Retry")}</button>
+                </div>
+            )}
+
+            {isAuthenticated && canRenderJournalContent && filteredLogs.length === 0 && (
                 <div className="flex-1 flex items-center justify-center text-zinc-600 text-xs italic">
                     {tr("No journal entries for the selected filters")}</div>
             )}
 
             {/* ── Log table ────────────────────────────────────────────────── */}
-            {isAuthenticated && scopeHasLoaded && filteredLogs.length > 0 && (
+            {isAuthenticated && canRenderJournalContent && filteredLogs.length > 0 && (
                 <JournalLogTable
                     logs={filteredLogs}
                     autoScroll={autoScroll}

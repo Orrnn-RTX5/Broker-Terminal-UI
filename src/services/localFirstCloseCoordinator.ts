@@ -15,6 +15,8 @@ export type LocalFirstCloseOptions<TCandidate extends LocalFirstCloseCandidate> 
   closePosition: (ticketId: number) => Promise<unknown>;
   tryClaimTicket?: (ticketId: number) => boolean;
   onCandidatesStarted?: (candidates: readonly TCandidate[]) => void;
+  /** Fires as soon as the backend confirms one ticket's close, before the batch settles. */
+  onTicketConfirmed?: (ticketId: number) => void;
 };
 
 export type LocalFirstCloseResult = ClosePositionsConcurrentlyResult & {
@@ -47,12 +49,23 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
     getCurrentSessionKey,
     localCandidates,
     loadAuthoritativeCandidates,
-    closePosition,
     tryClaimTicket,
     onCandidatesStarted,
+    onTicketConfirmed,
   } = options;
 
   const isSessionCurrent = () => getCurrentSessionKey() === sessionKey;
+  const closePosition = async (ticketId: number) => {
+    const result = await options.closePosition(ticketId);
+    // The close is already confirmed by the backend; a UI callback failure
+    // must not report this ticket as failed.
+    try {
+      onTicketConfirmed?.(ticketId);
+    } catch (error) {
+      console.error(`[Close] Confirmed-close handler failed for ticket ${ticketId}:`, error);
+    }
+    return result;
+  };
   if (!isSessionCurrent()) {
     return {
       ...EMPTY_CLOSE_RESULT,

@@ -5,7 +5,7 @@ import {
   type ApiRequestContext,
   type ApiRequestOptions,
 } from '../api/client';
-import { watchlistV2Api } from '../api/trade';
+import { marketV2Api, watchlistV2Api } from '../api/trade';
 import { API_V2_BASE_URL, MARKET_WS_URL, toLocalDevProxyUrl } from '../config/api';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { enqueueLiveTick } from '../services/liveTickDispatcher';
@@ -34,9 +34,17 @@ import {
 } from '../services/accountSpreadMarkup';
 import { useQuoteSubscription } from './useQuoteSubscription';
 import type { WatchlistItem } from '../types/api';
+import { recordBrokerServerTime } from '../services/brokerServerClock';
 
 export interface MarketInstrument {
   symbol: string;
+  /**
+   * Immutable top-level snapshot of the broker row used to build this
+   * instrument. Keep it alongside normalized trading fields so feature
+   * surfaces such as Specification can consume broker-specific metadata
+   * without weakening the normalized execution contract.
+   */
+  brokerSpecification?: Readonly<Record<string, unknown>>;
   description?: string;
   category?: string;
   digits?: number;
@@ -75,6 +83,11 @@ export interface MarketInstrumentsSnapshot {
   loading: boolean;
   error: string | null;
   reload: () => Promise<void>;
+  /** Fetches a fresh, account-scoped broker snapshot when Specification opens. */
+  loadSymbolSpecification?: (
+    symbol: string,
+    signal?: AbortSignal,
+  ) => Promise<Readonly<Record<string, unknown>> | null>;
 }
 
 interface ScopedValue<T> {
@@ -253,12 +266,22 @@ const readOptionalInstrumentString = (raw: any, keys: readonly string[]): string
   return undefined;
 };
 
+const snapshotBrokerSpecification = (raw: unknown): Readonly<Record<string, unknown>> | undefined => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+
+  // API responses are JSON records. Copy and freeze the top-level row so later
+  // adapter work cannot mutate the catalog object retained for Specification.
+  // Nested broker sections remain intact for alias-aware readers.
+  return Object.freeze({ ...(raw as Record<string, unknown>) });
+};
+
 const normalizeInstrument = (raw: any): MarketInstrument | null => {
   const symbol = normalizeSymbol(raw?.symbol ?? raw?.name ?? raw?.id ?? raw);
   if (!symbol) return null;
 
   return {
     symbol,
+    brokerSpecification: snapshotBrokerSpecification(raw),
     description: raw?.description ?? raw?.display_name ?? raw?.name,
     category: raw?.category ?? raw?.asset_class ?? raw?.type,
     digits: readOptionalInstrumentNumber(raw, ['digits']),
@@ -890,12 +913,14 @@ export function useActiveMarketSymbols() {
     setError(null);
 
     try {
+      const requestStartedAt = Date.now();
       const response = await apiClient.get<any>('/ws/feed/status', {
         baseUrl: apiRootBaseUrl,
         skipAuth: true,
         skipDynamicUrl: true,
         signal: controller.signal,
       });
+      recordBrokerServerTime(response?.server_time, requestStartedAt);
       if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
       const nextSymbols = extractActiveMarketSymbols(response);
 
@@ -1223,6 +1248,20 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
     }
   }, [catalogScope, enabled, isAuthenticated, publicApiRootBaseUrl, requestSession]);
 
+  const loadSymbolSpecification = useCallback(async (
+    symbol: string,
+    signal?: AbortSignal,
+  ): Promise<Readonly<Record<string, unknown>> | null> => {
+    const normalized = normalizeSymbol(symbol);
+    if (!enabled || !normalized || !requestSession) return null;
+    const instrument = await marketV2Api.getInstrumentSpecification(
+      normalized,
+      requestSession.accountId,
+      getCapturedRequestOptions(requestSession, requestSession.v2BaseUrl, signal),
+    );
+    return snapshotBrokerSpecification(instrument);
+  }, [enabled, requestSession]);
+
   useEffect(() => {
     if (!enabled) return;
     void reload();
@@ -1255,6 +1294,7 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
     loading: !enabled || loading || (effectiveAccountCatalogStatus === 'loading' && visibleSymbols.length === 0),
     error,
     reload,
+    loadSymbolSpecification,
   };
 }
 

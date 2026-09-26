@@ -12,13 +12,18 @@ const DEFAULT_DISPLAY_SYMBOLS = [...CORE_DEFAULT_SYMBOLS];
 
 interface MockMarketInstrument {
   symbol: string;
+  brokerSpecification?: Readonly<Record<string, unknown>>;
   name?: string;
   description?: string;
   category?: string;
   digits?: number;
   bid?: number;
   ask?: number;
+  spread?: number;
+  time?: string;
+  has_quote?: boolean;
   contract_size?: number;
+  contractSize?: number;
   trading_enabled?: boolean;
 }
 
@@ -55,6 +60,7 @@ const marketHooks = vi.hoisted(() => ({
   instrumentSymbols: ['BTCUSD', 'XAUUSD', 'GBPUSD', 'SOLUSD', 'EURUSD', 'ETHUSD', '0001.HK'] as Array<
     string | MockMarketInstrument
   >,
+  authorizedInstruments: [] as MockMarketInstrument[],
   authorizedSymbols: ['BTCUSD', 'XAUUSD', 'GBPUSD', 'SOLUSD', 'EURUSD', 'ETHUSD', '0001.HK'] as string[],
   disabledSymbols: [] as string[],
   activeSymbolsLoading: false,
@@ -65,6 +71,7 @@ const marketHooks = vi.hoisted(() => ({
   symbolsError: null as string | null,
   watchlistError: null as string | null,
   reloadActiveSymbols: vi.fn().mockResolvedValue(undefined),
+  loadSymbolSpecification: vi.fn().mockResolvedValue(null),
   useActiveMarketSymbols: vi.fn(),
   useLiveQuotes: vi.fn((symbols: string[]) => {
     void symbols;
@@ -82,12 +89,14 @@ vi.mock('../../hooks/useLiveMarketData', () => ({
     symbols: marketHooks.instrumentSymbols.map((instrument) => (
       typeof instrument === 'string' ? { symbol: instrument } : { ...instrument }
     )),
+    authorizedInstruments: marketHooks.authorizedInstruments.map((instrument) => ({ ...instrument })),
     authorizedSymbols: marketHooks.authorizedSymbols,
     disabledSymbols: marketHooks.disabledSymbols,
     loading: marketHooks.instrumentsLoading,
     accountCatalogStatus: marketHooks.accountCatalogStatus,
     error: marketHooks.symbolsError,
     reload: vi.fn(),
+    loadSymbolSpecification: marketHooks.loadSymbolSpecification,
   }),
   useRemoteWatchlistSync: () => ({
     loading: false,
@@ -143,17 +152,25 @@ describe('MarketWatchPanel symbol visibility', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.removeItem('rtx5_hidden_symbols');
+    localStorage.removeItem('rtx5_marketwatch_cols');
+    localStorage.removeItem('rtx5_marketwatch_options');
+    localStorage.removeItem('rtx5_symbol_sets');
+    localStorage.removeItem('rtx5_symbol_set_columns');
     marketHooks.activeSymbols = [...DEFAULT_SYMBOLS, 'ETHUSD', '0001.HK'];
     marketHooks.instrumentSymbols = [...DEFAULT_SYMBOLS];
+    marketHooks.authorizedInstruments = [];
     marketHooks.authorizedSymbols = [...DEFAULT_SYMBOLS];
     marketHooks.disabledSymbols = [];
     marketHooks.activeSymbolsLoading = false;
     marketHooks.activeSymbolsSettled = true;
     marketHooks.activeSymbolsCurrent = true;
     marketHooks.instrumentsLoading = false;
+    marketHooks.accountCatalogStatus = undefined;
     marketHooks.symbolsError = null;
     marketHooks.watchlistError = null;
     marketHooks.reloadActiveSymbols.mockClear();
+    marketHooks.loadSymbolSpecification.mockReset();
+    marketHooks.loadSymbolSpecification.mockResolvedValue(null);
     marketHooks.useActiveMarketSymbols.mockReset();
     marketHooks.useActiveMarketSymbols.mockImplementation(getActiveMarketSnapshot);
     watchlistState.watchlists = [];
@@ -202,6 +219,10 @@ describe('MarketWatchPanel symbol visibility', () => {
     });
     vi.unstubAllGlobals();
     localStorage.removeItem('rtx5_hidden_symbols');
+    localStorage.removeItem('rtx5_marketwatch_cols');
+    localStorage.removeItem('rtx5_marketwatch_options');
+    localStorage.removeItem('rtx5_symbol_sets');
+    localStorage.removeItem('rtx5_symbol_set_columns');
     vi.useRealTimers();
   });
 
@@ -337,7 +358,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     }
   });
 
-  it.each([379, 180])('aligns the numeric last close beneath Bid at width %i without fabricating an Ask', (panelWidth) => {
+  it.each([379, 180])('keeps configured columns and aligns the numeric last close beneath Bid at width %i', (panelWidth) => {
     const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(panelWidth);
     marketHooks.activeSymbols = [];
     lastMarketWatchQuotesHook.values.set('XAUUSD', {
@@ -360,19 +381,13 @@ describe('MarketWatchPanel symbol visibility', () => {
       expect(closeCell).toHaveAttribute('title', 'Last close · Fri, 18 Sep 2026 21:59:00 UTC');
       expect(closeCell).toHaveTextContent('4385.20');
       expect(row.querySelector('.rtx-market-watch__price--bid')).toBeNull();
-      if (panelWidth >= 300) {
-        expect(cells).toHaveLength(4);
-        const askPrice = row.querySelector('.rtx-market-watch__price--ask');
-        expect(askPrice).toHaveClass('rtx-market-watch__price--empty');
-        expect(askPrice).toHaveTextContent('\u2014');
-        expect(askPrice?.closest('td')).toBe(cells[2]);
-        expect(row.querySelector('.rtx-market-watch__daily')?.closest('td')).toBe(cells[3]);
-        expect(row.querySelector('.rtx-market-watch__daily')).toHaveTextContent('1.75%');
-      } else {
-        expect(cells).toHaveLength(2);
-        expect(row.querySelector('.rtx-market-watch__price--ask')).toBeNull();
-        expect(row.querySelector('.rtx-market-watch__daily')).toBeNull();
-      }
+      expect(cells).toHaveLength(4);
+      const askPrice = row.querySelector('.rtx-market-watch__price--ask');
+      expect(askPrice).toHaveClass('rtx-market-watch__price--empty');
+      expect(askPrice).toHaveTextContent('\u2014');
+      expect(askPrice?.closest('td')).toBe(cells[2]);
+      expect(row.querySelector('.rtx-market-watch__daily')?.closest('td')).toBe(cells[3]);
+      expect(row.querySelector('.rtx-market-watch__daily')).toHaveTextContent('1.75%');
       expect(row).toHaveClass('rtx-market-watch__row--stale');
       expect(useAppStore.getState().ticks).toEqual({});
     } finally {
@@ -838,6 +853,184 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect((event as CustomEvent).detail).toEqual({ symbol: 'EURUSD', newWindow: true });
 
     window.removeEventListener('openChart', openChartListener);
+  });
+
+  it('matches the inspected MT5 root-menu order and keeps unsupported broker features disabled', () => {
+    const onSymbolSelect = vi.fn();
+    render(
+      <MarketWatchPanel
+        allSymbols={DEFAULT_SYMBOLS}
+        chartSymbols={DEFAULT_SYMBOLS}
+        selectedSymbol="BTCUSD"
+        onSymbolSelect={onSymbolSelect}
+      />,
+    );
+
+    const xauRow = screen.getByText('XAUUSD').closest('tr')!;
+    fireEvent.contextMenu(xauRow);
+    expect(xauRow).toHaveAttribute('aria-selected', 'true');
+    expect(onSymbolSelect).not.toHaveBeenCalled();
+    const menu = screen.getByRole('menu');
+    const labels = within(menu).getAllByRole('menuitem').map((item) => (
+      item.querySelector('.flex-1')?.textContent
+    ));
+
+    expect(labels).toEqual([
+      'New Order',
+      'Chart Window',
+      'Tick Chart',
+      'Depth Of Market',
+      'Options Board',
+      'Specification',
+      'Popup Prices',
+      'Hide',
+      'Hide All',
+      'Show All',
+      'Symbols',
+      'Sets',
+      'Sort',
+      'Export',
+      'Show Milliseconds',
+      'Auto Remove Expired',
+      'Auto Arrange',
+      'Grid',
+      'Columns',
+    ]);
+    expect(within(menu).getByText('Options Board').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true');
+    expect(within(menu).getByText('Auto Remove Expired').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('uses closed-market Daily Change fallbacks when sorting Gainers', () => {
+    const symbols = ['XAUUSD', 'EURUSD', 'GBPUSD'];
+    setMarketCatalog(symbols);
+    // Public-catalogue defaults keep one representative per group, so EURUSD
+    // would crowd out GBPUSD and leave the sort order unobservable.
+    marketHooks.accountCatalogStatus = 'loaded';
+    marketHooks.activeSymbols = [];
+    closedDailyChangeHook.values.set('XAUUSD', -2);
+    closedDailyChangeHook.values.set('EURUSD', 3);
+    closedDailyChangeHook.values.set('GBPUSD', 1);
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+
+    const { container } = render(
+      <MarketWatchPanel allSymbols={symbols} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />,
+    );
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Sort'));
+    fireEvent.click(screen.getByText('Gainers'));
+
+    expect(getRenderedRowSymbols(container)).toEqual(['EURUSD', 'GBPUSD', 'XAUUSD']);
+    expect(closedDailyChangeHook.useHook.mock.calls.some(([options]) => (
+      (options as { enabled?: boolean; symbols?: string[] }).enabled === true
+      && (options as { symbols?: string[] }).symbols?.includes('EURUSD')
+    ))).toBe(true);
+  });
+
+  it('opens New Order on a native-style row double-click for a tradable symbol', () => {
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+    setMarketCatalog(CORE_DEFAULT_SYMBOLS, CORE_DEFAULT_SYMBOLS);
+    marketHooks.activeSymbols = [...CORE_DEFAULT_SYMBOLS];
+    const openOrderListener = vi.fn();
+    window.addEventListener('openOrderDialog', openOrderListener);
+
+    render(
+      <MarketWatchPanel
+        allSymbols={CORE_DEFAULT_SYMBOLS}
+        chartSymbols={CORE_DEFAULT_SYMBOLS}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.doubleClick(screen.getByText('XAUUSD').closest('tr')!);
+    expect(openOrderListener).toHaveBeenCalledTimes(1);
+    expect((openOrderListener.mock.calls[0][0] as CustomEvent).detail).toEqual({ symbol: 'XAUUSD' });
+    window.removeEventListener('openOrderDialog', openOrderListener);
+  });
+
+  it('opens the real tick-buffer view and Popup Prices from their context actions', () => {
+    render(
+      <MarketWatchPanel
+        allSymbols={DEFAULT_SYMBOLS}
+        chartSymbols={DEFAULT_SYMBOLS}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Tick Chart'));
+    expect(screen.getByRole('tab', { name: 'Ticks' })).toHaveAttribute('aria-selected', 'true');
+    expect(document.querySelector('.rtx-market-tick-chart')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Symbols' }));
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Popup Prices'));
+    expect(screen.getByRole('dialog', { name: 'Popup Prices' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Symbol prices' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Popup Prices' }));
+    expect(screen.queryByRole('dialog', { name: 'Popup Prices' })).not.toBeInTheDocument();
+  });
+
+  it('persists Columns, Show Milliseconds, and named symbol Sets', () => {
+    render(
+      <MarketWatchPanel
+        allSymbols={DEFAULT_SYMBOLS}
+        chartSymbols={DEFAULT_SYMBOLS}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    const rootMenu = screen.getByRole('menu');
+    fireEvent.click(within(rootMenu).getByText('Columns'));
+    const columnsMenu = screen.getAllByRole('menu').at(-1)!;
+    fireEvent.click(within(columnsMenu).getByText('Time'));
+    expect(screen.getByRole('columnheader', { name: 'Time' })).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('rtx5_marketwatch_cols') ?? '[]')).toContain('time');
+
+    fireEvent.click(within(rootMenu).getByText('Show Milliseconds'));
+    expect(JSON.parse(localStorage.getItem('rtx5_marketwatch_options') ?? '{}')).toMatchObject({ showMilliseconds: true });
+
+    fireEvent.click(within(rootMenu).getByText('Sets'));
+    const setsMenu = screen.getAllByRole('menu').at(-1)!;
+    fireEvent.click(within(setsMenu).getByText('Save as'));
+    const dialog = screen.getByRole('dialog', { name: 'Save Market Watch set' });
+    fireEvent.change(within(dialog).getByLabelText('Set name'), { target: { value: 'Metals and FX' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    expect(JSON.parse(localStorage.getItem('rtx5_symbol_sets') ?? '{}')).toMatchObject({
+      'Metals and FX': DEFAULT_DISPLAY_SYMBOLS,
+    });
+    expect(JSON.parse(localStorage.getItem('rtx5_symbol_set_columns') ?? '{}')['Metals and FX']).toContain('time');
+  });
+
+  it('shows stock-only Fundamental Data while honestly disabling unavailable realtime subscription', () => {
+    const stock = { symbol: 'MSFT', description: 'Microsoft Corporation', category: 'Stocks' };
+    setMarketCatalog([stock], ['MSFT']);
+    marketHooks.activeSymbols = ['MSFT'];
+    watchlistState.activeWatchlistId = 'stocks';
+    watchlistState.watchlists = [{ id: 'stocks', symbols: ['MSFT'], isDefault: false }];
+    render(
+      <MarketWatchPanel
+        allSymbols={[stock]}
+        chartSymbols={['MSFT']}
+        selectedSymbol="MSFT"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText('MSFT').closest('tr')!);
+    expect(screen.getByText('Subscribe to Realtime Datafeed').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByText('Fundamental Data'));
+    const fundamentalMenu = screen.getAllByRole('menu').at(-1)!;
+    expect(within(fundamentalMenu).getByText('Yahoo Finance')).toBeInTheDocument();
+    expect(within(fundamentalMenu).getByText('SEC EDGAR')).toBeInTheDocument();
+    expect(within(fundamentalMenu).getByText('Morningstar')).toBeInTheDocument();
   });
 
   it('toggles Market Watch table grid lines from the Grid context action', () => {
@@ -1656,6 +1849,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     );
 
     fireEvent.contextMenu(screen.getByText('0001.HK').closest('tr')!);
+    const menu = screen.getByRole('menu');
     const iconLabels = [
       'New Order',
       'Chart Window',
@@ -1668,7 +1862,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       'Export',
     ];
     iconLabels.forEach((label) => {
-      expect(screen.getByText(label).closest('[role="menuitem"]')?.querySelector('svg')).not.toBeNull();
+      expect(within(menu).getByText(label).closest('[role="menuitem"]')?.querySelector('svg')).not.toBeNull();
     });
     expect(screen.getByText('Hide').closest('[role="menuitem"]')).not.toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(screen.getByText('Hide'));
@@ -1677,7 +1871,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(watchlistState.removeSymbolFromWatchlist).not.toHaveBeenCalled();
   });
 
-  it('hides and restores all built-in symbols', () => {
+  it('hides every hideable built-in symbol, retains symbols used by an open chart, and restores all', () => {
     setMarketCatalog([...DEFAULT_SYMBOLS, '0001.HK']);
     const { container } = render(
       <MarketWatchPanel
@@ -1689,9 +1883,10 @@ describe('MarketWatchPanel symbol visibility', () => {
 
     fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
     fireEvent.click(screen.getByText('Hide All'));
-    expect(getRenderedRowSymbols(container)).toEqual([]);
+    expect(getRenderedRowSymbols(container)).toEqual(['BTCUSD']);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show all symbols' }));
+    fireEvent.contextMenu(screen.getByText('BTCUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Show All'));
     expect(getRenderedRowSymbols(container)).toEqual([
       ...DEFAULT_DISPLAY_SYMBOLS,
       '0001.HK',
@@ -1703,6 +1898,7 @@ describe('MarketWatchPanel symbol visibility', () => {
 
   it('opens an in-app specification dialog instead of a browser alert', async () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    const onSymbolSelect = vi.fn();
     setMarketCatalog([{
       symbol: 'XAUUSD',
       description: 'Gold Spot',
@@ -1721,6 +1917,42 @@ describe('MarketWatchPanel symbol visibility', () => {
           contract_size: 100,
           trading_enabled: true,
         }]}
+        selectedSymbol="BTCUSD"
+        onSymbolSelect={onSymbolSelect}
+      />,
+    );
+
+    const specificationRow = screen.getByText('XAUUSD').closest('tr')!;
+    fireEvent.contextMenu(specificationRow);
+    expect(specificationRow).toHaveAttribute('aria-selected', 'true');
+    expect(onSymbolSelect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Specification'));
+    await act(async () => { await vi.dynamicImportSettled(); });
+
+    expect(screen.getByRole('dialog', { name: 'XAUUSD Specification' })).toBeInTheDocument();
+    expect(screen.getByText('XAUUSD, Gold Spot')).toBeInTheDocument();
+    expect(screen.getByText('Contract size').parentElement?.parentElement).toHaveTextContent('100');
+    expect(screen.queryByText('2400.00')).not.toBeInTheDocument();
+    expect(screen.queryByText('2400.20')).not.toBeInTheDocument();
+    expect(alertSpy).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close symbol specification' }));
+    expect(screen.queryByRole('dialog', { name: 'XAUUSD Specification' })).not.toBeInTheDocument();
+    alertSpy.mockRestore();
+  });
+
+  it('does not present a public live quote spread as a contract specification', async () => {
+    const quoteOnlyInstrument: MockMarketInstrument = {
+      symbol: 'XAUUSD',
+      bid: 4305.9,
+      ask: 4306.7,
+      spread: 0.8,
+      time: '2026-09-25T10:36:34Z',
+      has_quote: true,
+    };
+    setMarketCatalog([quoteOnlyInstrument]);
+    render(
+      <MarketWatchPanel
+        allSymbols={[quoteOnlyInstrument]}
         selectedSymbol="XAUUSD"
         onSymbolSelect={vi.fn()}
       />,
@@ -1730,14 +1962,171 @@ describe('MarketWatchPanel symbol visibility', () => {
     fireEvent.click(screen.getByText('Specification'));
     await act(async () => { await vi.dynamicImportSettled(); });
 
-    expect(screen.getByRole('dialog', { name: 'XAUUSD Specification' })).toBeInTheDocument();
-    expect(screen.getByText('Gold Spot')).toBeInTheDocument();
-    expect(screen.getByText('2400.00')).toBeInTheDocument();
-    expect(screen.getByText('2400.20')).toBeInTheDocument();
-    expect(alertSpy).not.toHaveBeenCalled();
+    expect(screen.getByText('Contract details were not provided by this broker.')).toBeInTheDocument();
+    expect(screen.queryByText('Spread')).not.toBeInTheDocument();
+    expect(screen.queryByText('0.8')).not.toBeInTheDocument();
+  });
+
+  it('prefers the authenticated broker specification over public catalog metadata', async () => {
+    const publicInstrument: MockMarketInstrument = {
+      symbol: 'XAUUSD',
+      description: 'Public Gold',
+      category: 'Metals',
+      digits: 2,
+      contract_size: 100,
+      trading_enabled: true,
+    };
+    setMarketCatalog([publicInstrument]);
+    marketHooks.authorizedInstruments = [{
+      symbol: 'XAUUSD',
+      brokerSpecification: {
+        symbol: 'XAUUSD',
+        display_name: 'Authenticated Gold Contract',
+        specification: {
+          contract_size: 250,
+          trade_tick_value: 2.5,
+        },
+      },
+    }];
+    marketHooks.loadSymbolSpecification.mockResolvedValue({
+      symbol: 'XAUUSD',
+      display_name: 'Authenticated Gold Contract',
+      specification: {
+        contract_size: 250,
+        trade_tick_value: 2.5,
+      },
+    });
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+
+    render(
+      <MarketWatchPanel
+        allSymbols={[publicInstrument]}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Specification'));
+    await act(async () => { await vi.dynamicImportSettled(); });
+
+    expect(screen.getByText('XAUUSD, Authenticated Gold Contract')).toBeInTheDocument();
+    const contractSizeRow = screen.getByText('Contract size').parentElement?.parentElement;
+    expect(contractSizeRow).toHaveTextContent('250');
+    expect(contractSizeRow).not.toHaveTextContent('100');
+    const tickValueRow = screen.getByText('Tick value').parentElement?.parentElement;
+    expect(tickValueRow).toHaveTextContent('2.5');
+  });
+
+  it('refreshes the exact clicked specification from the account-scoped backend contract', async () => {
+    const catalogInstrument: MockMarketInstrument = {
+      symbol: 'XAUUSD',
+      description: 'Catalog Gold',
+      contract_size: 100,
+    };
+    setMarketCatalog([catalogInstrument]);
+    marketHooks.authorizedInstruments = [catalogInstrument];
+    marketHooks.loadSymbolSpecification.mockResolvedValue({
+      symbol: 'XAUUSD',
+      description: 'Fresh Broker Gold',
+      contract_size: 250,
+      specification: {
+        stops_level: 12,
+        execution_mode: 'market',
+      },
+    });
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+
+    render(
+      <MarketWatchPanel
+        allSymbols={[catalogInstrument]}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Specification'));
+    await act(async () => {
+      await vi.dynamicImportSettled();
+      await Promise.resolve();
+    });
+
+    expect(marketHooks.loadSymbolSpecification).toHaveBeenCalledWith(
+      'XAUUSD',
+      expect.any(AbortSignal),
+    );
+    expect(screen.getByText('XAUUSD, Fresh Broker Gold')).toBeInTheDocument();
+    expect(screen.getByText('Stops level').parentElement?.parentElement).toHaveTextContent('12');
+    expect(screen.getByText('Execution').parentElement?.parentElement).toHaveTextContent('Market');
+  });
+
+  it('does not present catalog values as current while the account specification is loading', async () => {
+    const catalogInstrument: MockMarketInstrument = {
+      symbol: 'XAUUSD',
+      description: 'Catalog Gold',
+      contract_size: 100,
+    };
+    setMarketCatalog([catalogInstrument]);
+    marketHooks.authorizedInstruments = [catalogInstrument];
+    let resolveSpecification: ((value: Readonly<Record<string, unknown>> | null) => void) | undefined;
+    marketHooks.loadSymbolSpecification.mockImplementation(() => new Promise((resolve) => {
+      resolveSpecification = resolve;
+    }));
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+
+    render(
+      <MarketWatchPanel
+        allSymbols={[catalogInstrument]}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Specification'));
+    await act(async () => { await vi.dynamicImportSettled(); });
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading current specification...');
+    expect(screen.queryByText('Contract size')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveSpecification?.(null);
+      await Promise.resolve();
+    });
+    expect(screen.getByText('The current specification is not available from this broker.')).toBeInTheDocument();
+    expect(screen.queryByText('Contract size')).not.toBeInTheDocument();
+  });
+
+  it('aborts an in-flight specification refresh when the dialog closes', async () => {
+    setMarketCatalog([{ symbol: 'XAUUSD', contract_size: 100 }]);
+    marketHooks.authorizedInstruments = [{ symbol: 'XAUUSD', contract_size: 100 }];
+    let resolveSpecification: ((value: Readonly<Record<string, unknown>>) => void) | undefined;
+    marketHooks.loadSymbolSpecification.mockImplementation(() => new Promise((resolve) => {
+      resolveSpecification = resolve;
+    }));
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+
+    render(
+      <MarketWatchPanel
+        allSymbols={[{ symbol: 'XAUUSD', contract_size: 100 }]}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Specification'));
+    await act(async () => { await vi.dynamicImportSettled(); });
+
+    const signal = marketHooks.loadSymbolSpecification.mock.calls[0]?.[1] as AbortSignal;
+    expect(signal.aborted).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Close symbol specification' }));
-    expect(screen.queryByRole('dialog', { name: 'XAUUSD Specification' })).not.toBeInTheDocument();
-    alertSpy.mockRestore();
+    expect(signal.aborted).toBe(true);
+
+    await act(async () => {
+      resolveSpecification?.({ symbol: 'XAUUSD', description: 'Late result' });
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('symbol-specification-dialog')).not.toBeInTheDocument();
   });
 
   it('removes and persists custom-watchlist symbols through Hide and Hide All', () => {

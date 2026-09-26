@@ -1039,19 +1039,24 @@ export function useToolboxTradeData() {
       }
 
       if (detail.status === 'confirmed') {
-        useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: ticketIds });
+        // Closes are confirm-first (MT5 behaviour): the row is still listed
+        // here, so the backend confirmation is what removes it.
+        const expiresAt = Date.now() + IMMEDIATE_POSITION_RETENTION_MS;
         ticketIds.forEach((ticket) => {
-          const existing = optimisticallyClosedPositionsRef.current.get(ticket);
-          if (existing) {
+          const position = optimisticallyClosedPositionsRef.current.get(ticket)?.position
+            ?? positionsRef.current.find((candidate) => candidate.id === ticket);
+          if (position) {
             optimisticallyClosedPositionsRef.current.set(ticket, {
-              ...existing,
+              position,
               status: 'confirmed',
-              expiresAt: Date.now() + IMMEDIATE_POSITION_RETENTION_MS,
+              expiresAt,
             });
           }
           retainedImmediatePositionsRef.current.delete(ticket);
         });
-        commitPositions(positionsRef.current.filter((position) => !ticketIds.includes(position.id)));
+        useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: ticketIds });
+        const remaining = positionsRef.current.filter((position) => !ticketIds.includes(position.id));
+        if (remaining.length !== positionsRef.current.length) commitPositions(remaining);
         return;
       }
 

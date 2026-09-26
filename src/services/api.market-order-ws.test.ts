@@ -28,6 +28,7 @@ vi.mock('../api/endpoints', async (importOriginal) => {
 });
 
 import { api } from './api';
+import { TradeWebSocketClient } from '../api/tradeSocket';
 import {
   clearTradeOrderLatencySamples,
   getTradeOrderLatencySamples,
@@ -73,6 +74,23 @@ type TradeSocketStub = {
   isConnected: () => boolean;
   placeOrder: typeof mocks.wsPlaceOrder;
 };
+
+// Exercise actual protocol routing as well as API recovery without opening a
+// network connection or submitting a financial order.
+class RecoveryWebSocket {
+  readyState = 0;
+  bufferedAmount = 0;
+  sent: Record<string, unknown>[] = [];
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  send(payload: string) { this.sent.push(JSON.parse(payload)); }
+  close() { this.readyState = 3; this.onclose?.(); }
+  open() { this.readyState = 1; this.onopen?.(); }
+  emit(message: unknown) { this.onmessage?.({ data: JSON.stringify(message) }); }
+}
 
 let tradeSocket: TradeSocketStub;
 let onNewTrade: Mock<(event: Event) => void>;
@@ -505,7 +523,7 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
 
       expect(extractWsClientOrderId()).toBe(CLIENT_ORDER_ID);
       expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
-      expect(mocks.restGetOrderCommand).toHaveBeenCalledTimes(10);
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledTimes(11);
       expect(mocks.restGetOrderCommand).toHaveBeenCalledWith(CLIENT_ORDER_ID);
       expect(onNewTrade).not.toHaveBeenCalled();
       expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
@@ -669,6 +687,179 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
         'filled',
       ]);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('separates the REST response duration from the terminal polling duration', async () => {
+    vi.useFakeTimers();
+    const startedAt = Date.now();
+    vi.spyOn(performance, 'now').mockImplementation(() => Date.now() - startedAt);
+    tradeSocket.connectionState = 'closed';
+    mocks.restPlaceOrder.mockImplementation(() => new Promise((resolve) => {
+      setTimeout(() => resolve({ status: 'accepted', client_order_id: CLIENT_ORDER_ID }), 40);
+    }));
+    mocks.restGetOrderCommand.mockResolvedValue({
+      status: 'filled', client_order_id: CLIENT_ORDER_ID, position: restPosition,
+    });
+
+    try {
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      await vi.advanceTimersByTimeAsync(40);
+      expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
+        phase: 'rest_response', restRttMs: 40,
+      }));
+      expect(onNewTrade).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(placement).resolves.toMatchObject({ ticket: 990002 });
+      expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
+        phase: 'rest_completed', restRttMs: 1_040,
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('recovers actual backend transport-error frames immediately without a second create', async () => {
+    vi.useFakeTimers();
+    const socket = new RecoveryWebSocket();
+    vi.stubGlobal('WebSocket', class { constructor() { return socket; } });
+    const client = new TradeWebSocketClient({
+      url: 'wss://test.invalid/ws/v2', token: 'test-token', reconnect: false,
+    });
+    mocks.getTradeWebSocketClient.mockReturnValue(client);
+    mocks.restGetOrderCommand.mockResolvedValue({
+      status: 'filled', client_order_id: CLIENT_ORDER_ID, position: restPosition,
+    });
+
+    try {
+      client.connect();
+      socket.open();
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      const create = socket.sent.find((frame) => frame.action === 'place_order')!;
+      expect(create).toBeDefined();
+      socket.emit({
+        type: 'order_error', request_id: create.request_id,
+        client_order_id: CLIENT_ORDER_ID,
+        error: { code: 'EXECUTION_UNCERTAIN', message: 'Check command status.' },
+      });
+      expect(socket.sent.filter((frame) => frame.action === 'get_order_status')).toHaveLength(1);
+      socket.emit({
+        type: 'order_status_error', request_id: create.request_id,
+        client_order_id: CLIENT_ORDER_ID,
+        error: { code: 'STATUS_UNAVAILABLE', message: 'Status read failed.' },
+      });
+      // No advance to the old 10-second timers, or to a one-second GET delay.
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(placement).resolves.toMatchObject({ ticket: 990002 });
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledExactlyOnceWith(CLIENT_ORDER_ID);
+      expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
+      expect(socket.sent.filter((frame) => frame.action === 'place_order')).toHaveLength(1);
+      expect(onNewTrade).toHaveBeenCalledOnce();
+    } finally {
+      client.disconnect();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores retryable rejections and malformed fills during REST recovery until a valid late fill arrives', async () => {
+    vi.useFakeTimers();
+    const socket = new RecoveryWebSocket();
+    vi.stubGlobal('WebSocket', class { constructor() { return socket; } });
+    const client = new TradeWebSocketClient({
+      url: 'wss://test.invalid/ws/v2', token: 'test-token', reconnect: false,
+    });
+    mocks.getTradeWebSocketClient.mockReturnValue(client);
+    let rejectStatus!: (error: Error) => void;
+    mocks.restGetOrderCommand.mockImplementation(() => new Promise((_, reject) => {
+      rejectStatus = reject;
+    }));
+
+    try {
+      client.connect();
+      socket.open();
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      let settled = false;
+      void placement.then(() => { settled = true; }, () => { settled = true; });
+      const create = socket.sent.find((frame) => frame.action === 'place_order')!;
+      socket.emit({
+        type: 'order_status_error', request_id: create.request_id,
+        client_order_id: CLIENT_ORDER_ID,
+        error: { code: 'STATUS_UNAVAILABLE', message: 'Status read failed.' },
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledOnce();
+
+      const fill = {
+        type: 'order_filled', status: 'filled', success: true,
+        request_id: create.request_id, client_order_id: CLIENT_ORDER_ID, data: filledData,
+      };
+      socket.emit({ ...fill, request_id: 'unrelated-request' });
+      await vi.advanceTimersByTimeAsync(100);
+      socket.emit({
+        type: 'order_rejected', status: 'rejected',
+        request_id: create.request_id, client_order_id: CLIENT_ORDER_ID,
+        error: { code: 'SERVICE_UNAVAILABLE', message: 'Execution state is temporarily unavailable.' },
+      });
+      for (const data of [undefined, null, [], 'invalid', 0]) {
+        socket.emit({ ...fill, data });
+      }
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledOnce();
+      expect(onNewTrade).not.toHaveBeenCalled();
+      socket.emit(fill);
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(placement).resolves.toMatchObject({ ticket: 990001, price_open: 65321.45 });
+      expect(onNewTrade).toHaveBeenCalledOnce();
+
+      rejectStatus(new Error('late failed status read'));
+      socket.emit(fill);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledOnce();
+      expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
+      expect(onNewTrade).toHaveBeenCalledOnce();
+      expect(socket.sent.filter((frame) => frame.action === 'place_order')).toHaveLength(1);
+    } finally {
+      client.disconnect();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it('preserves an actual expired WebSocket command without REST retries', async () => {
+    vi.useFakeTimers();
+    const socket = new RecoveryWebSocket();
+    vi.stubGlobal('WebSocket', class { constructor() { return socket; } });
+    const client = new TradeWebSocketClient({
+      url: 'wss://test.invalid/ws/v2', token: 'test-token', reconnect: false,
+    });
+    mocks.getTradeWebSocketClient.mockReturnValue(client);
+
+    try {
+      client.connect();
+      socket.open();
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      const rejection = expect(placement).rejects.toMatchObject({
+        status: 'expired', code: 'ORDER_COMMAND_EXPIRED',
+      });
+      const create = socket.sent.find((frame) => frame.action === 'place_order')!;
+      socket.emit({
+        type: 'order_rejected', status: 'expired', request_id: create.request_id,
+        client_order_id: CLIENT_ORDER_ID,
+        error: { code: 'ORDER_COMMAND_EXPIRED', message: 'Execution deadline elapsed.' },
+      });
+      await rejection;
+      expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
+      expect(mocks.restGetOrderCommand).not.toHaveBeenCalled();
+      expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail.status).toBe('expired');
+      expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
+        phase: 'placement_terminal', terminalStatus: 'expired',
+      }));
+    } finally {
+      client.disconnect();
+      vi.unstubAllGlobals();
       vi.useRealTimers();
     }
   });

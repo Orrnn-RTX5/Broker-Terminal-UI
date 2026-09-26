@@ -101,6 +101,19 @@ export const mergeBackendAccountSnapshot = (
   return next;
 };
 
+const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+
+/**
+ * True when a backend record names a different broker than the session. The
+ * committed session scope lowercases its broker id while the backend keeps its
+ * own casing (`ORRNN`, `TEST`), so a case-sensitive check drops every frame.
+ */
+export const isOtherBrokerId = (recordBrokerId: unknown, sessionBrokerId?: string): boolean => (
+  Boolean(sessionBrokerId)
+  && recordBrokerId !== undefined
+  && normalizeBrokerId(recordBrokerId) !== normalizeBrokerId(sessionBrokerId)
+);
+
 /** Reject conflicting identities even when a valid channel wraps the record. */
 export const isBackendAccountForLogin = (value: unknown, login: number, brokerId?: string, depth = 0): boolean => {
   if (depth > 6) return false;
@@ -109,7 +122,7 @@ export const isBackendAccountForLogin = (value: unknown, login: number, brokerId
   for (const key of ['login', 'account_login']) {
     if (raw[key] !== undefined && String(raw[key]) !== String(login)) return false;
   }
-  if (brokerId && raw.broker_id !== undefined && String(raw.broker_id) !== brokerId) return false;
+  if (isOtherBrokerId(raw.broker_id, brokerId)) return false;
   for (const key of ['account', 'data']) {
     if (raw[key] !== undefined && asRecord(raw[key]) && !isBackendAccountForLogin(raw[key], login, brokerId, depth + 1)) return false;
   }

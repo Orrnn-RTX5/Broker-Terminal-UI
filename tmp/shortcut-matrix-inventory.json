@@ -465,7 +465,7 @@
     "key": "i",
     "alt": true,
     "shift": true,
-    "description": "Show trade history",
+    "description": "Show entry/close arrows",
     "category": "Charts",
     "priority": 90,
     "enabled": true,

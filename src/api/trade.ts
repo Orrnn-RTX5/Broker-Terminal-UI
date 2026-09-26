@@ -26,6 +26,7 @@ import type {
   HistoryTick,
   HistoryTickParams,
   Instrument,
+  InstrumentSpecification,
   ListParams,
   MarginCalcRequest,
   MarginCalcResponse,
@@ -116,6 +117,35 @@ const normalizeInstrumentRow = (instrument: Instrument): Instrument | null => {
     ask: instrument.ask,
     enabled: instrument.enabled ?? instrument.trading_enabled ?? instrument.tradingEnabled ?? true,
   };
+};
+
+const unwrapInstrumentSpecification = (payload: unknown): Record<string, unknown> | null => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const record = payload as Record<string, unknown>;
+
+  // Detail APIs in the supported broker adapters return either the snapshot
+  // directly or wrap it in one conventional response envelope. Do not run a
+  // specification through catalog normalization: that would manufacture
+  // description/trade values for fields the broker omitted.
+  for (const key of ['data', 'result'] as const) {
+    const nested = record[key];
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      return nested as Record<string, unknown>;
+    }
+  }
+  return record;
+};
+
+const withSpecificationSymbol = (
+  record: Record<string, unknown>,
+  fallbackSymbol: string,
+): InstrumentSpecification | null => {
+  const suppliedSymbol = String(record.symbol ?? '').trim();
+  if (suppliedSymbol && suppliedSymbol.toUpperCase() !== fallbackSymbol.toUpperCase()) return null;
+  return {
+    ...record,
+    symbol: suppliedSymbol || fallbackSymbol,
+  } as InstrumentSpecification;
 };
 
 const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v1/market/symbols', '/api/v1/market/symbol-list'];
@@ -269,6 +299,63 @@ export const marketV2Api = {
     return extractInstrumentRows(payload)
       .map(normalizeInstrumentRow)
       .filter((instrument): instrument is Instrument => Boolean(instrument));
+  },
+
+  /**
+   * Refresh one account-scoped contract snapshot when Specification opens.
+   * New brokers return the full per-symbol resource. Older brokers fall back
+   * to an exact row from the collection and may attach richer data under
+   * `specification` when `include=specification` is supported.
+   */
+  getInstrumentSpecification: async (
+    symbol: string,
+    accountLogin?: string | number | null,
+    options?: ApiRequestOptions,
+  ): Promise<InstrumentSpecification | null> => {
+    const normalizedSymbol = String(symbol ?? '').trim().toUpperCase();
+    if (!normalizedSymbol) return null;
+
+    let payload: unknown;
+    try {
+      payload = await apiClient.get<unknown>(
+        `/instruments/${encodeURIComponent(normalizedSymbol)}/specification`,
+        v2Options({
+          ...options,
+          cache: 'no-store',
+          params: {
+            ...options?.params,
+            account_login: accountLogin || undefined,
+          },
+        }),
+      );
+      const directRecord = unwrapInstrumentSpecification(payload);
+      if (directRecord) {
+        return withSpecificationSymbol(directRecord, normalizedSymbol);
+      }
+    } catch (error) {
+      // The currently deployed broker exposes only the collection endpoint.
+      // Fall back only for an unsupported detail route; auth/network failures
+      // must remain visible to the caller instead of being masked.
+      if (!(error instanceof ApiError) || ![404, 405].includes(error.status)) throw error;
+    }
+
+    payload = await apiClient.get<unknown>('/instruments', v2Options({
+      ...options,
+      cache: 'no-store',
+      params: {
+        ...options?.params,
+        symbol: normalizedSymbol,
+        include: 'specification',
+        account_login: accountLogin || undefined,
+      },
+    }));
+    const match = extractInstrumentRows(payload).find((instrument) => (
+      String(instrument.symbol ?? instrument.name ?? instrument.id ?? '').trim().toUpperCase()
+        === normalizedSymbol
+    ));
+    return match
+      ? withSpecificationSymbol(match as unknown as Record<string, unknown>, normalizedSymbol)
+      : null;
   },
 
   getInstruments: async (options?: ApiRequestOptions) => {

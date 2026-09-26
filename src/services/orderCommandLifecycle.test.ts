@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ORDER_COMMAND_FALLBACK_DEADLINE_MS,
@@ -72,6 +72,181 @@ describe('normalizeOrderCommand', () => {
       ticket: 9002,
       symbol: 'EURUSD',
     }).position).toMatchObject({ ticket: 9002, symbol: 'EURUSD' });
+  });
+});
+
+describe('order command terminal pushes during reconciliation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_800_000_000_000);
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const createPushSource = () => {
+    let listener: ((response: unknown) => void) | undefined;
+    const unsubscribe = vi.fn();
+    return {
+      unsubscribe,
+      subscribeTerminal: vi.fn((callback: (response: unknown) => void) => {
+        listener = callback;
+        return unsubscribe;
+      }),
+      emit: (response: unknown) => listener?.(response),
+    };
+  };
+  const processing = { status: 'processing', client_order_id: CLIENT_ORDER_ID };
+  const filled = { status: 'filled', client_order_id: CLIENT_ORDER_ID, data: { ticket: 701 } };
+
+  it('lets the terminal push win a pending status GET and safely observes a later GET rejection', async () => {
+    const source = createPushSource();
+    let rejectRead!: (error: Error) => void;
+    const readStatus = vi.fn(() => new Promise<unknown>((_resolve, reject) => { rejectRead = reject; }));
+    const onPollError = vi.fn();
+    const onStatus = vi.fn();
+    const resultPromise = pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: processing,
+      readStatus,
+      pollImmediately: true,
+      subscribeTerminal: source.subscribeTerminal,
+      onPollError,
+      onStatus,
+    });
+
+    expect(readStatus).toHaveBeenCalledOnce();
+    source.emit(filled);
+    await expect(resultPromise).resolves.toMatchObject({ status: 'filled', position: { ticket: 701 } });
+    expect(source.unsubscribe).toHaveBeenCalledOnce();
+
+    rejectRead(new Error('Late status read failed'));
+    source.emit({ status: 'expired', client_order_id: CLIENT_ORDER_ID });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(readStatus).toHaveBeenCalledOnce();
+    expect(onPollError).not.toHaveBeenCalled();
+    expect(onStatus.mock.calls.map(([command]) => command.status)).toEqual(['processing', 'filled']);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['filled', 'rejected', 'expired'])('cancels the poll sleep as soon as a %s push arrives', async (status) => {
+    const source = createPushSource();
+    const readStatus = vi.fn();
+    const resultPromise = pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: processing,
+      readStatus,
+      subscribeTerminal: source.subscribeTerminal,
+    });
+
+    expect(vi.getTimerCount()).toBe(1);
+    source.emit({ status, client_order_id: CLIENT_ORDER_ID });
+    await expect(resultPromise).resolves.toMatchObject({ status, terminal: true });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(source.unsubscribe).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(readStatus).not.toHaveBeenCalled();
+  });
+
+  it('ignores malformed, nonterminal, missing-id, and other-command pushes before the HTTP result wins', async () => {
+    const source = createPushSource();
+    let resolveRead!: (response: unknown) => void;
+    const readStatus = vi.fn(() => new Promise<unknown>((resolve) => { resolveRead = resolve; }));
+    const resultPromise = pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: processing,
+      readStatus,
+      pollImmediately: true,
+      subscribeTerminal: source.subscribeTerminal,
+    });
+    let settled = false;
+    void resultPromise.then(() => { settled = true; });
+    source.emit(null);
+    source.emit({ type: 'order_status_error', client_order_id: CLIENT_ORDER_ID });
+    source.emit(processing);
+    source.emit({ status: 'filled' });
+    source.emit({ status: 'filled', client_order_id: 'another-command' });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    resolveRead(filled);
+    await expect(resultPromise).resolves.toMatchObject({ status: 'filled', position: { ticket: 701 } });
+    expect(source.unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('keeps listening after a failed status GET until the terminal push arrives during backoff', async () => {
+    const source = createPushSource();
+    const readStatus = vi.fn().mockRejectedValue(new Error('Temporary status read failure'));
+    const onPollError = vi.fn();
+    const resultPromise = pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: processing,
+      readStatus,
+      pollImmediately: true,
+      subscribeTerminal: source.subscribeTerminal,
+      onPollError,
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onPollError).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(1);
+    source.emit(filled);
+    await expect(resultPromise).resolves.toMatchObject({ status: 'filled' });
+    expect(source.unsubscribe).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(readStatus).toHaveBeenCalledOnce();
+  });
+
+  it('retains the original deadline when no push arrives and unsubscribes at expiry', async () => {
+    const source = createPushSource();
+    const startedAtMs = Date.now() - 20_000;
+    const readStatus = vi.fn().mockResolvedValue(processing);
+    const resultPromise = pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: processing,
+      readStatus,
+      startedAtMs,
+      pollImmediately: true,
+      subscribeTerminal: source.subscribeTerminal,
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 'expired', synthetic: true, executeBeforeMs: startedAtMs + 30_000,
+    });
+    expect(readStatus).toHaveBeenCalledTimes(11);
+    expect(source.unsubscribe).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('accepts a synchronously delivered correlated terminal result and cleans up without polling', async () => {
+    const unsubscribe = vi.fn();
+    const readStatus = vi.fn();
+    const result = await pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: processing,
+      readStatus,
+      pollImmediately: true,
+      subscribeTerminal: (listener) => {
+        listener(filled);
+        return unsubscribe;
+      },
+    });
+
+    expect(result.status).toBe('filled');
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(readStatus).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribes when a malformed HTTP status result rejects polling', async () => {
+    const source = createPushSource();
+    await expect(pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: processing,
+      readStatus: async () => ({ client_order_id: CLIENT_ORDER_ID }),
+      pollImmediately: true,
+      subscribeTerminal: source.subscribeTerminal,
+    })).rejects.toThrow('recognized status');
+    expect(source.unsubscribe).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
@@ -157,6 +332,69 @@ describe('pollOrderCommandUntilTerminal', () => {
         message: 'No terminal order result arrived before execute_before.',
       },
     });
+  });
+
+  it('reads recovery status immediately, then preserves the normal polling interval and original deadline', async () => {
+    const startedAtMs = 1_800_000_000_000;
+    let currentTime = startedAtMs + 20_000;
+    const readTimes: number[] = [];
+    const sleep = vi.fn(async (delayMs: number) => { currentTime += delayMs; });
+
+    const result = await pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: { status: 'processing', client_order_id: CLIENT_ORDER_ID },
+      readStatus: async () => {
+        readTimes.push(currentTime);
+        return { status: 'processing', client_order_id: CLIENT_ORDER_ID };
+      },
+      startedAtMs,
+      pollImmediately: true,
+      now: () => currentTime,
+      sleep,
+    });
+
+    expect(readTimes).toHaveLength(11);
+    expect(readTimes[0]).toBe(startedAtMs + 20_000);
+    expect(readTimes[1]).toBe(startedAtMs + 21_000);
+    expect(readTimes.at(-1)).toBe(startedAtMs + 30_000);
+    expect(sleep.mock.calls.every(([delay]) => delay === 1_000)).toBe(true);
+    expect(result).toMatchObject({ status: 'expired', executeBeforeMs: startedAtMs + 30_000 });
+  });
+
+  it('returns an already-filled recovery read without waiting for a timer', async () => {
+    const sleep = vi.fn(async () => undefined);
+    const result = await pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: { status: 'processing', client_order_id: CLIENT_ORDER_ID },
+      readStatus: async () => ({ status: 'filled', client_order_id: CLIENT_ORDER_ID, data: { ticket: 701 } }),
+      pollImmediately: true,
+      sleep,
+    });
+
+    expect(sleep).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: 'filled', position: { ticket: 701 } });
+  });
+
+  it('waits normally after an immediate recovery read fails', async () => {
+    let currentTime = 1_800_000_000_000;
+    const readTimes: number[] = [];
+    const readStatus = vi.fn(async () => {
+      readTimes.push(currentTime);
+      if (readTimes.length === 1) throw new Error('Temporary status outage');
+      return { status: 'filled', client_order_id: CLIENT_ORDER_ID };
+    });
+
+    const result = await pollOrderCommandUntilTerminal({
+      clientOrderId: CLIENT_ORDER_ID,
+      initialResponse: { status: 'processing', client_order_id: CLIENT_ORDER_ID },
+      readStatus,
+      pollImmediately: true,
+      now: () => currentTime,
+      sleep: async (delayMs) => { currentTime += delayMs; },
+    });
+
+    expect(readTimes).toEqual([1_800_000_000_000, 1_800_000_001_000]);
+    expect(result.status).toBe('filled');
   });
 
   it('honors execute_before and still reads once when the deadline is already due', async () => {

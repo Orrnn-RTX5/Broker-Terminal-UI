@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { commitBrokerAccountSessionScope } from '../services/brokerSession';
 
 import {
   markPositionsClosed,
@@ -198,6 +199,68 @@ describe('useAppStore setPositions burst merge', () => {
     expect(result).toHaveLength(250);
     expect(result.map(({ id }) => id)).toEqual(incoming.map(({ id }) => id));
     expect(result.every((row) => row.id % 2 === 0 && row.currentPrice === 80_011 + row.id)).toBe(true);
+  });
+});
+
+describe('position history cache work', () => {
+  const cacheKey = 'rtx5_trade_history_levels_v1';
+  const readPositionCache = () => JSON.parse(localStorage.getItem(cacheKey) || '{}')['200001:position:301'];
+
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.getState().reset();
+    useAppStore.setState({ accountId: '200001' });
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: 'broker-a', serverUrl: 'https://broker-a.test' });
+    useAppStore.getState().setPositions([position(301, { sl: 79000, tp: 83000 })]);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useAppStore.getState().reset();
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+    localStorage.clear();
+  });
+
+  it('skips cache reads and parsing for full or sparse P&L-only updates', () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem');
+    useAppStore.getState().setPositions([{ ...useAppStore.getState().positions[0], currentPrice: 81000, unrealizedPnL: 7 }]);
+    useAppStore.getState().setPositions([{ id: 301, currentPrice: 81001, unrealizedPnL: 8 } as Position]);
+
+    expect(getItem.mock.calls.filter(([key]) => key === cacheKey)).toHaveLength(0);
+    expect(useAppStore.getState().positions[0]).toMatchObject({ currentPrice: 81001, unrealizedPnL: 8 });
+    expect(readPositionCache()).toMatchObject({ sl: 79000, tp: 83000 });
+  });
+
+  it.each([
+    [{ sl: 0, tp: 0 }, { sl: 0, tp: 0 }],
+    [{ sl: 79500, tp: 84000 }, { sl: 79500, tp: 84000 }],
+    [{ volume: 0.02 }, { volume: 0.02 }],
+    [{ openPrice: 80500 }, { openPrice: 80500 }],
+    [{ openTime: '2026-09-25T12:00:00.000Z' }, { openTime: '2026-09-25T12:00:00.000Z' }],
+    [{ price_sl: 0, price_tp: 85000 }, { sl: 0, tp: 85000 }],
+  ])('persists changed level inputs %j', (changes, expected) => {
+    useAppStore.getState().setPositions([{ ...useAppStore.getState().positions[0], ...changes }]);
+    expect(readPositionCache()).toMatchObject(expected);
+  });
+
+  it('seeds a new account even when its first row has the same ticket and values', () => {
+    useAppStore.setState({ accountId: '200002' });
+    useAppStore.getState().setPositions([...useAppStore.getState().positions]);
+    expect(JSON.parse(localStorage.getItem(cacheKey) || '{}')['200002:position:301']).toMatchObject({ sl: 79000, tp: 83000 });
+  });
+
+  it('rechecks unchanged rows after a broker ownership change', () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem');
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: 'broker-b', serverUrl: 'https://broker-b.test' });
+    useAppStore.getState().setPositions([...useAppStore.getState().positions]);
+    expect(getItem.mock.calls.filter(([key]) => key === cacheKey)).toHaveLength(1);
+  });
+
+  it('seeds restored positions that did not pass through the previous cache write', () => {
+    localStorage.removeItem(cacheKey);
+    useAppStore.setState({ positions: [position(301, { sl: 78000, tp: 84000 })] });
+    useAppStore.getState().setPositions([...useAppStore.getState().positions]);
+    expect(readPositionCache()).toMatchObject({ sl: 78000, tp: 84000 });
   });
 });
 

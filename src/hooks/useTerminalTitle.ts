@@ -7,6 +7,7 @@ import type { Broker, BrokerServer } from '../types/api';
 import type { NormalizedMarketStatus } from '../utils/marketStatus';
 import { RTX5_API_URL, normalizeServerUrl } from '../config/api';
 import { runAfterTerminalReady } from '../startup/runAfterTerminalReady';
+import { setBrokerServerTimeZoneFromConfig } from '../services/brokerServerClock';
 
 export const WEB_TERMINAL_TITLE = 'RTX 5 Web Terminal';
 export const DEFAULT_BROKER_SERVER = WEB_TERMINAL_TITLE;
@@ -132,6 +133,9 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
                 const [config, servers, brokersData] = await fetchBrokerDetails(serverName);
 
                 if (!active) return;
+
+                // The broker may declare its server timezone for the server clock.
+                if (config) setBrokerServerTimeZoneFromConfig(config);
 
                 // 1. Margin mode from config
                 if (config) {

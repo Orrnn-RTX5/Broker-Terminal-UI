@@ -6,7 +6,7 @@ import { lazy, memo, Suspense, useState, useEffect, useMemo, useRef, useCallback
 import { RetainedLazyFeature } from '../startup/RetainedLazyFeature';
 import { useAppStore, type Trade } from '../store/useAppStore';
 import { useToolboxTradeData, type ToolboxTradePosition } from '../hooks/useToolboxTradeData';
-import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
+import { getStoredAccountLogin, tradeGatewayApi, type TradeHistoryDataSet } from '../api/tradeGateway';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
 import { formatPrice, getSymbolDigits } from '../utils/symbolUtils';
 import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
@@ -21,6 +21,31 @@ import { useLiveAccountMetrics } from '../hooks/useLiveAccountMetrics';
 import { MARKET_ORDER_PLACEMENT_STATE_EVENT } from '../services/marketOrderPlacementEvents';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../services/shortcutCatalog';
 import { acknowledgeBottomDockTab, getRequestedBottomDockTab } from '../services/bottomDockNavigation';
+import {
+    getCommittedBrokerAccountSessionScope,
+    getCommittedBrokerAccountSessionScopeKey,
+    onCommittedBrokerAccountSessionScopeChange,
+} from '../services/brokerSession';
+
+type TradeModifiedEventDetail = {
+    id?: unknown;
+    symbol?: unknown;
+    sl?: unknown;
+    tp?: unknown;
+    comment?: unknown;
+    sessionScope?: unknown;
+};
+
+type ModifyPositionContext = {
+    position: any;
+    sessionScope: string;
+};
+
+const getCurrentBrokerAccountSessionScopeKey = (): string => (
+    getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())
+);
+
+const normalizeTradeSymbol = (symbol: unknown): string => String(symbol ?? '').trim().toUpperCase();
 
 const LazyHistoryDownloader = lazy(async () => {
     const module = await import('./HistoryDownloader');
@@ -62,6 +87,7 @@ interface BottomDockProps {
     onModifyPosition: (id: number, sl: number, tp: number) => void;
     onCancelOrder?: (id: number) => void;
     onCloseBulk?: (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => void;
+    historyInstrumentCatalog?: readonly unknown[];
 }
 
 type TabType = 'Toolbox' | 'Trade' | 'Exposure' | 'History' | 'News' | 'Mailbox' | 'Calendar' | 'Company' | 'Alerts' | 'Articles' | 'Code Base' | 'Experts' | 'Journal' | 'Historical Data';
@@ -70,6 +96,25 @@ type TradeSortDirection = 'asc' | 'desc';
 type TradeSortState = { column: TradeSortColumn; direction: TradeSortDirection } | null;
 type TradeProfitMode = 'money' | 'points';
 type TradeVolumeMode = 'lots' | 'amounts';
+type HistoryViewMode = 'positions' | 'deals' | 'orders' | 'orders-and-deals';
+type HistoryPeriodFilter = 'all' | 'last-three-months' | 'last-month' | 'custom';
+type HistoryVolumeMode = 'lots' | 'amounts';
+type HistoryCustomPeriod = { from: string; to: string };
+type HistorySymbolFilter =
+    | { mode: 'all' }
+    | { mode: 'current' }
+    | { mode: 'symbol'; symbol: string };
+type HistoryColumnKey =
+    | 'ticket'
+    | 'marketValue'
+    | 'commission'
+    | 'swap'
+    | 'fee'
+    | 'changePercent'
+    | 'magicNumber'
+    | 'comment';
+type HistoryColumnVisibility = Record<HistoryColumnKey, boolean>;
+type HistoryContextMenuState = { x: number; y: number; trade?: Trade };
 type TradeColumnKey =
     | 'ticket'
     | 'time'
@@ -117,6 +162,37 @@ const TRADE_PROFIT_MODE_STORAGE_KEY = 'rtx5_trade_profit_mode';
 const TRADE_VOLUME_MODE_STORAGE_KEY = 'rtx5_trade_volume_mode';
 const TRADE_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY = 'rtx5_trade_show_on_charts_auto_update';
 const TRADE_FOOTER_METRIC_STORAGE_KEY = 'rtx5_trade_footer_metrics_v1';
+const HISTORY_COLUMN_STORAGE_KEY = 'rtx5_history_columns_v2';
+const HISTORY_VOLUME_MODE_STORAGE_KEY = 'rtx5_history_volume_mode';
+const HISTORY_SHOW_MILLISECONDS_STORAGE_KEY = 'rtx5_history_show_milliseconds';
+const HISTORY_AUTO_ARRANGE_STORAGE_KEY = 'rtx5_history_auto_arrange';
+const HISTORY_GRID_STORAGE_KEY = 'rtx5_history_grid';
+// v1 was written as false on every mount by the old Trade-style History menu,
+// so it cannot distinguish a user choice from that obsolete default. Start the
+// MT5 History behavior on a clean preference key, where Auto Update defaults on.
+const HISTORY_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY = 'rtx5_history_show_on_charts_auto_update_v2';
+
+const HISTORY_COLUMN_DEFS: Array<{ key: HistoryColumnKey; label: string }> = [
+    { key: 'ticket', label: 'Ticket' },
+    { key: 'marketValue', label: 'Market Value' },
+    { key: 'commission', label: 'Commission' },
+    { key: 'swap', label: 'Swap' },
+    { key: 'fee', label: 'Fee' },
+    { key: 'changePercent', label: 'Change %' },
+    { key: 'magicNumber', label: 'Magic Number' },
+    { key: 'comment', label: 'Comment' },
+];
+
+const DEFAULT_HISTORY_COLUMNS: HistoryColumnVisibility = {
+    ticket: true,
+    marketValue: false,
+    commission: false,
+    swap: false,
+    fee: false,
+    changePercent: true,
+    magicNumber: false,
+    comment: false,
+};
 
 const TRADE_COLUMN_DEFS: TradeColumnDef[] = [
     { key: 'ticket', label: 'Ticket', defaultWidth: 96, minWidth: 70, maxWidth: 180 },
@@ -296,8 +372,8 @@ const TRADE_COLUMN_HOVER_COMMENTS: Record<TradeColumnWidthKey, string> = {
     side: 'Order type: buy or sell',
     volume: 'Position volume in lots',
     priceOpen: 'Price at which the position was opened',
-    sl: 'Stop Loss level. Double-click a value to modify it',
-    tp: 'Take Profit level. Double-click a value to modify it',
+    sl: 'Stop Loss:',
+    tp: 'Take Profit:',
     priceCurrent: 'Current market price used for live P/L',
     swap: 'Accumulated overnight swap',
     accountLogin: 'Trading account login',
@@ -324,6 +400,7 @@ export function BottomDock({
     onClosePosition,
     onModifyPosition,
     onCloseBulk,
+    historyInstrumentCatalog,
 }: BottomDockProps) {
     const tr = useUiTranslation();
     // Read trading data directly from store — NOT from props
@@ -560,15 +637,8 @@ export function BottomDock({
                         onModifyPosition={onModifyPosition}
                         onCloseBulk={handleTradeCloseBulk}
                         formatMoney={formatMoney}
-                        formatDate={formatDate}
                         loading={isTradeSurfaceLive ? toolboxTrade.loading : false}
                         error={isTradeSurfaceLive ? toolboxTrade.error : null}
-                        wsState={isTradeSurfaceLive ? toolboxTrade.wsState : 'connected'}
-                        restBaseUrl={toolboxTrade.restBaseUrl}
-                        wsUrl={toolboxTrade.wsUrl}
-                        lastRestAt={isTradeSurfaceLive ? toolboxTrade.lastRestAt : 0}
-                        lastWsAt={isTradeSurfaceLive ? toolboxTrade.lastWsAt : 0}
-                        onRefresh={toolboxTrade.refresh}
                     />
                 </div>
                 <div
@@ -589,7 +659,12 @@ export function BottomDock({
                     hidden={activeTab !== 'History'}
                     aria-hidden={activeTab !== 'History'}
                 >
-                    {activeTab === 'History' && <MemoHistoryTab formatMoney={formatMoney} />}
+                    {activeTab === 'History' && (
+                        <MemoHistoryTab
+                            formatMoney={formatMoney}
+                            instrumentCatalog={historyInstrumentCatalog}
+                        />
+                    )}
                 </div>
 
                 {/* Implemented Tabs from Phase 13 & 14 */}
@@ -854,6 +929,8 @@ function UnavailableMetric({ title = 'Not reported by the trading server' }: { t
     );
 }
 
+// Pass only displayed data and actions. Transport timestamps/status otherwise
+// defeat memo() and repaint the entire table when no trade values changed.
 const TradeTab = memo(function TradeTab({
     positions,
     pendingPositions = [],
@@ -867,10 +944,8 @@ const TradeTab = memo(function TradeTab({
 }: any) {
     const tr = useUiTranslation();
     const accountId = useAppStore(s => s.accountId);
-    const [editingId, setEditingId] = useState<number | null>(null);
-    const [editSL, setEditSL] = useState("");
-    const [editTP, setEditTP] = useState("");
-    const [modifyPosition, setModifyPosition] = useState<any>(null);
+    const [modifyPositionContext, setModifyPositionContext] = useState<ModifyPositionContext | null>(null);
+    const modifyPosition = modifyPositionContext?.position ?? null;
     const [sortState, setSortState] = useState<TradeSortState>(null);
     const [tradeContextMenu, setTradeContextMenu] = useState<{ x: number; y: number; position: ToolboxTradePosition } | null>(null);
     const [footerMetricMenu, setFooterMetricMenu] = useState<{ x: number; y: number } | null>(null);
@@ -888,15 +963,41 @@ const TradeTab = memo(function TradeTab({
     // Local trade overrides: track modified fields since the Gateway API can lag after modification.
     const [tradeOverrides, setTradeOverrides] = useState<Record<number, { sl: number; tp: number; comment?: string }>>({});
 
-    // Subscribe to positions instead of ticks for highspeed socket data
-    // (Handled by the parent component, BottomDock, which passes throttled positions)
+    const openModifyPosition = useCallback((position: any) => {
+        setModifyPositionContext({
+            position,
+            sessionScope: getCurrentBrokerAccountSessionScopeKey(),
+        });
+    }, []);
+
+    // Position and placement updates arrive directly from useToolboxTradeData;
+    // quote ticks do not subscribe this table or delay confirmed trade changes.
 
     useEffect(() => {
-        const handleTradeModified = (e: any) => {
-            const { id, sl, tp, comment } = e.detail;
-            const existingPosition = useAppStore.getState().positions.find((position) => position.id === Number(id));
+        const handleTradeModified = (event: Event) => {
+            const detail = (event as CustomEvent<TradeModifiedEventDetail>).detail;
+            const id = Number(detail?.id);
+            const symbol = normalizeTradeSymbol(detail?.symbol);
+            const sl = Number(detail?.sl);
+            const tp = Number(detail?.tp);
+            const comment = typeof detail?.comment === 'string' ? detail.comment : undefined;
+            const sessionScope = String(detail?.sessionScope ?? '');
+            if (
+                !Number.isSafeInteger(id)
+                || id <= 0
+                || !symbol
+                || !Number.isFinite(sl)
+                || !Number.isFinite(tp)
+                || sessionScope !== getCurrentBrokerAccountSessionScopeKey()
+            ) return;
+
+            const existingPosition = useAppStore.getState().positions.find(position => (
+                position.id === id
+                && normalizeTradeSymbol(position.symbol) === symbol
+            ));
+            if (!existingPosition) return;
             rememberTradeHistoryPositionLevels([
-                { ...(existingPosition ?? {}), id, sl, tp, price_sl: sl, price_tp: tp },
+                { ...existingPosition, id, sl, tp, price_sl: sl, price_tp: tp },
             ], useAppStore.getState().accountId);
             setTradeOverrides(prev => ({
                 ...prev,
@@ -906,6 +1007,13 @@ const TradeTab = memo(function TradeTab({
         window.addEventListener('rtx:trade-modified', handleTradeModified);
         return () => window.removeEventListener('rtx:trade-modified', handleTradeModified);
     }, []);
+
+    useEffect(() => onCommittedBrokerAccountSessionScopeChange(() => {
+        setModifyPositionContext(null);
+        setTradeOverrides({});
+        setSelectedPositionKey(null);
+        setTradeContextMenu(null);
+    }), []);
 
     useEffect(() => {
         window.localStorage.setItem(TRADE_COLUMN_STORAGE_KEY, JSON.stringify(columnVisibility));
@@ -931,12 +1039,6 @@ const TradeTab = memo(function TradeTab({
         window.localStorage.setItem(TRADE_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY, String(showOnChartsAutoUpdate));
     }, [showOnChartsAutoUpdate]);
 
-    const startEditing = (pos: any) => {
-        setEditingId(pos.id);
-        setEditSL(String((pos.price_sl ?? pos.sl) || ""));
-        setEditTP(String((pos.price_tp ?? pos.tp) || ""));
-    };
-
     const [isLightSkin, setIsLightSkin] = useState(false);
     useEffect(() => {
         const root = document.documentElement;
@@ -946,18 +1048,6 @@ const TradeTab = memo(function TradeTab({
         obs.observe(root, { attributes: true, attributeFilter: ['class'] });
         return () => obs.disconnect();
     }, []);
-
-    const saveEdit = (pos: any) => {
-        const newSL = parseFloat(editSL) || 0;
-        const newTP = parseFloat(editTP) || 0;
-        onModifyPosition(pos.id, newSL, newTP);
-        rememberTradeHistoryPositionLevels([
-            { ...pos, sl: newSL, tp: newTP, price_sl: newSL, price_tp: newTP },
-        ], accountId);
-        // Also update local overrides
-        setTradeOverrides(prev => ({ ...prev, [pos.id]: { sl: newSL, tp: newTP, comment: prev[pos.id]?.comment } }));
-        setEditingId(null);
-    };
 
     // Display backend prices and P/L, with pending SL/TP edits from local overrides.
     const livePositions = useMemo(() => {
@@ -1508,7 +1598,7 @@ ${rows}
             {
                 label: 'Modify or Delete',
                 icon: <Icon name="settings" size="xs" />,
-                action: () => setModifyPosition(position),
+                action: () => openModifyPosition(position),
             },
             { divider: true },
             {
@@ -1677,6 +1767,7 @@ ${rows}
         sortColumn: TradeSortColumn,
     ) => (
         <th
+            key={key}
             className="relative px-1.5 py-[3px] text-center border-r border-zinc-700/70"
             style={{ width: columnWidths[key] }}
             title={tr(TRADE_COLUMN_HOVER_COMMENTS[key])}
@@ -1818,7 +1909,7 @@ ${rows}
                                     onDoubleClick={() => {
                                         if (isPendingPlacement) return;
                                         setSelectedPositionKey(positionKey);
-                                        setModifyPosition(pos);
+                                        openModifyPosition(pos);
                                     }}
                                     onContextMenu={(event) => {
                                         if (isPendingPlacement) return;
@@ -1867,41 +1958,51 @@ ${rows}
 
                                     {/* price_sl */}
                                     {isColumnVisible('sl') && (
-                                        <td className="rtx-trade-sl-cell cursor-pointer px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={tr("Stop Loss: {{value0}}. Double-click to modify.", { value0: slLabel })} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
-                                            {editingId === pos.id ? (
-                                                <input
-                                                    className="rtx-trade-sl-editor h-[21px] w-full cursor-pointer bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
-                                                    value={editSL}
-                                                    onChange={e => setEditSL(e.target.value)}
-                                                    onBlur={() => saveEdit(pos)}
-                                                    onKeyDown={e => e.key === 'Enter' && saveEdit(pos)}
-                                                    onDoubleClick={e => e.stopPropagation()}
-                                                />
-                                            ) : (
-                                                <span className={(pos.price_sl ?? pos.sl) > 0 ? "rtx-trade-sl-value text-[#ff7676] bg-red-950/20 px-1 rounded-sm cursor-pointer font-normal" : "rtx-trade-sl-value text-zinc-100 cursor-pointer"}>
-                                                    {slLabel}
-                                                </span>
-                                            )}
+                                        <td
+                                            className="rtx-trade-sl-cell px-0 py-[2px] border-r border-zinc-800 text-center tabular-nums"
+                                            title={`${tr("Stop Loss: {{value0}}", { value0: slLabel })} · ${tr("Modify Position")}`}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                if (isPendingPlacement) return;
+                                                setSelectedPositionKey(positionKey);
+                                                openModifyPosition(pos);
+                                            }}
+                                        >
+                                            <button
+                                                type="button"
+                                                className={`rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${
+                                                    (pos.price_sl ?? pos.sl) > 0 ? 'text-[#ff7676]' : 'text-zinc-100'
+                                                }`}
+                                                disabled={isPendingPlacement}
+                                                aria-label={`${tr("Modify Position")} · ${tr("Stop Loss:")} #${pos.id}`}
+                                            >
+                                                {slLabel}
+                                            </button>
                                         </td>
                                     )}
 
                                     {/* price_tp */}
                                     {isColumnVisible('tp') && (
-                                        <td className="rtx-trade-tp-cell cursor-pointer px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={tr("Take Profit: {{value0}}. Double-click to modify.", { value0: tpLabel })} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
-                                            {editingId === pos.id ? (
-                                                <input
-                                                    className="rtx-trade-tp-editor h-[21px] w-full cursor-pointer bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
-                                                    value={editTP}
-                                                    onChange={e => setEditTP(e.target.value)}
-                                                    onBlur={() => saveEdit(pos)}
-                                                    onKeyDown={e => e.key === 'Enter' && saveEdit(pos)}
-                                                    onDoubleClick={e => e.stopPropagation()}
-                                                />
-                                            ) : (
-                                                <span className={(pos.price_tp ?? pos.tp) > 0 ? "rtx-trade-tp-value text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm cursor-pointer font-normal" : "rtx-trade-tp-value text-zinc-100 cursor-pointer"}>
-                                                    {tpLabel}
-                                                </span>
-                                            )}
+                                        <td
+                                            className="rtx-trade-tp-cell px-0 py-[2px] border-r border-zinc-800 text-center tabular-nums"
+                                            title={`${tr("Take Profit: {{value0}}", { value0: tpLabel })} · ${tr("Modify Position")}`}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                if (isPendingPlacement) return;
+                                                setSelectedPositionKey(positionKey);
+                                                openModifyPosition(pos);
+                                            }}
+                                        >
+                                            <button
+                                                type="button"
+                                                className={`rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${
+                                                    (pos.price_tp ?? pos.tp) > 0 ? 'text-[#34dca0]' : 'text-zinc-100'
+                                                }`}
+                                                disabled={isPendingPlacement}
+                                                aria-label={`${tr("Modify Position")} · ${tr("Take Profit:")} #${pos.id}`}
+                                            >
+                                                {tpLabel}
+                                            </button>
                                         </td>
                                     )}
 
@@ -2071,14 +2172,27 @@ ${rows}
             <ModifyPositionDialog
                 isOpen={modifyPosition !== null}
                 onClose={(modifiedSl?: number, modifiedTp?: number, modifiedComment?: string) => {
+                    const closingContext = modifyPositionContext;
+                    const currentPosition = closingContext
+                        ? useAppStore.getState().positions.find(position => (
+                            position.id === Number(closingContext.position.id)
+                            && normalizeTradeSymbol(position.symbol) === normalizeTradeSymbol(closingContext.position.symbol)
+                        ))
+                        : null;
                     // Capture modified values in local overrides while the backend refresh catches up.
-                    if (modifyPosition && modifiedSl !== undefined && modifiedTp !== undefined) {
+                    if (
+                        closingContext
+                        && currentPosition
+                        && closingContext.sessionScope === getCurrentBrokerAccountSessionScopeKey()
+                        && modifiedSl !== undefined
+                        && modifiedTp !== undefined
+                    ) {
                         setTradeOverrides(prev => ({
                             ...prev,
-                            [modifyPosition.id]: { sl: modifiedSl, tp: modifiedTp, comment: modifiedComment ?? '' }
+                            [closingContext.position.id]: { sl: modifiedSl, tp: modifiedTp, comment: modifiedComment ?? '' }
                         }));
                     }
-                    setModifyPosition(null);
+                    setModifyPositionContext(current => current === closingContext ? null : current);
                 }}
                 position={modifyPosition}
             />
@@ -2216,78 +2330,325 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
     );
 }
 
-type HistoryCacheEntry = { login: number; orders: Trade[] };
+const toLocalDateInputValue = (date: Date): string => {
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+const subtractCalendarMonths = (value: Date, months: number): Date => {
+    const result = new Date(value);
+    const day = result.getDate();
+    result.setDate(1);
+    result.setMonth(result.getMonth() - months);
+    const finalDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+    result.setDate(Math.min(day, finalDay));
+    return result;
+};
+
+const createDefaultHistoryCustomPeriod = (): HistoryCustomPeriod => {
+    const to = new Date();
+    const from = subtractCalendarMonths(to, 1);
+    return { from: toLocalDateInputValue(from), to: toLocalDateInputValue(to) };
+};
+
+const parseLocalDateBoundary = (value: string, endOfDay: boolean): number | null => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const date = new Date(year, month, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
+    if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+    return date.getTime();
+};
+
+const getHistoryRowTime = (trade: Trade): number => {
+    const value = Date.parse(trade.closeTime || trade.openTime || '');
+    return Number.isFinite(value) ? value : 0;
+};
+
+const getHistoryPeriodStart = (period: HistoryPeriodFilter, now: number): number | null => {
+    if (period === 'all' || period === 'custom') return null;
+    const start = subtractCalendarMonths(new Date(now), period === 'last-three-months' ? 3 : 1);
+    start.setHours(0, 0, 0, 0);
+    return start.getTime();
+};
+
+type HistoryCacheEntry = { login: number; scopeKey: string; data: TradeHistoryDataSet };
 let historyCache: HistoryCacheEntry | null = null;
-const historyFetchPromises = new Map<number, Promise<Trade[]>>();
+const historyFetchPromises = new Map<string, Promise<TradeHistoryDataSet>>();
+
+const EMPTY_HISTORY_DATA_SET: TradeHistoryDataSet = {
+    positions: [],
+    deals: [],
+    orders: [],
+    errors: { positions: null, deals: null, orders: null },
+};
 
 // Coalesces concurrent history requests and caches the last result so the
 // tab renders instantly on revisit instead of re-fetching both gateways.
-const loadOrderHistory = (login: number, force = false): Promise<Trade[]> => {
-    const inFlight = historyFetchPromises.get(login);
+const loadHistoryDataSet = (login: number, scopeKey: string, force = false): Promise<TradeHistoryDataSet> => {
+    const requestKey = `${scopeKey}\u0000${login}`;
+    const inFlight = historyFetchPromises.get(requestKey);
     if (!force && inFlight) return inFlight;
-    const request = tradeGatewayApi.getOrderHistory(login)
-        .then((data) => {
-            historyCache = { login, orders: data };
-            return data;
-        })
+    const request = tradeGatewayApi.getHistoryDataSet(login)
         .finally(() => {
-            if (historyFetchPromises.get(login) === request) historyFetchPromises.delete(login);
+            if (historyFetchPromises.get(requestKey) === request) historyFetchPromises.delete(requestKey);
         });
-    historyFetchPromises.set(login, request);
+    historyFetchPromises.set(requestKey, request);
     return request;
 };
 
-function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined | null) => string }) {
+type HistoryTabProps = {
+    formatMoney: (value: number | undefined | null) => string;
+    instrumentCatalog?: readonly unknown[];
+};
+
+function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabProps) {
     const tr = useUiTranslation();
     const accountId = useAppStore((state) => state.accountId);
+    const activeChartSymbol = useAppStore((state) => state.selectedSymbol);
     const activeLogin = Number.parseInt(String(accountId ?? getStoredAccountLogin() ?? ''), 10);
-    const [orders, setOrders] = useState<Trade[]>(() => (
-        historyCache && historyCache.login === activeLogin ? historyCache.orders : []
-    ));
-    const [loading, setLoading] = useState(() => !(historyCache && historyCache.login === activeLogin));
+    const activeScopeKey = getCurrentBrokerAccountSessionScopeKey();
+    const cachedHistory = historyCache
+        && historyCache.login === activeLogin
+        && historyCache.scopeKey === activeScopeKey
+        ? historyCache.data
+        : null;
+    const [historyData, setHistoryData] = useState<TradeHistoryDataSet>(() => cachedHistory ?? EMPTY_HISTORY_DATA_SET);
+    const [loading, setLoading] = useState(() => !cachedHistory);
     const [error, setError] = useState<string | null>(null);
-    const [filter, setFilter] = useState<'today' | 'week' | 'month' | 'all'>('all');
+    const [historyView, setHistoryView] = useState<HistoryViewMode>('positions');
+    const [periodFilter, setPeriodFilter] = useState<HistoryPeriodFilter>('all');
+    const [symbolFilter, setSymbolFilter] = useState<HistorySymbolFilter>({ mode: 'all' });
+    const [customPeriod, setCustomPeriod] = useState<HistoryCustomPeriod>(createDefaultHistoryCustomPeriod);
+    const [customPeriodDraft, setCustomPeriodDraft] = useState<HistoryCustomPeriod>(createDefaultHistoryCustomPeriod);
+    const [customPeriodDialogOpen, setCustomPeriodDialogOpen] = useState(false);
+    const [customPeriodError, setCustomPeriodError] = useState<string | null>(null);
+    const [historyContextMenu, setHistoryContextMenu] = useState<HistoryContextMenuState | null>(null);
+    const [selectedTradeKey, setSelectedTradeKey] = useState<string | null>(null);
+    const [columnVisibility, setColumnVisibility] = useState<HistoryColumnVisibility>(() => (
+        safeReadJson(HISTORY_COLUMN_STORAGE_KEY, DEFAULT_HISTORY_COLUMNS)
+    ));
+    const [volumeMode, setVolumeMode] = useState<HistoryVolumeMode>(() => (
+        safeReadString(HISTORY_VOLUME_MODE_STORAGE_KEY, ['lots', 'amounts'] as const, 'lots')
+    ));
+    const [showMilliseconds, setShowMilliseconds] = useState(() => (
+        safeReadBoolean(HISTORY_SHOW_MILLISECONDS_STORAGE_KEY, false)
+    ));
+    const [autoArrange, setAutoArrange] = useState(() => (
+        safeReadBoolean(HISTORY_AUTO_ARRANGE_STORAGE_KEY, true)
+    ));
+    const [showGrid, setShowGrid] = useState(() => (
+        safeReadBoolean(HISTORY_GRID_STORAGE_KEY, true)
+    ));
+    const [showOnChartsAutoUpdate, setShowOnChartsAutoUpdate] = useState(() => (
+        safeReadBoolean(HISTORY_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY, true)
+    ));
+    const [isLightSkin, setIsLightSkin] = useState(false);
+    const historyRequestSerialRef = useRef(0);
+    const historyMountedRef = useRef(false);
+
+    useEffect(() => {
+        historyMountedRef.current = true;
+        return () => {
+            historyMountedRef.current = false;
+            historyRequestSerialRef.current += 1;
+        };
+    }, []);
 
     const fetchHistory = useCallback(async (opts?: { force?: boolean; background?: boolean }) => {
+        const requestSerial = ++historyRequestSerialRef.current;
         const login = Number.isFinite(activeLogin) && activeLogin > 0 ? activeLogin : null;
-        if (!login) { setError('No account login found'); return; }
+        if (!login) {
+            setError('No account login found');
+            if (!opts?.background) setLoading(false);
+            return;
+        }
         if (!opts?.background) setLoading(true);
         setError(null);
         try {
-            const data = await loadOrderHistory(login, opts?.force);
+            const data = await loadHistoryDataSet(login, activeScopeKey, opts?.force);
             const currentLogin = Number.parseInt(String(useAppStore.getState().accountId ?? getStoredAccountLogin() ?? ''), 10);
-            if (currentLogin !== login) return;
-            setOrders(data);
+            if (
+                !historyMountedRef.current
+                || requestSerial !== historyRequestSerialRef.current
+                || currentLogin !== login
+                || getCurrentBrokerAccountSessionScopeKey() !== activeScopeKey
+            ) return;
+            historyCache = { login, scopeKey: activeScopeKey, data };
+            setHistoryData(data);
         } catch (err: unknown) {
+            if (!historyMountedRef.current || requestSerial !== historyRequestSerialRef.current) return;
             console.warn('[History] Failed to load:', err);
             if (!opts?.background) setError(err instanceof Error ? err.message : 'Failed to load history');
         } finally {
-            if (!opts?.background) setLoading(false);
+            if (
+                historyMountedRef.current
+                && requestSerial === historyRequestSerialRef.current
+                && !opts?.background
+            ) setLoading(false);
         }
-    }, [activeLogin]);
+    }, [activeLogin, activeScopeKey]);
 
     useEffect(() => {
-        if (historyCache && historyCache.login === activeLogin) {
-            setOrders(historyCache.orders);
+        if (historyCache && historyCache.login === activeLogin && historyCache.scopeKey === activeScopeKey) {
+            setHistoryData(historyCache.data);
             void fetchHistory({ background: true });
         } else {
-            setOrders([]);
+            setHistoryData(EMPTY_HISTORY_DATA_SET);
             void fetchHistory();
         }
-    }, [activeLogin, fetchHistory]);
+    }, [activeLogin, activeScopeKey, fetchHistory]);
 
-    const filteredOrders = useMemo(() => {
-        if (filter === 'all') return orders;
-        const cutoff = Date.now() - (filter === 'today' ? 86400000 : filter === 'week' ? 7 * 86400000 : 30 * 86400000);
-        return orders.filter(o => Date.parse(o.closeTime || o.openTime || '') >= cutoff);
-    }, [orders, filter]);
+    useEffect(() => onCommittedBrokerAccountSessionScopeChange(() => {
+        historyRequestSerialRef.current += 1;
+        historyCache = null;
+        historyFetchPromises.clear();
+        setHistoryData(EMPTY_HISTORY_DATA_SET);
+        setHistoryContextMenu(null);
+        setSelectedTradeKey(null);
+        setHistoryView('positions');
+        setSymbolFilter({ mode: 'all' });
+        setPeriodFilter('all');
+    }), []);
+
+    useEffect(() => {
+        const root = document.documentElement;
+        const check = () => setIsLightSkin(root.classList.contains('rtx-skin-untitled-light'));
+        check();
+        const observer = new MutationObserver(check);
+        observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+        return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => {
+        window.localStorage.setItem(HISTORY_COLUMN_STORAGE_KEY, JSON.stringify(columnVisibility));
+    }, [columnVisibility]);
+    useEffect(() => {
+        window.localStorage.setItem(HISTORY_VOLUME_MODE_STORAGE_KEY, volumeMode);
+    }, [volumeMode]);
+    useEffect(() => {
+        window.localStorage.setItem(HISTORY_SHOW_MILLISECONDS_STORAGE_KEY, String(showMilliseconds));
+    }, [showMilliseconds]);
+    useEffect(() => {
+        window.localStorage.setItem(HISTORY_AUTO_ARRANGE_STORAGE_KEY, String(autoArrange));
+    }, [autoArrange]);
+    useEffect(() => {
+        window.localStorage.setItem(HISTORY_GRID_STORAGE_KEY, String(showGrid));
+    }, [showGrid]);
+    useEffect(() => {
+        window.localStorage.setItem(HISTORY_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY, String(showOnChartsAutoUpdate));
+    }, [showOnChartsAutoUpdate]);
+
+    const historyRows = useMemo(() => {
+        const rows = historyView === 'positions'
+            ? historyData.positions
+            : historyView === 'deals'
+                ? historyData.deals
+                : historyView === 'orders'
+                    ? historyData.orders
+                    : [...historyData.orders, ...historyData.deals];
+        return [...rows].sort((left, right) => getHistoryRowTime(right) - getHistoryRowTime(left));
+    }, [historyData, historyView]);
+
+    const availableSymbols = useMemo(() => {
+        const symbols = new Map<string, string>();
+        [...historyData.positions, ...historyData.deals, ...historyData.orders].forEach((trade) => {
+            const display = String(trade.symbol ?? '').trim();
+            const normalized = normalizeTradeSymbol(display);
+            if (normalized && !symbols.has(normalized)) symbols.set(normalized, display || normalized);
+        });
+        return Array.from(symbols.entries())
+            .sort((left, right) => left[0].localeCompare(right[0]))
+            .map(([normalized, display]) => ({ normalized, display }));
+    }, [historyData]);
+
+    const contractSizeBySymbol = useMemo(() => {
+        const sizes = new Map<string, number>();
+        instrumentCatalog.forEach((instrument) => {
+            if (!instrument || typeof instrument !== 'object') return;
+            const record = instrument as Record<string, unknown>;
+            const specification = record.brokerSpecification && typeof record.brokerSpecification === 'object'
+                ? record.brokerSpecification as Record<string, unknown>
+                : {};
+            const symbol = normalizeTradeSymbol(record.symbol ?? record.name ?? specification.symbol);
+            const size = Number(record.contractSize ?? record.contract_size ?? specification.contract_size ?? specification.contractSize);
+            if (symbol && Number.isFinite(size) && size > 0) sizes.set(symbol, size);
+        });
+        return sizes;
+    }, [instrumentCatalog]);
+
+    const currentSymbol = normalizeTradeSymbol(activeChartSymbol);
+    const matchesCurrentHistoryFilters = useCallback((trade: Trade) => {
+        const now = Date.now();
+        const periodStart = getHistoryPeriodStart(periodFilter, now);
+        const customStart = periodFilter === 'custom' ? parseLocalDateBoundary(customPeriod.from, false) : null;
+        const customEnd = periodFilter === 'custom' ? parseLocalDateBoundary(customPeriod.to, true) : null;
+        const selectedSymbol = symbolFilter.mode === 'current'
+            ? currentSymbol
+            : symbolFilter.mode === 'symbol'
+                ? normalizeTradeSymbol(symbolFilter.symbol)
+                : '';
+        const rowSymbol = normalizeTradeSymbol(trade.symbol);
+        if (symbolFilter.mode !== 'all' && (!selectedSymbol || rowSymbol !== selectedSymbol)) return false;
+        const openTime = Date.parse(trade.openTime || '');
+        const closeTime = Date.parse(trade.closeTime || '');
+        const isOrderRow = historyView === 'orders' || (historyView === 'orders-and-deals' && trade.historySource === 'order');
+        const rowTimes = isOrderRow
+            ? [openTime]
+            : historyView === 'positions'
+                ? [openTime, closeTime]
+                : [closeTime, openTime];
+        const validRowTimes = rowTimes.filter(time => Number.isFinite(time));
+        if (periodFilter === 'custom') {
+            return customStart !== null
+                && customEnd !== null
+                && validRowTimes.some(time => time >= customStart && time <= customEnd);
+        }
+        return periodStart === null || validRowTimes.some(time => time >= periodStart && time <= now);
+    }, [currentSymbol, customPeriod, historyView, periodFilter, symbolFilter]);
+    const filteredOrders = useMemo(
+        () => historyRows.filter(matchesCurrentHistoryFilters),
+        [historyRows, matchesCurrentHistoryFilters],
+    );
+    const filteredPositionHistory = useMemo(
+        () => historyData.positions.filter(matchesCurrentHistoryFilters),
+        [historyData.positions, matchesCurrentHistoryFilters],
+    );
+
+    const viewError = historyView === 'positions'
+        ? historyData.errors.positions
+        : historyView === 'deals'
+            ? historyData.errors.deals
+            : historyView === 'orders'
+                ? historyData.errors.orders
+                : [historyData.errors.orders, historyData.errors.deals].filter(Boolean).join(' · ') || null;
+    const displayError = error ?? viewError;
+
+    const getTradeKey = (trade: Trade) => [
+        trade.historySource ?? trade.type,
+        trade.positionId ?? '',
+        trade.dealTicket ?? trade.orderTicket ?? trade.id,
+        trade.openTime,
+        trade.closeTime ?? '',
+    ].join(':');
+
+    useEffect(() => {
+        if (!selectedTradeKey) return;
+        if (!filteredOrders.some(order => getTradeKey(order) === selectedTradeKey)) {
+            setSelectedTradeKey(null);
+            setHistoryContextMenu(null);
+        }
+    }, [filteredOrders, selectedTradeKey]);
 
     const formatTs = (value?: string) => {
         if (!value) return '-';
-        return new Date(value).toLocaleString('en-US', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-        }).replace(',', '');
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        const pad = (number: number, length = 2) => String(number).padStart(length, '0');
+        const milliseconds = showMilliseconds ? `.${pad(date.getMilliseconds(), 3)}` : '';
+        return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${milliseconds}`;
     };
 
     const formatPriceCell = (value: number | undefined, symbol: string) => {
@@ -2300,13 +2661,7 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
         return Number.isFinite(price) && price > 0 ? formatPrice(price, symbol) : '0.00';
     };
 
-    const formatTradeStatus = (trade: Trade) => {
-        if (trade.status) return trade.status;
-        if (trade.closeTime) return 'closed';
-        return trade.type || '-';
-    };
-
-    const moneyColor = (value: number | undefined) => {
+    const moneyColor = (value: number | undefined | null) => {
         const numeric = Number(value ?? 0);
         if (numeric > 0) return 'text-[#22c55e]';
         if (numeric < 0) return 'text-[#ff2d2d]';
@@ -2314,106 +2669,587 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
     };
 
     const typeColor = (type: string) => {
-        const t = (type || '').toLowerCase();
-        return t.includes('buy') ? 'text-[#45bff7]' : t.includes('sell') ? 'text-[#ff2d2d]' : 'text-zinc-100';
+        const normalized = (type || '').toLowerCase();
+        return normalized.includes('buy') ? 'text-[#45bff7]' : normalized.includes('sell') ? 'text-[#ff2d2d]' : 'text-zinc-100';
     };
+
+    const isColumnVisible = (key: HistoryColumnKey) => columnVisibility[key] !== false;
+    const visibleColumnCount = 10 + HISTORY_COLUMN_DEFS.filter(column => isColumnVisible(column.key)).length;
+    const toggleColumn = (key: HistoryColumnKey) => {
+        setColumnVisibility(current => ({ ...current, [key]: current[key] === false }));
+    };
+
+    const getHistoryTicket = (trade: Trade): number | string => {
+        if (historyView === 'positions') return trade.positionId ?? trade.id ?? '-';
+        if (trade.historySource === 'deal') return trade.dealTicket ?? trade.id ?? '-';
+        if (trade.historySource === 'order') return trade.orderTicket ?? trade.id ?? '-';
+        return trade.id ?? '-';
+    };
+
+    const getHistoryContractSize = (trade: Trade): number | null => {
+        const explicit = Number(trade.contractSize);
+        if (Number.isFinite(explicit) && explicit > 0) return explicit;
+        return contractSizeBySymbol.get(normalizeTradeSymbol(trade.symbol)) ?? null;
+    };
+
+    const formatGroupedNumber = (value: number, minimumFractionDigits = 0, maximumFractionDigits = 2): string => (
+        value.toLocaleString('en-US', { minimumFractionDigits, maximumFractionDigits }).replace(/,/g, ' ')
+    );
+
+    const formatHistoryVolume = (trade: Trade): string => {
+        const lots = Number(trade.volume);
+        if (!Number.isFinite(lots)) return '-';
+        if (volumeMode === 'lots') return formatGroupedNumber(lots, 2, 8);
+        const contractSize = getHistoryContractSize(trade);
+        return contractSize === null ? '\u2014' : formatGroupedNumber(lots * contractSize, 0, 2);
+    };
+
+    const getHistoryMarketValue = (trade: Trade): number | null => {
+        const price = Number(trade.openPrice);
+        const lots = Number(trade.volume);
+        const contractSize = getHistoryContractSize(trade);
+        if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(lots) || contractSize === null) return null;
+        const value = price * lots * contractSize;
+        return Number.isFinite(value) ? value : null;
+    };
+
+    const getHistoryChangePercent = (trade: Trade): number | null => {
+        const openPrice = Number(trade.openPrice);
+        const closePrice = Number(trade.closePrice);
+        if (!Number.isFinite(openPrice) || !Number.isFinite(closePrice) || openPrice <= 0 || closePrice <= 0) return null;
+        const value = ((closePrice - openPrice) / openPrice) * 100;
+        return Number.isFinite(value) ? value : null;
+    };
+
+    const formatHistoryPercent = (trade: Trade): string => {
+        const value = getHistoryChangePercent(trade);
+        return value === null ? '\u2014' : `${value.toFixed(2)} %`;
+    };
+
+    const getHistoryRowSymbol = (trade?: Trade): string => {
+        const rowSymbol = String(trade?.symbol ?? '').trim();
+        if (trade) return rowSymbol;
+        if (symbolFilter.mode === 'symbol') return symbolFilter.symbol;
+        if (symbolFilter.mode === 'current') return activeChartSymbol;
+        return activeChartSymbol || availableSymbols[0]?.display || '';
+    };
+
+    const openCustomPeriodDialog = () => {
+        setCustomPeriodDraft(customPeriod);
+        setCustomPeriodError(null);
+        setCustomPeriodDialogOpen(true);
+    };
+
+    const applyCustomPeriod = () => {
+        const start = parseLocalDateBoundary(customPeriodDraft.from, false);
+        const end = parseLocalDateBoundary(customPeriodDraft.to, true);
+        if (start === null || end === null || start > end) {
+            setCustomPeriodError('Choose a valid date range');
+            return;
+        }
+        setCustomPeriod(customPeriodDraft);
+        setPeriodFilter('custom');
+        setCustomPeriodDialogOpen(false);
+        setCustomPeriodError(null);
+    };
+
+    const historyViewLabel = historyView === 'positions'
+        ? 'Positions'
+        : historyView === 'deals'
+            ? 'Deals'
+            : historyView === 'orders'
+                ? 'Orders'
+                : 'Orders & Deals';
+
+    const periodFilterLabel = periodFilter === 'all'
+        ? 'All History'
+        : periodFilter === 'last-three-months'
+            ? 'Last 3 Months'
+            : periodFilter === 'last-month'
+                ? 'Last Month'
+                : `${customPeriod.from} - ${customPeriod.to}`;
+
+    const symbolFilterLabel = symbolFilter.mode === 'all'
+        ? 'All Symbols'
+        : symbolFilter.mode === 'current'
+            ? (currentSymbol || 'Current Symbol')
+            : symbolFilter.symbol;
+
+    const downloadTextFile = (content: string, filename: string, type: string) => {
+        const url = URL.createObjectURL(new Blob([content], { type }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    };
+
+    const getHistoryReportColumns = () => [
+        { label: 'Time', value: (trade: Trade): string | number => formatTs(trade.openTime) },
+        { label: 'Symbol', value: (trade: Trade): string | number => trade.symbol || '-' },
+        ...(isColumnVisible('ticket') ? [{ label: 'Ticket', value: (trade: Trade): string | number => getHistoryTicket(trade) }] : []),
+        { label: 'Type', value: (trade: Trade): string | number => String(trade.orderType || trade.side || trade.type || '-').toLowerCase() },
+        { label: 'Volume', value: (trade: Trade): string | number => formatHistoryVolume(trade) },
+        { label: 'Price', value: (trade: Trade): string | number => formatPriceCell(trade.openPrice, trade.symbol) },
+        { label: 'S/L', value: (trade: Trade): string | number => formatLevelCell(trade.sl, trade.symbol) },
+        { label: 'T/P', value: (trade: Trade): string | number => formatLevelCell(trade.tp, trade.symbol) },
+        { label: 'Time', value: (trade: Trade): string | number => formatTs(trade.closeTime) },
+        { label: 'Price', value: (trade: Trade): string | number => formatPriceCell(trade.closePrice, trade.symbol) },
+        ...(isColumnVisible('marketValue') ? [{ label: 'Market Value', value: (trade: Trade): string | number => {
+            const value = getHistoryMarketValue(trade);
+            return value === null ? '\u2014' : formatGroupedNumber(value, 2, 2);
+        } }] : []),
+        ...(isColumnVisible('commission') ? [{ label: 'Commission', value: (trade: Trade): string | number => formatMoney(trade.commission) }] : []),
+        ...(isColumnVisible('swap') ? [{ label: 'Swap', value: (trade: Trade): string | number => formatMoney(trade.swap) }] : []),
+        ...(isColumnVisible('fee') ? [{ label: 'Fee', value: (trade: Trade): string | number => formatMoney(trade.fee) }] : []),
+        { label: 'Profit', value: (trade: Trade): string | number => formatMoney(trade.profit) },
+        ...(isColumnVisible('changePercent') ? [{ label: 'Change %', value: (trade: Trade): string | number => formatHistoryPercent(trade) }] : []),
+        ...(isColumnVisible('magicNumber') ? [{ label: 'Magic Number', value: (trade: Trade): string | number => trade.magicNumber ?? '-' }] : []),
+        ...(isColumnVisible('comment') ? [{ label: 'Comment', value: (trade: Trade): string | number => trade.comment || '-' }] : []),
+    ];
+
+    const buildHistoryReportHtml = (title: string) => {
+        const columns = getHistoryReportColumns();
+        const header = columns.map(column => `<th>${escapeHtml(column.label)}</th>`).join('');
+        const body = filteredOrders.map(order => (
+            `<tr>${columns.map(column => `<td>${escapeHtml(column.value(order))}</td>`).join('')}</tr>`
+        )).join('');
+        return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${escapeHtml(title)}</title>
+<style>
+body{font-family:Segoe UI,Tahoma,Arial,sans-serif;font-size:12px;color:#111;background:#fff;margin:18px}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #bdbdbd;padding:4px 6px;text-align:center;white-space:nowrap}
+th{background:#ececec;font-weight:600}
+.summary{margin:0 0 12px 0;font-weight:600}
+</style>
+</head>
+<body>
+<div class="summary">${escapeHtml(title)} - ${filteredOrders.length} record(s)</div>
+<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>
+</body>
+</html>`;
+    };
+
+    const openHistoryOverview = () => {
+        const url = URL.createObjectURL(new Blob([buildHistoryReportHtml('RTX 5 History Overview')], { type: 'text/html' }));
+        window.open(url, '_blank', 'noopener,noreferrer');
+        window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    };
+
+    const downloadHistoryHtml = () => {
+        downloadTextFile(buildHistoryReportHtml('RTX 5 History Report'), 'rtx5-history-report.html', 'text/html');
+    };
+
+    const downloadHistoryXml = () => {
+        const columns = getHistoryReportColumns();
+        const rows = filteredOrders.map(order => (
+            `<Row>${columns.map(column => `<Cell><Data ss:Type="String">${escapeHtml(column.value(order))}</Data></Cell>`).join('')}</Row>`
+        )).join('');
+        const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Worksheet ss:Name="History">
+<Table>
+<Row>${columns.map(column => `<Cell><Data ss:Type="String">${escapeHtml(column.label)}</Data></Cell>`).join('')}</Row>
+${rows}
+</Table>
+</Worksheet>
+</Workbook>`;
+        downloadTextFile(xml, 'rtx5-history-report.xml', 'application/vnd.ms-excel');
+    };
+
+    const setTradeHistoryForSymbol = (symbol: string, visible: boolean) => {
+        if (!symbol) return;
+        const store = useChartSettingsStore.getState();
+        store.updateSymbolProperty(symbol, 'showTradeHistory', visible);
+        store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', visible);
+        window.dispatchEvent(new CustomEvent(visible ? 'rtx:refresh-trade-overlay' : 'rtx:flush-trade-overlay', { detail: { symbol } }));
+    };
+
+    const deleteAllTradeHistoryFromCharts = () => {
+        const store = useChartSettingsStore.getState();
+        store.updateGlobalProperty('showTradeHistory', false);
+        store.updateGlobalProperty('showTradeHistoryArrows', false);
+        const symbols = new Set([
+            ...Object.keys(store.symbolProperties),
+            ...availableSymbols.map(({ display }) => display),
+        ]);
+        symbols.forEach(symbol => {
+            store.updateSymbolProperty(symbol, 'showTradeHistory', false);
+            store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', false);
+        });
+        setShowOnChartsAutoUpdate(false);
+        window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+    };
+
+    const enableTradeHistoryAutoUpdate = () => {
+        const store = useChartSettingsStore.getState();
+        store.updateGlobalProperty('showTradeHistory', true);
+        store.updateGlobalProperty('showTradeHistoryArrows', true);
+        filteredPositionHistory.forEach(order => {
+            const symbol = String(order.symbol ?? '').trim();
+            if (!symbol) return;
+            store.updateSymbolProperty(symbol, 'showTradeHistory', true);
+            store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', true);
+        });
+        setShowOnChartsAutoUpdate(true);
+        window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
+    };
+
+    useEffect(() => {
+        if (!showOnChartsAutoUpdate || filteredPositionHistory.length === 0) return;
+        const store = useChartSettingsStore.getState();
+        Array.from(new Set(filteredPositionHistory.map(order => String(order.symbol ?? '').trim()).filter(Boolean))).forEach(symbol => {
+            store.updateSymbolProperty(symbol, 'showTradeHistory', true);
+            store.updateSymbolProperty(symbol, 'showTradeHistoryArrows', true);
+        });
+        window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
+    }, [filteredPositionHistory, showOnChartsAutoUpdate]);
+
+    const buildHistoryContextMenuItems = (trade?: Trade): ContextMenuItemConfig[] => {
+        const symbol = getHistoryRowSymbol(trade);
+        const symbolsSubmenu: ContextMenuItemConfig[] = [
+            { label: 'All Symbols', checked: symbolFilter.mode === 'all', action: () => setSymbolFilter({ mode: 'all' }) },
+            {
+                label: 'Current Symbol',
+                checked: symbolFilter.mode === 'current',
+                disabled: !currentSymbol,
+                action: () => setSymbolFilter({ mode: 'current' }),
+            },
+            { divider: true },
+            ...availableSymbols.map(({ normalized, display }) => ({
+                label: display,
+                checked: symbolFilter.mode === 'symbol' && normalizeTradeSymbol(symbolFilter.symbol) === normalized,
+                action: () => setSymbolFilter({ mode: 'symbol', symbol: display }),
+            })),
+        ];
+        return [
+            {
+                label: 'New Order',
+                shortcut: 'F9',
+                icon: <Icon name="plus" size="xs" />,
+                disabled: !symbol,
+                action: () => window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol } })),
+            },
+            { label: 'Positions', checked: historyView === 'positions', action: () => setHistoryView('positions') },
+            { label: 'Deals', checked: historyView === 'deals', action: () => setHistoryView('deals') },
+            { label: 'Orders', checked: historyView === 'orders', action: () => setHistoryView('orders') },
+            { label: 'Orders & Deals', checked: historyView === 'orders-and-deals', action: () => setHistoryView('orders-and-deals') },
+            { divider: true },
+            { label: 'Symbols', submenu: symbolsSubmenu },
+            {
+                label: 'Volumes',
+                submenu: [
+                    { label: 'Lots', checked: volumeMode === 'lots', action: () => setVolumeMode('lots'), autoClose: false },
+                    { label: 'Amounts', checked: volumeMode === 'amounts', action: () => setVolumeMode('amounts'), autoClose: false },
+                ],
+            },
+            { divider: true },
+            { label: 'All History', checked: periodFilter === 'all', action: () => setPeriodFilter('all') },
+            { label: 'Last 3 Months', checked: periodFilter === 'last-three-months', action: () => setPeriodFilter('last-three-months') },
+            { label: 'Last Month', checked: periodFilter === 'last-month', action: () => setPeriodFilter('last-month') },
+            {
+                label: 'Custom Period',
+                checked: periodFilter === 'custom',
+                icon: <Icon name="settings" size="xs" />,
+                action: openCustomPeriodDialog,
+            },
+            { divider: true },
+            {
+                label: 'Report',
+                submenu: [
+                    { label: 'Overview', shortcut: 'Alt+E', action: openHistoryOverview },
+                    { label: 'Open XML (MS Office Excel 2007)', action: downloadHistoryXml },
+                    { label: 'HTML (Internet Explorer)', action: downloadHistoryHtml },
+                ],
+            },
+            {
+                label: 'Show on Charts',
+                submenu: [
+                    { label: `Add ${symbol} Deals`, disabled: !symbol, action: () => setTradeHistoryForSymbol(symbol, true) },
+                    { label: 'Delete All Deals', action: deleteAllTradeHistoryFromCharts },
+                    {
+                        label: 'Auto Update',
+                        checked: showOnChartsAutoUpdate,
+                        action: () => {
+                            if (showOnChartsAutoUpdate) deleteAllTradeHistoryFromCharts();
+                            else enableTradeHistoryAutoUpdate();
+                        },
+                        autoClose: false,
+                    },
+                ],
+            },
+            { label: 'Register as Signal', disabled: true },
+            { divider: true },
+            {
+                label: 'Show Milliseconds',
+                checked: showMilliseconds,
+                action: () => setShowMilliseconds(current => !current),
+                autoClose: false,
+            },
+            {
+                label: 'Auto Arrange',
+                checked: autoArrange,
+                shortcut: 'A',
+                action: () => setAutoArrange(current => !current),
+                autoClose: false,
+            },
+            {
+                label: 'Grid',
+                checked: showGrid,
+                shortcut: 'G',
+                action: () => setShowGrid(current => !current),
+                autoClose: false,
+            },
+            { divider: true },
+            {
+                label: 'Columns',
+                submenu: HISTORY_COLUMN_DEFS.map(column => ({
+                    label: column.label,
+                    checked: isColumnVisible(column.key),
+                    action: () => toggleColumn(column.key),
+                    autoClose: false,
+                })),
+            },
+        ];
+    };
+
+    const handleHistoryContextMenu = (event: React.MouseEvent<HTMLElement>, trade?: Trade) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (trade) setSelectedTradeKey(getTradeKey(trade));
+        setHistoryContextMenu({ x: event.clientX, y: event.clientY, ...(trade ? { trade } : {}) });
+    };
+
+    const headerDividerClass = showGrid ? 'border-r border-zinc-700/70' : '';
+    const cellDividerClass = showGrid ? 'border-r border-zinc-800' : '';
+    const rowDividerClass = showGrid ? 'divide-y divide-zinc-800/90' : '';
 
     return (
         <div className="rtx-history-tab h-full flex flex-col relative bg-[#131316] overflow-hidden">
-            {/* Toolbar */}
             <div className="rtx-history-toolbar flex items-center gap-2 px-1.5 py-1 border-b border-zinc-700 bg-[#191a1e] shrink-0 text-[12px] font-normal text-zinc-300 tabular-nums">
                 <div className="flex items-center gap-1">
-                    {(['today', 'week', 'month', 'all'] as const).map(f => (
-                        <button key={f} onClick={() => setFilter(f)}
-                            className={`rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm capitalize transition-colors ${filter === f ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
-                            {f}
+                    {([
+                        ['all', 'All History'],
+                        ['last-three-months', 'Last 3 Months'],
+                        ['last-month', 'Last Month'],
+                    ] as const).map(([period, label]) => (
+                        <button
+                            key={period}
+                            type="button"
+                            onClick={() => setPeriodFilter(period)}
+                            className={`rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm transition-colors ${periodFilter === period ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                        >
+                            {tr(label)}
                         </button>
                     ))}
+                    <button
+                        type="button"
+                        onClick={openCustomPeriodDialog}
+                        className={`rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm transition-colors ${periodFilter === 'custom' ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                    >
+                        {tr('Custom Period')}
+                    </button>
                 </div>
                 <div className="flex-1" />
+                <span className="text-[12px] font-normal text-zinc-500">{tr(historyViewLabel)} · {tr(symbolFilterLabel)} · {tr(periodFilterLabel)}</span>
                 <span className="text-[12px] font-normal text-zinc-500">{filteredOrders.length} {tr(" records")}</span>
-                <button onClick={() => fetchHistory({ force: true })} disabled={loading}
-                    className="rtx-history-refresh-btn text-[12px] font-normal px-2 py-0.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 disabled:cursor-wait disabled:opacity-50">
+                <button
+                    type="button"
+                    onClick={() => fetchHistory({ force: true })}
+                    disabled={loading}
+                    className="rtx-history-refresh-btn text-[12px] font-normal px-2 py-0.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 disabled:cursor-wait disabled:opacity-50"
+                >
                     <Icon name="refresh" size="xs" className={loading ? 'animate-spin' : ''} />
                     {loading ? tr("Loading…") : tr("Refresh")}
                 </button>
             </div>
 
-            {/* Table */}
-            <div className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
+            {displayError && filteredOrders.length > 0 && (
+                <div
+                    role="status"
+                    className="shrink-0 border-b border-amber-700/50 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-300"
+                >
+                    {tr('Partial history data')}: {displayError}
+                </div>
+            )}
+
+            <div
+                className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700"
+                aria-label={tr('History records')}
+                onContextMenu={(event) => handleHistoryContextMenu(event)}
+            >
                 <table
-                    className="rtx-trade-table w-full text-center border-collapse"
-                    style={{ fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif', fontVariantNumeric: 'tabular-nums' }}
+                    className="rtx-trade-table rtx-history-table w-full text-center border-collapse"
+                    data-auto-arrange={autoArrange ? 'true' : 'false'}
+                    data-grid={showGrid ? 'true' : 'false'}
+                    style={{
+                        fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif',
+                        fontVariantNumeric: 'tabular-nums',
+                        tableLayout: autoArrange ? 'auto' : 'fixed',
+                    }}
                 >
                     <thead className="rtx-trade-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-normal text-[12px] leading-[18px] uppercase border-y border-zinc-700/70 select-none shadow-[0_1px_0_0_rgba(255,255,255,0.04)]">
                         <tr className="h-[30px]">
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Ticket")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28">{tr("Open Time")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-14">{tr("Type")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-16">{tr("Volume")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Symbol")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22">{tr("Open Price")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">S/L</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">T/P</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28">{tr("Close Time")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22">{tr("Close Price")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Commission")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Swap")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Profit")}</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Status")}</th>
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-28`}>{tr("Time")}</th>
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>{tr("Symbol")}</th>
+                            {isColumnVisible('ticket') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>{tr("Ticket")}</th>}
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-14`}>{tr("Type")}</th>
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-16`}>{tr(volumeMode === 'lots' ? "Volume" : "Amount")}</th>
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-22`}>{tr("Price")}</th>
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>S/L</th>
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>T/P</th>
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-28`}>{tr("Time")}</th>
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-22`}>{tr("Price")}</th>
+                            {isColumnVisible('marketValue') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-24`}>{tr("Market Value")}</th>}
+                            {isColumnVisible('commission') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>{tr("Commission")}</th>}
+                            {isColumnVisible('swap') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>{tr("Swap")}</th>}
+                            {isColumnVisible('fee') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>{tr("Fee")}</th>}
+                            <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>{tr("Profit")}</th>
+                            {isColumnVisible('changePercent') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>{tr("Change %")}</th>}
+                            {isColumnVisible('magicNumber') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-24`}>{tr("Magic Number")}</th>}
+                            {isColumnVisible('comment') && <th className="px-1.5 py-[3px] text-center w-28">{tr("Comment")}</th>}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[13px] leading-[19.5px] font-normal">
+                    <tbody className={`${rowDividerClass} text-[#d8dde8] text-[13px] leading-[19.5px] font-normal`}>
                         {filteredOrders.length === 0 && (
                             <tr>
-                                <td colSpan={14} className="h-16 text-center text-zinc-600 text-xs italic">
-                                    {loading ? tr("Loading closed trade history…") : error ? error : tr("No closed trades for this period")}
+                                <td colSpan={Math.max(1, visibleColumnCount)} className="h-16 text-center text-zinc-600 text-xs italic">
+                                    {loading ? tr("Loading trade history…") : displayError ? displayError : tr("No history records for the selected filters")}
                                 </td>
                             </tr>
                         )}
-                        {filteredOrders.map((o, i) => {
-                            const sideLabel = String(o.side || o.type || '-').toLowerCase();
+                        {filteredOrders.map((order, index) => {
+                            const sideLabel = String(order.orderType || order.side || order.type || '-').toLowerCase();
+                            const tradeKey = getTradeKey(order);
+                            const isSelected = tradeKey === selectedTradeKey;
+                            const ticket = getHistoryTicket(order);
+                            const volumeLabel = formatHistoryVolume(order);
+                            const marketValue = getHistoryMarketValue(order);
+                            const marketValueLabel = marketValue === null ? '\u2014' : formatGroupedNumber(marketValue, 2, 2);
+                            const changePercent = getHistoryChangePercent(order);
+                            const changePercentLabel = formatHistoryPercent(order);
+                            const profitLabel = formatMoney(order.profit);
                             return (
-                                <tr key={`${o.type}-${o.id}-${i}`}
-                                    className="rtx-trade-row h-[30px] transition-colors">
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={tr("Ticket: {{value0}}", { value0: o.id ?? '-' })}>{o.id ?? '-'}</td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={tr("Open time: {{value0}}", { value0: formatTs(o.openTime) })}>{formatTs(o.openTime)}</td>
-                                    <td className={`${typeColor(o.side)} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={tr("Type: {{value0}}", { value0: tr(sideLabel) })}>
-                                        <div className="flex items-center justify-center">
-                                            <span>{tr(sideLabel)}</span>
-                                        </div>
+                                <tr
+                                    key={`${tradeKey}-${index}`}
+                                    aria-selected={isSelected}
+                                    className={`rtx-trade-row rtx-history-row h-[30px] transition-colors cursor-default ${isSelected ? 'rtx-trade-row--selected' : ''}`}
+                                    onClick={() => setSelectedTradeKey(tradeKey)}
+                                    onContextMenu={(event) => handleHistoryContextMenu(event, order)}
+                                >
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums whitespace-nowrap`} title={tr("Open time: {{value0}}", { value0: formatTs(order.openTime) })}>{formatTs(order.openTime)}</td>
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center font-normal text-zinc-100 whitespace-nowrap`} title={tr("Symbol: {{value0}}", { value0: order.symbol || '-' })}>{order.symbol || '-'}</td>
+                                    {isColumnVisible('ticket') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums whitespace-nowrap`} title={tr("Ticket: {{value0}}", { value0: ticket })}>{ticket}</td>}
+                                    <td className={`${typeColor(order.side)} px-1.5 py-[2px] ${cellDividerClass} text-center font-normal text-[13px]`} title={tr("Type: {{value0}}", { value0: tr(sideLabel) })}>
+                                        <div className="flex items-center justify-center"><span>{tr(sideLabel)}</span></div>
                                     </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={tr("Volume: {{value0}}", { value0: o.volume != null ? Number(o.volume).toFixed(2) : '-' })}>
-                                        {o.volume != null ? Number(o.volume).toFixed(2) : '-'}
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center font-normal text-zinc-100 tabular-nums`} title={tr(volumeMode === 'lots' ? "Volume: {{value0}}" : "Amount: {{value0}}", { value0: volumeLabel })}>{volumeLabel}</td>
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums`} title={tr("Open price: {{value0}}", { value0: formatPriceCell(order.openPrice, order.symbol) })}>{formatPriceCell(order.openPrice, order.symbol)}</td>
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums`} title={tr("Stop Loss: {{value0}}", { value0: formatLevelCell(order.sl, order.symbol) })}>
+                                        <span className={(order.sl ?? 0) > 0 ? "text-[#ff7676] bg-red-950/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>{formatLevelCell(order.sl, order.symbol)}</span>
                                     </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={tr("Symbol: {{value0}}", { value0: o.symbol ?? '-' })}>{o.symbol ?? '-'}</td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr("Open price: {{value0}}", { value0: formatPriceCell(o.openPrice, o.symbol) })}>
-                                        {formatPriceCell(o.openPrice, o.symbol)}
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums`} title={tr("Take Profit: {{value0}}", { value0: formatLevelCell(order.tp, order.symbol) })}>
+                                        <span className={(order.tp ?? 0) > 0 ? "text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>{formatLevelCell(order.tp, order.symbol)}</span>
                                     </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={tr("Stop Loss: {{value0}}", { value0: formatLevelCell(o.sl, o.symbol) })}>
-                                        <span className={(o.sl ?? 0) > 0 ? "text-[#ff7676] bg-red-950/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>
-                                            {formatLevelCell(o.sl, o.symbol)}
-                                        </span>
-                                    </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={tr("Take Profit: {{value0}}", { value0: formatLevelCell(o.tp, o.symbol) })}>
-                                        <span className={(o.tp ?? 0) > 0 ? "text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>
-                                            {formatLevelCell(o.tp, o.symbol)}
-                                        </span>
-                                    </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={tr("Close time: {{value0}}", { value0: formatTs(o.closeTime) })}>{formatTs(o.closeTime)}</td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr("Close price: {{value0}}", { value0: formatPriceCell(o.closePrice, o.symbol) })}>
-                                        {formatPriceCell(o.closePrice, o.symbol)}
-                                    </td>
-                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums ${moneyColor(o.commission)}`} title={tr("Commission: {{value0}}", { value0: formatMoney(o.commission) })}>{formatMoney(o.commission)}</td>
-                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums ${moneyColor(o.swap)}`} title={tr("Swap: {{value0}}", { value0: formatMoney(o.swap) })}>{formatMoney(o.swap)}</td>
-                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal tabular-nums ${moneyColor(o.profit)}`} title={tr("Profit: {{value0}}", { value0: formatMoney(o.profit) })}>{formatMoney(o.profit)}</td>
-                                    <td className="px-1.5 py-[2px] text-center text-zinc-100 capitalize whitespace-nowrap" title={tr("Status: {{value0}}", { value0: tr(formatTradeStatus(o)) })}>{tr(formatTradeStatus(o))}</td>
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums whitespace-nowrap`} title={tr("Close time: {{value0}}", { value0: formatTs(order.closeTime) })}>{formatTs(order.closeTime)}</td>
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums`} title={tr("Close price: {{value0}}", { value0: formatPriceCell(order.closePrice, order.symbol) })}>{formatPriceCell(order.closePrice, order.symbol)}</td>
+                                    {isColumnVisible('marketValue') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums`} title={tr("Market Value: {{value0}}", { value0: marketValueLabel })}>{marketValueLabel}</td>}
+                                    {isColumnVisible('commission') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums ${moneyColor(order.commission)}`} title={tr("Commission: {{value0}}", { value0: formatMoney(order.commission) })}>{formatMoney(order.commission)}</td>}
+                                    {isColumnVisible('swap') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums ${moneyColor(order.swap)}`} title={tr("Swap: {{value0}}", { value0: formatMoney(order.swap) })}>{formatMoney(order.swap)}</td>}
+                                    {isColumnVisible('fee') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums ${moneyColor(order.fee)}`} title={tr("Fee: {{value0}}", { value0: formatMoney(order.fee) })}>{formatMoney(order.fee)}</td>}
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center font-normal tabular-nums ${moneyColor(order.profit)}`} title={tr("Profit: {{value0}}", { value0: profitLabel })}>{profitLabel}</td>
+                                    {isColumnVisible('changePercent') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums ${moneyColor(changePercent)}`} title={tr("Change %: {{value0}}", { value0: changePercentLabel })}>{changePercentLabel}</td>}
+                                    {isColumnVisible('magicNumber') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums`} title={tr("Magic Number: {{value0}}", { value0: order.magicNumber ?? '-' })}>{order.magicNumber ?? '-'}</td>}
+                                    {isColumnVisible('comment') && <td className="px-1.5 py-[2px] text-center text-zinc-100 whitespace-nowrap" title={tr("Comment: {{value0}}", { value0: order.comment || '-' })}>{order.comment || '-'}</td>}
                                 </tr>
                             );
                         })}
                     </tbody>
                 </table>
             </div>
+
+            {historyContextMenu && (
+                <ContextMenu
+                    variant={isLightSkin ? 'mt5-light' : 'mt5-dark'}
+                    density="compact"
+                    items={buildHistoryContextMenuItems(historyContextMenu.trade)}
+                    position={{ x: historyContextMenu.x, y: historyContextMenu.y }}
+                    onClose={() => setHistoryContextMenu(null)}
+                />
+            )}
+
+            {customPeriodDialogOpen && (
+                <div
+                    className="rtx-history-period-backdrop fixed inset-0 z-[4100] flex items-center justify-center bg-black/45"
+                    onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) setCustomPeriodDialogOpen(false);
+                    }}
+                >
+                    <form
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={tr('Custom history period')}
+                        className="rtx-history-period-dialog w-[360px] rounded-sm border border-zinc-600 bg-[#202126] p-4 text-[12px] text-zinc-200 shadow-2xl"
+                        onKeyDown={(event) => {
+                            if (event.key === 'Escape') setCustomPeriodDialogOpen(false);
+                        }}
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            applyCustomPeriod();
+                        }}
+                    >
+                        <div className="mb-3 text-[13px] font-semibold">{tr('Custom Period')}</div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <label className="flex flex-col gap-1">
+                                <span>{tr('From')}</span>
+                                <input
+                                    aria-label={tr('From')}
+                                    type="date"
+                                    value={customPeriodDraft.from}
+                                    onChange={(event) => setCustomPeriodDraft(current => ({ ...current, from: event.target.value }))}
+                                    className="rtx-history-period-input rounded-sm border border-zinc-600 bg-[#15161a] px-2 py-1.5 text-zinc-100"
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span>{tr('To')}</span>
+                                <input
+                                    aria-label={tr('To')}
+                                    type="date"
+                                    value={customPeriodDraft.to}
+                                    onChange={(event) => setCustomPeriodDraft(current => ({ ...current, to: event.target.value }))}
+                                    className="rtx-history-period-input rounded-sm border border-zinc-600 bg-[#15161a] px-2 py-1.5 text-zinc-100"
+                                />
+                            </label>
+                        </div>
+                        {customPeriodError && <div role="alert" className="mt-2 text-[#ff7676]">{tr(customPeriodError)}</div>}
+                        <div className="mt-4 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setCustomPeriodDialogOpen(false)}
+                                className="rounded-sm border border-zinc-600 px-3 py-1.5 hover:bg-zinc-700/60"
+                            >
+                                {tr('Cancel')}
+                            </button>
+                            <button
+                                type="submit"
+                                className="rounded-sm bg-[#0078d4] px-3 py-1.5 text-white hover:bg-[#1686d9]"
+                            >
+                                {tr('Apply')}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
         </div>
     );
 }

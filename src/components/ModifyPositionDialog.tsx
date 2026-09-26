@@ -1,11 +1,11 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * MT5-style Modify Position Dialog (Dark Theme)
- * Opens on double-click of a position row
+ * Opens from position Modify actions and S/L or T/P controls
  * Matches the MT5 "Order" dialog visual style
  */
 
-import { useState, useEffect, useReducer, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useReducer, useRef, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
     Activity,
@@ -27,6 +27,11 @@ import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { formatOrderError } from '../utils/orderError';
 import { getSymbolDigits } from '../utils/symbolUtils';
 import { getFallbackSymbolDescription } from '../utils/symbolDescription';
+import {
+    getCommittedBrokerAccountSessionScope,
+    getCommittedBrokerAccountSessionScopeKey,
+    onCommittedBrokerAccountSessionScopeChange,
+} from '../services/brokerSession';
 
 interface ModifyPositionDialogProps {
     isOpen: boolean;
@@ -46,6 +51,21 @@ interface ModifyPositionDialogProps {
 
 type ModifyDialogKind = NonNullable<ModifyPositionDialogProps['kind']>;
 type ModifyPosition = NonNullable<ModifyPositionDialogProps['position']>;
+
+type ModifyDialogSessionContext = {
+    dialogKey: string;
+    sessionScope: string;
+};
+
+const getCurrentBrokerAccountSessionScopeKey = (): string => (
+    getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())
+);
+
+const getModifyDialogKey = (position: ModifyPosition, kind: ModifyDialogKind): string => (
+    `${kind}:${position.id}:${String(position.symbol).trim().toUpperCase()}`
+);
+
+const STALE_MODIFY_DIALOG_ERROR = 'Trading session changed. Reopen the position and try again.';
 
 interface MiniChartSample {
     bid: number;
@@ -242,6 +262,44 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
     const onCloseRef = useRef(onClose);
     const initialLevelsRef = useRef({ sl: 0, tp: 0 });
     const isDialogVisible = isOpen && position !== null;
+    const dialogKey = isDialogVisible && position ? getModifyDialogKey(position, kind) : null;
+    const dialogSessionContextRef = useRef<ModifyDialogSessionContext | null>(null);
+    const scheduledCloseTimerRef = useRef<number | null>(null);
+
+    const clearScheduledClose = useCallback(() => {
+        if (scheduledCloseTimerRef.current === null) return;
+        window.clearTimeout(scheduledCloseTimerRef.current);
+        scheduledCloseTimerRef.current = null;
+    }, []);
+
+    const isCurrentDialogSession = useCallback((context: ModifyDialogSessionContext | null): context is ModifyDialogSessionContext => (
+        context !== null
+        && dialogSessionContextRef.current === context
+        && getCurrentBrokerAccountSessionScopeKey() === context.sessionScope
+    ), []);
+
+    const getCurrentMutationContext = useCallback((): ModifyDialogSessionContext | null => {
+        const context = dialogSessionContextRef.current;
+        if (isCurrentDialogSession(context)) return context;
+        setSuccessMessage(null);
+        setError(STALE_MODIFY_DIALOG_ERROR);
+        return null;
+    }, [isCurrentDialogSession]);
+
+    const scheduleClose = useCallback((
+        context: ModifyDialogSessionContext,
+        close: () => void,
+    ) => {
+        clearScheduledClose();
+        const timerId = window.setTimeout(() => {
+            if (scheduledCloseTimerRef.current === timerId) {
+                scheduledCloseTimerRef.current = null;
+            }
+            if (!isCurrentDialogSession(context)) return;
+            close();
+        }, 600);
+        scheduledCloseTimerRef.current = timerId;
+    }, [clearScheduledClose, isCurrentDialogSession]);
 
     const tick = useCurrentTick(position?.symbol || '');
     const miniChartKey = isOpen && position ? getMiniChartKey(position, kind) : null;
@@ -249,6 +307,32 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
     const chartContainerRef = useRef<HTMLDivElement | null>(null);
     const [chartDimensions, setChartDimensions] = useState({ width: 450, height: 460 });
+
+    useEffect(() => {
+        clearScheduledClose();
+        if (!dialogKey) {
+            dialogSessionContextRef.current = null;
+            return;
+        }
+
+        const context: ModifyDialogSessionContext = {
+            dialogKey,
+            sessionScope: getCurrentBrokerAccountSessionScopeKey(),
+        };
+        dialogSessionContextRef.current = context;
+
+        return () => {
+            clearScheduledClose();
+            if (dialogSessionContextRef.current === context) {
+                dialogSessionContextRef.current = null;
+            }
+        };
+    }, [clearScheduledClose, dialogKey]);
+
+    useEffect(() => onCommittedBrokerAccountSessionScopeChange(() => {
+        clearScheduledClose();
+        dialogSessionContextRef.current = null;
+    }), [clearScheduledClose]);
 
     useEffect(() => {
         const container = chartContainerRef.current;
@@ -277,6 +361,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
             setVolumeStr(position.volume.toFixed(2));
             setComment(position.comment ?? '');
+            setIsSubmitting(false);
             setError(null);
             setSuccessMessage(null);
             setShowMiniChart(true);
@@ -436,6 +521,9 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
     const commentFieldId = `modify-position-${position.id}-comment`;
 
     const handleSubmit = async () => {
+        const mutationContext = getCurrentMutationContext();
+        if (!mutationContext) return;
+
         setIsSubmitting(true);
         setError(null);
         setSuccessMessage(null);
@@ -460,6 +548,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 await api.positions.modifyPosition(position.id, { ...levelChanges, comment: nextComment });
             }
 
+            if (!isCurrentDialogSession(mutationContext)) return;
             setSuccessMessage(kind === 'pending-order' ? 'Pending order modified successfully' : 'Position modified successfully');
             const store = useAppStore.getState();
             store.setPositions(store.positions.map(p =>
@@ -476,12 +565,15 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
             const latest = store.positions.find(p => p.id === position.id);
             const savedSl = levelChanges.price_sl ?? latest?.sl ?? position.sl;
             const savedTp = levelChanges.price_tp ?? latest?.tp ?? position.tp;
-            setTimeout(() => onClose(savedSl, savedTp, nextComment), 600);
+            scheduleClose(mutationContext, () => onCloseRef.current(savedSl, savedTp, nextComment));
         } catch (err: unknown) {
+            if (!isCurrentDialogSession(mutationContext)) return;
             console.error('[Modify] Error:', err);
             setError(getErrorMessage(err));
         } finally {
-            setIsSubmitting(false);
+            if (isCurrentDialogSession(mutationContext)) {
+                setIsSubmitting(false);
+            }
         }
     };
 
@@ -511,6 +603,8 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
     const handleMarketOrder = async (side: 'BUY' | 'SELL') => {
         if (isSubmitting) return;
+        const mutationContext = getCurrentMutationContext();
+        if (!mutationContext) return;
         const intentAtMs = captureTradeOrderIntent();
         if (actionVolume <= 0) {
             setError('Volume must be greater than zero');
@@ -532,19 +626,25 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 price_tp: tpVal > 0 ? tpVal : undefined,
                 comment: comment.trim() || undefined,
             }, { intentAtMs });
+            if (!isCurrentDialogSession(mutationContext)) return;
             setSuccessMessage(`${side === 'BUY' ? 'Buy' : 'Sell'} market order placed successfully`);
             refreshPositionsAfterTrade();
-            setTimeout(() => onClose(), 600);
+            scheduleClose(mutationContext, () => onCloseRef.current());
         } catch (err: unknown) {
+            if (!isCurrentDialogSession(mutationContext)) return;
             console.error('[Market Order] Error:', err);
             setError(getErrorMessage(err));
         } finally {
-            setIsSubmitting(false);
+            if (isCurrentDialogSession(mutationContext)) {
+                setIsSubmitting(false);
+            }
         }
     };
 
     const handleCloseByMarket = async () => {
         if (isSubmitting) return;
+        const mutationContext = getCurrentMutationContext();
+        if (!mutationContext) return;
         if (kind === 'pending-order') {
             setError('Close by market is only available for open positions');
             return;
@@ -568,16 +668,20 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
         try {
             await api.positions.closePosition(String(position.id));
+            if (!isCurrentDialogSession(mutationContext)) return;
             const store = useAppStore.getState();
             store.setPositions(store.positions.filter(p => p.id !== position.id));
             setSuccessMessage('Position closed successfully');
             refreshPositionsAfterTrade();
-            setTimeout(() => onClose(), 600);
+            scheduleClose(mutationContext, () => onCloseRef.current());
         } catch (err: unknown) {
+            if (!isCurrentDialogSession(mutationContext)) return;
             console.error('[Close by Market] Error:', err);
             setError(getErrorMessage(err));
         } finally {
-            setIsSubmitting(false);
+            if (isCurrentDialogSession(mutationContext)) {
+                setIsSubmitting(false);
+            }
         }
     };
 

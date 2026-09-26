@@ -1,11 +1,9 @@
-import { translateUi, useUiTranslation } from '../../hooks/useUiTranslation';
+import { useUiTranslation } from '../../hooks/useUiTranslation';
+import { useFloatingPanelDrag } from '../../hooks/useFloatingPanelDrag';
 import i18n from '../../i18n';
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { useTick } from '../../store/useAppStore';
-import { formatSpreadDisplayWithUnit } from '../../utils/spread';
-import { getSymbolDigits } from '../../utils/symbolUtils';
 import { Icon } from '../ui/Icon';
 
 interface SymbolSpecificationDialogProps {
@@ -13,45 +11,207 @@ interface SymbolSpecificationDialogProps {
   symbol: string;
   instrument?: unknown;
   fallbackInstrument?: unknown;
+  requestStatus?: 'idle' | 'loading' | 'ready' | 'unavailable' | 'error';
   onClose: () => void;
+}
+
+interface DialogRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface ResizeGesture {
+  pointerId: number;
+  target: HTMLElement;
+  startX: number;
+  startY: number;
+  rect: DialogRect;
+}
+
+const VIEWPORT_GAP = 16;
+const DEFAULT_DIALOG_WIDTH = 444;
+const DEFAULT_DIALOG_HEIGHT = 438;
+const MINIMUM_DIALOG_WIDTH = 360;
+const MINIMUM_DIALOG_HEIGHT = 300;
+
+const viewportSize = () => ({
+  width: typeof window === 'undefined' ? 1_280 : window.innerWidth,
+  height: typeof window === 'undefined' ? 720 : window.innerHeight,
+});
+
+const clampDialogRect = (rect: DialogRect): DialogRect => {
+  const viewport = viewportSize();
+  const availableWidth = Math.max(0, viewport.width - VIEWPORT_GAP * 2);
+  const availableHeight = Math.max(0, viewport.height - VIEWPORT_GAP * 2);
+  const minimumWidth = Math.min(MINIMUM_DIALOG_WIDTH, availableWidth);
+  const minimumHeight = Math.min(MINIMUM_DIALOG_HEIGHT, availableHeight);
+  const width = Math.min(Math.max(minimumWidth, rect.width), availableWidth);
+  const height = Math.min(Math.max(minimumHeight, rect.height), availableHeight);
+  const maximumX = Math.max(VIEWPORT_GAP, viewport.width - width - VIEWPORT_GAP);
+  const maximumY = Math.max(VIEWPORT_GAP, viewport.height - height - VIEWPORT_GAP);
+
+  return {
+    x: Math.max(VIEWPORT_GAP, Math.min(rect.x, maximumX)),
+    y: Math.max(VIEWPORT_GAP, Math.min(rect.y, maximumY)),
+    width,
+    height,
+  };
+};
+
+const centeredDialogRect = (): DialogRect => {
+  const viewport = viewportSize();
+  const width = Math.min(DEFAULT_DIALOG_WIDTH, Math.max(0, viewport.width - VIEWPORT_GAP * 2));
+  const height = Math.min(DEFAULT_DIALOG_HEIGHT, Math.max(0, viewport.height - VIEWPORT_GAP * 2));
+  return clampDialogRect({
+    x: (viewport.width - width) / 2,
+    y: (viewport.height - height) / 2,
+    width,
+    height,
+  });
+};
+
+const WEEKDAYS = [
+  { key: 'sunday', label: 'Sunday', aliases: ['sun'] },
+  { key: 'monday', label: 'Monday', aliases: ['mon'] },
+  { key: 'tuesday', label: 'Tuesday', aliases: ['tue', 'tues'] },
+  { key: 'wednesday', label: 'Wednesday', aliases: ['wed'] },
+  { key: 'thursday', label: 'Thursday', aliases: ['thu', 'thur', 'thurs'] },
+  { key: 'friday', label: 'Friday', aliases: ['fri'] },
+  { key: 'saturday', label: 'Saturday', aliases: ['sat'] },
+] as const;
+
+type WeekdayKey = typeof WEEKDAYS[number]['key'];
+
+export interface SymbolSpecificationSession {
+  day: WeekdayKey;
+  label: string;
+  quotes: string[];
+  trade: string[];
+}
+
+export interface SymbolSpecificationMarginRate {
+  label: string;
+  range: string | null;
+  initial: number | null;
+  maintenance: number | null;
+  initialPerLot: number | null;
+  maintenancePerLot: number | null;
+  initialPerLotApproximate: boolean;
+  maintenancePerLotApproximate: boolean;
+  currency: string | null;
+}
+
+export interface SymbolSpecificationCommissionTier {
+  label: string | null;
+  range: string | null;
+  value: string;
+}
+
+export interface SymbolSpecificationCommissionSchedule {
+  title: string;
+  description: string | null;
+  tiers: SymbolSpecificationCommissionTier[];
+}
+
+export interface SymbolSpecificationMarginSpread {
+  name: string;
+  legA: string;
+  legB: string;
+  margin: string | null;
+}
+
+interface SymbolSpecificationMarginRateSection {
+  rates: SymbolSpecificationMarginRate[];
+  mode: string | null;
+  basis: string | null;
+  currency: string | null;
+  asOf: number | string | null;
 }
 
 export interface SymbolSpecificationSnapshot {
   description: string | null;
+  pageUrl: string | null;
+  isin: string | null;
   category: string | null;
+  exchange: string | null;
+  cfi: string | null;
+  sector: string | null;
+  industry: string | null;
+  country: string | null;
   digits: number | null;
-  bid: number | null;
-  ask: number | null;
   spread: number | null;
+  spreadFloating: boolean | null;
+  spreadMode: string | null;
   contractSize: number | null;
+  contractSizeUnit: string | null;
+  contractSizeDisplay: string | null;
+  stopsLevel: number | null;
+  freezeLevel: number | null;
   tickSize: number | null;
   tickValue: number | null;
+  tickValueProfit: number | null;
+  tickValueLoss: number | null;
   minVolume: number | null;
   maxVolume: number | null;
   volumeStep: number | null;
+  volumeLimit: number | null;
   marginRate: number | null;
+  marginInitial: number | null;
+  marginMaintenance: number | null;
+  marginHedged: number | null;
+  marginHedgedUseLeg: boolean | null;
   swapLong: number | null;
   swapShort: number | null;
+  swapMode: string | null;
+  swapRolloverDay: string | null;
+  swapRates: Partial<Record<WeekdayKey, number | string>>;
   commission: number | null;
   tradingEnabled: boolean | null;
+  chartMode: string | null;
+  tradeMode: string | null;
+  calculationMode: string | null;
+  executionMode: string | null;
+  gtcMode: string | null;
+  fillingMode: string | null;
+  expirationMode: string | null;
+  orderMode: string | null;
   baseCurrency: string | null;
   profitCurrency: string | null;
   marginCurrency: string | null;
-  last: number | null;
-  high: number | null;
-  low: number | null;
-  volume: number | null;
-  dailyChange: number | null;
-  liquidityProvider: string | null;
-  timestamp: number | null;
+  depositCurrency: string | null;
+  subscription: string | null;
+  ticksHistory: string | null;
+  liquidityRate: number | null;
+  sessions: SymbolSpecificationSession[];
+  sessionTimeZone: string | null;
+  marginRates: SymbolSpecificationMarginRate[];
+  marginRatesMode: string | null;
+  marginRatesBasis: string | null;
+  marginRatesCurrency: string | null;
+  marginRatesAsOf: number | string | null;
+  startTime: number | string | null;
+  expirationTime: number | string | null;
+  faceValue: number | null;
+  accruedInterest: number | null;
+  optionMode: string | null;
+  optionRight: string | null;
+  underlying: string | null;
+  optionStrike: number | null;
+  commissionSchedules: SymbolSpecificationCommissionSchedule[];
+  marginSpreads: SymbolSpecificationMarginSpread[];
 }
 
 interface DisplayRow {
   label: string;
   value: string | null;
+  tone?: 'default' | 'positive' | 'negative';
+  kind?: 'text' | 'integer' | 'decimal' | 'enum' | 'calendar';
 }
 
 const NESTED_SPECIFICATION_KEYS = [
+  'brokerSpecification',
   'instrument',
   'specification',
   'spec',
@@ -70,29 +230,32 @@ const asRecord = (value: unknown): Record<string, unknown> | null => (
     : null
 );
 
+const normalizeSpecificationKey = (value: string): string => value
+  .trim()
+  .toLowerCase()
+  .replace(/^symbol[_-]?/, '')
+  .replace(/[^a-z0-9]/g, '');
+
 const collectSpecificationRecords = (value: unknown): Record<string, unknown>[] => {
   const root = asRecord(value);
   if (!root) return [];
 
-  const records: Record<string, unknown>[] = [root];
+  const records: Record<string, unknown>[] = [];
   const seen = new Set<Record<string, unknown>>([root]);
-  let frontier = [root];
-
-  // Broker adapters commonly wrap the specification once or twice. Keep this
-  // deliberately bounded so arbitrary response objects are not searched.
-  for (let depth = 0; depth < 2; depth += 1) {
-    const next: Record<string, unknown>[] = [];
-    frontier.forEach((record) => {
+  const visit = (record: Record<string, unknown>, depth: number) => {
+    // Rich nested broker snapshots are authoritative over normalized catalog
+    // fields on their wrapper. Traverse them first and keep the walk bounded.
+    if (depth < 3) {
       NESTED_SPECIFICATION_KEYS.forEach((key) => {
         const nested = asRecord(record[key]);
         if (!nested || seen.has(nested)) return;
         seen.add(nested);
-        records.push(nested);
-        next.push(nested);
+        visit(nested, depth + 1);
       });
-    });
-    frontier = next;
-  }
+    }
+    records.push(record);
+  };
+  visit(root, 0);
 
   return records;
 };
@@ -105,6 +268,15 @@ const readRaw = (
     for (const key of keys) {
       const value = record[key];
       if (value !== undefined && value !== null && value !== '') return value;
+    }
+
+    // Some MT5 adapters expose the native SYMBOL_* property names while the
+    // HTTP catalog uses snake_case or camelCase. Match those spellings without
+    // making the rest of the parser depend on a particular adapter.
+    const normalizedKeys = new Set(keys.map(normalizeSpecificationKey));
+    for (const [key, value] of Object.entries(record)) {
+      if (value === undefined || value === null || value === '') continue;
+      if (normalizedKeys.has(normalizeSpecificationKey(key))) return value;
     }
   }
   return undefined;
@@ -130,181 +302,1085 @@ const readNumber = (
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const readBoolean = (
-  records: readonly Record<string, unknown>[],
-  keys: readonly string[],
-): boolean | null => {
-  const value = readRaw(records, keys);
+const parseBoolean = (value: unknown): boolean | null => {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value === 1 ? true : value === 0 ? false : null;
   if (typeof value !== 'string') return null;
-  const normalized = value.trim().toLowerCase();
-  if (['true', 'enabled', 'active', 'open', '1'].includes(normalized)) return true;
-  if (['false', 'disabled', 'inactive', 'closed', '0'].includes(normalized)) return false;
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['true', 'yes', 'enabled', 'active', 'open', 'floating', '1'].includes(normalized)) return true;
+  if (['false', 'no', 'disabled', 'inactive', 'closed', 'fixed', '0'].includes(normalized)) return false;
   return null;
 };
 
-const normalizeTimestamp = (value: number | null): number | null => {
-  if (value === null || value <= 0) return null;
-  return value > 1_000_000_000_000 ? value : value * 1000;
+const readBoolean = (
+  records: readonly Record<string, unknown>[],
+  keys: readonly string[],
+): boolean | null => parseBoolean(readRaw(records, keys));
+
+const titleCase = (value: string): string => value
+  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  .replace(/^SYMBOL_/i, '')
+  .replace(/^(?:TRADE_CALC_MODE|CALC_MODE|TRADE_MODE|TRADE_EXECUTION|TRADE_EXEMODE|ORDER_GTC_MODE|ORDER_MODE|ORDERS|ORDER|FILLING|EXPIRATION|SWAP_MODE|CHART_MODE|OPTION_MODE|OPTION_RIGHT)_/i, '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase()
+  .replace(/\b\w/g, (character) => character.toUpperCase())
+  .replace(/\bCfd\b/g, 'CFD')
+  .replace(/\bExch\b/g, 'Exchange')
+  .replace(/\bForts\b/g, 'FORTS')
+  .replace(/\bMoex\b/g, 'MOEX')
+  .replace(/\bGtc\b/g, 'GTC')
+  .replace(/\bFok\b/g, 'FOK')
+  .replace(/\bIoc\b/g, 'IOC')
+  .replace(/\bBoc\b/g, 'BOC')
+  .replace(/\bCloseby\b/g, 'Close By');
+
+const readMode = (
+  records: readonly Record<string, unknown>[],
+  keys: readonly string[],
+  numericLabels: Readonly<Record<number, string>>,
+): string | null => {
+  const value = readRaw(records, keys);
+  if (value === undefined) return null;
+  const numeric = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && /^-?\d+$/.test(value.trim())
+      ? Number(value)
+      : null;
+  if (numeric !== null && Number.isFinite(numeric)) return numericLabels[numeric] ?? String(numeric);
+  if (typeof value === 'string') return titleCase(value) || null;
+  return null;
 };
 
+const decodeFlags = (
+  value: unknown,
+  labels: ReadonlyArray<readonly [number, string]>,
+  options: { allMask?: number; zeroLabel?: string | null } = {},
+): string | null => {
+  if (Array.isArray(value)) {
+    const values = value
+      .map((item) => typeof item === 'string' ? titleCase(item) : String(item ?? '').trim())
+      .filter(Boolean);
+    return values.length > 0 ? values.join(', ') : null;
+  }
+  if (typeof value === 'string' && !/^\d+$/.test(value.trim())) {
+    const values = value.split(/[,|]/).map((item) => titleCase(item)).filter(Boolean);
+    return values.length > 0 ? values.join(', ') : null;
+  }
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  if (options.allMask !== undefined && (numeric & options.allMask) === options.allMask) return 'All';
+  if (numeric === 0) return options.zeroLabel === undefined ? 'None' : options.zeroLabel;
+  const values = labels.filter(([flag]) => (numeric & flag) === flag).map(([, label]) => label);
+  return values.length > 0 ? values.join(', ') : String(numeric);
+};
+
+const findRecordValue = (record: Record<string, unknown>, aliases: readonly string[]): unknown => {
+  const normalizedAliases = new Set(aliases.map((alias) => alias.toLowerCase().replace(/[^a-z0-9]/g, '')));
+  for (const [key, value] of Object.entries(record)) {
+    if (normalizedAliases.has(key.toLowerCase().replace(/[^a-z0-9]/g, ''))) return value;
+  }
+  return undefined;
+};
+
+const normalizeWeekday = (value: unknown): WeekdayKey | null => {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < WEEKDAYS.length) {
+    return WEEKDAYS[value].key;
+  }
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (/^[0-6]$/.test(normalized)) return WEEKDAYS[Number(normalized)].key;
+  return WEEKDAYS.find((day) => day.key === normalized || day.label.toLowerCase() === normalized
+    || day.aliases.some((alias) => alias === normalized))?.key ?? null;
+};
+
+const readDayValue = (record: Record<string, unknown>, day: typeof WEEKDAYS[number]): unknown => (
+  findRecordValue(record, [day.key, day.label, ...day.aliases])
+);
+
+const buildSwapRates = (records: readonly Record<string, unknown>[]): Partial<Record<WeekdayKey, number | string>> => {
+  const rates: Partial<Record<WeekdayKey, number | string>> = {};
+  const candidate = readRaw(records, ['swap_rates', 'swapRates', 'swap_multipliers', 'swapMultipliers']);
+  const candidateRecord = asRecord(candidate);
+
+  if (candidateRecord) {
+    WEEKDAYS.forEach((day) => {
+      const value = readDayValue(candidateRecord, day);
+      const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+      if (Number.isFinite(numeric)) rates[day.key] = numeric;
+      else if (typeof value === 'string' && value.trim()) rates[day.key] = value.trim();
+    });
+  } else if (Array.isArray(candidate)) {
+    candidate.forEach((entry) => {
+      const record = asRecord(entry);
+      if (!record) return;
+      const day = normalizeWeekday(record.day ?? record.weekday ?? record.name);
+      const value = record.rate ?? record.multiplier ?? record.value;
+      if (!day) return;
+      const numeric = typeof value === 'number' ? value : Number(value);
+      if (Number.isFinite(numeric)) rates[day] = numeric;
+      else if (typeof value === 'string' && value.trim()) rates[day] = value.trim();
+    });
+  }
+
+  WEEKDAYS.forEach((day) => {
+    if (rates[day.key] !== undefined) return;
+    const value = readRaw(records, [
+      `swap_rate_${day.key}`,
+      `swapRate${day.label}`,
+      `swap_${day.key}`,
+      `${day.key}_swap_multiplier`,
+    ]);
+    const numeric = typeof value === 'number' ? value : Number(value);
+    if (Number.isFinite(numeric)) rates[day.key] = numeric;
+    else if (typeof value === 'string' && value.trim()) rates[day.key] = value.trim();
+  });
+
+  return rates;
+};
+
+const formatClockValue = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^\d+(?:\.\d+)?$/.test(trimmed)) return formatClockValue(Number(trimmed));
+    return trimmed || null;
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (value >= 0 && value <= 86_400) {
+    if (value === 86_400) return '24:00';
+    const minutes = Math.floor(value / 60);
+    return `${String(Math.floor(minutes / 60) % 24).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  }
+  return String(value);
+};
+
+const formatSessionRanges = (value: unknown): string[] => {
+  if (value === undefined || value === null || value === '') return [];
+  if (Array.isArray(value)) {
+    if (
+      value.length === 2
+      && value.every((entry) => typeof entry === 'string' || typeof entry === 'number')
+      && value.every((entry) => !String(entry).includes('-'))
+    ) {
+      const start = formatClockValue(value[0]);
+      const end = formatClockValue(value[1]);
+      if (start && end) return [`${start}-${end}`];
+    }
+    return value.flatMap(formatSessionRanges);
+  }
+  const record = asRecord(value);
+  if (!record) {
+    const formatted = formatClockValue(value);
+    return formatted ? [formatted] : [];
+  }
+
+  const nested = record.sessions ?? record.ranges ?? record.periods;
+  if (nested !== undefined) return formatSessionRanges(nested);
+  const start = formatClockValue(
+    record.start ?? record.from ?? record.open ?? record.start_time ?? record.startTime
+      ?? record.start_seconds ?? record.startSeconds ?? record.open_seconds ?? record.openSeconds,
+  );
+  const end = formatClockValue(
+    record.end ?? record.to ?? record.close ?? record.end_time ?? record.endTime
+      ?? record.end_seconds ?? record.endSeconds ?? record.close_seconds ?? record.closeSeconds,
+  );
+  if (start && end) return [`${start}-${end}`];
+  const valueText = formatClockValue(record.value ?? record.time);
+  return valueText ? [valueText] : [];
+};
+
+const populateSessionsByDay = (
+  target: Map<WeekdayKey, { quotes: string[]; trade: string[] }>,
+  value: unknown,
+  kind?: 'quotes' | 'trade',
+): void => {
+  const record = asRecord(value);
+  if (record) {
+    WEEKDAYS.forEach((day) => {
+      const dayValue = readDayValue(record, day);
+      if (dayValue === undefined) return;
+      const row = target.get(day.key)!;
+      const dayRecord = asRecord(dayValue);
+      if (kind) {
+        row[kind] = formatSessionRanges(dayValue);
+      } else {
+        const quotesValue = dayRecord
+          ? findRecordValue(dayRecord, ['quotes', 'quote', 'quote_sessions', 'quoteSessions'])
+          : undefined;
+        const tradeValue = dayRecord
+          ? findRecordValue(dayRecord, ['trade', 'trading', 'trade_sessions', 'tradeSessions'])
+          : undefined;
+        if (quotesValue !== undefined || tradeValue !== undefined) {
+          row.quotes = formatSessionRanges(quotesValue);
+          row.trade = formatSessionRanges(tradeValue);
+        } else {
+          // Some broker adapters expose one generic session range per day.
+          // MT5 applies that range to both quote and trading sessions.
+          const ranges = formatSessionRanges(dayValue);
+          row.quotes = ranges;
+          row.trade = ranges;
+        }
+      }
+    });
+    return;
+  }
+
+  if (!Array.isArray(value)) return;
+  value.forEach((entry) => {
+    const entryRecord = asRecord(entry);
+    if (!entryRecord) return;
+    const day = normalizeWeekday(
+      entryRecord.day ?? entryRecord.weekday ?? entryRecord.day_of_week ?? entryRecord.dayOfWeek ?? entryRecord.name,
+    );
+    if (!day) return;
+    const row = target.get(day)!;
+    if (kind) {
+      row[kind] = formatSessionRanges(
+        entryRecord.sessions ?? entryRecord.ranges ?? entryRecord.periods ?? entryRecord.value ?? entryRecord,
+      );
+    } else {
+      const quotesValue = entryRecord.quotes ?? entryRecord.quote ?? entryRecord.quote_sessions ?? entryRecord.quoteSessions;
+      const tradeValue = entryRecord.trade ?? entryRecord.trading ?? entryRecord.trade_sessions ?? entryRecord.tradeSessions;
+      if (quotesValue !== undefined || tradeValue !== undefined) {
+        row.quotes = formatSessionRanges(quotesValue);
+        row.trade = formatSessionRanges(tradeValue);
+      } else {
+        const ranges = formatSessionRanges(entryRecord);
+        row.quotes = ranges;
+        row.trade = ranges;
+      }
+    }
+  });
+};
+
+const buildSessions = (records: readonly Record<string, unknown>[]): SymbolSpecificationSession[] => {
+  const byDay = new Map<WeekdayKey, { quotes: string[]; trade: string[] }>(
+    WEEKDAYS.map((day) => [day.key, { quotes: [], trade: [] }]),
+  );
+  populateSessionsByDay(byDay, readRaw(records, ['sessions', 'market_sessions', 'marketSessions']));
+  populateSessionsByDay(byDay, readRaw(records, ['quote_sessions', 'quoteSessions', 'sessions_quotes', 'sessionsQuotes']), 'quotes');
+  populateSessionsByDay(byDay, readRaw(records, ['trade_sessions', 'tradeSessions', 'sessions_trade', 'sessionsTrade']), 'trade');
+
+  return WEEKDAYS.map((day) => ({ day: day.key, label: day.label, ...byDay.get(day.key)! }));
+};
+
+const readNullableNumber = (value: unknown): number | null => {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const formatMarginRangeBound = (value: unknown): string | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const raw = String(value);
+    const [integer, fraction] = raw.split('.');
+    const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return fraction === undefined ? grouped : `${grouped}.${fraction}`;
+  }
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+};
+
+const readMarginRange = (record: Record<string, unknown>): string | null => {
+  const explicit = record.range_label ?? record.rangeLabel ?? record.notional_range
+    ?? record.notionalRange ?? record.volume_range ?? record.volumeRange ?? record.range;
+  if (typeof explicit === 'string' && explicit.trim()) return explicit.trim();
+  if (Array.isArray(explicit) && explicit.length >= 2) {
+    const from = formatMarginRangeBound(explicit[0]);
+    const to = formatMarginRangeBound(explicit[1]);
+    if (from && to) return `${from} - ${to}`;
+  }
+
+  const rangeRecord = asRecord(explicit);
+  const from = formatMarginRangeBound(
+    record.notional_from ?? record.notionalFrom ?? record.notional_value_from ?? record.notionalValueFrom
+      ?? record.volume_from ?? record.volumeFrom ?? record.range_from ?? record.rangeFrom
+      ?? record.turnover_from ?? record.turnoverFrom
+      ?? record.minimum ?? record.min ?? record.from
+      ?? rangeRecord?.from ?? rangeRecord?.minimum ?? rangeRecord?.min,
+  );
+  const to = formatMarginRangeBound(
+    record.notional_to ?? record.notionalTo ?? record.notional_value_to ?? record.notionalValueTo
+      ?? record.volume_to ?? record.volumeTo ?? record.range_to ?? record.rangeTo
+      ?? record.turnover_to ?? record.turnoverTo
+      ?? record.maximum ?? record.max ?? record.to
+      ?? rangeRecord?.to ?? rangeRecord?.maximum ?? rangeRecord?.max,
+  );
+  if (from && to) return `${from} - ${to}`;
+  if (from) return `>= ${from}`;
+  if (to) return `<= ${to}`;
+  return null;
+};
+
+const buildMarginRate = (
+  value: unknown,
+  fallbackLabel: string,
+  inheritedCurrency: string | null,
+): SymbolSpecificationMarginRate | null => {
+  const record = asRecord(value);
+  if (!record) return null;
+  const labelValue = record.label ?? record.name ?? record.order_type ?? record.orderType ?? record.type;
+  const label = typeof labelValue === 'string' && labelValue.trim() ? titleCase(labelValue) : titleCase(fallbackLabel);
+  const initial = readNullableNumber(
+    record.initial ?? record.initial_rate ?? record.initialRate
+      ?? record.initial_margin_rate ?? record.initialMarginRate ?? record.rate,
+  );
+  const maintenance = readNullableNumber(
+    record.maintenance ?? record.maintenance_rate ?? record.maintenanceRate
+      ?? record.maintenance_margin_rate ?? record.maintenanceMarginRate,
+  );
+  const initialPerLot = readNullableNumber(
+    record.initial_per_lot ?? record.initialPerLot ?? record.initial_value ?? record.initialValue
+      ?? record.initial_margin_per_lot ?? record.initialMarginPerLot,
+  );
+  const maintenancePerLot = readNullableNumber(
+    record.maintenance_per_lot ?? record.maintenancePerLot ?? record.maintenance_value ?? record.maintenanceValue
+      ?? record.maintenance_margin_per_lot ?? record.maintenanceMarginPerLot,
+  );
+  const currencyValue = record.currency ?? record.margin_currency ?? record.marginCurrency;
+  const currency = typeof currencyValue === 'string' && currencyValue.trim()
+    ? currencyValue.trim()
+    : inheritedCurrency;
+  if ([initial, maintenance, initialPerLot, maintenancePerLot].every((entry) => entry === null)) return null;
+  const sharedApproximate = parseBoolean(record.per_lot_approximate ?? record.perLotApproximate) ?? false;
+  return {
+    label,
+    range: readMarginRange(record),
+    initial,
+    maintenance,
+    initialPerLot,
+    maintenancePerLot,
+    initialPerLotApproximate: parseBoolean(
+      record.initial_per_lot_approximate ?? record.initialPerLotApproximate,
+    ) ?? sharedApproximate,
+    maintenancePerLotApproximate: parseBoolean(
+      record.maintenance_per_lot_approximate ?? record.maintenancePerLotApproximate,
+    ) ?? sharedApproximate,
+    currency,
+  };
+};
+
+const MARGIN_RATE_METADATA_KEYS = new Set([
+  'mode', 'marginmode', 'ratemode', 'schedulemode', 'floating', 'isfloating',
+  'basis', 'marginbasis', 'ratebasis', 'notionalbasis', 'calculationbasis',
+  'currency', 'currencycode', 'margincurrency',
+  'asof', 'effectiveat', 'publishedat', 'calculatedat', 'timestamp',
+].map(normalizeSpecificationKey));
+
+const collectMarginRates = (
+  value: unknown,
+  fallbackLabel: string,
+  inheritedCurrency: string | null,
+): SymbolSpecificationMarginRate[] => {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectMarginRates(entry, fallbackLabel, inheritedCurrency));
+  }
+
+  const record = asRecord(value);
+  if (!record) return [];
+  const recordCurrencyValue = record.currency ?? record.currency_code ?? record.currencyCode
+    ?? record.margin_currency ?? record.marginCurrency;
+  const recordCurrency = typeof recordCurrencyValue === 'string' && recordCurrencyValue.trim()
+    ? recordCurrencyValue.trim()
+    : inheritedCurrency;
+  const direct = buildMarginRate(value, fallbackLabel, recordCurrency);
+  if (direct) return [direct];
+
+  const explicitLabel = record.label ?? record.name ?? record.order_type ?? record.orderType ?? record.type;
+  const nestedLabel = typeof explicitLabel === 'string' && explicitLabel.trim()
+    ? explicitLabel
+    : fallbackLabel;
+  const nestedRates = record.tiers ?? record.ranges ?? record.rates ?? record.values
+    ?? record.groups ?? record.rows ?? record.entries;
+  if (nestedRates !== undefined) return collectMarginRates(nestedRates, nestedLabel, recordCurrency);
+
+  return Object.entries(record).flatMap(([key, entry]) => (
+    MARGIN_RATE_METADATA_KEYS.has(normalizeSpecificationKey(key))
+      ? []
+      : collectMarginRates(entry, key, recordCurrency)
+  ));
+};
+
+const readMarginRateDescriptor = (
+  container: Record<string, unknown> | null,
+  containerKeys: readonly string[],
+  records: readonly Record<string, unknown>[],
+  rootKeys: readonly string[],
+): string | null => (
+  (container ? readString([container], containerKeys) : null) ?? readString(records, rootKeys)
+);
+
+const buildMarginRateSection = (
+  records: readonly Record<string, unknown>[],
+): SymbolSpecificationMarginRateSection => {
+  const value = readRaw(records, ['margin_rates', 'marginRates', 'order_margin_rates', 'orderMarginRates']);
+  const container = asRecord(value);
+  const explicitMode = readMarginRateDescriptor(
+    container,
+    ['mode', 'margin_mode', 'marginMode', 'rate_mode', 'rateMode', 'schedule_mode', 'scheduleMode'],
+    records,
+    ['margin_rates_mode', 'marginRatesMode', 'margin_rate_mode', 'marginRateMode'],
+  );
+  const floating = container
+    ? readBoolean([container], ['floating', 'is_floating', 'isFloating'])
+    : readBoolean(records, ['margin_rates_floating', 'marginRatesFloating']);
+  const mode = explicitMode ?? (floating === null ? null : floating ? 'floating' : 'fixed');
+  const basis = readMarginRateDescriptor(
+    container,
+    ['basis', 'margin_basis', 'marginBasis', 'rate_basis', 'rateBasis', 'notional_basis', 'notionalBasis', 'calculation_basis', 'calculationBasis'],
+    records,
+    ['margin_rates_basis', 'marginRatesBasis', 'margin_rate_basis', 'marginRateBasis'],
+  );
+  const currency = readMarginRateDescriptor(
+    container,
+    ['currency', 'currency_code', 'currencyCode', 'margin_currency', 'marginCurrency'],
+    records,
+    ['margin_rates_currency', 'marginRatesCurrency', 'margin_rate_currency', 'marginRateCurrency'],
+  );
+  const rawAsOf = (container
+    ? readRaw([container], ['as_of', 'asOf', 'effective_at', 'effectiveAt', 'published_at', 'publishedAt', 'calculated_at', 'calculatedAt', 'timestamp'])
+    : undefined) ?? readRaw(records, [
+    'margin_rates_as_of', 'marginRatesAsOf', 'margin_rate_as_of', 'marginRateAsOf',
+    'margin_rates_effective_at', 'marginRatesEffectiveAt',
+  ]);
+  const rates = collectMarginRates(value, 'Rate', currency);
+  const rowCurrencies = [...new Set(rates.map((rate) => rate.currency).filter((entry): entry is string => Boolean(entry)))];
+  const resolvedCurrency = currency ?? (rowCurrencies.length === 1 ? rowCurrencies[0] : null);
+
+  return {
+    rates: resolvedCurrency === currency
+      ? rates
+      : rates.map((rate) => ({ ...rate, currency: rate.currency ?? resolvedCurrency })),
+    mode,
+    basis,
+    currency: resolvedCurrency,
+    asOf: typeof rawAsOf === 'number' || typeof rawAsOf === 'string' ? rawAsOf : null,
+  };
+};
+
+const displayScalar = (value: unknown): string | null => {
+  if (typeof value === 'string') return value.trim() || null;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+};
+
+const displayList = (value: unknown): string | null => {
+  if (Array.isArray(value)) {
+    const entries = value.map(displayScalar).filter((entry): entry is string => Boolean(entry));
+    return entries.length > 0 ? entries.join(', ') : null;
+  }
+  return displayScalar(value);
+};
+
+const buildCommissionTier = (value: unknown): SymbolSpecificationCommissionTier | null => {
+  const record = asRecord(value);
+  if (!record) {
+    const scalar = displayScalar(value);
+    return scalar ? { label: null, range: null, value: scalar } : null;
+  }
+
+  const explicitDisplay = displayScalar(
+    record.value_display ?? record.valueDisplay ?? record.display ?? record.description,
+  );
+  const amount = displayScalar(record.value ?? record.amount ?? record.rate ?? record.commission);
+  const currency = displayScalar(record.currency ?? record.currency_code ?? record.currencyCode);
+  const unit = displayScalar(record.unit ?? record.per ?? record.measure);
+  const renderedValue = explicitDisplay ?? [amount, currency, unit].filter(Boolean).join(' ');
+  if (!renderedValue) return null;
+  return {
+    label: displayScalar(record.label ?? record.name ?? record.type),
+    range: readMarginRange(record),
+    value: renderedValue,
+  };
+};
+
+const buildCommissionSchedules = (
+  records: readonly Record<string, unknown>[],
+): SymbolSpecificationCommissionSchedule[] => {
+  const raw = readRaw(records, [
+    'commission_schedules', 'commissionSchedules', 'commissions', 'commission_schedule', 'commissionSchedule',
+  ]);
+  const scheduleValues = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
+  const schedules = scheduleValues.flatMap((entry, index) => {
+    const record = asRecord(entry);
+    if (!record) {
+      const tier = buildCommissionTier(entry);
+      return tier ? [{ title: 'Commission', description: null, tiers: [tier] }] : [];
+    }
+    const nested = record.tiers ?? record.ranges ?? record.rows ?? record.entries;
+    const tierValues = Array.isArray(nested) ? nested : nested === undefined ? [record] : [nested];
+    const tiers = tierValues.flatMap((tierValue) => {
+      if (Array.isArray(tierValue)) return tierValue.map(buildCommissionTier).filter((tier): tier is SymbolSpecificationCommissionTier => Boolean(tier));
+      const tier = buildCommissionTier(tierValue);
+      return tier ? [tier] : [];
+    });
+    if (tiers.length === 0) return [];
+    const title = displayScalar(record.title ?? record.name ?? record.label) ?? (index === 0 ? 'Commission' : `Commission ${index + 1}`);
+    const explicitDescription = displayScalar(record.description ?? record.summary);
+    const descriptor = [
+      displayScalar(record.charge_mode ?? record.chargeMode ?? record.timing),
+      displayScalar(record.basis ?? record.calculation_basis ?? record.calculationBasis),
+      displayScalar(record.direction ?? record.deal_direction ?? record.dealDirection),
+    ].filter((part): part is string => Boolean(part)).map((part) => titleCase(part).toLowerCase()).join(', ');
+    return [{ title, description: explicitDescription ?? (descriptor || null), tiers }];
+  });
+
+  if (schedules.length > 0) return schedules;
+  const scalar = readRaw(records, ['commission', 'commission_per_lot', 'commissionPerLot']);
+  const tier = buildCommissionTier(scalar);
+  return tier ? [{ title: 'Commission', description: null, tiers: [tier] }] : [];
+};
+
+const buildMarginSpreads = (
+  records: readonly Record<string, unknown>[],
+): SymbolSpecificationMarginSpread[] => {
+  const raw = readRaw(records, ['margin_spreads', 'marginSpreads', 'spread_definitions', 'spreadDefinitions', 'spreads']);
+  const container = asRecord(raw);
+  const values = Array.isArray(raw)
+    ? raw
+    : Array.isArray(container?.rows)
+      ? container.rows
+      : Array.isArray(container?.entries)
+        ? container.entries
+        : [];
+
+  return values.flatMap((entry, index) => {
+    const record = asRecord(entry);
+    if (!record) return [];
+    const legA = displayList(record.leg_a ?? record.legA ?? record.a ?? record.first_leg ?? record.firstLeg);
+    const legB = displayList(record.leg_b ?? record.legB ?? record.b ?? record.second_leg ?? record.secondLeg);
+    if (!legA || !legB) return [];
+    const explicitMargin = displayScalar(record.margin_display ?? record.marginDisplay ?? record.margin);
+    const marginType = displayScalar(record.margin_type ?? record.marginType ?? record.type);
+    const initial = displayScalar(record.initial_margin ?? record.initialMargin ?? record.initial);
+    const maintenance = displayScalar(record.maintenance_margin ?? record.maintenanceMargin ?? record.maintenance);
+    const currency = displayScalar(record.currency);
+    const valuesText = initial || maintenance
+      ? [initial ?? '', maintenance ?? '', currency].filter(Boolean).join(' / ')
+      : null;
+    return [{
+      name: displayScalar(record.name ?? record.label ?? record.title) ?? `Spread ${index + 1}`,
+      legA,
+      legB,
+      margin: explicitMargin ?? ([marginType ? titleCase(marginType) : null, valuesText].filter(Boolean).join(': ') || null),
+    }];
+  });
+};
+
+const CALCULATION_MODES: Readonly<Record<number, string>> = {
+  0: 'Forex',
+  1: 'Futures',
+  2: 'CFD',
+  3: 'CFD Index',
+  4: 'CFD Leverage',
+  5: 'Forex no leverage',
+  32: 'Exchange stocks',
+  33: 'Exchange futures',
+  34: 'Exchange options',
+  35: 'Exchange futures FORTS',
+  36: 'Exchange options margin',
+  37: 'Exchange bonds',
+  38: 'Exchange stocks MOEX',
+  39: 'Exchange bonds MOEX',
+  64: 'Collateral',
+};
+
+const SWAP_MODES: Readonly<Record<number, string>> = {
+  0: 'Disabled',
+  1: 'Points',
+  2: 'Base currency',
+  3: 'Margin currency',
+  4: 'Deposit currency',
+  5: 'Interest current price',
+  6: 'Interest open price',
+  7: 'Reopen close price',
+  8: 'Reopen Bid price',
+  9: 'Profit currency',
+};
+
+const readSwapMode = (
+  records: readonly Record<string, unknown>[],
+  currencies: { base: string | null; margin: string | null; profit: string | null; deposit: string | null },
+): string | null => {
+  const resolved = readString(records, ['swap_type_display', 'swapTypeDisplay', 'swap_display', 'swapDisplay']);
+  if (resolved) return resolved;
+  const raw = readRaw(records, ['swap_mode', 'swapMode', 'swap_type', 'swapType']);
+  const numeric = typeof raw === 'number'
+    ? raw
+    : typeof raw === 'string' && /^-?\d+$/.test(raw.trim())
+      ? Number(raw)
+      : null;
+  const enumName = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
+  if (enumName.includes('CURRENCY_SYMBOL') && currencies.base) return currencies.base;
+  if (enumName.includes('CURRENCY_MARGIN') && currencies.margin) return currencies.margin;
+  if (enumName.includes('CURRENCY_DEPOSIT') && currencies.deposit) return currencies.deposit;
+  if (enumName.includes('CURRENCY_PROFIT') && currencies.profit) return currencies.profit;
+  if (numeric === 2 && currencies.base) return currencies.base;
+  if (numeric === 3 && currencies.margin) return currencies.margin;
+  if (numeric === 4 && currencies.deposit) return currencies.deposit;
+  if (numeric === 9 && currencies.profit) return currencies.profit;
+  return readMode(records, ['swap_mode', 'swapMode', 'swap_type', 'swapType'], SWAP_MODES);
+};
+
+const readSwapRolloverDay = (records: readonly Record<string, unknown>[]): string | null => {
+  const value = readRaw(records, [
+    'swap_rollover3days', 'swapRollover3Days', 'swap_rollover_day', 'swapRolloverDay',
+    'swap_rollover_3days', 'swapRollover_3Days', 'swap_rollover3_days',
+    'swap_3day', 'swap3Day', 'swap_3days', 'swap3Days',
+    'triple_swap_day', 'tripleSwapDay', 'three_day_swap_day', 'threeDaySwapDay',
+  ]);
+  const day = normalizeWeekday(value);
+  return day ? WEEKDAYS.find((entry) => entry.key === day)!.label : typeof value === 'string' ? titleCase(value) : null;
+};
+
+// Exported for contract-level tests; it is a pure broker-payload normalizer.
+// eslint-disable-next-line react-refresh/only-export-components
 export const buildSymbolSpecificationSnapshot = (
   instrument?: unknown,
   fallbackInstrument?: unknown,
 ): SymbolSpecificationSnapshot => {
-  const records = [
-    ...collectSpecificationRecords(instrument),
+  const records = collectSpecificationRecords(instrument);
+  const identityRecords = [
+    ...records,
     ...collectSpecificationRecords(fallbackInstrument),
   ];
   const digits = readNumber(records, ['digits', 'precision', 'pip_position', 'pipPosition']);
+  const tradeMode = readMode(records, ['trade_mode', 'tradeMode'], {
+    0: 'Disabled', 1: 'Long only', 2: 'Short only', 3: 'Close only', 4: 'Full access',
+  });
+  const tradingEnabled = readBoolean(records, [
+    'trading_enabled', 'tradingEnabled', 'enabled', 'is_enabled', 'isEnabled', 'status',
+  ]);
+  const rawFillingMode = readRaw(records, ['filling_mode', 'fillingMode', 'trade_fill_flags', 'tradeFillFlags']);
+  const rawExpirationMode = readRaw(records, ['expiration_mode', 'expirationMode', 'order_expiration_flags', 'orderExpirationFlags']);
+  const rawOrderMode = readRaw(records, ['order_mode', 'orderMode', 'order_flags', 'orderFlags']);
+  const rawStartTime = readRaw(records, ['start_time', 'startTime']);
+  const rawExpirationTime = readRaw(records, ['expiration_time', 'expirationTime']);
+  const marginRateSection = buildMarginRateSection(records);
+  const baseCurrency = readString(records, ['currency_base', 'currencyBase', 'base_currency', 'baseCurrency']);
+  const profitCurrency = readString(records, ['currency_profit', 'currencyProfit', 'profit_currency', 'profitCurrency']);
+  const marginCurrency = readString(records, ['currency_margin', 'currencyMargin', 'margin_currency', 'marginCurrency']);
+  const depositCurrency = readString(records, ['currency_deposit', 'currencyDeposit', 'deposit_currency', 'depositCurrency', 'account_currency', 'accountCurrency']);
 
   return {
-    description: readString(records, ['description', 'display_name', 'displayName']),
+    description: readString(identityRecords, ['description', 'display_name', 'displayName']),
+    pageUrl: readString(identityRecords, ['page_url', 'pageUrl', 'page', 'information_url', 'informationUrl']),
+    isin: readString(records, ['isin']),
     category: readString(records, ['category', 'asset_class', 'assetClass', 'type']),
-    digits: digits === null ? null : Math.max(0, Math.min(10, Math.trunc(digits))),
-    bid: readNumber(records, ['bid', 'best_bid', 'bestBid']),
-    ask: readNumber(records, ['ask', 'best_ask', 'bestAsk']),
-    spread: readNumber(records, ['spread']),
+    exchange: readString(records, ['exchange', 'exchange_name', 'exchangeName', 'exchange_id', 'exchangeId']),
+    cfi: readString(records, ['cfi', 'classification_of_financial_instruments', 'classificationOfFinancialInstruments']),
+    sector: readString(records, ['sector', 'sector_name', 'sectorName']),
+    industry: readString(records, ['industry', 'industry_name', 'industryName']),
+    country: readString(records, ['country', 'country_name', 'countryName']),
+    digits: digits === null ? null : Math.max(0, Math.min(12, Math.trunc(digits))),
+    spread: readNumber(records, ['spread', 'spread_points', 'spreadPoints']),
+    spreadFloating: readBoolean(records, [
+      'spread_float', 'spreadFloat', 'spread_floating', 'spreadFloating',
+      'is_spread_floating', 'isSpreadFloating', 'spread_is_floating', 'spreadIsFloating',
+      'floating_spread', 'floatingSpread',
+    ]),
+    spreadMode: readString(records, ['spread_mode', 'spreadMode', 'spread_type', 'spreadType']),
     contractSize: readNumber(records, ['contract_size', 'contractSize', 'trade_contract_size', 'tradeContractSize']),
-    tickSize: readNumber(records, ['tick_size', 'tickSize', 'trade_tick_size', 'tradeTickSize']),
+    contractSizeUnit: readString(records, ['contract_size_unit', 'contractSizeUnit', 'contract_unit', 'contractUnit']),
+    contractSizeDisplay: readString(records, ['contract_size_display', 'contractSizeDisplay']),
+    stopsLevel: readNumber(records, ['stops_level', 'stopsLevel', 'trade_stops_level', 'tradeStopsLevel']),
+    freezeLevel: readNumber(records, ['freeze_level', 'freezeLevel', 'trade_freeze_level', 'tradeFreezeLevel']),
+    tickSize: readNumber(records, ['tick_size', 'tickSize', 'trade_tick_size', 'tradeTickSize', 'point_size', 'pointSize', 'point']),
     tickValue: readNumber(records, ['tick_value', 'tickValue', 'trade_tick_value', 'tradeTickValue']),
-    minVolume: readNumber(records, [
-      'volume_min', 'min_volume', 'minVolume', 'min_lot', 'minLot', 'lot_min', 'lotMin', 'lots_min', 'lotsMin',
-    ]),
-    maxVolume: readNumber(records, [
-      'volume_max', 'max_volume', 'maxVolume', 'max_lot', 'maxLot', 'lot_max', 'lotMax', 'lots_max', 'lotsMax',
-    ]),
-    volumeStep: readNumber(records, [
-      'volume_step', 'volumeStep', 'lot_step', 'lotStep', 'lots_step', 'lotsStep',
-    ]),
-    marginRate: readNumber(records, [
-      'margin_rate', 'marginRate', 'initial_margin', 'initialMargin', 'margin_initial', 'marginInitial',
-    ]),
+    tickValueProfit: readNumber(records, ['tick_value_profit', 'tickValueProfit', 'trade_tick_value_profit', 'tradeTickValueProfit']),
+    tickValueLoss: readNumber(records, ['tick_value_loss', 'tickValueLoss', 'trade_tick_value_loss', 'tradeTickValueLoss']),
+    minVolume: readNumber(records, ['volume_min', 'min_volume', 'minVolume', 'min_lot', 'minLot', 'lot_min', 'lotMin', 'lots_min', 'lotsMin']),
+    maxVolume: readNumber(records, ['volume_max', 'max_volume', 'maxVolume', 'max_lot', 'maxLot', 'lot_max', 'lotMax', 'lots_max', 'lotsMax']),
+    volumeStep: readNumber(records, ['volume_step', 'volumeStep', 'lot_step', 'lotStep', 'lots_step', 'lotsStep']),
+    volumeLimit: readNumber(records, ['volume_limit', 'volumeLimit', 'lot_limit', 'lotLimit']),
+    marginRate: readNumber(records, ['margin_rate', 'marginRate']),
+    marginInitial: readNumber(records, ['margin_initial', 'marginInitial', 'initial_margin', 'initialMargin']),
+    marginMaintenance: readNumber(records, ['margin_maintenance', 'marginMaintenance', 'maintenance_margin', 'maintenanceMargin']),
+    marginHedged: readNumber(records, ['margin_hedged', 'marginHedged', 'hedged_margin', 'hedgedMargin']),
+    marginHedgedUseLeg: readBoolean(records, ['margin_hedged_use_leg', 'marginHedgedUseLeg', 'hedged_margin_use_leg', 'hedgedMarginUseLeg']),
     swapLong: readNumber(records, ['swap_long', 'swapLong']),
     swapShort: readNumber(records, ['swap_short', 'swapShort']),
+    swapMode: readSwapMode(records, {
+      base: baseCurrency,
+      margin: marginCurrency,
+      profit: profitCurrency,
+      deposit: depositCurrency,
+    }),
+    swapRolloverDay: readSwapRolloverDay(records),
+    swapRates: buildSwapRates(records),
     commission: readNumber(records, ['commission', 'commission_per_lot', 'commissionPerLot']),
-    tradingEnabled: readBoolean(records, [
-      'trading_enabled',
-      'tradingEnabled',
-      'enabled',
-      'is_enabled',
-      'isEnabled',
-      'status',
-    ]),
-    baseCurrency: readString(records, ['currency_base', 'currencyBase', 'base_currency', 'baseCurrency']),
-    profitCurrency: readString(records, ['currency_profit', 'currencyProfit', 'profit_currency', 'profitCurrency']),
-    marginCurrency: readString(records, ['currency_margin', 'currencyMargin', 'margin_currency', 'marginCurrency']),
-    last: readNumber(records, ['last', 'last_price', 'lastPrice']),
-    high: readNumber(records, ['high', 'session_high', 'sessionHigh', 'high24h', 'high_24h']),
-    low: readNumber(records, ['low', 'session_low', 'sessionLow', 'low24h', 'low_24h']),
-    volume: readNumber(records, ['tick_volume', 'tickVolume', 'volume_24h', 'volume24h', 'quote_volume', 'quoteVolume']),
-    dailyChange: readNumber(records, ['daily_change', 'dailyChange', 'change_percent', 'changePercent']),
-    liquidityProvider: readString(records, ['lp', 'liquidity_provider', 'liquidityProvider', 'provider']),
-    timestamp: normalizeTimestamp(readNumber(records, ['timestamp', 'time', 'quote_time', 'quoteTime'])),
+    tradingEnabled,
+    chartMode: readMode(records, ['chart_mode', 'chartMode'], { 0: 'By bid price', 1: 'By last price' }),
+    tradeMode,
+    calculationMode: readMode(records, [
+      'trade_calc_mode', 'tradeCalcMode', 'calculation_mode', 'calculationMode', 'calc_mode', 'calcMode',
+    ], CALCULATION_MODES),
+    executionMode: readMode(records, ['trade_exemode', 'tradeExeMode', 'trade_execution', 'tradeExecution', 'execution_mode', 'executionMode'], {
+      0: 'Request', 1: 'Instant', 2: 'Market', 3: 'Exchange',
+    }),
+    gtcMode: readMode(records, ['order_gtc_mode', 'orderGtcMode', 'gtc_mode', 'gtcMode'], {
+      0: 'Good till cancelled', 1: 'Good till today including SL/TP', 2: 'Good till today excluding SL/TP',
+    }),
+    fillingMode: rawFillingMode === undefined ? null : decodeFlags(rawFillingMode, [
+      [1, 'Fill or Kill'], [2, 'Immediate or Cancel'], [4, 'Book or Cancel'],
+    ], { zeroLabel: null }),
+    expirationMode: rawExpirationMode === undefined ? null : decodeFlags(rawExpirationMode, [
+      [1, 'GTC'], [2, 'Intraday'], [4, 'Specified time'], [8, 'Date'],
+    ], { allMask: 15 }),
+    orderMode: rawOrderMode === undefined ? null : decodeFlags(rawOrderMode, [
+      [1, 'Market'], [2, 'Limit'], [4, 'Stop'], [8, 'Stop limit'], [16, 'Stop Loss'], [32, 'Take Profit'], [64, 'Close By'],
+    ], { allMask: 127 }),
+    baseCurrency,
+    profitCurrency,
+    marginCurrency,
+    depositCurrency,
+    subscription: readString(records, ['subscription', 'subscription_status', 'subscriptionStatus']),
+    ticksHistory: readString(records, ['ticks_history', 'ticksHistory', 'tick_history', 'tickHistory']),
+    liquidityRate: readNumber(records, ['trade_liquidity_rate', 'tradeLiquidityRate', 'liquidity_rate', 'liquidityRate']),
+    sessions: buildSessions(records),
+    sessionTimeZone: readString(records, ['session_time_zone', 'sessionTimeZone', 'server_time_zone', 'serverTimeZone']),
+    marginRates: marginRateSection.rates,
+    marginRatesMode: marginRateSection.mode,
+    marginRatesBasis: marginRateSection.basis,
+    marginRatesCurrency: marginRateSection.currency,
+    marginRatesAsOf: marginRateSection.asOf,
+    startTime: typeof rawStartTime === 'number' || typeof rawStartTime === 'string' ? rawStartTime : null,
+    expirationTime: typeof rawExpirationTime === 'number' || typeof rawExpirationTime === 'string' ? rawExpirationTime : null,
+    faceValue: readNumber(records, ['trade_face_value', 'tradeFaceValue', 'face_value', 'faceValue']),
+    accruedInterest: readNumber(records, ['trade_accrued_interest', 'tradeAccruedInterest', 'accrued_interest', 'accruedInterest']),
+    optionMode: readMode(records, ['option_mode', 'optionMode'], { 0: 'European', 1: 'American' }),
+    optionRight: readMode(records, ['option_right', 'optionRight'], { 0: 'Call', 1: 'Put' }),
+    underlying: readString(records, ['underlying', 'basis', 'underlying_symbol', 'underlyingSymbol']),
+    optionStrike: readNumber(records, ['option_strike', 'optionStrike']),
+    commissionSchedules: buildCommissionSchedules(records),
+    marginSpreads: buildMarginSpreads(records),
   };
 };
 
-const formatNumber = (value: number | null, maximumFractionDigits = 8): string | null => (
+const formatNumber = (value: number | null, maximumFractionDigits = 12): string | null => (
   value === null
     ? null
-    : new Intl.NumberFormat(i18n.resolvedLanguage || i18n.language, { maximumFractionDigits }).format(value)
+    : new Intl.NumberFormat(i18n.resolvedLanguage || i18n.language, {
+      useGrouping: false,
+      maximumFractionDigits,
+    }).format(value)
 );
 
-const formatPrice = (value: number | null, digits: number): string | null => (
-  value === null ? null : value.toFixed(digits)
+const formatGroupedNumber = (
+  value: number | null,
+  minimumFractionDigits = 0,
+  maximumFractionDigits = 12,
+): string | null => (
+  value === null
+    ? null
+    : new Intl.NumberFormat(i18n.resolvedLanguage || i18n.language, {
+      useGrouping: true,
+      minimumFractionDigits,
+      maximumFractionDigits,
+    }).format(value)
 );
 
-const formatTimestamp = (value: number | null | undefined): string | null => {
-  if (!value || !Number.isFinite(value)) return null;
+const formatDate = (value: number | string | null): string | null => {
+  if (value === null || value === '') return null;
+  if (typeof value === 'string' && !/^\d+(?:\.\d+)?$/.test(value.trim())) {
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed)) return value;
+    value = parsed;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const timestamp = numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
   return new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).format(new Date(value));
+    year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(timestamp));
 };
 
-const formatLots = (value: number | null): string | null => {
-  const formatted = formatNumber(value);
-  return formatted === null ? null : translateUi('{{value0}} lots', { value0: formatted });
+const formatSpread = (snapshot: SymbolSpecificationSnapshot): string | null => {
+  const normalizedMode = snapshot.spreadMode?.trim().toLowerCase().replace(/[_-]+/g, ' ');
+  if (snapshot.spreadFloating === true || ['floating', 'variable', 'dynamic'].includes(normalizedMode ?? '')) {
+    return 'floating';
+  }
+  if (snapshot.spread !== null) return formatNumber(snapshot.spread);
+  if (snapshot.spreadFloating === false || normalizedMode === 'fixed') return 'fixed';
+  return snapshot.spreadMode;
 };
 
-const QuoteMetric = ({
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: string;
-  tone?: 'positive' | 'negative' | 'neutral';
-}) => { const tr = useUiTranslation(); return ((
-  <div className="min-w-[132px] flex-1 rounded border border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-3 py-2.5">
-    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">{tr(label)}</div>
-    <div className={`mt-1 truncate font-mono text-[14px] font-semibold tabular-nums ${
-      tone === 'positive' ? 'text-emerald-400' : tone === 'negative' ? 'text-rose-400' : 'text-[var(--text-primary)]'
-    }`}>
-      {value}
-    </div>
-  </div>
-)); };
+const formatContractSize = (snapshot: SymbolSpecificationSnapshot): string | null => {
+  if (snapshot.contractSizeDisplay) return snapshot.contractSizeDisplay;
+  if (snapshot.contractSize === null) return null;
+  const formatted = formatGroupedNumber(snapshot.contractSize) ?? '';
+  const forexUnit = snapshot.calculationMode?.toLowerCase().startsWith('forex')
+    ? snapshot.baseCurrency
+    : null;
+  const unit = snapshot.contractSizeUnit ?? forexUnit;
+  return `${formatted}${unit ? ` ${unit}` : ''}`;
+};
 
-const SpecificationSection = ({
-  title,
-  icon,
-  rows,
-  emptyMessage,
-  grid = false,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  rows: DisplayRow[];
-  emptyMessage: string;
-  grid?: boolean;
-}) => {
-    const tr = useUiTranslation();
-  const availableRows = rows.filter((row): row is { label: string; value: string } => row.value !== null);
+const safeWebUrl = (value: string | null): string | null => {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    return ['https:', 'http:'].includes(parsed.protocol) ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+const PropertyMarker = ({ kind = 'text' }: { kind?: DisplayRow['kind'] }) => {
+  if (kind === 'enum') {
+    return (
+      <span className="flex h-3 w-3 shrink-0 flex-col justify-center gap-px" aria-hidden="true">
+        <span className="h-px w-3 bg-[#ef5350]" />
+        <span className="h-px w-3 bg-[#42a5f5]" />
+        <span className="h-px w-3 bg-[#66bb6a]" />
+      </span>
+    );
+  }
+  if (kind === 'calendar') {
+    return (
+      <span className="relative h-3 w-3 shrink-0 border border-[#42a5f5]" aria-hidden="true">
+        <span className="absolute left-0 top-[2px] h-px w-full bg-[#42a5f5]" />
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`w-3 shrink-0 text-center font-sans text-[8px] font-semibold leading-3 ${kind === 'text' ? 'text-[#d79a62]' : 'text-[#42a5f5]'}`}
+      aria-hidden="true"
+    >
+      {kind === 'integer' ? '01' : kind === 'decimal' ? '½' : 'ab'}
+    </span>
+  );
+};
+
+const PropertyRows = ({ rows }: { rows: DisplayRow[] }) => {
+  const tr = useUiTranslation();
+  const availableRows = rows.filter((row): row is DisplayRow & { value: string } => row.value !== null);
+  if (availableRows.length === 0) return null;
 
   return (
-    <section className="self-start overflow-hidden rounded border border-[var(--border-primary)] bg-[var(--bg-tertiary)]">
-      <div className="flex h-9 items-center gap-2 border-b border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-3">
-        <span className="text-[var(--color-info)]" aria-hidden="true">{icon}</span>
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--text-primary)]">{tr(title)}</h3>
-        <span className="ml-auto text-[10px] font-medium tabular-nums text-[var(--text-secondary)]">
-          {availableRows.length > 0 ? tr("{{value0}} fields", { value0: availableRows.length }) : tr("Unavailable")}
-        </span>
-      </div>
-      {availableRows.length > 0 ? (
-        <dl className={grid ? 'grid grid-cols-1 gap-px bg-[var(--border-primary)] sm:grid-cols-2' : 'divide-y divide-[var(--border-primary)]'}>
-          {availableRows.map((row) => (
-            <div
-              key={row.label}
-              className={`bg-[var(--bg-tertiary)] px-3 py-2 ${grid
-                ? 'min-h-[52px]'
-                : 'grid min-h-9 grid-cols-[minmax(0,1fr)_minmax(112px,1fr)] items-center gap-3'
-              }`}
-            >
-              <dt className="text-[12px] text-[var(--text-secondary)]">{tr(row.label)}</dt>
-              <dd
-                className={`${grid ? 'mt-1 text-left text-[12px]' : 'truncate text-right text-[12px]'} font-mono font-medium tabular-nums text-[var(--text-primary)]`}
-                title={row.value}
-              >
-                {row.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      ) : (
-        <div className="flex min-h-[64px] items-center gap-2.5 px-3 py-3 text-[12px] text-[var(--text-secondary)]">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--bg-quaternary)] text-[var(--text-muted)]" aria-hidden="true">
-            <Icon name="info" size="xs" />
-          </span>
-          <span>{tr(emptyMessage)}</span>
+    <dl className="rtx-symbol-specification__rows m-0">
+      {availableRows.map((row) => (
+        <div
+          key={row.label}
+          className="grid min-h-[24px] grid-cols-[minmax(136px,44%)_minmax(0,1fr)] items-center border-b border-[var(--border-primary)] last:border-b-0"
+        >
+          <dt className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px] leading-[15px] text-[var(--text-secondary)]">
+            <PropertyMarker kind={row.kind} />
+            <span className="truncate">{tr(row.label)}</span>
+          </dt>
+          <dd
+            className={`m-0 truncate border-l border-[var(--border-primary)] px-2 py-1 text-right font-mono text-[11px] font-medium leading-[15px] tabular-nums ${
+              row.tone === 'positive'
+                ? 'text-[var(--color-profit)]'
+                : row.tone === 'negative'
+                  ? 'text-[var(--color-loss)]'
+                  : 'text-[var(--text-primary)]'
+            }`}
+            title={row.value}
+          >
+            {row.value}
+          </dd>
         </div>
-      )}
+      ))}
+    </dl>
+  );
+};
+
+const SectionHeading = ({ children }: { children: React.ReactNode }) => (
+  <div className="border-y border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-2 py-1 text-[11px] font-semibold leading-4 text-[var(--text-primary)] first:border-t-0">
+    {children}
+  </div>
+);
+
+const SessionTable = ({
+  sessions,
+  timeZone,
+}: {
+  sessions: SymbolSpecificationSession[];
+  timeZone: string | null;
+}) => {
+  const tr = useUiTranslation();
+  if (!sessions.some((session) => session.quotes.length > 0 || session.trade.length > 0)) return null;
+  return (
+    <section aria-label={tr('Sessions')} title={timeZone ? `${tr('Broker server time')}: ${timeZone}` : undefined}>
+      <table className="w-full table-fixed border-collapse text-[11px]">
+        <thead>
+          <tr className="border-y border-[var(--border-primary)] bg-[var(--bg-quaternary)] text-[var(--text-secondary)]">
+            <th className="w-[34%] px-2 py-1 text-left font-semibold text-[var(--text-primary)]" scope="col">
+              {tr('Sessions')}{timeZone ? <span className="ml-1 font-normal text-[var(--text-tertiary)]">({timeZone})</span> : null}
+            </th>
+            <th className="w-[33%] border-l border-[var(--border-primary)] px-2 py-1 text-right font-medium" scope="col">{tr('Quotes')}</th>
+            <th className="w-[33%] border-l border-[var(--border-primary)] px-2 py-1 text-right font-medium" scope="col">{tr('Trade')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sessions.map((session) => (
+            <tr key={session.day} className="border-b border-[var(--border-primary)] last:border-b-0">
+              <th className="px-2 py-1 text-left font-normal text-[var(--text-secondary)]" scope="row">
+                <span className="flex items-center gap-1.5"><PropertyMarker kind="calendar" />{tr(session.label)}</span>
+              </th>
+              <td className="border-l border-[var(--border-primary)] px-2 py-1 text-right font-mono tabular-nums text-[var(--text-primary)]">
+                {session.quotes.join(', ')}
+              </td>
+              <td className="border-l border-[var(--border-primary)] px-2 py-1 text-right font-mono tabular-nums text-[var(--text-primary)]">
+                {session.trade.join(', ')}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+};
+
+const CommissionTable = ({ schedules }: { schedules: SymbolSpecificationCommissionSchedule[] }) => {
+  const tr = useUiTranslation();
+  if (schedules.length === 0) return null;
+  return (
+    <section aria-label={tr('Commission')}>
+      {schedules.map((schedule, scheduleIndex) => (
+        <div key={`${schedule.title}-${scheduleIndex}`}>
+          <SectionHeading>
+            {tr(schedule.title)}{schedule.description ? ` | ${schedule.description}` : ''}
+          </SectionHeading>
+          <dl className="m-0">
+            {schedule.tiers.map((tier, tierIndex) => {
+              const label = tier.range ?? tier.label ?? tr('Commission');
+              return (
+                <div
+                  key={`${label}-${tierIndex}`}
+                  className="grid min-h-[24px] grid-cols-[minmax(136px,44%)_minmax(0,1fr)] items-center border-b border-[var(--border-primary)] last:border-b-0"
+                >
+                  <dt className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px] text-[var(--text-secondary)]">
+                    <PropertyMarker kind="decimal" />
+                    <span className="truncate">{label}</span>
+                  </dt>
+                  <dd className="m-0 truncate border-l border-[var(--border-primary)] px-2 py-1 text-right font-mono text-[11px] font-medium tabular-nums" title={tier.value}>
+                    {tier.value}
+                  </dd>
+                </div>
+              );
+            })}
+          </dl>
+        </div>
+      ))}
+    </section>
+  );
+};
+
+const MarginSpreadsTable = ({ spreads }: { spreads: SymbolSpecificationMarginSpread[] }) => {
+  const tr = useUiTranslation();
+  if (spreads.length === 0) return null;
+  return (
+    <section aria-label={tr('Spreads')}>
+      <table className="w-full table-fixed border-collapse text-[10px]">
+        <thead>
+          <tr className="border-y border-[var(--border-primary)] bg-[var(--bg-quaternary)] text-[var(--text-secondary)]">
+            <th className="w-[25%] px-2 py-1 text-left font-semibold text-[var(--text-primary)]" scope="col">{tr('Spreads')}</th>
+            <th className="w-[25%] border-l border-[var(--border-primary)] px-1 py-1 text-left font-medium" scope="col">{tr('Leg A')}</th>
+            <th className="w-[25%] border-l border-[var(--border-primary)] px-1 py-1 text-left font-medium" scope="col">{tr('Leg B')}</th>
+            <th className="w-[25%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{tr('Margin')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {spreads.map((spread, index) => (
+            <tr key={`${spread.name}-${index}`} className="border-b border-[var(--border-primary)] last:border-b-0">
+              <th className="px-2 py-1 text-left font-normal text-[var(--text-secondary)]" scope="row">{spread.name}</th>
+              <td className="border-l border-[var(--border-primary)] px-1 py-1 text-left">{spread.legA}</td>
+              <td className="border-l border-[var(--border-primary)] px-1 py-1 text-left">{spread.legB}</td>
+              <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{spread.margin ?? ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+};
+
+const formatMarginHeadingPart = (value: string): string => value
+  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
+
+const MarginRatesTable = ({
+  rates,
+  mode,
+  basis,
+  currency,
+  asOf,
+}: {
+  rates: SymbolSpecificationMarginRate[];
+  mode: string | null;
+  basis: string | null;
+  currency: string | null;
+  asOf: number | string | null;
+}) => {
+  const tr = useUiTranslation();
+  if (rates.length === 0) return null;
+  const headingDetails = [mode, basis]
+    .filter((value): value is string => Boolean(value))
+    .map(formatMarginHeadingPart);
+  if (currency) headingDetails.push(currency.toUpperCase());
+  const heading = headingDetails.length > 0
+    ? `${tr('Margin rates')}: ${headingDetails.join(', ')}`
+    : tr('Margin rates');
+  const asOfText = formatDate(asOf);
+  const perLotHeading = currency ? `${currency.toLowerCase()} / lot` : tr('Per lot');
+  const formatPerLot = (value: number | null, rowCurrency: string | null, approximate: boolean): string => {
+    const formatted = formatGroupedNumber(value, 2, 2) ?? '';
+    const prefixed = value === null ? '' : `${approximate ? '~' : ''}${formatted}`;
+    if (value === null || !rowCurrency || rowCurrency.toUpperCase() === currency?.toUpperCase()) return prefixed;
+    return `${prefixed} ${rowCurrency}`;
+  };
+
+  return (
+    <section aria-label={tr('Margin rates')}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[430px] table-fixed border-collapse text-[10px]">
+          <thead>
+            <tr className="border-b border-[var(--border-primary)] text-[var(--text-secondary)]">
+              <th className="w-[30%] px-2 py-1 text-left font-semibold text-[var(--text-primary)]" scope="col" title={heading}>
+                <span className="block truncate">{heading}</span>
+                {asOfText && <span className="block truncate text-[9px] font-normal text-[var(--text-tertiary)]">{tr('As of')} {asOfText}</span>}
+              </th>
+              <th className="w-[17%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{tr('Initial')}</th>
+              <th className="w-[18%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{perLotHeading}</th>
+              <th className="w-[17%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{tr('Maintenance')}</th>
+              <th className="w-[18%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{perLotHeading}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rates.map((rate, index) => {
+              const groupStart = Boolean(rate.range) && (index === 0 || rates[index - 1]?.label !== rate.label);
+              return (
+                <React.Fragment key={`${rate.label}-${rate.range ?? 'all'}-${index}`}>
+                  {groupStart && (
+                    <tr className="border-b border-[var(--border-primary)] bg-[var(--bg-quaternary)]">
+                      <th className="px-2 py-1 text-left font-normal text-[var(--text-secondary)]" colSpan={5} scope="rowgroup">
+                        <span className="flex items-center gap-1.5"><PropertyMarker kind="decimal" />{tr(rate.label)}</span>
+                      </th>
+                    </tr>
+                  )}
+                  <tr className="border-b border-[var(--border-primary)] last:border-b-0">
+                    <th className={`px-2 py-1 text-left font-normal text-[var(--text-secondary)] ${rate.range ? 'pl-5 font-mono text-[9px] tabular-nums' : ''}`} scope="row">
+                      {rate.range ?? tr(rate.label)}
+                    </th>
+                    <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{formatGroupedNumber(rate.initial, 7, 7) ?? ''}</td>
+                    <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{formatPerLot(rate.initialPerLot, rate.currency, rate.initialPerLotApproximate)}</td>
+                    <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{formatGroupedNumber(rate.maintenance, 7, 7) ?? ''}</td>
+                    <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{formatPerLot(rate.maintenancePerLot, rate.currency, rate.maintenancePerLotApproximate)}</td>
+                  </tr>
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 };
@@ -314,16 +1390,82 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
   symbol,
   instrument,
   fallbackInstrument,
+  requestStatus = 'ready',
   onClose,
 }) => {
-    const tr = useUiTranslation();
-  const tick = useTick(symbol);
+  const tr = useUiTranslation();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const resizeRef = useRef<ResizeGesture | null>(null);
+  const [rect, setRect] = useState<DialogRect>(centeredDialogRect);
+  const [isResizing, setIsResizing] = useState(false);
   const snapshot = useMemo(
     () => buildSymbolSpecificationSnapshot(instrument, fallbackInstrument),
     [fallbackInstrument, instrument],
   );
+
+  const moveDialog = useCallback((position: { x: number; y: number }) => {
+    setRect((current) => clampDialogRect({ ...current, ...position }));
+  }, []);
+  const { isDragging, cancelDrag, dragHandleProps } = useFloatingPanelDrag(dialogRef, moveDialog);
+
+  const startResize = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    cancelDrag();
+    resizeRef.current = {
+      pointerId: event.pointerId,
+      target: event.currentTarget,
+      startX: event.clientX,
+      startY: event.clientY,
+      rect,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setIsResizing(true);
+  }, [cancelDrag, rect]);
+
+  const continueResize = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    const gesture = resizeRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setRect(clampDialogRect({
+      ...gesture.rect,
+      width: gesture.rect.width + event.clientX - gesture.startX,
+      height: gesture.rect.height + event.clientY - gesture.startY,
+    }));
+  }, []);
+
+  const stopResize = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    const gesture = resizeRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    resizeRef.current = null;
+    if (gesture.target.hasPointerCapture?.(gesture.pointerId)) {
+      gesture.target.releasePointerCapture(gesture.pointerId);
+    }
+    setIsResizing(false);
+  }, []);
+
+  const resizeFromKeyboard = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = event.shiftKey ? 32 : 16;
+    setRect((current) => clampDialogRect({
+      ...current,
+      width: current.width + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
+      height: current.height + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0),
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const fitToViewport = () => setRect((current) => clampDialogRect(current));
+    window.addEventListener('resize', fitToViewport);
+    return () => window.removeEventListener('resize', fitToViewport);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -353,187 +1495,213 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      previouslyFocused?.focus();
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (isOpen && contentRef.current) contentRef.current.scrollTop = 0;
+  }, [isOpen, symbol]);
+
   if (!isOpen) return null;
 
-  const digits = tick?.digits ?? snapshot.digits ?? getSymbolDigits(symbol);
-  const bid = Number.isFinite(tick?.bid) ? tick!.bid : snapshot.bid;
-  const ask = Number.isFinite(tick?.ask) ? tick!.ask : snapshot.ask;
-  const tickSpread = Number.isFinite(tick?.spread) ? tick!.spread : null;
-  const derivedSpread = bid !== null && ask !== null ? Math.max(0, ask - bid) : null;
-  const rawSpread = tickSpread ?? derivedSpread;
-  const spread = rawSpread !== null
-    ? formatSpreadDisplayWithUnit(symbol, rawSpread, bid ?? undefined, ask ?? undefined)
-    : formatNumber(snapshot.spread);
-  const dailyChange = Number.isFinite(tick?.dailyChange) ? tick!.dailyChange! : snapshot.dailyChange;
-  const high = Number.isFinite(tick?.high)
-    ? tick!.high!
-    : Number.isFinite(tick?.high24h)
-      ? tick!.high24h!
-      : snapshot.high;
-  const low = Number.isFinite(tick?.low)
-    ? tick!.low!
-    : Number.isFinite(tick?.low24h)
-      ? tick!.low24h!
-      : snapshot.low;
-  const explicitLast = Number.isFinite(tick?.last) ? tick!.last! : snapshot.last;
-  const midpoint = bid !== null && ask !== null ? (bid + ask) / 2 : null;
-  const quotePrice = explicitLast ?? midpoint;
-  const quotePriceLabel = explicitLast === null && midpoint !== null ? 'Mid price' : 'Last price';
-  const quoteTimestamp = Number.isFinite(tick?.timestamp) ? tick!.timestamp : snapshot.timestamp;
-  const quoteVolume = Number.isFinite(tick?.volume) ? tick!.volume! : snapshot.volume;
-  const liquidityProvider = tick?.lp?.trim() || snapshot.liquidityProvider;
-  const pointSize = snapshot.tickSize ?? (snapshot.digits === null ? null : 10 ** -snapshot.digits);
-  const pointSizeLabel = snapshot.tickSize === null ? 'Point size' : 'Tick size';
-
-  const quoteMetrics = [
-    { label: 'Bid', value: formatPrice(bid, digits), tone: 'positive' as const },
-    { label: 'Ask', value: formatPrice(ask, digits), tone: 'negative' as const },
-    { label: 'Spread', value: spread, tone: 'neutral' as const },
-    {
-      label: 'Daily change',
-      value: dailyChange === null ? null : `${dailyChange.toFixed(2)}%`,
-      tone: dailyChange === null || dailyChange === 0 ? 'neutral' as const : dailyChange > 0 ? 'positive' as const : 'negative' as const,
-    },
-  ].filter((metric): metric is { label: string; value: string; tone: 'positive' | 'negative' | 'neutral' } => metric.value !== null);
-
-  const contractRows: DisplayRow[] = [
-    { label: 'Price precision', value: snapshot.digits === null ? null : tr('{{value0}} digits', { value0: snapshot.digits }) },
-    { label: 'Contract size', value: formatNumber(snapshot.contractSize) },
-    { label: pointSizeLabel, value: formatNumber(pointSize, 10) },
-    { label: 'Tick value', value: formatNumber(snapshot.tickValue) },
-    { label: 'Base currency', value: snapshot.baseCurrency },
-    { label: 'Profit currency', value: snapshot.profitCurrency },
-    { label: 'Margin currency', value: snapshot.marginCurrency },
+  const hedgedMargin = snapshot.marginHedgedUseLeg === true
+    ? 'calculate using larger leg'
+    : formatNumber(snapshot.marginHedged);
+  const isTradeDisabled = snapshot.tradeMode?.trim().toLowerCase() === 'disabled';
+  const mainRows: DisplayRow[] = [
+    { label: 'ISIN', value: snapshot.isin, kind: 'text' },
+    { label: 'Category', value: snapshot.category, kind: 'text' },
+    { label: 'Exchange', value: snapshot.exchange, kind: 'text' },
+    { label: 'CFI', value: snapshot.cfi, kind: 'text' },
+    { label: 'Sector', value: snapshot.sector, kind: 'enum' },
+    { label: 'Industry', value: snapshot.industry, kind: 'enum' },
+    { label: 'Country', value: snapshot.country, kind: 'text' },
+    { label: 'Digits', value: formatNumber(snapshot.digits, 0), kind: 'integer' },
+    { label: 'Contract size', value: formatContractSize(snapshot), kind: 'decimal' },
+    { label: 'Spread', value: formatSpread(snapshot), kind: 'integer' },
+    { label: 'Stops level', value: formatNumber(snapshot.stopsLevel), kind: 'integer' },
+    { label: 'Margin currency', value: snapshot.marginCurrency, kind: 'text' },
+    { label: 'Profit currency', value: snapshot.profitCurrency, kind: 'text' },
+    { label: 'Calculation', value: snapshot.calculationMode, kind: 'enum' },
+    { label: 'Tick size', value: formatNumber(snapshot.tickSize), kind: 'decimal' },
+    { label: 'Tick value', value: formatNumber(snapshot.tickValue), kind: 'decimal' },
+    { label: 'Initial margin', value: formatNumber(snapshot.marginInitial), kind: 'decimal' },
+    { label: 'Maintenance margin', value: formatNumber(snapshot.marginMaintenance), kind: 'decimal' },
+    { label: 'Hedged margin', value: hedgedMargin, kind: 'decimal' },
+    { label: 'Chart mode', value: snapshot.chartMode, kind: 'enum' },
+    { label: 'Subscription', value: snapshot.subscription, kind: 'enum' },
+    { label: 'Ticks history', value: snapshot.ticksHistory, kind: 'enum' },
+    { label: 'Liquidity rate', value: formatGroupedNumber(snapshot.liquidityRate, 3, 3), kind: 'decimal' },
+    { label: 'Trade', value: snapshot.tradeMode, kind: 'enum' },
+    { label: 'Execution', value: isTradeDisabled ? null : snapshot.executionMode, kind: 'enum' },
+    { label: 'GTC mode', value: isTradeDisabled ? null : snapshot.gtcMode, kind: 'enum' },
+    { label: 'Filling', value: isTradeDisabled ? null : snapshot.fillingMode, kind: 'enum' },
+    { label: 'Expiration', value: isTradeDisabled ? null : snapshot.expirationMode, kind: 'enum' },
+    { label: 'Orders', value: isTradeDisabled ? null : snapshot.orderMode, kind: 'enum' },
+    { label: 'Minimal volume', value: isTradeDisabled ? null : formatNumber(snapshot.minVolume), kind: 'decimal' },
+    { label: 'Maximal volume', value: isTradeDisabled ? null : formatNumber(snapshot.maxVolume), kind: 'decimal' },
+    { label: 'Volume step', value: isTradeDisabled ? null : formatNumber(snapshot.volumeStep), kind: 'decimal' },
+    { label: 'Volume limit', value: isTradeDisabled ? null : formatNumber(snapshot.volumeLimit), kind: 'decimal' },
+    { label: 'Swap type', value: snapshot.swapMode, kind: 'enum' },
+    { label: 'Swap long', value: formatNumber(snapshot.swapLong), kind: 'decimal', tone: snapshot.swapLong === null || snapshot.swapLong === 0 ? 'default' : snapshot.swapLong > 0 ? 'positive' : 'negative' },
+    { label: 'Swap short', value: formatNumber(snapshot.swapShort), kind: 'decimal', tone: snapshot.swapShort === null || snapshot.swapShort === 0 ? 'default' : snapshot.swapShort > 0 ? 'positive' : 'negative' },
+    { label: 'First trade', value: formatDate(snapshot.startTime), kind: 'calendar' },
+    { label: 'Last trade', value: formatDate(snapshot.expirationTime), kind: 'calendar' },
+    { label: 'Face value', value: formatNumber(snapshot.faceValue), kind: 'decimal' },
+    { label: 'Accrued interest', value: formatNumber(snapshot.accruedInterest), kind: 'decimal' },
+    { label: 'Option type', value: snapshot.optionRight, kind: 'enum' },
+    { label: 'Option exercise', value: snapshot.optionMode, kind: 'enum' },
+    { label: 'Underlying', value: snapshot.underlying, kind: 'text' },
+    { label: 'Strike price', value: formatNumber(snapshot.optionStrike), kind: 'decimal' },
   ];
-  const volumeRows: DisplayRow[] = [
-    { label: 'Minimum volume', value: formatLots(snapshot.minVolume) },
-    { label: 'Maximum volume', value: formatLots(snapshot.maxVolume) },
-    { label: 'Volume step', value: formatLots(snapshot.volumeStep) },
-    { label: 'Margin rate', value: formatNumber(snapshot.marginRate) },
-    { label: 'Swap long', value: formatNumber(snapshot.swapLong) },
-    { label: 'Swap short', value: formatNumber(snapshot.swapShort) },
-    { label: 'Commission', value: formatNumber(snapshot.commission) },
-  ];
-  const quoteRows: DisplayRow[] = [
-    { label: 'Session high', value: formatPrice(high, digits) },
-    { label: 'Session low', value: formatPrice(low, digits) },
-    { label: quotePriceLabel, value: formatPrice(quotePrice, digits) },
-    { label: 'Tick volume', value: formatNumber(quoteVolume) },
-    { label: 'Last received', value: formatTimestamp(quoteTimestamp) },
-    { label: 'Liquidity provider', value: liquidityProvider },
-  ];
-  const hasBrokerSpecification = contractRows.some((row) => row.value !== null)
-    || volumeRows.some((row) => row.value !== null);
+  const swapRateRows: DisplayRow[] = WEEKDAYS.map((day) => {
+    const value = snapshot.swapRates[day.key];
+    return {
+      label: day.label,
+      value: typeof value === 'number' ? formatNumber(value) : value ?? null,
+      kind: 'calendar',
+    };
+  });
+  const hasMainRows = mainRows.some((row) => row.value !== null);
+  const hasSwapRates = swapRateRows.some((row) => row.value !== null);
+  const hasSessions = snapshot.sessions.some((session) => session.quotes.length > 0 || session.trade.length > 0);
+  const hasAnySpecification = hasMainRows
+    || hasSwapRates
+    || hasSessions
+    || snapshot.marginRates.length > 0
+    || snapshot.commissionSchedules.length > 0
+    || snapshot.marginSpreads.length > 0;
+  const pageUrl = safeWebUrl(snapshot.pageUrl);
+  const displayDescription = snapshot.description
+    && snapshot.description.trim().toUpperCase() !== symbol.trim().toUpperCase()
+    ? snapshot.description.trim()
+    : null;
+  const isRequestPending = requestStatus === 'loading' || requestStatus === 'idle';
+  const emptyStateMessage = requestStatus === 'error'
+    ? 'The current specification could not be loaded.'
+    : requestStatus === 'unavailable'
+      ? 'The current specification is not available from this broker.'
+      : 'Contract details were not provided by this broker.';
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/65 p-4 backdrop-blur-[2px]"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+      className="fixed inset-0 z-[10020] bg-transparent"
     >
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="rtx-symbol-specification-title"
+        aria-label={`${symbol} ${tr('Specification')}`}
         data-testid="symbol-specification-dialog"
-        className="flex max-h-[calc(100vh-32px)] w-full max-w-[720px] flex-col overflow-hidden rounded-md border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-2xl"
+        className={`absolute flex min-w-0 flex-col overflow-hidden border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-2xl ${isDragging ? 'select-none' : ''} ${isResizing ? 'select-none' : ''}`}
+        style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-5 py-4">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded border border-[var(--color-info-dim)] bg-[var(--color-info-dim)] text-[var(--color-info)]">
-              <Icon name="file-text" size="sm" />
-            </div>
-            <div className="min-w-0">
-              <h2 id="rtx-symbol-specification-title" className="truncate text-[14px] font-semibold leading-5">
-                {symbol} {tr(" Specification")}</h2>
-              <p className="mt-0.5 truncate text-[11px] text-[var(--text-secondary)]">
-                {snapshot.description ?? tr('Broker contract details and current market data')}
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {snapshot.category && (
-                  <span className="rounded border border-[var(--border-secondary)] bg-[var(--bg-quaternary)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
-                    {snapshot.category}
-                  </span>
-                )}
-                {snapshot.tradingEnabled !== null && (
-                  <span className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${snapshot.tradingEnabled
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                    : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
-                  }`}>
-                    {snapshot.tradingEnabled ? tr("Trading enabled") : tr("Trading disabled")}
-                  </span>
-                )}
-                {hasBrokerSpecification && (
-                  <span className="rounded border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-400">
-                    {tr("Broker specification")}</span>
-                )}
-              </div>
-            </div>
-          </div>
+        <header
+          className={`flex h-9 shrink-0 items-center gap-2 border-b border-[var(--border-secondary)] bg-[var(--bg-tertiary)] px-2.5 ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
+          {...dragHandleProps}
+        >
+          <span className="text-amber-500" aria-hidden="true"><Icon name="file-text" size="xs" /></span>
+          <h2 className="min-w-0 flex-1 truncate text-[12px] font-semibold">{tr('Specification')}</h2>
+          <a
+            href="https://www.metatrader5.com/en/terminal/help/trading/market_watch#specification"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={tr('Symbol specification help')}
+            title={tr('Symbol specification help')}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="flex h-7 w-7 items-center justify-center text-[12px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+          >
+            ?
+          </a>
           <button
             ref={closeButtonRef}
             type="button"
-            aria-label={tr("Close symbol specification")}
+            aria-label={tr('Close symbol specification')}
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            onPointerDown={(event) => event.stopPropagation()}
+            className="flex h-7 w-7 items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
-            <Icon name="x-close" size="sm" />
+            <Icon name="x-close" size="xs" />
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {quoteMetrics.length > 0 ? (
-            <div className="flex flex-wrap gap-2" aria-label={tr("Current quote summary")}>
-              {quoteMetrics.map((metric) => <QuoteMetric key={metric.label} {...metric} />)}
-            </div>
-          ) : (
-            <div className="flex min-h-[64px] items-center gap-3 rounded border border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-4 text-[12px] text-[var(--text-secondary)]">
-              <Icon name="activity" size="sm" />
-              {tr("Waiting for the first live quote from the broker.")}</div>
-          )}
-
-          <div className="mt-4 grid grid-cols-1 items-start gap-3 md:grid-cols-2">
-            <SpecificationSection
-              title={tr("Contract details")}
-              icon={<Icon name="info" size="xs" />}
-              rows={contractRows}
-              emptyMessage={tr("Contract details were not provided by this broker.")}
-            />
-            <SpecificationSection
-              title={tr("Volume & costs")}
-              icon={<Icon name="layers" size="xs" />}
-              rows={volumeRows}
-              emptyMessage={tr("Volume and cost terms were not provided by this broker.")}
-            />
-            <div className="md:col-span-2">
-              <SpecificationSection
-                title={tr("Latest quote")}
-                icon={<Icon name="activity" size="xs" />}
-                rows={quoteRows}
-                emptyMessage={tr("Waiting for detailed quote data from the broker feed.")}
-                grid
-              />
-            </div>
+        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto p-2">
+          <div className="overflow-hidden border border-[var(--border-secondary)] bg-[var(--bg-tertiary)]">
+            {pageUrl ? (
+              <a
+                href={pageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block truncate border-b border-[var(--border-primary)] px-2 py-1.5 text-[11px] font-medium text-[var(--color-info)] hover:underline"
+                title={pageUrl}
+              >
+                {symbol}{displayDescription ? `, ${displayDescription}` : ''}
+              </a>
+            ) : (
+              <div className="truncate border-b border-[var(--border-primary)] px-2 py-1.5 text-[11px] font-medium text-[var(--color-info)]" title={`${symbol}${displayDescription ? `, ${displayDescription}` : ''}`}>
+                {symbol}{displayDescription ? `, ${displayDescription}` : ''}
+              </div>
+            )}
+            {isRequestPending ? (
+              <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 px-6 py-8 text-center text-[11px] text-[var(--text-secondary)]" role="status">
+                <Icon name="refresh" size="sm" className="animate-spin" />
+                <span>{tr('Loading current specification...')}</span>
+              </div>
+            ) : hasAnySpecification ? (
+              <>
+                <PropertyRows rows={mainRows} />
+                {hasSwapRates && (
+                  <section aria-label={tr('Swap rates')}>
+                    <SectionHeading>{tr('Swap rates')}</SectionHeading>
+                    <PropertyRows rows={swapRateRows} />
+                  </section>
+                )}
+                <CommissionTable schedules={snapshot.commissionSchedules} />
+                <SessionTable sessions={snapshot.sessions} timeZone={snapshot.sessionTimeZone} />
+                <MarginSpreadsTable spreads={snapshot.marginSpreads} />
+                <MarginRatesTable
+                  rates={snapshot.marginRates}
+                  mode={snapshot.marginRatesMode}
+                  basis={snapshot.marginRatesBasis}
+                  currency={snapshot.marginRatesCurrency}
+                  asOf={snapshot.marginRatesAsOf}
+                />
+              </>
+            ) : (
+              <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 px-6 py-8 text-center text-[11px] text-[var(--text-secondary)]">
+                <Icon name="info" size="sm" />
+                <span>{tr(emptyStateMessage)}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        <footer className="flex items-center justify-between gap-4 border-t border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-5 py-3">
-          <p className="text-[11px] text-[var(--text-secondary)]">
-            {tr("Only values supplied by your broker or live feed are shown.")}</p>
+        <footer className="flex h-11 shrink-0 items-center justify-center border-t border-[var(--border-secondary)] bg-[var(--bg-tertiary)] px-3">
           <button
             type="button"
             onClick={onClose}
-            className="h-8 rounded border border-[var(--border-secondary)] bg-[var(--bg-quaternary)] px-4 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--color-info)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="h-7 min-w-[88px] border border-[var(--border-secondary)] bg-[var(--bg-quaternary)] px-4 text-[11px] font-medium text-[var(--text-primary)] hover:border-[var(--color-info)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
-            {tr("Close")}</button>
+            {tr('Close')}
+          </button>
         </footer>
+
+        <button
+          type="button"
+          aria-label={tr('Resize symbol specification dialog')}
+          title={tr('Drag or use arrow keys to resize')}
+          className="absolute bottom-0 right-0 z-10 h-4 w-4 cursor-se-resize bg-transparent focus:outline-none focus:ring-1 focus:ring-inset focus:ring-[var(--color-info)]"
+          onPointerDown={startResize}
+          onPointerMove={continueResize}
+          onPointerUp={stopResize}
+          onPointerCancel={stopResize}
+          onLostPointerCapture={stopResize}
+          onKeyDown={resizeFromKeyboard}
+        >
+          <span className="pointer-events-none absolute bottom-1 right-1 h-2 w-2 border-b border-r border-[var(--text-tertiary)]" aria-hidden="true" />
+        </button>
       </div>
     </div>,
     document.body,

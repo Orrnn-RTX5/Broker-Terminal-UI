@@ -220,6 +220,56 @@ describe('trade gateway normalization', () => {
     ]);
   });
 
+  it('uses volume-weighted entry and exit prices for scaled positions', () => {
+    const history = collapseDealHistory([
+      normalizeDeal({
+        deal: 1021,
+        position_ticket: 5021,
+        symbol: 'EURUSD',
+        action: 'buy',
+        entry: 'entry_in',
+        volume: 0.1,
+        price: 1.0,
+        time: 1760000000,
+      }),
+      normalizeDeal({
+        deal: 1022,
+        position_ticket: 5021,
+        symbol: 'EURUSD',
+        action: 'buy',
+        entry: 'entry_in',
+        volume: 0.2,
+        price: 1.3,
+        time: 1760000100,
+      }),
+      normalizeDeal({
+        deal: 1023,
+        position_ticket: 5021,
+        symbol: 'EURUSD',
+        action: 'sell',
+        entry: 'entry_out',
+        volume: 0.1,
+        price: 1.4,
+        time: 1760000200,
+      }),
+      normalizeDeal({
+        deal: 1024,
+        position_ticket: 5021,
+        symbol: 'EURUSD',
+        action: 'sell',
+        entry: 'entry_out',
+        volume: 0.2,
+        price: 1.5,
+        time: 1760000300,
+      }),
+    ]);
+
+    expect(history).toHaveLength(1);
+    expect(history[0].openPrice).toBeCloseTo(1.2, 8);
+    expect(history[0].closePrice).toBeCloseTo(1.4666666667, 8);
+    expect(history[0].volume).toBeCloseTo(0.3, 8);
+  });
+
   it('collapses paired MT5 enum entry deals into one closed history trade', () => {
     const deals = [
       normalizeDeal({
@@ -662,6 +712,288 @@ describe('trade gateway normalization', () => {
       '/orders/123456',
       expect.anything(),
     );
+  });
+
+  it('starts all history data-set sources in parallel and preserves raw deal and order metadata', async () => {
+    let resolveClosedPositions!: (value: unknown) => void;
+    let resolveDeals!: (value: unknown) => void;
+    let resolveOrders!: (value: unknown) => void;
+    const closedPositionsRequest = new Promise<unknown>((resolve) => { resolveClosedPositions = resolve; });
+    const dealsRequest = new Promise<unknown>((resolve) => { resolveDeals = resolve; });
+    const ordersRequest = new Promise<unknown>((resolve) => { resolveOrders = resolve; });
+
+    vi.mocked(apiClient.get).mockImplementation(<T,>(endpoint: string): Promise<T> => {
+      if (endpoint === '/positions/654321/history') return closedPositionsRequest as Promise<T>;
+      if (endpoint === '/deals/654321') return dealsRequest as Promise<T>;
+      if (endpoint === '/orders/654321') return ordersRequest as Promise<T>;
+      return Promise.reject(new Error(`Unexpected history endpoint: ${endpoint}`));
+    });
+
+    const dataSetRequest = tradeGatewayApi.getHistoryDataSet(654321);
+
+    // All three requests must be started before any one source settles.
+    expect(vi.mocked(apiClient.get).mock.calls.map(([endpoint]) => endpoint)).toEqual([
+      '/positions/654321/history',
+      '/deals/654321',
+      '/orders/654321',
+    ]);
+
+    resolveClosedPositions({
+      positions: [{
+        position_id: 7001,
+        symbol: 'GBPUSD',
+        action: 'buy',
+        volume_lots: 0.1,
+        price_open: 1.31,
+        price_close: 1.32,
+        profit: 10,
+        time_open: 1760000000,
+        time_close: 1760000300,
+      }],
+    });
+    resolveDeals({
+      deals: [
+        {
+          deal: 8101,
+          position_ticket: 8001,
+          order_ticket: 9101,
+          symbol: 'EURUSD',
+          action: 'buy',
+          entry: 'entry_in',
+          volume: 0.2,
+          price: 1.08,
+          fee: -0.25,
+          magic: 42,
+          comment: 'opening deal',
+          contract_size: 100_000,
+          time: 1760000100,
+        },
+        {
+          deal: 8102,
+          position_ticket: 8001,
+          order_ticket: 9102,
+          symbol: 'EURUSD',
+          action: 'sell',
+          entry: 'entry_out',
+          volume: 0.2,
+          price: 1.09,
+          profit: 20,
+          fee: -0.1,
+          magic: 42,
+          comment: 'closing deal',
+          contractSize: 100_000,
+          time: 1760000400,
+        },
+      ],
+    });
+    resolveOrders({
+      orders: [{
+        ticket: 9201,
+        symbol: 'XAUUSD',
+        type: 'buy_limit',
+        side: 'buy',
+        volume: 0.03,
+        price_open: 4320.5,
+        status: 'filled',
+        magic: 77,
+        comment: '  strategy order  ',
+        contract_size: 100,
+        time_setup: 1760000200,
+        time_done: 1760000500,
+      }],
+    });
+
+    await expect(dataSetRequest).resolves.toMatchObject({
+      positions: [{
+        id: 8001,
+        symbol: 'EURUSD',
+        historySource: 'deal',
+        fee: -0.35,
+        magicNumber: 42,
+        comment: 'closing deal',
+        contractSize: 100_000,
+      }],
+      deals: [
+        {
+          id: 8102,
+          fee: -0.1,
+          magicNumber: 42,
+          comment: 'closing deal',
+          contractSize: 100_000,
+          historySource: 'deal',
+        },
+        {
+          id: 8101,
+          fee: -0.25,
+          magicNumber: 42,
+          comment: 'opening deal',
+          contractSize: 100_000,
+          historySource: 'deal',
+        },
+      ],
+      orders: [{
+        id: 9201,
+        orderTicket: 9201,
+        orderType: 'buy_limit',
+        magicNumber: 77,
+        comment: 'strategy order',
+        contractSize: 100,
+        historySource: 'order',
+      }],
+      errors: { positions: null, deals: null, orders: null },
+    });
+  });
+
+  it('uses closed positions as an independent fallback when deals fail', async () => {
+    vi.mocked(apiClient.get).mockImplementation(async <T,>(endpoint: string): Promise<T> => {
+      if (endpoint === '/positions/654322/history') {
+        return {
+          positions: [{
+            position_id: 7301,
+            symbol: 'GBPUSD',
+            action: 'sell',
+            volume_lots: 0.1,
+            price_open: 1.32,
+            price_close: 1.31,
+            profit: 10,
+            time_open: 1760000000,
+            time_close: 1760000300,
+          }],
+        } as T;
+      }
+      if (endpoint === '/deals/654322') throw new Error('Deals unavailable');
+      if (endpoint === '/orders/654322') {
+        return {
+          orders: [{
+            ticket: 9301,
+            symbol: 'EURUSD',
+            type: 'sell_limit',
+            time_setup: 1760000200,
+          }],
+        } as T;
+      }
+      throw new Error(`Unexpected history endpoint: ${endpoint}`);
+    });
+
+    await expect(tradeGatewayApi.getHistoryDataSet(654322)).resolves.toMatchObject({
+      positions: [{ id: 7301, symbol: 'GBPUSD', historySource: 'closed-position' }],
+      deals: [],
+      orders: [{ id: 9301, symbol: 'EURUSD', historySource: 'order' }],
+      errors: {
+        positions: 'Deals unavailable; showing closed-position fallback',
+        deals: 'Deals unavailable',
+        orders: null,
+      },
+    });
+  });
+
+  it('does not let a balance-only deal response suppress valid closed positions', async () => {
+    vi.mocked(apiClient.get).mockImplementation(async <T,>(endpoint: string): Promise<T> => {
+      if (endpoint === '/positions/654324/history') {
+        return {
+          positions: [{
+            position_id: 7401,
+            symbol: 'EURUSD',
+            action: 'buy',
+            volume_lots: 0.2,
+            price_open: 1.08,
+            price_close: 1.09,
+            profit: 20,
+            time_open: 1760000000,
+            time_close: 1760000300,
+          }],
+        } as T;
+      }
+      if (endpoint === '/deals/654324') {
+        return {
+          deals: [{
+            deal: 8501,
+            type: 'balance',
+            action: 'balance',
+            profit: 100,
+            time: 1760000400,
+          }],
+        } as T;
+      }
+      if (endpoint === '/orders/654324') return { orders: [] } as T;
+      throw new Error(`Unexpected history endpoint: ${endpoint}`);
+    });
+
+    await expect(tradeGatewayApi.getHistoryDataSet(654324)).resolves.toMatchObject({
+      positions: [{ id: 7401, symbol: 'EURUSD', historySource: 'closed-position' }],
+      deals: [{ id: 8501, type: 'balance', historySource: 'deal' }],
+      orders: [],
+      errors: { positions: null, deals: null, orders: null },
+    });
+  });
+
+  it('keeps deal-backed positions available when closed positions and orders fail independently', async () => {
+    vi.mocked(apiClient.get).mockImplementation(async <T,>(endpoint: string): Promise<T> => {
+      if (endpoint === '/positions/654323/history') throw new Error('Closed positions unavailable');
+      if (endpoint === '/deals/654323') {
+        return {
+          deals: [
+            {
+              deal: 8401,
+              position_ticket: 8301,
+              symbol: 'USDJPY',
+              action: 'buy',
+              entry: 'entry_in',
+              volume: 0.1,
+              price: 150,
+              time: 1760000000,
+            },
+            {
+              deal: 8402,
+              position_ticket: 8301,
+              symbol: 'USDJPY',
+              action: 'sell',
+              entry: 'entry_out',
+              volume: 0.1,
+              price: 151,
+              profit: 100,
+              time: 1760000300,
+            },
+          ],
+        } as T;
+      }
+      if (endpoint === '/orders/654323') throw new Error('Orders unavailable');
+      throw new Error(`Unexpected history endpoint: ${endpoint}`);
+    });
+
+    await expect(tradeGatewayApi.getHistoryDataSet(654323)).resolves.toMatchObject({
+      positions: [{ id: 8301, symbol: 'USDJPY', historySource: 'deal' }],
+      deals: [
+        { id: 8402, historySource: 'deal' },
+        { id: 8401, historySource: 'deal' },
+      ],
+      orders: [],
+      errors: {
+        positions: null,
+        deals: null,
+        orders: 'Orders unavailable',
+      },
+    });
+  });
+
+  it('reports the unavailable closed-position fallback when deals contain no position lifecycle', async () => {
+    vi.mocked(apiClient.get).mockImplementation(async <T,>(endpoint: string): Promise<T> => {
+      if (endpoint === '/positions/654325/history') throw new Error('Closed positions unavailable');
+      if (endpoint === '/deals/654325') return { deals: [] } as T;
+      if (endpoint === '/orders/654325') return { orders: [] } as T;
+      throw new Error(`Unexpected history endpoint: ${endpoint}`);
+    });
+
+    await expect(tradeGatewayApi.getHistoryDataSet(654325)).resolves.toMatchObject({
+      positions: [],
+      deals: [],
+      orders: [],
+      errors: {
+        positions: 'Closed positions unavailable',
+        deals: null,
+        orders: null,
+      },
+    });
   });
 
   it('normalizes closed position opened time from gateway time_open', () => {

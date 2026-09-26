@@ -119,6 +119,7 @@ import {
   createTradeOrderUuid,
   getTradeWebSocketClient,
   initializeTradeWebSocketClient,
+  isTerminalTradeOrderMessage,
   isTradeOrderUuidV4,
   TradeSocketOrderRejectedError,
   TradeSocketTransportError,
@@ -139,6 +140,7 @@ import {
   OrderCommandTerminalError,
   pollOrderCommandUntilTerminal,
   type NormalizedOrderCommand,
+  type PollOrderCommandOptions,
 } from './orderCommandLifecycle';
 import { getStoredBrokerServer, resolveLoginBrokerTarget } from './brokerServers';
 import {
@@ -709,6 +711,8 @@ export const ordersApi = {
     const settleOrderCommand = async (
       initialResponse: unknown,
       submittedAtMs: number,
+      pollImmediately = false,
+      subscribeTerminal?: PollOrderCommandOptions['subscribeTerminal'],
     ): Promise<endpoints.Position> => {
       let lastVisibleStatus: string | null = null;
       const command = await pollOrderCommandUntilTerminal({
@@ -716,6 +720,8 @@ export const ordersApi = {
         initialResponse,
         readStatus: (id) => endpoints.tradingApi.getOrderCommand(id),
         startedAtMs: submittedAtMs,
+        pollImmediately,
+        subscribeTerminal,
         onStatus: (next) => {
           if (
             (next.status === 'accepted' || next.status === 'processing')
@@ -775,6 +781,19 @@ export const ordersApi = {
       try {
         const submittedAtMs = Date.now();
         const response = await endpoints.tradingApi.placeOrder(restOrder);
+        // Separate the HTTP response from any subsequent command polling.
+        // Otherwise a slow status-recovery path looks like a slow POST.
+        const restRespondedAtMs = tradeOrderNow();
+        recordTradeOrderLatency({
+          phase: 'rest_response',
+          transport: 'rest',
+          traceId,
+          sessionScope,
+          symbol,
+          reason,
+          restRttMs: restRespondedAtMs - restStartedAtMs,
+          totalMs: restRespondedAtMs - apiStartedAtMs,
+        });
         const legacyPosition = readLegacyRestPosition(response);
         let terminalPosition: endpoints.Position;
         if (legacyPosition) {
@@ -848,6 +867,8 @@ export const ordersApi = {
                 name?: unknown;
                 code?: unknown;
                 message?: unknown;
+                status?: unknown;
+                requestId?: unknown;
                 orderWasSent?: unknown;
               }
             : undefined;
@@ -856,7 +877,7 @@ export const ordersApi = {
             || socketError?.name === 'TradeSocketOrderRejectedError'
           ) {
             throw new OrderCommandTerminalError({
-              status: 'rejected',
+              status: socketError?.status === 'expired' ? 'expired' : 'rejected',
               terminal: true,
               clientOrderId,
               error: {
@@ -870,10 +891,22 @@ export const ordersApi = {
             // The create frame may already have executed. Reconcile the same
             // idempotency key via GET for the remainder of the original
             // command window; never submit a second create request.
+            const requestId = socketError.requestId;
+            // A failed status read does not stop the server's original order
+            // watcher. Keep accepting its correlated terminal frame while GET
+            // reconciliation runs; whichever arrives first completes the order.
+            const subscribeTerminal: PollOrderCommandOptions['subscribeTerminal'] =
+              typeof requestId === 'string' && typeof tradeSocket.onMessage === 'function'
+                ? (listener) => tradeSocket.onMessage((message) => {
+                    const frame = message as Record<string, unknown>;
+                    if (frame.request_id !== requestId || frame.client_order_id !== clientOrderId) return;
+                    if (isTerminalTradeOrderMessage(message)) listener(frame);
+                  })
+                : undefined;
             return settleOrderCommand({
               status: 'processing',
               client_order_id: clientOrderId,
-            }, wsSubmittedAtMs);
+            }, wsSubmittedAtMs, true, subscribeTerminal);
           }
           if (!isRetryableTradeSocketFailure(error)) throw error;
           const fallbackCode = error && typeof error === 'object' && 'code' in error
@@ -1447,6 +1480,18 @@ type NormalizedTradeJournalTiming = {
   message: string;
 };
 
+const journalDurationToMilliseconds = (value: string, unit: string): number => {
+  const duration = Number(value);
+  switch (unit.toLowerCase()) {
+    case 'ns': return duration / 1_000_000;
+    case 'µs':
+    case 'μs':
+    case 'us': return duration / 1_000;
+    case 's': return duration * 1_000;
+    default: return duration;
+  }
+};
+
 const normalizeTradeJournalTiming = (
   typeText: string,
   source: string,
@@ -1460,17 +1505,23 @@ const normalizeTradeJournalTiming = (
   // terminal trade formats so unrelated durations (for example quote age in a
   // QUOTE_STALE rejection) can never be mislabeled as order latency.
   const timedTerminal = message.match(
-    /^(Order\s+(?:buy|sell)\s+\S+\s+\S+\s+filled|Close\s+(?:buy|sell)\s+\S+\s+ticket\s+\S+\s+profit\s+\S+|Modify\s+\S+\s+ticket\s+\S+)\s+in\s+(\d+(?:\.\d+)?)ms$/i,
+    /^(Order\s+(?:(?:buy|sell)\s+\S+\s+\S+\s+filled|close\s+\S+\s+\S+\s+\S+\s+(?:filled|succeeded))|Close\s+(?:buy|sell)\s+\S+\s+ticket\s+\S+\s+profit\s+\S+|Modify\s+\S+\s+ticket\s+\S+)\s+in\s+(\d+(?:\.\d+)?)(ns|[µμu]s|ms|s)$/i,
   );
   if (timedTerminal) {
-    return { message: timedTerminal[1], latencyMs: Number(timedTerminal[2]) };
+    return {
+      message: timedTerminal[1],
+      latencyMs: journalDurationToMilliseconds(timedTerminal[2], timedTerminal[3]),
+    };
   }
 
   const timingDetail = message.match(
-    /^(Timing\s+(?:buy|sell)\s+\S+\s+\S+):\s+.*\btotal\s+(\d+(?:\.\d+)?)ms$/i,
+    /^(Timing\s+(?:(?:buy|sell)\s+\S+\s+\S+|close\s+\S+\s+\S+\s+\S+)):\s+.*\btotal\s+(\d+(?:\.\d+)?)(ns|[µμu]s|ms|s)$/i,
   );
   if (timingDetail) {
-    return { message: timingDetail[1], latencyMs: Number(timingDetail[2]) };
+    return {
+      message: timingDetail[1],
+      latencyMs: journalDurationToMilliseconds(timingDetail[2], timingDetail[3]),
+    };
   }
 
   return null;

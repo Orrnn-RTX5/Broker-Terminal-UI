@@ -18,11 +18,13 @@ interface ContextMenuProps {
   position?: { x: number; y: number };
   triggerSymbol?: string;
   variant?: ContextMenuVariant;
+  density?: ContextMenuDensity;
   ignoredElements?: readonly (HTMLElement | null)[];
   children?: React.ReactNode;
 }
 
 type ContextMenuVariant = 'dark' | 'mt5-light' | 'mt5-dark';
+type ContextMenuDensity = 'default' | 'compact';
 
 // ============================================================================
 // VIEWPORT COLLISION DETECTION
@@ -160,6 +162,7 @@ interface MenuItemProps {
   itemId: string;
   itemIndex: number;
   variant: ContextMenuVariant;
+  density: ContextMenuDensity;
   isPointerHovered?: boolean;
   onPointerEnterItem?: () => void;
   onPointerLeaveItem?: () => void;
@@ -174,6 +177,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   isSubmenuActive,
   itemIndex,
   variant,
+  density,
   isPointerHovered = false,
   onPointerEnterItem,
   onPointerLeaveItem,
@@ -285,6 +289,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const isMt5Light = variant === 'mt5-light';
   const isMt5Dark = variant === 'mt5-dark';
   const isMt5 = isMt5Light || isMt5Dark;
+  const isCompact = density === 'compact';
 
   if (item.divider) {
     return (
@@ -302,7 +307,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
     ? !item.disabled && (isSubmenuActive || isFocused || isPointerHovered)
     : isSubmenuActive || isHovered || isFocused;
   const itemClassName = isMt5
-    ? `flex h-[30px] items-center px-[5px] py-0 cursor-default group relative ${item.disabled ? 'cursor-default' : ''}`
+    ? `flex ${isCompact ? 'h-[24px]' : 'h-[30px]'} items-center px-[5px] py-0 cursor-default group relative ${item.disabled ? 'cursor-default' : ''}`
     : `flex min-h-[30px] items-center px-3 py-1.5 cursor-pointer group relative ${isActive
       ? 'bg-zinc-700 text-white'
       : 'text-zinc-300 hover:bg-zinc-700 hover:text-white'
@@ -314,8 +319,8 @@ const MenuItem: React.FC<MenuItemProps> = ({
     }
     : isMt5Dark
       ? {
-        backgroundColor: isActive ? '#0078d7' : '#15161a',
-        color: item.disabled ? '#8b9098' : (isActive ? '#ffffff' : '#e4e7ee'),
+      backgroundColor: isActive ? '#0078d7' : (isCompact ? '#1f1f1f' : '#15161a'),
+      color: item.disabled ? (isCompact ? '#636363' : '#8b9098') : (isActive ? '#ffffff' : (isCompact ? '#c8c8c8' : '#e4e7ee')),
       }
       : undefined;
   const iconClassName = isMt5
@@ -388,11 +393,12 @@ interface MenuProps {
   onClose: () => void;
   zIndex: number;
   variant: ContextMenuVariant;
+  density: ContextMenuDensity;
   isSubmenu?: boolean;
   triggerRect?: DOMRect;
 }
 
-const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, isSubmenu = false, triggerRect }) => {
+const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, density, isSubmenu = false, triggerRect }) => {
     const tr = useUiTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
@@ -603,9 +609,9 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
       <div
         ref={menuRef}
         className={variant === 'mt5-light'
-          ? "fixed w-[210px] bg-[#f2f2f2] border border-[#9a9a9a] shadow-[2px_2px_4px_rgba(0,0,0,0.35)] rounded-none py-[3px] text-[14px] font-normal leading-[20px] text-black outline-none transition-opacity duration-75 max-h-[80vh] overflow-y-auto"
+          ? `fixed ${density === 'compact' ? 'w-[216px] text-[13px] leading-[18px] max-h-[calc(100vh-16px)]' : 'w-[210px] text-[14px] leading-[20px] max-h-[80vh]'} bg-[#f2f2f2] border border-[#9a9a9a] shadow-[2px_2px_4px_rgba(0,0,0,0.35)] rounded-none py-[3px] font-normal text-black outline-none transition-opacity duration-75 overflow-y-auto`
           : variant === 'mt5-dark'
-            ? "fixed w-[210px] bg-[#15161a] border border-[#4b5563] shadow-[2px_2px_6px_rgba(0,0,0,0.65)] rounded-none py-[3px] text-[14px] font-normal leading-[20px] text-[#e4e7ee] outline-none transition-opacity duration-75 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-[#15161a]"
+            ? `fixed ${density === 'compact' ? 'w-[216px] bg-[#1f1f1f] border-[#a0a0a0] text-[13px] leading-[18px] text-[#c8c8c8] max-h-[calc(100vh-16px)]' : 'w-[210px] bg-[#15161a] border-[#4b5563] text-[14px] leading-[20px] text-[#e4e7ee] max-h-[80vh]'} border shadow-[2px_2px_6px_rgba(0,0,0,0.65)] rounded-none py-[3px] font-normal outline-none transition-opacity duration-75 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-[#15161a]`
             : "fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-[14px] font-normal leading-[20px] text-zinc-200 outline-none transition-opacity duration-100 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700"}
         style={{
           left: `${adjustedPosition.x}px`,
@@ -640,6 +646,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
                 itemId={itemId}
                 itemIndex={index}
                 variant={variant}
+                density={density}
                 isPointerHovered={hoveredIndex === index}
                 onPointerEnterItem={() => setHoveredIndex(index)}
                 onPointerLeaveItem={() => setHoveredIndex(prev => prev === index ? null : prev)}
@@ -658,6 +665,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
           onClose={onClose}
           zIndex={zIndex + 10} // Ensure submenus are always above parent menus
           variant={variant}
+          density={density}
         />
       )}
     </>
@@ -674,9 +682,10 @@ interface SubmenuPortalProps {
   onClose: () => void;
   zIndex: number;
   variant: ContextMenuVariant;
+  density: ContextMenuDensity;
 }
 
-const SubmenuPortal: React.FC<SubmenuPortalProps> = ({ items, triggerRect, onClose, zIndex, variant }) => {
+const SubmenuPortal: React.FC<SubmenuPortalProps> = ({ items, triggerRect, onClose, zIndex, variant, density }) => {
   const initialPosition = { x: triggerRect.right, y: triggerRect.top };
 
   return (
@@ -686,6 +695,7 @@ const SubmenuPortal: React.FC<SubmenuPortalProps> = ({ items, triggerRect, onClo
       onClose={onClose}
       zIndex={zIndex}
       variant={variant}
+      density={density}
       isSubmenu
       triggerRect={triggerRect}
     />
@@ -702,6 +712,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   position: externalPosition,
   triggerSymbol,
   variant = 'dark',
+  density = 'default',
   ignoredElements = [],
   children
 }) => {
@@ -780,7 +791,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           </div>
         </div>
       )}
-      <Menu items={items} position={position} onClose={onClose} zIndex={9999} variant={variant} />
+      <Menu items={items} position={position} onClose={onClose} zIndex={9999} variant={variant} density={density} />
     </div>,
     document.body
   ) : null;

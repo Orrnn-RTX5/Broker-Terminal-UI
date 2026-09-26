@@ -6,7 +6,7 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { useSystemJournalStore } from './useSystemJournalStore';
-import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
+import { hasTradeHistoryPositionLevelChanges, rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
 import { isOlderPositionVersion, mergePositionRecord } from '../services/positionStream';
 import {
   commitBrokerAccountSessionScope,
@@ -223,6 +223,11 @@ export interface Trade {
   orderTicket?: number;
   dealTicket?: number;
   entry?: string;
+  orderType?: string;
+  fee?: number;
+  magicNumber?: number;
+  comment?: string;
+  contractSize?: number;
   historySource?: 'closed-position' | 'deal' | 'order';
 }
 
@@ -577,6 +582,10 @@ export const resolveTickFromLookup = (
     : undefined;
 };
 
+let lastHistoryCachePositions: Position[] | null = null;
+let lastHistoryCacheAccountId: string | null | undefined;
+let lastHistoryCacheScope: ReturnType<typeof getCommittedBrokerAccountSessionScope> | null = null;
+
 export const useAppStore = create<AppState>()(
   devtools(
     persist(
@@ -798,7 +807,19 @@ export const useAppStore = create<AppState>()(
               }
             });
 
-            rememberTradeHistoryPositionLevels(nextPositions, state.accountId);
+            // A P&L packet must not parse/sort the whole persisted history cache.
+            // Re-seed after account/broker changes or external state replacement.
+            const historyScope = getCommittedBrokerAccountSessionScope();
+            const canCompareHistoryLevels = lastHistoryCachePositions === state.positions
+              && lastHistoryCacheAccountId === state.accountId
+              && lastHistoryCacheScope === historyScope;
+            const changedHistoryPositions = canCompareHistoryLevels
+              ? nextPositions.filter((position) => hasTradeHistoryPositionLevelChanges(existingById.get(position.id), position))
+              : nextPositions;
+            rememberTradeHistoryPositionLevels(changedHistoryPositions, state.accountId);
+            lastHistoryCachePositions = nextPositions;
+            lastHistoryCacheAccountId = state.accountId;
+            lastHistoryCacheScope = historyScope;
 
             // A lagged REST/WS snapshot can omit a fill that the click path
             // already admitted. Keep that ticket on the chart and in Trade

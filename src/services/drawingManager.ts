@@ -73,6 +73,8 @@ import { drawingApi, type ClientDrawing } from './drawingApi';
 import type { PositionSizing } from '../drawing-tools/positionDrawingValues';
 import { getAnnotationTool, annotationLines, annotationTable, isAnnotationImage, isAnnotationLink, type AnnotationStyle } from '../drawing-tools/annotationToolCatalog';
 
+const AXIS_OVERLAY_ATTRIBUTE = 'data-axis-overlay';
+
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
@@ -2233,6 +2235,7 @@ export class DrawingManager {
         selected: false,
       }, W, H, true);
     }
+    this.clipDrawingsToPlotArea(svg, context, W, H);
     // Existing fills, strokes, and handles must let anchor clicks reach the
     // chart while placing another tool. Setting only the group's attribute
     // does not override descendants with their own pointer-events values.
@@ -2244,6 +2247,61 @@ export class DrawingManager {
     this.renderSeriesDataCache = null;
   }
 
+
+  /**
+   * Keep drawing geometry inside the price pane. Lines projected far off-screen
+   * (e.g. after the price scale is compressed) would otherwise spill over the
+   * time axis and the panels below. Axis labels and range bands stay unclipped.
+   */
+  private clipDrawingsToPlotArea(svg: SVGSVGElement, context: ChartContext, W: number, H: number): void {
+    // Minimal chart stubs (and charts torn down mid-render) expose no scales.
+    if (typeof this.chart?.priceScale !== 'function' || typeof this.chart.timeScale !== 'function') return;
+    const plotW = Math.max(0, W - this.chart.priceScale('right').width());
+    const plotH = Math.max(0, H - this.chart.timeScale().height());
+    const clipId = `rtx-drawing-plot-clip-${context.contextId.replace(/[^\w-]/g, '_')}`;
+    const clip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+    clip.setAttribute('id', clipId);
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', '0');
+    rect.setAttribute('y', '0');
+    rect.setAttribute('width', String(plotW));
+    rect.setAttribute('height', String(plotH));
+    clip.appendChild(rect);
+    const defs = svg.querySelector('defs') ?? svg.insertBefore(
+      document.createElementNS('http://www.w3.org/2000/svg', 'defs'),
+      svg.firstChild,
+    );
+    defs.appendChild(clip);
+    this.applyPlotClip(svg, `url(#${clipId})`);
+  }
+
+  private applyPlotClip(parent: Element, clipUrl: string): void {
+    for (const child of Array.from(parent.children)) {
+      const tag = child.tagName.toLowerCase();
+      if (tag === 'defs' || tag === 'clippath' || child.hasAttribute(AXIS_OVERLAY_ATTRIBUTE)) continue;
+      if (child.querySelector(`[${AXIS_OVERLAY_ATTRIBUTE}]`)) {
+        // Transformed groups would move the clip rectangle with them.
+        if (!child.hasAttribute('transform')) this.applyPlotClip(child, clipUrl);
+        continue;
+      }
+      if (child.hasAttribute('clip-path')) {
+        // Nest an existing per-shape clip inside the plot clip.
+        const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        wrapper.setAttribute('clip-path', clipUrl);
+        parent.insertBefore(wrapper, child);
+        wrapper.appendChild(child);
+        continue;
+      }
+      if (child.hasAttribute('transform')) {
+        const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        wrapper.setAttribute('clip-path', clipUrl);
+        parent.insertBefore(wrapper, child);
+        wrapper.appendChild(child);
+        continue;
+      }
+      child.setAttribute('clip-path', clipUrl);
+    }
+  }
 
   renderAll(): void {
     const origChart = this.chart;
@@ -3981,6 +4039,7 @@ export class DrawingManager {
     band.setAttribute('fill', accent);
     band.setAttribute('fill-opacity', '0.35');
     band.setAttribute('data-geometry-role', role);
+    band.setAttribute(AXIS_OVERLAY_ATTRIBUTE, 'true');
     band.setAttribute('pointer-events', 'none');
     group.appendChild(band);
   }
@@ -4006,6 +4065,7 @@ export class DrawingManager {
     background.setAttribute('rx', '2');
     background.setAttribute('fill', accent);
     background.setAttribute('data-geometry-role', role);
+    background.setAttribute(AXIS_OVERLAY_ATTRIBUTE, 'true');
     background.setAttribute('pointer-events', 'none');
     group.appendChild(background);
 
@@ -4013,6 +4073,7 @@ export class DrawingManager {
     label.setAttribute('text-anchor', 'middle');
     label.setAttribute('font-family', 'var(--font-mono), monospace');
     label.setAttribute('data-geometry-role', `${role}-text`);
+    label.setAttribute(AXIS_OVERLAY_ATTRIBUTE, 'true');
     group.appendChild(label);
   }
 
@@ -4041,6 +4102,7 @@ export class DrawingManager {
     band.setAttribute('fill', accent);
     band.setAttribute('fill-opacity', '0.35');
     band.setAttribute('data-geometry-role', role);
+    band.setAttribute(AXIS_OVERLAY_ATTRIBUTE, 'true');
     band.setAttribute('pointer-events', 'none');
     group.appendChild(band);
   }
@@ -4065,6 +4127,7 @@ export class DrawingManager {
     background.setAttribute('rx', '2');
     background.setAttribute('fill', accent);
     background.setAttribute('data-geometry-role', role);
+    background.setAttribute(AXIS_OVERLAY_ATTRIBUTE, 'true');
     background.setAttribute('pointer-events', 'none');
     group.appendChild(background);
 
@@ -4072,6 +4135,7 @@ export class DrawingManager {
     label.setAttribute('text-anchor', 'middle');
     label.setAttribute('font-family', 'var(--font-mono), monospace');
     label.setAttribute('data-geometry-role', `${role}-text`);
+    label.setAttribute(AXIS_OVERLAY_ATTRIBUTE, 'true');
     group.appendChild(label);
   }
 

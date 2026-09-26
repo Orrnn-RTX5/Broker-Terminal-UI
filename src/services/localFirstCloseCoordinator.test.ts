@@ -121,6 +121,43 @@ describe('local-first close coordinator', () => {
     });
   });
 
+  it('reports each ticket as soon as the backend confirms it, never a rejected one', async () => {
+    const closeByTicket = new Map<number, Deferred<void>>();
+    const confirmed: number[] = [];
+
+    const resultPromise = closePositionsLocalFirst({
+      sessionKey: 'broker-a:200002',
+      getCurrentSessionKey: () => 'broker-a:200002',
+      localCandidates: [{ id: 501 }, { id: 502 }, { id: 503 }],
+      loadAuthoritativeCandidates: async () => [],
+      closePosition: (ticketId) => {
+        const deferred = createDeferred<void>();
+        closeByTicket.set(ticketId, deferred);
+        return deferred.promise;
+      },
+      onTicketConfirmed: (ticketId) => {
+        confirmed.push(ticketId);
+        if (ticketId === 503) throw new Error('UI handler failed');
+      },
+    });
+
+    expect(confirmed).toEqual([]);
+
+    closeByTicket.get(502)!.resolve(undefined);
+    await flushPromises();
+    expect(confirmed).toEqual([502]);
+
+    closeByTicket.get(501)!.reject(new Error('ticket 501 rejected'));
+    closeByTicket.get(503)!.resolve(undefined);
+    await flushPromises();
+
+    await expect(resultPromise).resolves.toMatchObject({
+      confirmedTicketIds: [502, 503],
+      failedTicketIds: [501],
+    });
+    expect(confirmed).toEqual([502, 503]);
+  });
+
   it('joins repeated runs for the same session into one in-flight operation', async () => {
     const coordinator = createLocalFirstCloseCoordinator();
     const snapshot = createDeferred<readonly { id: number }[]>();

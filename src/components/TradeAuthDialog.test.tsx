@@ -91,7 +91,7 @@ describe('TradeAuthDialog', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /login to real account/i }));
+    await user.click(screen.getByRole('button', { name: /log in to live account/i }));
     const serverInput = await screen.findByPlaceholderText(/search broker/i);
     expect(serverInput).toHaveAttribute('readonly');
     await waitFor(() => expect(serverInput).toHaveValue('Runtime Broker'));

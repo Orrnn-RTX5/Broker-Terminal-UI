@@ -242,6 +242,56 @@ describe('JournalTab', () => {
         expect(screen.getByTestId('last-trade-latency')).toHaveTextContent('Last trade latency: 14.63 ms');
     });
 
+    it('shows local trade diagnostics while the first server Journal request is pending', async () => {
+        const serverLoad = deferred<JournalResponse>();
+        journalHarness.getLogs.mockReturnValue(serverLoad.promise);
+        recordTradeOrderLatency({
+            phase: 'placement_terminal',
+            transport: 'websocket',
+            traceId: 'pending-journal',
+            clientOrderId: '123e4567-e89b-42d3-a456-426614174010',
+            sessionScope: journalHarness.sessionScope,
+            symbol: 'BTCUSD',
+            side: 'buy',
+            volume: 0.01,
+            terminalStatus: 'filled',
+            totalMs: 18.5,
+        });
+
+        render(<JournalTab />);
+
+        expect(await screen.findByText('Order executed buy BTCUSD 0.01')).toBeInTheDocument();
+        expect(screen.getByText('18.5 ms')).toBeInTheDocument();
+        expect(screen.getByText('Loading server journal. Showing local trade diagnostics.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Copy filtered journal' })).toBeEnabled();
+    });
+
+    it('keeps local trade diagnostics visible when the first server Journal request fails', async () => {
+        journalHarness.getLogs.mockRejectedValue(new Error('journal transport unavailable'));
+        recordTradeOrderLatency({
+            phase: 'placement_terminal',
+            transport: 'rest',
+            traceId: 'failed-journal',
+            clientOrderId: '123e4567-e89b-42d3-a456-426614174011',
+            sessionScope: journalHarness.sessionScope,
+            symbol: 'EURUSD',
+            side: 'sell',
+            volume: 0.02,
+            terminalStatus: 'rejected',
+            errorCode: 'QUOTE_STALE',
+            totalMs: 26,
+        });
+
+        render(<JournalTab />);
+
+        expect(await screen.findByText('Order rejected sell EURUSD 0.02: QUOTE_STALE')).toBeInTheDocument();
+        expect(screen.getByText('26 ms')).toBeInTheDocument();
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+            'Unable to load the server journal. Showing local trade diagnostics.',
+        );
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    });
+
     it('adds a failed terminal attempt to the Journal when its event arrives', async () => {
         journalHarness.getLogs.mockResolvedValue({ count: 0, logs: [] });
         render(<JournalTab />);
@@ -763,7 +813,8 @@ describe('JournalTab', () => {
 
         render(<JournalTab />);
 
-        expect(await screen.findByText(message)).toBeInTheDocument();
+        expect(await screen.findByTitle('Gateway')).toBeInTheDocument();
+        expect(screen.getByText(message)).toBeInTheDocument();
         expect(screen.getAllByTestId('journal-rendered-row')).toHaveLength(1);
         expect(screen.getByText('31.25 ms')).toBeInTheDocument();
         expect(screen.queryByText('Order rejected buy XAUUSD 0.01: Quote is stale', { selector: '[title]' })).toBeInTheDocument();
@@ -841,6 +892,40 @@ describe('JournalTab', () => {
 
         expect(await screen.findByText('Recovered journal row')).toBeInTheDocument();
         expect(journalHarness.getLogs).toHaveBeenCalledTimes(2);
+    });
+
+    it('never exposes retained local rows after the account scope changes', async () => {
+        const newScopeLoad = deferred<JournalResponse>();
+        journalHarness.getLogs
+            .mockResolvedValueOnce({ count: 0, logs: [] })
+            .mockReturnValueOnce(newScopeLoad.promise);
+        recordTradeOrderLatency({
+            phase: 'placement_terminal',
+            transport: 'websocket',
+            traceId: 'old-account-trade',
+            clientOrderId: '123e4567-e89b-42d3-a456-426614174012',
+            sessionScope: journalHarness.sessionScope,
+            symbol: 'XAUUSD',
+            side: 'buy',
+            volume: 0.01,
+            terminalStatus: 'filled',
+            totalMs: 12,
+        });
+
+        const view = render(<JournalTab />);
+        expect(await screen.findByText('Order executed buy XAUUSD 0.01')).toBeInTheDocument();
+
+        journalHarness.sessionScope = 'broker-b:account-b';
+        view.rerender(<JournalTab />);
+
+        expect(screen.queryByText('Order executed buy XAUUSD 0.01')).not.toBeInTheDocument();
+        await waitFor(() => expect(journalHarness.getLogs).toHaveBeenCalledTimes(2));
+        expect(screen.getByText(/Loading server journal/)).toBeInTheDocument();
+
+        await act(async () => {
+            newScopeLoad.resolve({ count: 0, logs: [] });
+            await newScopeLoad.promise;
+        });
     });
 
     it('clears rows on a session-scope change and ignores the old scope response', async () => {

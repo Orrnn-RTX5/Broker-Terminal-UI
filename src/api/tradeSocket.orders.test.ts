@@ -550,7 +550,7 @@ describe('TradeWebSocketClient market orders', () => {
     client.disconnect();
   });
 
-  it('treats a correlated generic error as transport uncertainty and reconciles once', async () => {
+  it.each(['error', 'order_error'])('treats a correlated %s as transport uncertainty and reconciles once', async (type) => {
     vi.useFakeTimers();
     const { client, socket } = createOpenClient();
 
@@ -564,7 +564,7 @@ describe('TradeWebSocketClient market orders', () => {
     const request = findSentAction(socket, 'place_order');
 
     socket.emit({
-      type: 'error',
+      type,
       request_id: request.request_id,
       client_order_id: request.client_order_id,
       error: {
@@ -591,6 +591,102 @@ describe('TradeWebSocketClient market orders', () => {
       clientOrderId: request.client_order_id,
     });
     expect(sentMessages(socket).filter((message) => message.action === 'get_order_status')).toHaveLength(1);
+    client.disconnect();
+  });
+
+  it.each(['order_error', 'order_status_error'])('ignores %s frames unless both order ids match', async (type) => {
+    const { client, socket } = createOpenClient();
+    const resultPromise = client.placeOrder(marketOrder);
+    const request = findSentAction(socket, 'place_order');
+    let settled = false;
+    void resultPromise.then(() => { settled = true; }, () => { settled = true; });
+
+    for (const correlation of [
+      { request_id: request.request_id },
+      { client_order_id: request.client_order_id },
+      { request_id: 'another-request', client_order_id: request.client_order_id },
+      { request_id: request.request_id, client_order_id: 'another-order' },
+    ]) {
+      socket.emit({ type, status: 'unknown', ...correlation });
+    }
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(sentMessages(socket).filter((message) => message.action === 'get_order_status')).toHaveLength(0);
+
+    socket.emit({
+      type: 'order_filled',
+      status: 'filled',
+      request_id: request.request_id,
+      client_order_id: request.client_order_id,
+      data: filledData,
+    });
+    await expect(resultPromise).resolves.toMatchObject({ data: filledData });
+    client.disconnect();
+  });
+
+  it('hands a failed status read to REST reconciliation immediately without another create or timeout', async () => {
+    vi.useFakeTimers();
+    const { client, socket } = createOpenClient();
+    const resultPromise = client.placeOrder(marketOrder);
+    const rejectionPromise = resultPromise.catch((error: unknown) => error);
+    const request = findSentAction(socket, 'place_order');
+
+    const orderError = {
+      type: 'order_error',
+      status: 'unknown',
+      request_id: request.request_id,
+      client_order_id: request.client_order_id,
+      error: { code: 'COMMAND_WATCH_CLOSED', message: 'Command result watcher closed' },
+    };
+    socket.emit(orderError);
+    socket.emit(orderError);
+    expect(sentMessages(socket).filter((message) => message.action === 'get_order_status')).toHaveLength(1);
+
+    socket.emit({
+      type: 'order_status_error',
+      status: 'unknown',
+      request_id: request.request_id,
+      client_order_id: request.client_order_id,
+      error: { code: 'COMMAND_READ_FAILED', message: 'Could not read command status' },
+    });
+
+    await expect(rejectionPromise).resolves.toMatchObject({
+      name: 'TradeSocketTransportError',
+      code: 'COMMAND_READ_FAILED',
+      message: 'Could not read command status',
+      requestId: request.request_id,
+      clientOrderId: request.client_order_id,
+      orderWasSent: true,
+      retryable: false,
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(sentMessages(socket).filter((message) => message.action === 'place_order')).toHaveLength(1);
+    expect(sentMessages(socket).filter((message) => message.action === 'get_order_status')).toHaveLength(1);
+    expect(getTradeOrderLatencySamples().filter((sample) => sample.phase === 'ws_transport_error'))
+      .toEqual([expect.objectContaining({ reason: 'COMMAND_READ_FAILED' })]);
+    client.disconnect();
+  });
+
+  it('preserves backend expiry as terminal even when its error code usually permits recovery', async () => {
+    const { client, socket } = createOpenClient();
+    const resultPromise = client.placeOrder(marketOrder);
+    const request = findSentAction(socket, 'place_order');
+    socket.emit({
+      type: 'order_rejected',
+      status: 'expired',
+      request_id: request.request_id,
+      client_order_id: request.client_order_id,
+      error: { code: 'REQUEST_TIMEOUT', message: 'Execution window expired' },
+    });
+
+    await expect(resultPromise).rejects.toMatchObject({
+      name: 'TradeSocketOrderRejectedError',
+      status: 'expired',
+      code: 'REQUEST_TIMEOUT',
+      message: 'Execution window expired',
+      retryable: false,
+    });
+    expect(sentMessages(socket).filter((message) => message.action === 'get_order_status')).toHaveLength(0);
     client.disconnect();
   });
 

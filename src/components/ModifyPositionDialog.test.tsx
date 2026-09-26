@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ModifyPositionDialog } from './ModifyPositionDialog';
+import { commitBrokerAccountSessionScope } from '../services/brokerSession';
 
 const mocks = vi.hoisted(() => ({
     closePosition: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     modifyPosition: vi.fn(),
     placeMarketOrder: vi.fn(),
     setPositions: vi.fn(),
+    positions: [] as any[],
 }));
 
 vi.mock('../store/useMarketDataStore', () => ({
@@ -25,7 +27,7 @@ vi.mock('../store/useMarketDataStore', () => ({
 vi.mock('../store/useAppStore', () => ({
     useAppStore: {
         getState: () => ({
-            positions: [],
+            positions: mocks.positions,
             setPositions: mocks.setPositions,
         }),
     },
@@ -44,13 +46,37 @@ vi.mock('../services/api', () => ({
     },
 }));
 
+const makePosition = (id = 165) => ({
+    id,
+    symbol: 'GBPUSD',
+    side: 'BUY' as const,
+    volume: 0.01,
+    openPrice: 1.33981,
+    sl: 0,
+    tp: 0,
+    comment: '',
+});
+
 describe('ModifyPositionDialog chart toolbar', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.positions = [];
         mocks.modifyPosition.mockResolvedValue(undefined);
         mocks.modifyPendingOrder.mockResolvedValue(undefined);
         mocks.placeMarketOrder.mockResolvedValue(undefined);
         mocks.closePosition.mockResolvedValue(undefined);
+        commitBrokerAccountSessionScope({
+            authenticated: true,
+            accountId: '77',
+            brokerId: 'broker-a',
+            serverUrl: 'https://broker.example',
+        });
+    });
+
+    afterEach(() => {
+        cleanup();
+        vi.useRealTimers();
+        commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
     });
 
     it('does not close or move focus when Escape/Tab belongs to a newer local dialog', async () => {
@@ -167,6 +193,85 @@ describe('ModifyPositionDialog chart toolbar', () => {
             });
         });
         await waitFor(() => expect(onClose).toHaveBeenCalledWith(0, 0, 'hiiii'));
+    });
+
+    it('blocks submission after the dialog trading scope becomes stale', () => {
+        render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={makePosition(168)} />);
+
+        act(() => commitBrokerAccountSessionScope({
+            authenticated: true,
+            accountId: '88',
+            brokerId: 'broker-a',
+            serverUrl: 'https://broker.example',
+        }));
+        fireEvent.click(screen.getByRole('button', { name: /modify #168/i }));
+
+        expect(mocks.modifyPosition).not.toHaveBeenCalled();
+        expect(mocks.setPositions).not.toHaveBeenCalled();
+        expect(screen.getByText('Trading session changed. Reopen the position and try again.')).toBeInTheDocument();
+    });
+
+    it('ignores a modify acknowledgement that resolves after the trading scope changes', async () => {
+        let resolveModify: (() => void) | null = null;
+        const pendingModify = new Promise<void>(resolve => { resolveModify = resolve; });
+        const position = makePosition(169);
+        mocks.positions = [position];
+        mocks.modifyPosition.mockReturnValueOnce(pendingModify);
+        const onClose = vi.fn();
+        const forceRefresh = vi.fn();
+        window.addEventListener('rtx:force-refresh-positions', forceRefresh);
+
+        try {
+            render(<ModifyPositionDialog isOpen onClose={onClose} position={position} />);
+            fireEvent.click(screen.getByRole('button', { name: /modify #169/i }));
+            expect(mocks.modifyPosition).toHaveBeenCalledOnce();
+
+            act(() => commitBrokerAccountSessionScope({
+                authenticated: true,
+                accountId: '88',
+                brokerId: 'broker-a',
+                serverUrl: 'https://broker.example',
+            }));
+            await act(async () => {
+                resolveModify?.();
+                await pendingModify;
+            });
+
+            expect(mocks.setPositions).not.toHaveBeenCalled();
+            expect(forceRefresh).not.toHaveBeenCalled();
+            expect(onClose).not.toHaveBeenCalled();
+        } finally {
+            window.removeEventListener('rtx:force-refresh-positions', forceRefresh);
+        }
+    });
+
+    it('cancels the delayed saved close when the trading scope changes', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const onClose = vi.fn();
+        const position = makePosition(170);
+        mocks.positions = [position];
+        render(<ModifyPositionDialog isOpen onClose={onClose} position={position} />);
+        act(() => vi.runOnlyPendingTimers());
+
+        fireEvent.click(screen.getByRole('button', { name: /modify #170/i }));
+        await act(async () => {
+            await Promise.resolve();
+        });
+        // Moving focus makes jsdom fire `selectionchange` from its own 0ms
+        // setTimeout; drain it so only the dialog's delayed close is counted.
+        act(() => vi.advanceTimersByTime(0));
+        expect(vi.getTimerCount()).toBe(1);
+
+        act(() => commitBrokerAccountSessionScope({
+            authenticated: true,
+            accountId: '88',
+            brokerId: 'broker-a',
+            serverUrl: 'https://broker.example',
+        }));
+        act(() => vi.advanceTimersByTime(0));
+        expect(vi.getTimerCount()).toBe(0);
+        act(() => vi.advanceTimersByTime(600));
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it.each([

@@ -6,6 +6,7 @@ import {
   normalizeMarketStatus,
   type NormalizedMarketStatus,
 } from '../utils/marketStatus';
+import { recordBrokerServerTime } from '../services/brokerServerClock';
 
 export interface SymbolMarketStatusState extends NormalizedMarketStatus {
   loading: boolean;
@@ -63,8 +64,10 @@ export const fetchSymbolMarketStatus = async (
   const existingRequest = inflightRequests.get(key);
   if (existingRequest) return existingRequest;
 
+  const requestStartedAt = Date.now();
   const request = marketV2Api.getSymbolStatus(key)
     .then(payload => {
+      recordBrokerServerTime((payload as { server_time?: unknown } | null)?.server_time, requestStartedAt);
       const normalized = normalizeMarketStatus(payload, { symbol: key });
       statusCache.set(key, { status: normalized, refreshedAt: Date.now() });
       return normalized;

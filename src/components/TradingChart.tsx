@@ -172,10 +172,12 @@ import {
   createDockedLevelChip,
   createEntryTradeControlBar,
   createTradeLevelControlBar,
+  dispatchChartPositionModify,
   estimateTradeLevelMoney,
   estimateTradeMoneyAtPrice,
   formatMoneyLabel,
   refreshChartUiTranslations,
+  hasChartTradeLevelGestureDragged,
 } from '../utils/chartTradeControls';
 import {
   buildTradeHistoryBadgeText,
@@ -276,6 +278,64 @@ import {
 } from '../utils/currentClosedMarketTail';
 
 export type { ChartType, Timeframe } from './TradingChart.helpers';
+
+const TRADE_PLOT_CLIP_CLASS = 'rtx-trade-plot-clip';
+
+/**
+ * Trade markers and history segments live in a layer clipped to the price
+ * pane, so a compressed price scale cannot push them over the price or time
+ * axis. No z-index: children keep stacking against their host's siblings.
+ */
+const getTradePlotClipLayer = (host: HTMLElement): HTMLElement => {
+  for (const child of Array.from(host.children)) {
+    if (child.classList.contains(TRADE_PLOT_CLIP_CLASS)) return child as HTMLElement;
+  }
+  const layer = document.createElement('div');
+  layer.className = TRADE_PLOT_CLIP_CLASS;
+  layer.style.cssText = 'position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none;';
+  host.appendChild(layer);
+  return layer;
+};
+
+type TradeMarkerTooltipLayout = {
+  x: number;
+  markerY: number;
+  markerSide?: TradeSide;
+  plotWidth: number;
+  plotHeight: number;
+};
+const tradeMarkerTooltipLayouts = new WeakMap<HTMLElement, TradeMarkerTooltipLayout>();
+
+/**
+ * Keep a trade marker's price tooltip inside the plot. Reading its size forces
+ * a synchronous layout, so this runs only for a shown tooltip — never once per
+ * history marker on every overlay pass.
+ */
+const placeTradeMarkerTooltip = (target: HTMLElement, tooltip: HTMLElement): void => {
+  const layout = tradeMarkerTooltipLayouts.get(target);
+  if (!layout) return;
+  const { x, markerY, markerSide, plotWidth, plotHeight } = layout;
+  const tooltipWidth = tooltip.offsetWidth || 64;
+  const hoverTargetWidth = target.offsetWidth || 14;
+  const maxTooltipLeft = Math.max(6, plotWidth - tooltipWidth - 6);
+  const tooltipLeft = Math.min(maxTooltipLeft, Math.max(6, x - tooltipWidth / 2));
+  tooltip.style.left = `${tooltipLeft - (x - hoverTargetWidth / 2)}px`;
+  tooltip.style.right = 'auto';
+  tooltip.style.transform = 'none';
+
+  const hoverTargetHeight = target.offsetHeight || 32;
+  const markerTop = markerSide === 'BUY' ? markerY : markerY - hoverTargetHeight;
+  const markerBottom = markerSide === 'BUY' ? markerY + hoverTargetHeight : markerY;
+  const tooltipHeight = tooltip.offsetHeight || 58;
+  const tooltipGap = 7;
+  const fitsAbove = markerTop - tooltipGap - tooltipHeight >= 4;
+  const fitsBelow = markerBottom + tooltipGap + tooltipHeight <= plotHeight - 4;
+  let placeAbove = markerSide === 'BUY';
+  if (placeAbove && !fitsAbove && fitsBelow) placeAbove = false;
+  if (!placeAbove && !fitsBelow && fitsAbove) placeAbove = true;
+  tooltip.style.bottom = placeAbove ? `calc(100% + ${tooltipGap}px)` : 'auto';
+  tooltip.style.top = placeAbove ? 'auto' : `calc(100% + ${tooltipGap}px)`;
+};
 
 const SUPPORTED_CHART_INDICATOR_TYPES = new Set(['ma', 'sma', 'ema', 'rsi', 'macd', 'bb', 'bollinger']);
 
@@ -6951,6 +7011,13 @@ export const TradingChart = React.memo(function TradingChart({
     const priceScaleWidth = series.priceScale().width();
     const timeScaleHeight = chart.timeScale().height();
     const plotHeight = Math.max(0, chartHeight - (Number.isFinite(timeScaleHeight) ? timeScaleHeight : 0));
+    const overlayHost = overlayRef.current;
+    for (const host of [overlayHost, overlayHost?.parentElement]) {
+      if (!host) continue;
+      const clipLayer = getTradePlotClipLayer(host);
+      clipLayer.style.right = `${Math.max(0, priceScaleWidth)}px`;
+      clipLayer.style.bottom = `${Math.max(0, chartHeight - plotHeight)}px`;
+    }
     const snapCssPixel = (value: number): number => Math.round(value);
     const resolveTimeCoordinate = (time: unknown): number | null => {
       const numericTime = Number(time);
@@ -7111,8 +7178,10 @@ export const TradingChart = React.memo(function TradingChart({
             el.style.display = 'block';
             el.style.left = `${geometry.left}px`;
             const isHistoryLine = el.classList.contains('rtx-trade-history-line');
-            const segmentHeight = el.offsetHeight || 1;
-            el.style.top = `${geometry.top - (isHistoryLine ? segmentHeight / 2 : 0)}px`;
+            // History lines have a fixed inline height; reading offsetHeight here
+            // forced one synchronous layout per trade segment on every pass.
+            const segmentHeight = isHistoryLine ? (Number.parseFloat(el.style.height) || 1) : 0;
+            el.style.top = `${geometry.top - segmentHeight / 2}px`;
             el.style.width = `${geometry.width}px`;
             el.style.transform = `rotate(${geometry.angleDeg}deg)`;
             el.style.transformOrigin = isHistoryLine ? '0 50%' : '0 0';
@@ -7155,27 +7224,15 @@ export const TradingChart = React.memo(function TradingChart({
 
             const tooltip = el.querySelector<HTMLElement>('.rtx-trade-marker__price-tooltip');
             if (tooltip) {
-              const plotWidth = Math.max(0, chartWidth - priceScaleWidth);
-              const tooltipWidth = tooltip.offsetWidth || 64;
-              const hoverTargetWidth = el.offsetWidth || 14;
-              const maxTooltipLeft = Math.max(6, plotWidth - tooltipWidth - 6);
-              const tooltipLeft = Math.min(maxTooltipLeft, Math.max(6, x - tooltipWidth / 2));
-              tooltip.style.left = `${tooltipLeft - (x - hoverTargetWidth / 2)}px`;
-              tooltip.style.right = 'auto';
-              tooltip.style.transform = 'none';
-
-              const hoverTargetHeight = el.offsetHeight || 32;
-              const markerTop = node.markerSide === 'BUY' ? markerY : markerY - hoverTargetHeight;
-              const markerBottom = node.markerSide === 'BUY' ? markerY + hoverTargetHeight : markerY;
-              const tooltipHeight = tooltip.offsetHeight || 58;
-              const tooltipGap = 7;
-              const fitsAbove = markerTop - tooltipGap - tooltipHeight >= 4;
-              const fitsBelow = markerBottom + tooltipGap + tooltipHeight <= plotHeight - 4;
-              let placeAbove = node.markerSide === 'BUY';
-              if (placeAbove && !fitsAbove && fitsBelow) placeAbove = false;
-              if (!placeAbove && !fitsBelow && fitsAbove) placeAbove = true;
-              tooltip.style.bottom = placeAbove ? `calc(100% + ${tooltipGap}px)` : 'auto';
-              tooltip.style.top = placeAbove ? 'auto' : `calc(100% + ${tooltipGap}px)`;
+              tradeMarkerTooltipLayouts.set(el, {
+                x,
+                markerY,
+                markerSide: node.markerSide,
+                plotWidth: Math.max(0, chartWidth - priceScaleWidth),
+                plotHeight,
+              });
+              // Hidden tooltips are placed when shown (hover/focus).
+              if (tooltip.style.visibility === 'visible') placeTradeMarkerTooltip(el, tooltip);
             }
             continue;
           }
@@ -7650,7 +7707,11 @@ export const TradingChart = React.memo(function TradingChart({
     const appendOverlayNode = (element: HTMLElement, node: OverlayNodeData, layer: TradeOverlayLayer) => {
       const nodesRef = layer === 'active' ? activeOverlayNodesRef : historyOverlayNodesRef;
       const dataRef = layer === 'active' ? activeOverlayNodeDataRef : historyOverlayNodeDataRef;
-      overlayRef.current?.appendChild(element);
+      const overlayEl = overlayRef.current;
+      if (overlayEl) {
+        const clipsToPlot = node.kind === 'segment' || node.kind === 'marker';
+        (clipsToPlot ? getTradePlotClipLayer(overlayEl) : overlayEl).appendChild(element);
+      }
       nodesRef.current.push(element);
       dataRef.current.push(node);
     };
@@ -7664,7 +7725,7 @@ export const TradingChart = React.memo(function TradingChart({
 
     const appendHistoryInteractionNode = (element: HTMLElement, node: OverlayNodeData) => {
       const host = overlayRef.current?.parentElement ?? overlayRef.current;
-      host?.appendChild(element);
+      if (host) (node.kind === 'marker' ? getTradePlotClipLayer(host) : host).appendChild(element);
       historyOverlayNodesRef.current.push(element);
       historyOverlayNodeDataRef.current.push(node);
     };
@@ -7752,6 +7813,7 @@ export const TradingChart = React.memo(function TradingChart({
       tooltip.append(tooltipHeader, tooltipDetails);
 
       const setPriceTooltipVisible = (visible: boolean) => {
+        if (visible) placeTradeMarkerTooltip(hoverTarget, tooltip);
         tooltip.style.opacity = visible ? '1' : '0';
         tooltip.style.visibility = visible ? 'visible' : 'hidden';
       };
@@ -7974,7 +8036,15 @@ export const TradingChart = React.memo(function TradingChart({
         },
       ], useAppStore.getState().accountId);
       window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
-      window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: nextLevels.sl || 0, tp: nextLevels.tp || 0 } }));
+      window.dispatchEvent(new CustomEvent('rtx:trade-modified', {
+        detail: {
+          id: ticket,
+          symbol: tradeObj.symbol,
+          sl: nextLevels.sl || 0,
+          tp: nextLevels.tp || 0,
+          sessionScope: brokerAccountSessionScope,
+        },
+      }));
 
       api.positions.modifyPosition(ticket, tradeLevelModifyPatch(role, role === 'SL' ? nextLevels.sl || 0 : nextLevels.tp || 0))
         .then(() => {
@@ -9647,6 +9717,8 @@ export const TradingChart = React.memo(function TradingChart({
       tradeObj: ActiveTradeSnapshot;
       grabbedType: 'ENTRY' | 'SL' | 'TP';
       entryAnchorY: number;
+      pointerDownY: number;
+      didDrag: boolean;
     } | null = null;
     // Level bars hidden while their level is being dragged (the live preview
     // replaces them); restored on release/cancel, and rebuilt on flush anyway.
@@ -9971,7 +10043,7 @@ export const TradingChart = React.memo(function TradingChart({
           ? getFinitePriceCoordinate(closestTrade.entryPrice) ?? y
           : y;
         const initialOverlayY = grabbedType === 'ENTRY' ? entryAnchorY : y;
-        dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY };
+        dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY, pointerDownY: y, didDrag: false };
         if (grabbedType !== 'ENTRY') {
           hideDraggedLevelControls(closestTrade.key, grabbedType);
         }
@@ -10006,6 +10078,11 @@ export const TradingChart = React.memo(function TradingChart({
         e.preventDefault();
         e.stopPropagation();
         const y = getChartY(e);
+        dragState.didDrag = hasChartTradeLevelGestureDragged(
+          dragState.pointerDownY,
+          y,
+          dragState.didDrag,
+        );
         const rawPrice = seriesRef.current.coordinateToPrice(y as any);
         if (rawPrice === null) return;
 
@@ -10129,9 +10206,19 @@ export const TradingChart = React.memo(function TradingChart({
       if (seriesRef.current) {
         const y = getChartY(e);
         const rawFinalPrice = seriesRef.current.coordinateToPrice(y as any);
-        const { tradeObj, grabbedType, entryAnchorY } = dragState;
+        const { tradeObj, grabbedType, entryAnchorY, pointerDownY } = dragState;
 
-        if (rawFinalPrice !== null) {
+        const didLevelDrag = hasChartTradeLevelGestureDragged(pointerDownY, y, dragState.didDrag);
+        const isLevelClick = grabbedType !== 'ENTRY' && !didLevelDrag;
+
+        if (isLevelClick) {
+          const ticket = Number.parseInt(tradeObj.key.replace(/^trade:/, ''), 10);
+          dispatchChartPositionModify({
+            ticket,
+            symbol: tradeObj.symbol,
+            sessionScope: brokerAccountSessionScope,
+          });
+        } else if (rawFinalPrice !== null) {
           const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
           const hasRealEntryDrag = entryDragDirection !== null;
           if (!(grabbedType === 'ENTRY' && !hasRealEntryDrag)) {
@@ -10208,7 +10295,15 @@ export const TradingChart = React.memo(function TradingChart({
                   },
                 ], useAppStore.getState().accountId);
                 window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
-                window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
+                window.dispatchEvent(new CustomEvent('rtx:trade-modified', {
+                  detail: {
+                    id: ticket,
+                    symbol: tradeObj.symbol,
+                    sl: sl || 0,
+                    tp: tp || 0,
+                    sessionScope: brokerAccountSessionScope,
+                  },
+                }));
 
                 api.positions.modifyPosition(ticket, tradeLevelModifyPatch(update.role, update.price))
                   .then(() => {
@@ -10294,7 +10389,7 @@ export const TradingChart = React.memo(function TradingChart({
       handlePointerCancel();
       setTradeHoverCursor(false);
     };
-  }, [isActive, persistTradeLevelOverrides, tradeAllowed]);
+  }, [brokerAccountSessionScope, isActive, persistTradeLevelOverrides, tradeAllowed]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (

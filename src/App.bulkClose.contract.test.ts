@@ -9,6 +9,14 @@ const bulkStart = appSource.indexOf("const handleCloseBulk = async (type: 'ALL' 
 const bulkEnd = appSource.indexOf('// Connect to WebSocket using centralized hook', bulkStart);
 const bulkHandler = appSource.slice(bulkStart, bulkEnd);
 
+const startedStart = bulkHandler.indexOf('onCandidatesStarted: (candidates) => {');
+const startedEnd = bulkHandler.indexOf('onTicketConfirmed: (ticketId) => {', startedStart);
+const candidatesStartedHandler = bulkHandler.slice(startedStart, startedEnd);
+
+const singleStart = appSource.indexOf('const handleClosePosition = async (');
+const singleEnd = appSource.indexOf('// ── cTrader-style chart position actions', singleStart);
+const singleHandler = appSource.slice(singleStart, singleEnd);
+
 const dockStart = bottomDockSource.indexOf("const handleTradeCloseBulk = useCallback((type: 'ALL' | 'WINNERS' | 'LOSERS'");
 const dockEnd = bottomDockSource.indexOf('// Helpers', dockStart);
 const dockHandler = bottomDockSource.slice(dockStart, dockEnd);
@@ -35,10 +43,23 @@ describe('Close All source contract', () => {
     expect(bulkHandler).not.toContain('accountV2Api.closeAllPositions');
   });
 
-  it('keeps successful closes confirmed while failed tickets are restored and reported', () => {
-    expect(bulkHandler).toContain("dispatchTradeOverlayCloseState(confirmedTicketIds, 'confirmed')");
-    expect(bulkHandler).toContain('clearOptimisticClosedTickets(failedTicketIds)');
-    expect(bulkHandler).toContain("dispatchTradeOverlayCloseState(failedTicketIds, 'failed')");
+  it('keeps every row visible until the backend confirms that ticket (MT5 behaviour)', () => {
+    expect(startedStart).toBeGreaterThan(-1);
+    expect(startedEnd).toBeGreaterThan(startedStart);
+    expect(candidatesStartedHandler).not.toContain('setPositions');
+    expect(candidatesStartedHandler).not.toContain('markLocalTradeMutation');
+    expect(candidatesStartedHandler).not.toContain('dispatchTradeOverlayCloseState');
+    expect(bulkHandler).not.toContain("'pending'");
+
+    expect(bulkHandler).toContain('onTicketConfirmed: (ticketId) => {');
+    expect(bulkHandler).toContain('markLocalTradeMutation([ticketId]);');
+    expect(bulkHandler).toContain('.positions.filter((position) => position.id !== ticketId)');
+    expect(bulkHandler).toContain("dispatchTradeOverlayCloseState([ticketId], 'confirmed', {");
+  });
+
+  it('leaves failed tickets open and reports them', () => {
+    expect(bulkHandler).not.toContain('clearOptimisticClosedTickets');
+    expect(bulkHandler).not.toContain("'failed'");
     expect(bulkHandler).toContain("feedbackLabel('closed')");
     expect(bulkHandler).toContain('${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length}');
     expect(bulkHandler).toContain('${failedTicketIds.length} — ${failureMessage}');
@@ -52,7 +73,27 @@ describe('Close All source contract', () => {
     expect(bulkHandler).toContain('closingTicketsRef.current.add(ticketId)');
     expect(bulkHandler).toContain('closingTicketsRef.current.delete(ticket)');
     expect(bulkHandler).toContain('const closeSessionScope = getCommittedBrokerAccountSessionScopeKey(');
-    expect(bulkHandler).toContain('getCurrentSessionKey: () => {');
+    expect(bulkHandler).toContain('getCurrentSessionKey: getCurrentCloseSessionKey,');
+    expect(bulkHandler).toContain('if (getCurrentCloseSessionKey() !== closeSessionScope) return;');
     expect(bulkHandler).toContain('if (!closeResult.sessionCurrent) return;');
+  });
+});
+
+describe('single position close source contract', () => {
+  it('removes the row only after the backend confirms the close', () => {
+    expect(singleStart).toBeGreaterThan(-1);
+    expect(singleEnd).toBeGreaterThan(singleStart);
+    const closeRequest = singleHandler.indexOf('await api.positions.closePosition(String(id));');
+    expect(closeRequest).toBeGreaterThan(-1);
+    for (const hideStep of [
+      'markLocalTradeMutation([id]);',
+      'useAppStore.getState().setPositions(',
+      "dispatchTradeOverlayCloseState([id], 'confirmed'",
+    ]) {
+      expect(singleHandler.indexOf(hideStep)).toBeGreaterThan(closeRequest);
+    }
+    expect(singleHandler).not.toContain("'pending'");
+    expect(singleHandler).not.toContain("'failed'");
+    expect(singleHandler).not.toContain('clearOptimisticClosedTickets');
   });
 });

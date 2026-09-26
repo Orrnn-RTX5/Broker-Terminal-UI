@@ -610,12 +610,18 @@ describe('normalizeJournalResponse', () => {
       source: 'Gateway',
     };
     const response = normalizeJournalResponse({
-      count: 4,
+      count: 10,
       logs: [
         { ...commonLog, id: 'fill', message: 'Order buy XAUUSD 0.01 filled in 286ms' },
         { ...commonLog, id: 'timing', message: 'Timing buy XAUUSD 0.01: prep 0ns · exec 286ms · total 286ms' },
         { ...commonLog, id: 'close', message: 'Close sell BTCUSD ticket 4318 profit -0.96 in 423ms' },
         { ...commonLog, id: 'modify', message: 'Modify BTCUSD ticket 24137 in 10ms' },
+        { ...commonLog, id: 'close-filled', message: 'Order close 1354736 BTCUSD 0.00 filled in 37ms' },
+        { ...commonLog, id: 'close-succeeded', message: 'Order close 1354741 BTCUSD 0.01 succeeded in 94ms' },
+        { ...commonLog, id: 'close-timing', message: 'Timing close 1354736 BTCUSD 0.00: prep 3ms · exec 33ms · total 37ms' },
+        { ...commonLog, id: 'microseconds', message: 'Order sell EURUSD 0.01 filled in 750µs' },
+        { ...commonLog, id: 'nanoseconds', message: 'Order sell USDJPY 0.01 filled in 900ns' },
+        { ...commonLog, id: 'seconds', message: 'Order buy GBPUSD 0.01 filled in 1.25s' },
       ],
     });
 
@@ -624,6 +630,12 @@ describe('normalizeJournalResponse', () => {
       expect.objectContaining({ id: 'timing', latency_ms: 286, message: 'Timing buy XAUUSD 0.01' }),
       expect.objectContaining({ id: 'close', latency_ms: 423, message: 'Close sell BTCUSD ticket 4318 profit -0.96' }),
       expect.objectContaining({ id: 'modify', latency_ms: 10, message: 'Modify BTCUSD ticket 24137' }),
+      expect.objectContaining({ id: 'close-filled', latency_ms: 37, message: 'Order close 1354736 BTCUSD 0.00 filled' }),
+      expect.objectContaining({ id: 'close-succeeded', latency_ms: 94, message: 'Order close 1354741 BTCUSD 0.01 succeeded' }),
+      expect.objectContaining({ id: 'close-timing', latency_ms: 37, message: 'Timing close 1354736 BTCUSD 0.00' }),
+      expect.objectContaining({ id: 'microseconds', latency_ms: 0.75, message: 'Order sell EURUSD 0.01 filled' }),
+      expect.objectContaining({ id: 'nanoseconds', latency_ms: 0.0009, message: 'Order sell USDJPY 0.01 filled' }),
+      expect.objectContaining({ id: 'seconds', latency_ms: 1250, message: 'Order buy GBPUSD 0.01 filled' }),
     ]);
   });
 

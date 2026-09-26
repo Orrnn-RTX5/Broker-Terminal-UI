@@ -92,12 +92,14 @@ interface TradeSocketErrorDetails {
   requestId?: string;
   clientOrderId?: string;
   orderWasSent?: boolean;
+  status?: 'rejected' | 'expired';
 }
 
 export class TradeSocketOrderRejectedError extends Error {
   readonly code?: string;
   readonly requestId?: string;
   readonly clientOrderId?: string;
+  readonly status: 'rejected' | 'expired';
   readonly retryable = false;
 
   constructor(message: string, details: TradeSocketErrorDetails = {}) {
@@ -106,6 +108,7 @@ export class TradeSocketOrderRejectedError extends Error {
     this.code = details.code;
     this.requestId = details.requestId;
     this.clientOrderId = details.clientOrderId;
+    this.status = details.status ?? 'rejected';
   }
 }
 
@@ -230,6 +233,16 @@ const readOrderError = (message: TradeSocketMessage): { code?: string; message: 
     ?? readNonEmptyString(record.error)
     ?? 'Order rejected';
   return { code, message: detail };
+};
+
+/** The same terminal rules apply before and during cross-transport recovery. */
+export const isTerminalTradeOrderMessage = (message: TradeSocketMessage): boolean => {
+  const record = message as Record<string, unknown>;
+  const type = String(record.type ?? '').trim().toLowerCase();
+  if (type === 'order_filled') return Boolean(asRecord(record.data));
+  if (type !== 'order_rejected') return false;
+  if (String(record.status ?? '').trim().toLowerCase() === 'expired') return true;
+  return !isRetryableOrderErrorCode(readOrderError(message).code);
 };
 
 export class TradeWebSocketClient {
@@ -754,7 +767,7 @@ export class TradeWebSocketClient {
   private routePendingOrderMessage(message: TradeSocketMessage): void {
     const record = message as Record<string, unknown>;
     const type = String(record.type || '').trim().toLowerCase();
-    if (!['order_accepted', 'order_filled', 'order_rejected', 'error'].includes(type)) return;
+    if (!['order_accepted', 'order_filled', 'order_rejected', 'order_error', 'order_status_error', 'error'].includes(type)) return;
 
     const requestId = readCorrelationId(record.request_id);
     const clientOrderId = readCorrelationId(record.client_order_id);
@@ -773,24 +786,41 @@ export class TradeWebSocketClient {
     }
 
     if (type === 'order_filled') {
-      const data = asRecord(record.data);
-      if (!data) return;
+      if (!isTerminalTradeOrderMessage(message)) return;
       this.recordPendingOrderLatency(pending, 'order_filled');
       this.resolvePendingOrder(requestId, message as unknown as TradeSocketOrderFilled);
       return;
     }
 
-    // Only order_rejected is a terminal business decision. A correlated generic
-    // error is a transport/execution uncertainty, so reconcile the durable
+    // The gateway could not read the durable command. Hand the uncertainty to
+    // the REST status reader immediately instead of waiting another full WS
+    // timeout. The create was sent, so this must never permit another create.
+    if (type === 'order_status_error') {
+      const orderError = readOrderError(message);
+      this.recordPendingOrderLatency(pending, 'ws_transport_error', orderError.code || 'order_status_error');
+      this.rejectPendingOrder(requestId, new TradeSocketTransportError(orderError.message, {
+        code: orderError.code || 'ORDER_STATUS_READ_FAILED',
+        requestId,
+        clientOrderId,
+        orderWasSent: true,
+      }));
+      return;
+    }
+
+    // Only order_rejected is a terminal business decision. A correlated
+    // order_error or generic error is execution uncertainty, so reconcile the durable
     // client_order_id. The original create frame was already sent and must never
     // be recreated through REST merely because reconciliation times out.
-    if (type === 'error') {
+    if (type === 'error' || type === 'order_error') {
       this.recoverPendingOrder(requestId, pending);
       return;
     }
 
     const orderError = readOrderError(message);
-    if (isRetryableOrderErrorCode(orderError.code)) {
+    const status = String(record.status ?? '').trim().toLowerCase() === 'expired'
+      ? 'expired'
+      : 'rejected';
+    if (!isTerminalTradeOrderMessage(message)) {
       this.recoverPendingOrder(requestId, pending);
       return;
     }
@@ -800,6 +830,7 @@ export class TradeWebSocketClient {
       code: orderError.code,
       requestId,
       clientOrderId,
+      status,
     }));
   }
 

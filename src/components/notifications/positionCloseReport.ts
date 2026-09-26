@@ -1,4 +1,4 @@
-export type PositionCloseScope = 'ALL' | 'WINNERS' | 'LOSERS';
+export type PositionCloseScope = 'ALL' | 'WINNERS' | 'LOSERS' | 'SINGLE';
 export type PositionCloseOutcome = 'completed' | 'partial' | 'failed';
 
 export type PositionCloseReportRow = {
@@ -15,7 +15,7 @@ export type PositionCloseReportRow = {
   status: 'closed' | 'rejected';
 };
 
-/** Structured receipt for a bulk position close, rendered by ActionFeedbackToast. */
+/** Structured receipt for a single or bulk position close, rendered by ActionFeedbackToast. */
 export type PositionCloseReport = {
   kind: 'position-close';
   scope: PositionCloseScope;

@@ -13,6 +13,7 @@ import { useCommandBus } from '../../hooks/useCommandBus';
 import { MarketWatchPanel, type ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';
 import type { MarketInstrumentsSnapshot } from '../../hooks/useLiveMarketData';
 import { NavigatorPanel } from '../layout/NavigatorPanel';
+import { MarketWatchServerClock } from '../layout/MarketWatchServerClock';
 import { BottomDock } from '../BottomDock';
 import { getInstrumentSymbolName, getUniqueSymbolNames, resolveAuthorizedChartSymbol } from '../../utils/symbolEligibility';
 import { getInstrumentPriceDigits } from '../../utils/chartPriceScale';
@@ -156,6 +157,10 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         mergeCatalog(marketInstrumentsSnapshot.authorizedInstruments);
         return metadataBySymbol;
     }, [allSymbols, marketInstrumentsSnapshot.authorizedInstruments]);
+    const historyInstrumentCatalog = useMemo(
+        () => [...allSymbols, ...marketInstrumentsSnapshot.authorizedInstruments],
+        [allSymbols, marketInstrumentsSnapshot.authorizedInstruments],
+    );
 
     const resolveChartSymbol = useCallback((value: unknown): string => {
         return resolveAuthorizedChartSymbol(value, authorizedChartSymbols);
@@ -266,6 +271,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                             onSymbolSelect={onSymbolSelect}
                         />
                     </ErrorBoundary>
+                    <MarketWatchServerClock />
                 </div>
             );
         }
@@ -288,6 +294,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                             onModifyPosition={onModifyPosition}
                             onCancelOrder={onCancelOrder as any}
                             onCloseBulk={onCloseBulk as any}
+                            historyInstrumentCatalog={historyInstrumentCatalog}
                         />
                     </ErrorBoundary>
                 </div>

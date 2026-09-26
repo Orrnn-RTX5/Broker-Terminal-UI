@@ -3,20 +3,25 @@ import i18n, { i18nReady } from '../i18n';
 
 import {
   CHART_POSITION_ACTION_EVENT,
+  CHART_POSITION_MODIFY_EVENT,
   bindTradeLevelHoverTarget,
   type ChartPositionActionDetail,
+  type ChartPositionModifyDetail,
   computeSignedPips,
   createDockedLevelChip,
   createEntryTradeControlBar,
   createTradeLevelControlBar,
   dispatchChartPositionAction,
+  dispatchChartPositionModify,
   estimateTradeLevelMoney,
   estimateTradeMoneyAtPrice,
   formatMoneyLabel,
   formatPipsLabel,
   formatVolumeLots,
   getPipSize,
+  hasChartTradeLevelGestureDragged,
   refreshChartUiTranslations,
+  resolveChartPositionModifyTarget,
   THOUSANDS_SEPARATOR,
 } from './chartTradeControls';
 
@@ -150,6 +155,68 @@ describe('dispatchChartPositionAction', () => {
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ action: 'reverse', ticket: 123, symbol: 'XAUUSD' });
+  });
+});
+
+describe('dispatchChartPositionModify', () => {
+  it('publishes a scoped position identity and rejects invalid requests', () => {
+    const seen: ChartPositionModifyDetail[] = [];
+    const listener = (event: Event) => seen.push((event as CustomEvent<ChartPositionModifyDetail>).detail);
+    window.addEventListener(CHART_POSITION_MODIFY_EVENT, listener);
+
+    dispatchChartPositionModify({
+      ticket: 456,
+      symbol: 'EURUSD',
+      sessionScope: 'authenticated|77|broker-a|https://broker.example',
+    });
+    dispatchChartPositionModify({
+      ticket: Number.NaN,
+      symbol: 'EURUSD',
+      sessionScope: 'authenticated|77|broker-a|https://broker.example',
+    });
+    dispatchChartPositionModify({
+      ticket: 457,
+      symbol: 'EURUSD',
+      sessionScope: '',
+    });
+
+    window.removeEventListener(CHART_POSITION_MODIFY_EVENT, listener);
+    expect(seen).toEqual([{
+      ticket: 456,
+      symbol: 'EURUSD',
+      sessionScope: 'authenticated|77|broker-a|https://broker.example',
+    }]);
+  });
+
+  it('resolves only the current account position with the same ticket and symbol', () => {
+    const current = {
+      id: 456,
+      symbol: 'EURUSD',
+      digits: 5,
+      stopsLevel: 12,
+    };
+    const positions = [current, { id: 456, symbol: 'GBPUSD' }];
+    const detail: ChartPositionModifyDetail = {
+      ticket: 456,
+      symbol: 'eurusd',
+      sessionScope: 'authenticated|77|broker-a|https://broker.example',
+    };
+
+    expect(resolveChartPositionModifyTarget(detail, detail.sessionScope, positions)).toBe(current);
+    expect(resolveChartPositionModifyTarget(
+      detail,
+      'authenticated|88|broker-a|https://broker.example',
+      positions,
+    )).toBeNull();
+    expect(resolveChartPositionModifyTarget({ ...detail, symbol: 'USDJPY' }, detail.sessionScope, positions)).toBeNull();
+  });
+
+  it('latches a real drag even when the pointer returns to its starting point', () => {
+    expect(hasChartTradeLevelGestureDragged(100, 102)).toBe(false);
+    expect(hasChartTradeLevelGestureDragged(100, 104)).toBe(true);
+
+    const draggedAway = hasChartTradeLevelGestureDragged(100, 112);
+    expect(hasChartTradeLevelGestureDragged(100, 100, draggedAway)).toBe(true);
   });
 });
 

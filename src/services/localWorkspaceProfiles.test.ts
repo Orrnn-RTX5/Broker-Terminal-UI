@@ -80,6 +80,9 @@ const setRuntimeState = (symbol = 'EURUSD') => {
     showGrid: false,
   }));
   localStorage.setItem('rtx5_symbol_sets', JSON.stringify({ Desk: [symbol, 'GBPUSD'] }));
+  localStorage.setItem('rtx5_symbol_set_columns', JSON.stringify({
+    Desk: ['symbol', 'bid', 'ask', 'time'],
+  }));
 };
 
 describe('LocalWorkspaceProfileService', () => {
@@ -123,6 +126,7 @@ describe('LocalWorkspaceProfileService', () => {
       hiddenSymbols: ['USDJPY'],
       columns: ['symbol', 'bid', 'ask', 'time'],
       symbolSets: { Desk: ['EURUSD', 'GBPUSD'] },
+      symbolSetColumns: { Desk: ['symbol', 'bid', 'ask', 'time'] },
     });
     expect(service.listWorkspaceProfiles('200001')).toHaveLength(1);
     expect(service.listWorkspaceProfiles('200002')).toEqual([]);
@@ -167,6 +171,7 @@ describe('LocalWorkspaceProfileService', () => {
     useAppStore.setState({ selectedSymbol: 'XAUUSD', orderVolume: 1 });
     localStorage.setItem('rtx5_hidden_symbols', '[]');
     localStorage.setItem('rtx5_timeframe', 'H4');
+    localStorage.setItem('rtx5_symbol_set_columns', '{}');
 
     const restoredEvent = vi.fn();
     const marketWatchEvent = vi.fn();
@@ -193,6 +198,9 @@ describe('LocalWorkspaceProfileService', () => {
     expect(localStorage.getItem('rtx5_timeframe')).toBe('M15');
     expect(localStorage.getItem('rtx5_chart_type')).toBe('area');
     expect(JSON.parse(localStorage.getItem('rtx5_hidden_symbols')!)).toEqual(['USDJPY']);
+    expect(JSON.parse(localStorage.getItem('rtx5_symbol_set_columns')!)).toEqual({
+      Desk: ['symbol', 'bid', 'ask', 'time'],
+    });
     expect(restoredEvent).toHaveBeenCalledTimes(1);
     expect(marketWatchEvent).toHaveBeenCalledTimes(1);
     expect(timeframeEvent).toHaveBeenCalledTimes(1);
@@ -202,6 +210,36 @@ describe('LocalWorkspaceProfileService', () => {
     window.removeEventListener(MARKET_WATCH_PROFILE_RESTORED_EVENT, marketWatchEvent);
     window.removeEventListener('change-timeframe', timeframeEvent);
     window.removeEventListener('change-chart-type', chartTypeEvent);
+  });
+
+  it('normalizes saved-set columns and loads older profiles without the additive field', () => {
+    const service = new LocalWorkspaceProfileService(localStorage);
+    service.saveCurrentWorkspaceProfile({ accountId: '200001', profileName: 'Portable' });
+
+    const registry = JSON.parse(localStorage.getItem(LOCAL_WORKSPACE_PROFILES_STORAGE_KEY)!);
+    registry.profiles[0].state.marketWatch.symbolSetColumns = {
+      ' Desk ': ['symbol', 'time', 'unsupported', 'time'],
+      Empty: ['unsupported'],
+      '   ': ['bid'],
+    };
+    localStorage.setItem(LOCAL_WORKSPACE_PROFILES_STORAGE_KEY, JSON.stringify(registry));
+
+    expect(service.getWorkspaceProfile({ accountId: '200001', profileName: 'Portable' })
+      ?.state.marketWatch.symbolSetColumns).toEqual({
+      Desk: ['symbol', 'time'],
+      Empty: ['symbol', 'bid', 'ask', 'spread'],
+    });
+
+    delete registry.profiles[0].state.marketWatch.symbolSetColumns;
+    delete registry.profiles[0].state.marketWatch.options.autoRemoveExpired;
+    localStorage.setItem(LOCAL_WORKSPACE_PROFILES_STORAGE_KEY, JSON.stringify(registry));
+
+    const legacyProfile = service.getWorkspaceProfile({
+      accountId: '200001',
+      profileName: 'Portable',
+    });
+    expect(legacyProfile?.state.marketWatch.symbolSetColumns).toEqual({});
+    expect(legacyProfile?.state.marketWatch.options.autoRemoveExpired).toBe(false);
   });
 
   it('returns a safe missing result for another account or a corrupt registry', () => {

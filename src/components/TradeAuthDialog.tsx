@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, ChevronRight, Info, LogIn, ShieldCheck, UserPlus, X } from 'lucide-react';
+import { AlertCircle, ChevronRight, Info, LogIn, UserPlus, X } from 'lucide-react';
 import '../styles/trade-auth-dialog.css';
 import { LoginDialog } from './LoginDialog';
 import { registerRuntimeBrokerDemoAccount } from '../api/demoRegistration';
@@ -48,6 +48,8 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
   const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const primaryActionRef = useRef<HTMLButtonElement>(null);
   const demoRequestGenerationRef = useRef(0);
   const brokerPolicy = useBrokerLoginPolicy(isOpen);
   const brokerId = brokerPolicy?.status === 'ready' ? brokerPolicy.brokerId : '';
@@ -89,6 +91,11 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [closeDialog, isOpen, leaveDemo, mode]);
+
+  useEffect(() => {
+    if (!isOpen || mode !== 'choice' || !brokerId) return;
+    primaryActionRef.current?.focus();
+  }, [brokerId, isOpen, mode]);
 
   const completeDemoSession = (response: Awaited<ReturnType<typeof registerRuntimeBrokerDemoAccount>>) => {
     if (!brokerId) throw new Error('This terminal does not have a broker configured.');
@@ -197,25 +204,38 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
       />
 
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="trade-auth-title"
         aria-describedby="trade-auth-description"
         className="rtx-auth-dialog"
         data-mode={mode}
+        onKeyDown={(event) => {
+          if (event.key !== 'Tab') return;
+          const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]',
+          ) || []);
+          const first = controls[0];
+          const last = controls[controls.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last?.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first?.focus();
+          }
+        }}
       >
         <header className="rtx-auth-dialog__header">
           <div className="rtx-auth-dialog__heading">
-            <span className="rtx-auth-dialog__header-icon" aria-hidden="true">
-              {isDemo ? <UserPlus size={19} strokeWidth={1.8} /> : <ShieldCheck size={19} strokeWidth={1.8} />}
-            </span>
             <div className="rtx-auth-dialog__heading-copy">
-              <h2 id="trade-auth-title" className="rtx-auth-dialog__title">
+              <h2 id="trade-auth-title" className="rtx-dialog-title rtx-auth-dialog__title">
                 {isDemo ? 'Create demo account' : 'Account required to trade'}
               </h2>
               <p id="trade-auth-description" className="rtx-auth-dialog__subtitle">
                 {isDemo
-                  ? 'Set up a practice account with virtual funds.'
+                  ? 'Open a practice account with virtual funds.'
                   : 'Choose an account to continue securely.'}
               </p>
             </div>
@@ -264,6 +284,7 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
 
               <div className="rtx-auth-actions">
                 <button
+                  ref={primaryActionRef}
                   type="button"
                   className="rtx-auth-action rtx-auth-action--primary"
                   onClick={() => setMode('login')}
@@ -273,10 +294,12 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
                     <LogIn size={17} strokeWidth={1.9} />
                   </span>
                   <span className="rtx-auth-action__copy">
-                    <span className="rtx-auth-action__label">Login to real account</span>
-                    <span className="rtx-auth-action__description">Use your existing live trading account</span>
+                    <span className="rtx-auth-action__label">Log in to live account</span>
+                    <span className="rtx-auth-action__description">Access your existing trading account</span>
                   </span>
-                  <ChevronRight className="rtx-auth-action__chevron" size={16} strokeWidth={1.8} aria-hidden="true" />
+                  <span className="rtx-auth-action__cta" aria-hidden="true">
+                    <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" />
+                  </span>
                 </button>
 
                 <button
@@ -290,9 +313,11 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
                   </span>
                   <span className="rtx-auth-action__copy">
                     <span className="rtx-auth-action__label">Create demo account</span>
-                    <span className="rtx-auth-action__description">Practice risk-free with virtual funds</span>
+                    <span className="rtx-auth-action__description">Practice with virtual funds</span>
                   </span>
-                  <ChevronRight className="rtx-auth-action__chevron" size={16} strokeWidth={1.8} aria-hidden="true" />
+                  <span className="rtx-auth-action__cta" aria-hidden="true">
+                    <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" />
+                  </span>
                 </button>
               </div>
 
@@ -310,8 +335,7 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
                 onClick={closeDialog}
                 className="rtx-auth-guest-link"
               >
-                <span>Continue browsing in guest mode</span>
-                <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" />
+                <span>Continue browsing as guest</span>
               </button>
             </div>
           </>

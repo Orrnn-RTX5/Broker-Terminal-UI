@@ -136,6 +136,161 @@ export interface Session {
   last_seen_at?: number;
 }
 
+export type SymbolSpecificationWeekday =
+  | 'sunday'
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday';
+
+export interface SymbolSpecificationSessionRange {
+  start: string | number;
+  end: string | number;
+}
+
+export interface SymbolSpecificationDaySessions {
+  quotes?: SymbolSpecificationSessionRange[];
+  trade?: SymbolSpecificationSessionRange[];
+}
+
+export interface SymbolSpecificationMarginTier {
+  order_type: string;
+  range_label?: string;
+  notional_from?: number;
+  notional_to?: number;
+  initial_rate?: number;
+  initial_per_lot?: number;
+  maintenance_rate?: number;
+  maintenance_per_lot?: number;
+  initial_per_lot_approximate?: boolean;
+  maintenance_per_lot_approximate?: boolean;
+  currency?: string;
+}
+
+export interface SymbolSpecificationCommissionTier {
+  label?: string;
+  range_label?: string;
+  volume_from?: number;
+  volume_to?: number;
+  turnover_from?: number;
+  turnover_to?: number;
+  value?: number;
+  value_display?: string;
+  currency?: string;
+  unit?: string;
+}
+
+export interface SymbolSpecificationCommissionSchedule {
+  title?: string;
+  description?: string;
+  charge_mode?: string;
+  basis?: string;
+  direction?: string;
+  tiers: SymbolSpecificationCommissionTier[];
+}
+
+export interface SymbolSpecificationMarginSpread {
+  name: string;
+  leg_a: string | string[];
+  leg_b: string | string[];
+  margin_type?: string;
+  margin_display?: string;
+  initial_margin?: number;
+  maintenance_margin?: number;
+  currency?: string;
+}
+
+/**
+ * Account-scoped symbol snapshot returned by the broker. Every property is
+ * optional because MT5 conditionally exposes fields by instrument class.
+ * Consumers must not synthesize missing broker values.
+ */
+export interface SymbolSpecificationPayload {
+  description?: string;
+  page_url?: string;
+  page?: string;
+  isin?: string;
+  category?: string;
+  exchange?: string;
+  cfi?: string;
+  sector?: string;
+  sector_name?: string;
+  industry?: string;
+  industry_name?: string;
+  country?: string;
+  digits?: number;
+  contract_size?: number;
+  contract_size_unit?: string;
+  contract_size_display?: string;
+  spread?: number;
+  spread_float?: boolean;
+  stops_level?: number;
+  trade_stops_level?: number;
+  freeze_level?: number;
+  trade_freeze_level?: number;
+  currency_base?: string;
+  currency_margin?: string;
+  currency_profit?: string;
+  currency_deposit?: string;
+  trade_calc_mode?: number | string;
+  calc_mode?: number | string;
+  tick_size?: number;
+  tick_value?: number;
+  tick_value_profit?: number;
+  tick_value_loss?: number;
+  margin_initial?: number;
+  margin_maintenance?: number;
+  margin_hedged?: number;
+  margin_hedged_use_leg?: boolean;
+  chart_mode?: number | string;
+  trade_mode?: number | string;
+  trade_exemode?: number | string;
+  order_gtc_mode?: number | string;
+  filling_mode?: number | string | string[];
+  trade_fill_flags?: number | string[];
+  expiration_mode?: number | string | string[];
+  order_expiration_flags?: number | string[];
+  order_mode?: number | string | string[];
+  order_flags?: number | string[];
+  volume_min?: number;
+  volume_max?: number;
+  volume_step?: number;
+  volume_limit?: number;
+  swap_mode?: number | string;
+  swap_type_display?: string;
+  swap_long?: number;
+  swap_short?: number;
+  swap_rollover3days?: number | string;
+  swap_rates?: Partial<Record<SymbolSpecificationWeekday, number>>;
+  sessions?: Partial<Record<SymbolSpecificationWeekday, SymbolSpecificationDaySessions>>;
+  session_time_zone?: string;
+  margin_rate_mode?: string;
+  margin_rate_basis?: string;
+  margin_rate_currency?: string;
+  margin_rates?: SymbolSpecificationMarginTier[];
+  margin_rates_as_of?: string | number;
+  subscription?: string;
+  ticks_history?: string;
+  trade_liquidity_rate?: number;
+  liquidity_rate?: number;
+  start_time?: string | number;
+  expiration_time?: string | number;
+  trade_face_value?: number;
+  face_value?: number;
+  trade_accrued_interest?: number;
+  accrued_interest?: number;
+  option_mode?: number | string;
+  option_right?: number | string;
+  basis?: string;
+  underlying?: string;
+  option_strike?: number;
+  commission?: number | string;
+  commission_schedules?: SymbolSpecificationCommissionSchedule[];
+  margin_spreads?: SymbolSpecificationMarginSpread[];
+}
+
 export interface Instrument {
   symbol?: string;
   name?: string;
@@ -144,6 +299,12 @@ export interface Instrument {
   category?: string;
   digits?: number;
   contract_size?: number;
+  calc_mode?: number | string;
+  tick_size?: number;
+  tick_value?: number;
+  margin_currency?: string;
+  profit_currency?: string;
+  currency_profit?: string;
   min_volume?: number;
   max_volume?: number;
   volume_step?: number;
@@ -156,7 +317,10 @@ export interface Instrument {
   enabled?: boolean;
   trading_enabled?: boolean;
   tradingEnabled?: boolean;
+  specification?: SymbolSpecificationPayload;
 }
+
+export type InstrumentSpecification = Instrument & SymbolSpecificationPayload;
 
 export interface Tick {
   symbol: string;

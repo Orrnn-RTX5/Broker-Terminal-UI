@@ -27,6 +27,7 @@ const HIDDEN_SYMBOLS_STORAGE_KEY = 'rtx5_hidden_symbols';
 const MARKET_WATCH_COLUMNS_STORAGE_KEY = 'rtx5_marketwatch_cols';
 const MARKET_WATCH_OPTIONS_STORAGE_KEY = 'rtx5_marketwatch_options';
 const MARKET_WATCH_SYMBOL_SETS_STORAGE_KEY = 'rtx5_symbol_sets';
+const MARKET_WATCH_SYMBOL_SET_COLUMNS_STORAGE_KEY = 'rtx5_symbol_set_columns';
 
 const CHART_TYPES = ['candlestick', 'bar', 'line', 'area'] as const;
 const TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'] as const;
@@ -41,6 +42,7 @@ const MARKET_WATCH_COLUMNS = [
   'low',
   'volume',
   'time',
+  'source',
 ] as const;
 
 export type WorkspaceChartType = typeof CHART_TYPES[number];
@@ -79,6 +81,7 @@ export interface WorkspaceMarketWatchSnapshot {
   columns: WorkspaceMarketWatchColumn[];
   options: WorkspaceMarketWatchOptions;
   symbolSets: Record<string, string[]>;
+  symbolSetColumns: Record<string, WorkspaceMarketWatchColumn[]>;
 }
 
 export interface LocalWorkspaceProfileState {
@@ -234,7 +237,7 @@ const normalizeWatchlists = (value: unknown): Watchlist[] => {
 const DEFAULT_MARKET_WATCH_OPTIONS: WorkspaceMarketWatchOptions = {
   useSystemColors: true,
   showMilliseconds: false,
-  autoRemoveExpired: true,
+  autoRemoveExpired: false,
   autoArrange: true,
   showGrid: true,
 };
@@ -275,6 +278,17 @@ const normalizeSymbolSets = (value: unknown): Record<string, string[]> => {
   const entries = Object.entries(value).slice(0, 100).flatMap(([name, symbols]) => {
     const normalizedName = name.trim().slice(0, 100);
     return normalizedName ? [[normalizedName, normalizeSymbolList(symbols)] as const] : [];
+  });
+  return Object.fromEntries(entries);
+};
+
+const normalizeSymbolSetColumns = (
+  value: unknown,
+): Record<string, WorkspaceMarketWatchColumn[]> => {
+  if (!isRecord(value)) return {};
+  const entries = Object.entries(value).slice(0, 100).flatMap(([name, columns]) => {
+    const normalizedName = name.trim().slice(0, 100);
+    return normalizedName ? [[normalizedName, normalizeColumns(columns)] as const] : [];
   });
   return Object.fromEntries(entries);
 };
@@ -401,6 +415,7 @@ const normalizeStoredProfile = (value: unknown): LocalWorkspaceProfile | null =>
         columns: normalizeColumns(rawMarketWatch.columns),
         options: normalizeMarketWatchOptions(rawMarketWatch.options),
         symbolSets: normalizeSymbolSets(rawMarketWatch.symbolSets),
+        symbolSetColumns: normalizeSymbolSetColumns(rawMarketWatch.symbolSetColumns),
       },
     },
   };
@@ -505,6 +520,9 @@ export class LocalWorkspaceProfileService {
           columns: normalizeColumns(readJson(storage, MARKET_WATCH_COLUMNS_STORAGE_KEY)),
           options: normalizeMarketWatchOptions(readJson(storage, MARKET_WATCH_OPTIONS_STORAGE_KEY)),
           symbolSets: normalizeSymbolSets(readJson(storage, MARKET_WATCH_SYMBOL_SETS_STORAGE_KEY)),
+          symbolSetColumns: normalizeSymbolSetColumns(
+            readJson(storage, MARKET_WATCH_SYMBOL_SET_COLUMNS_STORAGE_KEY),
+          ),
         },
       },
     };
@@ -605,6 +623,10 @@ export class LocalWorkspaceProfileService {
     storage.setItem(MARKET_WATCH_COLUMNS_STORAGE_KEY, JSON.stringify(marketWatch.columns));
     storage.setItem(MARKET_WATCH_OPTIONS_STORAGE_KEY, JSON.stringify(marketWatch.options));
     storage.setItem(MARKET_WATCH_SYMBOL_SETS_STORAGE_KEY, JSON.stringify(marketWatch.symbolSets));
+    storage.setItem(
+      MARKET_WATCH_SYMBOL_SET_COLUMNS_STORAGE_KEY,
+      JSON.stringify(marketWatch.symbolSetColumns),
+    );
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('change-timeframe', {
@@ -801,6 +823,7 @@ export const createBuiltinWorkspaceProfile = (
           showGrid: true,
         },
         symbolSets: {},
+        symbolSetColumns: {},
       },
     },
   };

@@ -851,19 +851,35 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog :is(input, se
   color-scheme: light !important;
 }
 
-/* The trade auth dialog ships a hardcoded dark palette; without these tokens
-   its title and action labels keep dark-theme colors on the light shell. */
+/* Trade authentication follows the same restrained surfaces as the terminal. */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-backdrop {
   background: rgba(32, 36, 42, 0.28) !important;
   backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog {
+  --auth-surface: var(--rtx-light-elevated);
+  --auth-subtle: var(--rtx-light-panel-subtle);
+  --auth-control: var(--rtx-light-field);
+  --auth-hover: var(--rtx-light-hover);
+  --auth-border: var(--rtx-light-border-strong);
+  --auth-border-strong: var(--rtx-light-control-border-hover);
+  --auth-text: var(--rtx-light-text);
+  --auth-muted: var(--rtx-light-text-secondary);
+  --auth-primary: var(--rtx-light-accent);
+  --auth-primary-hover: var(--rtx-light-accent-strong);
+  --auth-primary-pressed: var(--rtx-light-accent-pressed);
+  --auth-primary-soft: var(--rtx-light-accent-soft);
   background: var(--rtx-light-elevated) !important;
   border-color: var(--rtx-light-border-strong) !important;
   border-radius: 10px !important;
   color: var(--rtx-light-text) !important;
   box-shadow: var(--shadow-xl) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog::before {
+  display: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-dialog__header,
@@ -877,12 +893,6 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__title {
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__subtitle {
   color: var(--rtx-light-text-secondary) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__header-icon {
-  background: var(--rtx-light-accent-soft) !important;
-  border-color: var(--rtx-light-accent-border) !important;
-  color: var(--rtx-light-accent-strong) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__close {
@@ -949,8 +959,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-badge--action {
   color: var(--rtx-light-text-secondary) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--primary,
-  .rtx-auth-button[data-variant='primary']) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-button[data-variant='primary'] {
   background: var(--rtx-light-accent) !important;
   border-color: var(--rtx-light-accent) !important;
   color: #ffffff !important;
@@ -958,28 +967,57 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--primary,
   text-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--primary,
-  .rtx-auth-button[data-variant='primary']):hover:not(:disabled) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--primary {
+  background: var(--rtx-light-panel-subtle) !important;
+  border-color: color-mix(in srgb, var(--rtx-light-accent) 36%, var(--rtx-light-border-strong)) !important;
+  color: var(--rtx-light-text) !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--primary .rtx-auth-action__icon {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--rtx-light-accent) !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-button[data-variant='primary']:hover:not(:disabled) {
   background: var(--rtx-light-accent-strong) !important;
   border-color: var(--rtx-light-accent-strong) !important;
   color: #ffffff !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--primary,
-  .rtx-auth-button[data-variant='primary']):active:not(:disabled) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--primary:hover:not(:disabled) {
+  background: var(--rtx-light-hover) !important;
+  border-color: color-mix(in srgb, var(--rtx-light-accent) 56%, var(--rtx-light-border-strong)) !important;
+  color: var(--rtx-light-text) !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-button[data-variant='primary']:active:not(:disabled) {
   background: var(--rtx-light-accent-pressed) !important;
   border-color: var(--rtx-light-accent-pressed) !important;
   color: #ffffff !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--primary :is(.rtx-auth-action__description,
-  .rtx-auth-action__chevron) {
-  color: #ffffff !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--primary:active:not(:disabled) {
+  background: var(--rtx-light-pressed) !important;
+  border-color: color-mix(in srgb, var(--rtx-light-accent) 46%, var(--rtx-light-border-strong)) !important;
+  color: var(--rtx-light-text) !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--primary .rtx-auth-action__description {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--primary .rtx-auth-action__cta {
+  color: var(--rtx-light-accent-strong) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--secondary,
   .rtx-auth-button[data-variant='ghost']) {
-  background: var(--rtx-light-panel) !important;
+  background: transparent !important;
   border-color: var(--rtx-light-border-strong) !important;
   color: var(--rtx-light-text-secondary) !important;
   box-shadow: none !important;
@@ -999,9 +1037,9 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-auth-action--secondary,
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--secondary .rtx-auth-action__icon {
-  background: var(--rtx-light-panel-subtle) !important;
-  border-color: var(--rtx-light-border) !important;
-  color: var(--rtx-light-accent-strong) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--rtx-light-text-muted) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--secondary .rtx-auth-action__label {
@@ -1009,12 +1047,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--secondary .rtx-
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--secondary :is(.rtx-auth-action__description,
-  .rtx-auth-action__chevron) {
+  .rtx-auth-action__cta) {
   color: var(--rtx-light-text-muted) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__footer--choice {
-  background: var(--rtx-light-canvas) !important;
+  background: transparent !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-guest-link {
@@ -1030,8 +1068,24 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field__label {
   color: var(--rtx-light-text-secondary) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field input {
+  background: var(--rtx-light-field) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field input::placeholder {
+  color: var(--rtx-light-text-muted) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field input:hover:not(:focus) {
   border-color: var(--rtx-light-control-border-hover) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field input:focus {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-accent) !important;
+  box-shadow: 0 0 0 3px var(--rtx-light-focus-ring) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field__hint {

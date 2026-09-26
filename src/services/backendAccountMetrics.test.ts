@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractBackendAccountRecord, getBackendAccountUpdateKeys, isBackendAccountForLogin, mergeBackendAccountSnapshot, normalizeBackendAccount } from './backendAccountMetrics';
+import { extractBackendAccountRecord, getBackendAccountUpdateKeys, isBackendAccountForLogin, isOtherBrokerId, mergeBackendAccountSnapshot, normalizeBackendAccount } from './backendAccountMetrics';
 
 describe('backend account metrics', () => {
   it('retains newer WS fields while a slower initial REST snapshot supplies currency and omitted values', () => {
@@ -58,5 +58,20 @@ describe('backend account metrics', () => {
     expect(isBackendAccountForLogin({ data: { data: { login: 200002, equity: 99 } } }, 200001)).toBe(false);
     expect(isBackendAccountForLogin({ data: { data: { login: 200001, equity: 99 } } }, 200001)).toBe(true);
     expect(isBackendAccountForLogin({ data: { broker_id: 'Other', equity: 99 } }, 200001, 'Nexa')).toBe(false);
+  });
+
+  it('matches the lowercased session broker id against backend casing', () => {
+    // The committed session scope always stores the broker id lowercased.
+    expect(isBackendAccountForLogin({ data: { broker_id: 'ORRNN', login: 200003, equity: 99 } }, 200003, 'orrnn')).toBe(true);
+    expect(isBackendAccountForLogin({ data: { broker_id: ' Test ', equity: 99 } }, 200003, 'test')).toBe(true);
+    expect(isBackendAccountForLogin({ data: { broker_id: 'OTHER', equity: 99 } }, 200003, 'orrnn')).toBe(false);
+  });
+
+  it('flags only a genuinely different broker on position rows', () => {
+    expect(isOtherBrokerId('ORRNN', 'orrnn')).toBe(false);
+    expect(isOtherBrokerId('orrnn', 'orrnn')).toBe(false);
+    expect(isOtherBrokerId(undefined, 'orrnn')).toBe(false);
+    expect(isOtherBrokerId('ORRNN', '')).toBe(false);
+    expect(isOtherBrokerId('achiever-financials', 'orrnn')).toBe(true);
   });
 });

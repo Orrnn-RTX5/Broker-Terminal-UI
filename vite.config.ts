@@ -4,6 +4,7 @@ import { validateWebBrokerEnvironment } from './viteWebEnv'
 import { webRuntimeConfigPlugin } from './viteWebRuntimeConfig'
 import { terminalPreloadPlugin } from './viteTerminalPreload'
 import react from '@vitejs/plugin-react'
+import reactSwc from '@vitejs/plugin-react-swc'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import * as http from 'node:http'
 import * as https from 'node:https'
@@ -11,6 +12,7 @@ import * as net from 'node:net'
 import { isIP, type Socket } from 'node:net'
 import * as tls from 'node:tls'
 import { resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
 import {
   createPinnedConnectionOptions,
   normalizeProxyAccessOrigin,
@@ -526,8 +528,13 @@ const retiredServiceWorkerDevPlugin = (): Plugin => ({
   },
 })
 
+const DEV_WATCH_IGNORED_DIRS = [
+  'artifacts', 'draft', 'dist', 'dist-ssr', 'release', 'build', 'docs', 'test-logs', 'tmp',
+  'mt5-trading-panel', 'codex-opener', '.qwen', '.claude', '.github',
+]
+
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '');
   if (mode === 'web') validateWebBrokerEnvironment(env, process.cwd());
   const backendTarget = env.VITE_API_URL || env.VITE_BACKEND_URL || 'https://backend.orrnn.com';
@@ -536,8 +543,13 @@ export default defineConfig(({ mode }) => {
   const wsTarget = (env.VITE_WS_URL || env.VITE_FIX_WS_URL || 'wss://backend.orrnn.com/ws/v2').replace(/\/ws\/v2$/, '');
   const brokerProxyAccess = createBrokerProxyAccess(env);
 
+  const appVersion = String(JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')).version ?? '')
+
   return {
     base: './',
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
+    },
     resolve: {
       alias: mode === 'desktop' || mode === 'electron'
         ? [{ find: './startup/WelcomeTerminalEntry', replacement: resolve(process.cwd(), 'src/startup/DesktopWelcomeTerminal.ts') }]
@@ -548,12 +560,21 @@ export default defineConfig(({ mode }) => {
       retiredServiceWorkerDevPlugin(),
       dynamicBrokerProxyPlugin(['/__broker_api', '/__broker_discovery'], brokerProxyAccess),
       dynamicBrokerWsProxyPlugin('/__broker_feed_ws', brokerProxyAccess),
-      react(),
+      // Dev server: SWC compiles React Fast Refresh several times faster than
+      // Babel, which dominated cold first-page loads. Builds keep plugin-react
+      // so production output is unchanged.
+      command === 'serve' ? reactSwc() : react(),
     ],
     server: {
       host: '127.0.0.1',
       port: 5173,
       open: true,
+      watch: {
+        // Build output, installers, captured artifacts and tool caches hold
+        // thousands of files the app never imports. Watching them costs seconds
+        // of dev-server CPU on Windows and delays the first page load.
+        ignored: DEV_WATCH_IGNORED_DIRS.map((dir) => `${process.cwd().replace(/\\/g, '/')}/${dir}/**`),
+      },
       warmup: {
         clientFiles: [
           './src/main.tsx',

@@ -54,6 +54,70 @@ export const dispatchChartPositionAction = (detail: ChartPositionActionDetail): 
 };
 
 // ---------------------------------------------------------------------------
+// Modify-position dialog event (consumed by the persistent App shell)
+// ---------------------------------------------------------------------------
+
+export const CHART_POSITION_MODIFY_EVENT = 'rtx:chart-position-modify';
+export const CHART_TRADE_LEVEL_CLICK_SLOP_PX = 4;
+
+export interface ChartPositionModifyDetail {
+  ticket: number;
+  symbol: string;
+  sessionScope: string;
+}
+
+export const dispatchChartPositionModify = (detail: ChartPositionModifyDetail): void => {
+  if (typeof window === 'undefined') return;
+  const ticket = Number(detail?.ticket);
+  const symbol = String(detail?.symbol ?? '').trim();
+  const sessionScope = String(detail?.sessionScope ?? '').trim();
+  if (!Number.isSafeInteger(ticket) || ticket <= 0 || !symbol || !sessionScope) return;
+  window.dispatchEvent(new CustomEvent<ChartPositionModifyDetail>(CHART_POSITION_MODIFY_EVENT, {
+    detail: { ticket, symbol, sessionScope },
+  }));
+};
+
+export interface ChartPositionIdentity {
+  id?: unknown;
+  ticket?: unknown;
+  symbol?: unknown;
+}
+
+export const resolveChartPositionModifyTarget = <T extends ChartPositionIdentity>(
+  detail: ChartPositionModifyDetail | null | undefined,
+  currentSessionScope: string,
+  positions: readonly T[],
+): T | null => {
+  const ticket = Number(detail?.ticket);
+  const symbol = String(detail?.symbol ?? '').trim().toUpperCase();
+  if (
+    !Number.isSafeInteger(ticket)
+    || ticket <= 0
+    || !symbol
+    || !detail?.sessionScope
+    || detail.sessionScope !== currentSessionScope
+  ) return null;
+
+  return positions.find(position => (
+    Number(position.id ?? position.ticket) === ticket
+    && String(position.symbol ?? '').trim().toUpperCase() === symbol
+  )) ?? null;
+};
+
+/**
+ * Latches once a level gesture exceeds click slop. Returning to the starting
+ * point must remain a drag so a completed drag can never open the dialog.
+ */
+export const hasChartTradeLevelGestureDragged = (
+  pointerDownY: number,
+  currentY: number,
+  alreadyDragged = false,
+): boolean => alreadyDragged
+  || !Number.isFinite(pointerDownY)
+  || !Number.isFinite(currentY)
+  || Math.abs(currentY - pointerDownY) >= CHART_TRADE_LEVEL_CLICK_SLOP_PX;
+
+// ---------------------------------------------------------------------------
 // Pip / money math
 // ---------------------------------------------------------------------------
 

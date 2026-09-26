@@ -52,7 +52,8 @@ describe('BottomDock trade type presentation', () => {
         expect(headerHelpers).toContain('items-center justify-center px-2 text-center');
         expect(tradeTable).toContain('rtx-trade-table w-full text-center');
         expect(tradeTable).toContain('flex items-center justify-center');
-        expect(tradeTable).toContain('bg-zinc-800 text-white text-center');
+        expect(tradeTable).toContain('rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center');
+        expect(tradeTable).toContain('rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center');
         expect(tradeTable).not.toContain('text-right');
         expect(tradeTable).not.toContain('text-left');
     });
@@ -137,19 +138,15 @@ describe('BottomDock trade type presentation', () => {
         expect(tradeTab).toContain('transition-colors group cursor-default');
         expect(tradeTab).not.toContain('cursor-col-resize');
         expect(tradeTab).not.toContain('cursor-wait');
-        expect(handCursorLines).toHaveLength(6);
+        expect(handCursorLines).toHaveLength(2);
         [
-            'rtx-trade-sl-cell',
-            'rtx-trade-sl-editor',
             'rtx-trade-sl-value',
-            'rtx-trade-tp-cell',
-            'rtx-trade-tp-editor',
             'rtx-trade-tp-value',
         ].forEach(cursorSurface => {
             expect(handCursorLines.some(line => line.includes(cursorSurface))).toBe(true);
         });
         handCursorLines.forEach(line => {
-            expect(line).toMatch(/rtx-trade-(?:sl|tp)-(?:cell|editor|value)/);
+            expect(line).toMatch(/rtx-trade-(?:sl|tp)-value/);
         });
         cursorLines
             .filter(line => !line.includes('cursor-pointer'))

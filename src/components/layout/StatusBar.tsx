@@ -17,6 +17,7 @@ import {
     useTerminalBrokerInfo,
 } from '../../hooks/useTerminalTitle';
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
+import { getAppVersion } from '../../config/appVersion';
 
 interface StatusBarProps {
     wsRef?: React.RefObject<WebSocket | null>;
@@ -30,13 +31,6 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
     const tr = useUiTranslation();
     const visible = useTerminalBarsStore(state => state.statusBarVisible);
     const brokerInfo = useTerminalBrokerInfo();
-    const [currentTime, setCurrentTime] = useState(new Date());
-    useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-        return () => clearInterval(timer);
-    }, []);
-    const gmtTimeStr = currentTime.toISOString().substring(11, 19);
-
     const [logoError, setLogoError] = useState(false);
     useEffect(() => {
         setLogoError(false); // Reset error state on server/logo change
@@ -53,9 +47,7 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
             ? `${WEB_TERMINAL_TITLE} - ${brokerInfo.accountId} - ${brokerInfo.brokerName} - ${brokerInfo.marginMode}`
             : WEB_TERMINAL_TITLE);
 
-    const statusText = `${gmtTimeStr} - ${terminalTitle}`;
-
-    const appVersion = window.electron?.appVersion || '1.0.0';
+    const appVersion = getAppVersion();
     const hasUpdater = Boolean(window.electron?.updater?.isSupported);
     const showDesktopDownload = !window.electron || !window.electron.isPackaged;
     const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload });
@@ -81,7 +73,7 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                         className="h-4 w-4 shrink-0 rounded-sm object-contain"
                         onError={() => setLogoError(true)}
                     />
-                    <span className="rtx-status-bar__metric truncate whitespace-nowrap font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black">{tr(statusText)}</span>
+                    <span className="rtx-status-bar__metric truncate whitespace-nowrap font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black">{tr(terminalTitle)}</span>
                 </div>
             </div>
             <div className="flex shrink-0 items-center gap-4">

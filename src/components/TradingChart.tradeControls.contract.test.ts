@@ -11,6 +11,10 @@ const appSource = readFileSync(
   resolve(process.cwd(), 'src/App.tsx'),
   'utf8',
 ).replace(/\r\n/g, '\n');
+const modifyDialogHostSource = readFileSync(
+  resolve(process.cwd(), 'src/components/ChartModifyPositionDialogHost.tsx'),
+  'utf8',
+).replace(/\r\n/g, '\n');
 
 const chartSection = (startText: string, endText: string) => {
   const start = chartSource.indexOf(startText);
@@ -135,6 +139,36 @@ describe('cTrader-style position controls contract', () => {
     expect(levelControls).toContain('onHoverChange: active => {');
   });
 
+  it('opens Modify Position on an SL/TP click without replacing drag-to-edit', () => {
+    const pointerRelease = chartSection('const handlePointerUp = (e: PointerEvent) => {', 'const handlePointerCancel = () => {');
+    expect(pointerRelease).toContain("const isLevelClick = grabbedType !== 'ENTRY'");
+    expect(pointerRelease).toContain('hasChartTradeLevelGestureDragged(pointerDownY, y, dragState.didDrag)');
+    expect(pointerRelease).toContain('dispatchChartPositionModify({');
+    expect(pointerRelease).toContain('sessionScope: brokerAccountSessionScope');
+    expect(pointerRelease).toContain('} else if (rawFinalPrice !== null) {');
+    expect(pointerRelease).toContain('applyTradeLevelDragUpdate({');
+    expect(pointerRelease).toContain('api.positions.modifyPosition(ticket, tradeLevelModifyPatch(update.role, update.price))');
+  });
+
+  it('scopes every chart level-modified event to its ticket and symbol owner', () => {
+    const removalSubmit = chartSection('const submitTradeLevelChange = (', 'const createEntryControlsForTrade = (');
+    const dragRelease = chartSection('const handlePointerUp = (e: PointerEvent) => {', 'const handlePointerCancel = () => {');
+    for (const section of [removalSubmit, dragRelease]) {
+      expect(section).toContain("new CustomEvent('rtx:trade-modified'");
+      expect(section).toContain('symbol: tradeObj.symbol');
+      expect(section).toContain('sessionScope: brokerAccountSessionScope');
+    }
+  });
+
+  it('owns chart Modify Position requests in the persistent App shell', () => {
+    expect(appSource).toContain('<ChartModifyPositionDialogHost resolveAllowedSymbol={getAllowedSymbol} />');
+    expect(modifyDialogHostSource).toContain('window.addEventListener(CHART_POSITION_MODIFY_EVENT, handleChartPositionModify);');
+    expect(modifyDialogHostSource).toContain('resolveChartPositionModifyTarget(');
+    expect(modifyDialogHostSource).toContain('getCommittedBrokerAccountSessionScopeKey(');
+    expect(modifyDialogHostSource).toContain('<LazyModifyPositionDialog');
+    expect(modifyDialogHostSource).toContain("window.dispatchEvent(new CustomEvent('rtx:trade-modified'");
+  });
+
   it('colors entry lines by side: dotted blue for BUY, dotted red for SELL', () => {
     expect(chartSource).toContain("const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';");
     expect(chartSource).toContain("const TRADE_ENTRY_LINE_SELL_COLOR = '#ef4444';");
@@ -204,19 +238,20 @@ describe('cTrader-style position controls contract', () => {
   });
 
   it('routes reverse/double/close chart actions into App handlers', () => {
-    expect(appSource).toContain("import { CHART_POSITION_ACTION_EVENT, type ChartPositionActionDetail } from './utils/chartTradeControls';");
+    expect(appSource).toContain('CHART_POSITION_ACTION_EVENT,');
+    expect(appSource).toContain('type ChartPositionActionDetail,');
     expect(appSource).toContain('window.addEventListener(CHART_POSITION_ACTION_EVENT, handleChartPositionAction);');
     expect(appSource).toContain('window.removeEventListener(CHART_POSITION_ACTION_EVENT, handleChartPositionAction);');
     expect(appSource).toContain('const handleReversePosition = async (ticket: number) => {');
     expect(appSource).toContain('const handleDoublePosition = async (ticket: number) => {');
     // Reverse must not send the opposite order when the close failed.
-    const closeAwait = appSource.indexOf('const closed = await handleClosePosition(ticket);');
+    const closeAwait = appSource.indexOf('const closed = await handleClosePosition(ticket, { showReceipt: false });');
     const closeGuard = appSource.indexOf('if (!closed) {', closeAwait);
     const reverseOrder = appSource.indexOf('side: reverseSide,', closeAwait);
     expect(closeAwait).toBeGreaterThan(-1);
     expect(closeGuard).toBeGreaterThan(closeAwait);
     expect(reverseOrder).toBeGreaterThan(closeGuard);
     // Close reports success so reverse can sequence on it.
-    expect(appSource).toContain('const handleClosePosition = async (id: number): Promise<boolean> => {');
+    expect(appSource).toContain('const handleClosePosition = async (\n    id: number,\n    { showReceipt = true }: { showReceipt?: boolean } = {},\n  ): Promise<boolean> => {');
   });
 });

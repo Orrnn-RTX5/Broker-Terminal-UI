@@ -1,13 +1,10 @@
-/* Trade authentication dialog — enterprise-grade financial interface.
-   Restrained dark surfaces, a strict typographic scale (11 / 12.5 / 13 / 16px),
-   tabular numerals for trade figures, and a clear primary/secondary/tertiary
-   action hierarchy. */
+/* Trade authentication dialog — compact, broker-grade account access. */
 
 .rtx-auth-backdrop {
   align-items: center;
-  background: rgb(4 8 15 / 68%);
-  backdrop-filter: blur(6px) saturate(110%);
-  -webkit-backdrop-filter: blur(6px) saturate(110%);
+  background: rgb(2 6 12 / 68%);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -27,26 +24,28 @@
 }
 
 .rtx-auth-dialog {
-  --auth-surface: var(--bg-secondary, #131316);
-  --auth-subtle: var(--bg-tertiary, #191a1e);
-  --auth-control: var(--bg-primary, #0d0d11);
-  --auth-hover: var(--bg-quaternary, #222226);
-  --auth-border: var(--border-secondary, #333338);
-  --auth-border-strong: var(--border-tertiary, #404048);
-  --auth-text: var(--text-primary, #e2e2e8);
-  --auth-muted: var(--text-secondary, #808088);
-  --auth-primary: #0078d4;
-  --auth-primary-hover: #0b83dd;
-  --auth-primary-pressed: #0067b8;
+  --auth-surface: var(--bg-secondary, #1c1d21);
+  --auth-subtle: var(--bg-tertiary, #24262b);
+  --auth-control: var(--bg-primary, #17181c);
+  --auth-hover: var(--bg-quaternary, #2b2d32);
+  --auth-border: var(--border-secondary, rgb(255 255 255 / 10%));
+  --auth-border-strong: var(--border-tertiary, #4f535a);
+  --auth-text: var(--text-primary, #f1f3f5);
+  --auth-muted: var(--text-secondary, #9aa0a6);
+  --auth-primary: #7aacca;
+  --auth-primary-hover: #8bb8d3;
+  --auth-primary-pressed: #669ab9;
+  --auth-primary-soft: rgb(122 172 202 / 10%);
+  --rtx-type-family: var(--rtx-ui-font-family, "Segoe UI", sans-serif);
+  --rtx-type-size: var(--rtx-ui-font-size, 14px);
   background: var(--auth-surface);
   border: 1px solid var(--auth-border);
-  border-radius: 12px;
-  box-shadow: 0 24px 80px rgb(0 0 0 / 48%), 0 4px 18px rgb(0 0 0 / 24%);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 48%);
   color: var(--auth-text);
   display: flex;
   flex-direction: column;
-  font-family: var(--font-sans);
-  font-size: 13px;
+  font-family: var(--rtx-ui-font-family, "Segoe UI", sans-serif);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'ss01' on, 'cv05' on;
@@ -56,8 +55,12 @@
   max-width: calc(100vw - 32px);
   overflow: hidden;
   position: relative;
-  width: 432px;
-  animation: rtx-auth-rise 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  width: 416px;
+  animation: rtx-auth-rise 140ms ease-out;
+}
+
+.rtx-auth-dialog::before {
+  display: none;
 }
 
 @keyframes rtx-auth-fade {
@@ -80,8 +83,7 @@
   .rtx-auth-backdrop,
   .rtx-auth-dialog { animation: none; }
 
-  .rtx-auth-action__chevron,
-  .rtx-auth-guest-link svg { transition: none; }
+  .rtx-auth-action { transition: none; }
 
   .rtx-auth-spinner { animation: none; }
 }
@@ -89,34 +91,19 @@
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
 .rtx-auth-dialog__header {
-  align-items: center;
+  align-items: flex-start;
   background: var(--auth-surface);
   border-bottom: 1px solid var(--auth-border);
   display: flex;
   gap: 16px;
   justify-content: space-between;
-  padding: 20px 22px;
+  padding: 18px 20px 16px;
   position: relative;
 }
 
 .rtx-auth-dialog__heading {
-  align-items: center;
-  display: flex;
-  gap: 13px;
+  display: block;
   min-width: 0;
-}
-
-.rtx-auth-dialog__header-icon {
-  align-items: center;
-  background: color-mix(in srgb, var(--auth-primary) 14%, var(--auth-subtle));
-  border: 1px solid color-mix(in srgb, var(--auth-primary) 36%, var(--auth-border));
-  border-radius: 9px;
-  color: #67b7f7;
-  display: flex;
-  flex: 0 0 40px;
-  height: 40px;
-  justify-content: center;
-  width: 40px;
 }
 
 .rtx-auth-dialog__heading-copy {
@@ -124,20 +111,25 @@
 }
 
 .rtx-auth-dialog__title {
+  --rtx-type-size: 17px;
+  --rtx-type-weight: 600;
   color: var(--auth-text);
-  font-size: 16.5px;
-  font-weight: 600;
-  letter-spacing: -0.018em;
-  line-height: 1.3;
+  letter-spacing: -0.01em !important;
   margin: 0;
 }
 
+/* Keep this compact dialog role above the application's global h2 role. */
+html:root body .rtx-auth-dialog__title {
+  --rtx-type-size: 17px;
+  --rtx-type-weight: 600;
+  line-height: 23px !important;
+}
+
 .rtx-auth-dialog__subtitle {
+  --rtx-type-size: 12px;
   color: var(--auth-muted);
-  font-size: 12px;
-  font-weight: 400;
   letter-spacing: 0;
-  line-height: 1.45;
+  line-height: 18px;
   margin: 3px 0 0;
 }
 
@@ -149,18 +141,18 @@
   color: var(--auth-muted);
   cursor: pointer;
   display: flex;
-  flex: 0 0 30px;
-  height: 30px;
+  flex: 0 0 28px;
+  height: 28px;
   justify-content: center;
-  margin-right: -4px;
+  margin: -2px -4px 0 0;
   padding: 0;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-  width: 30px;
+  width: 28px;
 }
 
 .rtx-auth-dialog__close:hover {
   background: var(--auth-hover);
-  border-color: var(--auth-border);
+  border-color: var(--auth-border-strong);
   color: var(--auth-text);
 }
 
@@ -173,22 +165,23 @@
 .rtx-auth-dialog__body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: 16px 20px 18px;
 }
 
 .rtx-auth-dialog[data-mode='choice'] .rtx-auth-dialog__body {
-  gap: 14px;
-  padding: 18px 22px 14px;
+  gap: 12px;
+  padding: 16px 20px 18px;
 }
 
 /* ── Structured Trade Ticket Receipt ────────────────────────────────────── */
 
 .rtx-auth-order-card {
-  background: #24262b;
-  border: 1px solid #383b40;
-  border-radius: 10px;
+  background: color-mix(in srgb, var(--auth-subtle) 88%, transparent);
+  border: 1px solid var(--auth-border);
+  border-radius: 8px;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -198,7 +191,7 @@
   align-items: center;
   display: flex;
   justify-content: space-between;
-  padding: 13px 16px;
+  padding: 10px 12px;
 }
 
 .rtx-auth-order-lead {
@@ -209,10 +202,10 @@
 }
 
 .rtx-auth-badge {
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 3px);
+  --rtx-type-weight: 700;
   border-radius: 5px;
   flex-shrink: 0;
-  font-size: 10.5px;
-  font-weight: 700;
   letter-spacing: 0.09em;
   line-height: 1;
   padding: 4.5px 7px;
@@ -222,13 +215,13 @@
 .rtx-auth-badge--buy {
   background: rgba(16, 197, 152, 0.12);
   box-shadow: inset 0 0 0 1px rgba(16, 197, 152, 0.3);
-  color: #2fd3a8;
+  color: var(--color-profit, #2fd3a8);
 }
 
 .rtx-auth-badge--sell {
   background: rgba(246, 92, 99, 0.12);
   box-shadow: inset 0 0 0 1px rgba(246, 92, 99, 0.3);
-  color: #ff7378;
+  color: var(--color-loss, #ff7378);
 }
 
 .rtx-auth-badge--action {
@@ -238,9 +231,8 @@
 }
 
 .rtx-auth-order-symbol {
-  color: #f4f5f7;
-  font-size: 13.5px;
-  font-weight: 600;
+  --rtx-type-weight: 600;
+  color: var(--auth-text);
   letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -248,41 +240,38 @@
 }
 
 .rtx-auth-order-dot {
-  color: #4d5157;
-  font-size: 13px;
-  font-weight: 400;
+  color: color-mix(in srgb, var(--auth-muted) 44%, transparent);
 }
 
 .rtx-auth-order-volume {
-  color: #a6abb2;
-  font-size: 12.5px;
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
+  --rtx-type-weight: 500;
+  color: var(--auth-muted);
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
 .rtx-auth-order-note {
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
   align-items: flex-start;
-  background: #1c1d21;
-  border-top: 1px solid #303338;
+  background: color-mix(in srgb, var(--auth-control) 82%, transparent);
+  border-top: 1px solid var(--auth-border);
   display: flex;
-  font-size: 12px;
   gap: 9px;
   line-height: 1.55;
-  padding: 11px 16px 12px;
+  padding: 9px 12px 10px;
 }
 
 .rtx-auth-order-note-icon {
-  color: #7aa5f0;
+  color: var(--auth-primary);
   flex-shrink: 0;
   margin-top: 2.5px;
 }
 
 .rtx-auth-order-note-text {
-  color: #9aa0a8;
+  color: var(--auth-muted);
   flex: 1;
-  font-weight: 400;
   letter-spacing: 0.005em;
 }
 
@@ -291,28 +280,28 @@
 .rtx-auth-actions {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 8px;
 }
 
 .rtx-auth-action {
   align-items: center;
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
   display: flex;
   font-family: inherit;
-  gap: 12px;
+  gap: 10px;
   justify-content: flex-start;
-  min-height: 64px;
-  padding: 10px 12px;
+  min-height: 58px;
+  padding: 9px 12px;
   text-decoration: none;
   text-align: left;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease;
   width: 100%;
 }
 
 .rtx-auth-action:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 0.48;
 }
 
 .rtx-auth-action svg {
@@ -321,96 +310,94 @@
 
 .rtx-auth-action__icon {
   align-items: center;
-  border-radius: 7px;
   display: flex;
-  flex: 0 0 36px;
-  height: 36px;
+  flex: 0 0 20px;
+  height: 20px;
   justify-content: center;
-  width: 36px;
+  width: 20px;
 }
 
 .rtx-auth-action__copy {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
 .rtx-auth-action__label {
-  font-size: 13.5px;
-  font-weight: 600;
+  --rtx-type-size: var(--rtx-ui-font-size, 14px);
+  --rtx-type-weight: 600;
   letter-spacing: -0.006em;
   line-height: 1.25;
 }
 
 .rtx-auth-action__description {
-  font-size: 11.5px;
-  font-weight: 400;
+  --rtx-type-size: 12px;
   letter-spacing: 0;
   line-height: 1.35;
 }
 
-.rtx-auth-action__chevron {
+.rtx-auth-action__cta {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
   margin-left: auto;
-  transition: transform 140ms ease;
-}
-
-.rtx-auth-action:hover:not(:disabled) .rtx-auth-action__chevron {
-  transform: translateX(2px);
 }
 
 /* Primary: direct broker sign-in path */
 .rtx-auth-action--primary {
-  background: var(--auth-primary);
-  border: 1px solid var(--auth-primary);
-  box-shadow: 0 5px 16px -8px rgb(0 120 212 / 80%) !important;
-  color: #ffffff;
+  background: var(--auth-subtle);
+  border: 1px solid color-mix(in srgb, var(--auth-primary) 42%, var(--auth-border));
+  box-shadow: none !important;
+  color: var(--auth-text);
   text-shadow: none;
 }
 
 .rtx-auth-action--primary .rtx-auth-action__icon {
-  background: rgb(255 255 255 / 12%);
-  border: 1px solid rgb(255 255 255 / 15%);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--auth-primary);
 }
 
 .rtx-auth-action--primary .rtx-auth-action__description {
-  color: #ffffff;
+  color: var(--auth-muted);
 }
 
-.rtx-auth-action--primary .rtx-auth-action__chevron {
-  color: #ffffff;
+.rtx-auth-action--primary .rtx-auth-action__cta {
+  color: var(--auth-primary);
 }
 
 .rtx-auth-action--primary:hover:not(:disabled) {
-  background: var(--auth-primary-hover);
-  border-color: var(--auth-primary-hover);
-  box-shadow: 0 7px 20px -8px rgb(0 120 212 / 90%) !important;
+  background: var(--auth-hover);
+  border-color: color-mix(in srgb, var(--auth-primary) 58%, var(--auth-border));
+  box-shadow: none !important;
 }
 
 .rtx-auth-action--primary:active:not(:disabled) {
-  background: var(--auth-primary-pressed);
-  border-color: var(--auth-primary-pressed);
+  background: var(--auth-control);
+  border-color: color-mix(in srgb, var(--auth-primary) 48%, var(--auth-border));
   box-shadow: none !important;
 }
 
 /* Secondary: a quiet account-creation path */
 .rtx-auth-action--secondary {
-  background: var(--auth-subtle);
+  background: transparent;
   border: 1px solid var(--auth-border);
   box-shadow: none !important;
   color: var(--auth-text);
 }
 
 .rtx-auth-action--secondary .rtx-auth-action__icon {
-  background: var(--auth-control);
-  border: 1px solid var(--auth-border);
-  color: #67b7f7;
+  background: transparent;
+  border: 0;
+  color: var(--auth-muted);
 }
 
 .rtx-auth-action--secondary .rtx-auth-action__description,
-.rtx-auth-action--secondary .rtx-auth-action__chevron {
-  color: color-mix(in srgb, var(--auth-muted) 78%, var(--auth-text));
+.rtx-auth-action--secondary .rtx-auth-action__cta {
+  color: var(--auth-muted);
 }
 
 .rtx-auth-action--secondary:hover:not(:disabled) {
@@ -429,39 +416,43 @@
 /* ── Footer ─────────────────────────────────────────────────────────────── */
 
 .rtx-auth-dialog__footer {
-  border-top: 1px solid #2e3136;
+  border-top: 1px solid var(--auth-border);
   display: flex;
   gap: 10px;
   justify-content: flex-end;
-  padding: 16px 24px 18px;
+  padding: 14px 20px 16px;
 }
 
 .rtx-auth-dialog__footer--choice {
   align-items: center;
-  background: var(--auth-control);
+  background: transparent;
   border-top: 1px solid var(--auth-border);
   display: flex;
   justify-content: center;
-  padding: 10px 22px;
+  padding: 9px 20px 11px;
 }
 
 .rtx-auth-guest-link {
+  --rtx-type-size: 12px;
+  --rtx-type-weight: 500;
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: 5px;
   color: var(--auth-muted);
   cursor: pointer;
   display: inline-flex;
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  gap: 5px;
-  height: 34px;
+  height: 30px;
   justify-content: center;
   letter-spacing: 0.005em;
-  padding: 0 12px;
+  padding: 0 10px;
   transition: color 120ms ease, background-color 120ms ease;
+}
+
+html:root body .rtx-auth-dialog .rtx-auth-guest-link {
+  --rtx-type-size: 12px;
+  --rtx-type-weight: 500;
 }
 
 .rtx-auth-guest-link:hover {
@@ -469,39 +460,31 @@
   color: var(--auth-text);
 }
 
-.rtx-auth-guest-link svg {
-  transition: transform 120ms ease;
-}
-
-.rtx-auth-guest-link:hover svg {
-  transform: translateX(2px);
-}
-
 /* ── Broker Strip (Demo Form) ───────────────────────────────────────────── */
 
 .rtx-auth-broker {
   align-items: center;
-  background: #24262b;
-  border: 1px solid #383b40;
-  border-radius: 9px;
+  background: var(--auth-subtle);
+  border: 1px solid var(--auth-border);
+  border-radius: 8px;
   display: flex;
   gap: 12px;
-  padding: 11px 16px;
+  padding: 10px 12px;
 }
 
 .rtx-auth-broker__label {
-  color: #8b9096;
-  font-size: 10.5px;
-  font-weight: 600;
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 3px);
+  --rtx-type-weight: 650;
+  color: var(--auth-muted);
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
 .rtx-auth-broker__value {
-  color: #f4f5f7;
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
+  --rtx-type-weight: 600;
+  color: var(--auth-text);
   flex: 1;
-  font-size: 13px;
-  font-weight: 600;
   letter-spacing: 0.005em;
   overflow: hidden;
   text-align: right;
@@ -520,11 +503,7 @@
 .rtx-auth-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: 1fr 1fr;
-}
-
-@media (max-width: 420px) {
-  .rtx-auth-grid { grid-template-columns: 1fr; }
+  grid-template-columns: 1fr;
 }
 
 .rtx-auth-field {
@@ -535,22 +514,22 @@
 }
 
 .rtx-auth-field__label {
-  color: #c3c7cd;
-  font-size: 12px;
-  font-weight: 500;
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
+  --rtx-type-weight: 550;
+  color: color-mix(in srgb, var(--auth-muted) 64%, var(--auth-text));
   letter-spacing: 0.01em;
   line-height: 1.3;
 }
 
 .rtx-auth-field input {
-  background: #24262b;
-  border: 1px solid #383b40;
-  border-radius: 8px;
+  --rtx-type-size: var(--rtx-ui-font-size, 14px);
+  background: var(--auth-subtle);
+  border: 1px solid var(--auth-border);
+  border-radius: 7px;
   box-shadow: none !important;
-  color: #ffffff;
+  color: var(--auth-text);
   font-family: inherit;
-  font-size: 13px;
-  height: 38px;
+  height: 42px;
   letter-spacing: 0.005em;
   outline: none;
   padding: 0 13px;
@@ -559,23 +538,36 @@
 }
 
 .rtx-auth-field input::placeholder {
-  color: #8b9096;
+  color: var(--auth-muted);
   opacity: 1;
 }
 
 .rtx-auth-field input:hover:not(:focus) {
-  border-color: #4f535a;
+  border-color: var(--auth-border-strong);
+}
+
+.rtx-auth-dialog[data-mode='demo'] form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rtx-auth-dialog[data-mode='demo'] .rtx-auth-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .rtx-auth-field input:focus {
-  background: #24262b;
-  border-color: #1a73e8;
-  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.35) !important;
+  background: var(--auth-subtle);
+  border-color: var(--auth-primary);
+  box-shadow: 0 0 0 3px rgb(47 140 255 / 18%) !important;
 }
 
 .rtx-auth-field__hint {
-  color: #8b9096;
-  font-size: 11.5px;
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 2px);
+  color: var(--auth-muted);
   letter-spacing: 0.005em;
   line-height: 1.5;
 }
@@ -583,14 +575,14 @@
 /* ── Alert ──────────────────────────────────────────────────────────────── */
 
 .rtx-auth-alert {
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
+  --rtx-type-weight: 450;
   align-items: flex-start;
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.25);
-  border-radius: 8px;
+  border-radius: 7px;
   color: #f59396;
   display: flex;
-  font-size: 12px;
-  font-weight: 450;
   gap: 8px;
   letter-spacing: 0.005em;
   line-height: 1.5;
@@ -605,15 +597,15 @@
 /* ── Standard Form Buttons ──────────────────────────────────────────────── */
 
 .rtx-auth-button {
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
+  --rtx-type-weight: 600;
   align-items: center;
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
   display: inline-flex;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
   gap: 8px;
-  height: 38px;
+  height: 40px;
   justify-content: center;
   letter-spacing: 0.005em;
   line-height: 1;
@@ -622,48 +614,53 @@
     box-shadow 140ms ease;
 }
 
+html:root body .rtx-auth-dialog .rtx-auth-button {
+  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
+  --rtx-type-weight: 600;
+}
+
 .rtx-auth-button[data-variant='ghost'] {
-  background: #282a2e;
-  border: 1px solid #3c4043;
+  background: var(--auth-subtle);
+  border: 1px solid var(--auth-border);
   box-shadow: none !important;
-  color: #e8eaed;
+  color: var(--auth-text);
 }
 
 .rtx-auth-button[data-variant='ghost']:hover:not(:disabled) {
-  background: #32353b;
-  border-color: #4f535a;
-  color: #ffffff;
+  background: var(--auth-hover);
+  border-color: var(--auth-border-strong);
+  color: var(--auth-text);
 }
 
 .rtx-auth-button[data-variant='ghost']:active:not(:disabled) {
-  background: #202124;
-  border-color: #3c4043;
+  background: var(--auth-control);
+  border-color: var(--auth-border);
 }
 
 .rtx-auth-button[data-variant='primary'] {
-  background: linear-gradient(180deg, #2479f0 0%, #1a6ce0 100%);
-  border: 1px solid rgba(9, 58, 128, 0.9);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 1px 2px rgba(0, 0, 0, 0.32) !important;
+  background: #2478d4;
+  border: 1px solid #2478d4;
+  box-shadow: none !important;
   color: #ffffff;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  text-shadow: none;
 }
 
 .rtx-auth-button[data-variant='primary']:hover:not(:disabled) {
-  background: linear-gradient(180deg, #3186f5 0%, #2174e8 100%);
+  background: #2c84e3;
+  border-color: #2c84e3;
 }
 
 .rtx-auth-button[data-variant='primary']:active:not(:disabled) {
-  background: linear-gradient(180deg, #1a63cc 0%, #175bbd 100%);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+  background: #1d68bc;
+  border-color: #1d68bc;
+  box-shadow: none !important;
 }
 
 .rtx-auth-button:disabled {
-  background: #24262b;
-  border: 1px solid #383b40;
+  background: var(--auth-subtle);
+  border: 1px solid var(--auth-border);
   box-shadow: none !important;
-  color: #6b7076;
+  color: color-mix(in srgb, var(--auth-muted) 58%, transparent);
   cursor: not-allowed;
   text-shadow: none;
 }
@@ -684,8 +681,8 @@
 /* ── Focus visibility ───────────────────────────────────────────────────── */
 
 .rtx-auth-dialog :is(button, input):focus-visible {
-  outline: 2px solid #4a90f4;
-  outline-offset: 2px;
+  outline: 2px solid var(--auth-primary);
+  outline-offset: 1px;
 }
 
 .rtx-auth-field input:focus-visible {
@@ -695,9 +692,9 @@
 /* ── Backward compatibility aliases ─────────────────────────────────────── */
 
 .rtx-auth-ticket {
-  background: #24262b;
-  border: 1px solid #383b40;
-  border-radius: 10px;
+  background: var(--auth-subtle);
+  border: 1px solid var(--auth-border);
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -710,25 +707,62 @@
 }
 
 .rtx-auth-option {
+  --rtx-type-weight: 600;
   align-items: center;
-  background: #282a2e;
-  border: 1px solid #3c4043;
-  border-radius: 9px;
+  background: var(--auth-subtle);
+  border: 1px solid var(--auth-border);
+  border-radius: 7px;
   box-shadow: none !important;
   cursor: pointer;
   display: flex;
-  font-size: 13.5px;
-  font-weight: 600;
   gap: 9px;
   height: 42px;
   justify-content: center;
   padding: 0 16px;
   width: 100%;
-  color: #e8eaed;
+  color: var(--auth-text);
 }
 
 .rtx-auth-option:hover:not(:disabled) {
-  background: #32353b;
-  border-color: #4f535a;
-  color: #ffffff;
+  background: var(--auth-hover);
+  border-color: var(--auth-border-strong);
+  color: var(--auth-text);
+}
+
+@media (max-width: 540px) {
+  .rtx-auth-backdrop {
+    padding: 12px;
+  }
+
+  .rtx-auth-dialog {
+    border-radius: 10px;
+    max-height: calc(100vh - 24px);
+    max-width: calc(100vw - 24px);
+  }
+
+  .rtx-auth-dialog__header {
+    padding: 17px 18px 15px;
+  }
+
+  .rtx-auth-dialog__body,
+  .rtx-auth-dialog[data-mode='choice'] .rtx-auth-dialog__body {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .rtx-auth-dialog__footer,
+  .rtx-auth-dialog__footer--choice {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}
+
+@media (max-width: 400px) {
+  .rtx-auth-action {
+    padding: 9px 10px;
+  }
+
+  .rtx-auth-dialog__footer--choice {
+    justify-content: center;
+  }
 }
