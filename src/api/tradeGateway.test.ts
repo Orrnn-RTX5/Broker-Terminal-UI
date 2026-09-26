@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
 import { RTX5_API_URL, WS_URL } from '../config/api';
 import {
+  clearTradeHistoryRequestCache,
   collapseDealHistory,
   getStoredAccountLogin,
   normalizeAccount,
@@ -27,6 +28,7 @@ vi.mock('./client', () => ({
 describe('trade gateway normalization', () => {
   afterEach(() => {
     vi.mocked(apiClient.get).mockReset();
+    clearTradeHistoryRequestCache();
   });
 
   it('uses the shared v2 REST and websocket authority helpers', () => {
@@ -841,6 +843,92 @@ describe('trade gateway normalization', () => {
         historySource: 'order',
       }],
       errors: { positions: null, deals: null, orders: null },
+    });
+  });
+
+  it('reuses one deals read until a forced refresh', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ deals: [] });
+
+    await tradeGatewayApi.getDeals(654398);
+    await tradeGatewayApi.getDeals(654398);
+
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledTimes(1);
+
+    await tradeGatewayApi.getDeals(654398, { force: true });
+
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares one in-flight deals read across history callers', async () => {
+    let resolveDeals!: (value: unknown) => void;
+    const dealsRequest = new Promise<unknown>((resolve) => { resolveDeals = resolve; });
+    vi.mocked(apiClient.get).mockImplementation(<T,>(endpoint: string): Promise<T> => {
+      if (endpoint === '/deals/654397') return dealsRequest as Promise<T>;
+      return Promise.reject(new Error(`Unexpected deals endpoint: ${endpoint}`));
+    });
+
+    const first = tradeGatewayApi.getDeals(654397);
+    const second = tradeGatewayApi.getDeals(654397);
+
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledTimes(1);
+    resolveDeals({ deals: [] });
+    await expect(Promise.all([first, second])).resolves.toEqual([[], []]);
+  });
+
+  it('publishes closed trades before the orders request finishes', async () => {
+    let resolveOrders!: (value: unknown) => void;
+    const ordersRequest = new Promise<unknown>((resolve) => { resolveOrders = resolve; });
+    vi.mocked(apiClient.get).mockImplementation(<T,>(endpoint: string): Promise<T> => {
+      if (endpoint === '/positions/654399/history') return Promise.resolve({ positions: [] } as T);
+      if (endpoint === '/deals/654399') {
+        return Promise.resolve({
+          deals: [
+            {
+              deal: 1,
+              position_ticket: 10,
+              symbol: 'EURUSD',
+              action: 'buy',
+              entry: 'entry_in',
+              volume: 0.1,
+              price: 1.1,
+              time: 1760000000,
+            },
+            {
+              deal: 2,
+              position_ticket: 10,
+              symbol: 'EURUSD',
+              action: 'sell',
+              entry: 'entry_out',
+              volume: 0.1,
+              price: 1.2,
+              profit: 10,
+              time: 1760000300,
+            },
+          ],
+        } as T);
+      }
+      if (endpoint === '/orders/654399') return ordersRequest as Promise<T>;
+      return Promise.reject(new Error(`Unexpected history endpoint: ${endpoint}`));
+    });
+
+    const partials: Array<{ positions: unknown[]; orders: unknown[] }> = [];
+    const pending = tradeGatewayApi.getHistoryDataSet(654399, {
+      onPartial: (data) => partials.push(data),
+    });
+
+    await vi.waitFor(() => expect(partials).toHaveLength(1));
+    expect(partials[0]?.positions).toHaveLength(1);
+    expect(partials[0]?.orders).toEqual([]);
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith(
+      '/orders/654399',
+      expect.anything(),
+    );
+
+    resolveOrders({ orders: [] });
+    await expect(pending).resolves.toMatchObject({
+      positions: [{ id: 10, symbol: 'EURUSD' }],
+      orders: [],
+      errors: { orders: null, deals: null },
     });
   });
 

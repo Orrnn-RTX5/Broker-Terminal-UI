@@ -408,6 +408,11 @@ describe('MenuBar hamburger launcher', () => {
         ]) {
             expect(screen.getByRole('menuitem', { name: label })).toBeInTheDocument();
         }
+        const calendarItem = screen.getByRole('menuitem', { name: 'Economic Calendar' });
+        expect(calendarItem).toBeDisabled();
+        expect(calendarItem.querySelector('.rtx-menu-row__lock')).toBeInTheDocument();
+        fireEvent.click(calendarItem);
+        expect(screen.getByRole('menu', { name: 'Application menu' })).toBeInTheDocument();
         const tradingAccountsItem = screen.getByRole('menuitem', { name: 'Trading accounts' });
         const chartSettingsItem = screen.getByRole('menuitem', { name: 'Chart settings' });
         expect(screen.queryByTestId('connected-account-card')).not.toBeInTheDocument();
@@ -864,12 +869,12 @@ describe('MenuBar Electron desktop menubar', () => {
         expect(screen.queryByRole('menu', { name: 'Tools menu' })).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
-        fireEvent.click(within(screen.getByRole('menu', { name: 'View menu' })).getByRole('menuitem', { name: 'Economic Calendar' }));
-        const calendarEvent = windowDispatchSpy.mock.calls
-            .map(([event]) => event)
-            .find((event) => event.type === 'rtx:open-bottom-dock-tab') as CustomEvent | undefined;
-        expect(calendarEvent?.detail).toEqual({ tab: 'Calendar' });
-        expect(screen.queryByRole('menu', { name: 'View menu' })).not.toBeInTheDocument();
+        const calendar = within(screen.getByRole('menu', { name: 'View menu' })).getByRole('menuitem', { name: 'Economic Calendar' });
+        expect(calendar).toBeDisabled();
+        expect(calendar.querySelector('.rtx-menu-row__lock')).toBeInTheDocument();
+        fireEvent.click(calendar);
+        expect(windowDispatchSpy.mock.calls.some(([event]) => event.type === 'rtx:open-bottom-dock-tab')).toBe(false);
+        expect(screen.getByRole('menu', { name: 'View menu' })).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'Help' }));
         fireEvent.click(within(screen.getByRole('menu', { name: 'Help menu' })).getByRole('menuitem', { name: 'Shortcuts' }));

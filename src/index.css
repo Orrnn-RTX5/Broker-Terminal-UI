@@ -584,6 +584,15 @@ html .rtx-bottom-dock__tabs .rtx-dock-tab.rtx-bulk-close:focus-visible {
   outline-offset: -2px;
 }
 
+html:root .rtx-bottom-dock__tabs .rtx-dock-tab.rtx-dock-tab--locked:disabled,
+html:root .rtx-bottom-dock__tabs .rtx-dock-tab.rtx-dock-tab--locked:disabled:hover,
+html:root .rtx-bottom-dock__tabs .rtx-dock-tab.rtx-dock-tab--locked:disabled:focus-visible {
+  color: var(--text-secondary) !important;
+  background: transparent !important;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 /* Continue the light-theme separators across the two tab groups. */
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab-scroller .rtx-dock-tab:last-child:not(.active-tab)::after {
   content: '';

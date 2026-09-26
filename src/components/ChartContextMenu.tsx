@@ -82,7 +82,7 @@ const C_TEXT = 'var(--ctx-text, #e4e4e7)';
 const C_HEADER = 'var(--ctx-header, #a1a1aa)';
 const C_DISABLED = 'var(--ctx-disabled, rgba(161, 161, 170, 0.3))';
 const MENU_VIEWPORT_MARGIN = 8;
-const MENU_MIN_WIDTH = 230;
+const MENU_MIN_WIDTH = 250;
 const MENU_ESTIMATED_HEIGHT = 460;
 const MENU_MIN_MAX_HEIGHT = 180;
 

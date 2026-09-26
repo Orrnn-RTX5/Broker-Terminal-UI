@@ -804,6 +804,21 @@ textarea {
   color: var(--text-primary);
 }
 
+.rtx-application-menu__root-item.is-disabled,
+.rtx-application-menu__root-item:disabled {
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.rtx-application-menu__root-item.is-disabled:hover,
+.rtx-application-menu__root-item.is-disabled:focus-visible,
+.rtx-application-menu__root-item:disabled:hover,
+.rtx-application-menu__root-item:disabled:focus-visible {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
 .rtx-application-menu__root-item:focus-visible {
   border-color: var(--color-primary);
 }

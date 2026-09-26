@@ -78,6 +78,7 @@ import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
 import { tradingV2Api } from './api/trade';
 import { collapseDealHistory, tradeGatewayApi } from './api/tradeGateway';
+import { beginTradeHistoryRefresh } from './services/terminalHistory';
 import { readBackendPositionProfit } from './components/BottomDock.trade';
 import type { TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
@@ -1783,6 +1784,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       return;
     }
 
+    beginTradeHistoryRefresh();
     window.dispatchEvent(new CustomEvent('rtx:trade-history-refresh-started', {
       detail: { login: resolvedLogin },
     }));

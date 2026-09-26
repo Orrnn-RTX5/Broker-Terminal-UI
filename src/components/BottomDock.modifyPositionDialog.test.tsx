@@ -114,7 +114,7 @@ describe('BottomDock SL/TP modify-position dialog handoff', () => {
   it.each([
     ['Stop Loss', '.rtx-trade-sl-cell'],
     ['Take Profit', '.rtx-trade-tp-cell'],
-  ])('opens the existing dialog for the exact position from one %s click', async (_label, cellSelector) => {
+  ])('opens the existing dialog for the exact position from a %s double click', async (_label, cellSelector) => {
     const user = userEvent.setup();
     const onModifyPosition = vi.fn();
     renderDock(onModifyPosition);
@@ -126,6 +126,8 @@ describe('BottomDock SL/TP modify-position dialog handoff', () => {
     expect(row).not.toBeNull();
     expect(levelButton).not.toBeNull();
     await user.click(levelButton!);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.dblClick(levelButton!);
 
     const dialog = await screen.findByRole('dialog', { name: 'Modify Position #91002' });
     expect(dialog).toHaveAttribute('data-ticket', '91002');
@@ -177,6 +179,8 @@ describe('BottomDock SL/TP modify-position dialog handoff', () => {
 
     await user.click(slCell!);
     await user.click(tpCell!);
+    await user.dblClick(slCell!);
+    await user.dblClick(tpCell!);
     await act(async () => {
       await Promise.resolve();
     });
@@ -196,7 +200,7 @@ describe('BottomDock SL/TP modify-position dialog handoff', () => {
     expect(slButton).not.toBeNull();
     expect(tpButton).not.toBeNull();
 
-    await user.click(slButton!);
+    await user.dblClick(slButton!);
     expect(await screen.findByRole('dialog', { name: 'Modify Position #91001' })).toBeInTheDocument();
     const scopeA = currentScope();
     const publish = (detail: Record<string, unknown>) => act(() => {
