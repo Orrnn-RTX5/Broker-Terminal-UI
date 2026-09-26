@@ -26,6 +26,26 @@ interface ContextMenuProps {
 type ContextMenuVariant = 'dark' | 'mt5-light' | 'mt5-dark';
 type ContextMenuDensity = 'default' | 'compact';
 
+// The app's own elevation ladder (theme.css) drives every surface below:
+// panels sit between --bg-tertiary and --bg-quaternary, hovered rows take
+// --bg-elevated, and the inset highlight is the only "gloss" in the sheet.
+type MenuSkin = 'dark' | 'light';
+
+const resolveMenuSkin = (variant: ContextMenuVariant): MenuSkin => (
+  variant === 'mt5-light' ? 'light' : 'dark'
+);
+
+const menuPanelStyle = (skin: MenuSkin): React.CSSProperties => ({
+  background: skin === 'light'
+    ? 'linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-secondary) 100%)'
+    : 'linear-gradient(180deg, var(--bg-quaternary) 0%, var(--bg-tertiary) 100%)',
+  borderColor: skin === 'light' ? 'var(--border-secondary)' : 'var(--border-tertiary)',
+  color: 'var(--text-primary)',
+  boxShadow: skin === 'light'
+    ? '0 16px 40px rgba(15,23,42,0.16), 0 3px 10px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.85)'
+    : '0 16px 40px rgba(0,0,0,0.50), 0 3px 10px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)',
+});
+
 // ============================================================================
 // VIEWPORT COLLISION DETECTION
 // ============================================================================
@@ -286,64 +306,45 @@ const MenuItem: React.FC<MenuItemProps> = ({
     hoverIntent.onMouseLeave();
   };
 
-  const isMt5Light = variant === 'mt5-light';
-  const isMt5Dark = variant === 'mt5-dark';
-  const isMt5 = isMt5Light || isMt5Dark;
+  const skin = resolveMenuSkin(variant);
   const isCompact = density === 'compact';
 
   if (item.divider) {
     return (
       <div
-        className={isMt5Light
-          ? "h-px bg-[#a7a7a7] my-[4px] mx-[5px]"
-          : isMt5Dark
-            ? "h-px bg-[#3e424b] my-[4px] mx-[5px]"
-            : "h-[1px] bg-zinc-700 my-1 mx-2"}
+        role="separator"
+        className="mx-2 my-1 h-px"
+        style={{ background: skin === 'light' ? 'var(--border-primary)' : 'var(--border-secondary)' }}
       />
     );
   }
 
-  const isActive = isMt5
-    ? !item.disabled && (isSubmenuActive || isFocused || isPointerHovered)
-    : isSubmenuActive || isHovered || isFocused;
-  const itemClassName = isMt5
-    ? `flex ${isCompact ? 'h-[24px]' : 'h-[30px]'} items-center px-[5px] py-0 cursor-default group relative ${item.disabled ? 'cursor-default' : ''}`
-    : `flex min-h-[30px] items-center px-3 py-1.5 cursor-pointer group relative ${isActive
-      ? 'bg-zinc-700 text-white'
-      : 'text-zinc-300 hover:bg-zinc-700 hover:text-white'
-      } ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
-  const itemStyle = isMt5Light
-    ? {
-      backgroundColor: isActive ? '#0078d7' : '#f2f2f2',
-      color: item.disabled ? '#8a8a8a' : (isActive ? '#ffffff' : '#000000'),
-    }
-    : isMt5Dark
-      ? {
-      backgroundColor: isActive ? '#0078d7' : (isCompact ? '#1f1f1f' : '#15161a'),
-      color: item.disabled ? (isCompact ? '#636363' : '#8b9098') : (isActive ? '#ffffff' : (isCompact ? '#c8c8c8' : '#e4e7ee')),
-      }
-      : undefined;
-  const iconClassName = isMt5
-    ? "w-[18px] flex items-center justify-center mr-[5px]"
-    : "w-5 flex items-center justify-center mr-1";
-  const customIconClassName = isMt5
-    ? "text-current"
-    : "text-zinc-400 group-hover:text-white";
-  const shortcutClassName = isMt5
-    ? "text-[12px] font-normal text-current ml-4"
-    : "text-[12px] font-normal text-zinc-500 group-hover:text-zinc-200 ml-4 font-mono";
-  const chevronClassName = isMt5
-    ? "ml-2 text-current"
-    : "ml-2 text-zinc-500 group-hover:text-white";
-  const labelClassName = isMt5
-    ? "min-w-0 flex-1 whitespace-nowrap"
-    : "flex-1";
+  const isActive = !item.disabled && (isSubmenuActive || isFocused || isPointerHovered || isHovered);
+  const glyphColor = item.disabled
+    ? (skin === 'light' ? 'var(--text-quaternary)' : 'var(--text-tertiary)')
+    : isActive
+      ? 'var(--text-primary)'
+      : 'var(--text-secondary)';
+  const rowStyle: React.CSSProperties = {
+    height: isCompact ? 24 : 28,
+    color: item.disabled
+      ? (skin === 'light' ? 'var(--text-quaternary)' : 'var(--text-tertiary)')
+      : 'var(--text-primary)',
+    background: isActive
+      ? (skin === 'light' ? 'var(--bg-quaternary)' : 'var(--bg-elevated)')
+      : 'transparent',
+    boxShadow: isActive
+      ? (skin === 'light'
+        ? 'inset 0 1px 0 rgba(255,255,255,0.70)'
+        : 'inset 0 1px 0 rgba(255,255,255,0.05)')
+      : undefined,
+  };
 
   return (
     <div
       ref={itemRef}
-      className={itemClassName}
-      style={itemStyle}
+      className="relative flex cursor-default select-none items-center px-1.5"
+      style={rowStyle}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
@@ -354,31 +355,32 @@ const MenuItem: React.FC<MenuItemProps> = ({
       aria-expanded={hasSubmenu && isSubmenuActive ? 'true' : 'false'}
       tabIndex={-1}
     >
-      <div className={iconClassName} aria-hidden="true">
-        {isMt5 ? (
-          item.checked ? (
-            <span className="block w-[14px] text-center text-[13px] font-normal leading-[13px]">
-              {'\u2713'}
-            </span>
-          ) : item.icon ? (
-            <span className={customIconClassName}>{item.icon}</span>
-          ) : null
-        ) : (
-          <>
-            {item.checked && <Icon name="check" size="xs" />}
-            {item.icon && !item.checked && (
-              <span className={customIconClassName}>{item.icon}</span>
-            )}
-          </>
-        )}
-      </div>
-      <span className={labelClassName}>{tr(item.label)}</span>
+      {/* Check and icon keep their own reserved gutters so every label,
+          checked or not, starts on the same column. */}
+      <span className="flex w-4 shrink-0 items-center justify-center" aria-hidden="true">
+        {item.checked ? (
+          <span className="text-[11px] leading-none" style={{ color: glyphColor }}>{'\u2713'}</span>
+        ) : null}
+      </span>
+      <span className="flex w-[18px] shrink-0 items-center justify-center" aria-hidden="true">
+        {item.icon ? <span style={{ color: glyphColor }}>{item.icon}</span> : null}
+      </span>
+      <span className="min-w-0 flex-1 whitespace-nowrap pr-2 text-[12px] leading-none">
+        {tr(item.label)}
+      </span>
       {item.shortcut && (
-        <span className={shortcutClassName}>
+        <span
+          className="ml-auto whitespace-nowrap pl-4 pr-1 text-[11px] leading-none"
+          style={{ color: glyphColor }}
+        >
           {item.shortcut}
         </span>
       )}
-      {hasSubmenu && <Icon name="chevron-right" size="xs" className={chevronClassName} />}
+      {hasSubmenu && (
+        <span className="ml-1 mr-0.5" style={{ color: glyphColor }}>
+          <Icon name="chevron-right" size="xs" />
+        </span>
+      )}
     </div>
   );
 };
@@ -411,6 +413,8 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [isPositioned, setIsPositioned] = useState(false);
+
+  const panelSkin = resolveMenuSkin(variant);
 
   // Calculate adjusted position after render using useLayoutEffect
   // This prevents menu clipping at viewport edges (MT5 behavior)
@@ -608,12 +612,9 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
     <>
       <div
         ref={menuRef}
-        className={variant === 'mt5-light'
-          ? `fixed ${density === 'compact' ? 'w-[216px] text-[13px] leading-[18px] max-h-[calc(100vh-16px)]' : 'w-[210px] text-[14px] leading-[20px] max-h-[80vh]'} bg-[#f2f2f2] border border-[#9a9a9a] shadow-[2px_2px_4px_rgba(0,0,0,0.35)] rounded-none py-[3px] font-normal text-black outline-none transition-opacity duration-75 overflow-y-auto`
-          : variant === 'mt5-dark'
-            ? `fixed ${density === 'compact' ? 'w-[216px] bg-[#1f1f1f] border-[#a0a0a0] text-[13px] leading-[18px] text-[#c8c8c8] max-h-[calc(100vh-16px)]' : 'w-[210px] bg-[#15161a] border-[#4b5563] text-[14px] leading-[20px] text-[#e4e7ee] max-h-[80vh]'} border shadow-[2px_2px_6px_rgba(0,0,0,0.65)] rounded-none py-[3px] font-normal outline-none transition-opacity duration-75 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-[#15161a]`
-            : "fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-[14px] font-normal leading-[20px] text-zinc-200 outline-none transition-opacity duration-100 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700"}
+        className="fixed w-max min-w-[208px] max-w-[min(420px,calc(100vw-16px))] max-h-[calc(100vh-16px)] rounded-[4px] border py-1 text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent"
         style={{
+          ...menuPanelStyle(panelSkin),
           left: `${adjustedPosition.x}px`,
           top: `${adjustedPosition.y}px`,
           zIndex,
@@ -712,7 +713,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   position: externalPosition,
   triggerSymbol,
   variant = 'dark',
-  density = 'default',
+  density = 'compact',
   ignoredElements = [],
   children
 }) => {
@@ -779,14 +780,18 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     <div ref={menuRef}>
       {triggerSymbol && (
         <div
-          className="fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-[14px] font-normal leading-[20px] text-zinc-200"
+          className="fixed w-max min-w-[208px] rounded-[4px] border py-1 text-[12px] font-normal"
           style={{
+            ...menuPanelStyle(resolveMenuSkin(variant)),
             top: position.y,
             left: position.x,
             zIndex: 9998 // Symbol header just below menu
           }}
         >
-          <div className="px-3 py-1.5 text-[12px] font-medium text-emerald-400 border-b border-zinc-700 mb-1">
+          <div
+            className="mx-1 mb-1 border-b px-2 py-1 font-medium"
+            style={{ color: 'var(--color-profit)', borderColor: 'var(--border-secondary)' }}
+          >
             {triggerSymbol}
           </div>
         </div>
@@ -840,5 +845,5 @@ export const MenuSectionHeader: React.FC<{ label: string }> = ({ label }) => { c
 // ============================================================================
 
 export const MenuDivider: React.FC = () => (
-  <div className="h-[1px] bg-zinc-700 my-1 mx-2"></div>
+  <div className="mx-2 my-1 h-px" style={{ background: 'var(--border-secondary)' }} />
 );

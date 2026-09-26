@@ -148,7 +148,7 @@ describe('enterprise typography contract', () => {
     expect(fileMenuSource).toMatch(/min-h-\[30px\][^"`]*text-\[14px\][^"`]*font-normal/);
     expect(fileMenuSource).toMatch(/text-\[12px\][^"`]*font-normal/);
     expect(dockPanelSource).toMatch(/text-\[14px\][^"`]*font-normal[^"`]*leading-\[30px\]/);
-    expect(contextMenuSource).toMatch(/text-\[14px\][^"`]*font-normal[^"`]*leading-\[20px\]/);
+    expect(contextMenuSource).toMatch(/text-\[12px\][^"`]*font-normal/);
     expect(bottomDockSource).toContain('text-[13px] leading-[19.5px] font-normal');
     expect(calendarSource).toMatch(/text-\[12px\][^"`]*leading-\[18px\]/);
     expect(calendarSource).toMatch(/text-\[13px\][^"`]*font-normal[^"`]*leading-\[19\.5px\]/);
