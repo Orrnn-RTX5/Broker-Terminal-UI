@@ -1,6 +1,23 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  brokerAccountScopeHook,
+  closedDailyChangeHook,
+  CORE_DEFAULT_SYMBOLS,
+  DEFAULT_DISPLAY_SYMBOLS,
+  DEFAULT_SYMBOLS,
+  deferred,
+  getActiveMarketSnapshot,
+  getDetailValue,
+  getRenderedRowSymbols,
+  lastMarketWatchQuotesHook,
+  marketHooks,
+  ResizeObserverStub,
+  setMarketCatalog,
+  watchlistState,
+  type MockMarketInstrument,
+} from './__tests__/MarketWatchPanel.testSupport';
 import { useAppStore } from '../../store/useAppStore';
 import {
   MARKET_WATCH_EXPORT_HYDRATION_TIMEOUT_MS,
@@ -14,169 +31,6 @@ import {
   publishMarketWatchDisplayMetadata,
   resetMarketWatchDisplayMetadataForTests,
 } from '../../store/useMarketWatchDisplayMetadataStore';
-
-const CORE_DEFAULT_SYMBOLS = ['XAUUSD', 'BTCUSD', 'EURUSD'];
-const DEFAULT_SYMBOLS = [...CORE_DEFAULT_SYMBOLS, 'GBPUSD', 'USDJPY'];
-const DEFAULT_DISPLAY_SYMBOLS = [...CORE_DEFAULT_SYMBOLS];
-
-interface MockMarketInstrument {
-  symbol: string;
-  brokerSpecification?: Readonly<Record<string, unknown>>;
-  name?: string;
-  description?: string;
-  category?: string;
-  digits?: number;
-  bid?: number;
-  ask?: number;
-  spread?: number;
-  time?: string;
-  has_quote?: boolean;
-  contract_size?: number;
-  contractSize?: number;
-  tick_size?: number;
-  tick_value?: number;
-  trading_enabled?: boolean;
-}
-
-const closedDailyChangeHook = vi.hoisted(() => ({
-  values: new Map<string, number>(),
-  useHook: vi.fn(),
-  hydrate: vi.fn(),
-}));
-
-const lastMarketWatchQuotesHook = vi.hoisted(() => ({
-  values: new Map<string, MarketWatchLastPrice>(),
-  useHook: vi.fn(),
-  hydrate: vi.fn(),
-}));
-
-const brokerAccountScopeHook = vi.hoisted(() => ({
-  value: 'authenticated|test-account|test-broker|https://broker.test',
-}));
-
-vi.mock('../../hooks/useLastMarketWatchQuotes', () => ({
-  useLastMarketWatchQuotes: (options: unknown) => {
-    lastMarketWatchQuotesHook.useHook(options);
-    return lastMarketWatchQuotesHook.values;
-  },
-  hydrateLastMarketWatchQuotes: (options: unknown) => lastMarketWatchQuotesHook.hydrate(options),
-}));
-
-vi.mock('../../hooks/useClosedMarketDailyChanges', () => ({
-  useClosedMarketDailyChanges: (options: unknown) => {
-    closedDailyChangeHook.useHook(options);
-    return closedDailyChangeHook.values;
-  },
-  hydrateClosedMarketDailyChanges: (options: unknown) => closedDailyChangeHook.hydrate(options),
-}));
-
-vi.mock('../../hooks/useBrokerAccountSessionScope', () => ({
-  useBrokerAccountSessionScope: () => brokerAccountScopeHook.value,
-}));
-
-const marketHooks = vi.hoisted(() => ({
-  activeSymbols: ['BTCUSD', 'XAUUSD', 'GBPUSD', 'SOLUSD', 'EURUSD', 'ETHUSD', '0001.HK'],
-  instrumentSymbols: ['BTCUSD', 'XAUUSD', 'GBPUSD', 'SOLUSD', 'EURUSD', 'ETHUSD', '0001.HK'] as Array<
-    string | MockMarketInstrument
-  >,
-  authorizedInstruments: [] as MockMarketInstrument[],
-  authorizedSymbols: ['BTCUSD', 'XAUUSD', 'GBPUSD', 'SOLUSD', 'EURUSD', 'ETHUSD', '0001.HK'] as string[],
-  disabledSymbols: [] as string[],
-  activeSymbolsLoading: false,
-  activeSymbolsSettled: true,
-  activeSymbolsCurrent: true,
-  instrumentsLoading: false,
-  accountCatalogStatus: undefined as 'none' | 'loading' | 'loaded' | 'failed' | undefined,
-  symbolsError: null as string | null,
-  watchlistError: null as string | null,
-  reloadActiveSymbols: vi.fn().mockResolvedValue(undefined),
-  loadSymbolSpecification: vi.fn().mockResolvedValue(null),
-  useActiveMarketSymbols: vi.fn(),
-  useLiveQuotes: vi.fn((symbols: string[]) => {
-    void symbols;
-    return {
-      loading: false,
-      error: null as string | null,
-    };
-  }),
-}));
-
-vi.mock('../../hooks/useLiveMarketData', () => ({
-  useActiveMarketSymbols: marketHooks.useActiveMarketSymbols,
-  useLiveQuotes: marketHooks.useLiveQuotes,
-  useMarketInstruments: () => ({
-    symbols: marketHooks.instrumentSymbols.map((instrument) => (
-      typeof instrument === 'string' ? { symbol: instrument } : { ...instrument }
-    )),
-    authorizedInstruments: marketHooks.authorizedInstruments.map((instrument) => ({ ...instrument })),
-    authorizedSymbols: marketHooks.authorizedSymbols,
-    disabledSymbols: marketHooks.disabledSymbols,
-    loading: marketHooks.instrumentsLoading,
-    accountCatalogStatus: marketHooks.accountCatalogStatus,
-    error: marketHooks.symbolsError,
-    reload: vi.fn(),
-    loadSymbolSpecification: marketHooks.loadSymbolSpecification,
-  }),
-  useRemoteWatchlistSync: () => ({
-    loading: false,
-    error: marketHooks.watchlistError,
-    reload: vi.fn(),
-  }),
-}));
-
-const getActiveMarketSnapshot = () => ({
-    symbols: marketHooks.activeSymbols,
-    loading: marketHooks.activeSymbolsLoading,
-    settled: marketHooks.activeSymbolsSettled,
-    current: marketHooks.activeSymbolsCurrent,
-    error: null,
-    reload: marketHooks.reloadActiveSymbols,
-});
-
-const watchlistState = vi.hoisted(() => ({
-  watchlists: [] as Array<{ id: string; symbols: string[]; isDefault: boolean }>,
-  activeWatchlistId: '',
-  addSymbolToWatchlist: vi.fn(),
-  removeSymbolFromWatchlist: vi.fn(),
-  reorderSymbols: vi.fn(),
-}));
-
-vi.mock('../../store/useWatchlistStore', () => ({
-  useWatchlistStore: Object.assign(
-    (selector: (state: typeof watchlistState) => unknown) => selector(watchlistState),
-    { getState: () => watchlistState },
-  ),
-}));
-
-class ResizeObserverStub {
-  observe(): void {}
-  disconnect(): void {}
-}
-
-const deferred = <T,>() => {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-};
-
-const getRenderedRowSymbols = (container: HTMLElement): string[] =>
-  Array.from(container.querySelectorAll('tbody .rtx-market-watch__row'))
-    .map((row) => row.querySelector('.rtx-market-watch__symbol')?.textContent ?? '');
-
-const getDetailValue = (label: string): string | null | undefined =>
-  screen.getByText(label, { selector: 'dt' }).nextElementSibling?.textContent;
-
-const setMarketCatalog = (
-  instruments: Array<string | MockMarketInstrument>,
-  authorizedSymbols = instruments.map((instrument) => (
-    typeof instrument === 'string' ? instrument : instrument.symbol
-  )),
-): void => {
-  marketHooks.instrumentSymbols = instruments;
-  marketHooks.authorizedSymbols = authorizedSymbols;
-};
 
 describe('MarketWatchPanel symbol visibility', () => {
   beforeEach(() => {
@@ -2916,106 +2770,5 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(getRenderedRowSymbols(container)).toEqual(CORE_DEFAULT_SYMBOLS);
     expect(marketHooks.useLiveQuotes).toHaveBeenCalledWith(CORE_DEFAULT_SYMBOLS);
     expect(container.querySelectorAll('tbody tr[aria-disabled="true"]')).toHaveLength(3);
-  });
-});
-
-describe('MarketWatchPanel logged-in account symbol universe', () => {
-  beforeEach(() => {
-    localStorage.removeItem('rtx5_hidden_symbols');
-    marketHooks.activeSymbols = ['BTCUSD', 'XAUUSD', 'EURUSD', 'US30', 'ETHUSD'];
-    marketHooks.disabledSymbols = [];
-    marketHooks.activeSymbolsLoading = false;
-    marketHooks.activeSymbolsSettled = true;
-    marketHooks.activeSymbolsCurrent = true;
-    marketHooks.instrumentsLoading = false;
-    marketHooks.symbolsError = null;
-    marketHooks.watchlistError = null;
-    marketHooks.useActiveMarketSymbols.mockReset();
-    marketHooks.useActiveMarketSymbols.mockImplementation(getActiveMarketSnapshot);
-    marketHooks.useLiveQuotes.mockClear();
-    marketHooks.useLiveQuotes.mockReturnValue({ loading: false, error: null });
-    watchlistState.watchlists = [];
-    watchlistState.activeWatchlistId = '';
-    watchlistState.addSymbolToWatchlist.mockClear();
-    watchlistState.removeSymbolFromWatchlist.mockReset();
-    watchlistState.reorderSymbols.mockReset();
-    act(() => {
-      useAppStore.setState({ isAuthenticated: true });
-      useAppStore.getState().setTicks({});
-    });
-    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
-  });
-
-  afterEach(() => {
-    marketHooks.accountCatalogStatus = undefined;
-    act(() => {
-      useAppStore.setState({ isAuthenticated: false });
-    });
-    vi.unstubAllGlobals();
-  });
-
-  const demandedSymbols = (): string[] => marketHooks.useLiveQuotes.mock.calls
-    .flatMap(([symbols]) => symbols as string[]);
-
-  it('shows a small account catalogue in full, in the backend order, by default', () => {
-    marketHooks.accountCatalogStatus = 'loaded';
-    setMarketCatalog(['US30', 'GBPUSD', 'XAUUSD', 'EURUSD']);
-
-    const { container } = render(
-      <MarketWatchPanel allSymbols={['US30', 'GBPUSD', 'XAUUSD', 'EURUSD']} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />,
-    );
-
-    expect(getRenderedRowSymbols(container)).toEqual(['US30', 'GBPUSD', 'XAUUSD', 'EURUSD']);
-    demandedSymbols().forEach((symbol) => expect(['US30', 'GBPUSD', 'XAUUSD', 'EURUSD']).toContain(symbol));
-  });
-
-  it('filters saved watchlist rows outside the account catalogue without deleting them', () => {
-    marketHooks.accountCatalogStatus = 'loaded';
-    setMarketCatalog(['EURUSD', 'XAUUSD']);
-    watchlistState.activeWatchlistId = 'custom';
-    watchlistState.watchlists = [{ id: 'custom', symbols: ['BTCUSD', 'EURUSD', 'ETHUSD'], isDefault: false }];
-
-    const { container } = render(
-      <MarketWatchPanel allSymbols={['EURUSD', 'XAUUSD']} selectedSymbol="EURUSD" onSymbolSelect={vi.fn()} />,
-    );
-
-    expect(getRenderedRowSymbols(container)).toEqual(['EURUSD']);
-    expect(demandedSymbols()).not.toContain('BTCUSD');
-    expect(demandedSymbols()).not.toContain('ETHUSD');
-    expect(watchlistState.reorderSymbols).not.toHaveBeenCalled();
-    expect(watchlistState.removeSymbolFromWatchlist).not.toHaveBeenCalled();
-    expect(watchlistState.watchlists[0].symbols).toEqual(['BTCUSD', 'EURUSD', 'ETHUSD']);
-  });
-
-  it('shows a loading state instead of any symbol while the account catalogue loads', () => {
-    marketHooks.accountCatalogStatus = 'loading';
-    marketHooks.instrumentsLoading = true;
-    setMarketCatalog([]);
-    watchlistState.activeWatchlistId = 'custom';
-    watchlistState.watchlists = [{ id: 'custom', symbols: ['BTCUSD', 'EURUSD'], isDefault: false }];
-
-    const { container } = render(
-      <MarketWatchPanel allSymbols={[]} selectedSymbol="EURUSD" onSymbolSelect={vi.fn()} />,
-    );
-
-    expect(getRenderedRowSymbols(container)).toEqual([]);
-    expect(screen.getByText('Loading symbols...')).toBeInTheDocument();
-    expect(demandedSymbols()).toEqual([]);
-  });
-
-  it('keeps the public catalogue behaviour for guests', () => {
-    act(() => {
-      useAppStore.setState({ isAuthenticated: false });
-    });
-    marketHooks.accountCatalogStatus = 'none';
-    setMarketCatalog(['BTCUSD', 'EURUSD']);
-    watchlistState.activeWatchlistId = 'custom';
-    watchlistState.watchlists = [{ id: 'custom', symbols: ['ETHUSD', 'EURUSD'], isDefault: false }];
-
-    const { container } = render(
-      <MarketWatchPanel allSymbols={['BTCUSD', 'EURUSD']} selectedSymbol="EURUSD" onSymbolSelect={vi.fn()} />,
-    );
-
-    expect(getRenderedRowSymbols(container)).toEqual(['ETHUSD', 'EURUSD']);
   });
 });

@@ -14,7 +14,7 @@
  *                                     the same demand union
  *   8. Send subscribe message       → feed: {type:'subscribe',symbols:[...]},
  *                                     v2: one exact channel envelope per symbol
- *   9. Incoming tick payloads       → processIncomingPayload()
+ *   9. Incoming tick payloads       → processIncomingQuotePayload()
  *  10. Normalize + validate         → Per-symbol raw updates
  *  11. Immediate listeners          → Per-symbol row updates
  *  12. Quote snapshots              → useTickQuoteSnapshot()
@@ -31,323 +31,44 @@ import {
 import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import {
-  composeDailyChangeQuoteContext,
-  readDailyChangeLastPrice,
-  readDailyChangePercent,
-  readDailyChangePreviousClose,
-  resolveDailyChangePercent,
-} from '../utils/dailyChange';
-import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
+  processIncomingQuotePayload,
+  type NormalizedQuoteTick,
+} from './quotePayloadNormalizer';
 import {
-  readFirstFiniteNumber,
-  readFirstNonEmptyString as readRecordNonEmptyString,
-} from '../utils/recordFields';
-import {
-  asUnknownRecord,
-  readBrokerTimestampMs,
-} from '../utils/brokerStreamSemantics';
-import { readQuoteSessionRange, type QuoteSessionRange } from '../utils/quoteSessionRange';
+  AUTH_CLOSE_CODES,
+  MAX_FEED_SYMBOLS_PER_FRAME,
+  QUOTE_SOCKET_HEARTBEAT_INTERVAL_MS,
+  QUOTE_SOCKET_MAX_SUBSCRIPTION_RETRIES,
+  QUOTE_SOCKET_OPEN_TIMEOUT_MS,
+  QUOTE_SOCKET_PONG_TIMEOUT_MS,
+  QUOTE_SOCKET_STABLE_OPEN_MS,
+  QUOTE_SOCKET_SUBSCRIPTION_ACK_TIMEOUT_MS,
+  addQuoteReconnectJitter as addReconnectJitter,
+  chunkQuoteSymbols as chunkStrings,
+  collectQuoteConfirmationItems,
+  isQuoteMessageRecord as isRecord,
+  normalizeQuoteConfirmationItems,
+  normalizeQuoteSymbol as normalizeSymbol,
+  redactQuoteSocketUrl as redactWsUrl,
+  summarizeQuoteSymbols as summarizeSymbols,
+} from './quoteSocketProtocol';
+
+export type { NormalizedQuoteTick } from './quotePayloadNormalizer';
+export {
+  QUOTE_SOCKET_HEARTBEAT_INTERVAL_MS,
+  QUOTE_SOCKET_MAX_SUBSCRIPTION_RETRIES,
+  QUOTE_SOCKET_OPEN_TIMEOUT_MS,
+  QUOTE_SOCKET_PONG_TIMEOUT_MS,
+  QUOTE_SOCKET_STABLE_OPEN_MS,
+  QUOTE_SOCKET_SUBSCRIPTION_ACK_TIMEOUT_MS,
+} from './quoteSocketProtocol';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-export interface NormalizedQuoteTick extends QuoteSessionRange {
-  symbol: string;
-  bid: number;
-  ask: number;
-  spread: number;
-  timestamp: number;
-  /** Feed-provided event time. Missing when `timestamp` is receipt-time fallback. */
-  sourceTimestamp?: number;
-  lp?: string;
-  volume?: number;
-  dailyChange?: number;
-  high24h?: number;
-  low24h?: number;
-  high?: number;
-  low?: number;
-  open?: number;
-  close?: number;
-  last?: number;
-}
 
 type QuoteTickCallback = (tick: NormalizedQuoteTick) => void;
 export type QuoteTransport = 'feed' | 'v2';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const toNumber = (v: unknown, fallback = 0): number => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-};
-
-const readFirstNonEmptyString = (
-  records: readonly Record<string, unknown>[],
-  keys: readonly string[],
-): string | undefined => {
-  for (const record of records) {
-    const normalized = readRecordNonEmptyString(record, keys);
-    if (normalized !== undefined) return normalized;
-  }
-  return undefined;
-};
-
-const normalizeSymbol = (v: unknown): string =>
-  typeof v === 'string' ? v.trim().toUpperCase() : '';
-
-const MAX_FEED_SYMBOLS_PER_FRAME = 500;
-const MAX_LOGGED_SYMBOLS = 12;
-
-/**
- * Explicit close codes that mean the transport rejected the credential/policy,
- * not a transient network drop. A feed socket closing with one of these (or
- * never opening at all — a 401 handshake surfaces as a pre-open 1006) must
- * fail over instead of reconnecting the same transport in a loop.
- */
-const AUTH_CLOSE_CODES = new Set([1008, 4001, 4003, 4401, 4403]);
-
-const redactWsUrl = (url: string): string => url.replace(/token=[^&]+/g, 'token=***');
-
-const summarizeSymbols = (symbols: Iterable<string>): string => {
-  const values = Array.from(symbols);
-  if (values.length <= MAX_LOGGED_SYMBOLS) return values.join(', ');
-  return `${values.slice(0, MAX_LOGGED_SYMBOLS).join(', ')} ... (+${values.length - MAX_LOGGED_SYMBOLS})`;
-};
-
-const chunkStrings = (values: string[], maxSize: number): string[][] => {
-  const chunks: string[][] = [];
-  for (let index = 0; index < values.length; index += maxSize) {
-    chunks.push(values.slice(index, index + maxSize));
-  }
-  return chunks;
-};
-
-const readSourceTimestamp = (...records: Record<string, unknown>[]): number | undefined => {
-  // FIX: Use the shared transport normalizer so quote payloads support the
-  // complete canonical alias set (including event/server timestamp fields)
-  // and seconds/ms/us/ns precision without per-socket drift.
-  return readBrokerTimestampMs(records.map(asUnknownRecord));
-};
-
-// ─── Step 9-10: processIncomingPayload ───────────────────────────────────────
-
-const QUOTE_PAYLOAD_KEYS = ['data', 'tick', 'quote', 'price', 'payload', 'message', 'prices', 'ticks'] as const;
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null;
-
-const isNonArrayRecord = (v: unknown): v is Record<string, unknown> => (
-  isRecord(v) && !Array.isArray(v)
-);
-
-const getChannelSymbol = (v: unknown): string | undefined => {
-  if (!isRecord(v) || typeof v.channel !== 'string') return undefined;
-  // FIX: Everything after `ticks.` is the opaque broker symbol. Splitting on
-  // dots truncates valid identities such as `0001.HK` and `EURUSD.r`.
-  return v.channel.startsWith('ticks.') ? v.channel.slice('ticks.'.length) : undefined;
-};
-
-const hasQuoteIdentityFields = (v: unknown): boolean =>
-  isRecord(v) && (normalizeSymbol(v.symbol) !== '' || getChannelSymbol(v) !== undefined);
-
-const composeQuoteContext = (
-  payload: unknown,
-  envelopes: readonly unknown[],
-): Record<string, unknown> => composeDailyChangeQuoteContext(
-  payload,
-  envelopes[0],
-  envelopes.slice(1),
-);
-
-const resolveQuotePriceMode = (
-  payload: unknown,
-  symbol: unknown,
-  envelopes: readonly unknown[],
-) => resolveDailyChangePriceMode(payload, symbol, envelopes[0], envelopes.slice(1));
-
-const findRoutingChannelSymbol = (
-  payload: unknown,
-  envelopes: readonly unknown[],
-): string | undefined => {
-  // The outer subscribed channel is the transport-routing authority. Walk from
-  // outermost to nearest so a nested adapter wrapper cannot replace it.
-  for (let index = envelopes.length - 1; index >= 0; index -= 1) {
-    const channelSymbol = getChannelSymbol(envelopes[index]);
-    if (channelSymbol !== undefined) return channelSymbol;
-  }
-  return getChannelSymbol(payload);
-};
-
-const findNearestEnvelopeSymbol = (envelopes: readonly unknown[]): unknown => {
-  for (const envelope of envelopes) {
-    if (isRecord(envelope) && normalizeSymbol(envelope.symbol)) return envelope.symbol;
-  }
-  return undefined;
-};
-
-const hasNestedQuotePayload = (v: Record<string, unknown>): boolean => (
-  QUOTE_PAYLOAD_KEYS.some((key) => {
-    const candidate = v[key];
-    return Array.isArray(candidate)
-      || isRecord(candidate)
-      || (typeof candidate === 'string' && candidate.trim() !== '');
-  })
-);
-
-const hasQuotePriceFields = (v: unknown, envelopes: readonly unknown[]): boolean => (
-  isRecord(v) && (
-    v.bid !== undefined
-    || v.ask !== undefined
-    || (
-      readDailyChangeLastPrice(composeQuoteContext(v, envelopes)) !== undefined
-      && (hasQuoteIdentityFields(v) || envelopes.some(hasQuoteIdentityFields))
-    )
-  )
-);
-
-interface CollectedQuotePayload {
-  payload: Record<string, unknown>;
-  /** Nearest wrapper first, followed by progressively outer wrappers. */
-  envelopes: readonly Record<string, unknown>[];
-}
-
-function collectQuotePayloads(
-  raw: unknown,
-  envelopes: readonly Record<string, unknown>[] = [],
-): CollectedQuotePayload[] {
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw);
-      return collectQuotePayloads(parsed, envelopes);
-    } catch {
-      return [];
-    }
-  }
-
-  if (Array.isArray(raw)) {
-    return raw.flatMap((item) => collectQuotePayloads(item, envelopes));
-  }
-
-  if (!isRecord(raw)) return [];
-
-  const descendantEnvelopes = isNonArrayRecord(raw)
-    ? [raw, ...envelopes]
-    : envelopes;
-  if (hasNestedQuotePayload(raw)) {
-    const descendants = QUOTE_PAYLOAD_KEYS.flatMap((key) => {
-      if (!(key in raw)) return [];
-      const value = raw[key];
-
-      if (Array.isArray(value)) {
-        return value.flatMap((item) => collectQuotePayloads(item, descendantEnvelopes));
-      }
-
-      return collectQuotePayloads(value, descendantEnvelopes);
-    });
-    if (descendants.length > 0) return descendants;
-  }
-
-  return hasQuotePriceFields(raw, envelopes)
-    ? [{ payload: raw, envelopes }]
-    : [];
-}
-
-function normalizeQuotePayload(
-  payload: Record<string, unknown>,
-  envelopes: readonly Record<string, unknown>[],
-): NormalizedQuoteTick | null {
-  const channelSymbol = findRoutingChannelSymbol(payload, envelopes);
-  // FIX: The subscribed channel is the routing authority. Some adapters expose
-  // an unsuffixed payload symbol inside `ticks.EURUSD.r`.
-  const symbol = normalizeSymbol(channelSymbol ?? payload.symbol ?? findNearestEnvelopeSymbol(envelopes));
-  if (!symbol) return null;
-
-  const dailyChangeContext = composeQuoteContext(payload, envelopes);
-  const last = readDailyChangeLastPrice(dailyChangeContext);
-  const priceMode = resolveQuotePriceMode(payload, symbol, envelopes);
-  const bid = toNumber(payload?.bid);
-  const ask = toNumber(payload?.ask, bid);
-  // Last-only exchange events are metadata, not executable Bid/Ask quotes.
-  // Keep zero sides so the dispatcher routes them only to Market Watch's
-  // isolated display-metadata channel.
-  if (bid <= 0 && ask <= 0 && !(priceMode === 'last' && last !== undefined)) return null;
-
-  const previousClose = readDailyChangePreviousClose(dailyChangeContext);
-  const dailyOpen = readFirstFiniteNumber(payload, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']);
-  const close = readFirstFiniteNumber(payload, ['close', 'close_price', 'closePrice']) ?? previousClose;
-  const volume = readFirstFiniteNumber(payload, [
-    'volume',
-    'volume_24h',
-    'volume24h',
-    'tick_volume',
-    'tickVolume',
-    'real_volume',
-    'realVolume',
-  ]);
-
-  const session = isRecord(payload.session) ? payload.session : {};
-  const high = readFirstFiniteNumber(payload, ['high']);
-  const low = readFirstFiniteNumber(payload, ['low']);
-  const sessionHigh = Math.max(toNumber(session?.high_bid), toNumber(session?.high_ask), high ?? 0);
-  const sessionLowValues = [toNumber(session?.low_bid), toNumber(session?.low_ask), low ?? 0].filter(v => v > 0);
-  const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
-  const lp = readFirstNonEmptyString([payload, ...envelopes], [
-    'lp',
-    'provider',
-    'liquidity_provider',
-    'liquidityProvider',
-    'lp_name',
-    'lpName',
-  ]);
-  const sourceTimestamp = readSourceTimestamp(payload, ...envelopes);
-
-  return {
-    symbol,
-    bid,
-    ask,
-    spread: toNumber(payload?.spread, ask - bid),
-    timestamp: sourceTimestamp ?? Date.now(),
-    sourceTimestamp,
-    lp,
-    volume,
-    last,
-    dailyChange: resolveDailyChangePercent(
-      readDailyChangePercent(dailyChangeContext),
-      bid,
-      previousClose,
-      dailyChangeContext,
-      priceMode,
-    ),
-    high24h: readFirstFiniteNumber(payload, ['high24h', 'high_24h']) ?? (sessionHigh || undefined),
-    low24h: readFirstFiniteNumber(payload, ['low24h', 'low_24h']) ?? sessionLow,
-    high,
-    low,
-    ...readQuoteSessionRange(payload),
-    open: dailyOpen,
-    close,
-  };
-}
-
-function processIncomingPayload(raw: unknown): NormalizedQuoteTick[] {
-  return collectQuotePayloads(raw)
-    .map(({ payload, envelopes }) => normalizeQuotePayload(payload, envelopes))
-    .filter((tick): tick is NormalizedQuoteTick => tick !== null);
-}
-
 // ─── QuoteSocketManager Singleton ────────────────────────────────────────────
-
-export const QUOTE_SOCKET_OPEN_TIMEOUT_MS = 5_000;
-export const QUOTE_SOCKET_STABLE_OPEN_MS = 10_000;
-export const QUOTE_SOCKET_SUBSCRIPTION_ACK_TIMEOUT_MS = 3_000;
-export const QUOTE_SOCKET_MAX_SUBSCRIPTION_RETRIES = 3;
-export const QUOTE_SOCKET_HEARTBEAT_INTERVAL_MS = 15_000;
-export const QUOTE_SOCKET_PONG_TIMEOUT_MS = 10_000;
-
-const RECONNECT_JITTER_RATIO = 0.2;
-
-const addReconnectJitter = (delay: number, maximum: number): number => {
-  const jitter = Math.floor(delay * RECONNECT_JITTER_RATIO * Math.random());
-  return Math.min(maximum, delay + jitter);
-};
 
 class QuoteSocketManager {
   private ws: WebSocket | null = null;
@@ -755,7 +476,7 @@ class QuoteSocketManager {
     // Either transport may confirm with singular `channel`, array `channels`,
     // or `symbols`; collect every provided form instead of picking one.
     if (data.type === 'subscribed' || data.type === 'unsubscribed') {
-      const confirmedItems = this.collectConfirmationItems(data);
+      const confirmedItems = collectQuoteConfirmationItems(data);
       console.log(`[QuoteSocket] ${data.type}:`, confirmedItems.join(', '));
       const confirmedSymbols = this.reconcileSubscriptionConfirmation(data.type, confirmedItems);
       if (data.type === 'unsubscribed') this.retryRejectedSubscriptions(confirmedSymbols);
@@ -770,7 +491,7 @@ class QuoteSocketManager {
         return;
       }
 
-      const rejectedItems = this.collectConfirmationItems(data);
+      const rejectedItems = collectQuoteConfirmationItems(data);
       if (rejectedItems.length > 0) {
         const rejectedSymbols = this.reconcileSubscriptionConfirmation('unsubscribed', rejectedItems);
         this.retryRejectedSubscriptions(rejectedSymbols);
@@ -785,7 +506,7 @@ class QuoteSocketManager {
     }
 
     // Step 9-10: Normalize ticks
-    const ticks = processIncomingPayload(data);
+    const ticks = processIncomingQuotePayload(data);
     if (ticks.length === 0) return;
 
     // A live tick is itself proof the server is feeding this symbol — promote it
@@ -827,29 +548,6 @@ class QuoteSocketManager {
   }
 
   /**
-   * Collect every confirmation identifier from a subscribe/unsubscribe/error
-   * frame. The two transports use different field names — v2 confirms with
-   * singular `channel` or `channels`, feed confirms with `symbols` — so all
-   * present forms are merged rather than picking the first non-empty one.
-   */
-  private collectConfirmationItems(data: Record<string, unknown>): string[] {
-    const items: string[] = [];
-    const push = (value: unknown) => {
-      if (Array.isArray(value)) {
-        value.forEach((entry) => {
-          if (typeof entry === 'string' && entry) items.push(entry);
-        });
-      } else if (typeof value === 'string' && value) {
-        items.push(value);
-      }
-    };
-    push(data.symbols);
-    push(data.channels);
-    push(data.channel);
-    return items;
-  }
-
-  /**
    * Reconcile local subscribe state against a server confirmation message.
    *
    * `subscribed`   → the listed symbols are confirmed live: promote them from
@@ -861,20 +559,8 @@ class QuoteSocketManager {
    * Accepts either bare symbols (`'EURUSD'`) or feed channels (`'ticks.eurusd'`).
    */
   private reconcileSubscriptionConfirmation(type: 'subscribed' | 'unsubscribed', list: unknown): string[] {
-    const confirmedItems = Array.isArray(list)
-      ? list
-      : typeof list === 'string'
-        ? [list]
-        : [];
-    if (confirmedItems.length === 0) return [];
-
-    const symbols = confirmedItems
-      .map((entry) => {
-        const raw = typeof entry === 'string' ? entry : '';
-        const symbolPart = raw.startsWith('ticks.') ? raw.slice('ticks.'.length) : raw;
-        return normalizeSymbol(symbolPart);
-      })
-      .filter(Boolean);
+    const symbols = normalizeQuoteConfirmationItems(list);
+    if (symbols.length === 0) return [];
 
     if (type === 'subscribed') {
       symbols.forEach((symbol) => {

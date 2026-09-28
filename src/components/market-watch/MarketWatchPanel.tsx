@@ -13,12 +13,13 @@ import { useMarketWatchPanelModel } from './useMarketWatchPanelModel';
 import { MarketWatchSymbolExplorer } from './MarketWatchSymbolExplorer';
 import { MarketWatchGrid } from './MarketWatchGrid';
 import { MarketWatchSymbolDetails } from './MarketWatchSymbolDetails';
+import { MarketWatchViewTabs } from './MarketWatchViewTabs';
+import type { ActiveMarketSymbolsSnapshot } from './marketWatchPanelTypes';
 import {
   closeMarketWatchDockPanel,
   findInstrumentBySymbol,
   getBrokerSpecificationSource,
   getPublicSpecificationSource,
-  MARKET_WATCH_VIEWS,
   normalizeSymbol,
   uniqueSymbols,
   type MarketWatchViewId,
@@ -56,6 +57,13 @@ import {
 } from '../../utils/marketWatchView';
 import type { ActionFeedbackNotice } from '../notifications/ActionFeedbackToast';
 import {
+  getShortcutEventTarget,
+  isShortcutInput,
+  isShortcutLocalScope,
+  isShortcutOverlay,
+  shouldIgnoreShortcutEvent,
+} from '../../services/keyboardShortcutManager';
+import {
   getMarketWatchDisplayErrors,
   resolveMarketWatchSymbolInput,
   searchMarketWatchSymbols,
@@ -65,15 +73,7 @@ const SymbolSpecificationDialog = lazy(() => import('../dialogs/SymbolSpecificat
   .then(module => ({ default: module.SymbolSpecificationDialog })));
 
 export { MARKET_WATCH_EXPORT_HYDRATION_TIMEOUT_MS } from './marketWatchExportHydration';
-
-export interface ActiveMarketSymbolsSnapshot {
-  symbols: string[];
-  loading: boolean;
-  settled: boolean;
-  current: boolean;
-  error: string | null;
-  reload: () => Promise<void>;
-}
+export type { ActiveMarketSymbolsSnapshot } from './marketWatchPanelTypes';
 
 interface MarketWatchPanelBaseProps {
   allSymbols: unknown[];
@@ -882,38 +882,15 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
             </>
           )}
           {!showSymbolsPanel && (
-            <div
-              className="rtx-market-watch__view-tabs"
-              role="tablist"
-              aria-label={tr('Market Watch views')}
-              style={{ display: 'flex', minHeight: 26, borderTop: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}
-            >
-              {MARKET_WATCH_VIEWS.map((view) => (
-                <button
-                  key={view}
-                  type="button"
-                  role="tab"
-                  aria-selected={marketWatchView === view}
-                  onClick={() => {
-                    if (view === 'ticks') setTickChartSymbol(normalizeSymbol(selectedSymbol));
-                    if (view === 'details') setDetailsSelection(null);
-                    setMarketWatchView(view);
-                  }}
-                  style={{
-                    minWidth: 64,
-                    border: 0,
-                    borderBottom: marketWatchView === view ? '2px solid #0078d7' : '2px solid transparent',
-                    background: marketWatchView === view ? 'var(--bg-quaternary)' : 'transparent',
-                    color: marketWatchView === view ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    fontFamily: 'inherit',
-                    fontSize: 11,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {view === 'symbols' ? tr('Symbols') : view === 'details' ? tr('Details') : tr('Ticks')}
-                </button>
-              ))}
-            </div>
+            <MarketWatchViewTabs
+              activeView={marketWatchView}
+              onSelectView={(view) => {
+                if (view === 'ticks') setTickChartSymbol(normalizeSymbol(selectedSymbol));
+                if (view === 'details') setDetailsSelection(null);
+                setMarketWatchView(view);
+              }}
+              translate={tr}
+            />
           )}
         </div>
         <MarketWatchSaveSetDialog
@@ -1014,4 +991,3 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
 };
 
 export default MarketWatchPanel;
-import { getShortcutEventTarget, isShortcutInput, isShortcutLocalScope, isShortcutOverlay, shouldIgnoreShortcutEvent } from '../../services/keyboardShortcutManager';
