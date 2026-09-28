@@ -4,7 +4,7 @@
  * PERFORMANCE FIX: Prevents 50-100ms UI blocking during aggregation
  */
 
-import type { Tick, OHLCV } from '../store/useMarketDataStore';
+import type { OHLCV, Tick } from '../types/marketData';
 
 interface WorkerMessage {
   type: 'aggregate' | 'aggregate-batch' | 'sma' | 'ema' | 'vwap' | 'indicators' | 'rsi' | 'bollinger' | 'macd';

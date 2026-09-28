@@ -24,7 +24,7 @@ export function useSafeHoverTriangle(options: SafeHoverTriangleOptions) {
   const { parentElement, submenuElement, tolerance = 100 } = options;
   const [isInSafeZone, setIsInSafeZone] = useState(false);
   const mousePositionRef = useRef<Point>({ x: 0, y: 0 });
-  const lastMovementTimeRef = useRef<number>(Date.now());
+  const lastMovementTimeRef = useRef<number>(0);
 
   /**
    * Check if a point is inside a triangle using cross product method

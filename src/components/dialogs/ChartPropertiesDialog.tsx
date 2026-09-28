@@ -10,7 +10,7 @@ import {
 } from '../../store/useChartSettingsStore';
 import { getChartGridLineColors } from '../../utils/chartGridStyle';
 import { SQUARE_CHART_GRID_CELL_SIZE_PX } from '../../utils/squareChartGridPrimitive';
-import type { ChartType } from '../TradingChart';
+import type { ChartType } from '../../types/chart';
 import { commandBus } from '../../services/commandBus';
 import { isShortcutOwnedBy, shouldIgnoreShortcutEvent } from '../../services/keyboardShortcutManager';
 

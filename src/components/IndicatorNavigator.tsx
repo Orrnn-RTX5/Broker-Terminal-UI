@@ -160,6 +160,10 @@ const INDICATOR_CATEGORIES = {
   }
 };
 
+const createIndicatorInstanceId = (indicatorId: string): string => (
+  `${indicatorId}-${Date.now()}`
+);
+
 export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCategory }: IndicatorNavigatorProps) {
     const tr = useUiTranslation();
   const [searchTerm, setSearchTerm] = useState('');
@@ -177,7 +181,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
 
   const handleAddIndicator = (category: string, indicator: any) => {
     onAddIndicator({
-      id: `${indicator.id}-${Date.now()}`,
+      id: createIndicatorInstanceId(indicator.id),
       name: indicator.name,
       category,
       description: indicator.description,

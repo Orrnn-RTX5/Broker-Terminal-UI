@@ -536,6 +536,7 @@
   "Enter the account holder information": "Nhập thông tin chủ tài khoản",
   "Enter workspace name": "Nhập tên không gian làm việc",
   "Entry / close arrows": "Mũi tên vào/đóng",
+  "Entry / close line": "???ng v?o/??ng",
   "Entry price": "Giá vào cửa",
   "Entry-to-close line": "Dòng từ đầu vào đến cuối",
   "Equidistant Channel": "Kênh cách đều",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "Không có biểu tượng nào để hiển thị",
   "Add a symbol to Market Watch, then open Popup Prices again.": "Thêm một biểu tượng vào Theo dõi thị trường, sau đó mở lại Bảng giá bật lên.",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "Đang hiển thị {{value0}} biểu tượng đầu tiên. Còn {{value1}} biểu tượng khác trong Theo dõi thị trường.",
-  "Resize Popup Prices dialog": "Thay đổi kích thước hộp thoại Bảng giá bật lên"
+  "Resize Popup Prices dialog": "Thay đổi kích thước hộp thoại Bảng giá bật lên",
+  "Details": "Chi tiết",
+  "Tick Size": "Kích thước tick",
+  "Tick Value": "Giá trị tick",
+  "Bid High": "Giá mua cao nhất",
+  "Bid Low": "Giá mua thấp nhất",
+  "Ask High": "Giá bán cao nhất",
+  "Ask Low": "Giá bán thấp nhất",
+  "Last quote": "Báo giá cuối"
 }

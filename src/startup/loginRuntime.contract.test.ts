@@ -161,13 +161,18 @@ describe('interactive login runtime boundary source contract', () => {
     }
   });
 
-  it('keeps secondary tools and trade-overlay helpers out of the shell chunk', () => {
+  it('keeps secondary tools lazy and trade-overlay coordination out of the unauthenticated shell', () => {
     const app = readSource('src/App.tsx');
+    const floatingPanels = readSource('src/app/ui/FloatingTerminalPanels.tsx');
+    const appShell = readSource('src/AppShell.tsx');
+    const authenticatedRuntime = `${app}\n${floatingPanels}`;
 
-    expect(app).toContain("const LazyDepthOfMarket = lazy(() => import('./components/DepthOfMarket')");
+    expect(floatingPanels).toContain("const LazyDepthOfMarket = lazy(() => import('../../components/DepthOfMarket')");
     expect(app).toContain("const LazyChartPropertiesDialog = lazy(() => import('./components/dialogs/ChartPropertiesDialog')");
-    expect(app).not.toContain("import { DepthOfMarket } from './components/DepthOfMarket'");
-    expect(app).toContain("void import('./services/tradeOverlayHistory').then");
+    expect(authenticatedRuntime).not.toContain("import { DepthOfMarket } from './components/DepthOfMarket'");
+    expect(authenticatedRuntime).not.toContain("import { DepthOfMarket } from '../../components/DepthOfMarket'");
+    expect(authenticatedRuntime).toContain("from './services/tradeOverlayHistory'");
+    expect(appShell).not.toContain('tradeOverlayHistory');
   });
 
   it('memoizes retryable dynamic imports and provides no eager store warmup', () => {

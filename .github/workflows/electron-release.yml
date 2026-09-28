@@ -12,8 +12,13 @@ permissions:
   contents: read
 
 jobs:
+  quality:
+    name: Validate release candidate
+    uses: ./.github/workflows/quality.yml
+
   release-windows:
     name: Build and publish Windows release
+    needs: quality
     runs-on: windows-2022
 
     env:
@@ -60,7 +65,14 @@ jobs:
           }
 
       - name: Typecheck
-        run: npm.cmd run typecheck
+        run: |
+          npm.cmd run typecheck
+          npm.cmd run typecheck:tests
+
+      - name: Check architecture and tracked secrets
+        run: |
+          npm.cmd run check:architecture
+          npm.cmd run check:secrets
 
       - name: Test
         run: npm.cmd run test:run

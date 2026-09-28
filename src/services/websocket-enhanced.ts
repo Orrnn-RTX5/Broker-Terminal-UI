@@ -12,8 +12,16 @@ import { useWebSocketStore } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
 import { buildBrokerWsV2Uri, getAccessToken, onSessionChange } from './brokerSession';
 import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
-import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
+import {
+  composeDailyChangeQuoteContext,
+  readDailyChangeLastPrice,
+  readDailyChangePercent,
+  readDailyChangePreviousClose,
+  resolveDailyChangePercent,
+} from '../utils/dailyChange';
+import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
 import { readFirstFiniteNumber, readFirstNonEmptyString } from '../utils/recordFields';
+import { readQuoteSessionRange } from '../utils/quoteSessionRange';
 import {
   asUnknownRecord,
   normalizeBrokerTimestampMs,
@@ -46,12 +54,29 @@ const asMessageRecord = (value: unknown): Record<string, unknown> | null => (
   value !== null && typeof value === 'object' ? value as Record<string, unknown> : null
 );
 
-const hasPositiveBidAsk = (value: unknown): boolean => {
+const HANDLED_TICK_CONTAINER_KEYS = [
+  'data', 'tick', 'quote', 'price', 'payload', 'message', 'prices', 'ticks',
+] as const;
+
+const hasNestedHandledTickPayload = (record: Record<string, unknown>): boolean => (
+  HANDLED_TICK_CONTAINER_KEYS.some((key) => {
+    const candidate = record[key];
+    return Array.isArray(candidate)
+      || (candidate !== null && typeof candidate === 'object');
+  })
+);
+
+const hasHandledTickPrice = (value: unknown, symbol: unknown, envelope?: unknown): boolean => {
   const record = asMessageRecord(value);
   if (!record) return false;
+  // Ownership is intentionally leaf-only. A wrapper may repeat summary sides
+  // while carrying the authoritative quote below a supported container key.
+  if (hasNestedHandledTickPayload(record)) return false;
   const bid = Number(record.bid);
   const ask = Number(record.ask);
-  return Number.isFinite(bid) && bid > 0 && Number.isFinite(ask) && ask > 0;
+  if (Number.isFinite(bid) && bid > 0 && Number.isFinite(ask) && ask > 0) return true;
+  return resolveDailyChangePriceMode(record, symbol, envelope) === 'last'
+    && readDailyChangeLastPrice(composeDailyChangeQuoteContext(record, envelope)) !== undefined;
 };
 
 /**
@@ -61,11 +86,15 @@ const hasPositiveBidAsk = (value: unknown): boolean => {
  */
 export const isEnhancedStoreHandledTickFrame = (message: WebSocketMessage): boolean => {
   if (message.type === 'tick') {
-    return Boolean(String(message.symbol ?? '').trim()) && hasPositiveBidAsk(message);
+    return Boolean(String(message.symbol ?? '').trim())
+      && hasHandledTickPrice(message, message.symbol);
   }
+  const channelSymbol = typeof message.channel === 'string' && message.channel.toLowerCase().startsWith('ticks.')
+    ? message.channel.slice('ticks.'.length)
+    : '';
   return message.type === 'channel_message'
-    && Boolean(String(message.channel ?? '').toLowerCase().startsWith('ticks.'))
-    && hasPositiveBidAsk(message.data);
+    && Boolean(channelSymbol)
+    && hasHandledTickPrice(message.data, channelSymbol, message);
 };
 
 export const isExactAccountStreamChannel = (
@@ -742,7 +771,7 @@ export class EnhancedWebSocketService {
             // App intentionally no longer writes this same tick a second time.
             symbol: channelSymbol || payload.symbol,
             sourceTimestamp,
-          });
+          }, data);
         }
       } catch (err) {
         console.error('[WS] Failed to map channel_message to store:', err);
@@ -755,15 +784,17 @@ export class EnhancedWebSocketService {
    * Handle tick message from fixapibackend
    * Format: {type: 'tick', symbol, bid, ask, spread, timestamp, high24h, low24h, dailyChange, lp}
    */
-  private handleFixTick(data: WebSocketMessage): void {
+  private handleFixTick(data: WebSocketMessage, envelope?: WebSocketMessage): void {
     const sourceTimestamp = resolveTickSourceTimestampMs(data);
     const ts = sourceTimestamp ?? Date.now();
+    const dailyChangeContext = composeDailyChangeQuoteContext(data, envelope);
+    const last = readDailyChangeLastPrice(dailyChangeContext);
+    const priceMode = resolveDailyChangePriceMode(data, data.symbol, envelope);
     const bid = Number(data.bid) || 0;
     const ask = Number(data.ask) || bid;
-    const previousClose = readFirstFiniteNumber(data, ['previous_close', 'previousClose']);
+    const previousClose = readDailyChangePreviousClose(dailyChangeContext);
     const dailyOpen = readFirstFiniteNumber(data, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']);
-    const close = readFirstFiniteNumber(data, ['close', 'previous_close', 'previousClose', 'close_price', 'closePrice']);
-    const last = readFirstFiniteNumber(data, ['last', 'last_price', 'lastPrice']);
+    const close = readFirstFiniteNumber(data, ['close', 'close_price', 'closePrice']) ?? previousClose;
     const volume = readFirstFiniteNumber(data, [
       'volume',
       'volume_24h',
@@ -798,9 +829,11 @@ export class EnhancedWebSocketService {
     const high24h = readFirstFiniteNumber(data, ['high24h', 'high_24h']) ?? (sessionHigh || undefined);
     const low24h = readFirstFiniteNumber(data, ['low24h', 'low_24h']) ?? sessionLow;
     const dailyChange = resolveDailyChangePercent(
-      readDailyChangePercent(data),
+      readDailyChangePercent(dailyChangeContext),
       bid,
       previousClose,
+      dailyChangeContext,
+      priceMode,
     );
     if (WS_DEBUG) {
       console.log(`[WS TICK] ${data.symbol} bid=${data.bid} ask=${data.ask} spread=${data.spread} ts=${ts} daily=${data.dailyChange}`);
@@ -824,6 +857,7 @@ export class EnhancedWebSocketService {
       low24h,
       high,
       low,
+      ...readQuoteSessionRange(data),
       open: dailyOpen,
       close,
     });

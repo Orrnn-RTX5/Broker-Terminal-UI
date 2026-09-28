@@ -1,7 +1,8 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { drawingManager, type Drawing } from '../services/drawingManager';
+import { drawingManager } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 import { annotationTable } from './annotationToolCatalog';
 import { commandBus } from '../services/commandBus';
 

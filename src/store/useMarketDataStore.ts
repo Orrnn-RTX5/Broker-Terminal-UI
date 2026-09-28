@@ -11,6 +11,7 @@
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { cancelPendingAggregations, getWorkerManager, type SymbolAggregationRequest, type SymbolAggregationResult } from '../services/aggregationWorkerManager';
+import type { CandleUpdateSource, OHLCV, Tick } from '../types/marketData';
 import {
   isStructurallyValidPriceCandle,
   repairPriceCandle,
@@ -28,32 +29,7 @@ const MARKET_DATA_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 // Types
 // ============================================
 
-export interface Tick {
-  symbol: string;
-  bid: number;
-  ask: number;
-  spread: number;
-  timestamp: number;
-  /** Upstream event time, distinct from a local receipt-time fallback. */
-  sourceTimestamp?: number;
-  lp?: string;
-  volume?: number;
-}
-
-export interface OHLCV {
-  timestamp: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  /** Provenance used to keep a delayed local aggregation from replacing backend OHLC. */
-  source?: CandleUpdateSource;
-  /** Upstream revision/event time in milliseconds when the backend supplies one. */
-  sourceTimestamp?: number;
-  /** Backend finality for the bucket; omitted when the adapter did not report it. */
-  closed?: boolean;
-}
+export type { CandleUpdateSource, OHLCV, Tick } from '../types/marketData';
 
 export interface SymbolStats {
   symbol: string;
@@ -80,8 +56,6 @@ interface SymbolData {
   tickBuffer: Tick[];
   lastAggregation: number;
 }
-
-export type CandleUpdateSource = 'server' | 'local';
 
 export interface CandleUpdate {
   symbol: string;

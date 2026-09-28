@@ -536,6 +536,7 @@
   "Enter the account holder information": "Masukkan informasi pemilik akun",
   "Enter workspace name": "Masukkan nama ruang kerja",
   "Entry / close arrows": "Panah masuk / tutup",
+  "Entry / close line": "Garis masuk / tutup",
   "Entry price": "Harga masuk",
   "Entry-to-close line": "Jalur masuk-ke-tutup",
   "Equidistant Channel": "Saluran yang berjarak sama",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "Tidak ada simbol untuk ditampilkan",
   "Add a symbol to Market Watch, then open Popup Prices again.": "Tambahkan simbol ke Pantau Pasar, lalu buka Popup Harga lagi.",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "Menampilkan {{value0}} simbol pertama. {{value1}} simbol lainnya masih ada di Pantau Pasar.",
-  "Resize Popup Prices dialog": "Ubah ukuran dialog Popup Harga"
+  "Resize Popup Prices dialog": "Ubah ukuran dialog Popup Harga",
+  "Details": "Detail",
+  "Tick Size": "Ukuran tick",
+  "Tick Value": "Nilai tick",
+  "Bid High": "Bid tertinggi",
+  "Bid Low": "Bid terendah",
+  "Ask High": "Ask tertinggi",
+  "Ask Low": "Ask terendah",
+  "Last quote": "Kuotasi terakhir"
 }

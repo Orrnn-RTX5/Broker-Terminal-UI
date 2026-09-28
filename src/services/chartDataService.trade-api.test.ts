@@ -200,6 +200,25 @@ describe('trade candle normalization and websocket cleanup', () => {
     ]);
   });
 
+  it('preserves the broker D1 timestamp before UTC chart-bucket alignment', () => {
+    const service = new ChartDataService();
+    const sourceTime = Date.parse('2026-09-06T22:00:00Z') / 1000;
+
+    expect(service.normalizeCandles({
+      candles: [
+        { time: sourceTime, open: 100, high: 112, low: 98, close: 110, volume: 5 },
+      ],
+    }, 'D1')).toEqual([{
+      time: Date.parse('2026-09-06T00:00:00Z') / 1000,
+      sourceTime,
+      open: 100,
+      high: 112,
+      low: 98,
+      close: 110,
+      volume: 5,
+    }]);
+  });
+
   it('rejects malformed backend OHLC instead of repairing or inventing its wick values', () => {
     const service = new ChartDataService();
 

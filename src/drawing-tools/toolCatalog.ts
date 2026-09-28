@@ -1,4 +1,4 @@
-import type { DrawingType } from '../services/drawingManager';
+import type { DrawingType } from './model/drawing';
 
 export type TrendLineToolGroup = 'Lines' | 'Channels' | 'Pitchforks';
 

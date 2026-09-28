@@ -6,7 +6,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import type { ChartType, Timeframe } from './TradingChart';
+import type { ChartType, Timeframe } from '../types/chart';
 import type { IndicatorConfig } from '../services/indicatorManager';
 import { commandBus } from '../services/commandBus';
 import { useTemplates, useTemplateStore } from '../store/useTemplateStore';

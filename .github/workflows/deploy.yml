@@ -18,8 +18,13 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/broker-terminal-ui
 
 jobs:
+  quality:
+    name: Validate release candidate
+    uses: ./.github/workflows/quality.yml
+
   build-and-push:
     name: Build and Push Docker Image
+    needs: quality
     runs-on: ubuntu-latest
 
     steps:
@@ -64,7 +69,7 @@ jobs:
       - name: Execute deployment via SSH
         shell: bash
         env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST || '51.195.188.172' }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER || 'ubuntu' }}
           SERVER_PORT: ${{ secrets.SERVER_PORT || '22' }}
           SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY || secrets.BROKER_SSH_PRIVATE_KEY }}
@@ -76,6 +81,11 @@ jobs:
           DEPLOY_DIR: /opt/Rtx5-broker-production/terminal-ui
         run: |
           set -euo pipefail
+
+          if [ -z "$SERVER_HOST" ]; then
+            echo "ERROR: SERVER_HOST repository secret is not set!" >&2
+            exit 1
+          fi
 
           if [ -z "$SSH_PRIVATE_KEY" ]; then
             echo "ERROR: SERVER_SSH_KEY (or BROKER_SSH_PRIVATE_KEY) secret is not set!" >&2
@@ -97,75 +107,86 @@ jobs:
             printf '%s\n' "$ENV_FILE" | ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "sudo mkdir -p ${DEPLOY_DIR} && sudo tee ${DEPLOY_DIR}/.env > /dev/null && sudo chown \"\$(id -u)\":\"\$(id -g)\" ${DEPLOY_DIR}/.env && sudo chmod 600 ${DEPLOY_DIR}/.env"
           fi
 
-          ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" bash -s <<EOF
+          # Send the registry password over SSH stdin. It never becomes part of
+          # the remote command line or executable shell source.
+          if [ -n "$GHCR_USER" ] && [ -n "$GHCR_PASS" ]; then
+            printf -v GHCR_USER_SHELL '%q' "$GHCR_USER"
+            printf '%s' "$GHCR_PASS" | ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" \
+              "docker login ghcr.io -u $GHCR_USER_SHELL --password-stdin"
+          fi
+
+          ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" \
+            "IMAGE_TAG='$IMAGE_TAG' IMAGE_LATEST='$IMAGE_LATEST' DEPLOY_DIR='$DEPLOY_DIR' bash -s" <<'EOF'
             set -euo pipefail
 
-            echo "=== 1. Logging into GHCR ==="
-            if [ -n "$GHCR_USER" ] && [ -n "$GHCR_PASS" ]; then
-              printf '%s' "$GHCR_PASS" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            fi
-
-            echo "=== 2. Pulling image: $IMAGE_TAG ==="
+            echo "=== 1. Pulling image: $IMAGE_TAG ==="
             docker pull "$IMAGE_TAG"
             docker tag "$IMAGE_TAG" "$IMAGE_LATEST"
 
-            echo "=== 3. Ensuring directory exists ==="
+            echo "=== 2. Ensuring directory exists ==="
             sudo mkdir -p ${DEPLOY_DIR} || true
 
-            # Record previous running image for instant auto-rollback if new version fails
-            PREV_IMAGE=\$(docker inspect --format='{{.Config.Image}}' broker-terminal-ui 2>/dev/null || echo "")
-            echo "ℹ️ Active previous container image: \${PREV_IMAGE:-None}"
+            # Record the immutable local image ID. The old container may have
+            # been created from the mutable latest tag, which is retagged above.
+            PREV_IMAGE_ID=$(docker inspect --format='{{.Image}}' broker-terminal-ui 2>/dev/null || echo "")
+            PREV_IMAGE_REF=$(docker inspect --format='{{.Config.Image}}' broker-terminal-ui 2>/dev/null || echo "")
+            echo "Previous container image: ${PREV_IMAGE_REF:-None} (${PREV_IMAGE_ID:-no immutable ID})"
 
-            echo "=== 4. Recreating container on port 127.0.0.1:8103 ==="
-            docker rm -f broker-terminal-ui 2>/dev/null || true
-
+            echo "=== 3. Recreating container on port 127.0.0.1:8103 ==="
             ENV_ARG=""
             if [ -f ${DEPLOY_DIR}/.env ]; then
               if [ -r ${DEPLOY_DIR}/.env ]; then
                 ENV_ARG="--env-file ${DEPLOY_DIR}/.env"
               else
-                echo "ERROR: ${DEPLOY_DIR}/.env exists but is not readable by \$(id -un); docker run would fail." >&2
+                echo "ERROR: ${DEPLOY_DIR}/.env exists but is not readable by $(id -un); docker run would fail." >&2
                 ls -l ${DEPLOY_DIR}/.env >&2 || true
                 exit 1
               fi
             fi
 
-            docker run -d \
-              --name broker-terminal-ui \
-              --restart unless-stopped \
-              -p 127.0.0.1:8103:80 \
-              \$ENV_ARG \
-              --label "rtx5.component=webterminal" \
-              --label "rtx5.domain=webterminal.orrnn.com" \
-              "$IMAGE_LATEST"
+            run_terminal_image() {
+              docker run -d \
+                --name broker-terminal-ui \
+                --restart unless-stopped \
+                -p 127.0.0.1:8103:80 \
+                $ENV_ARG \
+                --label "rtx5.component=webterminal" \
+                --label "rtx5.domain=webterminal.orrnn.com" \
+                "$1"
+            }
 
-            echo "=== 5. Verifying container health with Auto-Rollback Guard ==="
-            SUCCESS=0
-            for i in \$(seq 1 10); do
-              sleep 1
-              if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8103/ | grep -q "200"; then
-                echo "✅ WebTerminal container healthy (HTTP 200) on attempt \$i!"
-                SUCCESS=1
-                break
-              fi
-              echo "⏳ Waiting for WebTerminal to respond... (Attempt \$i/10)"
-            done
-
-            if [ "\$SUCCESS" -ne 1 ]; then
-              echo "❌ CRITICAL: Health check failed! Initiating automatic rollback to: \${PREV_IMAGE:-None}" >&2
-              docker logs --tail 50 broker-terminal-ui || true
-              if [ -n "\$PREV_IMAGE" ]; then
-                docker rm -f broker-terminal-ui 2>/dev/null || true
-                docker run -d \
-                  --name broker-terminal-ui \
-                  --restart unless-stopped \
-                  -p 127.0.0.1:8103:80 \
-                  \$ENV_ARG \
-                  --label "rtx5.component=webterminal" \
-                  "\$PREV_IMAGE"
-                echo "⚠️ Rollback completed: previous known-good container restored."
+            docker rm -f broker-terminal-ui 2>/dev/null || true
+            if ! run_terminal_image "$IMAGE_TAG"; then
+              echo "CRITICAL: New container failed to start. Restoring: ${PREV_IMAGE_ID:-None}" >&2
+              if [ -n "$PREV_IMAGE_ID" ]; then
+                run_terminal_image "$PREV_IMAGE_ID"
+                echo "Rollback completed: previous image restarted."
               fi
               exit 1
             fi
-            echo "🎉 Deployment successful and verified!"
+
+            echo "=== 4. Verifying container health with Auto-Rollback Guard ==="
+            SUCCESS=0
+            for i in $(seq 1 10); do
+              sleep 1
+              HTTP_STATUS=$(curl --silent --show-error --connect-timeout 2 --max-time 5 --output /dev/null --write-out "%{http_code}" http://127.0.0.1:8103/ || true)
+              if [ "$HTTP_STATUS" = "200" ]; then
+                echo "WebTerminal container healthy (HTTP 200) on attempt $i."
+                SUCCESS=1
+                break
+              fi
+              echo "Waiting for WebTerminal to respond (attempt $i/10)."
+            done
+
+            if [ "$SUCCESS" -ne 1 ]; then
+              echo "CRITICAL: Health check failed. Initiating rollback to: ${PREV_IMAGE_ID:-None}" >&2
+              docker logs --tail 50 broker-terminal-ui || true
+              docker rm -f broker-terminal-ui 2>/dev/null || true
+              if [ -n "$PREV_IMAGE_ID" ]; then
+                run_terminal_image "$PREV_IMAGE_ID"
+                echo "Rollback completed: previous known-good container restored."
+              fi
+              exit 1
+            fi
+            echo "Deployment successful and verified."
           EOF

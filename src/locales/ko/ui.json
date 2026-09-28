@@ -536,6 +536,7 @@
   "Enter the account holder information": "계좌 소유자 정보 입력",
   "Enter workspace name": "작업 공간 이름 입력",
   "Entry / close arrows": "진입 / 청산 화살표",
+  "Entry / close line": "?? / ?? ?",
   "Entry price": "진입 가격",
   "Entry-to-close line": "진입-청산 연결선",
   "Equidistant Channel": "등간격 채널",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "표시할 종목이 없습니다",
   "Add a symbol to Market Watch, then open Popup Prices again.": "시세 창에 종목을 추가한 후 팝업 시세를 다시 여세요.",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "처음 {{value0}}개 종목을 표시하고 있습니다. 시세 창에 {{value1}}개 종목이 더 있습니다.",
-  "Resize Popup Prices dialog": "팝업 시세 대화 상자 크기 조정"
+  "Resize Popup Prices dialog": "팝업 시세 대화 상자 크기 조정",
+  "Details": "세부 정보",
+  "Tick Size": "틱 크기",
+  "Tick Value": "틱 가치",
+  "Bid High": "매수호가 고가",
+  "Bid Low": "매수호가 저가",
+  "Ask High": "매도호가 고가",
+  "Ask Low": "매도호가 저가",
+  "Last quote": "마지막 호가"
 }

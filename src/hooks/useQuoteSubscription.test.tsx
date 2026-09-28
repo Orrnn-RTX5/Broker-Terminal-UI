@@ -29,6 +29,7 @@ vi.mock('../services/brokerSession', () => ({
     brokerSessionMock.listener = cb;
     return brokerSessionMock.unsubscribe;
   }),
+  onCommittedBrokerAccountSessionScopeChange: vi.fn(() => vi.fn()),
   // config/api.ts (imported transitively) calls these at module load time.
   buildBrokerWsFeedUri: vi.fn(() => 'wss://broker.example/ws/feed'),
   buildBrokerWsV2Uri: vi.fn(() => 'wss://broker.example/ws/v2'),

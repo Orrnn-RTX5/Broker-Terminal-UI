@@ -1,4 +1,4 @@
-import type { ChartType } from '../components/TradingChart.helpers';
+import type { ChartType } from '../types/chart';
 import type { DockLayout, DockPanelConfig } from './dockManager';
 import { getPanelIdFromChartContextId } from './chartCommandTarget';
 

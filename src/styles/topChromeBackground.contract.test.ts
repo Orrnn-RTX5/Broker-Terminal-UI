@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const readSource = (path: string): string => readFileSync(resolve(process.cwd(), path), 'utf8');
 
 const themeCss = readSource('src/styles/theme.css');
-const advancedCss = readSource('src/styles/advanced-untitled-light.css');
+const advancedCss = readSource('src/styles/legacy-light-overrides.css');
 const topToolbarSource = readSource('src/components/layout/TopToolbar.tsx');
 const desktopQuickActionsSource = readSource('src/components/layout/DesktopQuickActions.tsx');
 const menuBarSource = readSource('src/components/layout/MenuBar.tsx');

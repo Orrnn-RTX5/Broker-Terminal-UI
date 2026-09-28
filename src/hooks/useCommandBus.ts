@@ -14,6 +14,19 @@ import type {
 } from '../types/commands';
 
 /**
+ * Subscribe to a specific command type with automatic cleanup.
+ */
+export function useCommandSubscription<T extends CommandType>(
+  type: T,
+  handler: CommandHandler<T>
+): void {
+  useEffect(() => {
+    const unsubscribe = commandBus.subscribe(type, handler);
+    return unsubscribe;
+  }, [type, handler]);
+}
+
+/**
  * useCommandBus Hook
  * Provides access to the centralized command bus
  *
@@ -36,34 +49,6 @@ export function useCommandBus() {
   const dispatch = useCallback((command: Command): void => {
     commandBus.dispatch(command);
   }, []);
-
-  /**
-   * Subscribe to a specific command type
-   * Handles cleanup automatically
-   *
-   * @param type - The command type to listen for
-   * @param handler - Function to call when command is dispatched
-   *
-   * @example
-   * useCommandSubscription('SET_CHART_TYPE', (payload) => {
-   *   console.log('Chart type changed to:', payload.chartType);
-   * });
-   */
-  const useCommandSubscription = useCallback(
-    <T extends CommandType>(
-      type: T,
-      handler: CommandHandler<T>
-    ): void => {
-      useEffect(() => {
-        // Subscribe to the command type
-        const unsubscribe = commandBus.subscribe(type, handler);
-
-        // Clean up on unmount
-        return unsubscribe;
-      }, [type, handler]);
-    },
-    []
-  );
 
   /**
    * Get command history

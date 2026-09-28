@@ -50,7 +50,7 @@ const getEnv = (): Record<string, any> => {
 const isDesktopRuntime = (): boolean => {
   if (typeof window !== 'undefined') {
     const w = window as any;
-    if (Boolean(w.electron?.window || w.electronAPI || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron')))) {
+    if (w.electron?.window || w.electronAPI || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron'))) {
       return true;
     }
   }

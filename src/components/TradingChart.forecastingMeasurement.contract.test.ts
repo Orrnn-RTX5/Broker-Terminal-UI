@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const chartSource = readFileSync(
-  resolve(process.cwd(), 'src/components/TradingChart.tsx'),
+  resolve(process.cwd(), 'src/features/trading-chart/runtime/useTradingChartReconfiguration.ts'),
   'utf8',
 ).replace(/\r\n/g, '\n');
 

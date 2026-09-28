@@ -1,6 +1,7 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useEffect, useRef, useState } from 'react';
-import { drawingManager, type Drawing } from '../services/drawingManager';
+import { drawingManager } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 import { useAppStore } from '../store/useAppStore';
 import type { PositionSizing } from './positionDrawingValues';
 

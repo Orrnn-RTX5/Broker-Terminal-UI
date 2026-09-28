@@ -46,15 +46,16 @@ describe('Close All source contract', () => {
   });
 
   it('keeps the first confirmation for Close All, In-Profit, and In-Loss', () => {
-    const confirmation = bulkHandler.indexOf('await useBulkCloseConfirmStore.getState().showBulkCloseConfirm({');
-    const execution = bulkHandler.indexOf('bulkCloseInFlightRef.current = true;');
+    const confirmation = bulkHandler.indexOf('await confirmBulkCloseForSession({');
+    const execution = bulkHandler.indexOf('bulkCloseInFlightScopesRef.current.add(closeSessionScope);');
     const beforeConfirmation = bulkHandler.slice(0, confirmation);
 
     expect(bulkStart).toBeGreaterThan(-1);
     expect(bulkHandler).toContain("type: 'ALL' | 'WINNERS' | 'LOSERS'");
     expect(bulkHandler).toContain('positions: previewPositions,');
     expect(bulkHandler).toContain('combinedPnL: combinedProfit,');
-    expect(bulkHandler).toContain('if (!confirmed) return;');
+    expect(bulkHandler).toContain('!confirmed');
+    expect(bulkHandler).toContain('cancelConfirmation: () => useBulkCloseConfirmStore.getState().closeBulkCloseConfirm()');
     expect(confirmation).toBeGreaterThan(-1);
     expect(execution).toBeGreaterThan(confirmation);
     expect(beforeConfirmation).not.toContain('await ');
@@ -102,12 +103,13 @@ describe('Close All source contract', () => {
   });
 
   it('guards duplicate submissions and stale broker-account results', () => {
-    expect(bulkHandler).toContain('if (bulkCloseInFlightRef.current) return;');
-    expect(bulkHandler).toContain('bulkCloseInFlightRef.current = true;');
-    expect(bulkHandler).toContain('bulkCloseInFlightRef.current = false;');
-    expect(bulkHandler).toContain('closingTicketsRef.current.has(ticketId)');
-    expect(bulkHandler).toContain('closingTicketsRef.current.add(ticketId)');
-    expect(bulkHandler).toContain('closingTicketsRef.current.delete(ticket)');
+    expect(bulkHandler).toContain('if (bulkCloseInFlightScopesRef.current.has(closeSessionScope)) return;');
+    expect(bulkHandler).toContain('bulkCloseInFlightScopesRef.current.add(closeSessionScope);');
+    expect(bulkHandler).toContain('bulkCloseInFlightScopesRef.current.delete(closeSessionScope);');
+    expect(bulkHandler).toContain('const ticketKey = createSessionScopedTicketKey(closeSessionScope, ticketId);');
+    expect(bulkHandler).toContain('closingTicketsRef.current.has(ticketKey)');
+    expect(bulkHandler).toContain('closingTicketsRef.current.add(ticketKey)');
+    expect(bulkHandler).toContain('createSessionScopedTicketKey(closeSessionScope, ticket)');
     expect(bulkHandler).toContain('const closeSessionScope = getCommittedBrokerAccountSessionScopeKey(');
     expect(bulkHandler).toContain('getCurrentSessionKey: getCurrentCloseSessionKey,');
     expect(bulkHandler).toContain('if (getCurrentCloseSessionKey() !== closeSessionScope) return;');

@@ -1,5 +1,5 @@
 import { MismatchDirection, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
-import type { DrawingPoint } from '../../services/drawingManager';
+import type { DrawingPoint } from '../model/drawing';
 import { drawingLogicalToCoordinate } from './drawingCoordinates';
 
 /** Store a candle time plus a bar fraction, never a viewport pixel offset. */

@@ -4,10 +4,21 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAppStore } from '../../store/useAppStore';
 import { resetBrokerServerClock } from '../../services/brokerServerClock';
+import { commitBrokerAccountSessionScope } from '../../services/brokerSession';
+import {
+  publishMarketWatchDisplayMetadata,
+  resetMarketWatchDisplayMetadataForTests,
+} from '../../store/useMarketWatchDisplayMetadataStore';
 import { PopupPricesDialog } from './PopupPricesDialog';
 
 describe('PopupPricesDialog', () => {
   beforeEach(() => {
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'test-broker',
+      serverUrl: 'https://broker.test',
+    });
+    resetMarketWatchDisplayMetadataForTests();
     resetBrokerServerClock();
     useAppStore.getState().setTicks({
       EURUSD: {
@@ -34,6 +45,8 @@ describe('PopupPricesDialog', () => {
 
   afterEach(() => {
     cleanup();
+    resetMarketWatchDisplayMetadataForTests();
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
     useAppStore.getState().setTicks({});
     vi.restoreAllMocks();
   });
@@ -57,6 +70,33 @@ describe('PopupPricesDialog', () => {
     expect(within(dialog).getByLabelText('Daily Change -0.31%')).toHaveAttribute('data-tone', 'negative');
     expect(within(dialog).getAllByText('Quote')).toHaveLength(2);
     expect(dialog).not.toHaveAttribute('aria-modal');
+  });
+
+  it('renders Last-only display metadata without exposing a Bid or Ask quote', () => {
+    publishMarketWatchDisplayMetadata('FUTURE.LAST', {
+      last: 120,
+      dailyChange: 20,
+      timestamp: 1_700_000_000_200,
+      sourceTimestamp: 1_700_000_000_200,
+    });
+
+    render(
+      <PopupPricesDialog
+        isOpen
+        symbols={['FUTURE.LAST']}
+        columns={['symbol', 'bid', 'ask', 'last', 'time', 'dailyChange']}
+        showMilliseconds
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('FUTURE.LAST Bid unavailable')).toBeInTheDocument();
+    expect(screen.getByLabelText('FUTURE.LAST Ask unavailable')).toBeInTheDocument();
+    expect(screen.getByLabelText('Daily Change +20.00%')).toBeInTheDocument();
+    expect(screen.getByText('22:13:20.200')).toBeInTheDocument();
+    expect(useAppStore.getState().ticks['FUTURE.LAST']).toBeUndefined();
+    expect(screen.getByRole('listitem', { name: 'FUTURE.LAST quote' }).querySelector('.price-display'))
+      .toHaveTextContent('120.00000');
   });
 
   it('mirrors configured Market Watch columns and millisecond precision', () => {

@@ -172,7 +172,7 @@ Capacity is accepted only when the required workload passes on the **actual rele
 
 ## Evidence and reproducibility
 
-Sanitized evidence and detailed source findings: [`artifacts/production-readiness-20260921/`](../artifacts/production-readiness-20260921/). The original temporary work directory is `C:/Users/ADMIN/AppData/Local/Temp/rtx-production-audit-20260921/`.
+Sanitized evidence and detailed source findings were recorded under `artifacts/production-readiness-20260921/` (historical artifacts that are not stored in this repository). The original temporary work directory was `C:/Users/ADMIN/AppData/Local/Temp/rtx-production-audit-20260921/`.
 
 - `audit-summary.json`: build freshness, focused-test totals and provisional capacity arithmetic.
 - `delivery-evidence.json`, `served-negative-cache-recheck.json`, `public-api-evidence.json`: timestamped public delivery and CORS evidence. No live token values or account payloads retained.

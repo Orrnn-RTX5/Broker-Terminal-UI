@@ -2,7 +2,7 @@ import { getAuthToken } from '../api/client';
 import { isDesktopBackendTarget } from '../config/backendTarget.js';
 import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME, FIRST_PAINT_HISTORY_COUNT } from '../constants/chartDefaults';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey, onSessionChange, onCommittedBrokerAccountSessionScopeChange } from '../services/brokerSession';
-import type { FetchCandlesOptions, OHLCData } from '../services/chartDataService';
+import type { FetchCandlesOptions, OHLCData } from '../types/chartData';
 
 export class StartupHistorySessionChangedError extends Error {
   constructor() {

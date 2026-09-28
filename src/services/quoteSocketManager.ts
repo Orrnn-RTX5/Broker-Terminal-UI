@@ -30,7 +30,14 @@ import {
 } from './brokerSession';
 import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
-import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
+import {
+  composeDailyChangeQuoteContext,
+  readDailyChangeLastPrice,
+  readDailyChangePercent,
+  readDailyChangePreviousClose,
+  resolveDailyChangePercent,
+} from '../utils/dailyChange';
+import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
 import {
   readFirstFiniteNumber,
   readFirstNonEmptyString as readRecordNonEmptyString,
@@ -39,10 +46,11 @@ import {
   asUnknownRecord,
   readBrokerTimestampMs,
 } from '../utils/brokerStreamSemantics';
+import { readQuoteSessionRange, type QuoteSessionRange } from '../utils/quoteSessionRange';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface NormalizedQuoteTick {
+export interface NormalizedQuoteTick extends QuoteSessionRange {
   symbol: string;
   bid: number;
   ask: number;
@@ -127,8 +135,9 @@ const QUOTE_PAYLOAD_KEYS = ['data', 'tick', 'quote', 'price', 'payload', 'messag
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null;
 
-const hasQuotePriceFields = (v: unknown): boolean =>
-  isRecord(v) && (v.bid !== undefined || v.ask !== undefined);
+const isNonArrayRecord = (v: unknown): v is Record<string, unknown> => (
+  isRecord(v) && !Array.isArray(v)
+);
 
 const getChannelSymbol = (v: unknown): string | undefined => {
   if (!isRecord(v) || typeof v.channel !== 'string') return undefined;
@@ -140,62 +149,131 @@ const getChannelSymbol = (v: unknown): string | undefined => {
 const hasQuoteIdentityFields = (v: unknown): boolean =>
   isRecord(v) && (normalizeSymbol(v.symbol) !== '' || getChannelSymbol(v) !== undefined);
 
-const getDescendantEnvelope = (raw: unknown, envelope: unknown): unknown => {
-  // FIX: Preserve an ancestor `ticks.EXACT-SYMBOL` channel even when a priced
-  // child repeats a lossy/unsuffixed payload symbol.
-  if (getChannelSymbol(envelope) !== undefined) return envelope;
-  return hasQuoteIdentityFields(raw) ? raw : envelope;
+const composeQuoteContext = (
+  payload: unknown,
+  envelopes: readonly unknown[],
+): Record<string, unknown> => composeDailyChangeQuoteContext(
+  payload,
+  envelopes[0],
+  envelopes.slice(1),
+);
+
+const resolveQuotePriceMode = (
+  payload: unknown,
+  symbol: unknown,
+  envelopes: readonly unknown[],
+) => resolveDailyChangePriceMode(payload, symbol, envelopes[0], envelopes.slice(1));
+
+const findRoutingChannelSymbol = (
+  payload: unknown,
+  envelopes: readonly unknown[],
+): string | undefined => {
+  // The outer subscribed channel is the transport-routing authority. Walk from
+  // outermost to nearest so a nested adapter wrapper cannot replace it.
+  for (let index = envelopes.length - 1; index >= 0; index -= 1) {
+    const channelSymbol = getChannelSymbol(envelopes[index]);
+    if (channelSymbol !== undefined) return channelSymbol;
+  }
+  return getChannelSymbol(payload);
 };
 
-function collectQuotePayloads(raw: unknown, envelope: unknown = raw): Array<{ payload: Record<string, unknown>; envelope: unknown }> {
+const findNearestEnvelopeSymbol = (envelopes: readonly unknown[]): unknown => {
+  for (const envelope of envelopes) {
+    if (isRecord(envelope) && normalizeSymbol(envelope.symbol)) return envelope.symbol;
+  }
+  return undefined;
+};
+
+const hasNestedQuotePayload = (v: Record<string, unknown>): boolean => (
+  QUOTE_PAYLOAD_KEYS.some((key) => {
+    const candidate = v[key];
+    return Array.isArray(candidate)
+      || isRecord(candidate)
+      || (typeof candidate === 'string' && candidate.trim() !== '');
+  })
+);
+
+const hasQuotePriceFields = (v: unknown, envelopes: readonly unknown[]): boolean => (
+  isRecord(v) && (
+    v.bid !== undefined
+    || v.ask !== undefined
+    || (
+      readDailyChangeLastPrice(composeQuoteContext(v, envelopes)) !== undefined
+      && (hasQuoteIdentityFields(v) || envelopes.some(hasQuoteIdentityFields))
+    )
+  )
+);
+
+interface CollectedQuotePayload {
+  payload: Record<string, unknown>;
+  /** Nearest wrapper first, followed by progressively outer wrappers. */
+  envelopes: readonly Record<string, unknown>[];
+}
+
+function collectQuotePayloads(
+  raw: unknown,
+  envelopes: readonly Record<string, unknown>[] = [],
+): CollectedQuotePayload[] {
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
-      return collectQuotePayloads(parsed, envelope);
+      return collectQuotePayloads(parsed, envelopes);
     } catch {
       return [];
     }
   }
 
   if (Array.isArray(raw)) {
-    return raw.flatMap((item) => collectQuotePayloads(item, isRecord(envelope) ? envelope : item));
+    return raw.flatMap((item) => collectQuotePayloads(item, envelopes));
   }
 
   if (!isRecord(raw)) return [];
 
-  if (hasQuotePriceFields(raw)) {
-    return [{ payload: raw, envelope: getDescendantEnvelope(raw, envelope) }];
+  const descendantEnvelopes = isNonArrayRecord(raw)
+    ? [raw, ...envelopes]
+    : envelopes;
+  if (hasNestedQuotePayload(raw)) {
+    const descendants = QUOTE_PAYLOAD_KEYS.flatMap((key) => {
+      if (!(key in raw)) return [];
+      const value = raw[key];
+
+      if (Array.isArray(value)) {
+        return value.flatMap((item) => collectQuotePayloads(item, descendantEnvelopes));
+      }
+
+      return collectQuotePayloads(value, descendantEnvelopes);
+    });
+    if (descendants.length > 0) return descendants;
   }
 
-  const descendantEnvelope = getDescendantEnvelope(raw, envelope);
-
-  return QUOTE_PAYLOAD_KEYS.flatMap((key) => {
-    if (!(key in raw)) return [];
-    const value = raw[key];
-
-    if (Array.isArray(value)) {
-      return value.flatMap((item) => collectQuotePayloads(item, descendantEnvelope));
-    }
-
-    return collectQuotePayloads(value, descendantEnvelope);
-  });
+  return hasQuotePriceFields(raw, envelopes)
+    ? [{ payload: raw, envelopes }]
+    : [];
 }
 
-function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unknown): NormalizedQuoteTick | null {
-  const channelSymbol = getChannelSymbol(envelope) ?? getChannelSymbol(payload);
+function normalizeQuotePayload(
+  payload: Record<string, unknown>,
+  envelopes: readonly Record<string, unknown>[],
+): NormalizedQuoteTick | null {
+  const channelSymbol = findRoutingChannelSymbol(payload, envelopes);
   // FIX: The subscribed channel is the routing authority. Some adapters expose
   // an unsuffixed payload symbol inside `ticks.EURUSD.r`.
-  const symbol = normalizeSymbol(channelSymbol ?? payload?.symbol ?? (isRecord(envelope) ? envelope.symbol : undefined));
+  const symbol = normalizeSymbol(channelSymbol ?? payload.symbol ?? findNearestEnvelopeSymbol(envelopes));
   if (!symbol) return null;
 
+  const dailyChangeContext = composeQuoteContext(payload, envelopes);
+  const last = readDailyChangeLastPrice(dailyChangeContext);
+  const priceMode = resolveQuotePriceMode(payload, symbol, envelopes);
   const bid = toNumber(payload?.bid);
   const ask = toNumber(payload?.ask, bid);
-  if (bid <= 0 && ask <= 0) return null;
+  // Last-only exchange events are metadata, not executable Bid/Ask quotes.
+  // Keep zero sides so the dispatcher routes them only to Market Watch's
+  // isolated display-metadata channel.
+  if (bid <= 0 && ask <= 0 && !(priceMode === 'last' && last !== undefined)) return null;
 
-  const previousClose = readFirstFiniteNumber(payload, ['previous_close', 'previousClose']);
+  const previousClose = readDailyChangePreviousClose(dailyChangeContext);
   const dailyOpen = readFirstFiniteNumber(payload, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']);
-  const close = readFirstFiniteNumber(payload, ['close', 'previous_close', 'previousClose', 'close_price', 'closePrice']);
-  const last = readFirstFiniteNumber(payload, ['last', 'last_price', 'lastPrice']);
+  const close = readFirstFiniteNumber(payload, ['close', 'close_price', 'closePrice']) ?? previousClose;
   const volume = readFirstFiniteNumber(payload, [
     'volume',
     'volume_24h',
@@ -212,8 +290,7 @@ function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unkno
   const sessionHigh = Math.max(toNumber(session?.high_bid), toNumber(session?.high_ask), high ?? 0);
   const sessionLowValues = [toNumber(session?.low_bid), toNumber(session?.low_ask), low ?? 0].filter(v => v > 0);
   const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
-  const envelopeRecord = isRecord(envelope) ? envelope : {};
-  const lp = readFirstNonEmptyString([payload, envelopeRecord], [
+  const lp = readFirstNonEmptyString([payload, ...envelopes], [
     'lp',
     'provider',
     'liquidity_provider',
@@ -221,7 +298,7 @@ function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unkno
     'lp_name',
     'lpName',
   ]);
-  const sourceTimestamp = readSourceTimestamp(payload, envelopeRecord);
+  const sourceTimestamp = readSourceTimestamp(payload, ...envelopes);
 
   return {
     symbol,
@@ -234,14 +311,17 @@ function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unkno
     volume,
     last,
     dailyChange: resolveDailyChangePercent(
-      readDailyChangePercent(payload),
+      readDailyChangePercent(dailyChangeContext),
       bid,
       previousClose,
+      dailyChangeContext,
+      priceMode,
     ),
     high24h: readFirstFiniteNumber(payload, ['high24h', 'high_24h']) ?? (sessionHigh || undefined),
     low24h: readFirstFiniteNumber(payload, ['low24h', 'low_24h']) ?? sessionLow,
     high,
     low,
+    ...readQuoteSessionRange(payload),
     open: dailyOpen,
     close,
   };
@@ -249,7 +329,7 @@ function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unkno
 
 function processIncomingPayload(raw: unknown): NormalizedQuoteTick[] {
   return collectQuotePayloads(raw)
-    .map(({ payload, envelope }) => normalizeQuotePayload(payload, envelope))
+    .map(({ payload, envelopes }) => normalizeQuotePayload(payload, envelopes))
     .filter((tick): tick is NormalizedQuoteTick => tick !== null);
 }
 
@@ -725,6 +805,11 @@ class QuoteSocketManager {
 
       // Step 14: Batched store path — enqueue for rAF-batched Zustand update
       enqueueLiveTick(tick.symbol, tick as LiveTick);
+
+      // Last-only display metadata is intentionally isolated from raw quote
+      // listeners: the selected-chart listener treats every callback as an
+      // executable Bid/Ask candle input.
+      if (tick.bid <= 0 && tick.ask <= 0) return;
 
       // Step 11: Immediate per-symbol listeners (for quote row UI)
       const callbacks = this.symbolListeners.get(tick.symbol);

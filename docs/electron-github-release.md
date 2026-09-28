@@ -55,7 +55,7 @@ Do not store the token in:
 
 - `package.json`
 - `.env`
-- `.env_local`
+- `.env.*` files containing local credentials
 - `.env.web`
 - `brokers.json`
 - Any committed file

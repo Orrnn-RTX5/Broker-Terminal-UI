@@ -2,13 +2,19 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   readMarketWatchDailyChange,
+  readMarketWatchDailyChangeEntry,
   rememberMarketWatchDailyChange,
   resetMarketWatchDailyChangeCacheForTests,
 } from '../services/marketWatchDailyChangeCache';
 import {
   CLOSED_MARKET_DAILY_CHANGE_MAX_CONCURRENCY,
+  hydrateClosedMarketDailyChanges,
   useClosedMarketDailyChanges,
 } from './useClosedMarketDailyChanges';
+import {
+  commitBrokerAccountSessionScope,
+  getCommittedBrokerAccountSessionScopeKey,
+} from '../services/brokerSession';
 
 const chartHarness = vi.hoisted(() => ({
   fetchCandles: vi.fn(),
@@ -61,11 +67,94 @@ describe('useClosedMarketDailyChanges', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetMarketWatchDailyChangeCacheForTests();
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'broker-a',
+      serverUrl: 'https://broker-a.test',
+    });
   });
 
   afterEach(() => {
     cleanup();
     resetMarketWatchDailyChangeCacheForTests();
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+  });
+
+  it('hydrates every requested export symbol while retaining scoped cached values', async () => {
+    const [priorDate, lastDate] = createRecentCompletedWeekdayTimestamps();
+    const scopeKey = getCommittedBrokerAccountSessionScopeKey(
+      commitBrokerAccountSessionScope({
+        authenticated: false,
+        brokerId: 'broker-a',
+        serverUrl: 'https://broker-a.test',
+      }),
+    );
+    rememberMarketWatchDailyChange(scopeKey, 'EURUSD', 1.25, Date.now(), 'quote');
+    chartHarness.fetchCandles.mockImplementation(({ symbol }: { symbol: string }) => Promise.resolve(
+      symbol === 'GBPUSD'
+        ? [dailyCandle(priorDate, 100), dailyCandle(lastDate, 110)]
+        : [],
+    ));
+
+    const result = await hydrateClosedMarketDailyChanges({
+      scopeKey,
+      symbols: [' EURUSD ', 'GBPUSD', 'EURUSD'],
+    });
+
+    expect(result.get('EURUSD')).toBe(1.25);
+    expect(result.get('GBPUSD')).toBeCloseTo(10);
+    expect(chartHarness.fetchCandles.mock.calls.map(([request]) => request.symbol).sort()).toEqual([
+      'EURUSD',
+      'GBPUSD',
+    ]);
+    expect(readMarketWatchDailyChange(scopeKey, 'GBPUSD')).toBeCloseTo(10);
+  });
+
+  it('fails export hydration closed when its scope is stale or changes in flight', async () => {
+    const scopeA = getCommittedBrokerAccountSessionScopeKey(
+      commitBrokerAccountSessionScope({
+        authenticated: false,
+        brokerId: 'broker-a',
+        serverUrl: 'https://broker-a.test',
+      }),
+    );
+    rememberMarketWatchDailyChange(scopeA, 'EURUSD', 1.25, Date.now(), 'quote');
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'broker-b',
+      serverUrl: 'https://broker-b.test',
+    });
+
+    await expect(hydrateClosedMarketDailyChanges({
+      scopeKey: scopeA,
+      symbols: ['EURUSD'],
+    })).resolves.toEqual(new Map());
+    expect(chartHarness.fetchCandles).not.toHaveBeenCalled();
+
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'broker-a',
+      serverUrl: 'https://broker-a.test',
+    });
+    const pending = deferred<ReturnType<typeof dailyCandle>[]>();
+    chartHarness.fetchCandles.mockImplementationOnce(() => pending.promise);
+    const request = hydrateClosedMarketDailyChanges({
+      scopeKey: scopeA,
+      symbols: ['GBPUSD'],
+    });
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'broker-b',
+      serverUrl: 'https://broker-b.test',
+    });
+    const [priorDate, lastDate] = createRecentCompletedWeekdayTimestamps();
+    pending.resolve([
+      dailyCandle(priorDate, 100),
+      dailyCandle(lastDate, 110),
+    ]);
+
+    await expect(request).resolves.toEqual(new Map());
+    expect(readMarketWatchDailyChange(scopeA, 'GBPUSD')).toBeNull();
   });
 
   it('hydrates normalized symbols from the scoped cache immediately and preserves zero', () => {
@@ -87,6 +176,14 @@ describe('useClosedMarketDailyChanges', () => {
 
   it('computes, persists, and publishes the last completed D1 change including zero', async () => {
     const [priorDate, lastDate] = createRecentCompletedWeekdayTimestamps();
+    const lastSessionStartedAt = Date.parse(lastDate);
+    rememberMarketWatchDailyChange(
+      'broker-a/account-1',
+      'XAUUSD',
+      4.5,
+      lastSessionStartedAt + 12 * 60 * 60 * 1000,
+      'quote',
+    );
     chartHarness.fetchCandles.mockResolvedValue([
       dailyCandle(priorDate, 100),
       dailyCandle(lastDate, 100),
@@ -98,9 +195,15 @@ describe('useClosedMarketDailyChanges', () => {
       symbols: ['XAUUSD'],
     }));
 
-    await waitFor(() => expect(result.current.has('XAUUSD')).toBe(true));
+    await waitFor(() => expect(result.current.get('XAUUSD')).toBe(0));
     expect(result.current.get('XAUUSD')).toBe(0);
     expect(readMarketWatchDailyChange('broker-a/account-1', 'XAUUSD')).toBe(0);
+    expect(readMarketWatchDailyChangeEntry('broker-a/account-1', 'XAUUSD')).toMatchObject({
+      value: 0,
+      asOf: lastSessionStartedAt,
+      completedAt: lastSessionStartedAt + 24 * 60 * 60 * 1000,
+      source: 'history',
+    });
     expect(chartHarness.fetchCandles).toHaveBeenCalledWith({
       symbol: 'XAUUSD',
       timeframe: 'D1',

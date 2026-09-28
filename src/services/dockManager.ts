@@ -3,7 +3,7 @@
  * Professional docking layout system for trading terminals
  */
 
-import type { ChartSymbolTab } from '../utils/chartSymbolTabs';
+import type { ChartSymbolTab } from '../types/dock';
 import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME } from '../constants/chartDefaults';
 
 export type DockDirection = 'left' | 'right' | 'top' | 'bottom' | 'center' | 'tab';
@@ -741,7 +741,7 @@ export class DockManager {
     if (!panel) return;
 
     // Try to find target as a container first
-    let target = this.findContainer(layout.root, targetId);
+    const target = this.findContainer(layout.root, targetId);
     if (target) {
       this.dockToTarget(layout, panel, target, direction);
     } else {

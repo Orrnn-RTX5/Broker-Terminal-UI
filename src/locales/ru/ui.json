@@ -536,6 +536,7 @@
   "Enter the account holder information": "Введите данные владельца счёта",
   "Enter workspace name": "Введите имя рабочей области",
   "Entry / close arrows": "Стрелки входа/закрытия",
+  "Entry / close line": "????? ?????/????????",
   "Entry price": "Цена входа",
   "Entry-to-close line": "Линия входа-закрытия",
   "Equidistant Channel": "Равноудаленный канал",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "Нет символов для отображения",
   "Add a symbol to Market Watch, then open Popup Prices again.": "Добавьте символ в «Обзор рынка», затем снова откройте «Всплывающие цены».",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "Показаны первые {{value0}} символов. В «Обзоре рынка» осталось ещё {{value1}}.",
-  "Resize Popup Prices dialog": "Изменить размер диалогового окна «Всплывающие цены»"
+  "Resize Popup Prices dialog": "Изменить размер диалогового окна «Всплывающие цены»",
+  "Details": "Детали",
+  "Tick Size": "Размер тика",
+  "Tick Value": "Стоимость тика",
+  "Bid High": "Максимум покупки",
+  "Bid Low": "Минимум покупки",
+  "Ask High": "Максимум продажи",
+  "Ask Low": "Минимум продажи",
+  "Last quote": "Последняя котировка"
 }

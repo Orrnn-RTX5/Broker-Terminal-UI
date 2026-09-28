@@ -1,4 +1,4 @@
-import type { Drawing } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 
 export const CHART_PATTERN_GROUPS = ['Chart patterns', 'Elliott waves', 'Cycles'] as const;
 export interface ChartPatternTool {

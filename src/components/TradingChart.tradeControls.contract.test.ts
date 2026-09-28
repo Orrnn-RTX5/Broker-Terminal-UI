@@ -1,12 +1,26 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { TRADING_VIEW_HANDLE_SCALE } from '../features/trading-chart/runtime/chartInteractionOptions';
+import { TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS } from '../features/trading-chart/presentation/tradeOverlayPresentation';
 
 // CRLF-normalized so anchors match on Windows checkouts too.
-const chartSource = readFileSync(
-  resolve(process.cwd(), 'src/components/TradingChart.tsx'),
+const readChartSource = (relativePath: string) => readFileSync(
+  resolve(process.cwd(), relativePath),
   'utf8',
 ).replace(/\r\n/g, '\n');
+const chartSource = [
+  'src/components/TradingChart.tsx',
+  'src/features/trading-chart/runtime/useTradingChartInitialization.ts',
+  'src/features/trading-chart/runtime/useTradingChartReconfiguration.ts',
+  'src/features/trading-chart/runtime/useTradingChartTradeRuntime.ts',
+  'src/features/trading-chart/runtime/createTradeOverlayModelRuntime.ts',
+  'src/features/trading-chart/runtime/createTradeOverlayDomRuntime.ts',
+  'src/features/trading-chart/runtime/useTradingChartTradeOverlayRenderer.ts',
+  'src/features/trading-chart/runtime/bindTradeOverlayRuntimeSubscriptions.ts',
+  'src/features/trading-chart/runtime/useTradingChartTradeLevelDrag.ts',
+  'src/features/trading-chart/runtime/tradeOverlayRuntimeConstants.ts',
+].map(readChartSource).join('\n');
 const appSource = readFileSync(
   resolve(process.cwd(), 'src/App.tsx'),
   'utf8',
@@ -222,7 +236,7 @@ describe('cTrader-style position controls contract', () => {
   it('never blinks the overlay off for a level-cross guess on a routine feed gap', () => {
     // The optimistic SL/TP-cross close needs a real dwell before it fires,
     // and never fires while the whole positions feed is down.
-    expect(chartSource).toContain('const TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS = 1_500;');
+    expect(TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS).toBe(1_500);
     expect(chartSource).toContain('&& elapsedMs >= TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS');
     expect(chartSource).toContain('&& appPositions.length > 0');
     // Missing trades are retained until PROVEN closed — no 30s giving-up.
@@ -238,8 +252,9 @@ describe('cTrader-style position controls contract', () => {
 
   it('uses the same pane-relative price-axis scaling on web and desktop', () => {
     // Native hyperbolic axis drag is off; the custom exponential drives it.
-    expect(chartSource).toContain('axisPressedMouseMove: { time: true, price: false }');
-    expect(chartSource).toContain("import { computePriceAxisDragRange } from '../utils/priceAxisDragZoom';");
+    expect(TRADING_VIEW_HANDLE_SCALE.axisPressedMouseMove).toEqual({ time: true, price: false });
+    expect(chartSource).toContain('handleScale: TRADING_VIEW_HANDLE_SCALE');
+    expect(chartSource).toContain("import { computePriceAxisDragRange } from '../../../utils/priceAxisDragZoom';");
     expect(chartSource).toContain('const nextRange = computePriceAxisDragRange({');
     // Range is captured at press time and applied against absolute drag travel.
     expect(chartSource).toContain('rightPriceScaleDragStartRange = { from: startFrom, to: startTo };');
@@ -251,7 +266,7 @@ describe('cTrader-style position controls contract', () => {
     expect(chartSource).toContain('...rightPriceScaleDragGeometry,');
     expect(chartSource).toContain("chart.priceScale('right').setVisibleRange(nextRange);");
     // Double-click reset stays native.
-    expect(chartSource).toContain('axisDoubleClickReset: { time: true, price: true }');
+    expect(TRADING_VIEW_HANDLE_SCALE.axisDoubleClickReset).toEqual({ time: true, price: true });
   });
 
   it('routes reverse/double/close chart actions into App handlers', () => {

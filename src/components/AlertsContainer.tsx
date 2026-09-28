@@ -18,7 +18,7 @@ export function AlertsContainer({ wsConnection }: AlertsContainerProps) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [hasNotificationPermission, setHasNotificationPermission] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const autoHideTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const autoHideTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Request notification permission on mount
   useEffect(() => {

@@ -59,7 +59,7 @@ export const clickAndWaitForConfirm = async (page, { button, expect, expectTicke
       expect,
       before,
     );
-  } catch (error) {
+  } catch {
     const state = await page.$eval(
       '#confirm',
       (el) => `${el.dataset.status} :: ${(el.textContent || '').slice(0, 300)}`,

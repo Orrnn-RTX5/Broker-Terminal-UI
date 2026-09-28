@@ -1,9 +1,7 @@
 import { useEffect, useRef } from 'react';
+import type { ChartSelectionIdentity } from '../types/chart';
 
-export interface SelectedHistoryRequestSelection {
-  symbol: string;
-  timeframe: string;
-}
+export type SelectedHistoryRequestSelection = ChartSelectionIdentity<string>;
 
 interface SelectedHistoryRequestOwnerOptions extends SelectedHistoryRequestSelection {
   enabled?: boolean;
@@ -27,8 +25,11 @@ export const useSelectedHistoryRequestOwner = ({
 }: SelectedHistoryRequestOwnerOptions): void => {
   const loadRef = useRef(load);
   const abortRef = useRef(abort);
-  loadRef.current = load;
-  abortRef.current = abort;
+
+  useEffect(() => {
+    loadRef.current = load;
+    abortRef.current = abort;
+  }, [abort, load]);
 
   useEffect(() => {
     if (!enabled || !symbol) return;

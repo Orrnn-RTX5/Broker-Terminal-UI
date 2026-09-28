@@ -6,7 +6,7 @@ const readSource = (path: string): string => readFileSync(resolve(process.cwd(),
 
 const componentSource = readSource('src/components/OneClickTrading.tsx');
 const themeCss = readSource('src/styles/theme.css');
-const advancedLightCss = readSource('src/styles/advanced-untitled-light.css');
+const advancedLightCss = readSource('src/styles/legacy-light-overrides.css');
 
 describe('OneClickTrading lot input surface contract', () => {
   it('removes only the value input background and its edit-focus box', () => {

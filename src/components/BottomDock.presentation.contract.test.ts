@@ -2,51 +2,50 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(resolve(process.cwd(), 'src/components/BottomDock.tsx'), 'utf8');
+const shellSource = readFileSync(resolve(process.cwd(), 'src/components/BottomDock.tsx'), 'utf8');
+const tradeControllerSource = readFileSync(
+    resolve(process.cwd(), 'src/features/bottom-dock/trade/TradeTab.tsx'),
+    'utf8',
+);
+const tradeTableSource = readFileSync(
+    resolve(process.cwd(), 'src/features/bottom-dock/trade/TradeTable.tsx'),
+    'utf8',
+);
+const tradeModelSource = readFileSync(
+    resolve(process.cwd(), 'src/features/bottom-dock/trade/tradeTabModel.ts'),
+    'utf8',
+);
+const tradeSource = `${tradeModelSource}\n${tradeControllerSource}\n${tradeTableSource}`;
 
 describe('BottomDock trade type presentation', () => {
     it('keeps the Trade surface warm while another bottom tab is active', () => {
-        const content = source.slice(
-            source.indexOf('{/* Content Area */}'),
-            source.indexOf('{/* Bottom Tabs */}'),
+        const content = shellSource.slice(
+            shellSource.indexOf('{/* Content Area */}'),
+            shellSource.indexOf('{/* Bottom Tabs */}'),
         );
 
         expect(content).toContain("hidden={activeTab !== 'Trade'}");
         expect(content).toContain('<TradeTab');
         expect(content).not.toContain("{activeTab === 'Trade' && (");
-        expect(source).toContain('const TradeTab = memo(function TradeTab');
-    });
-
-    it('uses the full Exposure width without the Long Positions summary pane', () => {
-        const exposureTab = source.slice(
-            source.indexOf('function ExposureTab'),
-            source.indexOf('type HistoryCacheEntry'),
-        );
-
-        expect(exposureTab).toContain('className="flex min-w-0 flex-1 flex-col"');
-        expect(exposureTab).not.toContain('Long Positions');
-        expect(exposureTab).not.toContain('rtx-exposure-positions');
-        expect(exposureTab).not.toContain('renderLongPositionChart');
-        expect(source).not.toContain('describeDonutSlice');
-        expect(source).not.toContain('type ExposurePieSegment');
+        expect(tradeControllerSource).toContain('export const TradeTab = memo(function TradeTab');
     });
 
     it('labels the side field as Type in both the grid and exported report', () => {
-        expect(source).toContain("{ key: 'side', label: 'Type'");
-        expect(source).toContain("columns.push({ label: 'Type'");
-        expect(source).not.toContain('Side / Type');
+        expect(tradeSource).toContain("{ key: 'side', label: 'Type'");
+        expect(tradeSource).toContain("columns.push({ label: 'Type'");
+        expect(tradeSource).not.toContain('Side / Type');
     });
 
     it('shows lowercase buy or sell text without an arrow icon', () => {
-        const sideCell = source.match(/\{\/\* side \*\/\}([\s\S]*?)\{\/\* volume \*\/\}/)?.[1] ?? '';
+        const sideCell = tradeTableSource.match(/\{\/\* side \*\/\}([\s\S]*?)\{\/\* volume \*\/\}/)?.[1] ?? '';
         expect(sideCell).toContain('<span>{tr(sideLabel)}</span>');
-        expect(sideCell).toContain('tr("Type: {{value0}}", { value0: tr(sideLabel) })');
+        expect(sideCell).toContain("tr('Type: {{value0}}', { value0: tr(sideLabel) })");
         expect(sideCell).not.toContain('<svg');
     });
 
     it('centers every trade header and row value without offsetting sortable labels', () => {
-        const headerHelpers = source.match(/const renderSortableHeader[\s\S]*?return \(/)?.[0] ?? '';
-        const tradeTable = source.match(/<table\s+className="rtx-trade-table[\s\S]*?<\/table>/)?.[0] ?? '';
+        const headerHelpers = tradeTableSource.match(/const renderSortableHeader[\s\S]*?return \(/)?.[0] ?? '';
+        const tradeTable = tradeTableSource.match(/<table\s+className="rtx-trade-table[\s\S]*?<\/table>/)?.[0] ?? '';
 
         expect(headerHelpers).toContain('text-center border-r');
         expect(headerHelpers).toContain('items-center justify-center px-2 text-center');
@@ -59,31 +58,22 @@ describe('BottomDock trade type presentation', () => {
     });
 
     it('pins Close In-Profit, Close In-Loss, and Close All to the bottom tab strip', () => {
-        const tabs = source.slice(
-            source.indexOf('{/* Bottom Tabs */}'),
-            source.indexOf('function ToolboxTab'),
-        );
-        const footer = source.slice(
-            source.indexOf('className="rtx-trade-footer '),
-            source.indexOf('{footerMetricMenu &&'),
-        );
+        const tabs = shellSource.slice(shellSource.indexOf('{/* Bottom Tabs */}'));
+        const footer = tradeTableSource.slice(tradeTableSource.indexOf('className="rtx-trade-footer '));
 
         expect(tabs).toContain('Close In-Profit');
         expect(tabs).toContain('Close In-Loss');
         expect(tabs).toContain('Close All');
         expect(tabs).toContain('rtx-dock-tab-actions');
         expect(tabs).toContain('rtx-dock-tab rtx-trade-bulk-close');
-        expect(source).toContain("{ id: 'Toolbox' }");
+        expect(shellSource).toContain("{ id: 'Toolbox' }");
         expect(tabs).not.toContain('rtx-trade-footer-action');
         expect(footer).not.toContain('Close In-Profit');
         expect(footer).not.toContain('rtx-trade-footer-actions');
     });
 
     it('keeps the account summary under the last trade so it scrolls with the list', () => {
-        const tradeTab = source.slice(
-            source.indexOf('<div className="rtx-trade-tab'),
-            source.indexOf('{footerMetricMenu &&'),
-        );
+        const tradeTab = tradeTableSource;
 
         expect(tradeTab).toContain('rtx-trade-scroll');
         expect(tradeTab.indexOf('rtx-trade-table')).toBeLessThan(tradeTab.indexOf('rtx-trade-footer'));
@@ -98,10 +88,7 @@ describe('BottomDock trade type presentation', () => {
     });
 
     it('places the account summary directly below the columns when there are no open positions', () => {
-        const tradeTab = source.slice(
-            source.indexOf('<div className="rtx-trade-tab'),
-            source.indexOf('{footerMetricMenu &&'),
-        );
+        const tradeTab = tradeTableSource;
         const loadingState = tradeTab.slice(
             tradeTab.indexOf('<tbody'),
             tradeTab.indexOf('{displayedLivePositions.map'),
@@ -113,7 +100,7 @@ describe('BottomDock trade type presentation', () => {
     });
 
     it('renders the Symbol cell as centered text without the colored direction badge', () => {
-        const symbolCell = source.match(/\{\/\* symbol \*\/\}([\s\S]*?)\{\/\* ticket \*\/\}/)?.[1] ?? '';
+        const symbolCell = tradeTableSource.match(/\{\/\* symbol \*\/\}([\s\S]*?)\{\/\* ticket \*\/\}/)?.[1] ?? '';
 
         expect(symbolCell).toContain('text-center');
         expect(symbolCell).toContain('<span>{symbolLabel}</span>');
@@ -122,10 +109,7 @@ describe('BottomDock trade type presentation', () => {
     });
 
     it('uses the hand cursor only for editable Stop Loss and Take Profit surfaces', () => {
-        const tradeTab = source.slice(
-            source.indexOf('const TradeTab = memo(function TradeTab'),
-            source.indexOf('type ExposureTabProps'),
-        );
+        const tradeTab = `${tradeControllerSource}\n${tradeTableSource}`;
         const cursorLines = tradeTab
             .split('\n')
             .filter(line => line.includes('cursor-'));

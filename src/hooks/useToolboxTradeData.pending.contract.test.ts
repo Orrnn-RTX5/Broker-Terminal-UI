@@ -3,7 +3,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const hookSource = readFileSync(resolve(process.cwd(), 'src/hooks/useToolboxTradeData.ts'), 'utf8');
-const dockSource = readFileSync(resolve(process.cwd(), 'src/components/BottomDock.tsx'), 'utf8');
+const dockSource = [
+  readFileSync(resolve(process.cwd(), 'src/components/BottomDock.tsx'), 'utf8'),
+  readFileSync(resolve(process.cwd(), 'src/features/bottom-dock/trade/TradeTab.tsx'), 'utf8'),
+  readFileSync(resolve(process.cwd(), 'src/features/bottom-dock/trade/TradeTable.tsx'), 'utf8'),
+].join('\n');
 
 const lifecycleStart = hookSource.indexOf('const handleMarketOrderPlacement = (event: Event) => {');
 const lifecycleEnd = hookSource.indexOf('const handleCloseState', lifecycleStart);
@@ -28,7 +32,8 @@ describe('Toolbox provisional market-order source contract', () => {
     expect(dockSource).toContain('() => [...pendingPositions, ...sortedLivePositions]');
     expect(dockSource).toContain('const isPendingPlacement = Boolean(');
     expect(dockSource).toContain('disabled={isPendingPlacement}');
-    expect(dockSource).toContain('setModifyPosition(pos);');
+    expect(dockSource).toContain('openModifyPosition(position);');
+    expect(dockSource).toContain('sessionScope: getCurrentBrokerAccountSessionScopeKey()');
     expect(dockSource).toContain('if (isPendingPlacement) return;');
   });
 });

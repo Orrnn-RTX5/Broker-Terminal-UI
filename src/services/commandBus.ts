@@ -41,7 +41,7 @@ class CommandBusImpl implements CommandBus {
     }
 
     // Log command in development
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log(
         `[CommandBus] Dispatching: ${command.type}`,
         'payload:',
@@ -99,7 +99,7 @@ class CommandBusImpl implements CommandBus {
     const typeHandlers = this.handlers.get(type)!;
     typeHandlers.add(handler as any);
 
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log(
         `[CommandBus] Subscriber added for ${type} (total: ${typeHandlers.size})`
       );
@@ -111,7 +111,7 @@ class CommandBusImpl implements CommandBus {
       if (handlers) {
         handlers.delete(handler as any);
 
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.DEV) {
           console.log(
             `[CommandBus] Subscriber removed for ${type} (remaining: ${handlers.size})`
           );
@@ -137,7 +137,7 @@ class CommandBusImpl implements CommandBus {
    */
   clearHistory(): void {
     this.history = [];
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log('[CommandBus] History cleared');
     }
   }
@@ -155,7 +155,7 @@ class CommandBusImpl implements CommandBus {
     this.isReplaying = true;
 
     try {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         console.log(`[CommandBus] Starting replay of ${commands.length} commands`);
       }
 
@@ -165,7 +165,7 @@ class CommandBusImpl implements CommandBus {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         console.log('[CommandBus] Replay completed');
       }
     } finally {

@@ -145,6 +145,27 @@ describe('live tick store pressure guards', () => {
     expect(workerMocks.aggregateSymbols).toHaveBeenCalledTimes(1);
   });
 
+  it('carries session Bid/Ask ranges across sparse price frames', () => {
+    useAppStore.getState().setTicksBatch([['XAUUSD', appTick(1_000, {
+      bidHigh: 2_510,
+      bidLow: 2_490,
+      askHigh: 2_510.4,
+      askLow: 2_490.3,
+    })]]);
+    useAppStore.getState().setTicksBatch([['XAUUSD', appTick(1_001, { bid: 2_501, ask: 2_501.2 })]]);
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_501,
+      bidHigh: 2_510,
+      bidLow: 2_490,
+      askHigh: 2_510.4,
+      askLow: 2_490.3,
+    });
+
+    useAppStore.getState().setTicksBatch([['XAUUSD', appTick(1_002, { bidHigh: 2_520 })]]);
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({ bidHigh: 2_520, askHigh: 2_510.4 });
+  });
+
   it('keeps opaque suffix lookups exact while each contract retains its freshest tick', () => {
     useAppStore.getState().setTicksBatch([
       ['XAUUSD.raw', appTick(100, { symbol: 'XAUUSD.raw' })],
@@ -232,18 +253,22 @@ describe('live tick store pressure guards', () => {
     }
   });
 
-  it('retains optional quote metadata when a fresher price-only tick omits it', () => {
-    useAppStore.getState().setTick('XAUUSD', appTick(1_000, {
-      sourceTimestamp: 1_000,
+  it('retains Daily Change when a sparse price-only tick stays in the same UTC quote day', () => {
+    const firstQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 1);
+    useAppStore.getState().setTick('XAUUSD', appTick(firstQuoteTime, {
+      sourceTimestamp: firstQuoteTime,
       lp: 'Prime LP',
       volume: 321,
+      dailyChange: 1.25,
       last: 2_500.1,
       open: 2_480,
       close: 2_490,
       digits: 2,
     }));
 
-    useAppStore.getState().setTick('XAUUSD', appTick(2_000, {
+    useAppStore.getState().setTick('XAUUSD', appTick(sparseQuoteTime, {
+      sourceTimestamp: sparseQuoteTime,
       bid: 2_501,
       ask: 2_501.2,
     }));
@@ -254,11 +279,202 @@ describe('live tick store pressure guards', () => {
       lp: 'Prime LP',
       volume: 321,
       last: 2_500.1,
+      lastSourceTimestamp: firstQuoteTime,
       open: 2_480,
       close: 2_490,
       digits: 2,
+      dailyChange: 1.25,
+      sourceTimestamp: sparseQuoteTime,
     });
-    expect(useAppStore.getState().ticks.XAUUSD.sourceTimestamp).toBeUndefined();
+  });
+
+  it('keeps the newest price and same-day Daily Change when one AppStore batch coalesces full then sparse ticks', () => {
+    const fullQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 1);
+
+    useAppStore.getState().setTicksBatch([
+      ['XAUUSD', appTick(fullQuoteTime, {
+        sourceTimestamp: fullQuoteTime,
+        bid: 2_500,
+        ask: 2_500.2,
+        dailyChange: 1.25,
+      })],
+      ['XAUUSD', appTick(sparseQuoteTime, {
+        sourceTimestamp: sparseQuoteTime,
+        bid: 2_501,
+        ask: 2_501.2,
+      })],
+    ]);
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_501,
+      ask: 2_501.2,
+      sourceTimestamp: sparseQuoteTime,
+      dailyChange: 1.25,
+    });
+  });
+
+  it('uses the freshest authoritative same-day Daily Change in a coalesced AppStore batch', () => {
+    const firstFullTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const latestFullTime = Date.UTC(2026, 8, 28, 10, 0, 1);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 2);
+    useAppStore.getState().setTick('XAUUSD', appTick(firstFullTime - 1, {
+      sourceTimestamp: firstFullTime - 1,
+      dailyChange: -9,
+    }));
+
+    useAppStore.getState().setTicksBatch([
+      ['XAUUSD', appTick(firstFullTime, {
+        sourceTimestamp: firstFullTime,
+        dailyChange: 1.25,
+      })],
+      ['XAUUSD', appTick(latestFullTime, {
+        sourceTimestamp: latestFullTime,
+        dailyChange: 1.5,
+      })],
+      ['XAUUSD', appTick(sparseQuoteTime, {
+        sourceTimestamp: sparseQuoteTime,
+        bid: 2_502,
+        ask: 2_502.2,
+      })],
+    ]);
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_502,
+      sourceTimestamp: sparseQuoteTime,
+      dailyChange: 1.5,
+    });
+  });
+
+  it('accepts Daily Change from a delayed same-day full tick without regressing the selected AppStore quote', () => {
+    const fullQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 2);
+    useAppStore.getState().setTick('XAUUSD', appTick(sparseQuoteTime, {
+      sourceTimestamp: sparseQuoteTime,
+      bid: 2_502,
+      ask: 2_502.2,
+      lp: 'current-lp',
+      volume: 22,
+    }));
+
+    useAppStore.getState().setTick('XAUUSD', appTick(fullQuoteTime, {
+      sourceTimestamp: fullQuoteTime,
+      bid: 2_500,
+      ask: 2_500.2,
+      lp: 'stale-lp',
+      volume: 10,
+      dailyChange: 1.25,
+    }));
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_502,
+      ask: 2_502.2,
+      sourceTimestamp: sparseQuoteTime,
+      lp: 'current-lp',
+      volume: 22,
+      dailyChange: 1.25,
+      dailyChangeSourceTimestamp: fullQuoteTime,
+    });
+  });
+
+  it('rejects Daily Change from a delayed full tick in an earlier UTC quote day', () => {
+    const previousDayTime = Date.UTC(2026, 8, 28, 23, 59, 59);
+    const nextDayTime = Date.UTC(2026, 8, 29, 0, 0, 1);
+    useAppStore.getState().setTick('XAUUSD', appTick(nextDayTime, {
+      sourceTimestamp: nextDayTime,
+      bid: 2_501,
+      ask: 2_501.2,
+    }));
+
+    useAppStore.getState().setTick('XAUUSD', appTick(previousDayTime, {
+      sourceTimestamp: previousDayTime,
+      dailyChange: 1.25,
+      last: 2_500.1,
+    }));
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_501,
+      ask: 2_501.2,
+      sourceTimestamp: nextDayTime,
+    });
+    expect(useAppStore.getState().ticks.XAUUSD.dailyChange).toBeUndefined();
+    expect(useAppStore.getState().ticks.XAUUSD.dailyChangeSourceTimestamp).toBeUndefined();
+  });
+
+  it('keeps the latest finite percentage authority across reverse AppStore arrivals', () => {
+    const oldestFullTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const firstFullTime = Date.UTC(2026, 8, 28, 10, 0, 1);
+    const latestFullTime = Date.UTC(2026, 8, 28, 10, 0, 2);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 3);
+    useAppStore.getState().setTick('XAUUSD', appTick(sparseQuoteTime, {
+      sourceTimestamp: sparseQuoteTime,
+      bid: 2_503,
+      ask: 2_503.2,
+    }));
+
+    useAppStore.getState().setTick('XAUUSD', appTick(firstFullTime, {
+      sourceTimestamp: firstFullTime,
+      dailyChange: 1.25,
+    }));
+    useAppStore.getState().setTick('XAUUSD', appTick(latestFullTime, {
+      sourceTimestamp: latestFullTime,
+      dailyChange: 1.5,
+    }));
+    useAppStore.getState().setTick('XAUUSD', appTick(oldestFullTime, {
+      sourceTimestamp: oldestFullTime,
+      dailyChange: 9,
+    }));
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_503,
+      sourceTimestamp: sparseQuoteTime,
+      dailyChange: 1.5,
+      dailyChangeSourceTimestamp: latestFullTime,
+    });
+  });
+
+  it('does not carry an earlier-day batch percentage onto the newest AppStore quote', () => {
+    const previousDayTime = Date.UTC(2026, 8, 28, 23, 59, 59);
+    const nextDayTime = Date.UTC(2026, 8, 29, 0, 0, 1);
+
+    useAppStore.getState().setTicksBatch([
+      ['XAUUSD', appTick(previousDayTime, {
+        sourceTimestamp: previousDayTime,
+        dailyChange: 1.25,
+      })],
+      ['XAUUSD', appTick(nextDayTime, {
+        sourceTimestamp: nextDayTime,
+        bid: 2_501,
+        ask: 2_501.2,
+      })],
+    ]);
+
+    expect(useAppStore.getState().ticks.XAUUSD.sourceTimestamp).toBe(nextDayTime);
+    expect(useAppStore.getState().ticks.XAUUSD.dailyChange).toBeUndefined();
+  });
+
+  it('clears an omitted Daily Change when the authoritative quote day rolls over', () => {
+    const previousDayTime = Date.UTC(2026, 8, 28, 23, 59, 59);
+    const nextDayTime = Date.UTC(2026, 8, 29, 0, 0, 1);
+    useAppStore.getState().setTick('XAUUSD', appTick(previousDayTime, {
+      sourceTimestamp: previousDayTime,
+      dailyChange: 1.25,
+    }));
+
+    useAppStore.getState().setTick('XAUUSD', appTick(nextDayTime, {
+      sourceTimestamp: nextDayTime,
+      bid: 2_501,
+      ask: 2_501.2,
+    }));
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_501,
+      ask: 2_501.2,
+      sourceTimestamp: nextDayTime,
+    });
+    expect(useAppStore.getState().ticks.XAUUSD.dailyChange).toBeUndefined();
+    expect(useAppStore.getState().ticks.XAUUSD.last).toBeUndefined();
+    expect(useAppStore.getState().ticks.XAUUSD.lastSourceTimestamp).toBeUndefined();
   });
 
   it('publishes five full-buffer live ticks once per store in one animation frame', () => {

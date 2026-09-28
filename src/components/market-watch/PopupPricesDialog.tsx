@@ -14,6 +14,10 @@ import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes'
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { type Tick, useTick } from '../../store/useAppStore';
 import {
+  resolveMarketWatchDisplayMetadata,
+  useMarketWatchDisplayMetadata,
+} from '../../store/useMarketWatchDisplayMetadataStore';
+import {
   DEFAULT_MARKET_WATCH_COLUMNS,
   formatMarketWatchTime,
   normalizeMarketWatchColumns,
@@ -23,6 +27,7 @@ import { formatSpreadDisplay } from '../../utils/spread';
 import { getSymbolDigits } from '../../utils/symbolUtils';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
+import { getLatestMarketWatchTimestamp } from './marketWatchPanelModel';
 import './market-watch-views.css';
 
 const VIEWPORT_GAP = 12;
@@ -155,6 +160,8 @@ function PopupPriceCard({
 }) {
   const tr = useUiTranslation();
   const tick = useTick(symbol);
+  const displayMetadata = useMarketWatchDisplayMetadata(symbol);
+  const resolvedDisplayMetadata = resolveMarketWatchDisplayMetadata(tick, displayMetadata);
   const digits = tickDigits(tick, symbol);
   const liveBid = finiteNumber(tick?.bid) ?? 0;
   const liveAsk = finiteNumber(tick?.ask) ?? 0;
@@ -168,12 +175,13 @@ function PopupPriceCard({
     : undefined;
   const bid = hasLiveQuote ? liveBid : retainedQuote?.bid ?? retainedClose?.close ?? 0;
   const ask = hasLiveQuote ? liveAsk : retainedQuote?.ask ?? 0;
-  const dailyChange = finiteNumber(tick?.dailyChange) ?? finiteNumber(fallbackDailyChange);
+  const dailyChange = finiteNumber(resolvedDisplayMetadata.dailyChange) ?? finiteNumber(fallbackDailyChange);
   const hasBidAskQuote = hasLiveQuote || retainedQuote !== undefined;
   const hasDisplayedPrice = hasBidAskQuote || retainedClose !== undefined;
-  const quoteTimestamp = hasLiveQuote
-    ? tick?.sourceTimestamp ?? tick?.timestamp
-    : retainedQuote?.asOf ?? retainedClose?.asOf;
+  const quoteTimestamp = getLatestMarketWatchTimestamp(
+    hasLiveQuote ? tick?.sourceTimestamp ?? tick?.timestamp : undefined,
+    resolvedDisplayMetadata.timestamp,
+  ) ?? retainedQuote?.asOf ?? retainedClose?.asOf;
   const updatedDate = quoteDate(quoteTimestamp);
   const dailyChangeText = dailyChange === null
     ? '—'
@@ -222,8 +230,8 @@ function PopupPriceCard({
           {columns.includes('last') && (
             <div className="rtx-popup-prices__metric">
               <span>{tr('Last')}</span>
-              <strong>{finiteNumber(tick?.last) !== null
-                ? <PriceDisplay price={Number(tick?.last)} symbol={symbol} digits={digits} />
+              <strong>{finiteNumber(resolvedDisplayMetadata.last) !== null
+                ? <PriceDisplay price={Number(resolvedDisplayMetadata.last)} symbol={symbol} digits={digits} />
                 : '—'}</strong>
             </div>
           )}

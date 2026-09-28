@@ -1,6 +1,7 @@
 import { create } from 'zustand';
+import type { BulkCloseMode } from '../contracts/tradeActions';
 
-export type BulkCloseType = 'ALL' | 'WINNERS' | 'LOSERS';
+export type BulkCloseType = BulkCloseMode;
 
 export interface BulkClosePreviewPosition {
   id: number;
@@ -12,6 +13,7 @@ export interface BulkClosePreviewPosition {
 }
 
 interface BulkCloseConfirmState {
+  requestId: number;
   isOpen: boolean;
   type: BulkCloseType;
   symbol: string | undefined;
@@ -28,7 +30,10 @@ interface BulkCloseConfirmState {
   closeBulkCloseConfirm: () => void;
 }
 
-export const useBulkCloseConfirmStore = create<BulkCloseConfirmState>((set) => ({
+let nextBulkCloseConfirmationId = 0;
+
+export const useBulkCloseConfirmStore = create<BulkCloseConfirmState>((set, get) => ({
+  requestId: 0,
   isOpen: false,
   type: 'ALL',
   symbol: undefined,
@@ -37,23 +42,37 @@ export const useBulkCloseConfirmStore = create<BulkCloseConfirmState>((set) => (
   onConfirm: () => { },
   onCancel: () => { },
   showBulkCloseConfirm: ({ type, symbol, positions, combinedPnL }) => {
+    const previous = get();
+    if (previous.isOpen) previous.onCancel();
+
     return new Promise((resolve) => {
+      const requestId = ++nextBulkCloseConfirmationId;
+      let settled = false;
+      const settle = (confirmed: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (get().requestId === requestId) set({ isOpen: false });
+        resolve(confirmed);
+      };
+
       set({
+        requestId,
         isOpen: true,
         type,
         symbol,
         positions,
         combinedPnL,
-        onConfirm: () => {
-          set({ isOpen: false });
-          resolve(true);
-        },
-        onCancel: () => {
-          set({ isOpen: false });
-          resolve(false);
-        },
+        onConfirm: () => settle(true),
+        onCancel: () => settle(false),
       });
     });
   },
-  closeBulkCloseConfirm: () => set({ isOpen: false }),
+  closeBulkCloseConfirm: () => {
+    const current = get();
+    if (current.isOpen) {
+      current.onCancel();
+      return;
+    }
+    set({ isOpen: false });
+  },
 }));

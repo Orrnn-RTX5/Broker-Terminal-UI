@@ -536,6 +536,7 @@
   "Enter the account holder information": "กรอกข้อมูลเจ้าของบัญชี",
   "Enter workspace name": "ป้อนชื่อพื้นที่ทำงาน",
   "Entry / close arrows": "ลูกศรเข้า/ปิด",
+  "Entry / close line": "????????/???",
   "Entry price": "ราคาเริ่มต้น",
   "Entry-to-close line": "เส้นเข้า-ปิด",
   "Equidistant Channel": "ช่องทางที่เท่ากัน",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "ไม่มีสัญลักษณ์ให้แสดง",
   "Add a symbol to Market Watch, then open Popup Prices again.": "เพิ่มสัญลักษณ์ลงใน Market Watch แล้วเปิด Popup Prices อีกครั้ง",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "กำลังแสดงสัญลักษณ์ {{value0}} รายการแรก ยังเหลืออีก {{value1}} รายการใน Market Watch",
-  "Resize Popup Prices dialog": "ปรับขนาดกล่องโต้ตอบ Popup Prices"
+  "Resize Popup Prices dialog": "ปรับขนาดกล่องโต้ตอบ Popup Prices",
+  "Details": "รายละเอียด",
+  "Tick Size": "ขนาดติ๊ก",
+  "Tick Value": "มูลค่าติ๊ก",
+  "Bid High": "ราคาเสนอซื้อสูงสุด",
+  "Bid Low": "ราคาเสนอซื้อต่ำสุด",
+  "Ask High": "ราคาเสนอขายสูงสุด",
+  "Ask Low": "ราคาเสนอขายต่ำสุด",
+  "Last quote": "ราคาเสนอล่าสุด"
 }

@@ -102,13 +102,13 @@ export function toolbarReducer(state: ToolbarState, action: ToolbarAction): Tool
         magnetEnabled: !state.magnetEnabled
       };
 
-    case 'ZOOM':
-
+    case 'ZOOM': {
       const newWidth = Math.max(2, Math.min(50, state.candleWidth + action.delta));
       return {
         ...state,
         candleWidth: newWidth
       };
+    }
 
     case 'ADD_INDICATOR':
       // Prevent duplicate indicators

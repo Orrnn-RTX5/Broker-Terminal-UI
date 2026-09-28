@@ -530,7 +530,7 @@ const retiredServiceWorkerDevPlugin = (): Plugin => ({
 
 const DEV_WATCH_IGNORED_DIRS = [
   'artifacts', 'draft', 'dist', 'dist-ssr', 'release', 'build', 'docs', 'test-logs', 'tmp',
-  'mt5-trading-panel', 'codex-opener', '.qwen', '.claude', '.github',
+  'mt5-trading-panel', '.qwen', '.claude', '.github',
 ]
 
 // https://vite.dev/config/

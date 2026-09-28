@@ -1,15 +1,6 @@
-import type { ForecastingBar } from './forecastingMeasurementRenderer';
+import type { ForecastingBar, PositionSizing } from './model/drawing';
 
-/** Planning inputs belong to the drawing, not to a fixed demo account. */
-export interface PositionSizing {
-  accountSize?: number;
-  risk?: number;
-  riskMode?: 'percent' | 'amount';
-  pointValue?: number;
-  lotSize?: number;
-  leverage?: number;
-  quantityPrecision?: number;
-}
+export type { PositionSizing } from './model/drawing';
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const positive = (value: unknown): value is number => finite(value) && value > 0;

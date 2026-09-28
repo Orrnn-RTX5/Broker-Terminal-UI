@@ -39,7 +39,13 @@ describe('marketWatchDailyChangeCache', () => {
     vi.useRealTimers();
   });
 
-  it('derives a scope only for a committed authenticated account', () => {
+  it('rejects an unidentified anonymous scope and derives an authenticated account scope', () => {
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      accountId: null,
+      brokerId: '',
+      serverUrl: '',
+    });
     expect(getCurrentMarketWatchDailyChangeScopeKey()).toBeNull();
     expect(rememberCurrentMarketWatchDailyChange('EURUSD', 1, NOW, 'quote')).toBe(false);
 
@@ -56,6 +62,30 @@ describe('marketWatchDailyChangeCache', () => {
     );
     expect(rememberCurrentMarketWatchDailyChange('EURUSD', 0, NOW, 'quote')).toBe(true);
     expect(readCurrentMarketWatchDailyChange('EURUSD')).toBe(0);
+  });
+
+  it('retains public changes in the canonical anonymous broker scope without cross-broker leakage', () => {
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'Broker-A',
+      serverUrl: 'https://broker-a.example/',
+    });
+    const brokerAKey = getCommittedBrokerAccountSessionScopeKey(
+      getCommittedBrokerAccountSessionScope(),
+    );
+
+    expect(getCurrentMarketWatchDailyChangeScopeKey()).toBe(brokerAKey);
+    expect(rememberCurrentMarketWatchDailyChange('EURUSD', 1.25, NOW, 'quote')).toBe(true);
+    expect(readCurrentMarketWatchDailyChange('EURUSD')).toBe(1.25);
+
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'Broker-B',
+      serverUrl: 'https://broker-b.example/',
+    });
+    expect(getCurrentMarketWatchDailyChangeScopeKey()).not.toBe(brokerAKey);
+    expect(readCurrentMarketWatchDailyChange('EURUSD')).toBeNull();
+    expect(readMarketWatchDailyChange(brokerAKey, 'EURUSD')).toBe(1.25);
   });
 
   it('retains finite zero and uses exact normalized symbol keys', () => {
@@ -121,6 +151,96 @@ describe('marketWatchDailyChangeCache', () => {
     expect(readMarketWatchDailyChange(scopeA, 'EURUSD')).toBe(8);
   });
 
+  it('lets a final D1 result replace its intraday quote but protects a newer session quote', () => {
+    const sessionStartedAt = NOW - 12 * 60 * 60 * 1000;
+    const intradayQuoteAt = sessionStartedAt + 6 * 60 * 60 * 1000;
+    const sessionCompletedAt = NOW;
+
+    expect(rememberMarketWatchDailyChange(
+      scopeA,
+      'EURUSD',
+      1.25,
+      intradayQuoteAt,
+      'quote',
+    )).toBe(true);
+    expect(rememberMarketWatchDailyChange(
+      scopeA,
+      'EURUSD',
+      2.5,
+      sessionStartedAt,
+      'history',
+      sessionCompletedAt,
+    )).toBe(true);
+    expect(readMarketWatchDailyChangeEntry(scopeA, 'EURUSD')).toMatchObject({
+      value: 2.5,
+      asOf: sessionStartedAt,
+      completedAt: sessionCompletedAt,
+      source: 'history',
+    });
+
+    // A quote at the next session boundary wins the tie, and the older final
+    // history row cannot overwrite it if that history request completes late.
+    expect(rememberMarketWatchDailyChange(
+      scopeA,
+      'EURUSD',
+      -0.5,
+      sessionCompletedAt,
+      'quote',
+    )).toBe(true);
+    expect(rememberMarketWatchDailyChange(
+      scopeA,
+      'EURUSD',
+      2.5,
+      sessionStartedAt,
+      'history',
+      sessionCompletedAt,
+    )).toBe(false);
+    expect(readMarketWatchDailyChangeEntry(scopeA, 'EURUSD')).toMatchObject({
+      value: -0.5,
+      asOf: sessionCompletedAt,
+      source: 'quote',
+    });
+  });
+
+  it('persists the optional history completion boundary and still loads legacy entries', () => {
+    const completedAt = NOW - 1;
+    expect(rememberMarketWatchDailyChange(
+      scopeA,
+      'EURUSD',
+      1.5,
+      NOW - 60_000,
+      'history',
+      completedAt,
+    )).toBe(true);
+    expect(flushMarketWatchDailyChangeCache()).toBe(true);
+
+    resetMarketWatchDailyChangeCacheForTests({ clearStorage: false });
+    expect(readMarketWatchDailyChangeEntry(scopeA, 'EURUSD')).toMatchObject({
+      value: 1.5,
+      completedAt,
+      source: 'history',
+    });
+
+    localStorage.setItem(MARKET_WATCH_DAILY_CHANGE_CACHE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      entries: [{
+        scopeKey: scopeA,
+        symbol: 'GBPUSD',
+        value: -1,
+        asOf: NOW - 60_000,
+        savedAt: NOW,
+        source: 'history',
+      }],
+    }));
+    resetMarketWatchDailyChangeCacheForTests({ clearStorage: false });
+    expect(readMarketWatchDailyChangeEntry(scopeA, 'GBPUSD')).toEqual({
+      value: -1,
+      asOf: NOW - 60_000,
+      savedAt: NOW,
+      source: 'history',
+    });
+  });
+
   it('expires entries after fourteen days and rejects malformed storage', () => {
     rememberMarketWatchDailyChange(scopeA, 'EURUSD', 1.25, NOW, 'history');
     flushMarketWatchDailyChangeCache();
@@ -184,12 +304,11 @@ describe('resolveCompletedDailyChange', () => {
     closed,
   });
 
-  it('uses the latest two completed non-weekend closes', () => {
+  it('uses the latest two completed closes and ignores future rows', () => {
     const result = resolveCompletedDailyChange([
       day('2026-09-02T00:00:00Z', 100),
       day('2026-09-03T00:00:00Z', 110),
       day('2026-09-04T00:00:00Z', 121),
-      day('2026-09-05T00:00:00Z', 999, true),
       day('2026-09-06T00:00:00Z', 999, true),
       day('2026-09-07T00:00:00Z', 999, true),
     ], NOW);
@@ -197,23 +316,105 @@ describe('resolveCompletedDailyChange', () => {
     expect(result).toEqual({
       value: 10,
       asOf: Date.parse('2026-09-04T00:00:00Z'),
+      completedAt: Date.parse('2026-09-05T00:00:00Z'),
     });
   });
 
-  it('skips open, invalid, current incomplete, and duplicate-time rows', () => {
+  it('skips invalid, current incomplete, and lower-finality duplicate-time rows', () => {
     const thursday = Date.parse('2026-09-03T00:00:00Z');
     const friday = Date.parse('2026-09-04T00:00:00Z');
     const result = resolveCompletedDailyChange([
       { time: thursday, close: 80 },
       { time: friday, close: 90 },
-      { time: friday, close: 100 },
-      day('2026-09-05T06:00:00Z', 120),
-      day('2026-09-04T01:00:00Z', 150, false),
+      { time: friday, close: 100, closed: true },
+      { time: friday, close: 150, closed: false },
+      day('2026-09-05T06:00:00Z', 120, false),
       day('2026-09-01T00:00:00Z', Number.NaN, true),
       day('2026-09-01T00:00:00Z', 0, true),
     ], NOW);
 
-    expect(result).toEqual({ value: 25, asOf: friday });
+    expect(result).toEqual({
+      value: 25,
+      asOf: friday,
+      completedAt: Date.parse('2026-09-05T00:00:00Z'),
+    });
+  });
+
+  it('accepts an aged Friday close even when the gateway leaves closed false through Monday', () => {
+    const mondayNoon = Date.parse('2026-09-07T12:00:00Z');
+
+    expect(resolveCompletedDailyChange([
+      day('2026-09-03T00:00:00Z', 100, true),
+      day('2026-09-04T00:00:00Z', 110, false),
+    ], mondayNoon)).toEqual({
+      value: 10,
+      asOf: Date.parse('2026-09-04T00:00:00Z'),
+      completedAt: Date.parse('2026-09-05T00:00:00Z'),
+    });
+  });
+
+  it('keeps the current forming D1 candle excluded', () => {
+    const mondayNoon = Date.parse('2026-09-07T12:00:00Z');
+
+    expect(resolveCompletedDailyChange([
+      day('2026-09-04T00:00:00Z', 100, true),
+      day('2026-09-06T22:00:00Z', 110, true),
+      day('2026-09-07T00:00:00Z', 220, false),
+    ], mondayNoon)).toEqual({
+      value: 10,
+      asOf: Date.parse('2026-09-06T22:00:00Z'),
+      completedAt: Date.parse('2026-09-07T00:00:00Z'),
+    });
+  });
+
+  it('accepts a Sunday-labelled broker candle when explicit finality says it is closed', () => {
+    const mondayNoon = Date.parse('2026-09-07T12:00:00Z');
+
+    expect(resolveCompletedDailyChange([
+      day('2026-09-04T22:00:00Z', 100, true),
+      day('2026-09-06T22:00:00Z', 105, true),
+    ], mondayNoon)).toEqual({
+      value: 5,
+      asOf: Date.parse('2026-09-06T22:00:00Z'),
+      completedAt: mondayNoon,
+    });
+  });
+
+  it('uses a newer broker candle as rollover evidence when finality remains false', () => {
+    const now = Date.parse('2026-03-09T21:30:00Z');
+
+    expect(resolveCompletedDailyChange([
+      day('2026-03-07T22:00:00Z', 100, true),
+      day('2026-03-08T22:00:00Z', 110, false),
+      day('2026-03-09T21:00:00Z', 999, false),
+    ], now)).toEqual({
+      value: 10,
+      asOf: Date.parse('2026-03-08T22:00:00Z'),
+      completedAt: Date.parse('2026-03-09T21:00:00Z'),
+    });
+  });
+
+  it('prefers the raw broker D1 timestamp over its UTC-aligned chart bucket', () => {
+    const mondayNoon = Date.parse('2026-09-07T12:00:00Z');
+
+    expect(resolveCompletedDailyChange([
+      {
+        time: Date.parse('2026-09-04T00:00:00Z') / 1000,
+        sourceTime: Date.parse('2026-09-04T22:00:00Z') / 1000,
+        close: 100,
+        closed: true,
+      },
+      {
+        time: Date.parse('2026-09-06T00:00:00Z') / 1000,
+        sourceTime: Date.parse('2026-09-06T22:00:00Z') / 1000,
+        close: 110,
+        closed: true,
+      },
+    ], mondayNoon)).toEqual({
+      value: 10,
+      asOf: Date.parse('2026-09-06T22:00:00Z'),
+      completedAt: mondayNoon,
+    });
   });
 
   it('returns a finite zero and supports business-day timestamps', () => {
@@ -223,6 +424,7 @@ describe('resolveCompletedDailyChange', () => {
     ], NOW)).toEqual({
       value: 0,
       asOf: Date.parse('2026-09-04T00:00:00Z'),
+      completedAt: Date.parse('2026-09-05T00:00:00Z'),
     });
   });
 
@@ -231,7 +433,7 @@ describe('resolveCompletedDailyChange', () => {
     expect(resolveCompletedDailyChange([
       day('2026-09-04T00:00:00Z', 100),
       day('2026-09-04T00:00:00Z', 101),
-      day('2026-09-05T00:00:00Z', 102, true),
+      day('2026-09-06T00:00:00Z', 102, true),
     ], NOW)).toBeNull();
     expect(resolveCompletedDailyChange([
       day('2026-07-01T00:00:00Z', 100),

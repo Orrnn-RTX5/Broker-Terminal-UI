@@ -8,6 +8,11 @@ export type MarketWatchDailyChangeSource = 'quote' | 'history';
 export interface MarketWatchDailyChangeCacheEntry {
   value: number;
   asOf: number;
+  /**
+   * History-only boundary at which the D1 session represented by `asOf`
+   * became final. Quote entries use their event timestamp directly.
+   */
+  completedAt?: number;
   savedAt: number;
   source: MarketWatchDailyChangeSource;
 }
@@ -16,18 +21,24 @@ export interface MarketWatchDailyChangeInput {
   symbol: string;
   value: number;
   asOf: number;
+  completedAt?: number;
   source: MarketWatchDailyChangeSource;
 }
 
 export interface DailyChangeCandle {
   time: unknown;
+  /** Original broker timestamp before chart-timeframe boundary alignment. */
+  sourceTime?: unknown;
   close: unknown;
   closed?: boolean;
 }
 
 export interface ResolvedDailyChange {
   value: number;
+  /** Broker D1 session-open timestamp. */
   asOf: number;
+  /** Session boundary used to order the final D1 result against live quotes. */
+  completedAt: number;
 }
 
 interface StoredDailyChangeEntry extends MarketWatchDailyChangeCacheEntry {
@@ -47,6 +58,7 @@ export const MAX_MARKET_WATCH_DAILY_CHANGE_CACHE_ENTRIES = 500;
 const STORAGE_VERSION = 1 as const;
 const FLUSH_DELAY_MS = 250;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_D1_ROLLOVER_GAP_MS = 26 * 60 * 60 * 1000;
 
 const entriesByScope = new Map<string, Map<string, MarketWatchDailyChangeCacheEntry>>();
 let loadedFromStorage = false;
@@ -90,6 +102,14 @@ const isStoredEntry = (value: unknown): value is StoredDailyChangeEntry => {
     && typeof entry.value === 'number'
     && Number.isFinite(entry.value)
     && isFiniteTimestamp(entry.asOf)
+    && (
+      entry.completedAt === undefined
+      || (
+        entry.source === 'history'
+        && isFiniteTimestamp(entry.completedAt)
+        && entry.completedAt >= entry.asOf
+      )
+    )
     && isFiniteTimestamp(entry.savedAt)
     && isSource(entry.source)
   );
@@ -120,15 +140,28 @@ const sourcePriority = (source: MarketWatchDailyChangeSource): number => (
   source === 'quote' ? 1 : 0
 );
 
+const getEntryOrderingTime = (entry: MarketWatchDailyChangeCacheEntry): number => (
+  entry.source === 'history' && entry.completedAt !== undefined
+    ? entry.completedAt
+    : entry.asOf
+);
+
+const compareEntryOrder = (
+  left: MarketWatchDailyChangeCacheEntry,
+  right: MarketWatchDailyChangeCacheEntry,
+): number => (
+  getEntryOrderingTime(left) - getEntryOrderingTime(right)
+  || sourcePriority(left.source) - sourcePriority(right.source)
+  || left.asOf - right.asOf
+);
+
 const shouldReplaceLoadedEntry = (
   current: MarketWatchDailyChangeCacheEntry | undefined,
   candidate: MarketWatchDailyChangeCacheEntry,
 ): boolean => {
   if (!current) return true;
-  if (candidate.asOf !== current.asOf) return candidate.asOf > current.asOf;
-  if (candidate.source !== current.source) {
-    return sourcePriority(candidate.source) > sourcePriority(current.source);
-  }
+  const order = compareEntryOrder(candidate, current);
+  if (order !== 0) return order > 0;
   return candidate.savedAt > current.savedAt;
 };
 
@@ -161,8 +194,7 @@ const pruneEntries = (now = Date.now()): boolean => {
 
   const retained = collectEntries().sort((left, right) => (
     right.savedAt - left.savedAt
-    || right.asOf - left.asOf
-    || sourcePriority(right.source) - sourcePriority(left.source)
+    || compareEntryOrder(right, left)
     || right.scopeKey.localeCompare(left.scopeKey)
     || right.symbol.localeCompare(left.symbol)
   ));
@@ -203,9 +235,15 @@ const ensureLoaded = (): void => {
   const envelope = parseStoredEnvelope(raw);
   if (!envelope) return;
 
-  envelope.entries.forEach(({ scopeKey, symbol, value, asOf, savedAt, source }) => {
+  envelope.entries.forEach(({ scopeKey, symbol, value, asOf, completedAt, savedAt, source }) => {
     const scopedEntries = entriesByScope.get(scopeKey) ?? new Map<string, MarketWatchDailyChangeCacheEntry>();
-    const candidate = { value, asOf, savedAt, source };
+    const candidate: MarketWatchDailyChangeCacheEntry = {
+      value,
+      asOf,
+      savedAt,
+      source,
+      ...(completedAt !== undefined ? { completedAt } : {}),
+    };
     if (shouldReplaceLoadedEntry(scopedEntries.get(symbol), candidate)) {
       scopedEntries.set(symbol, candidate);
       entriesByScope.set(scopeKey, scopedEntries);
@@ -235,7 +273,8 @@ const readEntry = (
 
 export const getCurrentMarketWatchDailyChangeScopeKey = (): string | null => {
   const scope = getCommittedBrokerAccountSessionScope();
-  if (!scope.authenticated || !String(scope.accountId ?? '').trim()) return null;
+  if (scope.authenticated && !String(scope.accountId ?? '').trim()) return null;
+  if (!scope.authenticated && !scope.brokerId && !scope.serverUrl) return null;
   return getCommittedBrokerAccountSessionScopeKey(scope);
 };
 
@@ -285,6 +324,7 @@ const rememberEntry = (
   asOf: number,
   source: MarketWatchDailyChangeSource,
   savedAt: number,
+  completedAt?: number,
 ): boolean => {
   const normalizedScopeKey = normalizeScopeKey(scopeKey);
   const normalizedSymbol = normalizeSymbol(symbol);
@@ -294,21 +334,40 @@ const rememberEntry = (
     || !Number.isFinite(value)
     || !isFiniteTimestamp(asOf)
     || !isSource(source)
+    || (
+      completedAt !== undefined
+      && (
+        source !== 'history'
+        || !isFiniteTimestamp(completedAt)
+        || completedAt < asOf
+      )
+    )
   ) {
     return false;
   }
 
   const scopedEntries = entriesByScope.get(normalizedScopeKey) ?? new Map<string, MarketWatchDailyChangeCacheEntry>();
   const current = scopedEntries.get(normalizedSymbol);
+  const candidate: MarketWatchDailyChangeCacheEntry = {
+    value,
+    asOf,
+    savedAt,
+    source,
+    ...(completedAt !== undefined ? { completedAt } : {}),
+  };
   if (current) {
-    if (asOf < current.asOf) return false;
-    if (asOf === current.asOf) {
-      if (current.source === 'quote' && source === 'history') return false;
-      if (current.source === source && current.value === value) return false;
-    }
+    const order = compareEntryOrder(candidate, current);
+    if (order < 0) return false;
+    if (
+      order === 0
+      && current.source === source
+      && current.asOf === asOf
+      && current.completedAt === completedAt
+      && current.value === value
+    ) return false;
   }
 
-  scopedEntries.set(normalizedSymbol, { value, asOf, savedAt, source });
+  scopedEntries.set(normalizedSymbol, candidate);
   entriesByScope.set(normalizedScopeKey, scopedEntries);
   return true;
 };
@@ -319,9 +378,10 @@ export const rememberMarketWatchDailyChange = (
   value: number,
   asOf: number,
   source: MarketWatchDailyChangeSource,
+  completedAt?: number,
 ): boolean => {
   ensureLoaded();
-  const changed = rememberEntry(scopeKey, symbol, value, asOf, source, Date.now());
+  const changed = rememberEntry(scopeKey, symbol, value, asOf, source, Date.now(), completedAt);
   if (!changed) return false;
 
   pruneEntries();
@@ -336,8 +396,10 @@ export const rememberMarketWatchDailyChanges = (
   ensureLoaded();
   const savedAt = Date.now();
   let changedCount = 0;
-  changes.forEach(({ symbol, value, asOf, source }) => {
-    if (rememberEntry(scopeKey, symbol, value, asOf, source, savedAt)) changedCount += 1;
+  changes.forEach(({ symbol, value, asOf, completedAt, source }) => {
+    if (rememberEntry(scopeKey, symbol, value, asOf, source, savedAt, completedAt)) {
+      changedCount += 1;
+    }
   });
 
   if (changedCount > 0) {
@@ -352,9 +414,12 @@ export const rememberCurrentMarketWatchDailyChange = (
   value: number,
   asOf: number,
   source: MarketWatchDailyChangeSource,
+  completedAt?: number,
 ): boolean => {
   const scopeKey = getCurrentMarketWatchDailyChangeScopeKey();
-  return scopeKey ? rememberMarketWatchDailyChange(scopeKey, symbol, value, asOf, source) : false;
+  return scopeKey
+    ? rememberMarketWatchDailyChange(scopeKey, symbol, value, asOf, source, completedAt)
+    : false;
 };
 
 export const rememberCurrentMarketWatchDailyChanges = (
@@ -452,30 +517,77 @@ export const resolveCompletedDailyChange = (
 ): ResolvedDailyChange | null => {
   if (!Number.isFinite(now) || now < 0) return null;
 
-  const closesByTime = new Map<number, number>();
-  candles.forEach((candle) => {
-    if (!candle || candle.closed === false) return;
-    const time = normalizeCandleTimeMs(candle.time);
+  const normalized = candles.flatMap((candle, index) => {
+    if (!candle) return [];
+    const sourceTime = normalizeCandleTimeMs(candle.sourceTime);
+    const time = sourceTime ?? normalizeCandleTimeMs(candle.time);
     const close = Number(candle.close);
-    if (time === null || time > now || !Number.isFinite(close) || close <= 0) return;
+    if (time === null || time > now || !Number.isFinite(close) || close <= 0) return [];
+    return [{ time, close, closed: candle.closed, index }];
+  });
 
-    const day = new Date(time).getUTCDay();
-    if (day === 0 || day === 6) return;
-    if (candle.closed !== true && time + ONE_DAY_MS > now) return;
-    closesByTime.set(time, close);
+  if (normalized.length < 2) return null;
+
+  const latestObservedTime = normalized.reduce(
+    (latest, candle) => Math.max(latest, candle.time),
+    0,
+  );
+  const closesByTime = new Map<number, { close: number; finalityRank: number; index: number }>();
+  normalized.forEach((candle) => {
+    // Broker finality is strongest. A later D1 candle proves the earlier
+    // bucket rolled over even when a gateway left `closed:false`. As a final
+    // safety net, an otherwise-latest row is usable only after a full nominal
+    // D1 period has elapsed. This excludes the current forming row without
+    // assuming that UTC Saturday/Sunday labels are non-trading days.
+    const finalityRank = candle.closed === true
+      ? 3
+      : candle.time < latestObservedTime
+        ? 2
+        : candle.time + ONE_DAY_MS <= now
+          ? 1
+          : 0;
+    if (finalityRank === 0) return;
+
+    const current = closesByTime.get(candle.time);
+    if (
+      current
+      && (current.finalityRank > finalityRank
+        || (current.finalityRank === finalityRank && current.index > candle.index))
+    ) return;
+    closesByTime.set(candle.time, {
+      close: candle.close,
+      finalityRank,
+      index: candle.index,
+    });
   });
 
   const completed = [...closesByTime.entries()].sort(([left], [right]) => left - right);
   if (completed.length < 2) return null;
 
-  const [priorTime, priorClose] = completed[completed.length - 2];
-  const [lastTime, lastClose] = completed[completed.length - 1];
+  const [priorTime, prior] = completed[completed.length - 2];
+  const [lastTime, last] = completed[completed.length - 1];
   if (
     lastTime === priorTime
     || lastTime <= now - MARKET_WATCH_DAILY_CHANGE_CACHE_TTL_MS
-    || priorClose <= 0
+    || prior.close <= 0
   ) return null;
 
-  const value = ((lastClose - priorClose) / priorClose) * 100;
-  return Number.isFinite(value) ? { value, asOf: lastTime } : null;
+  const value = ((last.close - prior.close) / prior.close) * 100;
+  if (!Number.isFinite(value)) return null;
+
+  const nextObservedTime = normalized.reduce<number | null>((next, candle) => {
+    if (candle.time <= lastTime) return next;
+    return next === null || candle.time < next ? candle.time : next;
+  }, null);
+  const nominalCompletedAt = lastTime + ONE_DAY_MS;
+  // A following D1 row is the best rollover evidence, including 23/25-hour
+  // DST sessions. Large gaps are not treated as one long session: doing so
+  // could let stale history overwrite a quote from a genuinely newer day.
+  const rolloverCompletedAt = nextObservedTime !== null
+    && nextObservedTime - lastTime <= MAX_D1_ROLLOVER_GAP_MS
+    ? nextObservedTime
+    : nominalCompletedAt;
+  const completedAt = Math.min(rolloverCompletedAt, now);
+
+  return { value, asOf: lastTime, completedAt };
 };

@@ -7,10 +7,15 @@ import {
 } from '../services/marketWatchQuoteCache';
 import { useAppStore } from '../store/useAppStore';
 import {
+  hydrateLastMarketWatchQuotes,
   LAST_MARKET_WATCH_PRICE_MAX_CONCURRENCY,
   resolveLastMarketWatchPrice,
   useLastMarketWatchQuotes,
 } from './useLastMarketWatchQuotes';
+import {
+  commitBrokerAccountSessionScope,
+  getCommittedBrokerAccountSessionScopeKey,
+} from '../services/brokerSession';
 
 const apiGet = vi.hoisted(() => vi.fn());
 const broker = vi.hoisted(() => ({ serverUrl: 'https://broker-a.test' }));
@@ -36,10 +41,123 @@ describe('Market Watch last historical price', () => {
     resetMarketWatchQuoteCacheForTests();
     broker.serverUrl = 'https://broker-a.test';
     useAppStore.setState({ authToken: null, refreshToken: null });
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'broker-a',
+      serverUrl: broker.serverUrl,
+    });
   });
   afterEach(() => {
     cleanup();
     resetMarketWatchQuoteCacheForTests();
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+  });
+
+  it('hydrates every requested export row without publishing executable ticks', async () => {
+    const scopeKey = getCommittedBrokerAccountSessionScopeKey(
+      commitBrokerAccountSessionScope({
+        authenticated: false,
+        brokerId: 'broker-a',
+        serverUrl: broker.serverUrl,
+      }),
+    );
+    const now = Date.now();
+    const existingTicks = useAppStore.getState().ticks;
+    rememberMarketWatchQuote(scopeKey, 'EURUSD', {
+      bid: 1.1,
+      ask: 1.1002,
+      asOf: now - 60_000,
+    });
+    apiGet.mockImplementation((path: string) => {
+      if (path === '/ticks/GBPUSD') {
+        return Promise.resolve([{ bid: 1.25, ask: 1.2502, time: now - 30_000 }]);
+      }
+      if (path === '/candles/XAUUSD') {
+        return Promise.resolve({ candles: [{ close: 4_385.2, time: now - 120_000 }] });
+      }
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateLastMarketWatchQuotes({
+      scopeKey,
+      symbols: ['EURUSD', 'XAUUSD', 'GBPUSD'],
+      candleSymbols: ['XAUUSD'],
+    });
+
+    expect(result.get('EURUSD')).toEqual({
+      kind: 'quote', bid: 1.1, ask: 1.1002, asOf: now - 60_000,
+    });
+    expect(result.get('GBPUSD')).toEqual({
+      kind: 'quote', bid: 1.25, ask: 1.2502, asOf: now - 30_000,
+    });
+    expect(result.get('XAUUSD')).toEqual({
+      kind: 'close', close: 4_385.2, asOf: now - 120_000,
+    });
+    expect(apiGet.mock.calls.map(([path]) => path).sort()).toEqual([
+      '/candles/XAUUSD',
+      '/ticks/EURUSD',
+      '/ticks/GBPUSD',
+      '/ticks/XAUUSD',
+    ]);
+    const requestContexts = apiGet.mock.calls.map(([, options]) => options.requestContext);
+    expect(new Set(requestContexts).size).toBe(1);
+    expect(requestContexts[0]).toMatchObject({
+      key: `market-watch-export:${scopeKey}`,
+      backendOrigin: 'https://broker-a.test',
+      refreshEndpoint: 'https://broker-a.test/api/v2/auth/refresh',
+    });
+    expect(useAppStore.getState().ticks).toBe(existingTicks);
+  });
+
+  it('fails export hydration closed when its scope is stale or changes in flight', async () => {
+    const scopeA = getCommittedBrokerAccountSessionScopeKey(
+      commitBrokerAccountSessionScope({
+        authenticated: false,
+        brokerId: 'broker-a',
+        serverUrl: broker.serverUrl,
+      }),
+    );
+    rememberMarketWatchQuote(scopeA, 'EURUSD', {
+      bid: 1.1,
+      ask: 1.1002,
+      asOf: Date.now() - 60_000,
+    });
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'broker-b',
+      serverUrl: 'https://broker-b.test',
+    });
+
+    await expect(hydrateLastMarketWatchQuotes({
+      scopeKey: scopeA,
+      symbols: ['EURUSD'],
+      candleSymbols: [],
+    })).resolves.toEqual(new Map());
+    expect(apiGet).not.toHaveBeenCalled();
+
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'broker-a',
+      serverUrl: broker.serverUrl,
+    });
+    const pending = deferred<unknown>();
+    apiGet.mockImplementationOnce(() => pending.promise);
+    const request = hydrateLastMarketWatchQuotes({
+      scopeKey: scopeA,
+      symbols: ['GBPUSD'],
+      candleSymbols: [],
+    });
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'broker-b',
+      serverUrl: 'https://broker-b.test',
+    });
+    pending.resolve([{
+      symbol: 'GBPUSD', bid: 1.25, ask: 1.2502, time: Date.now() - 30_000,
+    }]);
+
+    await expect(request).resolves.toEqual(new Map());
+    expect(readMarketWatchQuotes(scopeA, ['GBPUSD'])).toEqual({});
   });
 
   it('selects the newest real pair, normalizes source time, and preserves exact symbol identity', () => {

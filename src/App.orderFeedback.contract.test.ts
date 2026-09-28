@@ -1,12 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ORDER_FEEDBACK_EVENT } from './contracts/terminalEvents';
 
-const source = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+const source = [
+  'src/App.tsx',
+  'src/app/trading/orderFeedback.ts',
+  'src/app/trading/useOrderExecution.ts',
+  'src/app/ui/useTerminalCommandEvents.ts',
+].map((path) => readFileSync(resolve(process.cwd(), path), 'utf8')).join('\n');
 
 describe('App market-order feedback source contract', () => {
   it('reports blocked and rejected quick orders without a blocking browser alert', () => {
-    expect(source).toContain("const ORDER_FEEDBACK_EVENT = 'rtx:order-feedback'");
+    expect(ORDER_FEEDBACK_EVENT).toBe('rtx:order-feedback');
     expect(source).toContain('window.addEventListener(ORDER_FEEDBACK_EVENT, handleOrderFeedback)');
     expect(source).toContain('publishOrderFeedback(formatOrderError(err))');
     expect(source).not.toContain('alert(formatOrderError(err))');
@@ -30,7 +36,7 @@ describe('App market-order feedback source contract', () => {
       'const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);',
     );
     expect(source).toContain('setOrderPanelOpen(true);');
-    expect(source).toContain('openOrderPanelForSymbol(detail?.symbol);');
+    expect(source).toContain('openOrderPanelForSymbol(event.detail?.symbol)) as EventListener');
     expect(source).toContain('const submitSymbol = getAllowedSymbol(requestedOrderPanelSymbol);');
   });
 

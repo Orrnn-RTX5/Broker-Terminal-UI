@@ -536,6 +536,7 @@
   "Enter the account holder information": "खाताधारक की जानकारी दर्ज करें",
   "Enter workspace name": "कार्यस्थान का नाम दर्ज करें",
   "Entry / close arrows": "प्रवेश/बंद करें तीर",
+  "Entry / close line": "??????/??? ???? ?? ????",
   "Entry price": "प्रवेश मूल्य",
   "Entry-to-close line": "प्रवेश-से-बंद लाइन",
   "Equidistant Channel": "समदूरस्थ चैनल",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "दिखाने के लिए कोई प्रतीक नहीं",
   "Add a symbol to Market Watch, then open Popup Prices again.": "मार्केट वॉच में एक प्रतीक जोड़ें, फिर पॉपअप प्राइस दोबारा खोलें।",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "पहले {{value0}} प्रतीक दिखाए जा रहे हैं। मार्केट वॉच में {{value1}} और शेष हैं।",
-  "Resize Popup Prices dialog": "पॉपअप प्राइस संवाद का आकार बदलें"
+  "Resize Popup Prices dialog": "पॉपअप प्राइस संवाद का आकार बदलें",
+  "Details": "विवरण",
+  "Tick Size": "टिक आकार",
+  "Tick Value": "टिक मान",
+  "Bid High": "उच्चतम बिड",
+  "Bid Low": "न्यूनतम बिड",
+  "Ask High": "उच्चतम आस्क",
+  "Ask Low": "न्यूनतम आस्क",
+  "Last quote": "अंतिम कोट"
 }

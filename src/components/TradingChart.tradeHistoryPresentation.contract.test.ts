@@ -2,8 +2,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const chartSource = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/components/TradingChart.tsx'),
+const readChartSource = (relativePath: string) => fs.readFileSync(
+  path.resolve(process.cwd(), relativePath),
+  'utf8',
+);
+const chartSource = [
+  'src/components/TradingChart.tsx',
+  'src/features/trading-chart/runtime/useTradingChartTradeRuntime.ts',
+  'src/features/trading-chart/runtime/createTradeOverlayModelRuntime.ts',
+  'src/features/trading-chart/runtime/createTradeOverlayDomRuntime.ts',
+  'src/features/trading-chart/runtime/useTradingChartTradeOverlayRenderer.ts',
+  'src/features/trading-chart/runtime/bindTradeOverlayRuntimeSubscriptions.ts',
+  'src/features/trading-chart/runtime/tradeOverlayRuntimeConstants.ts',
+  'src/features/trading-chart/runtime/useTradingChartContextMenu.ts',
+].map(readChartSource).join('\n');
+const tradeOverlayPresentationSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/features/trading-chart/presentation/tradeOverlayPresentation.ts'),
   'utf8',
 );
 const toolbarSource = fs.readFileSync(
@@ -82,7 +96,7 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(chartSource).toContain("hoverTarget.addEventListener('pointerleave'");
     expect(chartSource).toContain("hoverTarget.addEventListener('focus'");
     expect(chartSource).toContain("hoverTarget.addEventListener('blur'");
-    expect(chartSource).toContain('const fitsAbove = markerTop - tooltipGap - tooltipHeight >= 4;');
+    expect(tradeOverlayPresentationSource).toContain('const fitsAbove = markerTop - tooltipGap - tooltipHeight >= 4;');
     expect(chartSource).toContain('appendHistoryInteractionNode(');
   });
 
@@ -107,7 +121,7 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(propertiesDialogSource).toContain("{ key: 'showTradeHistory', label: 'Show entry/close line' }");
     expect(propertiesDialogSource).toContain("{ key: 'showTradeHistoryArrows', label: 'Show entry/close arrows' }");
     const historyToggleStart = chartSource.indexOf('const handleCtxToggleTradeHistory =');
-    const historyToggleEnd = chartSource.indexOf('}, [symbol]);', historyToggleStart);
+    const historyToggleEnd = chartSource.indexOf('const handleCtxToggleTradeHistoryLine =', historyToggleStart);
     expect(historyToggleStart).toBeGreaterThan(-1);
     expect(historyToggleEnd).toBeGreaterThan(historyToggleStart);
     const historyToggle = chartSource.slice(historyToggleStart, historyToggleEnd);

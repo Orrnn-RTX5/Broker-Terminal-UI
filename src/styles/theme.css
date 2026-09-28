@@ -1203,7 +1203,7 @@ tr:hover {
 }
 
 /* Standard light theme mirrors the MetaTrader web terminal light replica
-   (see advanced-untitled-light.css for the annotated reference capture). */
+   (see legacy-light-overrides.css for the annotated reference capture). */
 .theme-light .rtx-oct {
   filter: none !important;
 }

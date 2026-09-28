@@ -89,7 +89,7 @@ describe('ChartModifyPositionDialogHost', () => {
     const modified: any[] = [];
     const listener = (event: Event) => modified.push((event as CustomEvent).detail);
     window.addEventListener('rtx:trade-modified', listener);
-    render(<ChartModifyPositionDialogHost resolveAllowedSymbol={symbol => String(symbol)} />);
+    render(<ChartModifyPositionDialogHost onClosePosition={() => undefined} resolveAllowedSymbol={symbol => String(symbol)} />);
 
     act(() => dispatchModifyRequest());
 
@@ -110,7 +110,7 @@ describe('ChartModifyPositionDialogHost', () => {
   });
 
   it('rejects another session and closes if the current ticket disappears', async () => {
-    render(<ChartModifyPositionDialogHost resolveAllowedSymbol={symbol => String(symbol)} />);
+    render(<ChartModifyPositionDialogHost onClosePosition={() => undefined} resolveAllowedSymbol={symbol => String(symbol)} />);
 
     act(() => dispatchModifyRequest({ sessionScope: 'authenticated|88|broker-a|https://broker.example' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -126,7 +126,7 @@ describe('ChartModifyPositionDialogHost', () => {
     const modified: any[] = [];
     const listener = (event: Event) => modified.push((event as CustomEvent).detail);
     window.addEventListener('rtx:trade-modified', listener);
-    render(<ChartModifyPositionDialogHost resolveAllowedSymbol={symbol => String(symbol)} />);
+    render(<ChartModifyPositionDialogHost onClosePosition={() => undefined} resolveAllowedSymbol={symbol => String(symbol)} />);
 
     act(() => dispatchModifyRequest());
     expect(await screen.findByRole('dialog', { name: 'Modify Position #456' })).toBeInTheDocument();

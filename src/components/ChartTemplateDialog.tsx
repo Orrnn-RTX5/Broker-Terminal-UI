@@ -8,7 +8,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import ReactDOM from 'react-dom';
 import React, { useState, useRef } from 'react';
 import { useTemplateStore, type ChartTemplate } from '../store/useTemplateStore';
-import type { ChartType, Timeframe } from './TradingChart';
+import type { ChartType, Timeframe } from '../types/chart';
 import { Save, Download, X, CheckCircle, Trash2, Plus } from 'lucide-react';
 
 interface ChartTemplateDialogProps {

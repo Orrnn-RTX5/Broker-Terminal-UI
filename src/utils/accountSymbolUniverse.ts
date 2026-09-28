@@ -39,6 +39,94 @@ export const isAccountSymbolUniverseActive = (
 
 type SymbolRecord = { symbol: string };
 
+type UnknownRecord = Record<string, unknown>;
+
+const asRecord = (value: unknown): UnknownRecord | undefined => (
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as UnknownRecord
+    : undefined
+);
+
+const mergeDefinedRecordFields = (
+  fallback: UnknownRecord,
+  authoritative: UnknownRecord,
+): UnknownRecord => {
+  const merged: UnknownRecord = { ...fallback };
+  Object.entries(authoritative).forEach(([key, value]) => {
+    if (value !== undefined) merged[key] = value;
+  });
+  return merged;
+};
+
+const CHART_MODE_KEYS = ['chart_mode', 'chartMode'] as const;
+
+const hasExplicitChartMode = (record: UnknownRecord): boolean => {
+  if (CHART_MODE_KEYS.some((key) => (
+    Object.prototype.hasOwnProperty.call(record, key) && record[key] !== undefined
+  ))) return true;
+
+  const nested = asRecord(record.specification);
+  return Boolean(nested && CHART_MODE_KEYS.some((key) => (
+    Object.prototype.hasOwnProperty.call(nested, key) && nested[key] !== undefined
+  )));
+};
+
+/**
+ * Merge the raw broker snapshots retained by `normalizeInstrument`.
+ *
+ * Account rows are authoritative, while the public row may fill omitted
+ * metadata such as `chart_mode`. `specification` is the one nested broker
+ * section that is field-merged because chart mode is published there by some
+ * backends. If the account declares chart mode at either supported level, all
+ * public chart-mode aliases are removed before the account value is restored;
+ * this prevents a public direct value from shadowing an account nested value.
+ */
+const mergeBrokerSpecifications = (
+  publicSpecification: UnknownRecord,
+  accountSpecification: UnknownRecord,
+): Readonly<UnknownRecord> => {
+  const merged = mergeDefinedRecordFields(publicSpecification, accountSpecification);
+
+  const publicNested = asRecord(publicSpecification.specification);
+  const accountNested = asRecord(accountSpecification.specification);
+  if (publicNested && accountNested) {
+    merged.specification = mergeDefinedRecordFields(publicNested, accountNested);
+  }
+
+  if (hasExplicitChartMode(accountSpecification)) {
+    CHART_MODE_KEYS.forEach((key) => delete merged[key]);
+    const mergedNested = asRecord(merged.specification);
+    if (mergedNested) {
+      const withoutPublicMode = { ...mergedNested };
+      CHART_MODE_KEYS.forEach((key) => delete withoutPublicMode[key]);
+      merged.specification = withoutPublicMode;
+    }
+
+    CHART_MODE_KEYS.forEach((key) => {
+      if (
+        Object.prototype.hasOwnProperty.call(accountSpecification, key)
+        && accountSpecification[key] !== undefined
+      ) {
+        merged[key] = accountSpecification[key];
+      }
+    });
+    if (accountNested) {
+      const restoredNested = { ...(asRecord(merged.specification) ?? {}) };
+      CHART_MODE_KEYS.forEach((key) => {
+        if (
+          Object.prototype.hasOwnProperty.call(accountNested, key)
+          && accountNested[key] !== undefined
+        ) {
+          restoredNested[key] = accountNested[key];
+        }
+      });
+      merged.specification = restoredNested;
+    }
+  }
+
+  return Object.freeze(merged);
+};
+
 /**
  * Account catalogue rows in backend order, enriched with public-catalogue
  * fields (prices, specifications, descriptions) the account row omits.
@@ -69,6 +157,11 @@ export const mergeAccountCatalogWithPublic = <T extends SymbolRecord>(
     Object.entries(instrument).forEach(([key, value]) => {
       if (value !== undefined) next[key] = value;
     });
+    const publicSpecification = asRecord((publicInstrument as UnknownRecord).brokerSpecification);
+    const accountSpecification = asRecord((instrument as UnknownRecord).brokerSpecification);
+    if (publicSpecification && accountSpecification) {
+      next.brokerSpecification = mergeBrokerSpecifications(publicSpecification, accountSpecification);
+    }
     next.symbol = symbol;
     merged.push(next as T);
   });

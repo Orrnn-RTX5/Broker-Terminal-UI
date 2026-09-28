@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GlobalShortcuts } from './GlobalShortcuts';
 import { TopToolbar } from './layout/TopToolbar';
@@ -85,7 +86,13 @@ const isCovered = (id: string) => Boolean(commandCases[id] || eventCases[id] || 
 let dispose: () => void;
 let probe: ReturnType<typeof useToolbarState>;
 const releases: Array<() => void> = [];
-const ToolbarProbe = () => { probe = useToolbarState(); return null; };
+const ToolbarProbe = () => {
+  const nextProbe = useToolbarState();
+  useEffect(() => {
+    probe = nextProbe;
+  }, [nextProbe]);
+  return null;
+};
 const press = (binding: ShortcutDefinition, target: Element = document.body) => fireEvent.keyDown(target, {
   key: binding.key, code: /^[a-z]$/i.test(binding.key) ? `Key${binding.key.toUpperCase()}` : /^\d$/.test(binding.key) ? `Digit${binding.key}` : binding.key,
   altKey: Boolean(binding.alt), ctrlKey: Boolean(binding.ctrl), shiftKey: Boolean(binding.shift), metaKey: Boolean(binding.meta),
@@ -219,14 +226,19 @@ describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
       }
     }
     if (broker.id === 'TEST') {
-      mkdirSync(resolve(process.cwd(), 'tmp'), { recursive: true });
-      writeFileSync(resolve(process.cwd(), 'tmp/shortcut-matrix-inventory.json'), JSON.stringify(getShortcutHelpEntries(bindings).map(row => ({
+      const inventoryPath = resolve(process.cwd(), 'src/test/fixtures/shortcut-matrix-inventory.json');
+      const serializedInventory = JSON.stringify(getShortcutHelpEntries(bindings).map(row => ({
         ...row, handler: undefined,
         verification: row.id.startsWith('local.') ? 'Local handler suite (separate)' : layoutCases[row.id] ? 'Mounted key to real layout API; layout effects in dock tests'
           : eventCases[row.id] ? 'Mounted key to scoped event; consumer tested separately'
           : callbackCases[row.id] ? 'Mounted key to callback adapter; no live transaction'
           : 'Mounted key to command consumer or state/UI effect',
-      })), null, 2));
+      })), null, 2);
+      if (process.env.RTX_WRITE_SHORTCUT_INVENTORY === '1') {
+        mkdirSync(resolve(process.cwd(), 'tmp'), { recursive: true });
+        writeFileSync(inventoryPath, serializedInventory);
+      }
+      expect(JSON.parse(readFileSync(inventoryPath, 'utf8'))).toEqual(JSON.parse(serializedInventory));
     }
   });
 

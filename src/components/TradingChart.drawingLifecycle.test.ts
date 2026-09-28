@@ -22,13 +22,20 @@ vi.mock('../services/drawingApi', () => ({
 
 import { DrawingManager } from '../services/drawingManager';
 
-const source = readFileSync(resolve(process.cwd(), 'src/components/TradingChart.tsx'), 'utf8');
+const chartFacadeSource = readFileSync(
+  resolve(process.cwd(), 'src/components/TradingChart.tsx'),
+  'utf8',
+);
+const source = readFileSync(
+  resolve(process.cwd(), 'src/features/trading-chart/runtime/useTradingChartReconfiguration.ts'),
+  'utf8',
+);
 
 // Execute the production listener declarations without mounting the chart's
 // unrelated broker/feed effects. These same function instances stay registered
 // when TradingChart's symbol/timeframe fast path retains its existing series.
 const getRetainedListenerSource = () => {
-  const parsed = ts.createSourceFile('TradingChart.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const parsed = ts.createSourceFile('TradingChart.tsx', chartFacadeSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let binder = '';
   const visit = (node: ts.Node) => {
     if (ts.isVariableDeclaration(node) && node.name.getText(parsed) === 'bindDrawingManagerToChart') {

@@ -536,6 +536,7 @@
   "Enter the account holder information": "Introduce los datos del titular de la cuenta",
   "Enter workspace name": "Ingrese el nombre del espacio de trabajo",
   "Entry / close arrows": "Flechas de entrada/cierre",
+  "Entry / close line": "L?nea de entrada/cierre",
   "Entry price": "Precio de entrada",
   "Entry-to-close line": "Línea de entrada a cierre",
   "Equidistant Channel": "Canal Equidistante",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "No hay símbolos para mostrar",
   "Add a symbol to Market Watch, then open Popup Prices again.": "Añada un símbolo a Observación del mercado y vuelva a abrir la ventana emergente de precios.",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "Mostrando los primeros {{value0}} símbolos. Quedan {{value1}} más en Observación del mercado.",
-  "Resize Popup Prices dialog": "Cambiar el tamaño del cuadro de diálogo de la ventana emergente de precios"
+  "Resize Popup Prices dialog": "Cambiar el tamaño del cuadro de diálogo de la ventana emergente de precios",
+  "Details": "Detalles",
+  "Tick Size": "Tamaño del tick",
+  "Tick Value": "Valor del tick",
+  "Bid High": "Máximo de compra",
+  "Bid Low": "Mínimo de compra",
+  "Ask High": "Máximo de venta",
+  "Ask Low": "Mínimo de venta",
+  "Last quote": "Última cotización"
 }

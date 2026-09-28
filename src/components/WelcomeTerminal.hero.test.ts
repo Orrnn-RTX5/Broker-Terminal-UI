@@ -16,7 +16,7 @@ describe('resolveLoginHeroAsset', () => {
 
   it('resolves public asset paths for packaged Electron and web bases', () => {
     expect(toPublicAssetPath('/login/trading-desk-hero.webp', './')).toBe('./login/trading-desk-hero.webp');
-    expect(toPublicAssetPath('/brand/rtx5-logo.png', '/')).toBe('/brand/rtx5-logo.png');
+    expect(toPublicAssetPath('/login/achiever-hero.webp', '/')).toBe('/login/achiever-hero.webp');
   });
 
   it('keeps the default trading desk image for unbranded brokers', () => {

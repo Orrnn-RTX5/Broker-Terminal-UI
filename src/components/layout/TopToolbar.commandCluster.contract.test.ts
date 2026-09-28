@@ -6,7 +6,7 @@ const readSource = (path: string): string => readFileSync(resolve(process.cwd(),
 
 const toolbarSource = readSource('src/components/layout/TopToolbar.tsx');
 const themeCss = readSource('src/styles/theme.css');
-const advancedCss = readSource('src/styles/advanced-untitled-light.css');
+const advancedCss = readSource('src/styles/legacy-light-overrides.css');
 const enterpriseCss = readSource('src/styles/enterprise-light.css');
 const iconRegistrySource = readSource('src/components/ui/iconRegistry.ts');
 const iconComponentSource = readSource('src/components/ui/Icon.tsx');

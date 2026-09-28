@@ -3,14 +3,14 @@ import { resolve } from 'node:path';
 import ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Execute App's actual restore effect with a deferred account request. Parsing
-// the effect avoids importing/mocking the unrelated chart and workspace graph.
+// Execute the session lifecycle's actual restore effect with a deferred account
+// request. Parsing the effect avoids importing/mocking the unrelated App graph.
 const source = ts.createSourceFile(
-  'App.tsx',
-  readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8'),
+  'useAppSessionLifecycle.ts',
+  readFileSync(resolve(process.cwd(), 'src/app/session/useAppSessionLifecycle.ts'), 'utf8'),
   ts.ScriptTarget.Latest,
   true,
-  ts.ScriptKind.TSX,
+  ts.ScriptKind.TS,
 );
 let restoreEffect: ts.ArrowFunction | undefined;
 const findRestoreEffect = (node: ts.Node): void => {
@@ -25,7 +25,7 @@ const findRestoreEffect = (node: ts.Node): void => {
   ts.forEachChild(node, findRestoreEffect);
 };
 findRestoreEffect(source);
-if (!restoreEffect) throw new Error('App session restore effect was not found');
+if (!restoreEffect) throw new Error('App session lifecycle restore effect was not found');
 const effectJavaScript = ts.transpileModule(
   `const runRestoreEffect = ${restoreEffect.getText(source)};`,
   { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } },
@@ -60,17 +60,17 @@ const createRestoreHarness = () => {
     setIsAutoAuthenticating: vi.fn(),
     setAutoAuthError: vi.fn(),
     updateDynamicUrls: vi.fn(),
-    // Module-level imports used by the merged restore success path.
+    // Module-level imports used by the restore success path.
     seedValidatedSessionAccountSummary: vi.fn(),
     chartDataService: { preloadStartupHistory: vi.fn() },
     useAppStore: { getState: () => state, setState: vi.fn() },
     getStoredTokenExpiryMs: () => null,
-    // Module-level helper in App.tsx; the success path is the only branch that
-    // reaches it, so an unbound reference was silently swallowed by the catch.
+    // Module-level imports/helpers referenced inside the extracted effect.
     getStoredAuthToken: () => localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'),
     getCommittedBrokerAccountSessionScope: () => scope,
     hasTokenExpiryElapsed: () => false,
-    parsePositiveInt: (value: unknown) => Number.parseInt(String(value), 10) || null,
+    parsePositiveLogin: (value: unknown) => Number.parseInt(String(value), 10) || null,
+    getErrorMessage: (error: unknown) => error instanceof Error ? error.message : String(error),
     performSessionExpiredLogout,
     setIsAuthenticated,
     setAccountId,

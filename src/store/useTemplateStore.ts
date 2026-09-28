@@ -6,7 +6,7 @@
 
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
-import type { ChartType, Timeframe } from '../components/TradingChart';
+import type { ChartType, Timeframe } from '../types/chart';
 
 // Template interface matching chart configuration
 export interface ChartTemplate {

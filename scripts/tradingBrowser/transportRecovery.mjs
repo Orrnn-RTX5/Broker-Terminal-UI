@@ -96,10 +96,8 @@ export const runTransportRecovery = async (args) => {
           // Fresh synthetic ticket per sample: no sample replays an
           // already-closed position. Pure sequence counter, no wall clock.
           expectTicket = nextTicket();
-          // eslint-disable-next-line no-await-in-loop
           await page.evaluate((t) => window.__tradingBrowser.setParams({ closeTicket: t }), expectTicket);
         }
-        // eslint-disable-next-line no-await-in-loop
         const { latencyMs, lastResult } = await clickAndWaitForConfirm(page, {
           ...BUTTONS[action],
           expectTicket,
@@ -123,7 +121,6 @@ export const runTransportRecovery = async (args) => {
     // reuses the ORIGINAL request_id/client_order_id via get_order_status.
     const intentsBefore = gateway.state.placeOrderByIntent.size;
     gateway.state.dropNextFill = true;
-    // eslint-disable-next-line no-await-in-loop
     const recoveryConfirm = await clickAndWaitForConfirm(page, { ...BUTTONS.open, timeoutMs: args.timeoutMs });
     const placeEntries = [...gateway.state.placeOrderByIntent.entries()];
     const recovered = placeEntries.slice(intentsBefore);
@@ -153,7 +150,6 @@ export const runTransportRecovery = async (args) => {
       (t) => window.__tradingBrowser.setParams({ closeTicket: t, closeTimeoutMs: 2500 }),
       closeRecoveryTicket,
     );
-    // eslint-disable-next-line no-await-in-loop
     const closeConfirm = await clickAndWaitForConfirm(page, { ...BUTTONS.close, expectTicket: closeRecoveryTicket, timeoutMs: args.timeoutMs });
     const closeIntent = closeConfirm.lastResult?.clientOrderId;
     const closePosts = gateway.state.restAttempts.filter((a) => a.kind === 'rest_close' && a.ticket === closeRecoveryTicket);
@@ -179,18 +175,15 @@ export const runTransportRecovery = async (args) => {
     const intentsBeforeDrop = gateway.state.placeOrderByIntent.size;
     let firstAttemptErrored = false;
     try {
-      // eslint-disable-next-line no-await-in-loop
       await clickAndWaitForConfirm(page, { ...BUTTONS.open, timeoutMs: 12_000 });
     } catch {
       firstAttemptErrored = true;
     }
-    // eslint-disable-next-line no-await-in-loop
     await page.waitForFunction(
       () => window.__tradingBrowser !== undefined,
       { timeout: args.timeoutMs },
     );
     // Reconnect proof: a fresh intent succeeds afterwards with 1 frame.
-    // eslint-disable-next-line no-await-in-loop
     await clickAndWaitForConfirm(page, { ...BUTTONS.open, timeoutMs: args.timeoutMs });
     const afterEntries = [...gateway.state.placeOrderByIntent.entries()].slice(intentsBeforeDrop);
     const noDup = afterEntries.every(([, count]) => count === 1);
@@ -203,7 +196,6 @@ export const runTransportRecovery = async (args) => {
     if (args.screenshots) {
       const { mkdirSync } = await import('node:fs');
       mkdirSync(args.screenshots, { recursive: true });
-      // eslint-disable-next-line no-await-in-loop
       await page.screenshot({ path: `${args.screenshots}/transport-fixture.png` });
     }
 

@@ -4,6 +4,14 @@ This report separates keyboard registration and command routing from the effect 
 
 The inventory comes from the mounted shortcut registry and `getShortcutHelpEntries()`. `DEFAULT_SHORTCUTS` contains legacy and desktop-only definitions and is not the web-terminal inventory. One row identifies one action, key combination, and scope; aliases remain separate rows.
 
+Normal test runs verify the committed inventory without rewriting the worktree. To regenerate it intentionally in PowerShell, set `RTX_WRITE_SHORTCUT_INVENTORY=1` for the focused matrix test, review the JSON diff, and then clear the environment variable.
+
+```powershell
+$env:RTX_WRITE_SHORTCUT_INVENTORY = '1'
+npm.cmd run test:run -- src/components/GlobalShortcuts.matrix.test.tsx --pool=threads --maxWorkers=1
+Remove-Item Env:RTX_WRITE_SHORTCUT_INVENTORY
+```
+
 ## Evidence levels
 
 - **Browser verified:** the key was sent through the supported browser-control runtime and its expected visible result was observed.
@@ -16,7 +24,7 @@ The native Windows On-Screen Keyboard was confirmed open in interactive session 
 
 ## Global bindings
 
-The current mounted manifest contains **78 active global bindings plus 12 local help entries: 90 rows total**. The additional binding is **Ctrl+Alt+N — Add chart**. `GlobalShortcuts.matrix.test.tsx` mounts `GlobalShortcuts`, `TopToolbar`, and `WebDrawingToolsRail`, checks that every active binding has an assertion, and rejects conflicts. Counts were confirmed from `tmp/shortcut-matrix-inventory.json`, including the enabled `window.add-chart` registration. Earlier browser observations and completed validation runs below retain their original 77-binding/89-entry counts.
+The current mounted manifest contains **78 active global bindings plus 12 local help entries: 90 rows total**. The additional binding is **Ctrl+Alt+N — Add chart**. `GlobalShortcuts.matrix.test.tsx` mounts `GlobalShortcuts`, `TopToolbar`, and `WebDrawingToolsRail`, checks that every active binding has an assertion, and rejects conflicts. Counts were confirmed from `src/test/fixtures/shortcut-matrix-inventory.json`, including the enabled `window.add-chart` registration. Earlier browser observations and completed validation runs below retain their original 77-binding/89-entry counts.
 
 Shared automated fixtures cover four configured broker identities with exact suffixed symbols, two active-chart targets, and all nine timeframes. Broker changes and active-chart switches are exercised without remounting the shortcut owners. Callback/API boundaries are mocked where stated; these are not live broker tests. All active global bindings are also checked for suppression inside a locally scoped dialog.
 

@@ -536,6 +536,7 @@
   "Enter the account holder information": "Enter the account holder information",
   "Enter workspace name": "Enter workspace name",
   "Entry / close arrows": "Entry / close arrows",
+  "Entry / close line": "Entry / close line",
   "Entry price": "Entry price",
   "Entry-to-close line": "Entry-to-close line",
   "Equidistant Channel": "Equidistant Channel",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "No symbols to display",
   "Add a symbol to Market Watch, then open Popup Prices again.": "Add a symbol to Market Watch, then open Popup Prices again.",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.",
-  "Resize Popup Prices dialog": "Resize Popup Prices dialog"
+  "Resize Popup Prices dialog": "Resize Popup Prices dialog",
+  "Details": "Details",
+  "Tick Size": "Tick Size",
+  "Tick Value": "Tick Value",
+  "Bid High": "Bid High",
+  "Bid Low": "Bid Low",
+  "Ask High": "Ask High",
+  "Ask Low": "Ask Low",
+  "Last quote": "Last quote"
 }

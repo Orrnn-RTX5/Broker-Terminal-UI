@@ -1,6 +1,6 @@
 @import "tailwindcss" source(".");
 @import "./styles/theme.css";
-@import "./styles/advanced-untitled-light.css";
+@import "./styles/legacy-light-overrides.css";
 @import "./styles/enterprise-light.css";
 @import "./styles/last-symbol-panel.css";
 @import "./styles/history-downloader.css";

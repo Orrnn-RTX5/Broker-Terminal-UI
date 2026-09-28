@@ -536,6 +536,7 @@
   "Enter the account holder information": "輸入帳戶持有人資訊",
   "Enter workspace name": "輸入工作區名稱",
   "Entry / close arrows": "進入/關閉箭頭",
+  "Entry / close line": "??/???",
   "Entry price": "入場價格",
   "Entry-to-close line": "進場至收場線",
   "Equidistant Channel": "等距通道",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "沒有可顯示的品種",
   "Add a symbol to Market Watch, then open Popup Prices again.": "請先將品種新增至市場報價，然後重新開啟彈出報價。",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "顯示前 {{value0}} 個品種，市場報價中還有 {{value1}} 個。",
-  "Resize Popup Prices dialog": "調整彈出報價對話框大小"
+  "Resize Popup Prices dialog": "調整彈出報價對話框大小",
+  "Details": "詳細資訊",
+  "Tick Size": "跳動點大小",
+  "Tick Value": "跳動點價值",
+  "Bid High": "最高買入價",
+  "Bid Low": "最低買入價",
+  "Ask High": "最高賣出價",
+  "Ask Low": "最低賣出價",
+  "Last quote": "最新報價"
 }

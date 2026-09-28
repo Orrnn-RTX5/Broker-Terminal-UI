@@ -22,7 +22,9 @@ vi.mock('./marketWatchQuoteCache', () => quoteCacheMocks);
 
 import {
   enqueueLiveTick,
+  flushLiveTicks,
   isLiveMarketDataFrozen,
+  reapplyAccountSpreadMarkupToCachedTicks,
   resetLiveMarketDataSession,
   resetLiveTickDispatcherForTests,
   setLiveMarketDataFrozen,
@@ -30,6 +32,8 @@ import {
 } from './liveTickDispatcher';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { useAppStore } from '../store/useAppStore';
+import { getMarketWatchDisplayMetadata } from '../store/useMarketWatchDisplayMetadataStore';
+import { commitBrokerAccountSessionScope } from './brokerSession';
 
 const originalMarketBatch = useMarketDataStore.getState().updateTicksBatch;
 const originalAppBatch = useAppStore.getState().setTicksBatch;
@@ -46,6 +50,11 @@ const tick = (symbol: string, bid: number, timestamp = 1_788_176_700_000): LiveT
 
 describe('liveTickDispatcher market data freeze', () => {
   beforeEach(() => {
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'test-broker',
+      serverUrl: 'https://broker.test',
+    });
     resetLiveTickDispatcherForTests();
     workerMocks.aggregateSymbols.mockReset();
     dailyChangeCacheMocks.flushMarketWatchDailyChangeCache.mockReset();
@@ -61,6 +70,7 @@ describe('liveTickDispatcher market data freeze', () => {
 
   afterEach(() => {
     resetLiveTickDispatcherForTests();
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
     useMarketDataStore.setState({ updateTicksBatch: originalMarketBatch });
     useAppStore.setState({ setTicksBatch: originalAppBatch });
     vi.restoreAllMocks();
@@ -134,6 +144,235 @@ describe('liveTickDispatcher market data freeze', () => {
     );
   });
 
+  it('retains a full-tick Daily Change when a fresher sparse tick coalesces in the same frame', () => {
+    const fullQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 1);
+
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_500, fullQuoteTime),
+      dailyChange: 1.25,
+    });
+    enqueueLiveTick('XAUUSD', tick('XAUUSD', 2_501, sparseQuoteTime));
+    flushLiveTicks();
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_501,
+      sourceTimestamp: sparseQuoteTime,
+      dailyChange: 1.25,
+    });
+    expect(window.rtxTickCache.get('XAUUSD')).toMatchObject({
+      bid: 2_501,
+      dailyChange: 1.25,
+    });
+  });
+
+  it('prefers a same-frame authoritative Daily Change over prior store metadata', () => {
+    const priorTime = Date.UTC(2026, 8, 28, 9, 59, 59);
+    const fullQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 1);
+    useAppStore.getState().setTick('XAUUSD', {
+      ...tick('XAUUSD', 2_499, priorTime),
+      dailyChange: -9,
+    });
+
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_500, fullQuoteTime),
+      dailyChange: 1.25,
+    });
+    enqueueLiveTick('XAUUSD', tick('XAUUSD', 2_501, sparseQuoteTime));
+    flushLiveTicks();
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_501,
+      sourceTimestamp: sparseQuoteTime,
+      dailyChange: 1.25,
+    });
+  });
+
+  it('does not carry a coalesced Daily Change across the UTC quote-day rollover', () => {
+    const previousDayTime = Date.UTC(2026, 8, 28, 23, 59, 59);
+    const nextDayTime = Date.UTC(2026, 8, 29, 0, 0, 1);
+
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_500, previousDayTime),
+      dailyChange: 1.25,
+    });
+    enqueueLiveTick('XAUUSD', tick('XAUUSD', 2_501, nextDayTime));
+    flushLiveTicks();
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_501,
+      sourceTimestamp: nextDayTime,
+    });
+    expect(useAppStore.getState().ticks.XAUUSD.dailyChange).toBeUndefined();
+    expect(window.rtxTickCache.get('XAUUSD')?.dailyChange).toBeUndefined();
+  });
+
+  it('retains the freshest authoritative percentage before a same-frame sparse tick', () => {
+    const firstFullTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const latestFullTime = Date.UTC(2026, 8, 28, 10, 0, 1);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 2);
+
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_500, firstFullTime),
+      dailyChange: 1.25,
+    });
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_501, latestFullTime),
+      dailyChange: 1.5,
+    });
+    enqueueLiveTick('XAUUSD', tick('XAUUSD', 2_502, sparseQuoteTime));
+    flushLiveTicks();
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_502,
+      sourceTimestamp: sparseQuoteTime,
+      dailyChange: 1.5,
+    });
+  });
+
+  it('merges a delayed same-day full-tick percentage without regressing the pending quote', () => {
+    const fullQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 2);
+
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_502, sparseQuoteTime),
+      lp: 'current-lp',
+      volume: 22,
+    });
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_500, fullQuoteTime),
+      lp: 'stale-lp',
+      volume: 10,
+      dailyChange: 1.25,
+    });
+    flushLiveTicks();
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_502,
+      sourceTimestamp: sparseQuoteTime,
+      lp: 'current-lp',
+      volume: 22,
+      dailyChange: 1.25,
+      dailyChangeSourceTimestamp: fullQuoteTime,
+    });
+    expect(window.rtxTickCache.get('XAUUSD')).toMatchObject({
+      bid: 2_502,
+      sourceTimestamp: sparseQuoteTime,
+      dailyChange: 1.25,
+      dailyChangeSourceTimestamp: fullQuoteTime,
+    });
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).toHaveBeenCalledWith(
+      'XAUUSD',
+      1.25,
+      fullQuoteTime,
+      'quote',
+    );
+  });
+
+  it('merges a delayed same-day exchange Last without regressing the pending quote', () => {
+    const fullQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 2);
+
+    enqueueLiveTick('FUTURE.LAST', {
+      ...tick('FUTURE.LAST', 122, sparseQuoteTime),
+      lp: 'current-lp',
+    });
+    enqueueLiveTick('FUTURE.LAST', {
+      ...tick('FUTURE.LAST', 120, fullQuoteTime),
+      last: 121.5,
+      lp: 'stale-lp',
+    });
+    flushLiveTicks();
+
+    expect(useAppStore.getState().ticks['FUTURE.LAST']).toMatchObject({
+      bid: 122,
+      sourceTimestamp: sparseQuoteTime,
+      lp: 'current-lp',
+      last: 121.5,
+      lastSourceTimestamp: fullQuoteTime,
+    });
+    expect(window.rtxTickCache.get('FUTURE.LAST')).toMatchObject({
+      bid: 122,
+      sourceTimestamp: sparseQuoteTime,
+      last: 121.5,
+      lastSourceTimestamp: fullQuoteTime,
+    });
+  });
+
+  it('rejects delayed percentage metadata from an earlier UTC quote day', () => {
+    const previousDayTime = Date.UTC(2026, 8, 28, 23, 59, 59);
+    const nextDayTime = Date.UTC(2026, 8, 29, 0, 0, 1);
+
+    enqueueLiveTick('XAUUSD', tick('XAUUSD', 2_501, nextDayTime));
+    dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange.mockClear();
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_500, previousDayTime),
+      dailyChange: 1.25,
+    });
+    flushLiveTicks();
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_501,
+      sourceTimestamp: nextDayTime,
+    });
+    expect(useAppStore.getState().ticks.XAUUSD.dailyChange).toBeUndefined();
+    expect(window.rtxTickCache.get('XAUUSD')?.dailyChange).toBeUndefined();
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps the latest finite percentage authority across reverse dispatcher arrivals', () => {
+    const oldestFullTime = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const firstFullTime = Date.UTC(2026, 8, 28, 10, 0, 1);
+    const latestFullTime = Date.UTC(2026, 8, 28, 10, 0, 2);
+    const sparseQuoteTime = Date.UTC(2026, 8, 28, 10, 0, 3);
+
+    enqueueLiveTick('XAUUSD', tick('XAUUSD', 2_503, sparseQuoteTime));
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_501, firstFullTime),
+      dailyChange: 1.25,
+    });
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_502, latestFullTime),
+      dailyChange: 1.5,
+    });
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_500, oldestFullTime),
+      dailyChange: 9,
+    });
+    flushLiveTicks();
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_503,
+      sourceTimestamp: sparseQuoteTime,
+      dailyChange: 1.5,
+      dailyChangeSourceTimestamp: latestFullTime,
+    });
+    expect(window.rtxTickCache.get('XAUUSD')).toMatchObject({
+      bid: 2_503,
+      dailyChange: 1.5,
+      dailyChangeSourceTimestamp: latestFullTime,
+    });
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).toHaveBeenLastCalledWith(
+      'XAUUSD',
+      1.5,
+      latestFullTime,
+      'quote',
+    );
+  });
+
+  it('does not persist Daily Change when only local receipt time is available', () => {
+    enqueueLiveTick('EURUSD', {
+      ...tick('EURUSD', 1.125),
+      sourceTimestamp: undefined,
+      timestamp: Date.now(),
+      dailyChange: 0.25,
+    });
+
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).not.toHaveBeenCalled();
+    expect(window.rtxTickCache.get('EURUSD')?.dailyChange).toBe(0.25);
+  });
+
   it('remembers the accepted quote with original source time without using local receipt time', () => {
     const sourceTimestamp = 1_788_176_700_123;
     enqueueLiveTick('eurusd.r', {
@@ -152,6 +391,142 @@ describe('liveTickDispatcher market data freeze', () => {
     });
     expect(quoteCacheMocks.rememberCurrentMarketWatchQuote).not.toHaveBeenCalled();
     expect(window.rtxTickCache.get('GBPUSD')?.bid).toBe(1.33);
+  });
+
+  it('keeps a brand-new Last-only symbol out of every executable quote owner', () => {
+    const sourceTimestamp = 1_788_176_700_123;
+    const marketSpy = vi.spyOn(useMarketDataStore.getState(), 'updateTicksBatch');
+    const appSpy = vi.spyOn(useAppStore.getState(), 'setTicksBatch');
+
+    enqueueLiveTick('FUTURE.LAST', {
+      symbol: 'FUTURE.LAST',
+      bid: 0,
+      ask: 0,
+      spread: 0,
+      last: 120,
+      dailyChange: 50,
+      timestamp: sourceTimestamp,
+      sourceTimestamp,
+    });
+
+    expect(window.rtxTickCache.has('FUTURE.LAST')).toBe(false);
+    expect(quoteCacheMocks.rememberCurrentMarketWatchQuote).not.toHaveBeenCalled();
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).toHaveBeenCalledWith(
+      'FUTURE.LAST',
+      50,
+      sourceTimestamp,
+      'quote',
+    );
+
+    flushLiveTicks();
+
+    expect(marketSpy).not.toHaveBeenCalled();
+    expect(appSpy).not.toHaveBeenCalled();
+    expect(useMarketDataStore.getState().symbolData['FUTURE.LAST']).toBeUndefined();
+    expect(useAppStore.getState().ticks['FUTURE.LAST']).toBeUndefined();
+    expect(getMarketWatchDisplayMetadata('FUTURE.LAST')).toMatchObject({
+      last: 120,
+      dailyChange: 50,
+    });
+  });
+
+  it('updates display metadata without replacing executable sides or quote directions', () => {
+    const currentTimestamp = 1_788_176_700_123;
+    useAppStore.getState().setTick('FUTURE.LAST', {
+      symbol: 'FUTURE.LAST',
+      bid: 109,
+      ask: 110,
+      spread: 1,
+      timestamp: currentTimestamp - 1,
+      sourceTimestamp: currentTimestamp - 1,
+    });
+    useAppStore.getState().setTick('FUTURE.LAST', {
+      symbol: 'FUTURE.LAST',
+      bid: 110,
+      ask: 111,
+      spread: 1,
+      timestamp: currentTimestamp,
+      sourceTimestamp: currentTimestamp,
+    });
+    const executableBefore = useAppStore.getState().ticks['FUTURE.LAST'];
+    const appSpy = vi.spyOn(useAppStore.getState(), 'setTicksBatch');
+
+    enqueueLiveTick('FUTURE.LAST', {
+      symbol: 'FUTURE.LAST',
+      bid: 0,
+      ask: 0,
+      spread: 0,
+      last: 120,
+      dailyChange: 20,
+      timestamp: currentTimestamp + 1,
+      sourceTimestamp: currentTimestamp + 1,
+    });
+    flushLiveTicks();
+
+    expect(appSpy).not.toHaveBeenCalled();
+    expect(useAppStore.getState().ticks['FUTURE.LAST']).toBe(executableBefore);
+    expect(useAppStore.getState().ticks['FUTURE.LAST']).toMatchObject({
+      bid: 110,
+      ask: 111,
+      bidDirection: 'up',
+      askDirection: 'up',
+    });
+    expect(getMarketWatchDisplayMetadata('FUTURE.LAST')).toMatchObject({
+      last: 120,
+      dailyChange: 20,
+    });
+  });
+
+  it('backfills delayed same-day Last-only metadata without replacing the executable quote', () => {
+    const currentTimestamp = 1_788_176_700_123;
+    useAppStore.getState().setTick('FUTURE.LAST', tick('FUTURE.LAST', 110, currentTimestamp));
+    const executableBefore = useAppStore.getState().ticks['FUTURE.LAST'];
+    dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange.mockClear();
+
+    enqueueLiveTick('FUTURE.LAST', {
+      symbol: 'FUTURE.LAST',
+      bid: 0,
+      ask: 0,
+      spread: 0,
+      last: 100,
+      dailyChange: -10,
+      timestamp: currentTimestamp - 1,
+      sourceTimestamp: currentTimestamp - 1,
+    });
+
+    expect(useAppStore.getState().ticks['FUTURE.LAST']).toBe(executableBefore);
+    expect(getMarketWatchDisplayMetadata('FUTURE.LAST')).toMatchObject({
+      last: 100,
+      dailyChange: -10,
+      sourceTimestamp: currentTimestamp - 1,
+    });
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).toHaveBeenCalledWith(
+      'FUTURE.LAST',
+      -10,
+      currentTimestamp - 1,
+      'quote',
+    );
+  });
+
+  it('rejects delayed Last-only metadata from an earlier UTC quote day', () => {
+    const currentTimestamp = Date.UTC(2026, 8, 29, 1, 0);
+    const priorDayTimestamp = Date.UTC(2026, 8, 28, 20, 0);
+    useAppStore.getState().setTick('FUTURE.LAST', tick('FUTURE.LAST', 110, currentTimestamp));
+    dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange.mockClear();
+
+    enqueueLiveTick('FUTURE.LAST', {
+      symbol: 'FUTURE.LAST',
+      bid: 0,
+      ask: 0,
+      spread: 0,
+      last: 100,
+      dailyChange: -10,
+      timestamp: priorDayTimestamp,
+      sourceTimestamp: priorDayTimestamp,
+    });
+
+    expect(getMarketWatchDisplayMetadata('FUTURE.LAST')).toBeUndefined();
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).not.toHaveBeenCalled();
   });
 
   it('does not persist rejected, duplicate, or frozen quote events', () => {
@@ -198,6 +573,49 @@ describe('liveTickDispatcher market data freeze', () => {
     enqueueLiveTick('GBPUSD', {
       ...tick('GBPUSD', 1.33, timestamp + 1),
       dailyChange: Number.NaN,
+    });
+
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).not.toHaveBeenCalled();
+  });
+
+  it('does not promote a retained Daily Change to a sparse carrier timestamp during reapply', () => {
+    const dailyTime = Date.UTC(2026, 8, 28, 10, 0);
+    const sparseTime = dailyTime + 1_000;
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 2_500, dailyTime),
+      dailyChange: 1.25,
+    });
+    enqueueLiveTick('XAUUSD', tick('XAUUSD', 2_501, sparseTime));
+    expect(window.rtxTickCache.get('XAUUSD')).toMatchObject({
+      sourceTimestamp: sparseTime,
+      dailyChange: 1.25,
+      dailyChangeSourceTimestamp: dailyTime,
+    });
+
+    dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange.mockClear();
+    reapplyAccountSpreadMarkupToCachedTicks();
+
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).not.toHaveBeenCalled();
+  });
+
+  it('does not cache an equal-time Last-only percentage when the App tick wins display authority', () => {
+    const timestamp = Date.UTC(2026, 8, 28, 10, 0);
+    useAppStore.getState().setTick('FUTURE.LAST', {
+      ...tick('FUTURE.LAST', 110, timestamp),
+      dailyChange: 10,
+      dailyChangeSourceTimestamp: timestamp,
+    });
+    dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange.mockClear();
+
+    enqueueLiveTick('FUTURE.LAST', {
+      symbol: 'FUTURE.LAST',
+      bid: 0,
+      ask: 0,
+      spread: 0,
+      last: 120,
+      dailyChange: 20,
+      timestamp,
+      sourceTimestamp: timestamp,
     });
 
     expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).not.toHaveBeenCalled();

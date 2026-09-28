@@ -1,7 +1,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { apiClient, type ApiRequestOptions } from '../api/client';
+import { apiClient, type ApiRequestContext, type ApiRequestOptions } from '../api/client';
 import { API_V2_BASE_URL, toLocalDevProxyUrl } from '../config/api';
-import { getAccessToken, getServerUrl } from '../services/brokerSession';
+import {
+  getAccessToken,
+  getCommittedBrokerAccountSessionScope,
+  getCommittedBrokerAccountSessionScopeKey,
+  getServerUrl,
+} from '../services/brokerSession';
 import {
   readMarketWatchQuotes,
   rememberMarketWatchQuote,
@@ -23,6 +28,13 @@ interface Options {
   symbols: readonly string[];
   /** Only confirmed inactive, non-crypto rows may use a candle close. */
   candleSymbols: readonly string[];
+}
+
+export interface HydrateLastMarketWatchQuotesOptions {
+  scopeKey: string;
+  symbols: readonly string[];
+  candleSymbols: readonly string[];
+  signal?: AbortSignal;
 }
 
 const symbolsKey = (symbols: readonly string[]) => Array.from(new Set(
@@ -72,6 +84,96 @@ export const resolveLastMarketWatchPrice = (
   }
   return latest;
 };
+
+/** Hydrate every requested export row while keeping recovery out of live stores. */
+export async function hydrateLastMarketWatchQuotes({
+  scopeKey,
+  symbols,
+  candleSymbols,
+  signal,
+}: HydrateLastMarketWatchQuotesOptions): Promise<ReadonlyMap<string, MarketWatchLastPrice>> {
+  const normalizedSymbols = symbolsKey(symbols).split('\u0000').filter(Boolean);
+  const candleSet = new Set(symbolsKey(candleSymbols).split('\u0000').filter(Boolean));
+  const ownsScope = () => !signal?.aborted
+    && getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()) === scopeKey;
+  if (!ownsScope()) return new Map<string, MarketWatchLastPrice>();
+  const cached = readMarketWatchQuotes(scopeKey, normalizedSymbols);
+  const values = new Map<string, MarketWatchLastPrice>(
+    Object.entries(cached).map(([symbol, quote]) => [symbol, { kind: 'quote' as const, ...quote }]),
+  );
+  const serverUrl = getServerUrl().replace(/\/+$/, '');
+  const baseUrl = serverUrl ? `${toLocalDevProxyUrl(serverUrl)}/api/v2` : API_V2_BASE_URL;
+  const state = useAppStore.getState();
+  const requestContext: ApiRequestContext = Object.freeze({
+    // ApiClient single-flights token refreshes by this identity. Every symbol
+    // in one captured broker/account session must therefore share the key.
+    key: `market-watch-export:${scopeKey}`,
+    backendOrigin: baseUrl.replace(/\/api\/v2\/?$/, ''),
+    refreshEndpoint: `${baseUrl}/auth/refresh`,
+    refreshToken: state.refreshToken,
+  });
+  const createRequestOptions = (): ApiRequestOptions => {
+    // Token rotation does not change broker/account ownership. Read the latest
+    // token for each queued request so workers do not keep replaying the token
+    // that triggered a shared refresh earlier in this same export.
+    const authToken = getAccessToken() || useAppStore.getState().authToken;
+    return {
+      baseUrl,
+      skipDynamicUrl: true,
+      authToken,
+      skipAuth: !authToken,
+      signal,
+      requestContext,
+    };
+  };
+  let nextIndex = 0;
+
+  const worker = async (): Promise<void> => {
+    while (ownsScope()) {
+      const symbolIndex = nextIndex;
+      nextIndex += 1;
+      if (symbolIndex >= normalizedSymbols.length) return;
+      const symbol = normalizedSymbols[symbolIndex];
+
+      let historicalQuote: MarketWatchLastPrice | undefined;
+      try {
+        const response = await apiClient.get<unknown>(`/ticks/${encodeURIComponent(symbol)}`, {
+          ...createRequestOptions(),
+          params: { limit: 1 },
+        });
+        if (!ownsScope()) return;
+        historicalQuote = resolveLastMarketWatchPrice(response, symbol, 'quote');
+      } catch {
+        // Some brokers retain candles but not tick history.
+      }
+      if (!ownsScope()) return;
+      if (historicalQuote?.kind === 'quote') {
+        rememberMarketWatchQuote(scopeKey, symbol, historicalQuote);
+        const retained = readMarketWatchQuotes(scopeKey, [symbol])[symbol];
+        values.set(symbol, { kind: 'quote', ...(retained ?? historicalQuote) });
+        continue;
+      }
+      if (!candleSet.has(symbol)) continue;
+      try {
+        const response = await apiClient.get<unknown>(`/candles/${encodeURIComponent(symbol)}`, {
+          ...createRequestOptions(),
+          params: { timeframe: 'M1', limit: 3 },
+        });
+        if (!ownsScope()) return;
+        const close = resolveLastMarketWatchPrice(response, symbol, 'close');
+        const retained = readMarketWatchQuotes(scopeKey, [symbol])[symbol];
+        if (close && (!retained || close.asOf > retained.asOf)) values.set(symbol, close);
+      } catch {
+        // Export remains usable with the values that were available.
+      }
+    }
+  };
+
+  await Promise.all(Array.from({
+    length: Math.min(LAST_MARKET_WATCH_PRICE_MAX_CONCURRENCY, normalizedSymbols.length),
+  }, () => worker()));
+  return ownsScope() ? values : new Map<string, MarketWatchLastPrice>();
+}
 
 export function useLastMarketWatchQuotes({ enabled, scopeKey, symbols, candleSymbols }: Options): ReadonlyMap<string, MarketWatchLastPrice> {
   const demandId = useId();

@@ -1,4 +1,8 @@
-import { useAppStore, type Tick as AppTick } from '../store/useAppStore';
+import {
+  retainSameQuoteDayDisplayFields,
+  useAppStore,
+  type Tick as AppTick,
+} from '../store/useAppStore';
 import { useMarketDataStore, type Tick as MarketTick } from '../store/useMarketDataStore';
 import {
   areCanonicalUpstreamTicksEqual,
@@ -17,6 +21,12 @@ import {
   flushMarketWatchQuoteCache,
   rememberCurrentMarketWatchQuote,
 } from './marketWatchQuoteCache';
+import {
+  clearMarketWatchDisplayMetadata,
+  getMarketWatchDisplayMetadata,
+  publishMarketWatchDisplayMetadata,
+  resolveMarketWatchDisplayMetadata,
+} from '../store/useMarketWatchDisplayMetadataStore';
 
 // A logged-in account's quote is widened by its group spread markup here, once;
 // `rawBid`/`rawAsk` keep the feed sides for raw-bid consumers (chart candles).
@@ -41,6 +51,14 @@ let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
 const INITIAL_RETRY_DELAY_MS = 100;
 const MAX_RETRY_DELAY_MS = 2_000;
+const UTC_QUOTE_DAY_MS = 24 * 60 * 60 * 1_000;
+
+const sharesUtcQuoteDay = (left: unknown, right: unknown): boolean => {
+  const leftTime = getCanonicalTickTimestamp(left);
+  const rightTime = getCanonicalTickTimestamp(right);
+  return leftTime !== null && rightTime !== null
+    && Math.floor(leftTime / UTC_QUOTE_DAY_MS) === Math.floor(rightTime / UTC_QUOTE_DAY_MS);
+};
 
 type TargetRetryState = {
   ticks: Map<string, LiveTick>;
@@ -77,6 +95,23 @@ const normalizeFreezeKey = (symbol: unknown): string => (
     .trim()
     .toUpperCase()
 );
+
+const hasPositiveSide = (value: unknown): boolean => (
+  typeof value === 'number' && Number.isFinite(value) && value > 0
+);
+
+const hasAnyQuoteSide = (tick: Pick<LiveTick, 'bid' | 'ask'>): boolean => (
+  hasPositiveSide(tick.bid) || hasPositiveSide(tick.ask)
+);
+
+const hasTwoSidedQuote = (tick: Pick<LiveTick, 'bid' | 'ask'>): boolean => (
+  hasPositiveSide(tick.bid) && hasPositiveSide(tick.ask)
+);
+
+const getExactAppTick = (symbol: string): AppTick | undefined => {
+  const ticks = useAppStore.getState().ticks;
+  return ticks[symbol] ?? ticks[normalizeFreezeKey(symbol)];
+};
 
 export const isLiveMarketDataFrozen = (symbol: unknown): boolean => {
   const key = normalizeFreezeKey(symbol);
@@ -147,13 +182,61 @@ const resetRetry = (retry: TargetRetryState) => {
   retry.due = false;
 };
 
+const didDisplayFieldCandidateWin = (
+  candidate: LiveTick,
+  selected: LiveTick,
+  merged: LiveTick,
+): boolean => {
+  const dailyChangeWon = candidate.dailyChangeSourceTimestamp !== undefined
+    && merged.dailyChangeSourceTimestamp === candidate.dailyChangeSourceTimestamp
+    && merged.dailyChange === candidate.dailyChange
+    && (
+      merged.dailyChangeSourceTimestamp !== selected.dailyChangeSourceTimestamp
+      || merged.dailyChange !== selected.dailyChange
+    );
+  const lastWon = candidate.lastSourceTimestamp !== undefined
+    && merged.lastSourceTimestamp === candidate.lastSourceTimestamp
+    && merged.last === candidate.last
+    && (
+      merged.lastSourceTimestamp !== selected.lastSourceTimestamp
+      || merged.last !== selected.last
+    );
+  return dailyChangeWon || lastWon;
+};
+
+const upsertFreshestLiveTick = (
+  target: Map<string, LiveTick>,
+  symbol: string,
+  tick: LiveTick,
+): boolean => {
+  const existing = target.get(symbol);
+  if (existing) {
+    const normalizedExisting = retainSameQuoteDayDisplayFields(undefined, existing);
+    const normalizedIncoming = retainSameQuoteDayDisplayFields(undefined, tick);
+    const freshness = compareCanonicalTickFreshness(existing, tick);
+    if (freshness < 0) {
+      const metadataCorrection = retainSameQuoteDayDisplayFields(normalizedIncoming, normalizedExisting);
+      if (!didDisplayFieldCandidateWin(normalizedIncoming, normalizedExisting, metadataCorrection)) {
+        return false;
+      }
+      target.set(symbol, metadataCorrection as LiveTick);
+      return true;
+    }
+  }
+  return upsertFreshestTick(
+    target,
+    symbol,
+    retainSameQuoteDayDisplayFields(existing, tick),
+  );
+};
+
 const mergeTickEntries = (
   target: Map<string, LiveTick>,
   entries: readonly (readonly [string, LiveTick])[],
 ) => {
   entries.forEach(([symbol, tick]) => {
     try {
-      upsertFreshestTick(target, symbol, tick);
+      upsertFreshestLiveTick(target, symbol, tick);
     } catch (error) {
       console.error(`[LiveTickDispatcher] Invalid tick for ${symbol}:`, error);
     }
@@ -199,45 +282,114 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
   // once and every store consumer sees the same effective bid/ask. The widening
   // is recomputed from the raw sides, so a re-enqueued tick never compounds.
   const fullTick = applyAccountSpreadMarkup(symbol, { ...tick, symbol });
+  const hasQuoteSide = hasAnyQuoteSide(fullTick);
+  // TradingChart and trade consumers use the ordinary tick stores. A Last-only
+  // event is ordered against the exact executable AppStore quote, then exits
+  // through the dedicated Market Watch display channel without touching them.
+  if (!hasQuoteSide) {
+    const executableTick = getExactAppTick(symbol);
+    if (
+      executableTick
+      && compareCanonicalTickFreshness(executableTick, fullTick) < 0
+      && !sharesUtcQuoteDay(executableTick, fullTick)
+    ) return;
+
+    const accepted = publishMarketWatchDisplayMetadata(symbol, {
+      last: fullTick.last,
+      dailyChange: fullTick.dailyChange,
+      timestamp: fullTick.timestamp,
+      sourceTimestamp: fullTick.sourceTimestamp,
+    });
+    if (!accepted) return;
+
+    const resolvedDisplay = resolveMarketWatchDisplayMetadata(
+      executableTick,
+      getMarketWatchDisplayMetadata(symbol),
+    );
+    const sourceTimestamp = typeof fullTick.sourceTimestamp === 'number'
+      && Number.isFinite(fullTick.sourceTimestamp)
+      ? fullTick.sourceTimestamp
+      : null;
+    const dailyChangeAuthority = resolvedDisplay.dailyChangeSourceTimestamp;
+    if (typeof fullTick.dailyChange === 'number'
+      && Number.isFinite(fullTick.dailyChange)
+      && fullTick.dailyChangeSourceTimestamp === undefined
+      && sourceTimestamp !== null
+      && resolvedDisplay.dailyChange === fullTick.dailyChange
+      && dailyChangeAuthority === sourceTimestamp) {
+      try {
+        rememberCurrentMarketWatchDailyChange(
+          normalizeFreezeKey(symbol),
+          resolvedDisplay.dailyChange,
+          dailyChangeAuthority,
+          'quote',
+        );
+      } catch (error) {
+        console.error('[LiveTickDispatcher] Daily Change cache write failed:', error);
+      }
+    }
+    return;
+  }
+
   const cachedTick = typeof window !== 'undefined' && window.rtxTickCache
     ? window.rtxTickCache.get(symbol)
     : undefined;
+  const normalizedFullTick = retainSameQuoteDayDisplayFields(undefined, fullTick);
+  let deliveryTick = normalizedFullTick;
+  let shouldPersistQuote = true;
   if (cachedTick) {
+    const normalizedCachedTick = retainSameQuoteDayDisplayFields(undefined, cachedTick);
     const freshness = compareCanonicalTickFreshness(cachedTick, fullTick);
-    if (freshness < 0) return;
-    if (freshness === 0 && areCanonicalUpstreamTicksEqual(cachedTick, fullTick)) return;
+    if (freshness < 0) {
+      deliveryTick = retainSameQuoteDayDisplayFields(normalizedFullTick, normalizedCachedTick);
+      if (!didDisplayFieldCandidateWin(normalizedFullTick, normalizedCachedTick, deliveryTick)) return;
+      shouldPersistQuote = false;
+    } else {
+      deliveryTick = retainSameQuoteDayDisplayFields(normalizedCachedTick, normalizedFullTick);
+      if (freshness === 0 && areCanonicalUpstreamTicksEqual(normalizedCachedTick, deliveryTick)) return;
+    }
   }
 
   try {
-    if (!upsertFreshestTick(pendingTicks, symbol, fullTick)) return;
+    if (!upsertFreshestLiveTick(pendingTicks, symbol, deliveryTick)) return;
   } catch (error) {
     console.error(`[LiveTickDispatcher] Invalid tick for ${symbol}:`, error);
     return;
   }
 
-  const dailyChange = fullTick.dailyChange;
-  const asOf = getCanonicalTickTimestamp(fullTick);
-  if (typeof fullTick.sourceTimestamp === 'number' && Number.isFinite(fullTick.sourceTimestamp)) {
+  const sourceTimestamp = typeof fullTick.sourceTimestamp === 'number'
+    && Number.isFinite(fullTick.sourceTimestamp)
+    ? fullTick.sourceTimestamp
+    : null;
+  if (shouldPersistQuote && sourceTimestamp !== null && hasTwoSidedQuote(fullTick)) {
     try {
       // Keep recovery separate from live stores and preserve broker event time;
       // a receipt-time fallback cannot establish when a last quote was priced.
       rememberCurrentMarketWatchQuote(normalizeFreezeKey(symbol), {
         bid: fullTick.bid,
         ask: fullTick.ask,
-        asOf: fullTick.sourceTimestamp,
+        asOf: sourceTimestamp,
       });
     } catch (error) {
       console.error('[LiveTickDispatcher] Last quote cache write failed:', error);
     }
   }
-  if (typeof dailyChange === 'number' && Number.isFinite(dailyChange) && asOf !== null) {
+  const acceptedTick = pendingTicks.get(symbol) ?? deliveryTick;
+  const dailyChange = acceptedTick.dailyChange;
+  const dailyChangeAuthority = acceptedTick.dailyChangeSourceTimestamp;
+  if (typeof fullTick.dailyChange === 'number'
+    && Number.isFinite(fullTick.dailyChange)
+    && fullTick.dailyChangeSourceTimestamp === undefined
+    && sourceTimestamp !== null
+    && dailyChange === fullTick.dailyChange
+    && dailyChangeAuthority === sourceTimestamp) {
     try {
       // Preserve the broker's exact symbol identity (including punctuation),
       // while making lookup casing deterministic across quote transports.
       rememberCurrentMarketWatchDailyChange(
         normalizeFreezeKey(symbol),
         dailyChange,
-        asOf,
+        dailyChangeAuthority,
         'quote',
       );
     } catch (error) {
@@ -247,10 +399,10 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
   }
   
   if (typeof window !== 'undefined' && window.rtxTickCache) {
-    window.rtxTickCache.set(symbol, fullTick);
+    window.rtxTickCache.set(symbol, acceptedTick);
     // FIX: Keep only exact broker identities. A punctuation-stripped alias can
     // collide (`0001.HK`/`0001HK`) and let a late tick overwrite another chart.
-    window.rtxTickCache.set(symbol.toUpperCase(), fullTick);
+    window.rtxTickCache.set(symbol.toUpperCase(), acceptedTick);
   }
   
   scheduleFlush();
@@ -266,7 +418,12 @@ export const flushLiveTicks = (): void => {
   const appStore = useAppStore.getState();
 
   const activeTicks = ticks.filter(([symbol]) => !isLiveMarketDataFrozen(symbol));
-  const marketBatch = takeDeliveryBatch(marketRetry, activeTicks);
+  // Defensive filter: metadata-only events exit in enqueueLiveTick and can
+  // never enter Market/App delivery or either retry owner.
+  const marketBatch = takeDeliveryBatch(
+    marketRetry,
+    activeTicks.filter(([, tick]) => hasAnyQuoteSide(tick)),
+  );
   const appBatch = takeDeliveryBatch(appRetry, activeTicks);
 
   if (marketBatch.ticks.length > 0) {
@@ -315,6 +472,7 @@ export const resetLiveMarketDataSession = (): void => {
     console.error('[LiveTickDispatcher] Last quote cache flush failed:', error);
   }
   clearDispatcherRuntime();
+  clearMarketWatchDisplayMetadata();
   if (typeof window !== 'undefined') window.rtxTickCache?.clear();
   useMarketDataStore.getState().clearAllData();
   useAppStore.getState().setTicks({});
@@ -344,6 +502,7 @@ onAccountSpreadMarkupChange(reapplyAccountSpreadMarkupToCachedTicks);
 /** Test-only reset for module-level frame and retry ownership. */
 export const resetLiveTickDispatcherForTests = (): void => {
   clearDispatcherRuntime();
+  clearMarketWatchDisplayMetadata();
 };
 
 // Renewing credentials does not change the owner or event-time ordering of

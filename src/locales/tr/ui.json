@@ -536,6 +536,7 @@
   "Enter the account holder information": "Hesap sahibinin bilgilerini girin",
   "Enter workspace name": "Çalışma alanı adını girin",
   "Entry / close arrows": "Giriş / kapatma okları",
+  "Entry / close line": "Giri? / kapatma ?izgisi",
   "Entry price": "Giriş fiyatı",
   "Entry-to-close line": "Giriş-kapama hattı",
   "Equidistant Channel": "Eşit Mesafeli Kanal",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "Görüntülenecek sembol yok",
   "Add a symbol to Market Watch, then open Popup Prices again.": "Piyasa İzleme'ye bir sembol ekleyin, ardından Açılır Fiyatlar'ı tekrar açın.",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "İlk {{value0}} sembol gösteriliyor. Piyasa İzleme'de {{value1}} sembol daha kaldı.",
-  "Resize Popup Prices dialog": "Açılır Fiyatlar iletişim kutusunu yeniden boyutlandır"
+  "Resize Popup Prices dialog": "Açılır Fiyatlar iletişim kutusunu yeniden boyutlandır",
+  "Details": "Ayrıntılar",
+  "Tick Size": "Tick büyüklüğü",
+  "Tick Value": "Tick değeri",
+  "Bid High": "En yüksek alış",
+  "Bid Low": "En düşük alış",
+  "Ask High": "En yüksek satış",
+  "Ask Low": "En düşük satış",
+  "Last quote": "Son kotasyon"
 }

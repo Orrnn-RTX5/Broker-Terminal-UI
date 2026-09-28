@@ -27,9 +27,7 @@ export interface SharedChartTrade {
 }
 
 const toBase64Url = (text: string): string => {
-  const base64 = typeof btoa === 'function'
-    ? btoa(unescape(encodeURIComponent(text)))
-    : Buffer.from(text, 'utf8').toString('base64');
+  const base64 = btoa(unescape(encodeURIComponent(text)));
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 };
 
@@ -37,9 +35,7 @@ const fromBase64Url = (encoded: string): string | null => {
   try {
     const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-    const raw = typeof atob === 'function'
-      ? atob(padded)
-      : Buffer.from(padded, 'base64').toString('binary');
+    const raw = atob(padded);
     return decodeURIComponent(escape(raw));
   } catch {
     return null;

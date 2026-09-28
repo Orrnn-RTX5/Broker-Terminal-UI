@@ -14,7 +14,6 @@ node_modules/
 dist/
 dist-ssr/
 out/
-build/
 *.local
 
 # Electron release folders
@@ -27,10 +26,6 @@ release-rtxbackend/
 release-final-cors/
 release-final-latest/
 
-# Generated desktop splash installers and isolated verification profiles
-artifacts/desktop-splash*/package/
-artifacts/desktop-splash*/*isolated-profile/
-
 # Environment files
 .env
 .env.local
@@ -42,6 +37,8 @@ artifacts/desktop-splash*/*isolated-profile/
 .env.normal*
 .env.*
 !.env.example
+!.env.desktop
+!.env.electron
 
 # Test and report outputs
 coverage/
@@ -49,6 +46,7 @@ coverage/
 test-results/
 playwright-report/
 jscpd-report/
+test-logs/
 
 # Tool caches
 .vite/
@@ -69,11 +67,11 @@ Thumbs.db
 *.sw?
 
 # AI and local tooling
+.claude/
 .gemini/happen
-codex-opener/
+.qwen/
 Critical Instruction.txt
 
 # Local scratch and generated output
 /tmp/
 /artifacts/
-.qwen/

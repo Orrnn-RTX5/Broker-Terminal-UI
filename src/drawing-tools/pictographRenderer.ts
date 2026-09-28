@@ -1,4 +1,4 @@
-import type { Drawing } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 import { getPictographStamp, getResolvedPictographDataUrl, resolvePictographDataUrl } from './pictographCatalog';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';

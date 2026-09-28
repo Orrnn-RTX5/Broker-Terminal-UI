@@ -1,4 +1,4 @@
-import type { Drawing } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 import { getTrendLineToolFromDrawing } from './toolCatalog';
 import { getBrushShapeTool } from './brushShapeToolCatalog';
 import { getChartPatternTool } from './chartPatternToolCatalog';

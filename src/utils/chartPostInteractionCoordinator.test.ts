@@ -17,12 +17,11 @@ const runReentrantScenario = (
   requestedWork: Parameters<ReturnType<typeof createChartPostInteractionCoordinator>['request']>[0],
 ) => {
   const order: CallbackPhase[] = [];
-  let coordinator: ReturnType<typeof createChartPostInteractionCoordinator>;
   const visit = (phase: CallbackPhase) => {
     order.push(phase);
     if (phase === callbackPhase) coordinator.request(requestedWork);
   };
-  coordinator = createChartPostInteractionCoordinator({
+  const coordinator = createChartPostInteractionCoordinator({
     consumeHistory: () => visit('history'),
     prepareLiveModel: () => visit('live-prepare'),
     paintModel: () => {
@@ -44,8 +43,7 @@ const runReentrantScenario = (
 describe('chart post-interaction coordinator', () => {
   it('paints model, separators, and overlay once in deterministic order', () => {
     const order: string[] = [];
-    let coordinator: ReturnType<typeof createChartPostInteractionCoordinator>;
-    coordinator = createChartPostInteractionCoordinator({
+    const coordinator = createChartPostInteractionCoordinator({
       consumeHistory: () => order.push('history'),
       prepareLiveModel: () => order.push('live-prepare'),
       paintModel: () => {
@@ -90,9 +88,8 @@ describe('chart post-interaction coordinator', () => {
   });
 
   it('absorbs a model request raised while preparing deferred live data', () => {
-    let coordinator: ReturnType<typeof createChartPostInteractionCoordinator>;
     const paintModel = vi.fn(() => true);
-    coordinator = createChartPostInteractionCoordinator({
+    const coordinator = createChartPostInteractionCoordinator({
       consumeHistory: vi.fn(),
       prepareLiveModel: () => coordinator.request({ model: true }),
       paintModel,

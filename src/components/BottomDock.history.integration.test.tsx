@@ -327,11 +327,11 @@ describe('BottomDock History live-deal integration', () => {
         fireEvent.click(within(menu).getByText('Show on Charts'));
         const showOnChartsMenu = await findSubmenuContaining('Auto Update');
         const autoUpdateItem = within(showOnChartsMenu).getByText('Auto Update').closest('[role="menuitem"]');
-        expect(autoUpdateItem?.querySelector('[aria-hidden="true"]')).toHaveTextContent('✓');
+        expect(autoUpdateItem?.querySelector('[aria-hidden="true"] svg')).toBeInTheDocument();
         expect(localStorage.getItem('rtx5_history_show_on_charts_auto_update_v2')).toBe('true');
         fireEvent.click(within(showOnChartsMenu).getByText('Auto Update'));
         await waitFor(() => expect(localStorage.getItem('rtx5_history_show_on_charts_auto_update_v2')).toBe('false'));
-        expect(autoUpdateItem?.querySelector('[aria-hidden="true"]')?.textContent).toBe('');
+        expect(autoUpdateItem?.querySelector('[aria-hidden="true"] svg')).toBeNull();
         fireEvent.click(within(showOnChartsMenu).getByText('Auto Update'));
         await waitFor(() => expect(localStorage.getItem('rtx5_history_show_on_charts_auto_update_v2')).toBe('true'));
 
@@ -441,9 +441,9 @@ describe('BottomDock History live-deal integration', () => {
         ]);
         expect(within(columnsMenu).queryByText('Show All Columns')).not.toBeInTheDocument();
         expect(within(columnsMenu).queryByText('Reset Columns')).not.toBeInTheDocument();
-        expect(within(columnsMenu).getByText('Ticket').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"]')).toHaveTextContent('✓');
-        expect(within(columnsMenu).getByText('Change %').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"]')).toHaveTextContent('✓');
-        expect(within(columnsMenu).getByText('Market Value').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"]')?.textContent).toBe('');
+        expect(within(columnsMenu).getByText('Ticket').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"] svg')).toBeInTheDocument();
+        expect(within(columnsMenu).getByText('Change %').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"] svg')).toBeInTheDocument();
+        expect(within(columnsMenu).getByText('Market Value').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"] svg')).toBeNull();
 
         fireEvent.click(within(columnsMenu).getByText('Market Value'));
         await waitFor(() => expect(screen.getByRole('columnheader', { name: 'Market Value' })).toBeInTheDocument());

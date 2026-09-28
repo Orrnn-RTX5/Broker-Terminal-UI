@@ -13,12 +13,21 @@ describe('Depth of Market order routing', () => {
     expect(source).toContain("buildDepthOrderRequest('BUY', bestAsk, volume, 'market'");
 
     const appSource = readFileSync(join(process.cwd(), 'src/App.tsx'), 'utf8');
-    const handler = appSource.slice(
-      appSource.indexOf('const handleDepthOrder'),
-      appSource.indexOf('const handleOrderPanelSubmit'),
+    const orderExecutionSource = readFileSync(
+      join(process.cwd(), 'src/app/trading/useOrderExecution.ts'),
+      'utf8',
     );
-    expect(appSource).toContain('getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol)');
+    const handler = orderExecutionSource.slice(
+      orderExecutionSource.indexOf('const handleDepthOrder'),
+      orderExecutionSource.indexOf('const handleOrderPanelSubmit'),
+    );
+
+    expect(appSource).toContain("import { useOrderExecution } from './app/trading/useOrderExecution'");
+    expect(appSource).toContain('} = useOrderExecution({');
+    expect(appSource).toContain('onPlaceOrder={handleDepthOrder}');
+    expect(handler).toContain('getAllowedSymbol(normalizeSymbolName(domSymbol))');
     expect(handler).toContain("request.execution === 'market'");
+    expect(handler).toContain('await placeOrder(request.side, domSymbol, request.volume, {');
     expect(handler).toContain('api.orders.placePendingOrder({');
     expect(handler).toContain('type: `${side}_limit`');
   });

@@ -3,6 +3,7 @@ import { chartDataService } from '../services/chartDataService';
 import {
   readMarketWatchDailyChange,
   readMarketWatchDailyChanges,
+  getCurrentMarketWatchDailyChangeScopeKey,
   rememberMarketWatchDailyChange,
   resolveCompletedDailyChange,
 } from '../services/marketWatchDailyChangeCache';
@@ -16,6 +17,12 @@ export interface UseClosedMarketDailyChangesOptions {
   symbols: readonly string[];
 }
 
+export interface HydrateClosedMarketDailyChangesOptions {
+  scopeKey: string;
+  symbols: readonly string[];
+  signal?: AbortSignal;
+}
+
 interface HistoryValuesState {
   requestKey: string;
   values: Record<string, number>;
@@ -26,6 +33,61 @@ const EMPTY_VALUES: Record<string, number> = Object.freeze({});
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
 );
+
+/** Load a complete, bounded export snapshot without publishing synthetic ticks. */
+export async function hydrateClosedMarketDailyChanges({
+  scopeKey,
+  symbols,
+  signal,
+}: HydrateClosedMarketDailyChangesOptions): Promise<ReadonlyMap<string, number>> {
+  const normalizedSymbols = Array.from(new Set(
+    symbols.map(normalizeExactBrokerSymbol).filter(Boolean),
+  ));
+  const ownsScope = () => !signal?.aborted
+    && getCurrentMarketWatchDailyChangeScopeKey() === scopeKey;
+  if (!ownsScope()) return new Map<string, number>();
+  const values = new Map<string, number>(
+    Object.entries(readMarketWatchDailyChanges(scopeKey, normalizedSymbols)),
+  );
+  let nextSymbolIndex = 0;
+
+  const worker = async (): Promise<void> => {
+    while (ownsScope()) {
+      const symbolIndex = nextSymbolIndex;
+      nextSymbolIndex += 1;
+      if (symbolIndex >= normalizedSymbols.length) return;
+      const symbol = normalizedSymbols[symbolIndex];
+      try {
+        const candles = await chartDataService.fetchCandles({
+          symbol,
+          timeframe: 'D1',
+          count: 8,
+          signal,
+        });
+        if (!ownsScope()) return;
+        const resolved = resolveCompletedDailyChange(candles);
+        if (!resolved || !isFiniteNumber(resolved.value)) continue;
+        rememberMarketWatchDailyChange(
+          scopeKey,
+          symbol,
+          resolved.value,
+          resolved.asOf,
+          'history',
+          resolved.completedAt,
+        );
+        const persisted = readMarketWatchDailyChange(scopeKey, symbol);
+        if (isFiniteNumber(persisted)) values.set(symbol, persisted);
+      } catch {
+        // Export hydration is best effort; existing scoped cache values remain.
+      }
+    }
+  };
+
+  await Promise.all(Array.from({
+    length: Math.min(CLOSED_MARKET_DAILY_CHANGE_MAX_CONCURRENCY, normalizedSymbols.length),
+  }, () => worker()));
+  return ownsScope() ? values : new Map<string, number>();
+}
 
 /**
  * Resolves display-only Daily Change fallbacks for closed Market Watch rows.
@@ -109,6 +171,7 @@ export function useClosedMarketDailyChanges({
             resolved.value,
             resolved.asOf,
             'history',
+            resolved.completedAt,
           );
           publishPersistedValue(symbol);
         } catch {

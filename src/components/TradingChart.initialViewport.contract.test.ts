@@ -8,11 +8,28 @@ const chartSource = readFileSync(
   resolve(process.cwd(), 'src/components/TradingChart.tsx'),
   'utf8',
 ).replace(/\r\n/g, '\n');
+const liveCandleSource = readFileSync(
+  resolve(process.cwd(), 'src/features/trading-chart/runtime/useTradingChartLiveCandleRuntime.ts'),
+  'utf8',
+).replace(/\r\n/g, '\n');
+const historyLoadingSource = readFileSync(
+  resolve(process.cwd(), 'src/features/trading-chart/runtime/useTradingChartHistoryLoading.ts'),
+  'utf8',
+).replace(/\r\n/g, '\n');
+const loadingPresentationSource = readFileSync(
+  resolve(process.cwd(), 'src/features/trading-chart/presentation/useTradingChartLoadingPresentation.ts'),
+  'utf8',
+).replace(/\r\n/g, '\n');
+const viewportResetSource = readFileSync(
+  resolve(process.cwd(), 'src/features/trading-chart/runtime/useTradingChartViewportReset.ts'),
+  'utf8',
+).replace(/\r\n/g, '\n');
+const chartRuntimeSource = `${chartSource}\n${liveCandleSource}\n${historyLoadingSource}\n${loadingPresentationSource}`;
 
 describe('TradingChart initial viewport contract', () => {
   it('reports rendered candles to the terminal startup boundary', () => {
-    expect(chartSource).toContain("import { useTerminalStartupReady } from '../startup/TerminalStartupBoundary';");
-    expect(chartSource).toMatch(/useTerminalStartupReady\(\s*'chart',\s*loadingPhase === 'ready' \|\| loadingPhase === 'hidden',?\s*\)/);
+    expect(loadingPresentationSource).toContain("import { useTerminalStartupReady } from '../../../startup/TerminalStartupBoundary';");
+    expect(loadingPresentationSource).toMatch(/useTerminalStartupReady\(\s*'chart',\s*loadingPhase === 'ready' \|\| loadingPhase === 'hidden',?\s*\)/);
 
     const renderStart = chartSource.indexOf('series.setData(seriesData);');
     const reportReady = chartSource.indexOf('markCandlesReady();', renderStart);
@@ -46,9 +63,9 @@ describe('TradingChart initial viewport contract', () => {
   });
 
   it('wires the uncached-history decision into the authoritative history render', () => {
-    const initialHistoryStart = chartSource.indexOf('// Update chart - live data');
-    const initialHistoryEnd = chartSource.indexOf('// Set current forming candle', initialHistoryStart);
-    const initialHistoryRender = chartSource.slice(initialHistoryStart, initialHistoryEnd);
+    const initialHistoryStart = historyLoadingSource.indexOf('// Update chart - live data');
+    const initialHistoryEnd = historyLoadingSource.indexOf('// Set current forming candle', initialHistoryStart);
+    const initialHistoryRender = historyLoadingSource.slice(initialHistoryStart, initialHistoryEnd);
 
     expect(initialHistoryStart).toBeGreaterThan(-1);
     expect(initialHistoryEnd).toBeGreaterThan(initialHistoryStart);
@@ -58,9 +75,9 @@ describe('TradingChart initial viewport contract', () => {
   });
 
   it('resets candle zoom and scroll when Reset Layout fires', () => {
-    const listenerStart = chartSource.indexOf('// Reset Layout restores the default candle zoom and scroll');
-    const listenerEnd = chartSource.indexOf('const flushTradeOverlay', listenerStart);
-    const listener = chartSource.slice(listenerStart, listenerEnd);
+    const listenerStart = viewportResetSource.indexOf('// Reset Layout restores the default candle zoom and scroll');
+    const listenerEnd = viewportResetSource.indexOf('return {', listenerStart);
+    const listener = viewportResetSource.slice(listenerStart, listenerEnd);
 
     expect(listenerStart).toBeGreaterThan(-1);
     expect(listenerEnd).toBeGreaterThan(listenerStart);
@@ -71,12 +88,12 @@ describe('TradingChart initial viewport contract', () => {
   });
 
   it('keeps sparse live data covered until history settles without blocking live updates', () => {
-    const firstLiveStart = chartSource.indexOf('if (shouldCommitFirstLiveSelectionBaseline({');
-    const firstLiveEnd = chartSource.indexOf('} else {', firstLiveStart);
-    const firstLiveRender = chartSource.slice(firstLiveStart, firstLiveEnd);
-    const snapshotStart = chartSource.indexOf('onSnapshot: (snapshot) => {');
-    const snapshotEnd = chartSource.indexOf('onCandle: (candle) =>', snapshotStart);
-    const snapshotRender = chartSource.slice(snapshotStart, snapshotEnd);
+    const firstLiveStart = liveCandleSource.indexOf('if (shouldCommitFirstLiveSelectionBaseline({');
+    const firstLiveEnd = liveCandleSource.indexOf('} else {', firstLiveStart);
+    const firstLiveRender = liveCandleSource.slice(firstLiveStart, firstLiveEnd);
+    const snapshotStart = liveCandleSource.indexOf('onSnapshot: (snapshot) => {');
+    const snapshotEnd = liveCandleSource.indexOf('onCandle: (candle) =>', snapshotStart);
+    const snapshotRender = liveCandleSource.slice(snapshotStart, snapshotEnd);
 
     for (const provisionalRender of [firstLiveRender, snapshotRender]) {
       expect(provisionalRender).toContain('releaseLivePaintAfterRender: true');
@@ -85,8 +102,8 @@ describe('TradingChart initial viewport contract', () => {
       );
     }
 
-    expect(chartSource).toContain('initialHistoryLoadPendingRef.current = true;');
-    expect(chartSource).toContain('initialHistoryLoadPendingRef.current = false;');
-    expect(chartSource).toContain('requestChartDataRender({\n            immediate: true,\n            finishLoadingAfterRender: true,');
+    expect(chartRuntimeSource).toContain('initialHistoryLoadPendingRef.current = true;');
+    expect(chartRuntimeSource).toContain('initialHistoryLoadPendingRef.current = false;');
+    expect(chartRuntimeSource).toContain('requestChartDataRender({\n            immediate: true,\n            finishLoadingAfterRender: true,');
   });
 });

@@ -5,11 +5,15 @@ import { describe, expect, it } from 'vitest';
 const readSource = (path: string): string => readFileSync(resolve(process.cwd(), path), 'utf8');
 
 const authenticatedStylesSource = readSource('src/authenticatedStyles.ts');
-const appSource = readSource('src/App.tsx');
+const appSource = [
+  readSource('src/App.tsx'),
+  readSource('src/app/ui/useFloatingTerminalPanels.ts'),
+  readSource('src/app/ui/FloatingTerminalPanels.tsx'),
+].join('\n');
 const themeCss = readSource('src/styles/theme.css');
 const indexCss = readSource('src/index.css');
 const loginCss = readSource('src/styles/login-dialog.css');
-const advancedCss = readSource('src/styles/advanced-untitled-light.css');
+const advancedCss = readSource('src/styles/legacy-light-overrides.css');
 const lightCss = readSource('src/styles/enterprise-light.css');
 const orderDialogCss = readSource('src/styles/order-panel-dialog.css');
 const historyDownloaderCss = readSource('src/styles/history-downloader.css');
@@ -17,9 +21,24 @@ const topToolbarSource = readSource('src/components/layout/TopToolbar.tsx');
 const menuBarSource = readSource('src/components/layout/MenuBar.tsx');
 const timeframePickerSource = readSource('src/components/layout/TimeframePicker.tsx');
 const advancedViewRootClassesSource = readSource('src/utils/advancedViewRootClasses.ts');
-const tradingChartSource = readSource('src/components/TradingChart.tsx');
-const marketWatchSource = readSource('src/components/layout/MarketWatchPanel.tsx');
-const bottomDockSource = readSource('src/components/BottomDock.tsx');
+const tradingChartSource = [
+  readSource('src/components/TradingChart.tsx'),
+  readSource('src/features/trading-chart/presentation/TradingChartView.tsx'),
+].join('\n');
+const marketWatchSource = [
+  readSource('src/components/market-watch/MarketWatchPanel.tsx'),
+  readSource('src/components/market-watch/MarketWatchGrid.tsx'),
+  readSource('src/components/market-watch/MarketWatchSymbolExplorer.tsx'),
+  readSource('src/components/market-watch/MarketWatchRow.tsx'),
+].join('\n');
+const bottomDockSource = [
+  readSource('src/components/BottomDock.tsx'),
+  readSource('src/features/bottom-dock/exposure/ExposureTab.tsx'),
+  readSource('src/features/bottom-dock/history/HistoryTab.tsx'),
+  readSource('src/features/bottom-dock/toolbox/ToolboxTab.tsx'),
+  readSource('src/features/bottom-dock/trade/TradeTab.tsx'),
+  readSource('src/features/bottom-dock/trade/TradeTable.tsx'),
+].join('\n');
 const statusBarSource = readSource('src/components/layout/StatusBar.tsx');
 const journalSource = readSource('src/components/layout/JournalTab.tsx');
 const welcomeSource = readSource('src/components/WelcomeTerminal.tsx');
@@ -126,7 +145,7 @@ describe('enterprise typography contract', () => {
 
   it('locks Market Watch, trade dock, status, and journal to measured reference roles', () => {
     expect(marketWatchSource).toMatch(/className="rtx-market-watch__symbol"[\s\S]*fontSize: 13,[\s\S]*fontWeight: 500/);
-    expect(marketWatchSource).toMatch(/className="rtx-market-watch__column-heading"[\s\S]*fontSize: 12, fontWeight: 500/);
+    expect(marketWatchSource).toMatch(/rtx-market-watch__column-heading[\s\S]*fontSize: 12,[\s\S]*fontWeight: 500/);
     expect(marketWatchSource).toContain('.rtx-market-watch .rtx-market-watch__price .price-big { font-size: inherit !important; font-weight: inherit !important; }');
     expect(advancedCss).toMatch(/\.text-\\\[14px\\\],[\s\S]*\.rtx-market-watch__symbol,[\s\S]*\.rtx-market-watch__daily,[\s\S]*font-size: var\(--rtx-advanced-primary-font-size, 14px\) !important;/);
     expect(advancedCss).toMatch(/\.text-\\\[13px\\\],[\s\S]*\.rtx-market-watch__column-heading,[\s\S]*font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;/);

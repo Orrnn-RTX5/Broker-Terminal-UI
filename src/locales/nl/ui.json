@@ -508,6 +508,7 @@
   "Enter text label": "Voer een tekstlabel in",
   "Enter workspace name": "Voer de naam van de werkruimte in",
   "Entry / close arrows": "Pijlen voor binnengaan/sluiten",
+  "Entry / close line": "Lijn voor openen/sluiten",
   "Entry price": "Invoerprijs",
   "Entry-to-close line": "Lijn van binnenkomst tot sluiting",
   "Equidistant Channel": "Equidistant kanaal",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "Geen symbolen om weer te geven",
   "Add a symbol to Market Watch, then open Popup Prices again.": "Voeg een symbool toe aan Marktoverzicht en open Pop-upprijzen opnieuw.",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "De eerste {{value0}} symbolen worden weergegeven. Nog {{value1}} symbolen staan in Marktoverzicht.",
-  "Resize Popup Prices dialog": "Formaat van dialoogvenster Pop-upprijzen wijzigen"
+  "Resize Popup Prices dialog": "Formaat van dialoogvenster Pop-upprijzen wijzigen",
+  "Details": "Details",
+  "Tick Size": "Tickgrootte",
+  "Tick Value": "Tickwaarde",
+  "Bid High": "Hoogste biedprijs",
+  "Bid Low": "Laagste biedprijs",
+  "Ask High": "Hoogste laatprijs",
+  "Ask Low": "Laagste laatprijs",
+  "Last quote": "Laatste koers"
 }

@@ -1418,7 +1418,9 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                         const wsService = getEnhancedWebSocketService(MARKET_WS_URL);
                         wsService.sendMessage({ action: 'subscribe', channel: `ticks.${symName}` });
                         useMarketDataStore.getState().subscribeSymbol(symName);
-                      } catch {}
+                      } catch {
+                        // Subscription is best-effort; the store update above keeps the symbol visible.
+                      }
                       onShowSymbol?.(symName);
                     }
                   }}

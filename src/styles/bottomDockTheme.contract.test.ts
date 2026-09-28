@@ -6,6 +6,7 @@ const readSource = (path: string): string => readFileSync(resolve(process.cwd(),
 
 const indexCss = readSource('src/index.css');
 const themeCss = readSource('src/styles/theme.css');
+const exposureSource = readSource('src/features/bottom-dock/exposure/ExposureTab.tsx');
 
 describe('bottom dock dark surface contract', () => {
   it('uses the same solid panel token as the rest of the web terminal', () => {
@@ -59,7 +60,7 @@ describe('bottom dock dark surface contract', () => {
       /\.rtx-trade-footer-currency \{[^}]*display: inline-block;[^}]*margin-left: 4px;[^}]*position: static;/,
     );
     expect(indexCss).toMatch(/\.rtx-exposure-account-bar \{[\s\S]*background: var\(--bg-tertiary\);/);
-    expect(readSource('src/components/BottomDock.tsx')).toContain('Balance:');
+    expect(exposureSource).toContain('Balance:');
     expect(indexCss).toMatch(
       /\.rtx-trade-table tbody tr\.rtx-trade-row td \{[^}]*border-bottom: 1px solid var\(--border-secondary\) !important;/,
     );

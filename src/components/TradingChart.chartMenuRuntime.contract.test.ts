@@ -6,6 +6,17 @@ const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 
   .replace(/\r\n/g, '\n');
 
 const chartSource = readSource('src/components/TradingChart.tsx');
+const chartRuntimeSource = [
+  chartSource,
+  readSource('src/features/trading-chart/presentation/TradingChartView.tsx'),
+  readSource('src/features/trading-chart/runtime/useTradingChartTradeRuntime.ts'),
+  readSource('src/features/trading-chart/runtime/useTradingChartTradeOverlayRenderer.ts'),
+  readSource('src/features/trading-chart/runtime/createTradeOverlayModelRuntime.ts'),
+  readSource('src/features/trading-chart/runtime/createTradeOverlayDomRuntime.ts'),
+  readSource('src/features/trading-chart/runtime/useTradingChartTradeLevelDrag.ts'),
+  readSource('src/features/trading-chart/runtime/useTradingChartContextMenu.ts'),
+  readSource('src/features/trading-chart/presentation/useTradingChartLivePriceOverlay.ts'),
+].join('\n');
 const shortcutSource = readSource('src/components/GlobalShortcuts.tsx');
 
 describe('TradingChart Charts-menu runtime contract', () => {
@@ -33,18 +44,18 @@ describe('TradingChart Charts-menu runtime contract', () => {
   });
 
   it('hot-applies every visible Chart Properties option represented in the menu flow', () => {
-    expect(chartSource).toContain('(chartSettings.showTicker || chartSettings.showOHLC)');
-    expect(chartSource).toContain('{chartSettings.showTicker && (');
-    expect(chartSource).toContain('{chartSettings.showOHLC && (');
-    expect(chartSource).toContain('setShowOneClick(chartSettings.showQuickTradingButtons);');
-    expect(chartSource).toContain('style={{ zIndex: chartSettings.chartOnForeground ? 11 : 0 }}');
-    expect(chartSource).toContain('visible: chartSettings.showGrid,');
-    expect(chartSource).toContain('autoScale: !chartSettings.scaleFixOneToOne');
-    expect(chartSource).toContain('settings.showAskPriceLine,');
-    expect(chartSource).toContain('settings.showLastPriceLine,');
-    expect(chartSource).toContain('chartSettings.showBidPriceLine');
-    expect(chartSource).toContain('if (chartSettings.showPeriodSeparators) {\n      schedulePeriodSeparatorRender();');
-    expect(chartSource).toContain('clearPeriodSeparators();\n  }, [chartSettings.showPeriodSeparators');
+    expect(chartRuntimeSource).toContain('(chartSettings.showTicker || chartSettings.showOHLC)');
+    expect(chartRuntimeSource).toContain('{chartSettings.showTicker && (');
+    expect(chartRuntimeSource).toContain('{chartSettings.showOHLC && (');
+    expect(chartRuntimeSource).toContain('setShowOneClick(chartSettings.showQuickTradingButtons);');
+    expect(chartRuntimeSource).toContain('style={{ zIndex: chartSettings.chartOnForeground ? 11 : 0 }}');
+    expect(chartRuntimeSource).toContain('visible: chartSettings.showGrid,');
+    expect(chartRuntimeSource).toContain('autoScale: !chartSettings.scaleFixOneToOne');
+    expect(chartRuntimeSource).toContain('settings.showAskPriceLine,');
+    expect(chartRuntimeSource).toContain('settings.showLastPriceLine,');
+    expect(chartRuntimeSource).toContain('chartSettings.showBidPriceLine');
+    expect(chartRuntimeSource).toContain('if (chartSettings.showPeriodSeparators) {\n      schedulePeriodSeparatorRender();');
+    expect(chartRuntimeSource).toContain('clearPeriodSeparators();\n  }, [chartSettings.showPeriodSeparators');
   });
 
   it('keeps keyboard shortcuts under one global owner', () => {

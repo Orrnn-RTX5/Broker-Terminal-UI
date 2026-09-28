@@ -1,4 +1,4 @@
-import type { DrawingType } from '../services/drawingManager';
+import type { DrawingType } from './model/drawing';
 
 export const GANN_FIBONACCI_TOOL_GROUPS = ['Fibonacci', 'Gann'] as const;
 

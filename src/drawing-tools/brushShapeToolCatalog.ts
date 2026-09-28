@@ -1,4 +1,4 @@
-import type { Drawing } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 
 export interface BrushShapeTool {
   id: string;

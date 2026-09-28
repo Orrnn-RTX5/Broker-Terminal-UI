@@ -193,7 +193,6 @@ export const runLiveIsolatedGateway = async (args = {}) => {
     // position per timed modify/close sample. Recorded separately, never mixed
     // into timed samples.
     for (let i = 0; i < samples; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
       const { latencyMs, lastResult } = await clickAndWaitForConfirm(page, {
         button: '#btn-open',
         expect: 'filled',
@@ -218,9 +217,7 @@ export const runLiveIsolatedGateway = async (args = {}) => {
 
     // Timed modify: correct protections relative to explicit base 100.
     for (const ticket of setupTickets) {
-      // eslint-disable-next-line no-await-in-loop
       await page.evaluate((t) => window.__tradingBrowser.setParams({ closeTicket: t }), ticket);
-      // eslint-disable-next-line no-await-in-loop
       const { latencyMs, lastResult } = await clickAndWaitForConfirm(page, {
         button: '#btn-modify',
         expect: 'modified',
@@ -238,9 +235,7 @@ export const runLiveIsolatedGateway = async (args = {}) => {
 
     // Timed full close of the ACTUAL setup ticket (volume omitted = full).
     for (const ticket of setupTickets) {
-      // eslint-disable-next-line no-await-in-loop
       await page.evaluate((t) => window.__tradingBrowser.setParams({ closeTicket: t }), ticket);
-      // eslint-disable-next-line no-await-in-loop
       const { latencyMs, lastResult } = await clickAndWaitForConfirm(page, {
         button: '#btn-close',
         expect: 'closed',
@@ -258,7 +253,6 @@ export const runLiveIsolatedGateway = async (args = {}) => {
 
     // Timed pending buy_limit 90, then cleanup cancel OUTSIDE the timed window.
     for (let i = 0; i < samples; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
       const { latencyMs, lastResult } = await clickAndWaitForConfirm(page, {
         button: '#btn-pending',
         expect: 'pending-confirmed',
@@ -273,7 +267,6 @@ export const runLiveIsolatedGateway = async (args = {}) => {
         submittedMs: typeof lastResult?.submittedMs === 'number' ? lastResult.submittedMs : null,
       });
       // Cleanup outside the timed window (not a sample).
-      // eslint-disable-next-line no-await-in-loop
       await page.evaluate((t) => window.__tradingBrowser.cleanupPending(t), pendingTicket);
       cleanupCancelled.push(pendingTicket);
     }
@@ -295,7 +288,6 @@ export const runLiveIsolatedGateway = async (args = {}) => {
     if (args?.screenshots) {
       const { mkdirSync } = await import('node:fs');
       mkdirSync(args.screenshots, { recursive: true });
-      // eslint-disable-next-line no-await-in-loop
       await page.screenshot({ path: `${args.screenshots}/live-fixture.png` });
     }
 

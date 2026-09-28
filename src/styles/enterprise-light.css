@@ -3,7 +3,7 @@
  *
  * Soft data surfaces, cool gray chrome, indigo interaction states, and distinct
  * execution and financial-text colors follow LIGHT_THEME_COLOR_RESEARCH.md.
- * It intentionally loads after advanced-untitled-light.css so older dark
+ * It intentionally loads after legacy-light-overrides.css so older dark
  * utility classes and legacy purple overrides cannot leak into light mode.
  */
 

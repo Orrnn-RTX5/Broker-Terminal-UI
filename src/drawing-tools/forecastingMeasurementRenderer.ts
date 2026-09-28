@@ -1,21 +1,13 @@
 import type { ForecastingMeasurementToolId } from './forecastingMeasurementToolCatalog';
-import { calculatePositionPnl, calculatePositionSizing, positionQuantityText, type PositionSizing } from './positionDrawingValues';
+import { calculatePositionPnl, calculatePositionSizing, positionQuantityText } from './positionDrawingValues';
+import type { ForecastingBar, PositionSizing } from './model/drawing';
+
+export type { ForecastingBar } from './model/drawing';
 
 export type ForecastingMeasurementSubtype = ForecastingMeasurementToolId;
 
 export interface ForecastingPoint { time: number; price: number; logicalIndex?: number }
 export interface ForecastingScreenPoint { x: number; y: number }
-export interface ForecastingBar {
-  time: number;
-  open?: number;
-  high?: number;
-  low?: number;
-  close?: number;
-  value?: number;
-  volume?: number;
-  tickVolume?: number;
-  realVolume?: number;
-}
 export interface PlotDimensions { width: number; height: number; left?: number; top?: number }
 
 export interface ForecastingMeasurementRendererInput {

@@ -11,18 +11,29 @@ import { FORECASTING_MEASUREMENT_TOOLS } from './forecastingMeasurementToolCatal
 import { getPictographStamp } from './pictographCatalog';
 import { isTrendDrawingInputActive, setTrendDrawingInputActive, usesDirectDrawingPointerInput } from './drawingInteractionPriority';
 
-const source = readFileSync(resolve(process.cwd(), 'src/components/TradingChart.tsx'), 'utf8');
-const parsed = ts.createSourceFile('TradingChart.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const callbacks: string[] = [];
-const visit = (node: ts.Node) => {
-  if (ts.isCallExpression(node) && node.expression.getText(parsed) === 'useEffect' && node.arguments[0]) {
-    callbacks.push(node.arguments[0].getText(parsed));
-  }
-  ts.forEachChild(node, visit);
+const readUseEffectCallbacks = (relativePath: string): string[] => {
+  const source = readFileSync(resolve(process.cwd(), relativePath), 'utf8');
+  const parsed = ts.createSourceFile(relativePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const callbacks: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && node.expression.getText(parsed) === 'useEffect' && node.arguments[0]) {
+      callbacks.push(node.arguments[0].getText(parsed));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  return callbacks;
 };
-visit(parsed);
-const commandEffect = callbacks.find(callback => callback.includes('SELECT_TOOL subscriber REGISTERED'))!;
-const tradeEffect = callbacks.find(callback => callback.includes('const interactionRoot = container.parentElement ?? container;'))!;
+
+// These lifecycle effects are intentionally evaluated from their production
+// owners. TradingChart is now the composition boundary and no longer contains
+// either implementation inline.
+const commandEffect = readUseEffectCallbacks(
+  'src/features/trading-chart/runtime/useTradingChartDrawingCommands.ts',
+).find(callback => callback.includes('SELECT_TOOL subscriber REGISTERED'))!;
+const tradeEffect = readUseEffectCallbacks(
+  'src/features/trading-chart/runtime/useTradingChartTradeLevelDrag.ts',
+).find(callback => callback.includes('const interactionRoot = container.parentElement ?? container;'))!;
 const tradeParsed = ts.createSourceFile('trade.ts', `const install = ${tradeEffect};`, ts.ScriptTarget.Latest, true);
 let tradePointerHandler = '';
 const visitTrade = (node: ts.Node) => {

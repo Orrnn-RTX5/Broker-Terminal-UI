@@ -2,10 +2,18 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAppStore } from '../../store/useAppStore';
-import { MarketWatchPanel } from './MarketWatchPanel';
+import {
+  MARKET_WATCH_EXPORT_HYDRATION_TIMEOUT_MS,
+  MarketWatchPanel,
+} from './MarketWatchPanel';
 import { keyboardShortcutManager } from '../../services/keyboardShortcutManager';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import type { MarketWatchExportResult } from '../../utils/marketWatchExport';
+import { commitBrokerAccountSessionScope } from '../../services/brokerSession';
+import {
+  publishMarketWatchDisplayMetadata,
+  resetMarketWatchDisplayMetadataForTests,
+} from '../../store/useMarketWatchDisplayMetadataStore';
 
 const CORE_DEFAULT_SYMBOLS = ['XAUUSD', 'BTCUSD', 'EURUSD'];
 const DEFAULT_SYMBOLS = [...CORE_DEFAULT_SYMBOLS, 'GBPUSD', 'USDJPY'];
@@ -25,17 +33,25 @@ interface MockMarketInstrument {
   has_quote?: boolean;
   contract_size?: number;
   contractSize?: number;
+  tick_size?: number;
+  tick_value?: number;
   trading_enabled?: boolean;
 }
 
 const closedDailyChangeHook = vi.hoisted(() => ({
   values: new Map<string, number>(),
   useHook: vi.fn(),
+  hydrate: vi.fn(),
 }));
 
 const lastMarketWatchQuotesHook = vi.hoisted(() => ({
   values: new Map<string, MarketWatchLastPrice>(),
   useHook: vi.fn(),
+  hydrate: vi.fn(),
+}));
+
+const brokerAccountScopeHook = vi.hoisted(() => ({
+  value: 'authenticated|test-account|test-broker|https://broker.test',
 }));
 
 vi.mock('../../hooks/useLastMarketWatchQuotes', () => ({
@@ -43,6 +59,7 @@ vi.mock('../../hooks/useLastMarketWatchQuotes', () => ({
     lastMarketWatchQuotesHook.useHook(options);
     return lastMarketWatchQuotesHook.values;
   },
+  hydrateLastMarketWatchQuotes: (options: unknown) => lastMarketWatchQuotesHook.hydrate(options),
 }));
 
 vi.mock('../../hooks/useClosedMarketDailyChanges', () => ({
@@ -50,10 +67,11 @@ vi.mock('../../hooks/useClosedMarketDailyChanges', () => ({
     closedDailyChangeHook.useHook(options);
     return closedDailyChangeHook.values;
   },
+  hydrateClosedMarketDailyChanges: (options: unknown) => closedDailyChangeHook.hydrate(options),
 }));
 
 vi.mock('../../hooks/useBrokerAccountSessionScope', () => ({
-  useBrokerAccountSessionScope: () => 'authenticated|test-account|test-broker|https://broker.test',
+  useBrokerAccountSessionScope: () => brokerAccountScopeHook.value,
 }));
 
 const marketHooks = vi.hoisted(() => ({
@@ -135,9 +153,20 @@ class ResizeObserverStub {
   disconnect(): void {}
 }
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
+
 const getRenderedRowSymbols = (container: HTMLElement): string[] =>
   Array.from(container.querySelectorAll('tbody .rtx-market-watch__row'))
     .map((row) => row.querySelector('.rtx-market-watch__symbol')?.textContent ?? '');
+
+const getDetailValue = (label: string): string | null | undefined =>
+  screen.getByText(label, { selector: 'dt' }).nextElementSibling?.textContent;
 
 const setMarketCatalog = (
   instruments: Array<string | MockMarketInstrument>,
@@ -152,6 +181,12 @@ const setMarketCatalog = (
 describe('MarketWatchPanel symbol visibility', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'test-broker',
+      serverUrl: 'https://broker.test',
+    });
+    resetMarketWatchDisplayMetadataForTests();
     localStorage.removeItem('rtx5_hidden_symbols');
     localStorage.removeItem('rtx5_marketwatch_cols');
     localStorage.removeItem('rtx5_marketwatch_options');
@@ -195,8 +230,13 @@ describe('MarketWatchPanel symbol visibility', () => {
     marketHooks.useLiveQuotes.mockReturnValue({ loading: false, error: null });
     closedDailyChangeHook.values.clear();
     closedDailyChangeHook.useHook.mockClear();
+    closedDailyChangeHook.hydrate.mockReset();
+    closedDailyChangeHook.hydrate.mockImplementation(async () => new Map(closedDailyChangeHook.values));
     lastMarketWatchQuotesHook.values.clear();
     lastMarketWatchQuotesHook.useHook.mockClear();
+    lastMarketWatchQuotesHook.hydrate.mockReset();
+    lastMarketWatchQuotesHook.hydrate.mockImplementation(async () => new Map(lastMarketWatchQuotesHook.values));
+    brokerAccountScopeHook.value = 'authenticated|test-account|test-broker|https://broker.test';
     act(() => {
       useAppStore.setState({ isAuthenticated: false });
       useAppStore.getState().setTicks({
@@ -219,6 +259,8 @@ describe('MarketWatchPanel symbol visibility', () => {
       useAppStore.getState().setTicks({});
     });
     vi.unstubAllGlobals();
+    resetMarketWatchDisplayMetadataForTests();
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
     localStorage.removeItem('rtx5_hidden_symbols');
     localStorage.removeItem('rtx5_marketwatch_cols');
     localStorage.removeItem('rtx5_marketwatch_options');
@@ -438,6 +480,38 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(closedDailyChangeHook.useHook.mock.calls.at(-1)?.[0].symbols).not.toContain('XAUUSD');
   });
 
+  it('uses an anonymous broker scope for guest closed-market recovery without requesting crypto candles', () => {
+    brokerAccountScopeHook.value = 'anonymous||orrnn|https://service.orrnn.test';
+    marketHooks.activeSymbols = [];
+    setMarketCatalog(['XAUUSD', 'BTCUSD']);
+    act(() => {
+      useAppStore.setState({ isAuthenticated: false });
+      useAppStore.getState().setTicks({});
+    });
+
+    render(
+      <MarketWatchPanel
+        allSymbols={['XAUUSD', 'BTCUSD']}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    expect(lastMarketWatchQuotesHook.useHook.mock.calls.at(-1)?.[0]).toEqual({
+      enabled: true,
+      scopeKey: 'anonymous||orrnn|https://service.orrnn.test',
+      symbols: ['XAUUSD', 'BTCUSD'],
+      candleSymbols: ['XAUUSD'],
+    });
+    expect(closedDailyChangeHook.useHook.mock.calls.some(([options]) => {
+      const request = options as { enabled?: boolean; scopeKey?: string; symbols?: string[] };
+      return request.enabled === true
+        && request.scopeKey === 'anonymous||orrnn|https://service.orrnn.test'
+        && request.symbols?.includes('XAUUSD')
+        && !request.symbols.includes('BTCUSD');
+    })).toBe(true);
+  });
+
   it.each([
     { now: '2026-09-18T12:00:00Z', expectedCandles: [] },
     { now: '2026-09-19T12:00:00Z', expectedCandles: ['XAUUSD', 'EURUSD'] },
@@ -455,8 +529,18 @@ describe('MarketWatchPanel symbol visibility', () => {
 
   it('exports displayed fallback quotes and labels a candle close without exporting it as an ask', async () => {
     marketHooks.activeSymbols = [];
+    watchlistState.activeWatchlistId = 'export-all';
+    watchlistState.watchlists = [{
+      id: 'export-all',
+      symbols: [...CORE_DEFAULT_SYMBOLS, 'GBPUSD'],
+      isDefault: false,
+    }];
     lastMarketWatchQuotesHook.values.set('XAUUSD', { kind: 'close', close: 4385.2, asOf: Date.now() - 86_400_000 });
     lastMarketWatchQuotesHook.values.set('EURUSD', { kind: 'quote', bid: 1.17, ask: 1.1702, asOf: Date.now() - 86_400_000 });
+    lastMarketWatchQuotesHook.hydrate.mockResolvedValue(new Map([
+      ['GBPUSD', { kind: 'quote', bid: 1.25, ask: 1.2502, asOf: Date.now() - 86_400_000 }],
+    ]));
+    closedDailyChangeHook.hydrate.mockResolvedValue(new Map([['GBPUSD', 0.5]]));
     act(() => {
       useAppStore.setState({ isAuthenticated: true });
       useAppStore.getState().setTicks({});
@@ -471,6 +555,160 @@ describe('MarketWatchPanel symbol visibility', () => {
       await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
       expect(writeText.mock.calls[0][0]).toContain('XAUUSD\tLast close: 4385.20\t-\t-');
       expect(writeText.mock.calls[0][0]).toContain('EURUSD\t1.17000\t1.17020\t-');
+      expect(writeText.mock.calls[0][0]).toContain('GBPUSD\t1.25000\t1.25020\t0.50%');
+      expect(lastMarketWatchQuotesHook.hydrate).toHaveBeenCalledWith(expect.objectContaining({
+        symbols: expect.arrayContaining([...CORE_DEFAULT_SYMBOLS, 'GBPUSD']),
+      }));
+      expect(closedDailyChangeHook.hydrate).toHaveBeenCalledWith(expect.objectContaining({
+        symbols: expect.arrayContaining(['XAUUSD', 'EURUSD', 'GBPUSD']),
+      }));
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  it('cancels an in-flight export when the committed broker-account scope changes', async () => {
+    commitBrokerAccountSessionScope({
+      authenticated: true,
+      accountId: 'test-account',
+      brokerId: 'test-broker',
+      serverUrl: 'https://broker.test',
+    });
+    const pendingPrices = deferred<ReadonlyMap<string, MarketWatchLastPrice>>();
+    const pendingDailyChanges = deferred<ReadonlyMap<string, number>>();
+    let priceSignal: AbortSignal | undefined;
+    let dailySignal: AbortSignal | undefined;
+    lastMarketWatchQuotesHook.hydrate.mockImplementation((options: { signal?: AbortSignal }) => {
+      priceSignal = options.signal;
+      return pendingPrices.promise;
+    });
+    closedDailyChangeHook.hydrate.mockImplementation((options: { signal?: AbortSignal }) => {
+      dailySignal = options.signal;
+      return pendingDailyChanges.promise;
+    });
+    marketHooks.activeSymbols = [];
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    try {
+      render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />);
+      fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+      fireEvent.click(screen.getByText('Export'));
+      expect(priceSignal?.aborted).toBe(false);
+      expect(dailySignal?.aborted).toBe(false);
+
+      act(() => {
+        commitBrokerAccountSessionScope({
+          authenticated: true,
+          accountId: 'other-account',
+          brokerId: 'test-broker',
+          serverUrl: 'https://broker.test',
+        });
+      });
+      await act(async () => { await Promise.resolve(); });
+
+      expect(priceSignal?.aborted).toBe(true);
+      expect(dailySignal?.aborted).toBe(true);
+      expect(writeText).not.toHaveBeenCalled();
+      pendingPrices.resolve(new Map([['XAUUSD', {
+        kind: 'quote', bid: 1, ask: 2, asOf: Date.now(),
+      }]]));
+      pendingDailyChanges.resolve(new Map([['XAUUSD', 9]]));
+      await act(async () => { await Promise.resolve(); });
+      expect(writeText).not.toHaveBeenCalled();
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  it('cancels export hydration on unmount', async () => {
+    const pendingPrices = deferred<ReadonlyMap<string, MarketWatchLastPrice>>();
+    const pendingDailyChanges = deferred<ReadonlyMap<string, number>>();
+    let priceSignal: AbortSignal | undefined;
+    let dailySignal: AbortSignal | undefined;
+    lastMarketWatchQuotesHook.hydrate.mockImplementation((options: { signal?: AbortSignal }) => {
+      priceSignal = options.signal;
+      return pendingPrices.promise;
+    });
+    closedDailyChangeHook.hydrate.mockImplementation((options: { signal?: AbortSignal }) => {
+      dailySignal = options.signal;
+      return pendingDailyChanges.promise;
+    });
+    marketHooks.activeSymbols = [];
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    try {
+      const { unmount } = render(
+        <MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />,
+      );
+      fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+      fireEvent.click(screen.getByText('Export'));
+      unmount();
+      await act(async () => { await Promise.resolve(); });
+
+      expect(priceSignal?.aborted).toBe(true);
+      expect(dailySignal?.aborted).toBe(true);
+      expect(writeText).not.toHaveBeenCalled();
+      pendingPrices.resolve(new Map());
+      pendingDailyChanges.resolve(new Map());
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  it('bounds export hydration time and exports the values already available', async () => {
+    const pendingPrices = deferred<ReadonlyMap<string, MarketWatchLastPrice>>();
+    const pendingDailyChanges = deferred<ReadonlyMap<string, number>>();
+    let priceSignal: AbortSignal | undefined;
+    let dailySignal: AbortSignal | undefined;
+    lastMarketWatchQuotesHook.hydrate.mockImplementation((options: { signal?: AbortSignal }) => {
+      priceSignal = options.signal;
+      return pendingPrices.promise;
+    });
+    closedDailyChangeHook.hydrate.mockImplementation((options: { signal?: AbortSignal }) => {
+      dailySignal = options.signal;
+      return pendingDailyChanges.promise;
+    });
+    marketHooks.activeSymbols = [];
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    try {
+      render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />);
+      fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+      fireEvent.click(screen.getByText('Export'));
+
+      await act(async () => {
+        vi.advanceTimersByTime(MARKET_WATCH_EXPORT_HYDRATION_TIMEOUT_MS);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(priceSignal?.aborted).toBe(true);
+      expect(dailySignal?.aborted).toBe(true);
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(String(writeText.mock.calls[0][0])).toContain('Symbol\tBid\tAsk\tDaily Change');
+      pendingPrices.resolve(new Map());
+      pendingDailyChanges.resolve(new Map());
     } finally {
       if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
       else delete (navigator as { clipboard?: unknown }).clipboard;
@@ -974,6 +1212,224 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(screen.getByRole('list', { name: 'Symbol prices' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close Popup Prices' }));
     expect(screen.queryByRole('dialog', { name: 'Popup Prices' })).not.toBeInTheDocument();
+  });
+
+  it('shows the MT5 Details tab from the live feed tick and the instrument catalog', () => {
+    setMarketCatalog([
+      { symbol: 'XAUUSD', description: 'Gold vs US Dollar', digits: 2, tick_size: 0.01, tick_value: 0.1 },
+      'BTCUSD',
+      { symbol: 'EURUSD', digits: 5 },
+    ]);
+    act(() => {
+      useAppStore.getState().setTicks({
+        XAUUSD: {
+          symbol: 'XAUUSD',
+          bid: 4150.16,
+          ask: 4150.46,
+          spread: 0.3,
+          timestamp: Date.now(),
+          bidHigh: 4277.01,
+          bidLow: 4140.53,
+          askHigh: 4283.46,
+          askLow: 4140.87,
+          open: 4274.42,
+          close: 4272.74,
+          dailyChange: -2.87,
+        },
+        EURUSD: { symbol: 'EURUSD', bid: 1.1, ask: 1.1001, spread: 0.0001, timestamp: Date.now() },
+      });
+    });
+
+    render(
+      <MarketWatchPanel
+        allSymbols={DEFAULT_SYMBOLS}
+        chartSymbols={DEFAULT_SYMBOLS}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('combobox', { name: 'Symbol' })).toHaveValue('XAUUSD');
+    expect(screen.getByRole('option', { name: 'XAUUSD, Gold vs US Dollar' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'XAUUSD Details' })).toBeInTheDocument();
+    const labels = [
+      'Tick Size', 'Tick Value', 'Bid', 'Bid High', 'Bid Low', 'Ask', 'Ask High', 'Ask Low',
+      'Daily Change', 'Open Price', 'Close Price',
+    ];
+    expect(Object.fromEntries(labels.map((label) => [label, getDetailValue(label)]))).toEqual({
+      'Tick Size': '0.01',
+      'Tick Value': '0.1',
+      Bid: '4150.16',
+      'Bid High': '4277.01',
+      'Bid Low': '4140.53',
+      Ask: '4150.46',
+      'Ask High': '4283.46',
+      'Ask Low': '4140.87',
+      'Daily Change': '-2.87%',
+      'Open Price': '4274.42',
+      'Close Price': '4272.74',
+    });
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Symbol' }), { target: { value: 'EURUSD' } });
+    expect(screen.getByRole('region', { name: 'EURUSD Details' })).toBeInTheDocument();
+    expect(getDetailValue('Bid')).toBe('1.10000');
+    expect(getDetailValue('Bid High')).toBe('—');
+    expect(getDetailValue('Tick Value')).toBe('—');
+  });
+
+  it('prefers the account specification Tick Value while Details is open', async () => {
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+    setMarketCatalog(
+      [{ symbol: 'XAUUSD', tick_size: 0.01, tick_value: 0.1 }, 'BTCUSD', 'EURUSD'],
+      CORE_DEFAULT_SYMBOLS,
+    );
+    marketHooks.activeSymbols = [...CORE_DEFAULT_SYMBOLS];
+    marketHooks.loadSymbolSpecification.mockResolvedValue({ symbol: 'XAUUSD', trade_tick_value: 0.12 });
+
+    render(
+      <MarketWatchPanel
+        allSymbols={CORE_DEFAULT_SYMBOLS}
+        chartSymbols={CORE_DEFAULT_SYMBOLS}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+    expect(marketHooks.loadSymbolSpecification).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(marketHooks.loadSymbolSpecification).toHaveBeenCalledWith('XAUUSD', expect.any(AbortSignal));
+    expect(getDetailValue('Tick Value')).toBe('0.12');
+    expect(getDetailValue('Tick Size')).toBe('0.01');
+  });
+
+  it('sorts and renders isolated Last-only display metadata without creating quotes', () => {
+    const symbols = ['XAUUSD', 'EURUSD', 'GBPUSD'];
+    setMarketCatalog(symbols);
+    marketHooks.accountCatalogStatus = 'loaded';
+    marketHooks.activeSymbols = symbols;
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+      publishMarketWatchDisplayMetadata('XAUUSD', {
+        last: 2_400,
+        dailyChange: -2,
+        timestamp: Date.now(),
+        sourceTimestamp: Date.now(),
+      });
+      publishMarketWatchDisplayMetadata('EURUSD', {
+        last: 1.1,
+        dailyChange: 3,
+        timestamp: Date.now(),
+        sourceTimestamp: Date.now(),
+      });
+      publishMarketWatchDisplayMetadata('GBPUSD', {
+        last: 1.3,
+        dailyChange: 1,
+        timestamp: Date.now(),
+        sourceTimestamp: Date.now(),
+      });
+    });
+
+    const { container } = render(
+      <MarketWatchPanel allSymbols={symbols} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />,
+    );
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    fireEvent.click(screen.getByText('Sort'));
+    fireEvent.click(screen.getByText('Gainers'));
+
+    expect(getRenderedRowSymbols(container)).toEqual(['EURUSD', 'GBPUSD', 'XAUUSD']);
+    expect(screen.getByText('3.00%')).toBeInTheDocument();
+    expect(useAppStore.getState().ticks).toEqual({});
+  });
+
+  it('hydrates Popup Prices for off-screen rows only while the popup is open', () => {
+    const observers: ControlledIntersectionObserver[] = [];
+
+    class ControlledIntersectionObserver {
+      readonly observed = new Set<Element>();
+
+      constructor(private readonly callback: IntersectionObserverCallback) {
+        observers.push(this);
+      }
+
+      observe(target: Element): void {
+        this.observed.add(target);
+      }
+
+      unobserve(target: Element): void {
+        this.observed.delete(target);
+      }
+
+      disconnect(): void {
+        this.observed.clear();
+      }
+
+      emit(entries: Array<{ target: Element; isIntersecting: boolean }>): void {
+        this.callback(
+          entries.map((entry) => entry as IntersectionObserverEntry),
+          this as unknown as IntersectionObserver,
+        );
+      }
+    }
+
+    vi.stubGlobal('IntersectionObserver', ControlledIntersectionObserver);
+    marketHooks.activeSymbols = [];
+    lastMarketWatchQuotesHook.values.set('XAUUSD', {
+      kind: 'close', close: 4_385.2, asOf: Date.parse('2026-09-18T21:59:00Z'),
+    });
+    lastMarketWatchQuotesHook.values.set('EURUSD', {
+      kind: 'quote', bid: 1.17, ask: 1.1702, asOf: Date.parse('2026-09-18T21:59:00Z'),
+    });
+    closedDailyChangeHook.values.set('XAUUSD', -0.42);
+    closedDailyChangeHook.values.set('EURUSD', 0.75);
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({});
+    });
+
+    render(
+      <MarketWatchPanel
+        allSymbols={DEFAULT_SYMBOLS}
+        chartSymbols={DEFAULT_SYMBOLS}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    const observer = observers.at(-1)!;
+    const xauRow = screen.getByText('XAUUSD').closest('tr')!;
+    act(() => observer.emit([{ target: xauRow, isIntersecting: true }]));
+    expect(lastMarketWatchQuotesHook.useHook.mock.calls.at(-1)?.[0].symbols).toEqual(['XAUUSD']);
+
+    fireEvent.contextMenu(xauRow);
+    fireEvent.click(screen.getByText('Popup Prices'));
+
+    expect(lastMarketWatchQuotesHook.useHook.mock.calls.at(-1)?.[0]).toMatchObject({
+      symbols: CORE_DEFAULT_SYMBOLS,
+      candleSymbols: ['XAUUSD', 'EURUSD'],
+    });
+    expect(closedDailyChangeHook.useHook.mock.calls.some(([options]) => {
+      const request = options as { enabled?: boolean; symbols?: string[] };
+      return request.enabled === true
+        && request.symbols?.includes('XAUUSD')
+        && request.symbols.includes('EURUSD');
+    })).toBe(true);
+
+    const xauCard = screen.getByRole('listitem', { name: 'XAUUSD quote' });
+    expect(within(xauCard).getByText('Last close')).toBeInTheDocument();
+    expect(within(xauCard).getByLabelText('Daily Change -0.42%')).toBeInTheDocument();
+    const eurCard = screen.getByRole('listitem', { name: 'EURUSD quote' });
+    expect(within(eurCard).getByLabelText('EURUSD Bid 1.17000')).toBeInTheDocument();
+    expect(within(eurCard).getByLabelText('Daily Change +0.75%')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close Popup Prices' }));
+    expect(lastMarketWatchQuotesHook.useHook.mock.calls.at(-1)?.[0].symbols).toEqual(['XAUUSD']);
   });
 
   it('persists Columns, Show Milliseconds, and named symbol Sets', () => {

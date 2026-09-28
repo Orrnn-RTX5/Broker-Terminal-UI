@@ -3,7 +3,8 @@ import '@testing-library/jest-dom';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AnnotationEditor } from './AnnotationEditor';
-import { drawingManager, type Drawing } from '../services/drawingManager';
+import { drawingManager } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 function open(subtype = 'text', isNew = false, properties: Partial<Drawing> = {}) {
   const drawing: Drawing = { id: 'annotation-id', type: 'text', subtype, points: [{ time: 123, price: 12 }], text: 'Existing', color: '#2962ff', ...properties };

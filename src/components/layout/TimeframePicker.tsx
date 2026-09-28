@@ -1,6 +1,6 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useCallback, useRef } from 'react';
-import type { Timeframe } from '../TradingChart';
+import type { Timeframe } from '../../types/chart';
 
 interface TimeframeOption {
   value: Timeframe;

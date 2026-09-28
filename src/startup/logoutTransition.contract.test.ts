@@ -19,11 +19,19 @@ describe('same-document logout transition source contract', () => {
   it('returns web sessions to guest charts and desktop sessions to login', () => {
     const appShell = readSource('src/AppShell.tsx');
     const app = readSource('src/App.tsx');
+    const sessionLifecycle = readSource('src/app/session/useAppSessionLifecycle.ts');
+    const lifecycleBindingStart = app.indexOf('useAppSessionLifecycle({');
+    const lifecycleBinding = app.slice(
+      lifecycleBindingStart,
+      app.indexOf('});', lifecycleBindingStart) + 3,
+    );
 
     expect(appShell).toContain('const handleSessionEnded');
     expect(appShell).toContain('setShouldMountTerminal(!isElectronRuntime())');
     expect(appShell).toContain('onSessionEnded={handleSessionEnded}');
-    expect(app).toContain('onSessionEnded?.();');
+    expect(lifecycleBindingStart).toBeGreaterThan(0);
+    expect(lifecycleBinding).toContain('onSessionEnded,');
+    expect(sessionLifecycle).toContain('onSessionEnded?.();');
   });
 
   it('closes session-owned sockets without relying on a document reload', () => {

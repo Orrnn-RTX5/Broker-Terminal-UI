@@ -8,6 +8,10 @@ import {
   QUOTE_SOCKET_SUBSCRIPTION_ACK_TIMEOUT_MS,
   QuoteSocketManager,
 } from './quoteSocketManager';
+import {
+  registerDailyChangePriceModes,
+  resetDailyChangePriceModeRegistryForTests,
+} from './dailyChangePriceModeRegistry';
 
 const setConnectionState = vi.fn();
 const enqueueLiveTick = vi.hoisted(() => vi.fn());
@@ -16,6 +20,12 @@ const brokerSessionMock = vi.hoisted(() => ({
   // Empty when the deployment exposes no broker /ws/feed endpoint.
   feedUri: '' as string,
   sessionListener: null as null | ((reason: 'token_rotation' | 'login' | 'logout' | 'broker_url_change' | 'account_change') => void),
+  scope: {
+    authenticated: false,
+    accountId: null,
+    brokerId: 'test-broker',
+    serverUrl: 'https://broker.example',
+  },
 }));
 
 vi.mock('./brokerSession', () => ({
@@ -24,6 +34,14 @@ vi.mock('./brokerSession', () => ({
     `wss://broker.example/ws/v2${token ? `?token=${token}` : ''}`
   )),
   getAccessToken: vi.fn(() => brokerSessionMock.accessToken),
+  getCommittedBrokerAccountSessionScope: vi.fn(() => brokerSessionMock.scope),
+  getCommittedBrokerAccountSessionScopeKey: vi.fn((scope) => [
+    scope.authenticated ? 'authenticated' : 'anonymous',
+    scope.accountId || '',
+    scope.brokerId,
+    scope.serverUrl,
+  ].join('|')),
+  onCommittedBrokerAccountSessionScopeChange: vi.fn(() => vi.fn()),
   onSessionChange: vi.fn((cb) => {
     brokerSessionMock.sessionListener = cb;
     return vi.fn();
@@ -112,6 +130,7 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
     brokerSessionMock.sessionListener = null;
     setConnectionState.mockClear();
     enqueueLiveTick.mockClear();
+    resetDailyChangePriceModeRegistryForTests();
     setVisibilityState('visible');
     vi.spyOn(Math, 'random').mockReturnValue(0);
     vi.stubGlobal('WebSocket', FakeWebSocket);
@@ -502,6 +521,283 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
     manager.destroy();
   });
 
+  it('uses chart mode and settlement metadata for the Daily Change fallback', () => {
+    const manager = new QuoteSocketManager();
+
+    internals(manager).handleMessage([
+      {
+        symbol: 'future.last',
+        bid: 110,
+        ask: 111,
+        last: 120,
+        chart_mode: 1,
+        settlement_price: 80,
+        previous_close: 100,
+        timestamp: 1,
+      },
+      {
+        symbol: 'future.bid',
+        bid: 110,
+        ask: 111,
+        last: 120,
+        chartMode: 'SYMBOL_CHART_MODE_BID',
+        settlement_price: 0,
+        clearingPrice: 88,
+        previous_close: 100,
+        timestamp: 1,
+      },
+      {
+        symbol: 'future.missing-last',
+        bid: 110,
+        ask: 111,
+        chart_mode: 'last',
+        previous_close: 100,
+        timestamp: 1,
+      },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls[0][1].dailyChange).toBeCloseTo(50, 10);
+    expect(enqueueLiveTick.mock.calls[1][1].dailyChange).toBeCloseTo(25, 10);
+    expect(enqueueLiveTick.mock.calls[2][1].dailyChange).toBeUndefined();
+
+    manager.destroy();
+  });
+
+  it('accepts an explicit Last-mode tick without Bid/Ask and does not guess an omitted mode', () => {
+    const manager = new QuoteSocketManager();
+    const rawQuoteListener = vi.fn();
+    manager.onQuoteSnapshot('FUTURE.LAST-ONLY', rawQuoteListener);
+
+    internals(manager).handleMessage([
+      {
+        symbol: 'future.last-only',
+        last: 120,
+        chart_mode: 'last',
+        settlement_price: 80,
+        previous_close: 100,
+        timestamp: 1,
+      },
+      {
+        symbol: 'ambiguous.last-only',
+        last: 120,
+        previous_close: 100,
+        timestamp: 1,
+      },
+    ]);
+
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(1);
+    expect(enqueueLiveTick).toHaveBeenCalledWith('FUTURE.LAST-ONLY', expect.objectContaining({
+      bid: 0,
+      ask: 0,
+      last: 120,
+      dailyChange: 50,
+    }));
+    expect(rawQuoteListener).not.toHaveBeenCalled();
+
+    manager.destroy();
+  });
+
+  it('uses current-scope catalog mode for Last-only data while raw metadata wins', () => {
+    const manager = new QuoteSocketManager();
+    registerDailyChangePriceModes([
+      { symbol: 'catalog.last-only', brokerSpecification: { chart_mode: 1 } },
+    ]);
+
+    internals(manager).handleMessage([
+      {
+        symbol: 'catalog.last-only',
+        last: 120,
+        previous_close: 100,
+        timestamp: 1,
+      },
+      {
+        symbol: 'catalog.last-only',
+        last: 130,
+        chart_mode: 'future-mode',
+        previous_close: 100,
+        timestamp: 2,
+      },
+    ]);
+
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(1);
+    expect(enqueueLiveTick).toHaveBeenCalledWith('CATALOG.LAST-ONLY', expect.objectContaining({
+      bid: 0,
+      ask: 0,
+      last: 120,
+      dailyChange: 20,
+    }));
+
+    manager.destroy();
+  });
+
+  it('resolves wrapped raw chart mode before catalog mode while keeping child mode nearest', () => {
+    const manager = new QuoteSocketManager();
+    registerDailyChangePriceModes([
+      { symbol: 'wrapped.bid', brokerSpecification: { chart_mode: 1 } },
+      { symbol: 'wrapped.last', brokerSpecification: { chart_mode: 0 } },
+      { symbol: 'child.last', brokerSpecification: { chart_mode: 0 } },
+      { symbol: 'child.unknown', brokerSpecification: { chart_mode: 0 } },
+    ]);
+
+    internals(manager).handleMessage([
+      {
+        channel: 'ticks.WRAPPED.BID',
+        chart_mode: 0,
+        data: { bid: 110, ask: 111, last: 120, previous_close: 100, timestamp: 1 },
+      },
+      {
+        channel: 'ticks.WRAPPED.LAST',
+        chart_mode: 1,
+        data: { bid: 110, ask: 111, last: 120, previous_close: 100, timestamp: 1 },
+      },
+      {
+        channel: 'ticks.CHILD.LAST',
+        chart_mode: 0,
+        data: {
+          bid: 110,
+          ask: 111,
+          last: 120,
+          chart_mode: 1,
+          previous_close: 100,
+          timestamp: 1,
+        },
+      },
+      {
+        channel: 'ticks.CHILD.UNKNOWN',
+        chart_mode: 1,
+        data: {
+          bid: 110,
+          ask: 111,
+          last: 120,
+          chart_mode: 'future-mode',
+          previous_close: 100,
+          timestamp: 1,
+        },
+      },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls.map(([, tick]) => tick.dailyChange)).toEqual([10, 20, 20, 10]);
+
+    manager.destroy();
+  });
+
+  it('composes wrapped Daily Change metadata without overriding explicit child groups', () => {
+    const manager = new QuoteSocketManager();
+
+    internals(manager).handleMessage([
+      {
+        channel: 'ticks.OUTER.PERCENT',
+        daily_change_pct: 0.75,
+        data: { bid: 110, ask: 111, previous_close: 100, timestamp: 1 },
+      },
+      {
+        channel: 'ticks.CHILD.PERCENT',
+        daily_change_pct: 0.75,
+        previous_close: 100,
+        data: { bid: 110, ask: 111, dailyChangePct: 'unknown', timestamp: 1 },
+      },
+      {
+        chart_mode: 1,
+        last: 120,
+        settlement_price: 80,
+        previous_close: 100,
+        data: { symbol: 'OUTER.BASELINE', bid: 110, ask: 111, timestamp: 1 },
+      },
+      {
+        channel: 'ticks.CHILD.BLOCKS.BASELINE',
+        settlement_price: 80,
+        previous_close: 100,
+        data: { bid: 110, ask: 111, settlementPrice: 'unknown', timestamp: 1 },
+      },
+      {
+        channel: 'ticks.CHILD.BLOCKS.CLOSE',
+        previous_close: 100,
+        data: { bid: 110, ask: 111, previousClose: 'unknown', timestamp: 1 },
+      },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls.map(([, tick]) => ({
+      dailyChange: tick.dailyChange,
+      last: tick.last,
+    }))).toEqual([
+      { dailyChange: 0.75, last: undefined },
+      { dailyChange: 10, last: undefined },
+      { dailyChange: 50, last: 120 },
+      { dailyChange: 10, last: undefined },
+      { dailyChange: undefined, last: undefined },
+    ]);
+
+    manager.destroy();
+  });
+
+  it('keeps nearest intermediate metadata, broker time, and channel identity through nested arrays', () => {
+    const manager = new QuoteSocketManager();
+
+    internals(manager).handleMessage([
+      {
+        channel: 'ticks.NESTED.PERCENT',
+        daily_change_pct: 0.9,
+        timestamp: 1_725_000_000,
+        data: {
+          bid: 90,
+          ask: 91,
+          daily_change_pct: 0.75,
+          timestamp: 1_725_000_001,
+          payload: { bid: 110, ask: 111, previous_close: 100 },
+        },
+      },
+      {
+        channel: 'ticks.NESTED.BLOCK',
+        daily_change_pct: 0.9,
+        data: {
+          dailyChangePct: 'unknown',
+          payload: { bid: 110, ask: 111, previous_close: 100, timestamp: 1_725_000_002 },
+        },
+      },
+      {
+        channel: 'ticks.EURUSD.r',
+        data: {
+          chart_mode: 1,
+          last: 120,
+          settlement_price: 80,
+          ticks: [
+            { bid: 110, ask: 111, timestamp: 1_725_000_003 },
+            { bid: 112, ask: 113, timestamp: 1_725_000_004 },
+          ],
+        },
+      },
+      {
+        channel: 'ticks.NESTED.MODE-BLOCK',
+        chart_mode: 1,
+        data: {
+          chart_mode: 'future-mode',
+          payload: {
+            bid: 110,
+            ask: 111,
+            last: 120,
+            previous_close: 100,
+            timestamp: 1_725_000_005,
+          },
+        },
+      },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls.map(([symbol, tick]) => ({
+      symbol,
+      bid: tick.bid,
+      dailyChange: tick.dailyChange,
+      sourceTimestamp: tick.sourceTimestamp,
+    }))).toEqual([
+      { symbol: 'NESTED.PERCENT', bid: 110, dailyChange: 0.75, sourceTimestamp: 1_725_000_001_000 },
+      { symbol: 'NESTED.BLOCK', bid: 110, dailyChange: 10, sourceTimestamp: 1_725_000_002_000 },
+      { symbol: 'EURUSD.R', bid: 110, dailyChange: 50, sourceTimestamp: 1_725_000_003_000 },
+      { symbol: 'EURUSD.R', bid: 112, dailyChange: 50, sourceTimestamp: 1_725_000_004_000 },
+      { symbol: 'NESTED.MODE-BLOCK', bid: 110, dailyChange: 10, sourceTimestamp: 1_725_000_005_000 },
+    ]);
+
+    manager.destroy();
+  });
+
   it('normalizes optional quote metadata aliases without inventing volume', () => {
     const manager = new QuoteSocketManager();
 
@@ -532,6 +828,35 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
       close: 4_398,
     });
     expect(enqueueLiveTick.mock.calls[1][1].volume).toBeUndefined();
+
+    manager.destroy();
+  });
+
+  it('keeps the session Bid and Ask ranges separate for Market Watch Details', () => {
+    const manager = new QuoteSocketManager();
+
+    internals(manager).handleMessage([
+      {
+        symbol: 'xauusd',
+        bid: 4_150.16,
+        ask: 4_150.46,
+        daily_open: 4_274.42,
+        previous_close: 4_272.74,
+        session: { high_bid: 4_277.01, low_bid: 4_140.53, high_ask: 4_283.46, low_ask: 4_140.87 },
+        timestamp: 1,
+      },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({
+      bidHigh: 4_277.01,
+      bidLow: 4_140.53,
+      askHigh: 4_283.46,
+      askLow: 4_140.87,
+      high24h: 4_283.46,
+      low24h: 4_140.53,
+      open: 4_274.42,
+      close: 4_272.74,
+    });
 
     manager.destroy();
   });

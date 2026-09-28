@@ -21,8 +21,12 @@ import {
   releaseEnhancedWebSocketService,
   type WebSocketMessage,
 } from './websocket-enhanced';
-import { emitSessionChange } from './brokerSession';
+import { commitBrokerAccountSessionScope, emitSessionChange } from './brokerSession';
 import { useAppStore } from '../store/useAppStore';
+import {
+  registerDailyChangePriceModes,
+  resetDailyChangePriceModeRegistryForTests,
+} from './dailyChangePriceModeRegistry';
 
 type TestableService = {
   handleMessage: (message: WebSocketMessage) => void;
@@ -80,9 +84,17 @@ const setVisibilityState = (state: DocumentVisibilityState): void => {
 describe('EnhancedWebSocketService tick normalization', () => {
   beforeEach(() => {
     mocks.enqueueLiveTick.mockReset();
+    commitBrokerAccountSessionScope({
+      authenticated: false,
+      brokerId: 'enhanced-ws-test',
+      serverUrl: 'https://enhanced-ws.test',
+    });
+    resetDailyChangePriceModeRegistryForTests();
   });
 
   afterEach(() => {
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+    resetDailyChangePriceModeRegistryForTests();
     vi.restoreAllMocks();
   });
 
@@ -114,6 +126,195 @@ describe('EnhancedWebSocketService tick normalization', () => {
       timestamp: 1_725_000_000_000,
       sourceTimestamp: 1_725_000_000_000,
     });
+
+    service.destroy();
+  });
+
+  it('uses Last chart mode and the settlement baseline for a tick fallback', () => {
+    const service = new EnhancedWebSocketService('wss://example.test/ws/v2');
+
+    (service as unknown as TestableService).handleMessage({
+      type: 'tick',
+      symbol: 'FUTURE.LAST',
+      bid: 110,
+      ask: 111,
+      last_price: 120,
+      chartMode: 'by last price',
+      settlementPrice: 80,
+      previous_close: 100,
+      timestamp: 1_725_000_000,
+    });
+
+    expect(mocks.enqueueLiveTick).toHaveBeenCalledWith('FUTURE.LAST', expect.objectContaining({
+      dailyChange: 50,
+    }));
+
+    service.destroy();
+  });
+
+  it('owns and normalizes an explicit Last-mode tick without Bid/Ask', () => {
+    const service = new EnhancedWebSocketService('wss://example.test/ws/v2');
+    const lastOnly: WebSocketMessage = {
+      type: 'tick',
+      symbol: 'FUTURE.LAST-ONLY',
+      last: 120,
+      chart_mode: 1,
+      settlement_price: 80,
+      previous_close: 100,
+      timestamp: 1_725_000_000,
+    };
+
+    expect(isEnhancedStoreHandledTickFrame(lastOnly)).toBe(true);
+    (service as unknown as TestableService).handleMessage(lastOnly);
+
+    expect(mocks.enqueueLiveTick).toHaveBeenCalledWith('FUTURE.LAST-ONLY', expect.objectContaining({
+      bid: 0,
+      ask: 0,
+      last: 120,
+      dailyChange: 50,
+    }));
+
+    service.destroy();
+  });
+
+  it('uses channel-envelope chart mode before catalog mode while preserving child authority', () => {
+    const service = new EnhancedWebSocketService('wss://example.test/ws/v2');
+    registerDailyChangePriceModes([
+      { symbol: 'WRAPPED.BID', brokerSpecification: { chart_mode: 1 } },
+      { symbol: 'WRAPPED.LAST', brokerSpecification: { chart_mode: 0 } },
+      { symbol: 'CHILD.LAST', brokerSpecification: { chart_mode: 0 } },
+      { symbol: 'CHILD.UNKNOWN', brokerSpecification: { chart_mode: 0 } },
+    ]);
+    const messages: WebSocketMessage[] = [
+      {
+        type: 'channel_message',
+        channel: 'ticks.WRAPPED.BID',
+        chart_mode: 0,
+        data: { bid: 110, ask: 111, last: 120, previous_close: 100, timestamp: 1 },
+      },
+      {
+        type: 'channel_message',
+        channel: 'ticks.WRAPPED.LAST',
+        chart_mode: 1,
+        data: { bid: 110, ask: 111, last: 120, previous_close: 100, timestamp: 1 },
+      },
+      {
+        type: 'channel_message',
+        channel: 'ticks.CHILD.LAST',
+        chart_mode: 0,
+        data: {
+          bid: 110,
+          ask: 111,
+          last: 120,
+          chart_mode: 1,
+          previous_close: 100,
+          timestamp: 1,
+        },
+      },
+      {
+        type: 'channel_message',
+        channel: 'ticks.CHILD.UNKNOWN',
+        chart_mode: 1,
+        data: {
+          bid: 110,
+          ask: 111,
+          last: 120,
+          chart_mode: 'future-mode',
+          previous_close: 100,
+          timestamp: 1,
+        },
+      },
+    ];
+
+    messages.forEach((message) => {
+      expect(isEnhancedStoreHandledTickFrame(message)).toBe(true);
+      (service as unknown as TestableService).handleMessage(message);
+    });
+
+    expect(mocks.enqueueLiveTick.mock.calls.map(([, tick]) => tick.dailyChange)).toEqual([10, 20, 20, 10]);
+    service.destroy();
+  });
+
+  it('uses envelope Daily Change fields while preserving the nearest child alias group', () => {
+    const service = new EnhancedWebSocketService('wss://example.test/ws/v2');
+    const messages: WebSocketMessage[] = [
+      {
+        type: 'channel_message',
+        channel: 'ticks.OUTER.PERCENT',
+        daily_change_pct: 0.75,
+        data: { bid: 110, ask: 111, previous_close: 100, timestamp: 1 },
+      },
+      {
+        type: 'channel_message',
+        channel: 'ticks.CHILD.PERCENT',
+        daily_change_pct: 0.75,
+        data: { bid: 110, ask: 111, dailyChange: 0.25, previous_close: 100, timestamp: 1 },
+      },
+      {
+        type: 'channel_message',
+        channel: 'ticks.OUTER.BASELINE',
+        chart_mode: 1,
+        last_price: 120,
+        clearing_price: 80,
+        previous_close: 100,
+        data: { bid: 110, ask: 111, timestamp: 1 },
+      },
+    ];
+
+    messages.forEach((message) => {
+      expect(isEnhancedStoreHandledTickFrame(message)).toBe(true);
+      (service as unknown as TestableService).handleMessage(message);
+    });
+
+    expect(mocks.enqueueLiveTick.mock.calls.map(([, tick]) => ({
+      dailyChange: tick.dailyChange,
+      last: tick.last,
+    }))).toEqual([
+      { dailyChange: 0.75, last: undefined },
+      { dailyChange: 0.25, last: undefined },
+      { dailyChange: 50, last: 120 },
+    ]);
+    service.destroy();
+  });
+
+  it('leaves nested quote wrappers to the App owner even when a wrapper carries Last metadata', () => {
+    const service = new EnhancedWebSocketService('wss://example.test/ws/v2');
+    const nested: WebSocketMessage = {
+      type: 'channel_message',
+      channel: 'ticks.EURUSD.r',
+      chart_mode: 1,
+      data: {
+        bid: 90,
+        ask: 91,
+        last: 120,
+        quote: {
+          symbol: 'EURUSD',
+          bid: 110,
+          ask: 111,
+          previous_close: 100,
+        },
+      },
+    };
+
+    expect(isEnhancedStoreHandledTickFrame(nested)).toBe(false);
+    (service as unknown as TestableService).handleMessage(nested);
+    expect(mocks.enqueueLiveTick).not.toHaveBeenCalled();
+    service.destroy();
+  });
+
+  it('leaves an ambiguous Last-only tick to legacy handling without guessing chart mode', () => {
+    const service = new EnhancedWebSocketService('wss://example.test/ws/v2');
+    const ambiguous: WebSocketMessage = {
+      type: 'tick',
+      symbol: 'AMBIGUOUS.LAST-ONLY',
+      last: 120,
+      previous_close: 100,
+      timestamp: 1_725_000_000,
+    };
+
+    expect(isEnhancedStoreHandledTickFrame(ambiguous)).toBe(false);
+    (service as unknown as TestableService).handleMessage(ambiguous);
+    expect(mocks.enqueueLiveTick).not.toHaveBeenCalled();
 
     service.destroy();
   });

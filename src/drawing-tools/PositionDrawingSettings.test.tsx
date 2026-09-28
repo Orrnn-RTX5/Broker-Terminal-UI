@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { Drawing } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 
 const update = vi.hoisted(() => vi.fn(() => true));
 vi.mock('../services/drawingManager', () => ({ drawingManager: { updateDrawingProperties: update } }));

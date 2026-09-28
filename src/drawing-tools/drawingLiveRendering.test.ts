@@ -4,8 +4,14 @@ import ts from 'typescript';
 import { expect, it, vi } from 'vitest';
 import { updateDrawingCandle } from './drawingCandleUpdates';
 
-const source = ts.createSourceFile('TradingChart.tsx', readFileSync('src/components/TradingChart.tsx', 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-function productionCallback(name: string, dependencies: Record<string, unknown>) {
+function productionCallback(sourcePath: string, name: string, dependencies: Record<string, unknown>) {
+  const source = ts.createSourceFile(
+    sourcePath,
+    readFileSync(sourcePath, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    sourcePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
   let code = '';
   const visit = (node: ts.Node) => {
     if (ts.isVariableDeclaration(node) && node.name.getText(source) === name) code = node.initializer!.getText(source);
@@ -23,7 +29,7 @@ it('the production candle push refreshes drawing OHLCV and coalesces rapid ticks
   const pending = { current: null as number | null };
   const schedule = vi.fn(() => { pending.current = 1; });
   const update = vi.fn();
-  const push = productionCallback('push', {
+  const push = productionCallback('src/features/trading-chart/runtime/useTradingChartLiveCandleRuntime.ts', 'push', {
     isDisposedRef: { current: false }, liveMarketDataFrozenRef: { current: false }, canPaintLiveChart: () => true,
     seriesRef: { current: { update } }, prevChartTypeRef: { current: 'candlestick' }, volumeRef: { current: null },
     updateDrawingCandle, lastRenderedCandlesRef: candles,
@@ -43,7 +49,7 @@ it('a price-only axis repaint also schedules drawings after the chart transform'
   const frameCallbacks: FrameRequestCallback[] = [];
   const drawingFrame = { current: null as number | null };
   const schedule = vi.fn(() => { drawingFrame.current = 1; });
-  const queue = productionCallback('queuePriceBoundOverlayGeometryRepaint', {
+  const queue = productionCallback('src/features/trading-chart/runtime/useTradingChartInitialization.ts', 'queuePriceBoundOverlayGeometryRepaint', {
     priceBoundOverlayGeometryRepaintFrame: null,
     window: { requestAnimationFrame: (callback: FrameRequestCallback) => { frameCallbacks.push(callback); return frameCallbacks.length; } },
     repaintLivePriceOverlayGeometry: vi.fn(), repaintTradeOverlayGeometryRef: { current: vi.fn() },

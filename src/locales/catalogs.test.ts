@@ -15,6 +15,15 @@ const leaves = (value: Record<string, unknown>, prefix = ''): Record<string, str
 const placeholders = (value: string) => [...value.matchAll(/{{\s*([^}]+)\s*}}/g)].map(match => match[1].trim()).sort();
 
 describe('complete local interface catalogs', () => {
+  it('contains catalogs only for supported interface languages', () => {
+    const catalogLanguages = [...new Set(
+      Object.keys(catalogs).map(path => path.split('/')[1]),
+    )].sort();
+    const registeredLanguages = supportedLanguages.map(({ code }) => code).sort();
+
+    expect(catalogLanguages).toEqual(registeredLanguages);
+  });
+
   it('covers every literal message used by the shared UI translator', () => {
     const missing: string[] = [];
     const inspect = (directory: string) => {

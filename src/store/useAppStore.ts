@@ -18,9 +18,11 @@ import {
   areCanonicalUpstreamTicksEqual,
   coalesceFreshestTickEntries,
   compareCanonicalTickFreshness,
+  getCanonicalTickTimestamp,
 } from '../utils/liveTickSemantics';
+import { QUOTE_SESSION_RANGE_FIELDS, type QuoteSessionRange } from '../utils/quoteSessionRange';
 
-export interface Tick {
+export interface Tick extends QuoteSessionRange {
   symbol: string;
   bid: number;
   ask: number;
@@ -31,12 +33,16 @@ export interface Tick {
   prevBid?: number;
   prevAsk?: number;
   dailyChange?: number;
+  /** Broker event time that supplied dailyChange, independent of the latest price event. */
+  dailyChangeSourceTimestamp?: number;
   high?: number;
   low?: number;
   high24h?: number;
   low24h?: number;
   volume?: number;
   last?: number;
+  /** Broker event time that supplied Last, independent of the latest price event. */
+  lastSourceTimestamp?: number;
   open?: number;
   close?: number;
   tickHistory?: number[]; // For tick chart
@@ -488,13 +494,189 @@ const upsertSavedAccount = (accounts: unknown, account: SavedAccount): SavedAcco
   ));
 };
 
+const UTC_QUOTE_DAY_MS = 24 * 60 * 60 * 1_000;
+type DailyChangeTimedTick = Pick<
+  Tick,
+  'timestamp' | 'sourceTimestamp' | 'dailyChange' | 'dailyChangeSourceTimestamp'
+>;
+type LastTimedTick = Pick<
+  Tick,
+  'timestamp' | 'sourceTimestamp' | 'last' | 'lastSourceTimestamp'
+>;
+
+/**
+ * Daily Change belongs to a quote session, unlike ordinary point-in-time tick
+ * metadata. The quote contract normalizes source/receipt timestamps to epoch
+ * milliseconds, so a UTC quote-day is the narrowest safe session boundary we
+ * can infer here without symbol-specific exchange calendars.
+ */
+const getDailyChangeAuthorityTimestamp = (tick: DailyChangeTimedTick): number | null => {
+  if (typeof tick.dailyChange !== 'number' || !Number.isFinite(tick.dailyChange)) return null;
+  if (
+    typeof tick.dailyChangeSourceTimestamp === 'number'
+    && Number.isFinite(tick.dailyChangeSourceTimestamp)
+    && tick.dailyChangeSourceTimestamp > 0
+  ) {
+    return tick.dailyChangeSourceTimestamp;
+  }
+  const timestamp = getCanonicalTickTimestamp(tick);
+  return timestamp !== null && timestamp > 0 ? timestamp : null;
+};
+
+const belongsToSelectedQuoteDay = (
+  authorityTimestamp: number | null,
+  selected: DailyChangeTimedTick,
+): authorityTimestamp is number => {
+  const selectedTimestamp = getCanonicalTickTimestamp(selected);
+  return authorityTimestamp !== null
+    && selectedTimestamp !== null
+    && selectedTimestamp > 0
+    && Math.floor(authorityTimestamp / UTC_QUOTE_DAY_MS)
+      === Math.floor(selectedTimestamp / UTC_QUOTE_DAY_MS);
+};
+
+/**
+ * Sparse quotes omit optional metadata. Preserve Daily Change only while the
+ * selected quote remains in the same inferred UTC quote day; broker/account
+ * changes clear the owning stores through resetLiveMarketDataSession.
+ */
+export const retainSameQuoteDayDailyChange = <T extends DailyChangeTimedTick>(
+  candidate: DailyChangeTimedTick | undefined,
+  selected: T,
+): T => {
+  const selectedAuthority = getDailyChangeAuthorityTimestamp(selected);
+  const candidateAuthority = candidate ? getDailyChangeAuthorityTimestamp(candidate) : null;
+  const selectedIsUsable = belongsToSelectedQuoteDay(selectedAuthority, selected);
+  const candidateIsUsable = candidate !== undefined
+    && belongsToSelectedQuoteDay(candidateAuthority, selected);
+
+  const useCandidate = candidateIsUsable
+    && (!selectedIsUsable || candidateAuthority > selectedAuthority);
+  const chosen = useCandidate ? candidate : selectedIsUsable ? selected : undefined;
+  const chosenAuthority = useCandidate ? candidateAuthority : selectedIsUsable ? selectedAuthority : null;
+
+  if (chosen && chosenAuthority !== null) {
+    if (
+      selected.dailyChange === chosen.dailyChange
+      && selected.dailyChangeSourceTimestamp === chosenAuthority
+    ) return selected;
+    return {
+      ...selected,
+      dailyChange: chosen.dailyChange,
+      dailyChangeSourceTimestamp: chosenAuthority,
+    };
+  }
+
+  if (selected.dailyChange === undefined && selected.dailyChangeSourceTimestamp === undefined) {
+    return selected;
+  }
+  const withoutDailyChange = { ...selected };
+  delete withoutDailyChange.dailyChange;
+  delete withoutDailyChange.dailyChangeSourceTimestamp;
+  return withoutDailyChange;
+};
+
+const getLastAuthorityTimestamp = (tick: LastTimedTick): number | null => {
+  if (typeof tick.last !== 'number' || !Number.isFinite(tick.last) || tick.last <= 0) return null;
+  if (
+    typeof tick.lastSourceTimestamp === 'number'
+    && Number.isFinite(tick.lastSourceTimestamp)
+    && tick.lastSourceTimestamp > 0
+  ) {
+    return tick.lastSourceTimestamp;
+  }
+  const timestamp = getCanonicalTickTimestamp(tick);
+  return timestamp !== null && timestamp > 0 ? timestamp : null;
+};
+
+/** Preserve a real exchange Last only inside the selected quote's UTC day. */
+export const retainSameQuoteDayLast = <T extends LastTimedTick>(
+  candidate: LastTimedTick | undefined,
+  selected: T,
+): T => {
+  const selectedAuthority = getLastAuthorityTimestamp(selected);
+  const candidateAuthority = candidate ? getLastAuthorityTimestamp(candidate) : null;
+  const selectedIsUsable = belongsToSelectedQuoteDay(selectedAuthority, selected);
+  const candidateIsUsable = candidate !== undefined
+    && belongsToSelectedQuoteDay(candidateAuthority, selected);
+  const useCandidate = candidateIsUsable
+    && (!selectedIsUsable || candidateAuthority > selectedAuthority);
+  const chosen = useCandidate ? candidate : selectedIsUsable ? selected : undefined;
+  const chosenAuthority = useCandidate ? candidateAuthority : selectedIsUsable ? selectedAuthority : null;
+
+  if (chosen && chosenAuthority !== null) {
+    if (selected.last === chosen.last && selected.lastSourceTimestamp === chosenAuthority) return selected;
+    return {
+      ...selected,
+      last: chosen.last,
+      lastSourceTimestamp: chosenAuthority,
+    };
+  }
+
+  if (selected.last === undefined && selected.lastSourceTimestamp === undefined) return selected;
+  const withoutLast = { ...selected };
+  delete withoutLast.last;
+  delete withoutLast.lastSourceTimestamp;
+  return withoutLast;
+};
+
+export const retainSameQuoteDayDisplayFields = <T extends DailyChangeTimedTick & LastTimedTick>(
+  candidate: (DailyChangeTimedTick & LastTimedTick) | undefined,
+  selected: T,
+): T => retainSameQuoteDayLast(candidate, retainSameQuoteDayDailyChange(candidate, selected));
+
+const coalesceAppTickEntries = (
+  entries: readonly AppTickEntry[],
+): AppTickEntry[] => {
+  const reportInvalidTick = (symbol: string, error: unknown) => {
+    console.error(`[AppStore] Ignoring invalid tick for ${symbol}:`, error);
+  };
+  const latestTicks = coalesceFreshestTickEntries(entries, reportInvalidTick);
+  const latestDailyChangeTicks = new Map<string, Tick>();
+  const latestLastTicks = new Map<string, Tick>();
+
+  // The generic freshness coalescer correctly chooses the newest price, but a
+  // later sparse frame can otherwise erase optional metadata before merge with
+  // store state. Track authoritative session fields independently.
+  entries.forEach(([symbol, tick]) => {
+    try {
+      const normalized = retainSameQuoteDayDisplayFields(undefined, tick);
+      const incomingAuthority = getDailyChangeAuthorityTimestamp(normalized);
+      const existing = latestDailyChangeTicks.get(symbol);
+      const existingAuthority = existing ? getDailyChangeAuthorityTimestamp(existing) : null;
+      if (
+        incomingAuthority !== null
+        && (existingAuthority === null || incomingAuthority >= existingAuthority)
+      ) {
+        latestDailyChangeTicks.set(symbol, normalized);
+      }
+      const incomingLastAuthority = getLastAuthorityTimestamp(normalized);
+      const existingLast = latestLastTicks.get(symbol);
+      const existingLastAuthority = existingLast ? getLastAuthorityTimestamp(existingLast) : null;
+      if (
+        incomingLastAuthority !== null
+        && (existingLastAuthority === null || incomingLastAuthority >= existingLastAuthority)
+      ) {
+        latestLastTicks.set(symbol, normalized);
+      }
+    } catch (error) {
+      reportInvalidTick(symbol, error);
+    }
+  });
+
+  return latestTicks.map(([symbol, tick]) => {
+    const dailyChangeTick = latestDailyChangeTicks.get(symbol);
+    const lastTick = latestLastTicks.get(symbol);
+    const withDailyChange = retainSameQuoteDayDailyChange(dailyChangeTick, tick);
+    return [symbol, retainSameQuoteDayLast(lastTick, withDailyChange)] as const;
+  });
+};
+
 const applyAppTickBatch = (
   state: AppState,
   entries: readonly AppTickEntry[],
 ): AppState | Pick<AppState, 'ticks' | 'tickLookup'> => {
-  const latestTicks = coalesceFreshestTickEntries(entries, (symbol, error) => {
-    console.error(`[AppStore] Ignoring invalid tick for ${symbol}:`, error);
-  });
+  const latestTicks = coalesceAppTickEntries(entries);
 
   let nextTicks = state.ticks;
   let nextLookup = state.tickLookup;
@@ -502,10 +684,26 @@ const applyAppTickBatch = (
 
   latestTicks.forEach(([symbol, tick]) => {
     const prevTick = nextTicks[symbol];
-    const candidate: Tick = { ...tick };
-    if (candidate.dailyChange === undefined && prevTick?.dailyChange !== undefined) {
-      candidate.dailyChange = prevTick.dailyChange;
+    const normalizedIncoming = retainSameQuoteDayDisplayFields(undefined, { ...tick });
+    const freshness = prevTick ? compareCanonicalTickFreshness(prevTick, normalizedIncoming) : 1;
+
+    // A delayed full quote may still contain newer session metadata than the
+    // percentage currently attached to the latest price. Merge that one field
+    // onto the selected quote without allowing stale price/LP/OHLC metadata to
+    // regress the executable tick.
+    if (prevTick && freshness < 0) {
+      const metadataCorrection = retainSameQuoteDayDisplayFields(normalizedIncoming, prevTick);
+      if (metadataCorrection === prevTick) return;
+      if (!changed) nextTicks = { ...state.ticks };
+      nextTicks[symbol] = metadataCorrection;
+      changed = true;
+      return;
     }
+
+    // Price-only frames are common, so keep a valid percentage within the same
+    // inferred quote day. Never carry it over a day boundary: that would show
+    // yesterday's session-relative value until another full quote arrived.
+    const candidate: Tick = retainSameQuoteDayDisplayFields(prevTick, normalizedIncoming);
     if (candidate.high24h === undefined && prevTick?.high24h !== undefined) {
       candidate.high24h = prevTick.high24h;
     }
@@ -518,14 +716,16 @@ const applyAppTickBatch = (
     if (candidate.low === undefined && prevTick?.low !== undefined) {
       candidate.low = prevTick.low;
     }
+    QUOTE_SESSION_RANGE_FIELDS.forEach((field) => {
+      if (candidate[field] === undefined && prevTick?.[field] !== undefined) {
+        candidate[field] = prevTick[field];
+      }
+    });
     if (candidate.lp === undefined && prevTick?.lp !== undefined) {
       candidate.lp = prevTick.lp;
     }
     if (candidate.volume === undefined && prevTick?.volume !== undefined) {
       candidate.volume = prevTick.volume;
-    }
-    if (candidate.last === undefined && prevTick?.last !== undefined) {
-      candidate.last = prevTick.last;
     }
     if (candidate.open === undefined && prevTick?.open !== undefined) {
       candidate.open = prevTick.open;
@@ -537,8 +737,6 @@ const applyAppTickBatch = (
       candidate.digits = prevTick.digits;
     }
 
-    const freshness = prevTick ? compareCanonicalTickFreshness(prevTick, candidate) : 1;
-    if (freshness < 0) return;
     if (freshness === 0 && areCanonicalUpstreamTicksEqual(prevTick, candidate)) return;
 
     // A same-time payload is a correction, not another chronological tick.

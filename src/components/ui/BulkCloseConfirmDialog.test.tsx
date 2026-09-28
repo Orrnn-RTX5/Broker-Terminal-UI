@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import '@testing-library/jest-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useBulkCloseConfirmStore, type BulkCloseType } from '../../store/useBulkCloseConfirmStore';
@@ -66,5 +67,35 @@ describe('BulkCloseConfirmDialog', () => {
     expect(dialogRule).not.toContain('animation:');
     expect(css).not.toContain('rtx-bulk-close-backdrop-in');
     expect(css).not.toContain('rtx-bulk-close-dialog-in');
+  });
+
+  it('resolves a programmatically closed confirmation as cancelled', async () => {
+    const confirmation = useBulkCloseConfirmStore.getState().showBulkCloseConfirm({
+      type: 'ALL',
+      positions,
+      combinedPnL: 1.25,
+    });
+
+    useBulkCloseConfirmStore.getState().closeBulkCloseConfirm();
+
+    await expect(confirmation).resolves.toBe(false);
+    expect(useBulkCloseConfirmStore.getState().isOpen).toBe(false);
+  });
+
+  it('cancels the previous promise before replacing an open confirmation', async () => {
+    const first = useBulkCloseConfirmStore.getState().showBulkCloseConfirm({
+      type: 'ALL',
+      positions,
+      combinedPnL: 1.25,
+    });
+    const second = useBulkCloseConfirmStore.getState().showBulkCloseConfirm({
+      type: 'WINNERS',
+      positions: positions.slice(0, 1),
+      combinedPnL: 2.5,
+    });
+
+    await expect(first).resolves.toBe(false);
+    useBulkCloseConfirmStore.getState().onConfirm();
+    await expect(second).resolves.toBe(true);
   });
 });

@@ -4,14 +4,62 @@ import { describe, expect, it } from 'vitest';
 
 // Normalize CRLF so the multi-line anchors keep matching on Windows checkouts
 // (core.autocrlf=true materializes the working tree with \r\n).
-const source = readFileSync(
-  resolve(process.cwd(), 'src/components/TradingChart.tsx'),
+const readChartSource = (relativePath: string) => readFileSync(
+  resolve(process.cwd(), relativePath),
   'utf8',
 ).replace(/\r\n/g, '\n');
 
+// TradingChart remains the public facade, while its lifecycle, interaction,
+// live-candle, trade-overlay, command, and view implementations are now owned
+// by focused modules. Treat those production files as one component contract.
+const chartFacadeSource = readChartSource('src/components/TradingChart.tsx');
+const commandsSource = readChartSource('src/features/trading-chart/runtime/useTradingChartCommands.ts');
+const liveCandleSource = readChartSource('src/features/trading-chart/runtime/useTradingChartLiveCandleRuntime.ts');
+const initializationSource = readChartSource('src/features/trading-chart/runtime/useTradingChartInitialization.ts');
+const reconfigurationSource = readChartSource('src/features/trading-chart/runtime/useTradingChartReconfiguration.ts');
+const drawingCommandsSource = readChartSource('src/features/trading-chart/runtime/useTradingChartDrawingCommands.ts');
+const historyCacheSource = readChartSource('src/features/trading-chart/runtime/useTradingChartHistoryCache.ts');
+const historyLoadingSource = readChartSource('src/features/trading-chart/runtime/useTradingChartHistoryLoading.ts');
+const livePriceOverlaySource = readChartSource('src/features/trading-chart/presentation/useTradingChartLivePriceOverlay.ts');
+const loadingPresentationSource = readChartSource('src/features/trading-chart/presentation/useTradingChartLoadingPresentation.ts');
+const viewportResetSource = readChartSource('src/features/trading-chart/runtime/useTradingChartViewportReset.ts');
+const tradeRuntimeSource = [
+  'src/features/trading-chart/runtime/useTradingChartTradeRuntime.ts',
+  'src/features/trading-chart/runtime/createTradeOverlayModelRuntime.ts',
+  'src/features/trading-chart/runtime/createTradeOverlayDomRuntime.ts',
+  'src/features/trading-chart/runtime/useTradingChartTradeOverlayRenderer.ts',
+  'src/features/trading-chart/runtime/bindTradeOverlayRuntimeSubscriptions.ts',
+  'src/features/trading-chart/runtime/useTradingChartTradeLevelDrag.ts',
+  'src/features/trading-chart/runtime/tradeOverlayRuntimeConstants.ts',
+].map(readChartSource).join('\n');
+const tradeSubscriptionsSource = readChartSource(
+  'src/features/trading-chart/runtime/bindTradeOverlayRuntimeSubscriptions.ts',
+);
+const chartViewSource = readChartSource('src/features/trading-chart/presentation/TradingChartView.tsx');
+const chartRuntimeContractsSource = readChartSource('src/features/trading-chart/runtime/chartRuntimeContracts.ts');
+const source = [
+  chartFacadeSource,
+  commandsSource,
+  liveCandleSource,
+  initializationSource,
+  reconfigurationSource,
+  drawingCommandsSource,
+  historyCacheSource,
+  historyLoadingSource,
+  livePriceOverlaySource,
+  loadingPresentationSource,
+  viewportResetSource,
+  tradeRuntimeSource,
+  chartViewSource,
+  chartRuntimeContractsSource,
+].join('\n');
+
 describe('TradingChart interaction-priority contract', () => {
   it('renders first history before scheduling cancellable background gap repairs', () => {
-    const load = source.slice(source.indexOf('const loadHistory = useCallback'), source.indexOf('// Fade the loading overlay'));
+    const load = historyLoadingSource.slice(
+      historyLoadingSource.indexOf('const loadHistory = useCallback'),
+      historyLoadingSource.indexOf('// Load more historical data'),
+    );
     const firstRender = load.indexOf("reason: 'initial-history'");
     const background = load.indexOf('void (async () =>');
     const repair = load.indexOf('await backfillRecentInteriorHistoryGaps(');
@@ -25,7 +73,10 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('requests a small cold M1 page and expands only after first paint under the same cancellation signal', () => {
-    const load = source.slice(source.indexOf('const loadHistory = useCallback'), source.indexOf('// Fade the loading overlay'));
+    const load = historyLoadingSource.slice(
+      historyLoadingSource.indexOf('const loadHistory = useCallback'),
+      historyLoadingSource.indexOf('// Load more historical data'),
+    );
     expect(load).toContain("const useProgressiveInitialHistory = activeTf === 'M1' && !hydratedFromCache;");
     expect(load).toContain('count: useProgressiveInitialHistory ? FIRST_PAINT_HISTORY_COUNT : getInitialHistoryCount(activeTf)');
     const firstRender = load.indexOf("reason: 'initial-history'");
@@ -43,21 +94,22 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('keeps startup readiness out of initial and user-requested history loaders', () => {
-    const initialStart = source.indexOf('const loadHistory = useCallback');
-    const background = source.indexOf('void (async () =>', initialStart);
-    expect(source.slice(initialStart, background)).not.toContain('waitForTerminalReady(');
-    const olderStart = source.indexOf('const fetchOlderHistoryPage = useCallback');
-    expect(source.slice(olderStart, initialStart)).not.toContain('waitForTerminalReady(');
-    const loadMoreStart = source.indexOf('const loadMoreHistory = useCallback');
-    const loadMoreEnd = source.indexOf('// Keep ref pointing to the latest loadMoreHistory', loadMoreStart);
+    const initialStart = historyLoadingSource.indexOf('const loadHistory = useCallback');
+    const background = historyLoadingSource.indexOf('void (async () =>', initialStart);
+    expect(historyLoadingSource.slice(initialStart, background)).not.toContain('waitForTerminalReady(');
+    const olderStart = historyCacheSource.indexOf('const fetchOlderHistoryPage = useCallback');
+    const olderEnd = historyCacheSource.indexOf('const validateRenderedCandlesAgainstLivePrice', olderStart);
+    expect(historyCacheSource.slice(olderStart, olderEnd)).not.toContain('waitForTerminalReady(');
+    const loadMoreStart = historyLoadingSource.indexOf('const loadMoreHistory = useCallback');
+    const loadMoreEnd = historyLoadingSource.indexOf('return { loadHistory, loadMoreHistory };', loadMoreStart);
     expect(loadMoreEnd).toBeGreaterThan(loadMoreStart);
-    expect(source.slice(loadMoreStart, loadMoreEnd)).not.toContain('waitForTerminalReady(');
+    expect(historyLoadingSource.slice(loadMoreStart, loadMoreEnd)).not.toContain('waitForTerminalReady(');
   });
 
   it('uses M1-derived history as the primary source for every higher timeframe', () => {
-    const loadStart = source.indexOf('const loadHistory = useCallback');
-    const loadEnd = source.indexOf('// Load more historical data', loadStart);
-    const loadHistory = source.slice(loadStart, loadEnd);
+    const loadStart = historyLoadingSource.indexOf('const loadHistory = useCallback');
+    const loadEnd = historyLoadingSource.indexOf('// Load more historical data', loadStart);
+    const loadHistory = historyLoadingSource.slice(loadStart, loadEnd);
 
     expect(loadHistory).toContain('const deriveInitialHistoryFromM1 = isM1DerivedFallbackTimeframe(activeTf)');
     expect(loadHistory).toContain('fetchDerivedTimeframeCandlesFromM1({');
@@ -69,9 +121,9 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('reuses warm M1 aggregation before waiting for another timeframe history request', () => {
-    const cacheStart = source.indexOf('const hydrateHistoryFromCache = useCallback');
-    const cacheEnd = source.indexOf('const restoreProtectedDisplayedHistory = useCallback', cacheStart);
-    const cacheHydration = source.slice(cacheStart, cacheEnd);
+    const cacheStart = historyCacheSource.indexOf('const hydrateHistoryFromCache = useCallback');
+    const cacheEnd = historyCacheSource.indexOf('const restoreProtectedDisplayedHistory = useCallback', cacheStart);
+    const cacheHydration = historyCacheSource.slice(cacheStart, cacheEnd);
 
     expect(cacheHydration).toContain("candleAggregationService.getCandles(symbol, 'M1', true, false)");
     expect(cacheHydration).toContain('omitPartialLeadingM1Aggregate(');
@@ -82,9 +134,9 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('paints cached timeframe data before starting a broker refresh and prewarms later selections', () => {
-    const loadStart = source.indexOf('const loadHistory = useCallback');
-    const loadEnd = source.indexOf('// Load more historical data', loadStart);
-    const loadHistory = source.slice(loadStart, loadEnd);
+    const loadStart = historyLoadingSource.indexOf('const loadHistory = useCallback');
+    const loadEnd = historyLoadingSource.indexOf('// Load more historical data', loadStart);
+    const loadHistory = historyLoadingSource.slice(loadStart, loadEnd);
 
     expect(loadHistory.indexOf("hydrateHistoryFromCache(activeTf, 'cached-history')"))
       .toBeLessThan(loadHistory.indexOf('historyRequestCoordinatorRef.current.start({'));
@@ -109,9 +161,9 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('keeps the canonical M1 candle socket mounted across timeframe switches', () => {
-    const liveEffectStart = source.indexOf('useActiveChartRuntimeEffect(visibleRuntime.candle, () => {');
-    const liveEffectEnd = source.indexOf('// The primary tick aggregation interval', liveEffectStart);
-    const liveEffect = source.slice(liveEffectStart, liveEffectEnd);
+    const liveEffectStart = liveCandleSource.indexOf('useActiveChartRuntimeEffect(visibleRuntime.candle, () => {');
+    const liveEffectEnd = liveCandleSource.indexOf('// The primary tick aggregation interval', liveEffectStart);
+    const liveEffect = liveCandleSource.slice(liveEffectStart, liveEffectEnd);
 
     expect(liveEffect).toContain("const streamTimeframe: AggTimeframe = 'M1';");
     expect(liveEffect).toContain('const getDisplayedStreamTimeframe = (): AggTimeframe => (');
@@ -121,9 +173,9 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('classifies legacy M1 finals and scopes finalized guards by displayed timeframe', () => {
-    const liveEffectStart = source.indexOf('useActiveChartRuntimeEffect(visibleRuntime.candle, () => {');
-    const liveEffectEnd = source.indexOf('// The primary tick aggregation interval', liveEffectStart);
-    const liveEffect = source.slice(liveEffectStart, liveEffectEnd);
+    const liveEffectStart = liveCandleSource.indexOf('useActiveChartRuntimeEffect(visibleRuntime.candle, () => {');
+    const liveEffectEnd = liveCandleSource.indexOf('// The primary tick aggregation interval', liveEffectStart);
+    const liveEffect = liveCandleSource.slice(liveEffectStart, liveEffectEnd);
 
     expect(liveEffect).toContain('const finalizedCandleTimeByTimeframe = new Map<string, number>();');
     expect(liveEffect).toContain('isCandleAtOrBeforeFinalizedTime(finalizedCandleTimeByTimeframe, activeTf, candleTime)');
@@ -133,12 +185,12 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('keeps backend timestamps and OHLC exact instead of guessing time or price scale', () => {
-    const historyStart = source.indexOf('const loadHistory = useCallback');
-    const historyEnd = source.indexOf('// Load more historical data', historyStart);
-    const history = source.slice(historyStart, historyEnd);
-    const priceGuardStart = source.indexOf('const validateRenderedCandlesAgainstLivePrice = useCallback');
-    const priceGuardEnd = source.indexOf('// Load historical data', priceGuardStart);
-    const priceGuard = source.slice(priceGuardStart, priceGuardEnd);
+    const historyStart = historyLoadingSource.indexOf('const loadHistory = useCallback');
+    const historyEnd = historyLoadingSource.indexOf('// Load more historical data', historyStart);
+    const history = historyLoadingSource.slice(historyStart, historyEnd);
+    const priceGuardStart = historyCacheSource.indexOf('const validateRenderedCandlesAgainstLivePrice = useCallback');
+    const priceGuardEnd = historyCacheSource.indexOf('return {', priceGuardStart);
+    const priceGuard = historyCacheSource.slice(priceGuardStart, priceGuardEnd);
 
     expect(history).not.toContain('Math.round(rawOffset / 1800)');
     expect(history).not.toContain('Date.now() / 1000');
@@ -161,9 +213,9 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).toContain("`${symbol} ${activeTimeframe} · ${tr('Loading…')}`");
     expect(timeframeCommand).toContain("setLoadingPhase('receiving')");
     expect(timeframeCommand).not.toContain("setLoadingPhase('connecting')");
-    expect(source.slice(
-      source.indexOf('const loadHistory = useCallback'),
-      source.indexOf('// Load more historical data'),
+    expect(historyLoadingSource.slice(
+      historyLoadingSource.indexOf('const loadHistory = useCallback'),
+      historyLoadingSource.indexOf('// Load more historical data'),
     )).toContain("setLoadingPhase('receiving')");
   });
 
@@ -194,9 +246,9 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('releases hidden-tab runtime and restores only visible chart work', () => {
-    const liveEffectStart = source.indexOf('// ─── Live tick subscription + candle rollover');
-    const liveEffectEnd = source.indexOf('// The primary tick aggregation interval', liveEffectStart);
-    const liveEffect = source.slice(liveEffectStart, liveEffectEnd);
+    const liveEffectStart = liveCandleSource.indexOf('useActiveChartRuntimeEffect(visibleRuntime.candle, () => {');
+    const liveEffectEnd = liveCandleSource.lastIndexOf('\n};');
+    const liveEffect = liveCandleSource.slice(liveEffectStart, liveEffectEnd);
 
     expect(liveEffect).toContain('useActiveChartRuntimeEffect(visibleRuntime.candle');
     expect(liveEffect).toContain('if (!isActive || !symbol) return;');
@@ -230,12 +282,12 @@ describe('TradingChart interaction-priority contract', () => {
     const badgeStart = source.indexOf('ref={livePriceBadgeRef}');
     const badgeEnd = source.indexOf('{/* Drawing Context Menu', badgeStart);
     const badgeMarkup = source.slice(badgeStart, badgeEnd);
-    const hideStart = source.indexOf('const hideLivePriceOverlay = useCallback');
-    const hideEnd = source.indexOf('const getLivePriceDirectionalColor = useCallback', hideStart);
-    const hide = source.slice(hideStart, hideEnd);
-    const paintStart = source.indexOf('const paintLivePriceOverlay = useCallback');
-    const paintEnd = source.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
-    const paint = source.slice(paintStart, paintEnd);
+    const hideStart = livePriceOverlaySource.indexOf('const hideLivePriceOverlay = useCallback');
+    const hideEnd = livePriceOverlaySource.indexOf('const syncSupplementalPriceLines = useCallback', hideStart);
+    const hide = livePriceOverlaySource.slice(hideStart, hideEnd);
+    const paintStart = livePriceOverlaySource.indexOf('const paintLivePriceOverlay = useCallback');
+    const paintEnd = livePriceOverlaySource.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
+    const paint = livePriceOverlaySource.slice(paintStart, paintEnd);
     const countdownStart = source.indexOf('// Keep the active candle countdown inside the right price-scale badge');
     const countdownEnd = source.indexOf('// Charts initialised inside an invisible tab', countdownStart);
     const countdownEffect = source.slice(countdownStart, countdownEnd);
@@ -281,24 +333,25 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('owns loading and trade-overlay subscriptions only while active', () => {
-    const loadingStart = source.indexOf('// Fade the loading overlay out after candles arrive.');
-    const loadingEnd = source.indexOf('// Load more historical data', loadingStart);
-    const loadingEffects = source.slice(loadingStart, loadingEnd);
+    const loadingStart = loadingPresentationSource.indexOf('// Keep the surface mounted through its CSS fade');
+    const loadingEnd = loadingPresentationSource.indexOf('return {', loadingStart);
+    const loadingEffects = loadingPresentationSource.slice(loadingStart, loadingEnd);
     const overlayStart = source.indexOf('useActiveChartRuntimeEffect(visibleRuntime.overlay, () => {', source.indexOf('// ─── Trade Annotations on Chart'));
     const overlayEnd = source.indexOf('}, [brokerTimeOffsetSec,', overlayStart);
     const overlayEffect = source.slice(overlayStart, overlayEnd);
 
-    expect(loadingEffects.match(/useActiveChartRuntimeEffect\(visibleRuntime\.interval/g)).toHaveLength(2);
+    expect(loadingEffects.match(/useActiveChartRuntimeEffect\(intervalEnabled/g)).toHaveLength(2);
     expect(loadingEffects).toContain('window.clearTimeout(timer)');
     expect(loadingEffects).toContain('window.clearInterval(interval)');
     expect(overlayStart).toBeGreaterThan(-1);
     expect(overlayEnd).toBeGreaterThan(overlayStart);
-    expect(overlayEffect).toContain('subscribeVisibleLogicalRangeChange(timeScaleHandler)');
-    expect(overlayEffect).toContain('useAppStore.subscribe(');
-    expect(overlayEffect).toContain('useChartSettingsStore.subscribe(');
-    expect(overlayEffect).toContain("window.addEventListener('rtx:force-refresh-positions'");
-    expect(overlayEffect).toContain("window.addEventListener('rtx:new-trade-placed'");
-    expect(overlayEffect).toContain('clearTradeOverlayVisualRuntime();');
+    expect(overlayEffect).toContain('return bindTradeOverlayRuntimeSubscriptions({');
+    expect(tradeSubscriptionsSource).toContain('subscribeVisibleLogicalRangeChange(timeScaleHandler)');
+    expect(tradeSubscriptionsSource).toContain('useAppStore.subscribe(');
+    expect(tradeSubscriptionsSource).toContain('useChartSettingsStore.subscribe(');
+    expect(tradeSubscriptionsSource).toContain("window.addEventListener('rtx:force-refresh-positions'");
+    expect(tradeSubscriptionsSource).toContain("window.addEventListener('rtx:new-trade-placed'");
+    expect(tradeSubscriptionsSource).toContain('clearTradeOverlayVisualRuntime();');
   });
 
   it('promotes an urgent first paint over an already queued idle render', () => {
@@ -341,22 +394,22 @@ describe('TradingChart interaction-priority contract', () => {
     expect(releaseLivePaint).toBeGreaterThan(finishLoading);
     expect(markReady).toBeGreaterThan(releaseLivePaint);
     expect(flush).toContain('markCandlesReady, rememberVisibleLogicalRange');
-    expect(source).toContain('finishLoadingAfterRender?: boolean;');
+    expect(chartRuntimeContractsSource).toContain('finishLoadingAfterRender?: boolean;');
     expect(request).toContain('finishLoadingAfterRender: request.finishLoadingAfterRender === true || existing?.finishLoadingAfterRender === true');
 
-    const cacheStart = source.indexOf('const hydrateHistoryFromCache = useCallback');
-    const cacheEnd = source.indexOf('const restoreProtectedDisplayedHistory = useCallback', cacheStart);
-    const restoreEnd = source.indexOf('const fetchOlderHistoryPage = useCallback', cacheEnd);
-    const initialStart = source.indexOf('// Update chart - live data');
-    const initialEnd = source.indexOf('} catch (err: unknown)', initialStart);
+    const cacheStart = historyCacheSource.indexOf('const hydrateHistoryFromCache = useCallback');
+    const cacheEnd = historyCacheSource.indexOf('const restoreProtectedDisplayedHistory = useCallback', cacheStart);
+    const restoreEnd = historyCacheSource.indexOf('const fetchOlderHistoryPage = useCallback', cacheEnd);
+    const initialStart = historyLoadingSource.indexOf('// Update chart - live data');
+    const initialEnd = historyLoadingSource.indexOf('} catch (err: unknown)', initialStart);
     const snapshotStart = source.indexOf('onSnapshot: (snapshot) => {');
     const snapshotEnd = source.indexOf('onCandle: (candle) =>', snapshotStart);
     const resetStart = source.indexOf('const renderResetCandles = (candles: Candle[], reason: string): boolean => {');
     const resetEnd = source.indexOf('if (activeSymbol) {', resetStart);
     const authoritativeLoaderSections = [
-      source.slice(cacheStart, cacheEnd),
-      source.slice(cacheEnd, restoreEnd),
-      source.slice(initialStart, initialEnd),
+      historyCacheSource.slice(cacheStart, cacheEnd),
+      historyCacheSource.slice(cacheEnd, restoreEnd),
+      historyLoadingSource.slice(initialStart, initialEnd),
       source.slice(resetStart, resetEnd),
     ];
 
@@ -480,12 +533,12 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('matches the live price line and badge to the forming candle direction', () => {
-    const directionStart = source.indexOf('const getLivePriceDirectionalColor = useCallback');
-    const directionEnd = source.indexOf('const applyLivePriceHorizontalGeometry = useCallback', directionStart);
-    const direction = source.slice(directionStart, directionEnd);
-    const paintStart = source.indexOf('const paintLivePriceOverlay = useCallback');
-    const paintEnd = source.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
-    const paint = source.slice(paintStart, paintEnd);
+    const directionStart = livePriceOverlaySource.indexOf('const getLivePriceDirectionalColor = useCallback');
+    const directionEnd = livePriceOverlaySource.indexOf('const applyLivePriceHorizontalGeometry = useCallback', directionStart);
+    const direction = livePriceOverlaySource.slice(directionStart, directionEnd);
+    const paintStart = livePriceOverlaySource.indexOf('const paintLivePriceOverlay = useCallback');
+    const paintEnd = livePriceOverlaySource.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
+    const paint = livePriceOverlaySource.slice(paintStart, paintEnd);
     const themeSyncStart = source.indexOf('useEffect(() => {\n    livePriceColorPaletteRef.current = chartColors;');
     const themeSyncEnd = source.indexOf('useEffect(() => {\n    chartThemeRef.current = chartTheme;', themeSyncStart);
     const themeSync = source.slice(themeSyncStart, themeSyncEnd);
@@ -514,11 +567,11 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('keeps the live price badge synchronized to the complete current price scale', () => {
-    const geometrySyncStart = source.indexOf('const applyLivePriceHorizontalGeometry = useCallback');
-    const paintStart = source.indexOf('const paintLivePriceOverlay = useCallback');
-    const geometrySync = source.slice(geometrySyncStart, paintStart);
-    const paintEnd = source.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
-    const paint = source.slice(paintStart, paintEnd);
+    const geometrySyncStart = livePriceOverlaySource.indexOf('const applyLivePriceHorizontalGeometry = useCallback');
+    const paintStart = livePriceOverlaySource.indexOf('const paintLivePriceOverlay = useCallback');
+    const geometrySync = livePriceOverlaySource.slice(geometrySyncStart, paintStart);
+    const paintEnd = livePriceOverlaySource.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
+    const paint = livePriceOverlaySource.slice(paintStart, paintEnd);
     const geometryStart = source.indexOf('const repaintLivePriceOverlayGeometry = () => {');
     const geometryEnd = source.indexOf('const queuePriceBoundOverlayGeometryRepaint = () => {', geometryStart);
     const geometry = source.slice(geometryStart, geometryEnd);
@@ -586,7 +639,8 @@ describe('TradingChart interaction-priority contract', () => {
     expect(drag).not.toContain('renderTradeOverlay');
     expect(drag).not.toContain('repaintLivePriceOverlayFromCurrentPrice');
     expect(drag).not.toContain('flushPostInteractionWork');
-    expect(source).toContain('repaintTradeOverlayGeometryRef.current = () => updateLabelPositions(false);');
+    expect(tradeRuntimeSource).toContain('const repaintTradeOverlayGeometry = () => updateLabelPositions(false);');
+    expect(tradeRuntimeSource).toContain('repaintTradeOverlayGeometryRef.current = repaintTradeOverlayGeometry;');
     expect(source).toContain('if (refreshMetrics) {');
 
     expect(heldMoveStart).toBeGreaterThan(-1);
@@ -702,7 +756,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).toContain('createChartPostInteractionCoordinator({');
     expect(source).toContain('postInteractionCallbacksRef.current.paintModel = () => flushQueuedChartRender(true)');
     expect(source).toContain('postInteractionCallbacksRef.current.paintSeparators = renderPeriodSeparators');
-    expect(source).toContain('postInteractionCallbacksRef.current.layoutOverlay = layoutPostInteractionOverlays');
+    expect(source).toContain('callbacks.layoutOverlay = layoutPostInteractionOverlays');
     expect(source).toContain('postInteractionCoordinatorRef.current?.request({ model: true })');
     expect(source).toContain('postInteractionCoordinatorRef.current?.request({ live: true })');
     expect(source).toContain('postInteractionCoordinatorRef.current?.request({ separators: true })');
@@ -712,7 +766,7 @@ describe('TradingChart interaction-priority contract', () => {
 
   it('does no drawing-preview work for cursor-mode crosshair moves', () => {
     const drawingSetupStart = source.indexOf('let isDrawingContinuous = false;');
-    const handlerStart = source.indexOf('const crosshairHandler = (param: any) => {', drawingSetupStart);
+    const handlerStart = source.indexOf('const crosshairHandler = (param: ChartMouseParam) => {', drawingSetupStart);
     const handlerEnd = source.indexOf('chart.subscribeCrosshairMove(crosshairHandler);', handlerStart);
     const handler = source.slice(handlerStart, handlerEnd);
 
@@ -735,9 +789,9 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('keeps the arrow cursor while drawing, matching TradingView arrow mode', () => {
-    const selectToolStart = source.indexOf("commandBus.subscribe('SELECT_TOOL'");
-    const selectToolEnd = source.indexOf('// Handle UNDO / REDO / DELETE commands', selectToolStart);
-    const selectToolSource = source.slice(selectToolStart, selectToolEnd);
+    const selectToolStart = drawingCommandsSource.indexOf("commandBus.subscribe('SELECT_TOOL'");
+    const selectToolEnd = drawingCommandsSource.indexOf('\n\n    return () => {', selectToolStart);
+    const selectToolSource = drawingCommandsSource.slice(selectToolStart, selectToolEnd);
     const drawingModeStart = selectToolSource.indexOf('// Drawing mode:');
     const drawingModeSource = selectToolSource.slice(drawingModeStart);
 
@@ -753,40 +807,30 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('does not relayout the main trade overlay for crosshair-only movement', () => {
-    const overlayStart = source.indexOf('const queueTradeOverlayRelayout =');
-    const overlayEnd = source.indexOf('}, [brokerTimeOffsetSec,', overlayStart);
-    const overlayEffect = source.slice(overlayStart, overlayEnd);
+    const overlayStart = tradeRuntimeSource.indexOf('const queueTradeOverlayRelayout =');
+    const overlayEnd = tradeRuntimeSource.indexOf('const normalizeUnixSeconds =', overlayStart);
+    const overlayRelayout = tradeRuntimeSource.slice(overlayStart, overlayEnd);
 
     expect(overlayStart).toBeGreaterThan(-1);
     expect(overlayEnd).toBeGreaterThan(overlayStart);
-    expect(overlayEffect).not.toContain('subscribeCrosshairMove(');
-    expect(overlayEffect).not.toContain('unsubscribeCrosshairMove(');
-    expect(overlayEffect).toContain('subscribeVisibleLogicalRangeChange(timeScaleHandler)');
-    expect(overlayEffect).toContain('useAppStore.subscribe(');
-    expect(overlayEffect).toContain('currentTick !== previousTick');
-    expect(overlayEffect).toContain('isActiveRef.current');
-    expect(overlayEffect).toContain('queueTradeOverlayRelayout()');
+    expect(overlayRelayout).not.toContain('subscribeCrosshairMove(');
+    expect(overlayRelayout).not.toContain('unsubscribeCrosshairMove(');
+    expect(tradeSubscriptionsSource).toContain('subscribeVisibleLogicalRangeChange(timeScaleHandler)');
+    expect(tradeSubscriptionsSource).toContain('useAppStore.subscribe(');
+    expect(tradeSubscriptionsSource).toContain('currentTick !== previousTick');
+    expect(tradeSubscriptionsSource).toContain('isActiveRef.current');
+    expect(tradeSubscriptionsSource).toContain('queueTradeOverlayRelayout()');
   });
 
-  it('does not relayout position labels for crosshair-only movement', () => {
-    const positionsEffectStart = source.indexOf('// Subscribe to positions from the store and render price lines');
-    const positionsEffectEnd = source.indexOf('// ── Context menu handlers', positionsEffectStart);
-    const positionsEffect = source.slice(positionsEffectStart, positionsEffectEnd);
-
-    expect(positionsEffectStart).toBeGreaterThan(-1);
-    expect(positionsEffectEnd).toBeGreaterThan(positionsEffectStart);
-    expect(positionsEffect).not.toContain('crosshairLabelUpdater');
-    expect(positionsEffect).not.toContain('subscribeCrosshairMove(');
-    expect(positionsEffect).not.toContain('unsubscribeCrosshairMove(');
-    expect(positionsEffect).toContain('subscribeVisibleLogicalRangeChange(timeScaleHandler)');
-    expect(positionsEffect).toContain('useAppStore.subscribe(');
-    expect(positionsEffect).toContain('postInteractionCoordinatorRef.current?.request({ overlay: true })');
-    expect(positionsEffect).toContain('renderPositionLines()');
+  it('does not retain the unreachable legacy position-label overlay', () => {
+    expect(source).not.toContain('// Subscribe to positions from the store and render price lines');
+    expect(source).not.toContain('const renderPositionLines =');
+    expect(source).not.toContain('const createExecutionPin =');
   });
 
   it('keeps captured trade drags synchronous and moves idle hover scans off the pan path', () => {
     const effectStart = source.indexOf('const interactionRoot = container.parentElement ?? container;');
-    const effectEnd = source.indexOf('}, [isActive, persistTradeLevelOverrides, tradeAllowed]);', effectStart);
+    const effectEnd = source.indexOf('\n  ]);', effectStart);
     const effect = source.slice(effectStart, effectEnd);
     const hoverStart = effect.indexOf('const queueTradeHover =');
     const hoverEnd = effect.indexOf('const handlePointerDown =', hoverStart);
@@ -844,7 +888,7 @@ describe('TradingChart interaction-priority contract', () => {
 
   it('forces an autoSize-safe repaint after a Theme change without rebuilding chart data', () => {
     const layoutRefreshStart = source.indexOf('const refreshVisibleChartLayout = useCallback');
-    const layoutRefreshEnd = source.indexOf('const hideLivePriceOverlay', layoutRefreshStart);
+    const layoutRefreshEnd = source.indexOf('const resetLiveQuotePriceGuard', layoutRefreshStart);
     const layoutRefresh = source.slice(layoutRefreshStart, layoutRefreshEnd);
     const transitionStart = source.indexOf('if (previousAdvancedUntitledLightRef.current === isAdvancedUntitledLight) return;');
     const transitionEnd = source.indexOf('// getTimeframeSeconds is imported', transitionStart);

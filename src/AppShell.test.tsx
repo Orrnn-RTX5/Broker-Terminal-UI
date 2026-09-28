@@ -22,13 +22,13 @@ vi.mock('./config/backendTarget.js', async (importOriginal) => ({
 }));
 
 vi.mock('./App', () => ({
-  default: ({
+  default: function MockAuthenticatedTerminal({
     initialSessionHandoff,
     onSessionEnded,
   }: {
     initialSessionHandoff?: unknown;
     onSessionEnded?: () => void;
-  }) => {
+  }) {
     shellMocks.terminalRender(initialSessionHandoff);
     React.useEffect(() => () => shellMocks.terminalUnmount(), []);
     return (

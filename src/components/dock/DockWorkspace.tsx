@@ -7,7 +7,7 @@ import { resetWorkspaceLayout } from '../../services/resetLayout';
 import { DockContainer, FloatingPanelsLayer, GlobalEdgeIndicators } from './DockContainer';
 import { StableChartHosts } from './StableChartHosts';
 import { ErrorBoundary } from '../ErrorBoundary';
-import type { Timeframe, ChartType } from '../TradingChart';
+import type { Timeframe, ChartType } from '../../types/chart';
 import type { DockPanelConfig } from '../../services/dockManager';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import { MarketWatchPanel, type ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';

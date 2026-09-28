@@ -7,18 +7,18 @@ export function waitForTerminalReady(signal: AbortSignal): Promise<boolean> {
 
   return new Promise(resolve => {
     let settled = false;
-    let cancelWaiting: (() => void) | undefined;
+    const waiting = { cancel: undefined as (() => void) | undefined };
     const finish = (ready: boolean) => {
       if (settled) return;
       settled = true;
       signal.removeEventListener('abort', abort);
-      cancelWaiting?.();
+      waiting.cancel?.();
       resolve(ready);
     };
     const abort = () => finish(false);
     signal.addEventListener('abort', abort, { once: true });
-    cancelWaiting = runAfterTerminalReady(() => finish(!signal.aborted));
+    waiting.cancel = runAfterTerminalReady(() => finish(!signal.aborted));
     // Keep cleanup correct even if a scheduler implementation completes inline.
-    if (settled) cancelWaiting();
+    if (settled) waiting.cancel();
   });
 }

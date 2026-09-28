@@ -174,8 +174,19 @@ export const getQuoteBidMarkupOffset = (quote: QuoteLike | null | undefined): nu
   return offset > 0 ? offset : 0;
 };
 
+/** How far the displayed ask sits above the raw ask (0 for a raw quote). */
+export const getQuoteAskMarkupOffset = (quote: QuoteLike | null | undefined): number => {
+  if (!quote) return 0;
+  const ask = Number(quote.ask);
+  const rawAsk = Number(quote.rawAsk);
+  if (!Number.isFinite(ask) || !Number.isFinite(rawAsk)) return 0;
+  const offset = roundPriceToDigits(ask - rawAsk, MAX_DIGITS);
+  return offset > 0 ? offset : 0;
+};
+
 const stripSpreadMarkupTag = <T extends QuoteLike>(quote: T): T => {
   const { rawBid, rawAsk, spreadMarkup: _spreadMarkup, ...rest } = quote;
+  void _spreadMarkup;
   const bid = rawBid ?? (quote.bid as number);
   const ask = rawAsk ?? (quote.ask as number);
   const next = { ...rest, bid, ask } as T;
@@ -193,7 +204,7 @@ const stripSpreadMarkupTag = <T extends QuoteLike>(quote: T): T => {
 export const applySpreadMarkupToQuote = <T extends QuoteLike>(
   quote: T,
   entry: SpreadMarkupEntry | null | undefined,
-): T => {
+): T & SpreadMarkupQuoteTag => {
   if (!quote || typeof quote !== 'object') return quote;
   const tagged = quote.rawBid !== undefined || quote.rawAsk !== undefined || quote.spreadMarkup !== undefined;
   const offset = getSpreadMarkupOffset(entry);
@@ -214,7 +225,7 @@ export const applySpreadMarkupToQuote = <T extends QuoteLike>(
     rawBid: hasBid ? rawBid : undefined,
     rawAsk: hasAsk ? rawAsk : undefined,
     spreadMarkup: entry.points,
-  } as T;
+  } as T & SpreadMarkupQuoteTag;
   if (isPositiveFinite(bid) && isPositiveFinite(ask)) {
     (next as QuoteLike).spread = roundPriceToDigits(Math.max(0, (ask as number) - (bid as number)), entry.digits);
   }

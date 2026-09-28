@@ -1,0 +1,56 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate source, tests, and builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check tracked secrets
+        run: npm run check:secrets
+
+      - name: Check documentation links
+        run: npm run check:docs
+
+      - name: Check architecture boundaries
+        run: npm run check:architecture
+
+      - name: Check lint debt does not increase
+        run: npm run check:lint-baseline
+
+      - name: Typecheck application and tests
+        run: |
+          npm run typecheck
+          npm run typecheck:tests
+
+      - name: Run automated tests
+        run: npm run test:run -- --pool=threads --maxWorkers=2
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Build web and Electron renderers
+        run: |
+          npm run build:web
+          npm run build:electron

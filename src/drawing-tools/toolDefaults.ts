@@ -1,6 +1,7 @@
 import type { TrendLineToolId } from './toolCatalog';
+import type { RegressionSource } from './model/drawing';
 
-export type RegressionSource = 'open' | 'high' | 'low' | 'close' | 'hl2';
+export type { RegressionSource } from './model/drawing';
 
 export interface TrendToolRuntimeDefaults {
   channelMidpointRatio?: number;

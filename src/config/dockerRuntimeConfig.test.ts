@@ -32,6 +32,8 @@ const createContainer = (buildEnv: Record<string, string> = {}, template = built
     ...buildEnv,
   }));
   writeFileSync(path, built);
+  const runtimeTemplatePath = join(directory, 'runtime-config.template.js');
+  writeFileSync(runtimeTemplatePath, built);
   const templatePath = join(directory, 'index.template.html');
   const indexPath = join(directory, 'index.html');
   writeFileSync(templatePath, template);
@@ -43,6 +45,7 @@ const createContainer = (buildEnv: Record<string, string> = {}, template = built
         ...env,
         NGINX_HTML_DIR: directory.replace(/\\/g, '/'),
         NGINX_INDEX_TEMPLATE: templatePath.replace(/\\/g, '/'),
+        NGINX_RUNTIME_CONFIG_TEMPLATE: runtimeTemplatePath.replace(/\\/g, '/'),
         NGINX_INLINE_HELPER: resolve('docker-inline-runtime-config.awk').replace(/\\/g, '/'),
         ...overrides,
       },
@@ -50,7 +53,7 @@ const createContainer = (buildEnv: Record<string, string> = {}, template = built
     });
     return { built, source: readFileSync(path, 'utf8'), html: readFileSync(indexPath, 'utf8') };
   };
-  return { start, directory, templatePath, indexPath, configPath: path };
+  return { start, directory, templatePath, runtimeTemplatePath, indexPath, configPath: path };
 };
 
 const generate = (overrides: Record<string, string> = {}) => createContainer().start(overrides);
@@ -69,6 +72,14 @@ const evaluate = (source: string) => {
   new Function('window', 'navigator', source)(runtimeWindow, { userAgent: 'Mozilla/5.0' });
   return runtimeWindow;
 };
+
+describe('Docker runtime image contract', () => {
+  it('ships immutable HTML and runtime-config templates for restart-safe generation', () => {
+    const dockerfile = readFileSync(resolve('Dockerfile'), 'utf8');
+    expect(dockerfile).toContain('COPY --from=build /app/dist/index.html /etc/nginx/rtx-index.template.html');
+    expect(dockerfile).toContain('COPY --from=build /app/dist/runtime-config.js /etc/nginx/rtx-runtime-config.template.js');
+  });
+});
 
 describe.skipIf(!existsSync(shell))('container broker environment', {
   timeout: process.platform === 'win32' ? 90000 : 10000,
@@ -114,6 +125,64 @@ describe.skipIf(!existsSync(shell))('container broker environment', {
     expect(runtimeWindow.RUNTIME_CONFIG).toEqual({ selectedByDesktop: true });
   });
 
+  it.each([
+    ['BACKEND_TARGET', 'gateway', { BACKEND_TARGET: 'gateway' }],
+    ['API_HOST', 'https://api.override.test/', { API_HOST: 'https://api.override.test' }],
+    ['API_HOST_EXT', 'https://external.override.test/', { API_HOST_EXT: 'https://external.override.test' }],
+    ['WS_HOST', 'wss://stream.override.test/', { WS_HOST: 'wss://stream.override.test' }],
+    ['DEFAULT_MT5_SERVER', 'Override MT5', { DEFAULT_MT5_SERVER: 'Override MT5' }],
+    ['DISCOVERY_BASE_URL', 'https://directory.override.test/', {
+      DISCOVERY_BASE_URL: 'https://directory.override.test',
+      BROKER_DISCOVERY_URL: 'https://directory.override.test',
+    }],
+    ['BROKER_ID', 'override-broker', {
+      BROKER_ID: 'override-broker', VITE_BROKER_ID: 'override-broker', FEED_BROKER_ID: 'override-broker',
+    }],
+    ['FEED_BROKER_ID', 'override-feed', { FEED_BROKER_ID: 'override-feed' }],
+    ['USE_MOCK_DISCOVERY', 'true', { USE_MOCK_DISCOVERY: true }],
+  ] as const)('merges a partial %s override without resetting built fields', (name, value, expected) => {
+    const { built, source, html } = generate({ [name]: value });
+    const builtConfig = evaluate(built).RUNTIME_CONFIG;
+    const actual = evaluate(inlineScript(html)).RUNTIME_CONFIG;
+    expect(actual).toEqual({ ...builtConfig, ...expected });
+    expect(source).not.toBe(built);
+  });
+
+  it('supports public Vite aliases as a sparse deployment overlay', () => {
+    const { built, html } = generate({
+      VITE_BACKEND_MODE: 'alias-mode',
+      VITE_API_URL: 'https://alias-api.test/',
+      VITE_API_URL_EXT: 'https://alias-external.test/',
+      VITE_WS_URL: 'wss://alias-stream.test/',
+      VITE_DEFAULT_MT5_SERVER: 'Alias MT5',
+      VITE_BROKER_DISCOVERY_URL: 'https://alias-directory.test/',
+      VITE_BROKER_ID: 'alias-broker',
+      VITE_FEED_BROKER_ID: 'alias-feed',
+      VITE_USE_MOCK_DISCOVERY: 'yes',
+    });
+    expect(evaluate(inlineScript(html)).RUNTIME_CONFIG).toEqual({
+      ...evaluate(built).RUNTIME_CONFIG,
+      BACKEND_TARGET: 'alias-mode',
+      API_HOST: 'https://alias-api.test',
+      API_HOST_EXT: 'https://alias-external.test',
+      WS_HOST: 'wss://alias-stream.test',
+      DEFAULT_MT5_SERVER: 'Alias MT5',
+      DISCOVERY_BASE_URL: 'https://alias-directory.test',
+      BROKER_DISCOVERY_URL: 'https://alias-directory.test',
+      BROKER_ID: 'alias-broker',
+      VITE_BROKER_ID: 'alias-broker',
+      FEED_BROKER_ID: 'alias-feed',
+      USE_MOCK_DISCOVERY: true,
+    });
+  });
+
+  it('does not publish unrecognized server-only environment values', () => {
+    const { built, source, html } = generate({ FEED_BROKER_TOKEN: 'server-only-value' });
+    expect(source).toBe(built);
+    expect(html).not.toContain('server-only-value');
+    expect(evaluate(inlineScript(html)).RUNTIME_CONFIG).toEqual(evaluate(built).RUNTIME_CONFIG);
+  });
+
   it('maps the complete Orrnn raw deployment profile to browser runtime fields', () => {
     const { html } = generate({
       BACKEND_TARGET: 'web',
@@ -133,6 +202,7 @@ describe.skipIf(!existsSync(shell))('container broker environment', {
       WS_HOST: 'wss://service.orrnn.com',
       DEFAULT_MT5_SERVER: 'Orrnn',
       DISCOVERY_BASE_URL: 'https://superadmin-prod.orrnn.com',
+      BROKER_DISCOVERY_URL: 'https://superadmin-prod.orrnn.com',
       BROKER_ID: 'Orrnn',
       VITE_BROKER_ID: 'Orrnn',
       FEED_BROKER_ID: 'Orrnn',
@@ -167,8 +237,13 @@ describe.skipIf(!existsSync(shell))('container broker environment', {
       BROKER_ID: 'second', API_HOST: 'https://second.test',
     });
     expect(second.html).not.toContain('https://first.test');
-    expect(container.start().html).toBe(second.html);
+    const withoutOverrides = container.start();
+    expect(withoutOverrides.source).toBe(withoutOverrides.built);
+    expect(withoutOverrides.html).not.toContain('https://first.test');
+    expect(withoutOverrides.html).not.toContain('https://second.test');
+    expect(evaluate(inlineScript(withoutOverrides.html)).RUNTIME_CONFIG.BROKER_ID).toBe('TEST');
     expect(readFileSync(container.templatePath, 'utf8')).toBe(builtHtml);
+    expect(readFileSync(container.runtimeTemplatePath, 'utf8')).toBe(first.built);
   });
 
   it.each(['missing', 'duplicate'] as const)('fails before publishing a %s script marker', (kind) => {
@@ -192,9 +267,18 @@ describe.skipIf(!existsSync(shell))('container broker environment', {
     expect(readFileSync(container.indexPath, 'utf8')).toBe(builtHtml);
   });
 
+  it('fails closed when the built runtime configuration is missing', () => {
+    const container = createContainer();
+    rmSync(container.runtimeTemplatePath);
+    expect(() => container.start({ BROKER_ID: 'wrong' }))
+      .toThrow(/missing readable nonempty built runtime configuration/);
+    expect(readFileSync(container.indexPath, 'utf8')).toBe(builtHtml);
+    expect(readdirSync(container.directory).filter(name => name.startsWith('.'))).toEqual([]);
+  });
+
   it('rejects unexpected unsafe preserved source without publishing HTML', () => {
     const container = createContainer();
-    writeFileSync(container.configPath, 'window.RUNTIME_CONFIG = { BROKER_ID: "</script><script>bad()</script>" };');
+    writeFileSync(container.runtimeTemplatePath, 'window.RUNTIME_CONFIG = { BROKER_ID: "</script><script>bad()</script>" };');
     expect(() => container.start()).toThrow(/unsafe HTML script delimiter/);
     expect(readFileSync(container.indexPath, 'utf8')).toBe(builtHtml);
   });

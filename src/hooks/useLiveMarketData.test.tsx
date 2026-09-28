@@ -26,6 +26,11 @@ import {
   getAccountSpreadMarkupMap,
   resetAccountSpreadMarkupForTests,
 } from '../services/accountSpreadMarkup';
+import { commitBrokerAccountSessionScope } from '../services/brokerSession';
+import {
+  registerDailyChangePriceModes,
+  resetDailyChangePriceModeRegistryForTests,
+} from '../services/dailyChangePriceModeRegistry';
 
 const apiGet = vi.hoisted(() => vi.fn());
 const apiPut = vi.hoisted(() => vi.fn());
@@ -294,11 +299,20 @@ describe('useLiveQuotes REST fallback batching', () => {
     useQuoteSubscriptionMock.mockReturnValue({ isConnected: true });
     useAppStore.setState({ isAuthenticated: true, ticks: {}, tickLookup: {} });
     useMarketDataStore.getState().clearAllData();
+    commitBrokerAccountSessionScope({
+      authenticated: true,
+      accountId: 'live-quote-test',
+      brokerId: 'live-quote-test',
+      serverUrl: 'https://live-quote.test',
+    });
+    resetDailyChangePriceModeRegistryForTests();
   });
 
   afterEach(() => {
     useAppStore.setState({ isAuthenticated: false, ticks: {}, tickLookup: {} });
     useMarketDataStore.getState().clearAllData();
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+    resetDailyChangePriceModeRegistryForTests();
     vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -338,6 +352,297 @@ describe('useLiveQuotes REST fallback batching', () => {
       ask: 4604.54,
       dailyChange: 0.45,
     }));
+
+    unmount();
+  });
+
+  it('uses Last chart mode and clearing price for the REST Daily Change fallback', async () => {
+    apiGet.mockResolvedValueOnce({
+      quotes: [{
+        symbol: 'FUTURE.LAST',
+        bid: 110,
+        ask: 111,
+        last: 120,
+        chart_mode: 'SYMBOL_CHART_MODE_LAST',
+        clearing_price: 80,
+        previous_close: 100,
+        timestamp_ms: 1_777_000_000_000,
+      }],
+    });
+
+    const { unmount } = renderHook(() => useLiveQuotes(['FUTURE.LAST']));
+    await flushPromises();
+
+    expect(enqueueLiveTick).toHaveBeenCalledWith('FUTURE.LAST', expect.objectContaining({
+      dailyChange: 50,
+    }));
+
+    unmount();
+  });
+
+  it('accepts an explicit Last-mode REST row without Bid/Ask', async () => {
+    apiGet.mockResolvedValueOnce({
+      quotes: [{
+        symbol: 'FUTURE.LAST-ONLY',
+        last_price: 120,
+        chartMode: 1,
+        settlement_price: 80,
+        previous_close: 100,
+        timestamp_ms: 1_777_000_000_000,
+      }],
+    });
+
+    const { unmount } = renderHook(() => useLiveQuotes(['FUTURE.LAST-ONLY']));
+    await flushPromises();
+
+    expect(enqueueLiveTick).toHaveBeenCalledWith('FUTURE.LAST-ONLY', expect.objectContaining({
+      bid: 0,
+      ask: 0,
+      last: 120,
+      dailyChange: 50,
+    }));
+
+    unmount();
+  });
+
+  it('uses wrapped REST chart mode before catalog mode while preserving child authority', async () => {
+    registerDailyChangePriceModes([
+      { symbol: 'REST.WRAPPED.BID', brokerSpecification: { chart_mode: 1 } },
+      { symbol: 'REST.WRAPPED.LAST', brokerSpecification: { chart_mode: 0 } },
+      { symbol: 'REST.CHILD.LAST', brokerSpecification: { chart_mode: 0 } },
+      { symbol: 'REST.CHILD.UNKNOWN', brokerSpecification: { chart_mode: 0 } },
+    ]);
+    apiGet.mockResolvedValueOnce({
+      quotes: [
+        {
+          chart_mode: 0,
+          data: { quote: {
+            symbol: 'REST.WRAPPED.BID',
+            bid: 110,
+            ask: 111,
+            last: 120,
+            previous_close: 100,
+            timestamp_ms: 1_777_000_000_000,
+          } },
+        },
+        {
+          chart_mode: 1,
+          data: { quote: {
+            symbol: 'REST.WRAPPED.LAST',
+            bid: 110,
+            ask: 111,
+            last: 120,
+            previous_close: 100,
+            timestamp_ms: 1_777_000_000_000,
+          } },
+        },
+        {
+          chart_mode: 0,
+          data: { quote: {
+            symbol: 'REST.CHILD.LAST',
+            bid: 110,
+            ask: 111,
+            last: 120,
+            chart_mode: 1,
+            previous_close: 100,
+            timestamp_ms: 1_777_000_000_000,
+          } },
+        },
+        {
+          chart_mode: 1,
+          data: { quote: {
+            symbol: 'REST.CHILD.UNKNOWN',
+            bid: 110,
+            ask: 111,
+            last: 120,
+            chart_mode: 'future-mode',
+            previous_close: 100,
+            timestamp_ms: 1_777_000_000_000,
+          } },
+        },
+      ],
+    });
+
+    const { unmount } = renderHook(() => useLiveQuotes([
+      'REST.WRAPPED.BID',
+      'REST.WRAPPED.LAST',
+      'REST.CHILD.LAST',
+      'REST.CHILD.UNKNOWN',
+    ]));
+    await flushPromises();
+
+    expect(enqueueLiveTick.mock.calls.map(([, tick]) => tick.dailyChange)).toEqual([10, 20, 20, 10]);
+    unmount();
+  });
+
+  it('composes wrapped REST Daily Change fields by nearest semantic alias group', async () => {
+    apiGet.mockResolvedValueOnce({
+      quotes: [
+        {
+          daily_change_pct: 0.75,
+          data: { quote: {
+            symbol: 'REST.OUTER.PERCENT',
+            bid: 110,
+            ask: 111,
+            previous_close: 100,
+            timestamp_ms: 1_777_000_000_000,
+          } },
+        },
+        {
+          daily_change_pct: 0.75,
+          data: { quote: {
+            symbol: 'REST.CHILD.PERCENT',
+            bid: 110,
+            ask: 111,
+            dailyChangePct: 0.25,
+            previous_close: 100,
+            timestamp_ms: 1_777_000_000_000,
+          } },
+        },
+        {
+          chart_mode: 1,
+          last: 120,
+          settlement_price: 80,
+          previous_close: 100,
+          data: { quote: {
+            symbol: 'REST.OUTER.BASELINE',
+            bid: 110,
+            ask: 111,
+            timestamp_ms: 1_777_000_000_000,
+          } },
+        },
+        {
+          previous_close: 100,
+          data: { quote: {
+            symbol: 'REST.CHILD.BLOCKS.CLOSE',
+            bid: 110,
+            ask: 111,
+            previousClose: 'unknown',
+            timestamp_ms: 1_777_000_000_000,
+          } },
+        },
+      ],
+    });
+
+    const { unmount } = renderHook(() => useLiveQuotes([
+      'REST.OUTER.PERCENT',
+      'REST.CHILD.PERCENT',
+      'REST.OUTER.BASELINE',
+      'REST.CHILD.BLOCKS.CLOSE',
+    ]));
+    await flushPromises();
+
+    expect(enqueueLiveTick.mock.calls.map(([, tick]) => ({
+      dailyChange: tick.dailyChange,
+      last: tick.last,
+    }))).toEqual([
+      { dailyChange: 0.75, last: undefined },
+      { dailyChange: 0.25, last: undefined },
+      { dailyChange: 50, last: 120 },
+      { dailyChange: undefined, last: undefined },
+    ]);
+    unmount();
+  });
+
+  it('preserves intermediate REST metadata, invalid blockers, symbols, and broker time', async () => {
+    apiGet.mockResolvedValueOnce({
+      quotes: [
+        {
+          daily_change_pct: 0.9,
+          timestamp: 1_725_000_000,
+          data: {
+            daily_change_pct: 0.75,
+            timestamp: 1_725_000_001,
+            quote: {
+              symbol: 'REST.NESTED.PERCENT',
+              bid: 110,
+              ask: 111,
+              previous_close: 100,
+            },
+          },
+        },
+        {
+          daily_change_pct: 0.9,
+          data: {
+            dailyChangePct: 'unknown',
+            timestamp: 1_725_000_002,
+            quote: {
+              symbol: 'REST.NESTED.BLOCK',
+              bid: 110,
+              ask: 111,
+              previous_close: 100,
+            },
+          },
+        },
+        {
+          chart_mode: 0,
+          data: {
+            symbol: 'REST.NESTED.LAST',
+            bid: 90,
+            ask: 91,
+            chart_mode: 1,
+            last: 120,
+            settlement_price: 80,
+            timestamp: 1_725_000_003,
+            quote: { bid: 110, ask: 111 },
+          },
+        },
+      ],
+    });
+
+    const { unmount } = renderHook(() => useLiveQuotes([
+      'REST.NESTED.PERCENT',
+      'REST.NESTED.BLOCK',
+      'REST.NESTED.LAST',
+    ]));
+    await flushPromises();
+
+    expect(enqueueLiveTick.mock.calls.map(([symbol, tick]) => ({
+      symbol,
+      bid: tick.bid,
+      dailyChange: tick.dailyChange,
+      last: tick.last,
+      sourceTimestamp: tick.sourceTimestamp,
+    }))).toEqual([
+      {
+        symbol: 'REST.NESTED.PERCENT',
+        bid: 110,
+        dailyChange: 0.75,
+        last: undefined,
+        sourceTimestamp: 1_725_000_001_000,
+      },
+      {
+        symbol: 'REST.NESTED.BLOCK',
+        bid: 110,
+        dailyChange: 10,
+        last: undefined,
+        sourceTimestamp: 1_725_000_002_000,
+      },
+      {
+        symbol: 'REST.NESTED.LAST',
+        bid: 110,
+        dailyChange: 50,
+        last: 120,
+        sourceTimestamp: 1_725_000_003_000,
+      },
+    ]);
+    unmount();
+  });
+
+  it('does not infer Last chart mode for an ambiguous Last-only REST row', async () => {
+    apiGet.mockResolvedValueOnce({
+      quotes: [{
+        symbol: 'AMBIGUOUS.LAST-ONLY',
+        last: 120,
+        previous_close: 100,
+        timestamp_ms: 1_777_000_000_000,
+      }],
+    });
+
+    const { unmount } = renderHook(() => useLiveQuotes(['AMBIGUOUS.LAST-ONLY']));
+    await flushPromises();
+
+    expect(enqueueLiveTick).not.toHaveBeenCalled();
 
     unmount();
   });

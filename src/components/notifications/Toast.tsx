@@ -22,6 +22,13 @@ interface ToastProps {
 export const Toast: React.FC<ToastProps> = ({ notification }) => {
   const [isExiting, setIsExiting] = useState(false);
 
+  const handleDismiss = () => {
+    setIsExiting(true);
+    setTimeout(() => {
+      notification.onDismiss();
+    }, 200); // Match animation duration
+  };
+
   // Auto-dismiss based on severity
   useEffect(() => {
     if (notification.severity === 'critical') {
@@ -40,13 +47,6 @@ export const Toast: React.FC<ToastProps> = ({ notification }) => {
 
     return () => clearTimeout(timer);
   }, [notification.severity]);
-
-  const handleDismiss = () => {
-    setIsExiting(true);
-    setTimeout(() => {
-      notification.onDismiss();
-    }, 200); // Match animation duration
-  };
 
   const getSeverityConfig = () => {
     switch (notification.severity) {

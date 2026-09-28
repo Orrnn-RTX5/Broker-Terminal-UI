@@ -7,15 +7,19 @@ const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 
 describe('authenticated startup trade-snapshot ownership contract', () => {
   it('shares account and position hydration between App and Toolbox', () => {
     const app = readSource('src/App.tsx');
-    const heartbeatStart = app.indexOf('const fetchAccountHeartbeat = async');
-    const heartbeatEnd = app.indexOf('// NOTE: positions are now written', heartbeatStart);
-    const heartbeat = app.slice(heartbeatStart, heartbeatEnd);
+    const accountSnapshotRuntime = readSource('src/app/trading/useAccountSnapshotRuntime.ts');
+    const heartbeatStart = accountSnapshotRuntime.indexOf('const fetchAccountHeartbeat = async');
+    const heartbeatEnd = accountSnapshotRuntime.indexOf('void fetchAccountHeartbeat(true)', heartbeatStart);
+    const heartbeat = accountSnapshotRuntime.slice(heartbeatStart, heartbeatEnd);
 
     const toolbox = readSource('src/hooks/useToolboxTradeData.ts');
     const refreshStart = toolbox.indexOf('const refresh = useCallback(async () => {');
     const refreshEnd = toolbox.indexOf('const removePosition = useCallback', refreshStart);
     const refresh = toolbox.slice(refreshStart, refreshEnd);
 
+    expect(app).toContain("import { useAccountSnapshotRuntime } from './app/trading/useAccountSnapshotRuntime'");
+    expect(app).toContain('useAccountSnapshotRuntime({');
+    expect(app).toContain('setInitialTradeSnapshotSettledFor,');
     expect(heartbeat).toContain('loadSessionTradeSnapshot(loginId)');
     expect(heartbeat).not.toContain('api.account.getAccountSummary(loginId)');
     expect(heartbeat).not.toContain('api.positions.getPositions(loginId)');

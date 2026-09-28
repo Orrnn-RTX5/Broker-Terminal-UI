@@ -1,20 +1,4 @@
-export interface AnnotationStyle {
-  fontSize?: number;
-  bold?: boolean;
-  italic?: boolean;
-  border?: boolean;
-  textColor?: string;
-  tableData?: string[][];
-  cellWidth?: number;
-  cellHeight?: number;
-  imageUrl?: string;
-  width?: number;
-  height?: number;
-  opacity?: number;
-  url?: string;
-  wrapWidth?: number;
-  align?: 'left' | 'center' | 'right';
-}
+export type { AnnotationStyle } from './model/drawing';
 
 export const ANNOTATION_TOOLS = [
   { id: 'text', label: 'Text', requiredPoints: 1, editOnCreate: true, group: 'Text and notes' },

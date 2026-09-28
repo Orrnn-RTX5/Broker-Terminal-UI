@@ -7,14 +7,20 @@ const readSource = (path: string): string => readFileSync(resolve(process.cwd(),
 
 const indexCss = readSource('src/index.css');
 const lightCss = readSource('src/styles/enterprise-light.css');
-const legacyLightCss = readSource('src/styles/advanced-untitled-light.css');
+const legacyLightCss = readSource('src/styles/legacy-light-overrides.css');
 const dataWindowSource = readSource('src/components/DataWindow.tsx');
 const confirmDialogSource = readSource('src/components/ui/ConfirmDialog.tsx');
 const optionsDialogSource = readSource('src/components/settings/OptionsDialog.tsx');
 const chartTemplateSource = readSource('src/components/ChartTemplateDialog.tsx');
 const symbolsDialogSource = readSource('src/components/SymbolsDialog.tsx');
 const chartSettingsSource = readSource('src/store/useChartSettingsStore.ts');
-const marketWatchSource = readSource('src/components/layout/MarketWatchPanel.tsx');
+const marketWatchSource = [
+  readSource('src/components/market-watch/MarketWatchPanel.tsx'),
+  readSource('src/components/market-watch/MarketWatchGrid.tsx'),
+  readSource('src/components/market-watch/MarketWatchSymbolExplorer.tsx'),
+  readSource('src/components/market-watch/MarketWatchRow.tsx'),
+  readSource('src/components/market-watch/marketWatchPanelModel.ts'),
+].join('\n');
 
 const readHexToken = (name: string): string => {
   const match = lightCss.match(new RegExp(`${name}:\\s*(#[0-9a-f]{6});`, 'i'));
@@ -45,7 +51,7 @@ const contrastRatio = (foreground: string, background: string): number => {
 
 describe('enterprise light visual-system contract', () => {
   it('loads the final light layer after the legacy advanced skin', () => {
-    const legacyIndex = indexCss.indexOf('@import "./styles/advanced-untitled-light.css";');
+    const legacyIndex = indexCss.indexOf('@import "./styles/legacy-light-overrides.css";');
     const enterpriseIndex = indexCss.indexOf('@import "./styles/enterprise-light.css";');
 
     expect(legacyIndex).toBeGreaterThan(-1);
@@ -189,7 +195,7 @@ describe('enterprise light visual-system contract', () => {
     const overrides: string[] = [];
     for (const path of [
       'src/styles/enterprise-light.css',
-      'src/styles/advanced-untitled-light.css',
+      'src/styles/legacy-light-overrides.css',
       'src/styles/theme.css',
       'src/styles/surface-finish.css',
       'src/index.css',

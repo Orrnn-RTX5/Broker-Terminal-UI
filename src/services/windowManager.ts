@@ -71,7 +71,7 @@ export class WindowManager {
         });
         break;
 
-      case 'grid':
+      case 'grid': {
         // Arrange in grid (2x2, 3x3, etc.)
         const cols = Math.ceil(Math.sqrt(count));
         this.charts.forEach((chart, i) => {
@@ -81,6 +81,7 @@ export class WindowManager {
           };
         });
         break;
+      }
     }
   }
 
@@ -115,10 +116,11 @@ export class WindowManager {
         return { rows: 1, cols: count };
       case 'vertical':
         return { rows: count, cols: 1 };
-      case 'grid':
+      case 'grid': {
         const cols = Math.ceil(Math.sqrt(count));
         const rows = Math.ceil(count / cols);
         return { rows, cols };
+      }
       default:
         return { rows: 1, cols: 1 };
     }

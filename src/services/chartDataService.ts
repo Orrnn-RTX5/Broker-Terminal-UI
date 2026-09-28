@@ -4,6 +4,7 @@
  */
 
 import type { TickData } from '../types/history';
+import type { FetchCandlesOptions, OHLCData } from '../types/chartData';
 import { getPublicBackendTarget, isDesktopBackendTarget } from '../config/backendTarget.js';
 import {
   API_V2_BASE_URL,
@@ -40,31 +41,10 @@ import {
   readCandleFinality,
 } from '../utils/brokerStreamSemantics';
 
-export type OHLCData = {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  tickVolume?: number;
-  realVolume?: number;
-  closed?: boolean;
-};
+export type { FetchCandlesOptions, OHLCData } from '../types/chartData';
 
 export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
 export type ApiTimeframe = BackendCandleTimeframe;
-
-export interface FetchCandlesOptions {
-  symbol: string;
-  timeframe: string;
-  count?: number;
-  from?: number;
-  to?: number;
-  signal?: AbortSignal;
-  /** The snapshot started before this chart mounted; retain all observed live mutations. */
-  onStartupPrefetchConsumed?: () => void;
-}
 
 export interface CandleStreamOptions {
   symbol: string;
@@ -472,6 +452,7 @@ export class ChartDataService {
 
     return {
       time,
+      ...(tf === 'D1' ? { sourceTime: rawTime } : {}),
       open,
       high,
       low,

@@ -1,11 +1,8 @@
 import type { DockLayout, DockPanelConfig } from '../services/dockManager';
+import type { ChartSymbolTab } from '../types/dock';
 import { normalizeExactBrokerSymbol } from './exactBrokerSymbol';
 
-export interface ChartSymbolTab {
-  symbol: string;
-  timeframe: string;
-  chartType?: string;
-}
+export type { ChartSymbolTab } from '../types/dock';
 
 /** Hidden dock tabs are one window; tiled and floating chart panes are separate windows. */
 export const hasArrangedChartWindows = (layout: DockLayout): boolean => {

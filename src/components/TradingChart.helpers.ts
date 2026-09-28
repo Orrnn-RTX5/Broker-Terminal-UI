@@ -1,5 +1,12 @@
 import type { Time } from 'lightweight-charts';
 import { CHART_CANDLE_DOWN_COLOR, CHART_CANDLE_UP_COLOR, type ChartProperties } from '../store/useChartSettingsStore';
+import type {
+  Candle,
+  ChartType,
+  LivePriceOverlayColors,
+  Timeframe,
+  TradingViewChartTheme,
+} from '../types/chart';
 import {
   buildMarketClosedGapSeries,
   getMarketGapTimeframeSeconds,
@@ -16,20 +23,13 @@ import {
 } from '../utils/candleHistory';
 import { sanitizePriceCandles } from '../services/chartPriceGuards';
 
-export type ChartType = 'candlestick' | 'bar' | 'line' | 'area';
-export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
-
-export interface Candle {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  tickVolume?: number;
-  realVolume?: number;
-  closed?: boolean;
-}
+export type {
+  Candle,
+  ChartType,
+  LivePriceOverlayColors,
+  Timeframe,
+  TradingViewChartTheme,
+} from '../types/chart';
 
 // FIX: Preserve explicit backend finality and infer it only when a legacy
 // candle frame omits the flag and an authoritative period boundary is known.
@@ -77,39 +77,6 @@ export interface FormattedVolumeDatum {
   time: Time;
   value: number;
   color: string;
-}
-
-export interface TradingViewChartTheme {
-  background: string;
-  text: string;
-  axisText: string;
-  gridVertical: string;
-  gridHorizontal: string;
-  scaleBorder: string;
-  crosshair: string;
-  candleUp: string;
-  candleDown: string;
-  barUp: string;
-  barDown: string;
-  wickUp: string;
-  wickDown: string;
-  line: string;
-  areaTop: string;
-  areaBottom: string;
-  areaUpLine: string;
-  areaUpTop: string;
-  areaUpBottom: string;
-  areaDownLine: string;
-  areaDownTop: string;
-  areaDownBottom: string;
-  volumeUp: string;
-  volumeDown: string;
-}
-
-export interface LivePriceOverlayColors {
-  lineColor: string;
-  badgeBackground: string;
-  badgeTextColor: '#000000' | '#ffffff';
 }
 
 export const LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX = 52;

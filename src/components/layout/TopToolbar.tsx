@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useState, useRef, useSyncExternalSto
 import ReactDOM from 'react-dom';
 import { Icon } from '../ui/Icon';
 import { ChartCommandIcon, type ChartCommandIconName } from './ChartCommandIcon';
-import type { ChartType, Timeframe } from '../TradingChart';
+import type { ChartType, Timeframe } from '../../types/chart';
 import {
     Minus, Square, Copy, RotateCcw, X
 } from 'lucide-react';

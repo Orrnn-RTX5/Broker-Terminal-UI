@@ -1,4 +1,4 @@
-import type { Candle } from '../components/TradingChart.helpers';
+import type { Candle } from '../types/chart';
 
 export interface ChartDataSnapshot {
   symbol: string;

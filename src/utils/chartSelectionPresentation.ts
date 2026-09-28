@@ -1,23 +1,14 @@
-export interface ChartSelectionPresentationKeyParts {
-  sessionScope: string | number;
-  symbol: string;
-  timeframe: string;
-}
+import type {
+  ChartSelectionPresentationGate,
+  ChartSelectionPresentationKeyParts,
+  FirstLiveSelectionBaselineInput,
+} from '../types/chart';
 
-export interface ChartSelectionPresentationGate {
-  selectionKey: string;
-  livePaintAllowed: boolean;
-}
-
-export interface FirstLiveSelectionBaselineInput {
-  gate: ChartSelectionPresentationGate;
-  selectionKey: string;
-  active: boolean;
-  disposed: boolean;
-  rebuilding: boolean;
-  hasSeries: boolean;
-  hasCurrentCandle: boolean;
-}
+export type {
+  ChartSelectionPresentationGate,
+  ChartSelectionPresentationKeyParts,
+  FirstLiveSelectionBaselineInput,
+} from '../types/chart';
 
 const normalizeSelectionPart = (value: unknown): string => (
   String(value ?? '').trim().toUpperCase()

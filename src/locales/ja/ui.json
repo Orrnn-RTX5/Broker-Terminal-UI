@@ -536,6 +536,7 @@
   "Enter the account holder information": "口座名義人の情報を入力",
   "Enter workspace name": "ワークスペース名を入力してください",
   "Entry / close arrows": "エントリー/クローズ矢印",
+  "Entry / close line": "?????/???????",
   "Entry price": "入場料",
   "Entry-to-close line": "エントリーからクローズまでのライン",
   "Equidistant Channel": "等距離チャネル",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "表示する銘柄がありません",
   "Add a symbol to Market Watch, then open Popup Prices again.": "気配値表示に銘柄を追加してから、もう一度ポップアップ価格を開いてください。",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "最初の {{value0}} 件の銘柄を表示しています。気配値表示にはあと {{value1}} 件残っています。",
-  "Resize Popup Prices dialog": "ポップアップ価格ダイアログのサイズを変更する"
+  "Resize Popup Prices dialog": "ポップアップ価格ダイアログのサイズを変更する",
+  "Details": "詳細",
+  "Tick Size": "ティックサイズ",
+  "Tick Value": "ティック値",
+  "Bid High": "買気配高値",
+  "Bid Low": "買気配安値",
+  "Ask High": "売気配高値",
+  "Ask Low": "売気配安値",
+  "Last quote": "最終気配値"
 }

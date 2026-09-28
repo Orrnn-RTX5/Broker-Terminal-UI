@@ -3,7 +3,7 @@
  * immediately while broker M1 history remains the higher-timeframe source.
  */
 
-import type { OHLCData } from './chartDataService';
+import type { OHLCData } from '../types/chartData';
 import { onSessionChange } from './brokerSession';
 
 export type CandleCacheKey = string & { readonly __brand: 'CandleCacheKey' };

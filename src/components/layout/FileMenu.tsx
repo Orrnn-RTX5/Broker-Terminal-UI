@@ -245,7 +245,9 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 setActiveProfileName(result.profile.name);
                 try {
                     localStorage.setItem('rtx5_active_profile', result.profile.name);
-                } catch {}
+                } catch {
+                    // Profile restoration remains valid when persistent storage is unavailable.
+                }
                 onProfileRestored?.(result.profile.name);
                 setProfilesOpen(false);
             }
@@ -282,7 +284,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
             setWorkspaceProfiles(listWorkspaceProfiles(effectiveAccount));
             if (activeProfileName.toLowerCase() === profileNameToDelete.toLowerCase()) {
                 setActiveProfileName('Default');
-                try { localStorage.setItem('rtx5_active_profile', 'Default'); } catch {}
+                try {
+                    localStorage.setItem('rtx5_active_profile', 'Default');
+                } catch {
+                    // The in-memory profile selection is still authoritative for this session.
+                }
             }
         }
         setDeleteSubmenuOpen(false);
@@ -790,7 +796,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         setShowSaveDialog(false);
                         if (workspaceName) {
                             setActiveProfileName(workspaceName);
-                            try { localStorage.setItem('rtx5_active_profile', workspaceName); } catch {}
+                            try {
+                                localStorage.setItem('rtx5_active_profile', workspaceName);
+                            } catch {
+                                // Saving the workspace can continue without persisting its active label.
+                            }
                         }
                         onSave?.(workspaceName);
                     }}

@@ -536,6 +536,7 @@
   "Enter the account holder information": "أدخل معلومات صاحب الحساب",
   "Enter workspace name": "أدخل اسم مساحة العمل",
   "Entry / close arrows": "أسهم الإدخال/الإغلاق",
+  "Entry / close line": "?? ??????/???????",
   "Entry price": "سعر الدخول",
   "Entry-to-close line": "خط الدخول إلى الإغلاق",
   "Equidistant Channel": "قناة متساوية البعد",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "لا توجد رموز لعرضها",
   "Add a symbol to Market Watch, then open Popup Prices again.": "أضف رمزًا إلى مراقبة السوق، ثم افتح الأسعار المنبثقة مرة أخرى.",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "يتم عرض أول {{value0}} رمزًا. يتبقى {{value1}} في مراقبة السوق.",
-  "Resize Popup Prices dialog": "تغيير حجم مربع حوار الأسعار المنبثقة"
+  "Resize Popup Prices dialog": "تغيير حجم مربع حوار الأسعار المنبثقة",
+  "Details": "التفاصيل",
+  "Tick Size": "حجم التيك",
+  "Tick Value": "قيمة التيك",
+  "Bid High": "أعلى سعر طلب",
+  "Bid Low": "أدنى سعر طلب",
+  "Ask High": "أعلى سعر عرض",
+  "Ask Low": "أدنى سعر عرض",
+  "Last quote": "آخر تسعير"
 }

@@ -512,6 +512,7 @@
   "Enter text label": "Immettere l'etichetta di testo",
   "Enter workspace name": "Immettere il nome dell'area di lavoro",
   "Entry / close arrows": "Frecce di entrata/chiusura",
+  "Entry / close line": "Linea di entrata/chiusura",
   "Entry price": "Prezzo di entrata",
   "Entry-to-close line": "Linea di ingresso-chiusura",
   "Equidistant Channel": "Canale equidistante",
@@ -2006,5 +2007,13 @@
   "No symbols to display": "Nessun simbolo da visualizzare",
   "Add a symbol to Market Watch, then open Popup Prices again.": "Aggiungi un simbolo a Osservazione Mercato, quindi riapri Prezzi popup.",
   "Showing the first {{value0}} symbols. {{value1}} more remain in Market Watch.": "Sono mostrati i primi {{value0}} simboli. Altri {{value1}} restano in Osservazione Mercato.",
-  "Resize Popup Prices dialog": "Ridimensiona la finestra di dialogo Prezzi popup"
+  "Resize Popup Prices dialog": "Ridimensiona la finestra di dialogo Prezzi popup",
+  "Details": "Dettagli",
+  "Tick Size": "Dimensione tick",
+  "Tick Value": "Valore tick",
+  "Bid High": "Massimo denaro",
+  "Bid Low": "Minimo denaro",
+  "Ask High": "Massimo lettera",
+  "Ask Low": "Minimo lettera",
+  "Last quote": "Ultima quotazione"
 }

@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BottomDock } from './BottomDock';
-import { useAppStore } from '../store/useAppStore';
-import { normalizePosition, readPositionStreamBatch, reconcilePositionStreamBatch } from '../services/positionStream';
-import { AccountSocketManager } from '../services/accountSocketManager';
+import { markPositionsClosed, unmarkPositionsClosed, useAppStore } from '../store/useAppStore';
+import {
+  normalizePosition,
+  readPositionStreamBatch,
+  readPositionStreamEvent,
+  reconcilePositionStreamBatch,
+} from '../services/positionStream';
+import { decodePositionStreamMessage } from '../services/tradePositionStream';
 
 describe('Trade table across symbol updates', () => {
   beforeEach(() => {
@@ -19,6 +24,8 @@ describe('Trade table across symbol updates', () => {
   afterEach(() => {
     cleanup();
     useAppStore.setState({ isAuthenticated: false, accountId: null, authToken: null, positions: [] });
+    useAppStore.getState().setPositions([]);
+    unmarkPositionsClosed([20165, 20166]);
     localStorage.clear();
   });
 
@@ -38,27 +45,72 @@ describe('Trade table across symbol updates', () => {
     }
   });
 
-  // The shared EnhancedWebSocketService no longer writes trade state; the
-  // account socket consumer owns positions, so drive its real frame handler.
-  it.each([false,true])('removes Manager closes through the account socket consumer and BottomDock, legacy wrapper=%s',async(legacy)=>{
+  it('removes a confirmed stream close and rejects a lagging snapshot for that ticket', () => {
     render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
-    const service=new AccountSocketManager();
-    (service as any).login=200001;
-    const handle=(service as any).handleMessage.bind(service);
-    try {
-      for(const ticket of [20165,20166]) {
-        await act(async()=>handle({...(legacy?{type:'channel_message'}:{}),channel:'positions.200001',data:{
-          type:'position_closed',data:{ticket,account_login:200001,status:'closed',volume:0.01,state_version:1,state_version_text:'1'},
-        }}));
-        await waitFor(()=>expect(screen.queryByText(String(ticket))).toBeNull());
-      }
-      expect(useAppStore.getState().positions).toEqual([]);
-      // A delayed full REST row and price patch must not recreate either trade.
-      await act(async()=>{
-        useAppStore.getState().setPositions([normalizePosition({ticket:20166,symbol:'BTCUSD',side:'sell',volume:0.02,price_open:110000,state_version:'0'})]);
-        handle({channel:'positions.200001',data:{type:'position_update',data:[{ticket:20166,update_kind:'pnl',state_version:'0',profit:99,price_time_msc:1800000000000}]}});
+
+    const closeMessage = {
+      channel: 'positions.200001',
+      data: {
+        type: 'position_closed',
+        data: {
+          ticket: 20166,
+          account_login: 200001,
+          status: 'closed',
+          volume: 0.02,
+          state_version: '1',
+        },
+      },
+    };
+
+    act(() => {
+      const decoded = decodePositionStreamMessage(closeMessage);
+      expect(decoded?.closedTickets).toEqual([20166]);
+      markPositionsClosed(decoded?.closedTickets ?? []);
+
+      const { position } = readPositionStreamEvent(closeMessage);
+      const result = reconcilePositionStreamBatch(useAppStore.getState().positions, {
+        mode: 'delta',
+        positions: [{ ...position, closed: true }],
       });
-      expect(screen.queryByText('20166')).toBeNull();
-    } finally {service.destroy();}
+      useAppStore.getState().setPositions(result.positions, { closedTickets: result.closedTickets });
+    });
+
+    expect(screen.queryByText('20166')).not.toBeInTheDocument();
+    expect(screen.getByText('20165')).toBeInTheDocument();
+
+    act(() => {
+      const staleSnapshot = readPositionStreamBatch({
+        channel: 'positions.200001',
+        data: {
+          type: 'positions_snapshot',
+          data: {
+            positions: [
+              {
+                ticket: 20165,
+                symbol: 'XAUUSD',
+                side: 'buy',
+                volume: 0.01,
+                price_open: 4291.06,
+                state_version: '0',
+              },
+              {
+                ticket: 20166,
+                symbol: 'BTCUSD',
+                side: 'sell',
+                volume: 0.02,
+                price_open: 110000,
+                state_version: '0',
+              },
+            ],
+          },
+        },
+      });
+      expect(staleSnapshot).not.toBeNull();
+      const result = reconcilePositionStreamBatch(useAppStore.getState().positions, staleSnapshot!);
+      useAppStore.getState().setPositions(result.positions, { closedTickets: result.closedTickets });
+    });
+
+    expect(screen.queryByText('20166')).not.toBeInTheDocument();
+    expect(screen.getByText('20165')).toBeInTheDocument();
   });
 });

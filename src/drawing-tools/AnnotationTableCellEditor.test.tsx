@@ -3,7 +3,8 @@ import '@testing-library/jest-dom';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AnnotationTableCellEditor } from './AnnotationTableCellEditor';
-import { drawingManager, type Drawing } from '../services/drawingManager';
+import { drawingManager } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 function open({ tableData = [['First', 'Next']], row = 0, column = 0 } = {}) {
   const drawing: Drawing = { id: 'table', type: 'text', subtype: 'table', points: [{ time: 1, price: 1 }], annotation: { tableData, cellWidth: 90 } };

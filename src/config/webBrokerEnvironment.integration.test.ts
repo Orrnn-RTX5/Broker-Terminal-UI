@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -14,27 +14,30 @@ const fixturePrefix = 'rtx-web-broker-integration-'
 const directories: string[] = []
 const servers: ViteDevServer[] = []
 
-/** Reproduce editing the real broker blocks without copying their credentials. */
-const selectBrokerBlock = (selected: 'Orrnn' | 'TEST' | 'Achiever Financials'): string => {
-  let block = 'shared'
-  return readFileSync(resolve(repositoryRoot, '.env.web'), 'utf8')
-    .split(/\r?\n/)
-    .map((line) => {
-      if (/^# Orrnn(?: \(active\))?\s*$/.test(line)) block = 'Orrnn'
-      else if (/^# TEST(?: \(active\))?\s*$/.test(line)) block = 'TEST'
-      else if (/^# Achiever Financials\s*$/.test(line)) block = 'Achiever Financials'
-      else if (/^# (?:MyProp|Grow Trading Academy|Legacy backend reference|Nexa|Active broker)/.test(line)) block = 'other'
-
-      const assignment = /^\s*(?:#\s*)?(?:export\s+)?([A-Za-z_]\w*)\s*=(.*)$/.exec(line)
-      if (!assignment) return line
-
-      const [, key, originalValue] = assignment
-      const value = /TOKEN|PASSWORD|SECRET|API_KEY|PRIVATE_KEY/i.test(key) ? '' : originalValue
-      const enabled = block === selected || (block === 'shared' && !/^\s*#/.test(line))
-      return `${enabled ? '' : '# '}${key}=${value}`
-    })
-    .join('\n')
+type BrokerFixture = {
+  block: string
+  brokerId: string
+  api: string
+  ws: string
+  discovery: string
+  serverName: string
 }
+
+/** A credential-free, committed test contract independent of local ignored env files. */
+const renderBrokerEnvironment = (selected: BrokerFixture): string => [
+  'BACKEND_TARGET=web',
+  'VITE_BACKEND_TARGET=web',
+  `VITE_BACKEND_URL=${selected.api}`,
+  `VITE_API_HOST=${selected.api}`,
+  `VITE_API_HOST_EXT=${selected.api}`,
+  `VITE_WS_HOST=${selected.ws}`,
+  `VITE_DISCOVERY_BASE_URL=${selected.discovery}`,
+  `VITE_BROKER_DISCOVERY_URL=${selected.discovery}`,
+  `VITE_DEFAULT_MT5_SERVER=${selected.serverName}`,
+  `VITE_BROKER_ID=${selected.brokerId}`,
+  `VITE_FEED_BROKER_ID=${selected.brokerId}`,
+  'VITE_USE_MOCK_DISCOVERY=false',
+].join('\n')
 
 beforeEach(() => {
   // Exercise the chosen file, independently of the developer's shell overrides.
@@ -59,8 +62,7 @@ afterEach(async () => {
   if (failure?.status === 'rejected') throw failure.reason
 })
 
-// .env.web is untracked (local-only broker config), so clean CI checkouts skip this suite.
-describe.skipIf(!existsSync(resolve(repositoryRoot, '.env.web')))('real .env.web broker selection over Vite HTTP', () => {
+describe('web broker environment over Vite HTTP', () => {
   it.each([
     {
       block: 'Orrnn' as const,
@@ -89,7 +91,7 @@ describe.skipIf(!existsSync(resolve(repositoryRoot, '.env.web')))('real .env.web
   ])('serves $block when only its broker block is uncommented', async (selected) => {
     const directory = mkdtempSync(join(temporaryRoot, fixturePrefix))
     directories.push(directory)
-    writeFileSync(join(directory, '.env.web'), selectBrokerBlock(selected.block), 'utf8')
+    writeFileSync(join(directory, '.env.web'), renderBrokerEnvironment(selected), 'utf8')
 
     const env = loadEnv('web', directory, '')
     validateWebBrokerEnvironment(env, directory)

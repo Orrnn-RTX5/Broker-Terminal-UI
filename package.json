@@ -2,6 +2,10 @@
   "name": "rtx-terminal",
   "private": true,
   "version": "1.0.25",
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  },
   "description": "RTX Terminal - Professional Trading Terminal",
   "author": "RTX",
   "type": "module",
@@ -30,7 +34,12 @@
     "test:coverage": "vitest run --coverage",
     "bench:orders": "node scripts/benchmarkTradeSocketOrder.mjs",
     "test:trading-browser": "node scripts/testTradingBrowser.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
+    "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "check:architecture": "node scripts/checkArchitecture.mjs",
+    "check:docs": "node scripts/checkMarkdownLinks.mjs",
+    "check:lint-baseline": "node scripts/checkLintBaseline.mjs",
+    "check:secrets": "node scripts/checkTrackedSecrets.mjs",
     "electron:dev": "electron .",
     "electron:build": "npm run build:electron && npx electron-builder --win",
     "electron:publish": "npm run build:electron && npx electron-builder --win --publish always"
@@ -48,7 +57,8 @@
       "electron-network.cjs",
       "electron-startup.cjs",
       "desktop-splash.html",
-      "preload.cjs"
+      "preload.cjs",
+      "build/icon.ico"
     ],
     "win": {
       "target": "nsis",
@@ -72,16 +82,14 @@
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "^5.2.8",
-    "@types/papaparse": "^5.5.2",
     "clsx": "^2.1.1",
-    "electron-updater": "^6.8.3",
+    "electron-updater": "^6.8.9",
     "html2canvas-pro": "^2.0.2",
     "i18next": "^25.8.0",
     "i18next-browser-languagedetector": "^8.2.0",
     "i18next-resources-to-backend": "^1.2.1",
     "lightweight-charts": "^5.1.0",
     "lucide-react": "^0.562.0",
-    "papaparse": "^5.5.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-i18next": "^16.5.4",
@@ -99,8 +107,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "@vitejs/plugin-react-swc": "^4.3.3",
-    "@vitest/ui": "^4.0.17",
-    "electron": "^40.8.0",
+    "@vitest/ui": "^4.1.11",
+    "electron": "^41.10.7",
     "electron-builder": "^26.8.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
@@ -113,7 +121,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
-    "vitest": "^4.0.17"
+    "vitest": "^4.1.11"
   },
   "allowScripts": {
     "esbuild@0.27.3": true

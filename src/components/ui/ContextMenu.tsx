@@ -209,7 +209,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const itemRef = useRef<HTMLDivElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
-  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasSubmenu = item.submenu && item.submenu.length > 0;
 
@@ -565,7 +565,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
           });
           break;
 
-        case 'ArrowRight':
+        case 'ArrowRight': {
           e.preventDefault();
           e.stopPropagation();
           const currentItem = nonDividerItems[focusedIndex];
@@ -578,6 +578,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
             }
           }
           break;
+        }
 
         case 'ArrowLeft':
           e.preventDefault();
@@ -590,7 +591,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
           break;
 
         case 'Enter':
-        case ' ':
+        case ' ': {
           e.preventDefault();
           e.stopPropagation();
           const selectedItem = nonDividerItems[focusedIndex];
@@ -608,6 +609,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
             }
           }
           break;
+        }
 
         case 'Escape':
           e.preventDefault();

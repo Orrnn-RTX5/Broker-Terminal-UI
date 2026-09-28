@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { CHART_PATTERN_TOOLS } from './chartPatternToolCatalog';
 import { patternRatio, renderChartPattern } from './chartPatternRenderer';
-import type { Drawing } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 
 const render = (subtype: string, coordinates: number[][], prices = coordinates.map(p => 1000-p[1]), props: Partial<Drawing> = {}) => {
   const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');

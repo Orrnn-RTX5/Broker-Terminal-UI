@@ -1,4 +1,4 @@
-import type { Drawing } from '../services/drawingManager';
+import type { Drawing } from './model/drawing';
 import { getChartPatternTool } from './chartPatternToolCatalog';
 
 export interface PatternScreenPoint { x: number; y: number }

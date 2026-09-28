@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { getPositionStreamTicket } from './services/tradePositionStream';
 
-const source = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+const source = [
+  'src/app/trading/positionRuntime.ts',
+  'src/app/trading/useTradeStreamRuntime.ts',
+].map((path) => readFileSync(resolve(process.cwd(), path), 'utf8')).join('\n');
 
 describe('App position stream admission contract', () => {
   it('never fabricates a position ticket from its array index', () => {

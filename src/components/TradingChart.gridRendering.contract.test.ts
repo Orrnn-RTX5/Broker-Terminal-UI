@@ -6,6 +6,14 @@ const chartSource = readFileSync(
   resolve(process.cwd(), 'src/components/TradingChart.tsx'),
   'utf8',
 ).replace(/\r\n/g, '\n');
+const initializationSource = readFileSync(
+  resolve(process.cwd(), 'src/features/trading-chart/runtime/useTradingChartInitialization.ts'),
+  'utf8',
+).replace(/\r\n/g, '\n');
+const viewSource = readFileSync(
+  resolve(process.cwd(), 'src/features/trading-chart/presentation/TradingChartView.tsx'),
+  'utf8',
+).replace(/\r\n/g, '\n');
 const dialogSource = readFileSync(
   resolve(process.cwd(), 'src/components/dialogs/ChartPropertiesDialog.tsx'),
   'utf8',
@@ -13,9 +21,9 @@ const dialogSource = readFileSync(
 
 describe('TradingChart enterprise grid rendering contract', () => {
   it('disables the rectangular native grid during creation and hot theme updates', () => {
-    const creationStart = chartSource.indexOf('const chart = createChartEx(containerRef.current, timeScaleBehavior, {');
-    const creationEnd = chartSource.indexOf('crosshair:', creationStart);
-    const creationGrid = chartSource.slice(creationStart, creationEnd);
+    const creationStart = initializationSource.indexOf('const chart = createChartEx(containerRef.current, timeScaleBehavior, {');
+    const creationEnd = initializationSource.indexOf('crosshair:', creationStart);
+    const creationGrid = initializationSource.slice(creationStart, creationEnd);
     const hotApplyStart = chartSource.indexOf('// Apply global layout and grid');
     const hotApplyEnd = chartSource.indexOf('crosshair:', hotApplyStart);
     const hotApplyGrid = chartSource.slice(hotApplyStart, hotApplyEnd);
@@ -30,19 +38,19 @@ describe('TradingChart enterprise grid rendering contract', () => {
   });
 
   it('attaches one bottom-layer square grid primitive to a stable transparent host', () => {
-    expect(chartSource).toContain("import {\n  SQUARE_CHART_GRID_CELL_SIZE_PX,\n  SquareChartGridPrimitive,");
+    expect(initializationSource).toContain('SQUARE_CHART_GRID_CELL_SIZE_PX,');
     expect(chartSource).toContain("const squareGridHostSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);");
-    expect(chartSource).toContain('const squareGridPrimitive = new SquareChartGridPrimitive({');
-    expect(chartSource).toContain('cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,');
-    expect(chartSource).toContain('verticalColor: chartTheme.gridVertical,');
-    expect(chartSource).toContain('horizontalColor: chartTheme.gridHorizontal,');
-    expect(chartSource).toContain('squareGridHostSeries.attachPrimitive(squareGridPrimitive);');
-    expect(chartSource).toContain('squareGridHostSeriesRef.current.detachPrimitive(squareGridPrimitiveRef.current);');
-    expect(chartSource).not.toContain('squareGridHostSeries.setData(');
+    expect(initializationSource).toContain('const squareGridPrimitive = new SquareChartGridPrimitive({');
+    expect(initializationSource).toContain('cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,');
+    expect(initializationSource).toContain('verticalColor: chartTheme.gridVertical,');
+    expect(initializationSource).toContain('horizontalColor: chartTheme.gridHorizontal,');
+    expect(initializationSource).toContain('squareGridHostSeries.attachPrimitive(squareGridPrimitive);');
+    expect(initializationSource).toContain('squareGridHostSeriesRef.current.detachPrimitive(squareGridPrimitiveRef.current);');
+    expect(initializationSource).not.toContain('squareGridHostSeries.setData(');
   });
 
   it('does not place a DOM grid layer above candles or across the scale gutters', () => {
-    const renderedMarkup = chartSource.slice(chartSource.lastIndexOf('\n  return ('));
+    const renderedMarkup = viewSource.slice(viewSource.lastIndexOf('\n  return ('));
 
     expect(chartSource).not.toContain('TRADING_VIEW_GRID_OVERLAY_SIZE');
     expect(chartSource).not.toContain('backgroundImage: `linear-gradient(to right, ${chartTheme.grid}');

@@ -84,7 +84,7 @@ export type Command =
       id?: string;
       name: string;
       indicatorType?: string;
-      params: Record<string, any>;
+      params: Record<string, unknown>;
       targetContextId?: string;
       symbol?: string;
     };
