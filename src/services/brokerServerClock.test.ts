@@ -4,6 +4,7 @@ const session = vi.hoisted(() => ({ serverUrl: 'https://service.broker-a.com' })
 vi.mock('./brokerSession', () => ({ getServerUrl: () => session.serverUrl }));
 
 import {
+  formatBrokerServerDate,
   formatBrokerServerTime,
   getBrokerServerNowMs,
   getBrokerServerTimeZone,
@@ -94,5 +95,13 @@ describe('broker server timezone', () => {
     expect(formatBrokerServerTime(instant, { kind: 'offset', minutes: 330 })).toEqual({ time: '12:01:47', zoneLabel: 'GMT+5:30' });
     // Cyprus is on EEST (UTC+3) in late September.
     expect(formatBrokerServerTime(instant, { kind: 'iana', zone: 'Asia/Nicosia' })).toEqual({ time: '09:31:47', zoneLabel: 'GMT+3' });
+  });
+
+  it('formats the broker calendar date across the UTC day boundary', () => {
+    const lateUtc = Date.UTC(2026, 8, 28, 22, 30);
+    expect(formatBrokerServerDate(lateUtc, { kind: 'utc' })).toBe('2026.09.28');
+    expect(formatBrokerServerDate(lateUtc, { kind: 'offset', minutes: 180 })).toBe('2026.09.29');
+    expect(formatBrokerServerDate(lateUtc, { kind: 'offset', minutes: -300 })).toBe('2026.09.28');
+    expect(formatBrokerServerDate(lateUtc, { kind: 'iana', zone: 'Asia/Nicosia' })).toBe('2026.09.29');
   });
 });

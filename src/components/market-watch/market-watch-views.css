@@ -1,227 +1,130 @@
 .rtx-market-tick-chart {
-  --rtx-market-bid: var(--color-loss, #ff4d4f);
-  --rtx-market-ask: var(--color-info, #7aacca);
+  --rtx-tick-chart-bid: #4597ff;
+  --rtx-tick-chart-ask: #ff5858;
+  --rtx-tick-chart-plot: var(--bg-primary, #0d0d11);
+  --rtx-tick-chart-grid: var(--border-primary, #28282e);
+  --rtx-tick-chart-frame: var(--border-tertiary, #404048);
+  --rtx-tick-chart-separator: var(--text-tertiary, #606068);
+  --rtx-tick-chart-text: var(--text-primary, #e2e2e8);
   display: flex;
   min-width: 0;
-  min-height: 190px;
+  min-height: 0;
+  flex: 1 1 auto;
   flex-direction: column;
+  padding: 4px 0 0 4px;
   overflow: hidden;
-  color: var(--text-primary, #e2e2e8);
+  color: var(--rtx-tick-chart-text);
   background: var(--bg-secondary, #131316);
-  border-top: 1px solid var(--border-primary, #28282e);
   font-family: var(--font-sans, sans-serif);
 }
 
-.rtx-market-tick-chart__header {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 7px 10px;
-  background: var(--bg-tertiary, #191a1e);
-  border-bottom: 1px solid var(--border-primary, #28282e);
+html.rtx-skin-untitled-light .rtx-market-tick-chart,
+html.theme-light .rtx-market-tick-chart {
+  --rtx-tick-chart-bid: var(--rtx-light-quote-up, #1d4ed8);
+  --rtx-tick-chart-ask: var(--rtx-light-quote-down, #b91c1c);
+  --rtx-tick-chart-plot: #ffffff;
+  --rtx-tick-chart-grid: #d0d5dd;
+  --rtx-tick-chart-frame: var(--rtx-light-text, #101828);
+  --rtx-tick-chart-separator: #98a2b3;
+  --rtx-tick-chart-text: var(--rtx-light-text, #101828);
 }
 
-.rtx-market-tick-chart__identity {
-  display: flex;
+.rtx-market-tick-chart__canvas {
+  position: relative;
   min-width: 0;
-  flex-direction: column;
-  line-height: 1.2;
-}
-
-.rtx-market-tick-chart__identity strong {
+  min-height: 120px;
+  flex: 1 1 auto;
   overflow: hidden;
-  font-size: var(--text-sm, 0.875rem);
-  font-weight: var(--font-weight-semibold, 600);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.rtx-market-tick-chart__identity > span {
-  margin-top: 2px;
-  color: var(--text-secondary, #808088);
-  font-size: var(--text-2xs, 0.6875rem);
-}
-
-.rtx-market-tick-chart__quotes {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-}
-
-.rtx-market-tick-chart__clear {
-  height: 26px;
-  padding: 0 8px;
-  color: var(--text-secondary, #808088);
-  background: transparent;
-  border: 1px solid var(--border-secondary, #333338);
-  border-radius: var(--radius-sm, 4px);
-  cursor: pointer;
-  font: inherit;
-  font-size: 10px;
-}
-
-.rtx-market-tick-chart__clear:hover:not(:disabled),
-.rtx-market-tick-chart__clear:focus-visible {
-  color: var(--text-primary, #e2e2e8);
-  border-color: var(--color-info, #7aacca);
-  outline: none;
-}
-
-.rtx-market-tick-chart__clear:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-
-.rtx-market-tick-chart__quote {
-  display: grid;
-  justify-items: end;
-  font-family: var(--font-mono, monospace);
+/* Absolute so the measured SVG never feeds back into its container's size. */
+.rtx-market-tick-chart__canvas > svg {
+  position: absolute;
+  inset: 0;
+  display: block;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-
-.rtx-market-tick-chart__quote > span:first-child {
-  color: var(--text-secondary, #808088);
-  font-family: var(--font-sans, sans-serif);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.rtx-market-tick-chart__quote--bid .price-display {
-  color: var(--rtx-market-bid);
-}
-
-.rtx-market-tick-chart__quote--ask .price-display {
-  color: var(--rtx-market-ask);
 }
 
 .rtx-market-tick-chart__plot {
-  position: relative;
-  display: flex;
-  min-height: 142px;
-  flex: 1 1 auto;
-  flex-direction: column;
-  background: var(--bg-primary, #0d0d11);
-}
-
-.rtx-market-tick-chart__plot svg {
-  display: block;
-  width: 100%;
-  min-height: 130px;
-  flex: 1 1 auto;
+  fill: var(--rtx-tick-chart-plot);
 }
 
 .rtx-market-tick-chart__grid line {
-  stroke: var(--border-primary, #28282e);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
+  stroke: var(--rtx-tick-chart-grid);
+  stroke-dasharray: 3 3;
+  shape-rendering: crispEdges;
 }
 
-.rtx-market-tick-chart__spread {
-  fill: var(--color-info-dim, rgb(122 172 202 / 16%));
-  opacity: 0.42;
-  pointer-events: none;
+.rtx-market-tick-chart__separators line {
+  stroke: var(--rtx-tick-chart-separator);
+  stroke-dasharray: 4 3;
+  shape-rendering: crispEdges;
 }
 
 .rtx-market-tick-chart__line {
   fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
 }
 
 .rtx-market-tick-chart__line--bid {
-  stroke: var(--rtx-market-bid);
+  stroke: var(--rtx-tick-chart-bid);
 }
 
 .rtx-market-tick-chart__line--ask {
-  stroke: var(--rtx-market-ask);
+  stroke: var(--rtx-tick-chart-ask);
 }
 
-.rtx-market-tick-chart__point {
-  stroke: var(--bg-primary, #0d0d11);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
+.rtx-market-tick-chart__frame {
+  fill: none;
+  stroke: var(--rtx-tick-chart-frame);
+  shape-rendering: crispEdges;
 }
 
-.rtx-market-tick-chart__point--bid {
-  fill: var(--rtx-market-bid);
+.rtx-market-tick-chart__axis line {
+  stroke: var(--rtx-tick-chart-frame);
+  shape-rendering: crispEdges;
 }
 
-.rtx-market-tick-chart__point--ask {
-  fill: var(--rtx-market-ask);
+.rtx-market-tick-chart__axis text,
+.rtx-market-tick-chart__symbol {
+  fill: var(--rtx-tick-chart-text);
 }
 
-.rtx-market-tick-chart__legend {
-  display: flex;
-  min-height: 24px;
-  align-items: center;
-  gap: 12px;
-  padding: 0 10px;
-  color: var(--text-secondary, #808088);
-  border-top: 1px solid var(--border-primary, #28282e);
-  font-size: 10px;
+.rtx-market-tick-chart__tag--bid rect {
+  fill: var(--rtx-tick-chart-bid);
 }
 
-.rtx-market-tick-chart__legend span[data-series]::before {
-  display: inline-block;
-  width: 12px;
-  height: 2px;
-  margin-right: 5px;
-  content: '';
-  vertical-align: middle;
+.rtx-market-tick-chart__tag--ask rect {
+  fill: var(--rtx-tick-chart-ask);
 }
 
-.rtx-market-tick-chart__legend span[data-series='bid']::before {
-  background: var(--rtx-market-bid);
-}
-
-.rtx-market-tick-chart__legend span[data-series='ask']::before {
-  background: var(--rtx-market-ask);
-}
-
-.rtx-market-tick-chart__legend span:last-child {
-  margin-left: auto;
+.rtx-market-tick-chart__tag text {
+  fill: #ffffff;
 }
 
 .rtx-market-tick-chart__empty {
+  position: absolute;
+  inset: 0;
   display: flex;
-  min-height: 142px;
-  flex: 1 1 auto;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: 5px;
   padding: 18px;
   color: var(--text-secondary, #808088);
-  background: var(--bg-primary, #0d0d11);
+  background: var(--rtx-tick-chart-plot);
+  border: 1px solid var(--rtx-tick-chart-frame);
   text-align: center;
 }
 
 .rtx-market-tick-chart__empty strong {
-  color: var(--text-primary, #e2e2e8);
-  font-size: var(--text-xs, 0.75rem);
-  font-weight: var(--font-weight-medium, 500);
+  color: var(--rtx-tick-chart-text);
 }
 
-.rtx-market-tick-chart__empty > span:last-child {
+.rtx-market-tick-chart__empty > span {
   max-width: 300px;
-  font-size: var(--text-2xs, 0.6875rem);
   line-height: 1.45;
-}
-
-.rtx-market-tick-chart__empty-mark {
-  width: 42px;
-  height: 20px;
-  margin-bottom: 4px;
-  opacity: 0.75;
-  background:
-    linear-gradient(155deg, transparent 0 18%, var(--rtx-market-bid) 19% 23%, transparent 24% 45%, var(--rtx-market-ask) 46% 50%, transparent 51%);
 }
 
 .rtx-market-watch-details {
@@ -723,17 +626,6 @@ html.theme-light .rtx-market-watch-details {
 }
 
 @media (max-width: 520px) {
-  .rtx-market-tick-chart__header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .rtx-market-tick-chart__quotes {
-    width: 100%;
-    justify-content: space-between;
-  }
-
   .rtx-popup-prices__title p {
     display: none;
   }

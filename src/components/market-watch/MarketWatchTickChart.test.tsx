@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAppStore } from '../../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../../store/useMarketDataStore';
 import { MarketWatchTickChart } from './MarketWatchTickChart';
 import { MARKET_WATCH_TICK_CHART_LIMIT } from './tickChartGeometry';
+
+const apiGet = vi.hoisted(() => vi.fn());
+vi.mock('../../api/client', () => ({ apiClient: { get: apiGet } }));
 
 const setTickBuffer = (symbol: string, tickBuffer: Tick[]) => {
   useMarketDataStore.setState({
@@ -25,8 +28,14 @@ const setTickBuffer = (symbol: string, tickBuffer: Tick[]) => {
   });
 };
 
+const tagLabel = (side: 'bid' | 'ask'): string | null | undefined => (
+  screen.getByTestId(`market-tick-${side}-tag`).querySelector('text')?.textContent
+);
+
 describe('MarketWatchTickChart', () => {
   beforeEach(() => {
+    apiGet.mockReset();
+    apiGet.mockResolvedValue([]);
     useMarketDataStore.getState().clearAllData();
     useAppStore.getState().setTicks({});
   });
@@ -42,12 +51,11 @@ describe('MarketWatchTickChart', () => {
 
     expect(screen.getByRole('region', { name: 'EURUSD' })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Waiting for live ticks');
-    expect(screen.queryByRole('img', { name: /live tick chart/i })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Bid unavailable')).toBeInTheDocument();
-    expect(screen.getByLabelText('Ask unavailable')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(apiGet).not.toHaveBeenCalled();
   });
 
-  it('draws real bid and ask paths from only the most recent 2,000 buffered ticks', () => {
+  it('draws MT5 step lines for the newest ticks that fit the chart width', () => {
     const tickBuffer = Array.from({ length: MARKET_WATCH_TICK_CHART_LIMIT + 5 }, (_, index): Tick => ({
       symbol: 'EURUSD',
       bid: 1.1 + index / 100_000,
@@ -57,31 +65,25 @@ describe('MarketWatchTickChart', () => {
     }));
     setTickBuffer('EURUSD', tickBuffer);
 
-    const { container } = render(<MarketWatchTickChart symbol="eurusd" />);
+    const { container } = render(
+      <MarketWatchTickChart symbol="eurusd" instrumentSources={[{ symbol: 'EURUSD', digits: 5 }]} />,
+    );
     const chart = container.querySelector('svg[data-tick-count]');
+    const visibleCount = Number(chart?.getAttribute('data-tick-count'));
 
-    expect(chart).toHaveAttribute('data-tick-count', String(MARKET_WATCH_TICK_CHART_LIMIT));
-    expect(screen.getByTestId('market-tick-bid-line')).toHaveAttribute('d', expect.stringMatching(/^M .+ L /));
-    expect(screen.getByTestId('market-tick-ask-line')).toHaveAttribute('d', expect.stringMatching(/^M .+ L /));
-    expect(screen.getByLabelText('Bid 1.12004')).toBeInTheDocument();
-    expect(screen.getByLabelText('Ask 1.12024')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /2000 recent broker quotes/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    expect(screen.getByRole('status')).toHaveTextContent('Waiting for live ticks');
+    expect(visibleCount).toBeGreaterThan(1);
+    expect(visibleCount).toBeLessThan(MARKET_WATCH_TICK_CHART_LIMIT);
+    expect(screen.getByTestId('market-tick-bid-line')).toHaveAttribute('d', expect.stringMatching(/^M[\d.]+ [\d.]+(H[\d.]+V[\d.]+)+H[\d.]+$/));
+    expect(screen.getByTestId('market-tick-ask-line')).toHaveAttribute('d', expect.stringMatching(/^M[\d.]+ [\d.]+(H[\d.]+V[\d.]+)+H[\d.]+$/));
+    expect(tagLabel('bid')).toBe('1.12004');
+    expect(tagLabel('ask')).toBe('1.12024');
+    expect(screen.getByRole('img', { name: new RegExp(`EURUSD live tick chart with ${visibleCount} recent broker quotes`) }))
+      .toBeInTheDocument();
+    expect(container.querySelector('.rtx-market-tick-chart__symbol')).toHaveTextContent('EURUSD');
+    expect(container.querySelector('.rtx-market-tick-chart__axis')?.textContent).toMatch(/2023\.11\.14/);
   });
 
-  it('uses authoritative source time and broker-provided price precision', () => {
-    useAppStore.getState().setTicks({
-      COCOA: {
-        symbol: 'COCOA',
-        bid: 321.25,
-        ask: 321.5,
-        spread: 0.25,
-        timestamp: 1_700_000_000_999,
-        digits: 2,
-      },
-    });
+  it('formats prices with the backend digits, or as sent when the backend has none', () => {
     setTickBuffer('COCOA', [{
       symbol: 'COCOA',
       bid: 321.25,
@@ -91,10 +93,14 @@ describe('MarketWatchTickChart', () => {
       sourceTimestamp: 1_700_000_000_042,
     }]);
 
-    render(<MarketWatchTickChart symbol="COCOA" />);
+    const { rerender } = render(
+      <MarketWatchTickChart symbol="COCOA" instrumentSources={[{ symbol: 'COCOA', digits: 2 }]} />,
+    );
+    expect(tagLabel('bid')).toBe('321.25');
+    expect(tagLabel('ask')).toBe('321.50');
 
-    expect(screen.getByLabelText('Bid 321.25')).toBeInTheDocument();
-    expect(screen.getByLabelText('Ask 321.50')).toBeInTheDocument();
+    rerender(<MarketWatchTickChart symbol="COCOA" instrumentSources={[{ symbol: 'COCOA' }]} />);
+    expect(tagLabel('ask')).toBe('321.5');
   });
 
   it('ignores non-price rows instead of inventing chart values', () => {
@@ -110,5 +116,41 @@ describe('MarketWatchTickChart', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Waiting for live ticks');
     expect(screen.queryByTestId('market-tick-bid-line')).not.toBeInTheDocument();
+  });
+
+  it('puts backend tick history before the live ticks of this session', async () => {
+    apiGet.mockResolvedValue([
+      { symbol: 'XAUUSD', bid: 4126.2, ask: 4126.6, time: 1_790_000_000 },
+      { symbol: 'XAUUSD', bid: 4126.3, ask: 4126.7, time: 1_790_000_001 },
+      // Overlaps the live buffer, which stays authoritative.
+      { symbol: 'XAUUSD', bid: 9999, ask: 9999.4, time: 1_790_000_005 },
+    ]);
+    setTickBuffer('XAUUSD', [{
+      symbol: 'XAUUSD',
+      bid: 4127.43,
+      ask: 4127.82,
+      spread: 0.39,
+      timestamp: 1_790_000_002_000,
+    }]);
+
+    const { container } = render(
+      <MarketWatchTickChart
+        symbol="XAUUSD"
+        historyScopeKey="authenticated|1|broker|https://broker.test"
+        instrumentSources={[{ symbol: 'XAUUSD', digits: 2 }]}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(apiGet).toHaveBeenCalledWith('/ticks/XAUUSD', expect.objectContaining({
+      params: { limit: MARKET_WATCH_TICK_CHART_LIMIT },
+      signal: expect.any(AbortSignal),
+    }));
+    expect(container.querySelector('svg[data-tick-count]')).toHaveAttribute('data-tick-count', '3');
+    expect(tagLabel('bid')).toBe('4127.43');
+    expect(tagLabel('ask')).toBe('4127.82');
+    expect(container.querySelector('.rtx-market-tick-chart__axis')?.textContent).not.toMatch(/9999/);
   });
 });

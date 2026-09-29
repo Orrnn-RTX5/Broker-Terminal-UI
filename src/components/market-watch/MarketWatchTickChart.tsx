@@ -1,10 +1,9 @@
-import { useId, useMemo } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import { useTick } from '../../store/useAppStore';
+import { formatBrokerServerDate, formatBrokerServerTime } from '../../services/brokerServerClock';
 import { type Tick, useMarketDataStore } from '../../store/useMarketDataStore';
 import { getCanonicalTickTimestamp } from '../../utils/liveTickSemantics';
-import { getSymbolDigits } from '../../utils/symbolUtils';
-import { PriceDisplay } from '../ui/PriceDisplay';
+import { readMarketWatchSymbolSpecification } from './marketWatchSymbolDetailsModel';
 import './market-watch-views.css';
 
 import {
@@ -12,153 +11,203 @@ import {
   MARKET_WATCH_TICK_CHART_LIMIT,
   type TickChartPoint,
 } from './tickChartGeometry';
+import { useMarketWatchTickHistory } from './useMarketWatchTickHistory';
 
-const VIEWBOX_WIDTH = 1_000;
-const VIEWBOX_HEIGHT = 260;
-const PLOT_LEFT = 18;
-const PLOT_RIGHT = 18;
-const PLOT_TOP = 16;
-const PLOT_BOTTOM = 18;
 const EMPTY_TICKS: readonly Tick[] = Object.freeze([]);
+const EMPTY_SOURCES: readonly unknown[] = Object.freeze([]);
+/** Layout used until the container reports its size (and in non-layout test DOMs). */
+const FALLBACK_SIZE = { width: 320, height: 240, fontSize: 12 };
+const AXIS_FONT_OFFSET_PX = 2;
+const MINIMUM_AXIS_FONT_PX = 10;
 
 export interface MarketWatchTickChartProps {
   symbol: string;
   className?: string;
+  /** Catalogue rows for the symbol, most authoritative first; they supply broker digits. */
+  instrumentSources?: readonly unknown[];
+  /** Broker/account scope that owns the tick history request; null skips it. */
+  historyScopeKey?: string | null;
 }
 
 const normalizeSymbol = (value: string): string => value.trim().toUpperCase();
 
-const isUsableTick = (tick: Tick): boolean => (
-  getCanonicalTickTimestamp(tick) !== null
-  && Number.isFinite(tick.bid)
-  && Number.isFinite(tick.ask)
-  && tick.bid > 0
-  && tick.ask > 0
-);
+const toChartPoint = (tick: Tick): TickChartPoint | null => {
+  const timestamp = getCanonicalTickTimestamp(tick);
+  return timestamp !== null
+    && Number.isFinite(tick.bid) && tick.bid > 0
+    && Number.isFinite(tick.ask) && tick.ask > 0
+    ? { timestamp, bid: tick.bid, ask: tick.ask }
+    : null;
+};
 
-export function MarketWatchTickChart({ symbol, className = '' }: MarketWatchTickChartProps) {
+const formatServerTime = (epochMs: number): string => formatBrokerServerTime(epochMs).time;
+const formatServerDate = (epochMs: number): string => formatBrokerServerDate(epochMs);
+
+/** Axis text follows the user's interface size, a step smaller like MT5. */
+const readAxisFontSize = (): number => {
+  const uiSize = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue('--rtx-ui-font-size'),
+  );
+  return Number.isFinite(uiSize)
+    ? Math.max(MINIMUM_AXIS_FONT_PX, uiSize - AXIS_FONT_OFFSET_PX)
+    : FALLBACK_SIZE.fontSize;
+};
+
+const useChartSize = () => {
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  const [size, setSize] = useState(FALLBACK_SIZE);
+
+  useEffect(() => {
+    if (!element || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.floor(entry.contentRect.width);
+      const height = Math.floor(entry.contentRect.height);
+      if (width <= 0 || height <= 0) return;
+      const fontSize = readAxisFontSize();
+      setSize((current) => (
+        current.width === width && current.height === height && current.fontSize === fontSize
+          ? current
+          : { width, height, fontSize }
+      ));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+
+  return [setElement, size] as const;
+};
+
+/**
+ * MT5 Market Watch "Ticks" view: Bid and Ask step lines for the latest ticks,
+ * on a broker-digit price axis and a broker-server-time axis. Recent backend
+ * history precedes the ticks received in this session.
+ */
+export function MarketWatchTickChart({
+  symbol,
+  className = '',
+  instrumentSources = EMPTY_SOURCES,
+  historyScopeKey = null,
+}: MarketWatchTickChartProps) {
   const tr = useUiTranslation();
   const titleId = useId();
   const descriptionId = useId();
   const normalizedSymbol = normalizeSymbol(symbol);
-  const brokerTick = useTick(normalizedSymbol);
+  const [setCanvas, size] = useChartSize();
   const tickBuffer = useMarketDataStore(state => (
     state.symbolData[normalizedSymbol]?.tickBuffer ?? EMPTY_TICKS
   ));
-  const ticks = useMemo(
-    () => tickBuffer.slice(-MARKET_WATCH_TICK_CHART_LIMIT).filter(isUsableTick),
-    [tickBuffer],
+  const history = useMarketWatchTickHistory(normalizedSymbol, historyScopeKey);
+  const digits = useMemo(
+    () => readMarketWatchSymbolSpecification(...instrumentSources).digits,
+    [instrumentSources],
   );
-  const points = useMemo<TickChartPoint[]>(() => ticks.map(tick => ({
-    timestamp: getCanonicalTickTimestamp(tick) ?? tick.timestamp,
-    bid: tick.bid,
-    ask: tick.ask,
-  })), [ticks]);
-  const geometry = useMemo(() => buildTickChartGeometry(points), [points]);
-  const latestTick = ticks.at(-1);
-  const digits = Number.isInteger(brokerTick?.digits) && Number(brokerTick?.digits) >= 0 && Number(brokerTick?.digits) <= 10
-    ? Number(brokerTick?.digits)
-    : getSymbolDigits(normalizedSymbol);
+  const points = useMemo(() => {
+    const live = tickBuffer
+      .slice(-MARKET_WATCH_TICK_CHART_LIMIT)
+      .map(toChartPoint)
+      .filter((point): point is TickChartPoint => point !== null);
+    const firstLiveTime = live[0]?.timestamp ?? Number.POSITIVE_INFINITY;
+    const earlier = history.filter(point => point.timestamp < firstLiveTime);
+    return [...earlier, ...live].slice(-MARKET_WATCH_TICK_CHART_LIMIT);
+  }, [history, tickBuffer]);
+  const geometry = useMemo(() => buildTickChartGeometry(points, {
+    ...size,
+    digits,
+    formatDate: formatServerDate,
+    formatTime: formatServerTime,
+  }), [digits, points, size]);
   const chartName = normalizedSymbol || tr('Selected symbol');
   const rootClassName = ['rtx-market-tick-chart', className].filter(Boolean).join(' ');
 
   return (
-    <section className={rootClassName} aria-labelledby={titleId}>
-      <header className="rtx-market-tick-chart__header">
-        <div className="rtx-market-tick-chart__identity">
-          <strong id={titleId}>{chartName}</strong>
-          <span>{tr('Tick Chart')}</span>
-        </div>
-        <div className="rtx-market-tick-chart__quotes" aria-label={tr('{{value0}} latest bid and ask', { value0: chartName })}>
-          <div
-            className="rtx-market-tick-chart__quote rtx-market-tick-chart__quote--bid"
-            aria-label={`${tr('Bid')} ${latestTick ? latestTick.bid.toFixed(digits) : tr('unavailable')}`}
-          >
-            <span>{tr('Bid')}</span>
-            <span aria-hidden="true">
-              {latestTick
-                ? <PriceDisplay price={latestTick.bid} symbol={normalizedSymbol} digits={digits} size="sm" />
-                : '—'}
-            </span>
-          </div>
-          <div
-            className="rtx-market-tick-chart__quote rtx-market-tick-chart__quote--ask"
-            aria-label={`${tr('Ask')} ${latestTick ? latestTick.ask.toFixed(digits) : tr('unavailable')}`}
-          >
-            <span>{tr('Ask')}</span>
-            <span aria-hidden="true">
-              {latestTick
-                ? <PriceDisplay price={latestTick.ask} symbol={normalizedSymbol} digits={digits} size="sm" />
-                : '—'}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="rtx-market-tick-chart__clear"
-            onClick={() => useMarketDataStore.getState().clearTickBuffer(normalizedSymbol)}
-            disabled={!normalizedSymbol || tickBuffer.length === 0}
-          >
-            {tr('Clear')}
-          </button>
-        </div>
-      </header>
-
-      {geometry && latestTick ? (
-        <div className="rtx-market-tick-chart__plot">
+    <section className={rootClassName} aria-label={chartName}>
+      <div ref={setCanvas} className="rtx-market-tick-chart__canvas">
+        {geometry ? (
           <svg
-            viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-            preserveAspectRatio="none"
+            width={size.width}
+            height={size.height}
+            viewBox={`0 0 ${size.width} ${size.height}`}
             role="img"
             aria-labelledby={`${titleId} ${descriptionId}`}
-            data-tick-count={ticks.length}
+            data-tick-count={geometry.visibleCount}
+            style={{ fontSize: size.fontSize }}
           >
+            <title id={titleId}>{chartName}</title>
             <desc id={descriptionId}>
               {tr('{{value0}} live tick chart with {{value1}} recent broker quotes. Bid {{value2}}, Ask {{value3}}.', {
                 value0: chartName,
-                value1: ticks.length,
-                value2: latestTick.bid.toFixed(digits),
-                value3: latestTick.ask.toFixed(digits),
+                value1: geometry.visibleCount,
+                value2: geometry.bidTag.label,
+                value3: geometry.askTag.label,
               })}
             </desc>
+            <rect
+              className="rtx-market-tick-chart__plot"
+              x={geometry.plot.left}
+              y={geometry.plot.top}
+              width={geometry.plot.right - geometry.plot.left}
+              height={geometry.plot.bottom - geometry.plot.top}
+            />
             <g className="rtx-market-tick-chart__grid" aria-hidden="true">
-              {[0.25, 0.5, 0.75].map(position => (
-                <line
-                  key={`horizontal-${position}`}
-                  x1={PLOT_LEFT}
-                  x2={VIEWBOX_WIDTH - PLOT_RIGHT}
-                  y1={PLOT_TOP + position * (VIEWBOX_HEIGHT - PLOT_TOP - PLOT_BOTTOM)}
-                  y2={PLOT_TOP + position * (VIEWBOX_HEIGHT - PLOT_TOP - PLOT_BOTTOM)}
-                />
+              {geometry.priceTicks.map(tick => (
+                <line key={`price-${tick.label}`} x1={geometry.plot.left} x2={geometry.plot.right} y1={tick.y} y2={tick.y} />
               ))}
-              {[0.25, 0.5, 0.75].map(position => (
-                <line
-                  key={`vertical-${position}`}
-                  x1={PLOT_LEFT + position * (VIEWBOX_WIDTH - PLOT_LEFT - PLOT_RIGHT)}
-                  x2={PLOT_LEFT + position * (VIEWBOX_WIDTH - PLOT_LEFT - PLOT_RIGHT)}
-                  y1={PLOT_TOP}
-                  y2={VIEWBOX_HEIGHT - PLOT_BOTTOM}
-                />
+              {geometry.timeTicks.slice(1).map(tick => (
+                <line key={`time-${tick.x}`} x1={tick.x} x2={tick.x} y1={geometry.plot.top} y2={geometry.plot.bottom} />
               ))}
             </g>
-            <path className="rtx-market-tick-chart__spread" d={geometry.spreadPath} aria-hidden="true" />
-            <path data-testid="market-tick-bid-line" className="rtx-market-tick-chart__line rtx-market-tick-chart__line--bid" d={geometry.bidPath} />
+            <g className="rtx-market-tick-chart__separators" aria-hidden="true">
+              {geometry.separators.map(x => (
+                <line key={x} x1={x} x2={x} y1={geometry.plot.top} y2={geometry.plot.bottom} />
+              ))}
+            </g>
             <path data-testid="market-tick-ask-line" className="rtx-market-tick-chart__line rtx-market-tick-chart__line--ask" d={geometry.askPath} />
-            <circle className="rtx-market-tick-chart__point rtx-market-tick-chart__point--bid" cx={geometry.latestBid.x} cy={geometry.latestBid.y} r={4} />
-            <circle className="rtx-market-tick-chart__point rtx-market-tick-chart__point--ask" cx={geometry.latestAsk.x} cy={geometry.latestAsk.y} r={4} />
+            <path data-testid="market-tick-bid-line" className="rtx-market-tick-chart__line rtx-market-tick-chart__line--bid" d={geometry.bidPath} />
+            <rect
+              className="rtx-market-tick-chart__frame"
+              x={geometry.plot.left}
+              y={geometry.plot.top}
+              width={geometry.plot.right - geometry.plot.left}
+              height={geometry.plot.bottom - geometry.plot.top}
+            />
+            <text className="rtx-market-tick-chart__symbol" x={geometry.plot.left + 4} y={geometry.plot.top + size.fontSize + 3}>
+              {chartName}
+            </text>
+            <g className="rtx-market-tick-chart__axis" aria-hidden="true">
+              {geometry.priceTicks
+                .filter(tick => tick.y > geometry.plot.top + size.fontSize / 2 && tick.y < geometry.plot.bottom - size.fontSize / 2)
+                .map(tick => (
+                  <g key={`price-label-${tick.label}`}>
+                    <line x1={geometry.plot.right} x2={geometry.plot.right + geometry.tickLength} y1={tick.y} y2={tick.y} />
+                    <text x={geometry.plot.right + geometry.tickLength + 3} y={tick.y + size.fontSize * 0.35}>{tick.label}</text>
+                  </g>
+                ))}
+              {geometry.timeTicks.map(tick => (
+                <g key={`time-label-${tick.x}`}>
+                  <line x1={tick.x} x2={tick.x} y1={geometry.plot.bottom} y2={geometry.plot.bottom + geometry.tickLength} />
+                  <text x={tick.x + 2} y={geometry.plot.bottom + geometry.tickLength + size.fontSize}>{tick.label}</text>
+                </g>
+              ))}
+            </g>
+            {([['ask', geometry.askTag], ['bid', geometry.bidTag]] as const).map(([side, tag]) => (
+              <g key={side} className={`rtx-market-tick-chart__tag rtx-market-tick-chart__tag--${side}`} data-testid={`market-tick-${side}-tag`}>
+                <rect
+                  x={geometry.plot.right}
+                  y={tag.y - geometry.tagHeight / 2}
+                  width={geometry.axisWidth}
+                  height={geometry.tagHeight}
+                />
+                <text x={geometry.plot.right + geometry.tickLength + 3} y={tag.y + size.fontSize * 0.35}>{tag.label}</text>
+              </g>
+            ))}
           </svg>
-          <div className="rtx-market-tick-chart__legend" aria-hidden="true">
-            <span data-series="bid">{tr('Bid')}</span>
-            <span data-series="ask">{tr('Ask')}</span>
-            <span>{tr('{{value0}} recent ticks', { value0: ticks.length })}</span>
+        ) : (
+          <div className="rtx-market-tick-chart__empty" role="status">
+            <strong>{tr('Waiting for live ticks')}</strong>
+            <span>{tr('The chart will appear when the broker publishes a quote for {{value0}}.', { value0: chartName })}</span>
           </div>
-        </div>
-      ) : (
-        <div className="rtx-market-tick-chart__empty" role="status">
-          <span className="rtx-market-tick-chart__empty-mark" aria-hidden="true" />
-          <strong>{tr('Waiting for live ticks')}</strong>
-          <span>{tr('The chart will appear when the broker publishes a quote for {{value0}}.', { value0: chartName })}</span>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

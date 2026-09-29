@@ -171,6 +171,32 @@ export const formatBrokerServerTime = (
   return { time: new Date(epochMs).toISOString().slice(11, 19), zoneLabel: 'UTC' };
 };
 
+const ianaDateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** MT5-style YYYY.MM.DD calendar date of an instant in the broker's timezone. */
+export const formatBrokerServerDate = (
+  epochMs: number,
+  zone: BrokerServerTimeZone = timeZone,
+): string => {
+  if (zone.kind === 'iana') {
+    let formatter = ianaDateFormatters.get(zone.zone);
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: zone.zone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      ianaDateFormatters.set(zone.zone, formatter);
+    }
+    const parts = formatter.formatToParts(new Date(epochMs));
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(item => item.type === type)?.value ?? '';
+    return `${part('year')}.${part('month')}.${part('day')}`;
+  }
+  const shiftMs = zone.kind === 'offset' ? zone.minutes * 60_000 : 0;
+  return new Date(epochMs + shiftMs).toISOString().slice(0, 10).replace(/-/g, '.');
+};
+
 export const resetBrokerServerClock = (): void => {
   sample = null;
   timeZone = UTC_ZONE;

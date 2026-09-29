@@ -590,15 +590,12 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       specificationCatalogInstrument,
       specificationPublicInstrument,
     ]);
-    const detailsInstrumentSources = useMemo(() => (
-      detailsSymbol
-        ? [
-          findInstrumentBySymbol(authenticatedMarketInstruments, detailsSymbol),
-          findInstrumentBySymbol(marketInstruments, detailsSymbol),
-          findInstrumentBySymbol(allSymbols, detailsSymbol),
-        ]
-        : []
-    ), [allSymbols, authenticatedMarketInstruments, detailsSymbol, marketInstruments]);
+    // Backend catalogue rows for a symbol, most authoritative first.
+    const detailsInstrumentSources = useMemo(() => [authenticatedMarketInstruments, marketInstruments, allSymbols]
+      .map((catalog) => findInstrumentBySymbol(catalog, detailsSymbol)), [allSymbols, authenticatedMarketInstruments, detailsSymbol, marketInstruments]);
+    const tickChartSymbolForView = tickChartSymbol || normalizeSymbol(selectedSymbol);
+    const tickChartInstrumentSources = useMemo(() => [authenticatedMarketInstruments, marketInstruments, allSymbols]
+      .map((catalog) => findInstrumentBySymbol(catalog, tickChartSymbolForView)), [allSymbols, authenticatedMarketInstruments, marketInstruments, tickChartSymbolForView]);
     const specificationRequestKeyForDialog = specificationSymbol
       ? `${brokerAccountScopeKey}\u0000${specificationSymbol}`
       : null;
@@ -856,7 +853,11 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
           )}
 
           {!showSymbolsPanel && marketWatchView === 'ticks' && (
-            <MarketWatchTickChart symbol={tickChartSymbol || normalizeSymbol(selectedSymbol)} />
+            <MarketWatchTickChart
+              symbol={tickChartSymbolForView}
+              instrumentSources={tickChartInstrumentSources}
+              historyScopeKey={dailyChangeScopeKey}
+            />
           )}
 
           {!showSymbolsPanel && (
