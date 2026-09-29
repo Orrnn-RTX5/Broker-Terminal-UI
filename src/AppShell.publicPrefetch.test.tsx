@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('./hooks/useUiTranslation', () => ({ useUiTranslation: () => (value: string) => value }));
+vi.mock('./components/BugReportHost', () => ({ default: () => null }));
 vi.mock('./components/WelcomeTerminal', () => {
   mocks.welcomeLoaded();
   return { WelcomeTerminal: () => null };

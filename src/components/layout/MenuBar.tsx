@@ -583,7 +583,7 @@ export const MenuBar = ({
                 unavailableReason: 'Display resolution is controlled by your operating system',
             }
         ],
-        Help: [
+        Help: [{ label: 'Report a Bug', icon: <Icon name="help-circle" size="sm" className="text-orange-400" />, action: () => window.dispatchEvent(new CustomEvent('rtx5:open-bug-report')) },
             { label: t('menu.help.helpTopics'), icon: <Icon name="help-circle" size="sm" />, ...terminalShortcut('help.shortcuts') },
             { label: t('menu.help.whatsNew'), icon: <Icon name="zap" size="sm" className="text-yellow-400" /> },
             { label: t('menu.help.telegramChannel'), icon: <Icon name="arrow-right" size="sm" className="text-blue-400" /> },

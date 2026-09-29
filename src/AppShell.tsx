@@ -1,3 +1,4 @@
+import BugReportHost from './components/BugReportHost';
 import { useUiTranslation } from './hooks/useUiTranslation';
 import { useCallback, useEffect, useState } from 'react';
 import { getPublicBackendTarget, isDesktopBackendTarget, isElectronRuntime } from './config/backendTarget.js';
@@ -104,10 +105,16 @@ function StoredSessionTerminalLoader({
   if (terminalModule) {
     const Terminal = terminalModule.default;
     return (
-      <Terminal
-        initialSessionHandoff={initialSessionHandoff}
-        onSessionEnded={onSessionEnded}
-      />
+      <>
+        <Terminal
+          initialSessionHandoff={initialSessionHandoff}
+          onSessionEnded={onSessionEnded}
+        />
+        {/* Mounted beside the terminal so Help → Report a Bug can open the
+            dialog from deep inside the menu without threading a callback
+            through several shared components. */}
+        <BugReportHost />
+      </>
     );
   }
 
@@ -215,10 +222,13 @@ export default function AppShell({
 
   if (PreparedAuthenticatedTerminal) {
     return (
-      <PreparedAuthenticatedTerminal
-        initialSessionHandoff={initialSessionHandoff}
-        onSessionEnded={handleSessionEnded}
-      />
+      <>
+        <PreparedAuthenticatedTerminal
+          initialSessionHandoff={initialSessionHandoff}
+          onSessionEnded={handleSessionEnded}
+        />
+        <BugReportHost />
+      </>
     );
   }
 
