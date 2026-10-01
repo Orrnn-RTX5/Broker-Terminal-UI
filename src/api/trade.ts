@@ -1,10 +1,10 @@
 import { assertTerminalMarketOrderQuote, assertTerminalQuoteFresh } from '../services/terminalQuoteFreshness';
-import { assertStoredExecutionQuoteFresh, type PositionCloseContext } from '../services/terminalExecutionQuoteGuard';
+import { assertStoredExecutionQuoteFresh } from '../services/terminalExecutionQuoteGuard';
 import { API_V2_BASE_URL, isLocalViteDevServer } from '../config/api';
 import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
 import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
-import { requirePositionCloseTicket } from './positionClose';
+import { requirePositionCloseTicket, type ClosePositionRequestOptions, type ClosePositionSecondArg } from './positionClose';
 import { createTradeOrderUuid, isTradeOrderUuidV4 } from './tradeSocket';
 import type {
   Account,
@@ -452,19 +452,7 @@ export const accountV2Api = {
   setInvestorPassword: (login: number | string, request: SetInvestorPasswordRequest, options?: ApiRequestOptions) =>
     apiClient.post<PasswordChangeResponse>(`/accounts/${login}/investor-password`, request, v2Options(options)),
 };
-
-export interface ClosePositionRequestOptions extends ApiRequestOptions {
-  executionContext?: PositionCloseContext;
-  volume?: number;
-  client_order_id?: string;
-  clientOrderId?: string;
-  account_login?: number | string;
-  accountLogin?: number | string;
-  closeRecoveryAttempts?: number;
-  closeRecoveryIntervalMs?: number;
-}
-
-export type ClosePositionSecondArg = ClosePositionRequestOptions | number | undefined;
+export type { ClosePositionRequestOptions, ClosePositionSecondArg } from './positionClose';
 
 const CLOSE_RECOVERY_DEFAULT_ATTEMPTS = 8;
 const CLOSE_RECOVERY_DEFAULT_INTERVAL_MS = 500;
@@ -919,9 +907,7 @@ export const tradingV2Api = {
       } else if (isCloseAcceptedPayload(posted)) {
         return pollCloseCommandForTerminal(clientOrderId, ticket, accountLogin, statusRequestOptions, attempts, intervalMs);
       }
-      // HTTP 200 without a correlated success status proves nothing about
-      // execution: verify via the bounded same-ID status poll, which reports
-      // unresolved (never resubmitted, not confirmed) instead of confirming blind.
+      // Uncorrelated responses require bounded same-ID reconciliation, never resubmission.
       return pollCloseCommandForTerminal(clientOrderId, ticket, accountLogin, statusRequestOptions, attempts, intervalMs);
     })();
   },

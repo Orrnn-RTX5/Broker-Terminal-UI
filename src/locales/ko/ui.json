@@ -2037,5 +2037,10 @@
   "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.": "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.",
   "Send report": "Send report",
   "Capturing…": "Capturing…",
-  "Sending…": "Sending…"
+  "Sending…": "Sending…",
+  "Trading is not available for {{symbol}}.": "{{symbol}}은(는) 거래할 수 없습니다.",
+  "Waiting for a fresh quote": "최신 시세를 기다리는 중",
+  "Outcome unknown": "결과 알 수 없음",
+  "Time verification unavailable; server will validate quote age": "시간을 확인할 수 없습니다. 서버가 시세의 경과 시간을 검증합니다",
+  "Quote age uncertain; server will validate": "시세의 경과 시간이 불확실합니다. 서버가 검증합니다"
 }

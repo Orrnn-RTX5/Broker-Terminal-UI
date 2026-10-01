@@ -11,11 +11,11 @@ describe('useTerminalQuoteFreshness', () => {
     vi.useFakeTimers();
     vi.spyOn(performance, 'now').mockImplementation(() => mono);
     vi.spyOn(Date, 'now').mockImplementation(() => epoch + mono);
-    (window as any).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
     resetTerminalQuoteFreshness();
     calibrateTerminalQuoteClock(epoch, 0, epoch, 0, epoch);
   });
-  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); delete (window as any).__RTX_RUNTIME_CONFIG__; });
+  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__; });
   it('rerenders on expiry within 100ms and immediately on recovery', () => {
     ingestTerminalQuote('XAUUSD', { provider_timestamp: epoch, source: 'lp', sequence: 1, bid: 10, ask: 11 });
     const { result, unmount } = renderHook(() => useTerminalQuoteFreshness('XAUUSD'));
@@ -27,7 +27,7 @@ describe('useTerminalQuoteFreshness', () => {
     unmount(); expect(vi.getTimerCount()).toBe(0);
   });
   it('does not schedule polling on terminals without the feature flag', () => {
-    delete (window as any).__RTX_RUNTIME_CONFIG__;
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
     const { unmount } = renderHook(() => useTerminalQuoteFreshness('XAUUSD'));
     expect(vi.getTimerCount()).toBe(0);
     unmount();

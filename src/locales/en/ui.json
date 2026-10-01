@@ -2037,5 +2037,10 @@
   "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.": "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.",
   "Send report": "Send report",
   "Capturing…": "Capturing…",
-  "Sending…": "Sending…"
+  "Sending…": "Sending…",
+  "Trading is not available for {{symbol}}.": "Trading is not available for {{symbol}}.",
+  "Waiting for a fresh quote": "Waiting for a fresh quote",
+  "Outcome unknown": "Outcome unknown",
+  "Time verification unavailable; server will validate quote age": "Time verification unavailable; server will validate quote age",
+  "Quote age uncertain; server will validate": "Quote age uncertain; server will validate"
 }

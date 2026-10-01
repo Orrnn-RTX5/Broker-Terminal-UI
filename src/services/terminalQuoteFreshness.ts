@@ -27,7 +27,7 @@ const publish = () => { revision++; listeners.forEach(listener => listener()); }
 
 export function terminalQuoteFreshnessEnabled(): boolean {
   if (typeof window === 'undefined') return false;
-  const config = { ...(window as any).RUNTIME_CONFIG, ...(window as any).__RTX_RUNTIME_CONFIG__ };
+  const config = { ...(window as Window & { RUNTIME_CONFIG?: Record<string, unknown> }).RUNTIME_CONFIG, ...(window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ };
   return config.TERMINAL_QUOTE_FRESHNESS === true || config.TERMINAL_QUOTE_FRESHNESS === 'true';
 }
 

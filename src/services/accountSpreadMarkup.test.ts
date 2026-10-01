@@ -79,7 +79,7 @@ describe('account spread markup at the live-tick funnel', () => {
     useAppStore.setState({ isAuthenticated: false, accountId: null });
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    delete (window as any).__RTX_RUNTIME_CONFIG__;
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
   });
 
   it('leaves guest quotes raw', () => {
@@ -138,7 +138,7 @@ describe('account spread markup at the live-tick funnel', () => {
   });
 
   it('refreshes the same provider event with freshness enabled without renewing its age', () => {
-    (window as any).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
     let elapsed = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
     vi.spyOn(Date, 'now').mockImplementation(() => TIMESTAMP + elapsed);
@@ -178,7 +178,7 @@ describe('account spread markup at the live-tick funnel', () => {
     [{ tradable: false }, 'not-tradable'],
     [{ source_mismatch: true }, 'source-mismatch'],
   ] as const)('preserves a same-sequence execution veto during markup refresh: %j', (veto, reason) => {
-    (window as any).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
     vi.spyOn(performance, 'now').mockReturnValue(0);
     vi.spyOn(Date, 'now').mockReturnValue(TIMESTAMP);
     calibrateTerminalQuoteClock(TIMESTAMP, 0, TIMESTAMP, 0, TIMESTAMP);
@@ -198,7 +198,7 @@ describe('account spread markup at the live-tick funnel', () => {
   });
 
   it('does not revive cached evidence from a disconnected quote session on markup refresh', () => {
-    (window as any).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
     signIn();
     setAccountSpreadMarkups('1001', eurusdMarkup(5));
     enqueueLiveTick('EURUSD', { ...rawTick(), provider_timestamp: TIMESTAMP, sequence: 7, source: 'lp' });

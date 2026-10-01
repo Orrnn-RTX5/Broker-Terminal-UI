@@ -285,6 +285,10 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
       if (!isCurrentRequest()) return;
       if (loadsAccountCatalog) {
         if (authenticatedCatalog) {
+          // Authorization can succeed while public specifications are unavailable.
+          // Retry that missing data at the next revision poll even when the
+          // authenticated catalogue itself has not changed.
+          if (publicCatalogError) catalogueRevisionRef.current = null;
           window.dispatchEvent(new Event(INSTRUMENT_CATALOGUE_REFRESHED_EVENT));
           // Preserve saved pane selections until both sources settle before
           // allowing reconciliation against the account universe.

@@ -2037,5 +2037,10 @@
   "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.": "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.",
   "Send report": "Send report",
   "Capturing…": "Capturing…",
-  "Sending…": "Sending…"
+  "Sending…": "Sending…",
+  "Trading is not available for {{symbol}}.": "{{symbol}} के लिए ट्रेडिंग उपलब्ध नहीं है।",
+  "Waiting for a fresh quote": "ताज़ा कोट की प्रतीक्षा है",
+  "Outcome unknown": "परिणाम अज्ञात",
+  "Time verification unavailable; server will validate quote age": "समय सत्यापन उपलब्ध नहीं है; सर्वर कोट की आयु की जाँच करेगा",
+  "Quote age uncertain; server will validate": "कोट की आयु अनिश्चित है; सर्वर सत्यापन करेगा"
 }

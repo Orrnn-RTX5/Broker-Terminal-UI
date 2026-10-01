@@ -195,6 +195,8 @@ export const shouldBlockSymbolTrading = (
   marketStatus: Pick<NormalizedMarketStatus, 'isTradeBlocked' | 'symbol'>,
   _fallbackSymbol?: string,
 ): boolean => {
+  // Keep the optional argument for existing callers; authorization is explicit.
+  void _fallbackSymbol;
   return marketStatus.isTradeBlocked;
 };
 

@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { getTerminalQuoteFreshness, subscribeTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
 
-const noopSubscribe = (_listener: () => void) => () => {};
+const noopSubscribe = () => () => {};
 
 export function useTerminalQuoteFreshness(symbol: string) {
   const enabled = terminalQuoteFreshnessEnabled();

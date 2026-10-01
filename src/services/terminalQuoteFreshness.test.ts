@@ -12,9 +12,9 @@ describe('terminal quote freshness', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => mono);
     vi.spyOn(Date, 'now').mockImplementation(() => wall);
     resetTerminalQuoteFreshness();
-    (window as any).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
   });
-  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); delete (window as any).__RTX_RUNTIME_CONFIG__; });
+  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__; });
   it('expires after 3000ms without messages and immediately recovers on a new tick', () => {
     calibrate(); ingestTerminalQuote('XAUUSD', quote());
     expect(getTerminalQuoteFreshness('xauusd').live).toBe(true);
@@ -142,7 +142,7 @@ describe('terminal quote freshness', () => {
     expect(() => assertTerminalQuoteFresh('XAUUSD')).toThrow('Quote unavailable');
     calibrate(); ingestTerminalQuote('XAUUSD', quote());
     expect(() => assertTerminalQuoteFresh('XAUUSD')).not.toThrow();
-    delete (window as any).__RTX_RUNTIME_CONFIG__;
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
     expect(terminalQuoteFreshnessEnabled()).toBe(false);
     expect(() => assertTerminalQuoteFresh('UNKNOWN')).not.toThrow();
   });

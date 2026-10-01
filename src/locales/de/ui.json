@@ -2037,5 +2037,10 @@
   "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.": "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.",
   "Send report": "Send report",
   "Capturing…": "Capturing…",
-  "Sending…": "Sending…"
+  "Sending…": "Sending…",
+  "Trading is not available for {{symbol}}.": "Handel mit {{symbol}} ist nicht verfügbar.",
+  "Waiting for a fresh quote": "Warten auf einen aktuellen Kurs",
+  "Outcome unknown": "Ergebnis unbekannt",
+  "Time verification unavailable; server will validate quote age": "Zeitprüfung nicht verfügbar; der Server prüft die Aktualität des Kurses",
+  "Quote age uncertain; server will validate": "Kursalter ungewiss; der Server führt die Prüfung durch"
 }

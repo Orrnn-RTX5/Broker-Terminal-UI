@@ -63,7 +63,7 @@ const renderDialog = () => render(
 
 describe('OrderPanelDialog market status', () => {
   it('keeps selected-symbol demand while its quote is stale and releases it when closed', () => {
-    (window as any).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
     const props = { onClose: vi.fn(), symbol: 'EURUSD', currentPrice: { bid: 1, ask: 2 }, onSubmitOrder: vi.fn() };
     try {
       const view = render(<OrderPanelDialog {...props} isOpen />);
@@ -71,7 +71,7 @@ describe('OrderPanelDialog market status', () => {
       expect(screen.getByRole('button', { name: /buy by market/i })).toBeDisabled();
       view.rerender(<OrderPanelDialog {...props} isOpen={false} />);
       expect(quoteSubscription).toHaveBeenLastCalledWith([], expect.stringContaining('order-dialog:'), { enabled: false });
-    } finally { delete (window as any).__RTX_RUNTIME_CONFIG__; }
+    } finally { delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__; }
   });
   beforeEach(() => {
     localStorage.removeItem('lastLotSize');
@@ -206,7 +206,7 @@ describe('OrderPanelDialog live instrument specifications', () => {
 
 it('allows uncertain market age with an advisory and submits one user click', async () => {
   setupTick(); setMarketStatus('open');
-  (window as any).__RTX_RUNTIME_CONFIG__ = {TERMINAL_QUOTE_FRESHNESS:true};
+  (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {TERMINAL_QUOTE_FRESHNESS:true};
   resetTerminalQuoteFreshness();
   ingestTerminalQuote('EURUSD',{bid:1.085,ask:1.0852,source:'lp',provider_timestamp:Date.now(),sequence:1});
   const submit = vi.fn().mockResolvedValue({});
@@ -217,5 +217,5 @@ it('allows uncertain market age with an advisory and submits one user click', as
     expect(screen.getByText(/server will validate quote age/)).toBeTruthy();
     fireEvent.click(buy);
     await waitFor(() => expect(submit).toHaveBeenCalledOnce());
-  } finally {cleanup();delete (window as any).__RTX_RUNTIME_CONFIG__;resetTerminalQuoteFreshness();}
+  } finally {cleanup();delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;resetTerminalQuoteFreshness();}
 });

@@ -2037,5 +2037,10 @@
   "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.": "Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.",
   "Send report": "Send report",
   "Capturing…": "Capturing…",
-  "Sending…": "Sending…"
+  "Sending…": "Sending…",
+  "Trading is not available for {{symbol}}.": "{{symbol}} は取引できません。",
+  "Waiting for a fresh quote": "最新のレートを待っています",
+  "Outcome unknown": "結果不明",
+  "Time verification unavailable; server will validate quote age": "時刻を検証できません。サーバーがレートの鮮度を検証します",
+  "Quote age uncertain; server will validate": "レートの鮮度が不明です。サーバーが検証します"
 }

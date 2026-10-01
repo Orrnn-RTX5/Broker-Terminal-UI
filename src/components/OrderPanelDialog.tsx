@@ -459,8 +459,9 @@ export function OrderPanelDialog({
   });
   const [orderType] = useState<OrderType>('Market Execution');
   const specification = instruments?.find(instrument => instrument.symbol === symbol);
-  const volumeConstraints = useMemo(() => resolveTradeVolumeConstraints(specification),
-    [specification?.minVolume, specification?.maxVolume, specification?.volumeStep]);
+  const { minVolume, maxVolume, volumeStep } = specification ?? {};
+  const volumeConstraints = useMemo(() => resolveTradeVolumeConstraints({ minVolume, maxVolume, volumeStep }),
+    [minVolume, maxVolume, volumeStep]);
   const hasVolumeSpecifications = instruments === undefined || Boolean(specification
     && [specification.minVolume, specification.maxVolume, specification.volumeStep].every(value => typeof value === 'number' && Number.isFinite(value) && value > 0)
     && specification.maxVolume! >= specification.minVolume!);

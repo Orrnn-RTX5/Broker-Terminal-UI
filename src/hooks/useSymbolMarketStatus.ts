@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 
 import { marketV2Api } from '../api/trade';
 import { INSTRUMENT_CATALOGUE_CHANGED_EVENT, INSTRUMENT_CATALOGUE_REFRESHED_EVENT } from '../services/instrumentCatalogueEvents';
@@ -101,19 +101,27 @@ export const useSymbolMarketStatus = (
   const visiblePollMs = pollMs > 0 ? Math.max(MIN_VISIBLE_POLL_MS, pollMs) : 0;
   const normalizedSymbol = useMemo(() => normalizeSymbolKey(symbol), [symbol]);
   const requestSeqRef = useRef(0);
-  const stateScopeRef = useRef(sessionScope);
-  const [state, setState] = useState<SymbolMarketStatusState>(() => (
-    getCachedSymbolMarketStatus(normalizedSymbol)
-    ?? toState(createUnavailableMarketStatus(normalizedSymbol), {
-      loading: Boolean(enabled && normalizedSymbol),
-    })
-  ));
+  const [snapshot, setSnapshot] = useState(() => ({
+    scope: sessionScope,
+    state: getCachedSymbolMarketStatus(normalizedSymbol)
+      ?? toState(createUnavailableMarketStatus(normalizedSymbol), {
+        loading: Boolean(enabled && normalizedSymbol),
+      }),
+  }));
+  const state = snapshot.state;
+  const setState = useCallback((next: SetStateAction<SymbolMarketStatusState>) => {
+    setSnapshot(previous => ({
+      scope: sessionScope,
+      state: typeof next === 'function'
+        ? next(previous.scope === sessionScope
+          ? previous.state : toState(createUnavailableMarketStatus(normalizedSymbol)))
+        : next,
+    }));
+  }, [normalizedSymbol, sessionScope]);
 
   const refresh = useCallback(async (force = false): Promise<NormalizedMarketStatus> => {
     const requestId = requestSeqRef.current + 1;
     requestSeqRef.current = requestId;
-    const sameScope = stateScopeRef.current === sessionScope;
-    stateScopeRef.current = sessionScope;
 
     if (!enabled || !normalizedSymbol) {
       const unavailable = createUnavailableMarketStatus(normalizedSymbol);
@@ -128,7 +136,7 @@ export const useSymbolMarketStatus = (
     }
 
     setState(prev => (
-      sameScope && normalizeSymbolKey(prev.symbol) === normalizedSymbol
+      normalizeSymbolKey(prev.symbol) === normalizedSymbol
         ? {
           ...prev,
           loading: true,
@@ -154,7 +162,7 @@ export const useSymbolMarketStatus = (
       }
       return unavailable;
     }
-  }, [enabled, normalizedSymbol, sessionScope]);
+  }, [enabled, normalizedSymbol, setState]);
 
   useEffect(() => {
     if (!enabled || !normalizedSymbol) {
@@ -224,9 +232,9 @@ export const useSymbolMarketStatus = (
       window.removeEventListener(INSTRUMENT_CATALOGUE_CHANGED_EVENT, handleCatalogueChange);
       window.removeEventListener(INSTRUMENT_CATALOGUE_REFRESHED_EVENT, handleCatalogueRefreshed);
     };
-  }, [enabled, normalizedSymbol, refresh, visiblePollMs]);
+  }, [enabled, normalizedSymbol, refresh, setState, visiblePollMs]);
 
-  if (stateScopeRef.current !== sessionScope || normalizeSymbolKey(state.symbol) !== normalizedSymbol) {
+  if (snapshot.scope !== sessionScope || normalizeSymbolKey(state.symbol) !== normalizedSymbol) {
     return getCachedSymbolMarketStatus(normalizedSymbol)
       ?? toState(createUnavailableMarketStatus(normalizedSymbol), {
         loading: Boolean(enabled && normalizedSymbol),

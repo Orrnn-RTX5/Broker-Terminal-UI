@@ -9,10 +9,10 @@ const quote = {bid:100,ask:101,source:'lp',provider_timestamp:epoch,sequence:1};
 describe('backend-authoritative market quote age', () => {
   beforeEach(() => {
     vi.spyOn(Date,'now').mockReturnValue(epoch); vi.spyOn(performance,'now').mockReturnValue(0);
-    (window as any).__RTX_RUNTIME_CONFIG__ = {TERMINAL_QUOTE_FRESHNESS:true};
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {TERMINAL_QUOTE_FRESHNESS:true};
     resetTerminalQuoteFreshness();
   });
-  afterEach(() => {vi.restoreAllMocks(); delete (window as any).__RTX_RUNTIME_CONFIG__;});
+  afterEach(() => {vi.restoreAllMocks(); delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;});
   it('submits uncertain market routes once each while strict pending and execution guards remain blocked', async () => {
     ingestTerminalQuote(order.symbol,quote);
     expect(getTerminalQuoteFreshness(order.symbol)).toMatchObject({live:false,reason:'time-unverified'});

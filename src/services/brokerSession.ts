@@ -540,46 +540,23 @@ const isDeployOnlyBrokerAlias = (brokerId: string): boolean => {
   return DEPLOY_ONLY_BROKER_ALIASES.has(trimmed) || DEPLOY_ONLY_BROKER_ALIASES.has(trimmed.toLowerCase());
 };
 
-/**
- * Broker id used ONLY to label the feed WS connection (`broker_id` query).
- * Prefer runtime feed/backend ids over localStorage deploy aliases that are
- * written after login/discovery (e.g. grow-trading-academy).
- */
+/** Runtime feed identity takes precedence over saved broker aliases. */
 const getFeedBrokerId = (): string => {
   if (typeof window === 'undefined') return '';
 
-  // a) Runtime FEED_BROKER_ID / VITE_FEED_BROKER_ID (docker-entrypoint injects
-  //    these). A deployment that pins a feed broker id is declaring itself
-  //    single-broker, and that declaration is authoritative: it MUST outrank a
-  //    localStorage value left by an earlier build, an earlier deployment, or a
-  //    broker the user once selected.
-  //
-  //    Reading storage first is what this function's contract forbids two lines
-  //    above — and is what shipped. A stale `feed_broker_id` therefore pinned
-  //    every /ws/feed handshake to a broker this deployment does not serve, the
-  //    bridge answered 401 unknown_broker_id, and the terminal sat on
-  //    "Disconnected" with every symbol UNAVAILABLE for the life of that browser
-  //    profile — before login and after, because the feed is authenticated by
-  //    the deployment's broker-scoped token and never by the user session.
-  //    Nothing the user could do in the UI cleared it.
+  // A deployment's pinned feed identity outranks stale browser storage.
   const runtimeFeedBrokerId = getRuntimeConfigValue(['FEED_BROKER_ID', 'VITE_FEED_BROKER_ID']);
   if (runtimeFeedBrokerId) return mapFeedBrokerAlias(runtimeFeedBrokerId);
 
-  // b) Explicit feed broker id storage. This is the path packaged Electron and
-  //    generic multi-broker deployments rely on: with no runtime feed id
-  //    injected there is no deployment-level claim to honour, so the broker
-  //    selected at login/discovery IS the answer.
+  // Generic web and Electron deployments may use the broker selected at login.
   const storedFeedBrokerId = String(getLocalStorageItem('feed_broker_id') || '').trim();
   if (storedFeedBrokerId) return mapFeedBrokerAlias(storedFeedBrokerId);
 
-  // c) Runtime BROKER_ID when it is a real feed/backend id (not a deploy-only alias)
   const runtimeBrokerId = getRuntimeConfigValue(['BROKER_ID']);
   if (runtimeBrokerId && !isDeployOnlyBrokerAlias(runtimeBrokerId)) {
     return runtimeBrokerId;
   }
 
-  // e) localStorage broker_id / rtx_broker_id after alias map
-  //    (d = alias map applied here and below)
   const storedBrokerId = String(
     getLocalStorageItem('broker_id')
     || getLocalStorageItem('rtx_broker_id')
@@ -590,7 +567,6 @@ const getFeedBrokerId = (): string => {
   // Map deploy-only runtime BROKER_ID if localStorage had nothing usable
   if (runtimeBrokerId) return mapFeedBrokerAlias(runtimeBrokerId);
 
-  // f) runtime VITE_BROKER_ID after alias map
   const viteBrokerId = getRuntimeConfigValue(['VITE_BROKER_ID']);
   if (viteBrokerId) return mapFeedBrokerAlias(viteBrokerId);
 
@@ -957,13 +933,7 @@ const pickStoredWsUrl = (candidates: string[], marketOrigin: string): string => 
   return '';
 };
 
-/**
- * Label the quote feed socket with the active broker id.
- *
- * Anonymous feeds need only a label. Older deployments can supply a scoped
- * runtime feed credential; it is never recovered from user storage/discovery
- * or sent to an origin outside that deployment's configured quote host.
- */
+/** Feed credentials stay scoped to the deployment's configured broker and origin. */
 const appendFeedBrokerIdToWsUrl = (url: string): string => {
   if (!url) return '';
   const brokerId = getFeedBrokerId();

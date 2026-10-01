@@ -16,13 +16,13 @@ describe('terminal clock lifecycle', () => {
     vi.useFakeTimers();
     vi.setSystemTime(epoch);
     vi.spyOn(performance, 'now').mockImplementation(() => Date.now() - epoch + 100);
-    (window as any).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
     resetTerminalQuoteFreshness();
     mocks.get.mockReset().mockResolvedValue({ server_time_ms: epoch });
   });
   afterEach(() => {
     cleanup(); vi.restoreAllMocks(); vi.useRealTimers();
-    delete (window as any).__RTX_RUNTIME_CONFIG__;
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
   });
   it('calibrates immediately and refreshes every five seconds with one owner', async () => {
     const view = renderHook(() => useTerminalQuoteClock());
@@ -57,7 +57,7 @@ describe('terminal clock lifecycle', () => {
     expect(mocks.get).toHaveBeenCalledTimes(2);
   });
   it('does not fetch or install periodic work for other deployments', async () => {
-    (window as any).__RTX_RUNTIME_CONFIG__ = {};
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {};
     renderHook(() => useTerminalQuoteClock());
     await act(async () => { vi.advanceTimersByTime(15000); });
     expect(mocks.get).not.toHaveBeenCalled();

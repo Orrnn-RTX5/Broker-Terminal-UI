@@ -13,9 +13,10 @@ const startedStart = bulkHandler.indexOf('onCandidatesStarted: (candidates) => {
 const startedEnd = bulkHandler.indexOf('onTicketConfirmed: (ticketId) => {', startedStart);
 const candidatesStartedHandler = bulkHandler.slice(startedStart, startedEnd);
 
-const singleStart = appSource.indexOf('const handleClosePosition = async (');
-const singleEnd = appSource.indexOf('// ── cTrader-style chart position actions', singleStart);
-const singleHandler = appSource.slice(singleStart, singleEnd);
+const singleSource = readFileSync(resolve(process.cwd(), 'src/app/trading/createPositionCloseHandler.ts'), 'utf8');
+const singleStart = singleSource.indexOf('const handleClosePosition = async (');
+const singleEnd = singleSource.indexOf('return handleClosePosition;', singleStart);
+const singleHandler = singleSource.slice(singleStart, singleEnd);
 
 const dockStart = bottomDockSource.indexOf("const handleTradeCloseBulk = useCallback((type: 'ALL' | 'WINNERS' | 'LOSERS'");
 const dockEnd = bottomDockSource.indexOf('// Helpers', dockStart);

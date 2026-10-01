@@ -13,10 +13,10 @@ describe('terminal quote age gate matches the 3s gateway guard', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => mono);
     vi.spyOn(Date, 'now').mockImplementation(() => wall);
     resetTerminalQuoteFreshness();
-    (window as any).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
     calibrateTerminalQuoteClock(epoch + mono, mono, wall, mono, wall);
   });
-  afterEach(() => { vi.restoreAllMocks(); delete (window as any).__RTX_RUNTIME_CONFIG__; });
+  afterEach(() => { vi.restoreAllMocks(); delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__; });
 
   const tickAged = (ageMs: number) => {
     ingestTerminalQuote('XAUUSD', { bid: 4314.66, ask: 4314.75, provider_timestamp: epoch + mono, sequence: 1, source: 'cserver' });
