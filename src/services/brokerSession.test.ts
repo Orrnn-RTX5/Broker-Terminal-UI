@@ -22,6 +22,7 @@ describe('broker websocket URL builder', () => {
   });
 
   it('preserves saved HTTPS broker server_url in desktop runtime', () => {
+    localStorage.setItem('broker_id', 'selected-broker');
     localStorage.setItem('server_url', 'https://testbrokerbackend.orrnn.com:443');
     localStorage.setItem('auth_token', 'access-token');
 
@@ -54,32 +55,32 @@ describe('broker websocket URL builder', () => {
   });
 
   it('uses public broker URLs in web mode even when stale direct broker storage exists', () => {
-    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { VITE_BACKEND_TARGET: 'web' };
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { VITE_BACKEND_TARGET: 'web', API_HOST: 'https://configured.example', WS_HOST: 'wss://configured.example', BROKER_ID: 'gta_broker', DEFAULT_MT5_SERVER: 'Configured-Live' };
     localStorage.setItem('backend_url', 'http://103.91.186.142:8091');
     localStorage.setItem('server_url', 'http://103.91.186.142:8091');
     localStorage.setItem('ws_url', 'ws://103.91.186.142:8091/ws/v2');
     localStorage.setItem('feed_url', 'ws://103.91.186.142:8091/ws/feed');
 
-    expect(getServerUrl()).toBe('https://service.orrnn.com');
-    expect(buildBrokerApiV2()).toBe('https://service.orrnn.com/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('wss://service.orrnn.com/ws/feed');
+    expect(getServerUrl()).toBe('https://configured.example');
+    expect(buildBrokerApiV2()).toBe('https://configured.example/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://configured.example/ws/feed?broker_id=gta_broker');
     expect(buildBrokerWsV2Uri('access-token')).toBe(
-      'wss://service.orrnn.com/ws/v2?token=access-token'
+      'wss://configured.example/ws/v2?token=access-token'
     );
   });
 
   it('ignores stale direct IP websocket storage in web mode even when it is not :8091', () => {
-    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'web' };
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'web', API_HOST: 'https://configured.example', WS_HOST: 'wss://configured.example', BROKER_ID: 'gta_broker', DEFAULT_MT5_SERVER: 'Configured-Live' };
     localStorage.setItem('backend_url', 'http://69.197.178.27:8090');
     localStorage.setItem('server_url', 'http://69.197.178.27:8090');
     localStorage.setItem('ws_url', 'ws://69.197.178.27:8090/ws/v2');
     localStorage.setItem('feed_url', 'ws://69.197.178.27/ws/feed');
 
-    expect(getServerUrl()).toBe('https://service.orrnn.com');
-    expect(buildBrokerApiV2()).toBe('https://service.orrnn.com/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('wss://service.orrnn.com/ws/feed');
+    expect(getServerUrl()).toBe('https://configured.example');
+    expect(buildBrokerApiV2()).toBe('https://configured.example/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://configured.example/ws/feed?broker_id=gta_broker');
     expect(buildBrokerWsV2Uri('access-token')).toBe(
-      'wss://service.orrnn.com/ws/v2?token=access-token'
+      'wss://configured.example/ws/v2?token=access-token'
     );
     expect([
       buildBrokerWsFeedUri(),
@@ -88,7 +89,7 @@ describe('broker websocket URL builder', () => {
   });
 
   it('persists public broker routing for web discovery that includes direct broker endpoints', () => {
-    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { BACKEND_MODE: 'browser' };
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { BACKEND_MODE: 'browser', API_HOST: 'https://configured.example', WS_HOST: 'wss://configured.example', BROKER_ID: 'gta_broker', DEFAULT_MT5_SERVER: 'Configured-Live' };
 
     persistBrokerSessionDiscovery({
       access_token: 'access-token',
@@ -100,10 +101,10 @@ describe('broker websocket URL builder', () => {
       feed_url: 'ws://103.91.186.142:8091/ws/feed',
     });
 
-    expect(localStorage.getItem('backend_url')).toBe('https://service.orrnn.com');
-    expect(localStorage.getItem('server_url')).toBe('https://service.orrnn.com');
-    expect(localStorage.getItem('ws_url')).toBe('wss://service.orrnn.com/ws/v2');
-    expect(localStorage.getItem('feed_url')).toBe('wss://service.orrnn.com/ws/feed');
+    expect(localStorage.getItem('backend_url')).toBe('https://configured.example');
+    expect(localStorage.getItem('server_url')).toBe('https://configured.example');
+    expect(localStorage.getItem('ws_url')).toBe('wss://configured.example/ws/v2');
+    expect(localStorage.getItem('feed_url')).toBe('wss://configured.example/ws/feed');
   });
 
   it('extracts only host and port when server_url contains a path', () => {
@@ -140,6 +141,7 @@ describe('broker websocket URL builder', () => {
   it('uses the runtime-config broker id for deployed web quote sockets', () => {
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
       API_HOST: 'https://services.growtradingacademy.com',
       WS_HOST: 'wss://services.growtradingacademy.com',
       BROKER_ID: 'gta_broker',
@@ -176,6 +178,7 @@ describe('broker websocket URL builder', () => {
   it('uses FX Trust public broker hosts in web mode', () => {
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
       API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
       WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
       BROKER_ID: 'TEST',
@@ -206,7 +209,7 @@ describe('broker websocket URL builder', () => {
     expect(buildBrokerWsFeedUri()).toBe('ws://127.0.0.1:5175/ws/feed?broker_id=TEST');
   });
 
-  it('prefers runtime feed/backend broker id over localStorage deploy alias for the feed label', () => {
+  it('does not carry a packaged feed identity into a separately selected desktop broker', () => {
     localStorage.setItem('broker_id', 'grow-trading-academy');
     localStorage.setItem('rtx_broker_id', 'grow-trading-academy');
     localStorage.setItem('server_url', 'https://services.growtradingacademy.com');
@@ -218,11 +221,11 @@ describe('broker websocket URL builder', () => {
     };
 
     expect(buildBrokerWsFeedUri()).toBe(
-      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker'
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=grow-trading-academy'
     );
   });
 
-  it('maps localStorage deploy alias grow-trading-academy to gta_broker for the feed label', () => {
+  it('preserves backend broker ids without frontend alias rewriting', () => {
     localStorage.setItem('broker_id', 'grow-trading-academy');
     localStorage.setItem('server_url', 'https://services.growtradingacademy.com');
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
@@ -231,8 +234,16 @@ describe('broker websocket URL builder', () => {
     };
 
     expect(buildBrokerWsFeedUri()).toBe(
-      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker'
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=grow-trading-academy'
     );
+  });
+
+  it('uses the feed broker id published by backend discovery without rewriting it', () => {
+    persistBrokerSessionDiscovery({
+      broker_id: 'deployment-id', feed_broker_id: 'Backend-Feed-ID',
+      server_url: 'https://broker.example',
+    });
+    expect(buildBrokerWsFeedUri()).toBe('wss://broker.example/ws/feed?broker_id=Backend-Feed-ID');
   });
 
   it('never persists or replays a feed credential from discovery', () => {

@@ -57,7 +57,6 @@ export function BulkCloseConfirmDialog() {
 
     if (!isOpen) return null;
 
-    const modeIcon = type === 'WINNERS' ? '📈' : type === 'LOSERS' ? '📉' : '⚡';
     const modeLabel = type === 'ALL'
         ? tr('Close All Positions')
         : type === 'WINNERS'
@@ -80,7 +79,6 @@ export function BulkCloseConfirmDialog() {
                 {/* ─── Header ─── */}
                 <div className="rtx-bulk-close-dialog__header">
                     <div className="rtx-bulk-close-dialog__header-left">
-                        <span className="rtx-bulk-close-dialog__mode-icon">{modeIcon}</span>
                         <span id="bulk-close-title" className="rtx-bulk-close-dialog__title">{modeLabel}</span>
                         {symbol && (
                             <span className="rtx-bulk-close-dialog__symbol-badge">{symbol}</span>
@@ -162,15 +160,6 @@ export function BulkCloseConfirmDialog() {
                             +{hiddenCount} more position{hiddenCount > 1 ? 's' : ''} not shown
                         </div>
                     )}
-                </div>
-
-                {/* ─── Risk Warning ─── */}
-                <div className="rtx-bulk-close-dialog__warning">
-                    <svg className="rtx-bulk-close-dialog__warning-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                        <path d="M8 1L15 14H1L8 1Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                        <path d="M8 6V9M8 11V11.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                    </svg>
-                    <span>{tr('This action cannot be undone. All selected positions will be closed at market price.')}</span>
                 </div>
 
                 {/* ─── Footer ─── */}

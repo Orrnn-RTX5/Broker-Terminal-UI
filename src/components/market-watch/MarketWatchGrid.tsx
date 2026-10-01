@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import type { ContextMenuItemConfig } from '../ui/ContextMenu';
 import type {
@@ -16,6 +16,7 @@ interface MarketWatchGridProps {
   closedDailyChanges: ReadonlyMap<string, number>;
   columns: readonly MarketWatchColumnId[];
   getContextMenuItems: (symbol: string) => ContextMenuItemConfig[];
+  footer?: ReactNode;
   isSymbolListLoading: boolean;
   lastPrices: ReadonlyMap<string, MarketWatchLastPrice>;
   liveQuoteSymbolSet: ReadonlySet<string>;
@@ -30,6 +31,7 @@ interface MarketWatchGridProps {
   setMarketWatchViewportRef: (node: HTMLElement | null) => void;
   setSortMode: (mode: MarketWatchSortMode) => void;
   sortMode: MarketWatchSortMode;
+  showRows?: boolean;
   translate: Translate;
 }
 
@@ -40,6 +42,7 @@ export const MarketWatchGrid = ({
   closedDailyChanges,
   columns,
   getContextMenuItems,
+  footer,
   isSymbolListLoading,
   lastPrices,
   liveQuoteSymbolSet,
@@ -54,6 +57,7 @@ export const MarketWatchGrid = ({
   setMarketWatchViewportRef,
   setSortMode,
   sortMode,
+  showRows = true,
   translate,
 }: MarketWatchGridProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -64,6 +68,24 @@ export const MarketWatchGrid = ({
     viewportRef.current = node;
     setMarketWatchViewportRef(node);
   }, [setMarketWatchViewportRef]);
+
+  useEffect(() => {
+    const ownerDocument = viewportRef.current?.ownerDocument;
+    if (!ownerDocument) return;
+    const releaseRowFocus = (event: PointerEvent) => {
+      const focused = ownerDocument.activeElement;
+      if (!(focused instanceof HTMLElement)
+        || !focused.classList.contains('rtx-market-watch__row')
+        || !viewportRef.current?.contains(focused)
+        || !(event.target instanceof Node)
+        || focused.contains(event.target)) return;
+      // Canvas tools can prevent the normal pointer focus transfer. Release
+      // just this list's row before those handlers run, retaining its symbol.
+      focused.blur();
+    };
+    ownerDocument.addEventListener('pointerdown', releaseRowFocus, true);
+    return () => ownerDocument.removeEventListener('pointerdown', releaseRowFocus, true);
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -96,18 +118,20 @@ export const MarketWatchGrid = ({
     spread: 'Spread',
     time: 'Time',
     dailyChange: 'Daily Change',
+    dailyChangePrice: 'Change',
     source: 'Source',
   };
   const columnWidths = useMemo<Partial<Record<MarketWatchColumnId, number>>>(() => ({
-    bid: 82,
-    ask: 82,
-    last: 88,
-    high: 88,
-    low: 88,
-    volume: 88,
-    spread: 76,
+    bid: 74,
+    ask: 74,
+    last: 80,
+    high: 80,
+    low: 80,
+    volume: 76,
+    spread: 64,
     time: marketWatchOptions.showMilliseconds ? 104 : 82,
-    dailyChange: 108,
+    dailyChange: 76,
+    dailyChangePrice: 76,
     source: 110,
   }), [marketWatchOptions.showMilliseconds]);
   const tableMinimumWidth = 118 + columns.reduce(
@@ -123,16 +147,18 @@ export const MarketWatchGrid = ({
         overflowY: 'auto',
         overflowX: marketWatchOptions.autoArrange ? 'hidden' : 'auto',
         minWidth: 0,
+        display: showRows ? 'block' : 'flex',
+        flexDirection: 'column',
       }}
       className="rtx-market-watch__table mw-scrollbar"
     >
-      {rows.length === 0 ? (
+      {showRows && (rows.length === 0 ? (
         <div style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          height: '100%',
+          minHeight: 72,
           gap: 8,
           color: '#222226',
         }}>
@@ -185,11 +211,13 @@ export const MarketWatchGrid = ({
                   ? 'symbol'
                   : column === 'dailyChange'
                     ? (sortMode === 'gainers' ? 'losers' : 'gainers')
+                    : column === 'dailyChangePrice' ? (sortMode === 'change-desc' ? 'change-asc' : 'change-desc')
                     : column === 'volume' ? 'volume' : null;
-                const isSortable = column === 'symbol' || column === 'dailyChange' || column === 'volume';
+                const isSortable = column === 'symbol' || column === 'dailyChange' || column === 'dailyChangePrice' || column === 'volume';
                 const isSorted = (column === 'symbol' && sortMode === 'symbol')
                   || (column === 'volume' && sortMode === 'volume')
                   || (column === 'dailyChange' && (sortMode === 'gainers' || sortMode === 'losers'));
+                const amountSorted = column === 'dailyChangePrice' && (sortMode === 'change-asc' || sortMode === 'change-desc');
                 return (
                   <th
                     key={column}
@@ -202,27 +230,34 @@ export const MarketWatchGrid = ({
                     } : undefined}
                     tabIndex={isSortable ? 0 : undefined}
                     title={isSortable ? translate('Sort by {{value0}}', { value0: columnHeaders[column] }) : undefined}
-                    aria-sort={isSorted
-                      ? (sortMode === 'gainers' || sortMode === 'volume' ? 'descending' : 'ascending')
+                    aria-sort={isSorted || amountSorted
+                      ? (sortMode === 'gainers' || sortMode === 'change-desc' || sortMode === 'volume' ? 'descending' : 'ascending')
                       : 'none'}
                     style={{
-                      textAlign: column === 'symbol' || column === 'source' ? 'left' : 'center',
-                      padding: column === 'symbol' ? '3px 8px 3px 19px' : '3px 5px',
+                      textAlign: column === 'symbol' || column === 'source' ? 'left' : 'right',
+                      padding: '0 5px',
                       fontSize: 12,
-                      fontWeight: 500,
-                      lineHeight: '16px',
+                      fontWeight: 400,
+                      lineHeight: '23px',
                       color: 'var(--text-primary)',
                       letterSpacing: 'normal',
                       background: 'var(--bg-secondary)',
                       position: 'sticky',
                       top: 0,
                       zIndex: 10,
-                      textTransform: column === 'dailyChange' ? undefined : 'uppercase',
+                      textTransform: 'none',
                       whiteSpace: 'nowrap',
                       cursor: isSortable ? 'pointer' : 'default',
                     }}
                   >
                     {translate(columnHeaders[column])}
+                    {(isSorted || amountSorted) && (
+                      <span
+                        className="rtx-market-watch__sort-arrow"
+                        aria-hidden="true"
+                        data-descending={sortMode === 'gainers' || sortMode === 'change-desc' || sortMode === 'volume'}
+                      />
+                    )}
                   </th>
                 );
               })}
@@ -255,7 +290,8 @@ export const MarketWatchGrid = ({
             ))}
           </tbody>
         </table>
-      )}
+      ))}
+      {footer}
     </div>
   );
 };

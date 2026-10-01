@@ -6,6 +6,12 @@ vi.mock('./dailyChangePriceModeRegistry', () => ({
 }));
 
 describe('processIncomingQuotePayload routing and timestamps', () => {
+  it('retains explicit hub trading metadata without inventing it for legacy quotes', () => {
+    const [quote] = processIncomingQuotePayload({ symbol: 'EURJPY', bid: 178, ask: 179,
+      timestamp_ms: Date.now(), tradable: true, stale: false, authority: 'rtx5_hub', broker_id: 'Orrnn', source_mismatch: false });
+    expect(quote.tradingStatus).toMatchObject({ tradable: true, stale: false, authority: 'rtx5_hub', brokerId: 'orrnn', sourceMismatch: false });
+    expect(processIncomingQuotePayload({ symbol: 'EURJPY', bid: 178, ask: 179 })[0].tradingStatus).toBeUndefined();
+  });
   it('treats the subscribed channel as authoritative over an unsuffixed payload symbol', () => {
     const ticks = processIncomingQuotePayload({
       channel: 'ticks.EURUSD.r',

@@ -1,3 +1,4 @@
+import { useWebSocketStore } from './useWebSocketStore';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { commitBrokerAccountSessionScope } from '../services/brokerSession';
@@ -10,6 +11,7 @@ import {
 
 describe('Market Watch display metadata store', () => {
   beforeEach(() => {
+    useWebSocketStore.setState({ fixConnectionState: 'connected', isStale: false });
     commitBrokerAccountSessionScope({
       authenticated: true,
       accountId: '1001',
@@ -17,6 +19,18 @@ describe('Market Watch display metadata store', () => {
       serverUrl: 'https://broker-a.test',
     });
     resetMarketWatchDisplayMetadataForTests();
+  });
+
+  it('retains values and their timestamps through disconnect until a fresh reconnect quote', () => {
+    const at = Date.parse('2026-03-07T22:00:00Z');
+    publishMarketWatchDisplayMetadata('EURUSD.r', { timestamp: at, sourceTimestamp: at,
+      dailyChangeInput: { mode: 'bid', bid: 105, previousClose: 100, sessionId: 'session-a' } });
+    useWebSocketStore.getState().setConnectionState('disconnected', 'fix_socket');
+    expect(getMarketWatchDisplayMetadata('EURUSD.r')?.daily).toMatchObject({ percent: 5, valuesAsOf: at, status: 'disconnected' });
+    useWebSocketStore.getState().setConnectionState('connected', 'fix_socket');
+    expect(getMarketWatchDisplayMetadata('EURUSD.r')?.daily?.status).toBe('stale');
+    publishMarketWatchDisplayMetadata('EURUSD.r', { timestamp: at + 1, sourceTimestamp: at + 1, dailyChangeInput: { bid: 110 } });
+    expect(getMarketWatchDisplayMetadata('EURUSD.r')?.daily).toMatchObject({ percent: 10, status: 'live', valuesAsOf: at + 1 });
   });
 
   afterEach(() => {

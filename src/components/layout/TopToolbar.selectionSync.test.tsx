@@ -7,6 +7,7 @@ import { commandBus } from '../../services/commandBus';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { useChartSettingsStore } from '../../store/useChartSettingsStore';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
+import { useLastSymbolStore } from '../../store/useLastSymbolStore';
 import type { DockLayout } from '../../services/dockManager';
 import {
   activateActiveChartSource,
@@ -18,6 +19,7 @@ import {
 const originalElectron = window.electron;
 const originalLayout = useDockLayoutStore.getState().layout;
 const originalChartSettings = useChartSettingsStore.getState();
+const originalLastSymbolState = useLastSymbolStore.getState();
 const chartElements: HTMLElement[] = [];
 
 const toolbarProps = (): ComponentProps<typeof TopToolbar> => ({
@@ -80,6 +82,7 @@ const prepareDesktopCharts = (layout: DockLayout) => {
 afterEach(() => {
   cleanup();
   useTerminalBarsStore.setState({ timeframesVisible: true });
+  useLastSymbolStore.setState(originalLastSymbolState);
   clearActiveChartSources();
   chartElements.splice(0).forEach(element => element.remove());
   useDockLayoutStore.getState().setLayout(originalLayout);
@@ -92,6 +95,35 @@ afterEach(() => {
 });
 
 describe('toolbar selection synchronization', () => {
+  it.each(['web', 'desktop'])('keeps the %s bug-report button in the header outside the scrolling chart commands', (surface) => {
+    if (surface === 'desktop') prepareDesktopCharts(desktopChartLayout());
+    else Object.defineProperty(window, 'electron', { configurable: true, writable: true, value: undefined });
+    const onOpen = vi.fn();
+    window.addEventListener('rtx5:open-bug-report', onOpen);
+    try {
+      const { container } = render(<TopToolbar {...toolbarProps()} />);
+      const trigger = screen.getByRole('button', { name: 'Report a Bug', exact: true });
+      expect(container.querySelector('.rtx-top-chrome')).toContainElement(trigger);
+      expect(trigger.closest('.rtx-chart-toolbar-scroll')).toBeNull();
+      expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+      fireEvent.click(trigger);
+      expect(onOpen).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener('rtx5:open-bug-report', onOpen);
+    }
+  });
+
+  it('updates Last Symbol with chart selection without waiting for a trade or changing trade history', () => {
+    useLastSymbolStore.setState({ lastSymbol: 'EURUSD', lastTradeSide: 'BUY', lastTradeTime: 123 });
+    const props = toolbarProps();
+    const view = render(<TopToolbar {...props} />);
+    expect(screen.getByRole('button', { name: 'Last Symbol BTCUSD — Trader Panel (Shift+B/S/X)' }).querySelector('svg')).toBeNull();
+
+    view.rerender(<TopToolbar {...props} symbol="XAUUSD.raw" />);
+    expect(screen.getByRole('button', { name: 'Last Symbol XAUUSD.raw — Trader Panel (Shift+B/S/X)' })).toHaveTextContent('XAUUSD.raw');
+    expect(useLastSymbolStore.getState()).toMatchObject({ lastSymbol: 'EURUSD', lastTradeSide: 'BUY', lastTradeTime: 123 });
+  });
+
   it.each(['web', 'desktop'])('hides and restores the %s timeframe strip without changing the selected chart period', (surface) => {
     if (surface === 'desktop') prepareDesktopCharts(desktopChartLayout());
     else Object.defineProperty(window, 'electron', { configurable: true, writable: true, value: undefined });
@@ -106,8 +138,8 @@ describe('toolbar selection synchronization', () => {
     expect(commandBus.getHistory().filter(command => command.type === 'SET_TIMEFRAME')).toHaveLength(0);
 
     act(() => useTerminalBarsStore.getState().toggleTimeframes());
-    expect(screen.getByRole('radio', { name: 'Timeframe: 5 minutes' })).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(screen.getByRole('radio', { name: 'Timeframe: 15 minutes' }));
+    expect(screen.getByRole('radio', { name: 'M5 — Timeframe: 5 minutes' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('radio', { name: 'M15 — Timeframe: 15 minutes' }));
     expect(props.onTimeframeChange).toHaveBeenCalledWith('M15');
     expect(commandBus.getHistory().filter(command => command.type === 'SET_TIMEFRAME')).toEqual([
       expect.objectContaining({ payload: expect.objectContaining({ timeframe: 'M15' }) }),
@@ -118,12 +150,12 @@ describe('toolbar selection synchronization', () => {
     commandBus.clearHistory();
     const props = toolbarProps();
     const view = render(<TopToolbar {...props} />);
-    expect(screen.getByRole('radio', { name: 'Timeframe: 5 minutes' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'M5 — Timeframe: 5 minutes' })).toHaveAttribute('aria-checked', 'true');
     expect(commandBus.getHistory().filter(command => command.type === 'SET_TIMEFRAME' || command.type === 'SET_CHART_TYPE')).toHaveLength(0);
     view.rerender(<TopToolbar {...props} symbol="XAUUSD" timeframe="M1" />);
-    expect(screen.getByRole('radio', { name: 'Timeframe: 1 minute' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'M1 — Timeframe: 1 minute' })).toHaveAttribute('aria-checked', 'true');
     expect(commandBus.getHistory().filter(command => command.type === 'SET_TIMEFRAME' || command.type === 'SET_CHART_TYPE')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('radio', { name: 'Timeframe: 15 minutes' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'M15 — Timeframe: 15 minutes' }));
     expect(commandBus.getHistory().filter(command => command.type === 'SET_TIMEFRAME')).toEqual([
       expect.objectContaining({ payload: expect.objectContaining({ timeframe: 'M15' }) }),
     ]);

@@ -13,10 +13,10 @@ vi.mock('../config/api', () => ({
   toLocalDevProxyUrl: (url: string) => url,
   updateDynamicUrls: vi.fn(),
 }));
-vi.mock('../config/backendTarget.js', () => ({
+vi.mock('../config/backendTarget.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../config/backendTarget.js')>(),
   isDesktopBackendTarget: () => true,
   getBackendTarget: () => 'https://superbackend.orrnn.com',
-  SHARED_DISCOVERY_FALLBACK: 'https://superbackend.orrnn.com',
   normalizeBrokerInfoForTarget: (broker: unknown) => broker,
   resolveBrokerBackendUrl: () => 'https://wrong-environment.test',
   resolveBrokerExtApiUrl: () => 'https://wrong-environment.test',
@@ -30,13 +30,17 @@ const brokers = [
 ];
 const fetchMock = vi.fn();
 beforeEach(() => {
+  (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'desktop' };
   vi.clearAllMocks();
   localStorage.clear();
   fetchMock.mockImplementation(async (url: string) => new Response(JSON.stringify(url.endsWith('/broker/servers') ? brokers : { status: 'ok' })));
   vi.stubGlobal('fetch', fetchMock);
   runtime.login.mockRejectedValue(new Error('Test authentication rejected'));
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
+  vi.unstubAllGlobals();
+});
 
 it('explains the blocked guest trade and lets the user continue viewing without authentication', async () => {
   const close = vi.fn();
@@ -57,8 +61,8 @@ it('lists all servers before credentials, clears the password, and logs in to th
   await screen.findByText('Server online');
   expect(screen.getByRole('option', { name: 'Achiever Financials' })).toBeInTheDocument();
   expect(screen.getByRole('option', { name: 'Nexa' })).toBeInTheDocument();
-  expect(screen.getByRole('option', { name: 'Grow Trading Academy' })).toBeInTheDocument();
-  expect(screen.getByRole('option', { name: 'MyProp' })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: 'Grow Trading Academy' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: 'MyProp' })).not.toBeInTheDocument();
   expect(screen.getByRole('option', { name: 'Disabled Broker (Unavailable)' })).toBeDisabled();
   const account = screen.getByPlaceholderText('Account ID');
   const password = screen.getByPlaceholderText('Password');

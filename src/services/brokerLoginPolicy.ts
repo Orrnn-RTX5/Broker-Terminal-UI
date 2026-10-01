@@ -1,6 +1,8 @@
 import {
   getBackendTarget,
   getRuntimeConfiguredBrokerId,
+  getBrokerConfigurationError,
+  isDesktopBackendTarget,
 } from '../config/backendTarget.js';
 import type { BrokerDiscoveryItem } from './brokerDiscovery';
 
@@ -81,6 +83,10 @@ export const resolveBrokerLoginPolicy = (
   brokers: readonly BrokerDiscoveryItem[],
   locationLike: Pick<Location, 'hostname'> | undefined = typeof window === 'undefined' ? undefined : window.location,
 ): BrokerLoginPolicy => {
+  const webDeployment = !isDesktopBackendTarget();
+  if (webDeployment && getBrokerConfigurationError()) {
+    return failedPolicy(getBrokerConfigurationError());
+  }
   const runtimeId = normalizeId(getRuntimeConfiguredBrokerId());
   const runtimeBroker = brokers.find((broker) => normalizeId(broker.broker_id) === runtimeId);
   const hostname = hostnameOf(locationLike?.hostname);
@@ -102,7 +108,7 @@ export const resolveBrokerLoginPolicy = (
     const sessionId = getStoredSessionBrokerId();
     return sessionId ? brokers.find((broker) => normalizeId(broker.broker_id) === sessionId) : undefined;
   })();
-  if (sessionBroker) {
+  if (!webDeployment && sessionBroker) {
     if (hostBroker && normalizeId(hostBroker.broker_id) !== normalizeId(sessionBroker.broker_id)) {
       return failedPolicy('The active broker session does not match this terminal deployment URL.');
     }
@@ -118,6 +124,10 @@ export const resolveBrokerLoginPolicy = (
   }
   if (normalizeId(broker.broker_id) !== runtimeId) {
     return failedPolicy('This terminal broker identity could not be verified.');
+  }
+
+  if (webDeployment && String(broker.broker_id).trim() !== getRuntimeConfiguredBrokerId()) {
+    return failedPolicy('This terminal broker identity does not match its configured broker.');
   }
 
   return readyPolicy(broker);

@@ -72,7 +72,13 @@ export function useLiveQuotes(symbols: string[]) {
 
   // Visible quote consumers subscribe immediately in both browser and desktop.
   // QuoteSocketManager selects the public or authenticated broker transport.
-  useQuoteSubscription(normalizedSymbols, `live-quotes:${quoteDemandId}`);
+  const isQuoteConnected = useQuoteSubscription(normalizedSymbols, `live-quotes:${quoteDemandId}`)?.isConnected ?? false;
+  const wasQuoteConnected = useRef(isQuoteConnected);
+  const [snapshotRevision, setSnapshotRevision] = useState(0);
+  useEffect(() => {
+    if (isQuoteConnected && !wasQuoteConnected.current) setSnapshotRevision(value => value + 1);
+    wasQuoteConnected.current = isQuoteConnected;
+  }, [isQuoteConnected]);
 
   // Authenticated REST supplies the initial account-scoped quote snapshot.
   // Guests are seeded by the public instrument catalog and updated by the feed;
@@ -105,6 +111,7 @@ export function useLiveQuotes(symbols: string[]) {
     }
 
     let cancelled = false;
+    const controller = new AbortController();
     const batches = getLiveQuoteRestBatches(normalizedSymbols);
 
     const loadInitialQuoteBatch = async () => {
@@ -117,8 +124,9 @@ export function useLiveQuotes(symbols: string[]) {
           // FIX: Quotes can be public during the short login handoff. Pin the
           // URL either way; attach captured credentials only when available.
           ...(quoteRequestSession
-            ? getCapturedRequestOptions(quoteRequestSession, quoteRequestSession.v2BaseUrl)
+            ? getCapturedRequestOptions(quoteRequestSession, quoteRequestSession.v2BaseUrl, controller.signal)
             : { baseUrl: quoteApiBaseUrl, skipDynamicUrl: true, skipAuth: true }),
+          signal: controller.signal,
           params: { symbols: batch.join(',') },
         })));
         if (cancelled) return;
@@ -202,8 +210,9 @@ export function useLiveQuotes(symbols: string[]) {
     void loadInitialQuoteBatch();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [normalizedSymbols, isAuthenticated, quoteRequestSession, quoteApiBaseUrl]);
+  }, [normalizedSymbols, isAuthenticated, quoteRequestSession, quoteApiBaseUrl, snapshotRevision]);
 
   // Subscribe in MarketDataStore for aggregation tracking
   useEffect(() => {

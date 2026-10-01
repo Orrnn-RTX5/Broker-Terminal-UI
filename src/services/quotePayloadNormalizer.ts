@@ -2,6 +2,7 @@ import {
   composeDailyChangeQuoteContext,
   readDailyChangeLastPrice,
   readDailyChangePercent,
+  readDailyChangeInput,
   readDailyChangePreviousClose,
   resolveDailyChangePercent,
 } from '../utils/dailyChange';
@@ -15,8 +16,10 @@ import {
   readFirstNonEmptyString as readRecordNonEmptyString,
 } from '../utils/recordFields';
 import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
+import { readQuoteTradingStatus, type QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
 
-export interface NormalizedQuoteTick extends QuoteSessionRange {
+export interface NormalizedQuoteTick extends QuoteSessionRange, QuoteTradingStatusFields {
+  dailyChangeInput?: import('../utils/dailyChange').DailyChangeInput;
   symbol: string;
   bid: number;
   ask: number;
@@ -141,9 +144,11 @@ const hasQuotePriceFields = (value: unknown, envelopes: readonly unknown[]): boo
     value.bid !== undefined
     || value.ask !== undefined
     || (
-      readDailyChangeLastPrice(composeQuoteContext(value, envelopes)) !== undefined
+      readDailyChangeInput(composeQuoteContext(value, envelopes)).last !== undefined
       && (hasQuoteIdentityFields(value) || envelopes.some(hasQuoteIdentityFields))
     )
+    || ((hasQuoteIdentityFields(value) || envelopes.some(hasQuoteIdentityFields))
+      && ['daily_change_pct', 'daily_change', 'dailyChangePct', 'dailyChange', 'daily_change_price', 'dailyChangePrice', 'previous_close', 'previousClose', 'settlement_price', 'quote_status', 'market_status', 'session_id', 'trading_day'].some(key => key in value))
   )
 );
 
@@ -213,7 +218,11 @@ const normalizeQuotePayload = (
   // Last-only exchange events are metadata, not executable Bid/Ask quotes.
   // Keep zero sides so the dispatcher routes them only to Market Watch's
   // isolated display-metadata channel.
-  if (bid <= 0 && ask <= 0 && !(priceMode === 'last' && last !== undefined)) return null;
+  const dailyInput = readDailyChangeInput({ ...dailyChangeContext, bid: payload.bid }, priceMode);
+  if (bid <= 0 && ask <= 0 && dailyInput.last === undefined
+    && dailyInput.previousClose === undefined && dailyInput.settlement === undefined
+    && dailyInput.upstreamChange === undefined && dailyInput.upstreamPercent === undefined
+    && dailyInput.status === undefined && dailyInput.sessionId === undefined) return null;
 
   const previousClose = readDailyChangePreviousClose(dailyChangeContext);
   const dailyOpen = readFirstFiniteNumber(payload, [
@@ -266,9 +275,11 @@ const normalizeQuotePayload = (
     spread: toNumber(payload.spread, ask - bid),
     timestamp: sourceTimestamp ?? Date.now(),
     sourceTimestamp,
+    tradingStatus: readQuoteTradingStatus(payload),
     lp,
     volume,
     last,
+    dailyChangeInput: dailyInput,
     dailyChange: resolveDailyChangePercent(
       readDailyChangePercent(dailyChangeContext),
       bid,

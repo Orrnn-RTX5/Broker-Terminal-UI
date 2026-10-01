@@ -21,7 +21,6 @@ COPY docker-entrypoint.sh /docker-entrypoint.d/40-runtime-config.sh
 COPY docker-inline-runtime-config.awk /etc/nginx/inline-runtime-config.awk
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY --from=build /app/dist/index.html /etc/nginx/rtx-index.template.html
-COPY --from=build /app/dist/runtime-config.js /etc/nginx/rtx-runtime-config.template.js
 RUN sed -i 's/\r$//' /docker-entrypoint.d/40-runtime-config.sh /etc/nginx/inline-runtime-config.awk && \
     chmod +x /docker-entrypoint.d/40-runtime-config.sh
 

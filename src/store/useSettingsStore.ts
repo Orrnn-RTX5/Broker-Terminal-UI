@@ -187,7 +187,7 @@ const defaultSettings: SettingsState = {
     disableOnChartChange: false,
     allowDLL: true,
     allowWebRequest: true,
-    allowedURLs: ['https://backend.yoforexai.com'],
+    allowedURLs: [],
   },
   notifications: {
     // Category-specific settings

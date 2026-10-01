@@ -48,6 +48,8 @@ import { useChartObjectStateStore } from '../store/useChartObjectStateStore';
 import { useDrawingToolPreferencesStore } from '../store/useDrawingToolPreferencesStore';
 import { WebDrawingToolsRail } from './WebDrawingToolsRail';
 import { useChartZoomStore } from '../store/useChartZoomStore';
+import { useChartCursorStore } from '../store/useChartCursorStore';
+import { CURSOR_TOOLS } from './cursorToolCatalog';
 import { getPictographItems } from './pictographCatalog';
 
 type TestWindow = Window & { electronAPI?: unknown };
@@ -113,6 +115,7 @@ beforeEach(() => {
   useDrawingToolPreferencesStore.setState({ keepDrawing: false, magnetMode: 'off', snapToIndicators: false });
   useChartObjectStateStore.setState({ byContext: {} });
   useChartZoomStore.setState({ byContext: {} });
+  useChartCursorStore.setState({ mode: 'arrow', valuesTooltipOnLongPress: true });
 });
 
 afterEach(() => {
@@ -179,6 +182,7 @@ describe('WebDrawingToolsRail', () => {
     expect(rail).toHaveAttribute('aria-orientation', 'vertical');
 
     expect(within(rail).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Arrow — Cursors',
       'Trendline — Trend Line Tools',
       'Fib retracement - Gann and Fibonacci Tools',
       'Chart patterns',
@@ -197,6 +201,34 @@ describe('WebDrawingToolsRail', () => {
     ]);
     expect(screen.queryByRole('button', { name: 'Cursor' })).not.toBeInTheDocument();
     expect(within(rail).getAllByRole('separator')).toHaveLength(3);
+  });
+
+  it('opens the TradingView cursors flyout and arms the selected pointer', () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const menu = openRailMenu('Arrow — Cursors', 'Cursors');
+    expect(within(menu).getAllByRole('menuitemradio').map((item) => item.getAttribute('data-tool-id')))
+      .toEqual(CURSOR_TOOLS.map((tool) => tool.id));
+    expect(within(menu).getByRole('menuitemradio', { name: 'Arrow' })).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Demonstration' }));
+    expect(useChartCursorStore.getState().mode).toBe('demonstration');
+    expect(commandBus.getHistory().at(-1)).toEqual({
+      type: 'SELECT_TOOL',
+      payload: { tool: 'cursor', targetContextId: 'chart-xauusd-m1' },
+    });
+    expect(screen.getByRole('button', { name: 'Demonstration — Cursors' })).toHaveAttribute('data-active', 'true');
+    expect(screen.queryByRole('menu', { name: 'Cursors' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the long-press values tooltip toggle in the cursors menu', () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const menu = openRailMenu('Arrow — Cursors', 'Cursors');
+    const valuesToggle = within(menu).getByRole('switch', { name: 'Values tooltip on long press' });
+    expect(valuesToggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(valuesToggle);
+    expect(useChartCursorStore.getState().valuesTooltipOnLongPress).toBe(false);
+    expect(screen.getByRole('menu', { name: 'Cursors' })).toBeInTheDocument();
+    expect(useChartCursorStore.getState().mode).toBe('arrow');
   });
 
   it('keeps the exact 17-tool catalog in its three ordered flyout groups', () => {

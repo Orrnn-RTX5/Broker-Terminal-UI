@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getCurrentWebTraderBrokerId,
   normalizeWebTraderUrl,
@@ -13,10 +13,14 @@ const discoveryResponse = (brokers: unknown[], status = 200): Response =>
   });
 
 describe('webTrader', () => {
+  beforeEach(() => {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'desktop' };
+  });
   afterEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
     delete window.electron;
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
   });
 
   it('normalizes declared domains to HTTPS and accepts only HTTP(S)', () => {
@@ -28,10 +32,20 @@ describe('webTrader', () => {
     expect(normalizeWebTraderUrl('https://user:pass@trade.example.com')).toBeNull();
   });
 
-  it('uses persisted broker identity before the deployment runtime broker', () => {
+  it('uses the selected desktop broker identity before its packaged default', () => {
     localStorage.setItem('broker_id', 'saved-broker');
 
     expect(getCurrentWebTraderBrokerId({ runtimeBrokerId: 'runtime-broker' })).toBe('saved-broker');
+  });
+
+  it('pins web links to the deployment broker despite stale storage and caller defaults', () => {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      CONFIG_SOURCE: 'deployment', BROKER_ID: 'Achiever',
+      API_HOST: 'https://service.achiever.orrnn.com', WS_HOST: 'wss://service.achiever.orrnn.com',
+      DEFAULT_MT5_SERVER: 'Achiever-Live',
+    };
+    localStorage.setItem('broker_id', 'Orrnn');
+    expect(getCurrentWebTraderBrokerId({ runtimeBrokerId: 'Orrnn', brokerId: 'Orrnn' })).toBe('Achiever');
   });
 
   it('resolves the current broker declared Web Trader field from live discovery config', async () => {
@@ -49,7 +63,7 @@ describe('webTrader', () => {
 
     expect(fetcher).toHaveBeenCalledWith(
       'https://directory.example/api/v2/broker/servers',
-      { headers: { Accept: 'application/json' } },
+      { headers: { Accept: 'application/json' }, redirect: 'error', credentials: 'omit' },
     );
     expect(result).toEqual({
       status: 'ready',

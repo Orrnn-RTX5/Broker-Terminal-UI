@@ -11,6 +11,7 @@ import {
   createDockedLevelChip,
   createEntryTradeControlBar,
   createTradeLevelControlBar,
+  DARK_CHART_TRADE_COLORS,
   estimateTradeLevelMoney,
   estimateTradeMoneyAtPrice,
 } from '../../../utils/chartTradeControls';
@@ -565,15 +566,17 @@ export const createTradeOverlayDomRuntime = ({
       // Bracket shortcuts share the action strip until a level is created.
       const appendDockChip = (chip: HTMLDivElement, role: 'SL' | 'TP') => {
         const accent = role === 'TP'
-          ? (lightSurface ? '#078e80' : '#65c9bc')
-          : (lightSurface ? '#b66a13' : '#f6b85a');
+          ? (lightSurface ? '#078e80' : DARK_CHART_TRADE_COLORS.tp)
+          : (lightSurface ? '#b66a13' : DARK_CHART_TRADE_COLORS.sl);
         Object.assign(chip.style, {
           position: 'static', display: 'inline-flex', transform: 'none',
-          fontWeight: '400', fontFamily: 'Arial, sans-serif', fontSize: '10px',
+          fontWeight: lightSurface ? '400' : '600', fontFamily: 'Arial, sans-serif', fontSize: '10px',
           color: accent, padding: '0 5px', height: '20px', lineHeight: '18px',
           minWidth: '24px', justifyContent: 'center', flex: '0 0 auto',
-          backgroundColor: chartThemeRef.current.background ?? (lightSurface ? '#ffffff' : '#000000'),
-          border: `1px dotted ${accent}`, borderRadius: '3px', textShadow: 'none',
+          backgroundColor: lightSurface
+            ? (chartThemeRef.current.background ?? '#ffffff')
+            : DARK_CHART_TRADE_COLORS.surface,
+          border: `1px ${lightSurface ? 'dotted' : 'solid'} ${accent}`, borderRadius: '3px', textShadow: 'none',
         });
         chip.addEventListener('mouseenter', () => {
           chip.style.borderColor = accent;
@@ -581,7 +584,7 @@ export const createTradeOverlayDomRuntime = ({
         });
         chip.addEventListener('mouseleave', () => {
           chip.style.borderColor = accent;
-          chip.style.borderStyle = 'dotted';
+          chip.style.borderStyle = lightSurface ? 'dotted' : 'solid';
         });
         const brackets = controlBar.root.querySelector<HTMLElement>('.rtx-trade-brackets')
           ?? controlBar.root.querySelector<HTMLElement>('.rtx-trade-control-actions')
@@ -669,8 +672,8 @@ export const createTradeOverlayDomRuntime = ({
         `${trade.key}:${role.toLowerCase()}`,
         levelPrice,
         role === 'TP'
-          ? (lightSurface ? '#078e80' : '#65c9bc')
-          : (lightSurface ? '#b66a13' : '#f6b85a'),
+          ? (lightSurface ? '#078e80' : DARK_CHART_TRADE_COLORS.tp)
+          : (lightSurface ? '#b66a13' : DARK_CHART_TRADE_COLORS.sl),
       );
     };
 

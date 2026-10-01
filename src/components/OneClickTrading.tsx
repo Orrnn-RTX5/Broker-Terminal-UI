@@ -15,6 +15,7 @@ import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import {
     createUnavailableMarketStatus,
+    getMarketStatusTradeBlockMessage,
     shouldBlockSymbolTrading,
     type NormalizedMarketStatus,
 } from '../utils/marketStatus';
@@ -250,7 +251,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     };
     const hasExecutablePrice = bid > 0 && ask > 0;
     const effectiveMarketStatus = marketStatus ?? createUnavailableMarketStatus(symbol);
-    const marketBlockedMessage = 'Market Closed';
+    const marketBlockedMessage = effectiveMarketStatus.label;
     const marketOpenForTrading = !shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
     const staleQuoteMessage = tr('Cannot place this trade because the quote for {{symbol}} is stale. Please wait for a fresh quote and try again.', { symbol });
     const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice;
@@ -287,7 +288,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         // put an HTTP market-status request in front of a one-click order;
         // the backend still performs the authoritative execution validation.
         if (!marketOpenForTrading) {
-            setBlockedMessage(tr('Cannot place this trade because the market for {{symbol}} is closed.', { symbol }));
+            setBlockedMessage(getMarketStatusTradeBlockMessage(effectiveMarketStatus, symbol));
             return;
         }
         if (!symbol.trim()) {
@@ -362,7 +363,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         } finally {
             setTimeout(() => setFlashSide(null), 500);
         }
-    }, [isAuthenticated, tradeAllowed, marketOpenForTrading, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick, bid, ask, tr, orderBlockedReason, staleQuoteMessage]);
+    }, [isAuthenticated, tradeAllowed, marketOpenForTrading, effectiveMarketStatus, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick, bid, ask, tr, orderBlockedReason, staleQuoteMessage]);
 
     if (!visible || !symbol) return null;
 

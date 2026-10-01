@@ -8,6 +8,11 @@ import { getTerminalShortcutHint, runTerminalShortcutAction } from '../services/
 import { acknowledgeBottomDockTab, getRequestedBottomDockTab, openBottomDockTab } from '../services/bottomDockNavigation';
 import { useDockLayoutStore } from '../store/useDockLayoutStore';
 import { DockManager } from '../services/dockManager';
+import { MARKET_ORDER_PLACEMENT_STATE_EVENT, type MarketOrderPlacementState } from '../services/marketOrderPlacementEvents';
+
+vi.mock('./layout/JournalTab', () => ({
+  JournalTab: () => <div>Journal entries</div>,
+}));
 
 vi.mock('../services/shortcutCatalog', async importOriginal => ({
   ...await importOriginal<typeof import('../services/shortcutCatalog')>(),
@@ -37,6 +42,33 @@ afterEach(() => {
 });
 
 describe('Toolbox utility commands', () => {
+  it.each(['Journal', 'Toolbox', 'Exposure'] as const)('keeps %s selected throughout order placement and confirmation', async tab => {
+    const { container } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    fireEvent.click(screen.getByText(tab, { selector: '.rtx-dock-tab' }));
+    if (tab === 'Journal') expect(await screen.findByText('Journal entries')).toBeVisible();
+
+    const selectedTab = screen.getByText(tab, { selector: '.rtx-dock-tab' });
+    const statuses: MarketOrderPlacementState[] = ['pending', 'accepted', 'processing', 'filled', 'confirmed', 'rejected', 'expired', 'failed'];
+    for (const status of statuses) {
+      act(() => {
+        window.dispatchEvent(new CustomEvent(MARKET_ORDER_PLACEMENT_STATE_EVENT, {
+          detail: { status, clientOrderId: 'navigation-test-order', login: 1, sessionScope: 'navigation-test-session', provisionalTicket: -1 },
+        }));
+      });
+      expect(selectedTab).toHaveClass('active-tab');
+      expect(container.querySelector('.rtx-trade-tab')).not.toBeVisible();
+    }
+
+    act(() => window.dispatchEvent(new CustomEvent('rtx:new-trade-placed')));
+    expect(selectedTab).toHaveClass('active-tab');
+    expect(container.querySelector('.rtx-trade-tab')).not.toBeVisible();
+    if (tab === 'Journal') expect(screen.getByText('Journal entries')).toBeVisible();
+
+    fireEvent.click(screen.getByText('Trade', { selector: '.rtx-dock-tab' }));
+    expect(screen.getByText('Trade', { selector: '.rtx-dock-tab' })).toHaveClass('active-tab');
+    expect(container.querySelector('.rtx-trade-tab')).toBeVisible();
+  });
+
   it('mounts optional Toolbox and Exposure content on first activation and retains their surfaces', () => {
     const { container } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(screen.queryByTitle('Cascade')).not.toBeInTheDocument();

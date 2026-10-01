@@ -8,6 +8,10 @@ import { resolveTickFromLookup, useAppStore } from '../store/useAppStore';
 import { readBackendNumber } from './backendAccountMetrics';
 import { API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
 import {
+  getRuntimeConfiguredBrokerId,
+  getRuntimeBrokerConfiguration,
+  isConfiguredBrokerEndpoint,
+  isDesktopBackendTarget,
   normalizeBrokerInfoForTarget,
   resolveBrokerBackendUrl,
   resolveBrokerExtApiUrl,
@@ -147,10 +151,10 @@ import { getStoredBrokerServer, resolveLoginBrokerTarget } from './brokerServers
 import {
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
+  getRefreshToken,
   persistBrokerSessionDiscovery,
 } from './brokerSession';
 
-const DEFAULT_BROKER_ID = 'broker_3';
 
 initializeTradeWebSocketClient();
 
@@ -449,9 +453,17 @@ export const authApi = {
     const resolvedExplicitServer = explicitServer ? resolveLoginBrokerTarget(explicitServer) : undefined;
     const loginTarget = {
       displayValue: resolvedExplicitServer?.displayValue || explicitBrokerId || storedTarget.displayValue,
-      broker_id: explicitBrokerId || resolvedExplicitServer?.broker_id || storedTarget.broker_id || storedBrokerId || DEFAULT_BROKER_ID,
+      broker_id: explicitBrokerId || resolvedExplicitServer?.broker_id || storedTarget.broker_id || storedBrokerId || getRuntimeConfiguredBrokerId(),
       server: resolvedExplicitServer?.server || storedTarget.server,
     };
+    if (!isDesktopBackendTarget()) {
+      const deployment = getRuntimeBrokerConfiguration();
+      if (!deployment.valid) throw new Error(`Broker configuration error: ${deployment.errors.join('; ')}`);
+      if (explicitBrokerId && explicitBrokerId !== deployment.brokerId) {
+        throw new Error('The selected broker does not match this deployment.');
+      }
+      loginTarget.broker_id = deployment.brokerId;
+    }
     const targetBroker = normalizeBrokerInfoForTarget({
       broker_id: loginTarget.broker_id,
       broker_name: loginTarget.displayValue,
@@ -460,21 +472,17 @@ export const authApi = {
     const normalizedUsername = normalizeLoginOption(username);
     const loginBaseUrl = resolveBrokerExtApiUrl(targetBroker);
     const result = await endpoints.authApi.login(
-      { username: normalizedUsername, password, broker_id: loginTarget.broker_id || DEFAULT_BROKER_ID },
+      { username: normalizedUsername, password, ...(loginTarget.broker_id ? { broker_id: loginTarget.broker_id } : {}) },
       loginBaseUrl ? { baseUrl: normalizeBrokerServerUrl(loginBaseUrl) } : undefined
     );
     const accessToken = result.token || result.access_token;
     const resolvedBrokerId = result.broker_id || loginTarget.broker_id;
     const resolvedBrokerServer = result.server_url || result.backend_url || resolveBrokerBackendUrl(targetBroker) || result.broker_server || loginTarget.displayValue;
-
-    // Store tokens in Zustand store after successful login
-    if (accessToken) {
-      useAppStore.getState().setAuthTokens(
-        accessToken,
-        result.refresh_token,
-        result.expires_at ? new Date(result.expires_at).getTime() : undefined
-      );
+    if (!isDesktopBackendTarget() && (resolvedBrokerId !== getRuntimeConfiguredBrokerId()
+      || !isConfiguredBrokerEndpoint(resolvedBrokerServer, 'http'))) {
+      throw new Error('The login response does not belong to the configured deployment broker.');
     }
+
     if (typeof window !== 'undefined') {
       persistBrokerSessionDiscovery({
         ...result,
@@ -485,12 +493,26 @@ export const authApi = {
         market_api_url: result.market_api_url || loginBaseUrl,
       });
     }
+    // Bind the broker routing before token events can start account transports.
+    if (accessToken) {
+      useAppStore.getState().setAuthTokens(
+        accessToken,
+        result.refresh_token,
+        result.expires_at ? new Date(result.expires_at).getTime() : undefined
+      );
+    }
 
     return { ...result, access_token: accessToken, broker_id: resolvedBrokerId, broker_server: resolvedBrokerServer };
   },
 
   async refresh(refreshToken: string): Promise<endpoints.LoginResponse> {
+    const brokerId = getRuntimeBrokerConfiguration().brokerId;
     const result = await endpoints.authApi.refresh(refreshToken);
+    if (!isDesktopBackendTarget() && (getRefreshToken() !== refreshToken
+      || getRuntimeBrokerConfiguration().brokerId !== brokerId
+      || (result.broker_id && String(result.broker_id) !== brokerId))) {
+      throw new Error('The deployment broker session changed during token refresh.');
+    }
     const accessToken = result.token || result.access_token;
     if (accessToken) {
       useAppStore.getState().setAuthTokens(
@@ -1582,8 +1604,7 @@ let lastJournalRefreshToken: string | null = null;
 let lastJournalScopeKey = '';
 
 const getStoredJournalRefreshToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
+  return getRefreshToken();
 };
 
 const getJournalRequestContext = (

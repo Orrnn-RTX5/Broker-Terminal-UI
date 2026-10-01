@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { createWebRuntimeConfig } from './viteWebRuntimeConfig'
 
 /** Reject overlapping broker blocks before dotenv silently takes the last value. */
 export function validateWebBrokerEnvironment(env: Record<string, string>, directory: string): void {
@@ -20,8 +21,9 @@ export function validateWebBrokerEnvironment(env: Record<string, string>, direct
       assignments.set(key, index + 1)
     }
   }
-  const brokerId = env.VITE_BROKER_ID || env.BROKER_ID
-  const backend = env.VITE_API_HOST || env.VITE_API_URL || env.VITE_BACKEND_URL || env.API_HOST
+  const config = createWebRuntimeConfig(env)
+  const brokerId = config.BROKER_ID
+  const backend = config.API_HOST
   if (!brokerId?.trim() || !backend?.trim()) {
     if (!hasEnvFile) {
       // In CI, Docker builds, or environments using dynamic runtime configuration,

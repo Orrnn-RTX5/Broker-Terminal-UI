@@ -13,6 +13,21 @@
    to hundreds of MB and must not become CSS inputs on every cold start. */
 @source "../index.html";
 
+/* Financial sign colors survive table selection and summary skin overrides. */
+html:root .rtx-bottom-dock .rtx-trade-table tbody tr.rtx-trade-row:is(.rtx-trade-row, .rtx-trade-row--selected) td.text-profit,
+html:root .rtx-bottom-dock .rtx-trade-footer .text-profit,
+html:root .rtx-bottom-dock .rtx-history-table .rtx-history-summary-row .text-profit {
+  color: var(--color-profit) !important;
+  text-shadow: none !important;
+}
+
+html:root .rtx-bottom-dock .rtx-trade-table tbody tr.rtx-trade-row:is(.rtx-trade-row, .rtx-trade-row--selected) td.text-loss,
+html:root .rtx-bottom-dock .rtx-trade-footer .text-loss,
+html:root .rtx-bottom-dock .rtx-history-table .rtx-history-summary-row .text-loss {
+  color: var(--color-loss) !important;
+  text-shadow: none !important;
+}
+
 /* RTX Terminal — Global Base Styles */
 html, body, #root {
   background: #020617 radial-gradient(ellipse 80% 80% at 50% -20%, rgba(30, 58, 138, 0.4), rgba(2, 6, 23, 1));
@@ -126,6 +141,17 @@ table thead th {
   background: rgba(2, 6, 23, 0.5) !important;
   backdrop-filter: blur(8px) !important;
   color: #cbd5e1 !important;
+}
+
+/* Journal headers share the terminal's neutral section surface. */
+html:not(.rtx-skin-untitled-light) .rtx-journal-table__head,
+html:not(.rtx-skin-untitled-light) .rtx-journal-table__head th {
+  background-color: var(--bg-tertiary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-journal-table__head th {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 table tbody tr {
@@ -565,12 +591,8 @@ html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab.active-t
 }
 
 /* Bulk close actions share the adjacent tabs' geometry and theme styles. */
-.rtx-bottom-dock__tabs .rtx-bulk-close--winners .rtx-bulk-close__label {
-  color: var(--color-profit) !important;
-}
-
-.rtx-bottom-dock__tabs .rtx-bulk-close--losers .rtx-bulk-close__label {
-  color: var(--color-loss) !important;
+.rtx-bottom-dock__tabs .rtx-bulk-close__label {
+  color: inherit;
 }
 
 html:root .rtx-bottom-dock__tabs .rtx-dock-tab-actions .rtx-dock-tab.rtx-bulk-close:disabled {
@@ -967,8 +989,188 @@ html.rtx-skin-untitled-light .rtx-journal-toolbar .rtx-journal-auto[aria-pressed
   pointer-events: none !important;
 }
 
-[data-cursor="select"] canvas {
+[data-cursor="select"] canvas,
+[data-cursor="demonstration"] canvas {
   cursor: default !important;
+}
+
+[data-cursor="cross"] canvas,
+[data-cursor="cross"] .chart-drawing-overlay :is(path, line, rect, circle, ellipse, polygon, polyline) {
+  cursor: crosshair !important;
+}
+
+.rtx-chart-wrapper {
+  --rtx-dot-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='3' fill='%2364748b' stroke='%23f8fafc' stroke-width='1.5'/%3E%3C/svg%3E") 8 8, crosshair;
+  --rtx-eraser-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='%23f8fafc' stroke='%23111827' stroke-width='1.2' d='M14.7 3.4a1.6 1.6 0 0 1 2.2 0l3.7 3.7a1.6 1.6 0 0 1 0 2.2L9.8 20.1H5.2l-.3-4.6L14.7 3.4z'/%3E%3Cpath stroke='%23111827' stroke-width='1.2' d='M5 20.2h8.2'/%3E%3C/svg%3E") 4 20, cell;
+  --rtx-magic-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='%23f8fafc' stroke='%23111827' stroke-width='1' d='M5 19.2 14.2 10l1.6 1.6L6.6 20.8c-.4.4-1.1.4-1.5 0l-.1-.1c-.4-.4-.4-1.1 0-1.5z'/%3E%3Cpath fill='%23f5d76e' stroke='%23111827' stroke-width='0.6' d='M16.2 2.4 17.4 5.6 20.6 6.8 17.4 8 16.2 11.2 15 8 11.8 6.8 15 5.6z'/%3E%3C/svg%3E") 16 6, auto;
+}
+
+[data-cursor="dot"] canvas,
+[data-cursor="dot"] .chart-drawing-overlay :is(path, line, rect, circle, ellipse, polygon, polyline) {
+  cursor: var(--rtx-dot-cursor) !important;
+}
+
+[data-cursor="eraser"] canvas,
+[data-cursor="eraser"] .chart-drawing-overlay :is(path, line, rect, circle, ellipse, polygon, polyline) {
+  cursor: var(--rtx-eraser-cursor) !important;
+}
+
+[data-cursor="magic"] canvas,
+[data-cursor="magic"] .chart-drawing-overlay :is(path, line, rect, circle, ellipse, polygon, polyline) {
+  cursor: var(--rtx-magic-cursor) !important;
+}
+
+.rtx-chart-crosshair-center[data-marker='dot'] > div {
+  opacity: 0;
+}
+
+.rtx-chart-crosshair-center[data-marker='dot']::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.rtx-demonstration-layer,
+.rtx-magic-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.rtx-magic-layer {
+  z-index: 32;
+}
+
+.rtx-magic-spark {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 999px;
+  pointer-events: none;
+  animation: rtx-magic-burst 680ms ease-out forwards;
+}
+
+.rtx-magic-spark[data-shape='star'] {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+
+@keyframes rtx-magic-burst {
+  to {
+    transform: translate(var(--rtx-magic-dx), var(--rtx-magic-dy)) scale(0.25);
+    opacity: 0;
+  }
+}
+
+.rtx-area-hover {
+  position: absolute;
+  inset: 0;
+  z-index: 16;
+  pointer-events: none;
+  display: none;
+}
+
+.rtx-area-hover[data-visible='true'] {
+  display: block;
+}
+
+.rtx-area-hover__line {
+  position: absolute;
+  width: 1px;
+  background: rgba(148, 163, 184, 0.9);
+}
+
+.rtx-area-hover__dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+.rtx-area-hover__card {
+  position: absolute;
+  min-width: 92px;
+  padding: 6px 8px 5px;
+  border-radius: 6px;
+  background: rgba(42, 46, 57, 0.94);
+  color: #d1d4dc;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  font-family: var(--font-sans, "Segoe UI", sans-serif);
+}
+
+.rtx-area-hover__price {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.rtx-area-hover__date,
+.rtx-area-hover__time {
+  color: #b2b5be;
+  font-size: 11px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+.rtx-values-tooltip {
+  position: absolute;
+  z-index: 40;
+  min-width: 168px;
+  max-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-secondary, rgb(255 255 255 / 12%));
+  border-radius: 6px;
+  background: var(--bg-elevated, #1e222d);
+  color: var(--text-primary, #d1d4dc);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  pointer-events: none;
+  font: 500 12px/1.35 var(--font-sans, "Segoe UI", sans-serif);
+}
+
+.rtx-values-tooltip__title {
+  font-weight: 600;
+}
+
+.rtx-values-tooltip__subtitle {
+  margin-bottom: 4px;
+  color: var(--text-tertiary, #787b86);
+  font-size: 11px;
+}
+
+.rtx-values-tooltip__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rtx-values-tooltip__label {
+  color: var(--text-tertiary, #787b86);
+}
+
+.rtx-values-tooltip__value[data-tone='up'] {
+  color: var(--color-buy, #26a69a);
+}
+
+.rtx-values-tooltip__value[data-tone='down'] {
+  color: var(--color-sell, #ef5350);
 }
 
 .chart-drawing {

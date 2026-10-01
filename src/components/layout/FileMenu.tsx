@@ -1,7 +1,8 @@
+import { saveWorkspaceFeature, printSetupFeature, printPreviewFeature, exitConfirmFeature, savePictureFeature, openAccountFeature } from '../../startup/terminalFeatures';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import './file-menu-desktop.css';
 import { Icon } from '../ui/Icon';
-import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { useAppStore } from '../../store/useAppStore';
@@ -10,7 +11,6 @@ import {
     getActiveChartSource,
     type ResolvedActiveChartSource,
 } from '../../services/activeChartSource';
-import { useDesktopRelease } from '../../hooks/useDesktopRelease';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { getTerminalShortcutHint } from '../../services/shortcutCatalog';
 import {
@@ -22,18 +22,13 @@ import {
     saveCurrentWorkspaceProfile,
     type WorkspaceProfileSummary,
 } from '../../services/localWorkspaceProfiles';
-import {
-    getDesktopReleaseButtonTitle,
-    getDesktopReleaseVersionLabel,
-    openDesktopReleaseDownload,
-} from '../../services/desktopRelease';
 
-const SaveWorkspaceDialog = lazy(() => import('../dialogs/SaveWorkspaceDialog').then(module => ({ default: module.SaveWorkspaceDialog })));
-const PrintSetupDialog = lazy(() => import('../dialogs/PrintSetupDialog').then(module => ({ default: module.PrintSetupDialog })));
-const PrintPreviewDialog = lazy(() => import('../dialogs/PrintPreviewDialog').then(module => ({ default: module.PrintPreviewDialog })));
-const ExitConfirmDialog = lazy(() => import('../dialogs/ExitConfirmDialog').then(module => ({ default: module.ExitConfirmDialog })));
-const SavePictureDialog = lazy(() => import('../dialogs/SavePictureDialog').then(module => ({ default: module.SavePictureDialog })));
-const OpenAccountDialog = lazy(() => import('../dialogs/OpenAccountDialog').then(module => ({ default: module.OpenAccountDialog })));
+const SaveWorkspaceDialog = saveWorkspaceFeature.Component;
+const PrintSetupDialog = printSetupFeature.Component;
+const PrintPreviewDialog = printPreviewFeature.Component;
+const ExitConfirmDialog = exitConfirmFeature.Component;
+const SavePictureDialog = savePictureFeature.Component;
+const OpenAccountDialog = openAccountFeature.Component;
 
 type ElectronRuntime = NonNullable<Window['electron']> & {
     app?: {
@@ -101,10 +96,6 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const [workspaceProfiles, setWorkspaceProfiles] = useState<WorkspaceProfileSummary[]>([]);
     const recentlyClosedCharts = useDockLayoutStore(state => state.recentlyClosedCharts);
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
-    const showDesktopDownload = typeof window !== 'undefined' && !window.electron;
-    const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload && !shortcutsOnly });
-    const desktopReleaseVersionLabel = getDesktopReleaseVersionLabel(desktopReleaseState.release);
-    const desktopReleaseMetaLabel = desktopReleaseVersionLabel || (desktopReleaseState.status === 'loading' ? 'Latest' : '');
 
     useEffect(() => {
         const refreshProfiles = () => {
@@ -187,10 +178,6 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
     const handleOpenDataFolder = () => {
         onOpenDataFolder?.();
-    };
-
-    const handleDownloadDesktop = () => {
-        openDesktopReleaseDownload(desktopReleaseState.release);
     };
 
     const handlePrint = async (chartData?: ChartPrintData, selectedPreferences?: PrintPreferences) => {
@@ -656,22 +643,6 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{tr("Ctrl+Shift+D")}</span>
                     )}
                 </button>
-
-                {showDesktopDownload && (
-                    <button
-                        onClick={handleDownloadDesktop}
-                        className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                        title={getDesktopReleaseButtonTitle(desktopReleaseState.release)}
-                    >
-                        <div className="w-4 flex items-center justify-center text-sky-400 group-hover:text-sky-300 [.rtx-advanced-view_&]:text-sky-600">
-                            <Icon name="download" size="sm" />
-                        </div>
-                        <span className="flex-1">{tr("Download Desktop App")}</span>
-                        {desktopReleaseMetaLabel && (
-                            <span className="rounded-[3px] border border-zinc-600/70 [.rtx-advanced-view_&]:border-gray-300 bg-zinc-900/70 [.rtx-advanced-view_&]:bg-gray-100 px-1.5 py-[1px] text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 font-mono leading-none">{desktopReleaseMetaLabel}</span>
-                        )}
-                    </button>
-                )}
 
                 <div className="rtx-menu-divider" role="separator"></div>
 

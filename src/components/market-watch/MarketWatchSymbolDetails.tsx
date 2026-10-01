@@ -1,12 +1,17 @@
+import { resolveDailyChangeDisplayDigits } from '../../services/dailyChangePriceModeRegistry';
 import { useEffect, useMemo, useState } from 'react';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useTick } from '../../store/useAppStore';
 import {
   resolveMarketWatchDisplayMetadata,
+  mayUseClosedDailyChange,
   useMarketWatchDisplayMetadata,
 } from '../../store/useMarketWatchDisplayMetadataStore';
 import { getMarketWatchSymbolLabel } from '../../utils/marketWatchSource';
+import { formatDailyChange } from '../../utils/dailyChange';
+import { dailyChangeDescription } from '../../utils/dailyChangeSession';
+import { readCurrentMarketWatchDailyChangePrice, describeCurrentMarketWatchDailyChange } from '../../services/marketWatchDailyChangeCache';
 import { formatLastPriceTime, hasMarketWatchQuote } from './marketWatchPanelModel';
 import {
   buildMarketWatchSymbolDetails,
@@ -133,6 +138,10 @@ export function MarketWatchSymbolDetails({
   const tr = useUiTranslation();
   const tick = useTick(symbol);
   const displayMetadata = useMarketWatchDisplayMetadata(symbol);
+  const dailyDisplay = resolveMarketWatchDisplayMetadata(tick, displayMetadata);
+  const dailyTitle = (closedDailyChange != null && mayUseClosedDailyChange(dailyDisplay) ? describeCurrentMarketWatchDailyChange(symbol) : dailyChangeDescription(dailyDisplay.daily));
+  const dailyAmount = dailyDisplay.dailyChangePrice
+    ?? (closedDailyChange != null && mayUseClosedDailyChange(dailyDisplay) ? readCurrentMarketWatchDailyChangePrice(symbol) : undefined);
   const brokerSpecification = useBrokerSymbolSpecification(symbol, specificationScopeKey, loadSpecification);
   const specification = useMemo(
     () => readMarketWatchSymbolSpecification(brokerSpecification, ...instrumentSources),
@@ -141,8 +150,8 @@ export function MarketWatchSymbolDetails({
   const details = buildMarketWatchSymbolDetails({
     tick,
     lastPrice,
-    displayDailyChange: resolveMarketWatchDisplayMetadata(tick, displayMetadata).dailyChange,
-    closedDailyChange,
+    displayDailyChange: dailyDisplay.dailyChange,
+    closedDailyChange: mayUseClosedDailyChange(dailyDisplay) ? closedDailyChange : undefined,
     specification,
   });
   const hasLiveQuote = hasMarketWatchQuote(tick);
@@ -189,7 +198,8 @@ export function MarketWatchSymbolDetails({
     { field: 'ask', label: tr('Ask'), value: price(details.ask), direction: askDirection, title: quoteTitle },
     { field: 'askHigh', label: tr('Ask High'), value: price(details.askHigh), direction: askHighDirection },
     { field: 'askLow', label: tr('Ask Low'), value: price(details.askLow), direction: askLowDirection },
-    { field: 'dailyChange', label: tr('Daily Change'), value: formatMarketWatchDetailsPercent(details.dailyChange), direction: dailyDirection },
+    { field: 'dailyChangePrice', label: tr('Change'), value: formatDailyChange(dailyAmount, details.digits ?? resolveDailyChangeDisplayDigits(symbol, tick?.digits)), direction: !dailyAmount ? 'none' : dailyAmount > 0 ? 'up' : 'down', title: dailyTitle },
+    { field: 'dailyChange', label: tr('Change %'), value: formatMarketWatchDetailsPercent(details.dailyChange), direction: dailyDirection, title: dailyTitle },
     { field: 'open', label: tr('Open Price'), value: price(details.open), direction: 'static' },
     { field: 'close', label: tr('Close Price'), value: price(details.close), direction: 'static' },
   ];

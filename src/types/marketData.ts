@@ -1,4 +1,7 @@
-export interface Tick {
+import type { QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
+
+export interface Tick extends QuoteTradingStatusFields {
+  dailyChangeInput?: import('../utils/dailyChange').DailyChangeInput;
   symbol: string;
   bid: number;
   ask: number;

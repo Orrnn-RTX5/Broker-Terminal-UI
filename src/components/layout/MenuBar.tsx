@@ -1,8 +1,8 @@
 import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import React, { lazy, useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Menu as MenuIcon } from 'lucide-react';
+import { Bug, Menu as MenuIcon } from 'lucide-react';
 import { Icon, type IconName } from '../ui/Icon';
 import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { FileMenu } from './FileMenu';
@@ -25,11 +25,11 @@ import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../servic
 import { BUILTIN_WORKSPACE_PROFILE_NAMES, restoreBuiltinWorkspaceProfile } from '../../services/localWorkspaceProfiles';
 import { getAppVersion } from '../../config/appVersion';
 
-const OptionsDialog = lazy(() => import('../settings/OptionsDialog').then(module => ({ default: module.OptionsDialog })));
-const SymbolsDialog = lazy(() => import('../SymbolsDialog').then(module => ({ default: module.SymbolsDialog })));
-const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
+import { optionsFeature, symbolsFeature, loginFeature } from '../../startup/terminalFeatures';
+const OptionsDialog = optionsFeature.Component;
+const SymbolsDialog = symbolsFeature.Component;
+const LoginDialog = loginFeature.Component;
 
-// Local interface definition to avoid export issues
 interface MenuItem {
     label: string;
     shortcut?: string;
@@ -583,7 +583,7 @@ export const MenuBar = ({
                 unavailableReason: 'Display resolution is controlled by your operating system',
             }
         ],
-        Help: [{ label: 'Report a Bug', icon: <Icon name="help-circle" size="sm" className="text-orange-400" />, action: () => window.dispatchEvent(new CustomEvent('rtx5:open-bug-report')) },
+        Help: [{ label: 'Report a Bug', icon: <Bug size={16} strokeWidth={1.5} aria-hidden="true" />, action: () => window.dispatchEvent(new CustomEvent('rtx5:open-bug-report')) },
             { label: t('menu.help.helpTopics'), icon: <Icon name="help-circle" size="sm" />, ...terminalShortcut('help.shortcuts') },
             { label: t('menu.help.whatsNew'), icon: <Icon name="zap" size="sm" className="text-yellow-400" /> },
             { label: t('menu.help.telegramChannel'), icon: <Icon name="arrow-right" size="sm" className="text-blue-400" /> },

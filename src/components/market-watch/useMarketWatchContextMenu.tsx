@@ -109,7 +109,8 @@ export const useMarketWatchContextMenu = ({
     { label: 'Volume', checked: columns.includes('volume'), action: () => toggleColumn('volume'), autoClose: false },
     { label: 'Spread', checked: columns.includes('spread'), action: () => toggleColumn('spread'), autoClose: false },
     { label: 'Time', checked: columns.includes('time'), action: () => toggleColumn('time'), autoClose: false },
-    { label: 'Daily Change', checked: columns.includes('dailyChange'), action: () => toggleColumn('dailyChange'), autoClose: false },
+    { label: 'Change', checked: columns.includes('dailyChangePrice'), action: () => toggleColumn('dailyChangePrice'), autoClose: false },
+    { label: 'Change %', checked: columns.includes('dailyChange'), action: () => toggleColumn('dailyChange'), autoClose: false },
     { label: 'Source', checked: columns.includes('source'), action: () => toggleColumn('source'), autoClose: false },
   ];
   const setsSubmenu: ContextMenuItemConfig[] = [

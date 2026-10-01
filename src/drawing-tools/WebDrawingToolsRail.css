@@ -341,6 +341,14 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item,
   color-scheme: light;
 }
 
+.web-drawing-tools-menu[data-menu='cursors'] {
+  width: 300px;
+}
+
+.web-drawing-tools-menu[data-menu='cursors'] .web-drawing-tools-menu__toggle-row {
+  cursor: pointer;
+}
+
 .web-drawing-tools-menu[data-menu='patterns'] {
   width: min(370px, calc(100vw - 56px));
 }

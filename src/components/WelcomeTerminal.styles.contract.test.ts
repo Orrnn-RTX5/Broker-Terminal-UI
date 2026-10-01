@@ -18,7 +18,7 @@ describe('WelcomeTerminal style boundary', () => {
 
     expect(css).toContain('.rtx-login-overlay {');
     expect(css).toContain('.rtx-login-button {');
-    expect(css).toContain('.rtx-login-overlay--achiever .rtx-login-panel {');
+    expect(css).toContain('.rtx-login-overlay--accent .rtx-login-panel {');
     expect(css).toContain('@media (max-width: 900px) {');
     expect(css).toContain('@media (prefers-reduced-motion: reduce) {');
     expect(css).not.toContain('${');

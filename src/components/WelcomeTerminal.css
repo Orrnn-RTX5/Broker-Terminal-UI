@@ -56,12 +56,12 @@
     border-color: #35d8b2 !important;
 }
 
-.rtx-desktop-shell .rtx-login-overlay--achiever .rtx-broker-input-wrap.is-selectable input {
+.rtx-desktop-shell .rtx-login-overlay--accent .rtx-broker-input-wrap.is-selectable input {
     background: rgba(6, 16, 31, 0.8) !important;
     border-color: #1d3f68 !important;
 }
 
-.rtx-desktop-shell .rtx-login-overlay--achiever .rtx-broker-input-wrap.is-selectable input:focus {
+.rtx-desktop-shell .rtx-login-overlay--accent .rtx-broker-input-wrap.is-selectable input:focus {
     border-color: #2f8cff !important;
 }
 
@@ -73,7 +73,7 @@
     box-shadow: 0 0 0 1000px #0b1518 inset !important;
 }
 
-.rtx-desktop-shell .rtx-login-overlay--achiever :is(.rtx-input-shell, .rtx-broker-input-wrap) input:-webkit-autofill {
+.rtx-desktop-shell .rtx-login-overlay--accent :is(.rtx-input-shell, .rtx-broker-input-wrap) input:-webkit-autofill {
     box-shadow: 0 0 0 1000px #071326 inset !important;
 }
 
@@ -1565,7 +1565,7 @@
 }
 
 @media (min-width: 901px) {
-    .rtx-login-overlay--achiever .rtx-login-panel-wrap {
+    .rtx-login-overlay--accent .rtx-login-panel-wrap {
         background:
             linear-gradient(180deg, #0b1220 0%, #08101c 48%, #050a14 100%);
         box-shadow:
@@ -1574,7 +1574,7 @@
     }
 }
 
-.rtx-login-overlay--achiever .rtx-login-panel {
+.rtx-login-overlay--accent .rtx-login-panel {
     border-color: rgba(47, 140, 255, 0.34);
     background:
         linear-gradient(180deg, rgba(8, 18, 34, 0.92) 0%, rgba(5, 11, 22, 0.86) 100%);
@@ -1584,41 +1584,41 @@
         inset 0 0 0 1px rgba(47, 140, 255, 0.055);
 }
 
-.rtx-login-overlay--achiever .rtx-form-header::after {
+.rtx-login-overlay--accent .rtx-form-header::after {
     background:
         linear-gradient(90deg, rgba(47, 140, 255, 0.72), rgba(20, 92, 210, 0.34) 44%, transparent 100%);
 }
 
-.rtx-login-overlay--achiever .rtx-login-title-logo {
+.rtx-login-overlay--accent .rtx-login-title-logo {
     filter: drop-shadow(0 10px 18px rgba(47, 140, 255, 0.14));
 }
 
-.rtx-login-overlay--achiever .rtx-broker-strip {
+.rtx-login-overlay--accent .rtx-broker-strip {
     border-color: rgba(47, 140, 255, 0.38);
     background:
         linear-gradient(135deg, rgba(11, 26, 48, 0.96) 0%, rgba(7, 17, 32, 0.9) 54%, rgba(5, 10, 20, 0.98) 100%);
 }
 
-.rtx-login-overlay--achiever .rtx-broker-strip::before {
+.rtx-login-overlay--accent .rtx-broker-strip::before {
     background:
         linear-gradient(90deg, rgba(47, 140, 255, 0.16), transparent 46%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 48%);
 }
 
-.rtx-login-overlay--achiever .rtx-route-logo {
+.rtx-login-overlay--accent .rtx-route-logo {
     border-color: rgba(47, 140, 255, 0.54);
     background:
         linear-gradient(145deg, rgba(13, 43, 88, 0.98), rgba(7, 18, 35, 0.98));
 }
 
-.rtx-login-overlay--achiever .rtx-input-shell {
+.rtx-login-overlay--accent .rtx-input-shell {
     border-color: #1d3f68;
     background:
         linear-gradient(180deg, rgba(8, 20, 36, 0.82), rgba(5, 12, 24, 0.82));
     color: #88a9d8;
 }
 
-.rtx-login-overlay--achiever .rtx-input-shell:focus-within {
+.rtx-login-overlay--accent .rtx-input-shell:focus-within {
     border-color: #2f8cff;
     background:
         linear-gradient(180deg, rgba(9, 27, 50, 0.92), rgba(6, 17, 32, 0.92));
@@ -1626,53 +1626,53 @@
         0 0 0 2px rgba(47, 140, 255, 0.16);
 }
 
-.rtx-login-overlay--achiever .rtx-input-shell input {
+.rtx-login-overlay--accent .rtx-input-shell input {
     caret-color: #2f8cff;
 }
 
-.rtx-login-overlay--achiever .rtx-input-shell input:-webkit-autofill,
-.rtx-login-overlay--achiever .rtx-input-shell input:-webkit-autofill:hover,
-.rtx-login-overlay--achiever .rtx-input-shell input:-webkit-autofill:focus,
-.rtx-login-overlay--achiever .rtx-broker-input-wrap input:-webkit-autofill,
-.rtx-login-overlay--achiever .rtx-broker-input-wrap input:-webkit-autofill:hover,
-.rtx-login-overlay--achiever .rtx-broker-input-wrap input:-webkit-autofill:focus {
+.rtx-login-overlay--accent .rtx-input-shell input:-webkit-autofill,
+.rtx-login-overlay--accent .rtx-input-shell input:-webkit-autofill:hover,
+.rtx-login-overlay--accent .rtx-input-shell input:-webkit-autofill:focus,
+.rtx-login-overlay--accent .rtx-broker-input-wrap input:-webkit-autofill,
+.rtx-login-overlay--accent .rtx-broker-input-wrap input:-webkit-autofill:hover,
+.rtx-login-overlay--accent .rtx-broker-input-wrap input:-webkit-autofill:focus {
     box-shadow: 0 0 0 1000px #071326 inset !important;
 }
 
-.rtx-login-overlay--achiever .rtx-password-toggle {
+.rtx-login-overlay--accent .rtx-password-toggle {
     color: #88a9d8;
 }
 
-.rtx-login-overlay--achiever .rtx-password-toggle:hover,
-.rtx-login-overlay--achiever .rtx-password-toggle:focus-visible {
+.rtx-login-overlay--accent .rtx-password-toggle:hover,
+.rtx-login-overlay--accent .rtx-password-toggle:focus-visible {
     color: #d7e8ff;
     background: rgba(47, 140, 255, 0.1);
 }
 
-.rtx-login-overlay--achiever .rtx-broker-input-wrap.is-locked input {
+.rtx-login-overlay--accent .rtx-broker-input-wrap.is-locked input {
     border-color: #1d3f68 !important;
     background: rgba(6, 16, 31, 0.8) !important;
 }
 
-.rtx-login-overlay--achiever .rtx-broker-menu {
+.rtx-login-overlay--accent .rtx-broker-menu {
     border-color: #263f66;
     background: #0b1524;
 }
 
-.rtx-login-overlay--achiever .rtx-broker-option:hover,
-.rtx-login-overlay--achiever .rtx-broker-option.is-selected {
+.rtx-login-overlay--accent .rtx-broker-option:hover,
+.rtx-login-overlay--accent .rtx-broker-option.is-selected {
     background: #12233a;
 }
 
-.rtx-login-overlay--achiever .rtx-broker-option em {
+.rtx-login-overlay--accent .rtx-broker-option em {
     color: #2f8cff;
 }
 
-.rtx-login-overlay--achiever .rtx-remember-row input {
+.rtx-login-overlay--accent .rtx-remember-row input {
     accent-color: #2f8cff;
 }
 
-.rtx-login-overlay--achiever .rtx-login-button {
+.rtx-login-overlay--accent .rtx-login-button {
     background: linear-gradient(180deg, #3f9bff 0%, #176fe8 100%);
     color: #f8fbff;
     box-shadow:
@@ -1680,14 +1680,14 @@
         0 12px 24px rgba(23, 111, 232, 0.16);
 }
 
-.rtx-login-overlay--achiever .rtx-login-button:hover:not(:disabled) {
+.rtx-login-overlay--accent .rtx-login-button:hover:not(:disabled) {
     background: linear-gradient(180deg, #55a8ff 0%, #1265d7 100%);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.28),
         0 14px 28px rgba(23, 111, 232, 0.2);
 }
 
-.rtx-login-overlay--achiever .rtx-spinner {
+.rtx-login-overlay--accent .rtx-spinner {
     border-color: rgba(248, 251, 255, 0.32);
     border-top-color: rgba(248, 251, 255, 0.92);
 }

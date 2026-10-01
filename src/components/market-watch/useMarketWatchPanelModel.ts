@@ -1,4 +1,5 @@
 import { useMemo, type RefObject } from 'react';
+import { readCurrentMarketWatchDailyChangePrice } from '../../services/marketWatchDailyChangeCache';
 import { useClosedMarketDailyChanges } from '../../hooks/useClosedMarketDailyChanges';
 import { useLastMarketWatchQuotes } from '../../hooks/useLastMarketWatchQuotes';
 import { useVisibleSymbolRows } from '../../hooks/useVisibleSymbolRows';
@@ -8,6 +9,7 @@ import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import {
   getMarketWatchDisplayMetadata,
   resolveMarketWatchDisplayMetadata,
+  mayUseClosedDailyChange,
   useMarketWatchDisplayMetadataRevision,
 } from '../../store/useMarketWatchDisplayMetadataStore';
 import { useWatchlistStore } from '../../store/useWatchlistStore';
@@ -94,7 +96,8 @@ export const useMarketWatchPanelModel = ({
   sortMode,
 }: UseMarketWatchPanelModelOptions) => {
   const liveTickCount = useAppStore(selectTickCount);
-  const liveDisplayMetadataRevision = useMarketWatchDisplayMetadataRevision();
+  const sortsDailyValues = sortMode === 'gainers' || sortMode === 'losers' || sortMode === 'change-asc' || sortMode === 'change-desc';
+  const liveDisplayMetadataRevision = useMarketWatchDisplayMetadataRevision(sortsDailyValues);
   const positions = useAppStore((state) => state.positions);
   const pendingOrders = useAppStore((state) => state.orders);
   const dockLayout = useDockLayoutStore((state) => state.layout);
@@ -169,7 +172,7 @@ export const useMarketWatchPanelModel = ({
     }
     return metadata;
   }, [allSymbols, marketInstruments]);
-  const usesClosedDailySort = sortMode === 'gainers' || sortMode === 'losers';
+  const usesClosedDailySort = sortMode === 'gainers' || sortMode === 'losers' || sortMode === 'change-asc' || sortMode === 'change-desc';
   const closedDailySortSymbols = useMemo(() => {
     void liveDisplayMetadataRevision;
     if (!usesClosedDailySort || !dailyChangeScopeKey || (!canIdentifyClosedSymbols && !isTraditionalMarketWeekend)) return [];
@@ -200,7 +203,8 @@ export const useMarketWatchPanelModel = ({
     scopeKey: dailyChangeScopeKey,
     symbols: closedDailySortSymbols,
   });
-  const usesDynamicSort = usesClosedDailySort || sortMode === 'volume';
+  const usesAmountSort = sortMode === 'change-asc' || sortMode === 'change-desc';
+  const usesDynamicSort = usesClosedDailySort || usesAmountSort || sortMode === 'volume';
   const sortTickSnapshot = useAppStore((state) => usesDynamicSort ? state.ticks : EMPTY_SORT_TICKS);
   const rows = useMemo(() => {
     void liveDisplayMetadataRevision;
@@ -209,12 +213,13 @@ export const useMarketWatchPanelModel = ({
       sortMode,
       (symbol) => {
         const tick = resolveTickFromLookup(sortTickSnapshot, useAppStore.getState().tickLookup, symbol);
-        if (!usesClosedDailySort) return tick;
+        if (!usesClosedDailySort && !usesAmountSort) return tick;
         const display = resolveMarketWatchDisplayMetadata(tick, getMarketWatchDisplayMetadata(symbol));
         const liveDailyChange = readFiniteDailyChange(display.dailyChange);
+        if (usesAmountSort) return { dailyChange: liveDailyChange ?? undefined, dailyChangePrice: display.dailyChangePrice ?? (mayUseClosedDailyChange(display) && closedDailySortChanges.has(symbol) ? readCurrentMarketWatchDailyChangePrice(symbol) : undefined), volume: tick?.volume };
         if (liveDailyChange !== null) return { dailyChange: liveDailyChange, volume: tick?.volume };
-        const fallback = readFiniteDailyChange(closedDailySortChanges.get(symbol));
-        return fallback === null ? tick : { dailyChange: fallback, volume: tick?.volume };
+        const fallback = mayUseClosedDailyChange(display) ? readFiniteDailyChange(closedDailySortChanges.get(symbol)) : null;
+        return { dailyChange: fallback ?? undefined, volume: tick?.volume };
       },
       sortMetadata,
     );
@@ -226,6 +231,7 @@ export const useMarketWatchPanelModel = ({
     sortMode,
     sortTickSnapshot,
     usesClosedDailySort,
+    usesAmountSort,
   ]);
   const {
     visibleSymbols: visibleRowSymbols,

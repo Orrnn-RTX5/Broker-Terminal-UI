@@ -816,7 +816,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
     return (
         <div
             aria-busy={isFilterSettling || isLoading || isRefreshing}
-            className="h-full flex flex-col bg-[#131316] text-[13px] font-normal font-sans"
+            className="rtx-journal-tab h-full flex flex-col bg-[#131316] text-[13px] font-normal font-sans"
         >
 
             {/* ── Toolbar ─────────────────────────────────────────────────── */}

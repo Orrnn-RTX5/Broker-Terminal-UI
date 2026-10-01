@@ -263,6 +263,24 @@ const TRADE_CONTROL_ACTION_HOVER_COLOR = '#3b82f6';
 export const TRADE_CONTROL_SHARE_COLOR = '#5b6472';
 const TRADE_CONTROL_SHARE_HOVER_COLOR = '#6f7a8a';
 
+// Chart backgrounds can be customized independently of the app theme. Keep
+// the dark position controls on an opaque charcoal surface so chart lines do
+// not show through the labels, and reserve color for trade meaning.
+export const DARK_CHART_TRADE_COLORS = {
+  surface: '#191a1e',
+  border: '#404048',
+  divider: '#34343b',
+  action: '#b9bcc6',
+  actionIcon: '#f4f4f6',
+  actionHover: '#292a30',
+  buy: '#0078d4',
+  sell: '#ce4b55',
+  tp: '#9dd2c8',
+  sl: '#e9c18a',
+  profit: '#4597ff',
+  loss: '#ff4d4f',
+} as const;
+
 interface TradeControlSurface {
   chipBackground: string;
   chipText: string;
@@ -311,7 +329,7 @@ const closeSvg = '<svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="t
 
 // Web action glyphs share one grid and stroke, so the compact controls read
 // as a single toolbar alongside the position capsule.
-const webActionSvg = (path: string): string => `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+const webActionSvg = (path: string): string => `<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
 const webShareSvg = webActionSvg('M8 10V2.5M5.5 5 8 2.5 10.5 5M3 8v5h10V8');
 const webDoubleSvg = webActionSvg('M4.5 12.5v-9M2 6l2.5-2.5L7 6M11.5 12.5v-9M9 6l2.5-2.5L14 6');
 const webReverseSvg = webActionSvg('M2.5 5h11M10.5 2l3 3-3 3M13.5 11h-11M5.5 8l-3 3 3 3');
@@ -427,9 +445,15 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   const sideColor = (isLightSurface ? TRADE_CONTROL_LIGHT_SIDE_COLORS : TRADE_CONTROL_SIDE_COLORS)[side];
   const surface = getTradeControlSurface(isLightSurface);
   const actionHoverColor = isLightSurface ? '#1d4ed8' : TRADE_CONTROL_ACTION_HOVER_COLOR;
-  const plainSideColor = side === 'BUY' ? '#2962ff' : '#f23645';
+  const plainSideColor = isLightSurface
+    ? (side === 'BUY' ? '#2962ff' : '#f23645')
+    : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buy : DARK_CHART_TRADE_COLORS.sell);
   const plainNeutralColor = isLightSurface ? '#131722' : '#d1d4dc';
-  const plainBackground = options.chartBackground ?? (isLightSurface ? '#ffffff' : '#000000');
+  const plainBackground = isLightSurface
+    ? (options.chartBackground ?? '#ffffff')
+    : DARK_CHART_TRADE_COLORS.surface;
+  const plainBorderColor = isLightSurface ? plainSideColor : DARK_CHART_TRADE_COLORS.border;
+  const plainActionColor = isLightSurface ? plainSideColor : DARK_CHART_TRADE_COLORS.action;
 
   const root = document.createElement('div');
   root.className = 'rtx-trade-level-badge rtx-trade-controls rtx-trade-controls--entry';
@@ -496,7 +520,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     root.style.borderRadius = '0';
     root.style.textShadow = 'none';
     chipGroup.className = 'rtx-trade-primary';
-    chipGroup.style.border = `1px solid ${plainSideColor}`;
+    chipGroup.style.border = `1px solid ${plainBorderColor}`;
     chipGroup.style.borderRadius = '3px';
     chipGroup.style.height = '20px';
     chipGroup.style.boxSizing = 'border-box';
@@ -543,7 +567,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     onAction?.(action);
     dispatchChartPositionAction({ action, ticket, symbol });
   };
-  const plainTextColor = options.plainLabel ? plainSideColor : undefined;
+  const plainTextColor = options.plainLabel ? plainActionColor : undefined;
   if (onShare) {
     buttonGroup.appendChild(createControlButton('share', 'Copy trade share link', options.plainLabel ? webShareSvg : shareSvg, isLightSurface ? '#5f6b7a' : TRADE_CONTROL_SHARE_COLOR, isLightSurface ? '#64748b' : TRADE_CONTROL_SHARE_HOVER_COLOR, onShare, plainTextColor));
   }
@@ -555,20 +579,27 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     for (const button of buttonGroup.querySelectorAll('button')) {
       const isClose = button.classList.contains('rtx-trade-control-btn--close');
       const restingBackground = 'transparent';
+      const restingColor = isLightSurface || isClose ? plainActionColor : DARK_CHART_TRADE_COLORS.actionIcon;
       button.style.width = isClose ? '20px' : '24px';
       button.style.height = '18px';
-      button.style.color = plainSideColor;
+      button.style.color = restingColor;
       button.style.border = '0';
       button.style.borderRadius = '0';
       button.style.backgroundColor = restingBackground;
       if (isClose) {
-        button.style.borderLeft = `1px solid ${plainSideColor}`;
+        button.style.borderLeft = `1px solid ${plainBorderColor}`;
         button.style.borderRadius = '0';
       }
       button.addEventListener('mouseenter', () => {
-        button.style.backgroundColor = `${plainSideColor}26`;
+        button.style.backgroundColor = isLightSurface
+          ? `${plainSideColor}26`
+          : isClose ? '#3b2529' : DARK_CHART_TRADE_COLORS.actionHover;
+        if (!isLightSurface && isClose) button.style.color = DARK_CHART_TRADE_COLORS.loss;
       });
-      button.addEventListener('mouseleave', () => { button.style.backgroundColor = restingBackground; });
+      button.addEventListener('mouseleave', () => {
+        button.style.backgroundColor = restingBackground;
+        button.style.color = restingColor;
+      });
     }
     const closeIcon = buttonGroup.querySelector('.rtx-trade-control-btn--close svg')!;
     closeIcon.setAttribute('width', '11');
@@ -580,10 +611,10 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     buttonGroup.insertBefore(doubleButton, reverseButton);
     const secondaryGroup = document.createElement('span');
     secondaryGroup.className = 'rtx-trade-secondary';
-    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;height:20px;box-sizing:border-box;border:1px solid ${plainSideColor};border-radius:3px;background-color:${plainBackground};overflow:hidden;`;
+    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;height:20px;box-sizing:border-box;border:1px solid ${plainBorderColor};border-radius:3px;background-color:${plainBackground};overflow:hidden;`;
     for (const button of Array.from(buttonGroup.querySelectorAll<HTMLButtonElement>('button'))) {
       if (button === closeButton) continue;
-      if (secondaryGroup.childElementCount > 0) button.style.borderLeft = `1px solid ${plainSideColor}66`;
+      if (secondaryGroup.childElementCount > 0) button.style.borderLeft = `1px solid ${isLightSurface ? `${plainSideColor}66` : DARK_CHART_TRADE_COLORS.divider}`;
       secondaryGroup.appendChild(button);
     }
     buttonGroup.prepend(secondaryGroup);
@@ -618,9 +649,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     if (!options.plainLabel) return;
     const displayedValue = value != null && Number.isFinite(value) ? Number(value.toFixed(decimals)) : 0;
     chip.style.color = displayedValue > 0
-      ? (isLightSurface ? '#00897b' : '#26a69a')
+      ? (isLightSurface ? '#1d4ed8' : DARK_CHART_TRADE_COLORS.profit)
       : displayedValue < 0
-        ? (isLightSurface ? '#d32f2f' : '#f23645')
+        ? (isLightSurface ? '#d32f2f' : DARK_CHART_TRADE_COLORS.loss)
         : plainNeutralColor;
   };
   const setLiveMetrics = (livePips: number | null, liveMoney: number | null) => {
@@ -705,8 +736,8 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
 
   const removeTitle = role === 'SL' ? 'Remove Stop Loss' : 'Remove Take Profit';
   const levelAccent = role === 'TP'
-    ? (isLightSurface ? '#078e80' : '#65c9bc')
-    : (isLightSurface ? '#b66a13' : '#f6b85a');
+    ? (isLightSurface ? '#078e80' : DARK_CHART_TRADE_COLORS.tp)
+    : (isLightSurface ? '#b66a13' : DARK_CHART_TRADE_COLORS.sl);
   const removeButton = createControlButton('remove', removeTitle, closeSvg, sideColor, sideColor, onRemove, options.hoverDetails ? levelAccent : undefined);
   bindChartUiTranslation(removeButton, () => {
     removeButton.title = tr('Delete {{value0}}', { value0: tr(role === 'SL' ? 'Stop loss' : 'Take profit') });
@@ -723,7 +754,9 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
   if (options.hoverDetails) {
     root.dataset.align = 'right';
     root.style.filter = 'none';
-    root.style.backgroundColor = options.chartBackground ?? (isLightSurface ? '#ffffff' : '#000000');
+    root.style.backgroundColor = isLightSurface
+      ? (options.chartBackground ?? '#ffffff')
+      : DARK_CHART_TRADE_COLORS.surface;
     root.style.border = `1px dotted ${levelAccent}`;
     root.style.borderRadius = '3px';
     for (const chip of [roleChip, pipsChip.chip, moneyChip.chip]) {

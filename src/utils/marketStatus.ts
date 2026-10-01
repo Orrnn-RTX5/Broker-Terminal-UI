@@ -139,11 +139,16 @@ export const normalizeMarketStatus = (
   const symbol = normalizeSymbol(status?.symbol) ?? normalizeSymbol(options.symbol);
   const reportedStatus = status?.status;
   const hasReportedStatus = typeof reportedStatus === 'string' && reportedStatus.trim().length > 0;
+  // Missing broker schedules use false flags as placeholders, not as proof
+  // that a session is closed. Keep an explicit status authoritative.
+  const scheduleUnavailable = /\bschedule\s+(?:is\s+)?unavailable\b/i.test(status?.message ?? '');
   const tradeOpen = parseMarketTradeFlag(status?.trade_open);
   const quoteOpen = parseMarketTradeFlag(status?.quote_open);
   const tradeFlagOpen = tradeOpen ?? quoteOpen;
   const normalizedStatus: NormalizedMarketStatusValue = isKnownMarketStatus(reportedStatus)
     ? reportedStatus
+    : scheduleUnavailable
+      ? 'unknown'
     : !hasReportedStatus && tradeFlagOpen !== undefined
       ? (tradeFlagOpen ? 'open' : 'closed')
     : !hasReportedStatus && isLikelyAlwaysOpenCryptoSymbol(symbol)

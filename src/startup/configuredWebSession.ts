@@ -1,28 +1,22 @@
 import {
   getBackendTarget,
   getRuntimeConfiguredBrokerId,
+  getRuntimeBrokerConfiguration,
+  getPublicWsTarget,
   isDesktopBackendTarget,
 } from '../config/backendTarget.js';
-import { persistBrokerSessionDiscovery } from '../services/brokerSession';
+import { credentialsAreBoundToDeployment, persistBrokerSessionDiscovery } from '../services/brokerSession';
 
 export const CONFIGURED_WEB_SESSION_KEY = 'rtx_configured_web_session_v1';
 
 type DeploymentScope = { brokerId: string; backendUrl: string };
 
-// The GTA deployment slug and its authenticated backend id identify the same
-// broker. Match both while still requiring the configured API host to agree.
-const BROKER_ID_ALIASES: Record<string, string> = {
-  'grow-trading-academy': 'gta_broker',
-};
-const normalizeBrokerId = (value: unknown): string => {
-  const normalized = String(value || '').trim().toLowerCase();
-  return BROKER_ID_ALIASES[normalized] || normalized;
-};
+const normalizeBrokerId = (value: unknown): string => String(value || '').trim();
 const normalizeBackendUrl = (value: unknown): string => {
   try {
     const parsed = new URL(String(value || '').trim());
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
-    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`.toLowerCase();
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
   } catch {
     return '';
   }
@@ -34,6 +28,12 @@ const ACTIVE_SESSION_KEYS = [
   'rtx_user', 'mt5_credentials', 'mt5_auto_login',
   'feed_broker_id',
   'rtx_last_authenticated_broker_id',
+];
+
+const ROUTING_AND_PRESENTATION_KEYS = [
+  'server_url', 'backend_url', 'market_api_url', 'rtx_broker_server',
+  'ws_url', 'feed_url', 'feed_status_url', 'logo_url', 'broker_name',
+  'broker_theme_color', 'rtx_broker_presentation_v1',
 ];
 
 const clearPersistedActiveAccount = (storage: Storage): void => {
@@ -57,11 +57,20 @@ const clearPersistedActiveAccount = (storage: Storage): void => {
 export const ensureConfiguredWebSession = (): boolean => {
   if (typeof window === 'undefined' || isDesktopBackendTarget()) return true;
   const brokerId = getRuntimeConfiguredBrokerId();
-  if (!brokerId) return true;
 
   try {
     const storage = window.localStorage;
     const session = window.sessionStorage;
+    const configuration = getRuntimeBrokerConfiguration();
+    if (!configuration.valid || !brokerId || !getBackendTarget()) {
+      [...ACTIVE_SESSION_KEYS, ...ROUTING_AND_PRESENTATION_KEYS, 'broker_id', 'rtx_broker_id'].forEach((key) => {
+        storage.removeItem(key);
+        session.removeItem(key);
+      });
+      clearPersistedActiveAccount(storage);
+      storage.removeItem(CONFIGURED_WEB_SESSION_KEY);
+      return false;
+    }
     const scope: DeploymentScope = {
       brokerId: normalizeBrokerId(brokerId),
       backendUrl: normalizeBackendUrl(getBackendTarget()),
@@ -91,7 +100,8 @@ export const ensureConfiguredWebSession = (): boolean => {
         || storage.getItem('refresh_token') || session.getItem('refresh_token'),
     );
     const storedRoutingMatches = (!storedBrokerId || storedBrokerId === scope.brokerId)
-      && (!storedBackendUrl || storedBackendUrl === scope.backendUrl);
+      && (!storedBackendUrl || storedBackendUrl === scope.backendUrl)
+      && (!hasCredentials || credentialsAreBoundToDeployment());
     const matches = previous
       ? previous.brokerId === scope.brokerId && previous.backendUrl === scope.backendUrl
         && storedRoutingMatches
@@ -103,8 +113,10 @@ export const ensureConfiguredWebSession = (): boolean => {
         storage.removeItem(key);
         session.removeItem(key);
       });
-      storage.removeItem('market_api_url');
-      storage.removeItem('logo_url');
+      ROUTING_AND_PRESENTATION_KEYS.forEach((key) => {
+        storage.removeItem(key);
+        session.removeItem(key);
+      });
       clearPersistedActiveAccount(storage);
       // Reuse the normal broker transition so endpoint/feed state and session
       // listeners are updated together, without importing the trading store.
@@ -116,6 +128,22 @@ export const ensureConfiguredWebSession = (): boolean => {
         server_url: scope.backendUrl,
       });
     }
+    // Routing is repaired even when the HTTP session ownership is unchanged.
+    // Older releases could persist a public socket from a different broker.
+    const socketOrigin = new URL(getPublicWsTarget());
+    socketOrigin.pathname = '/ws/v2';
+    socketOrigin.search = '';
+    socketOrigin.hash = '';
+    storage.setItem('ws_url', socketOrigin.toString());
+    socketOrigin.pathname = '/ws/feed';
+    storage.setItem('feed_url', socketOrigin.toString());
+    storage.setItem('broker_id', configuration.brokerId);
+    storage.setItem('rtx_broker_id', configuration.brokerId);
+    storage.setItem('feed_broker_id', configuration.feedBrokerId || configuration.brokerId);
+    storage.setItem('server_url', configuration.apiHost);
+    storage.setItem('backend_url', configuration.apiHost);
+    storage.setItem('market_api_url', configuration.apiHostExt);
+    storage.setItem('rtx_broker_server', configuration.apiHost);
     storage.setItem(CONFIGURED_WEB_SESSION_KEY, JSON.stringify(scope));
     return matches;
   } catch {

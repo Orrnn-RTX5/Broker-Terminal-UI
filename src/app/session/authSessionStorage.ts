@@ -21,11 +21,11 @@ export const getStoredTokenExpiryMs = (): number | null => {
 };
 
 export const getStoredAuthToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  return getAccessToken();
 };
 
 export const hasTokenExpiryElapsed = (expiresAt: unknown, now = Date.now()): boolean => {
   const expiryMs = parseStoredTokenExpiryMs(expiresAt);
   return Boolean(expiryMs && expiryMs <= now);
 };
+import { getAccessToken } from '../../services/brokerSession';

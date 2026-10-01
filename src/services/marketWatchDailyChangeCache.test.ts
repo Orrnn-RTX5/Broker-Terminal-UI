@@ -308,15 +308,15 @@ describe('resolveCompletedDailyChange', () => {
     const result = resolveCompletedDailyChange([
       day('2026-09-02T00:00:00Z', 100),
       day('2026-09-03T00:00:00Z', 110),
-      day('2026-09-04T00:00:00Z', 121),
+      day('2026-09-04T00:00:00Z', 121, true),
       day('2026-09-06T00:00:00Z', 999, true),
       day('2026-09-07T00:00:00Z', 999, true),
     ], NOW);
 
     expect(result).toEqual({
-      value: 10,
+      value: 10, change: 11,
       asOf: Date.parse('2026-09-04T00:00:00Z'),
-      completedAt: Date.parse('2026-09-05T00:00:00Z'),
+      completedAt: Date.parse('2026-09-04T00:00:00Z'),
     });
   });
 
@@ -334,23 +334,19 @@ describe('resolveCompletedDailyChange', () => {
     ], NOW);
 
     expect(result).toEqual({
-      value: 25,
+      value: 25, change: 20,
       asOf: friday,
-      completedAt: Date.parse('2026-09-05T00:00:00Z'),
+      completedAt: Date.parse('2026-09-05T06:00:00Z'),
     });
   });
 
-  it('accepts an aged Friday close even when the gateway leaves closed false through Monday', () => {
+  it('does not invent Friday finality from elapsed hours or Monday on the device clock', () => {
     const mondayNoon = Date.parse('2026-09-07T12:00:00Z');
 
     expect(resolveCompletedDailyChange([
       day('2026-09-03T00:00:00Z', 100, true),
       day('2026-09-04T00:00:00Z', 110, false),
-    ], mondayNoon)).toEqual({
-      value: 10,
-      asOf: Date.parse('2026-09-04T00:00:00Z'),
-      completedAt: Date.parse('2026-09-05T00:00:00Z'),
-    });
+    ], mondayNoon)).toBeNull();
   });
 
   it('keeps the current forming D1 candle excluded', () => {
@@ -361,7 +357,7 @@ describe('resolveCompletedDailyChange', () => {
       day('2026-09-06T22:00:00Z', 110, true),
       day('2026-09-07T00:00:00Z', 220, false),
     ], mondayNoon)).toEqual({
-      value: 10,
+      value: 10, change: 10,
       asOf: Date.parse('2026-09-06T22:00:00Z'),
       completedAt: Date.parse('2026-09-07T00:00:00Z'),
     });
@@ -374,9 +370,9 @@ describe('resolveCompletedDailyChange', () => {
       day('2026-09-04T22:00:00Z', 100, true),
       day('2026-09-06T22:00:00Z', 105, true),
     ], mondayNoon)).toEqual({
-      value: 5,
+      value: 5, change: 5,
       asOf: Date.parse('2026-09-06T22:00:00Z'),
-      completedAt: mondayNoon,
+      completedAt: Date.parse('2026-09-06T22:00:00Z'),
     });
   });
 
@@ -388,7 +384,7 @@ describe('resolveCompletedDailyChange', () => {
       day('2026-03-08T22:00:00Z', 110, false),
       day('2026-03-09T21:00:00Z', 999, false),
     ], now)).toEqual({
-      value: 10,
+      value: 10, change: 10,
       asOf: Date.parse('2026-03-08T22:00:00Z'),
       completedAt: Date.parse('2026-03-09T21:00:00Z'),
     });
@@ -411,20 +407,20 @@ describe('resolveCompletedDailyChange', () => {
         closed: true,
       },
     ], mondayNoon)).toEqual({
-      value: 10,
+      value: 10, change: 10,
       asOf: Date.parse('2026-09-06T22:00:00Z'),
-      completedAt: mondayNoon,
+      completedAt: Date.parse('2026-09-06T22:00:00Z'),
     });
   });
 
   it('returns a finite zero and supports business-day timestamps', () => {
     expect(resolveCompletedDailyChange([
       { time: { year: 2026, month: 9, day: 3 }, close: 100 },
-      { time: { year: 2026, month: 9, day: 4 }, close: 100 },
+      { time: { year: 2026, month: 9, day: 4 }, close: 100, closed: true },
     ], NOW)).toEqual({
-      value: 0,
+      value: 0, change: 0,
       asOf: Date.parse('2026-09-04T00:00:00Z'),
-      completedAt: Date.parse('2026-09-05T00:00:00Z'),
+      completedAt: Date.parse('2026-09-04T00:00:00Z'),
     });
   });
 

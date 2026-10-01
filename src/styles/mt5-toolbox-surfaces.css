@@ -1,0 +1,366 @@
+/* Sampled from the running MT5 desktop Toolbox on 2026-10-01.
+   Share the dark palette across the toolbar, Toolbox, Navigator, Market Watch
+   and drawing sidebar. Floating sheets use the same palette below. */
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
+  .rtx-bottom-dock,
+  .rtx-bug-report-dialog,
+  .rtx-top-chrome,
+  .navigator-panel,
+  .rtx-market-watch,
+  .web-drawing-tools-rail[data-orientation='vertical'],
+  [data-dock-panel-component='navigator'],
+  [data-dock-panel-component='marketwatch']
+) {
+  --bg-primary: #1f1f1f;
+  --bg-secondary: #1f1f1f;
+  --bg-tertiary: #1f1f1f;
+  --bg-quaternary: #2a2a2a;
+  --border-primary: #444444;
+  --border-secondary: #444444;
+  --rtx-toolbox-tabs: #2f2f2f;
+  --rtx-toolbox-summary: #444444;
+  --rtx-toolbox-selected: #0078d7;
+  --rtx-panel-sheen: none;
+  --rtx-chrome-sheen: none;
+  --rtx-control-sheen: none;
+  --rtx-finish-edge: transparent;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(.rtx-top-chrome, .rtx-top-chrome .rtx-main-toolbar) {
+  background: var(--bg-secondary) !important;
+  box-shadow: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) [data-dock-panel-component='navigator'] .dock-panel__header {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-primary) !important;
+  box-shadow: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch__view-tabs {
+  background: var(--rtx-toolbox-tabs) !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch__view-tabs [aria-selected='true'] {
+  background: var(--bg-secondary) !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock :is(
+  .rtx-bottom-dock__content,
+  .rtx-bottom-dock__content > [aria-hidden] > div,
+  .virtualized-list,
+  .rtx-trade-scroll,
+  .rtx-exposure-tab,
+  .rtx-journal-tab
+) {
+  background: var(--bg-secondary) !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock :is(
+  thead,
+  thead th,
+  .rtx-history-toolbar,
+  .rtx-journal-toolbar
+) {
+  background: var(--bg-tertiary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  border-color: var(--border-primary) !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock :is(
+  .rtx-trade-row,
+  .rtx-exposure-row,
+  .rtx-journal-row,
+  .rtx-calendar-row,
+  .rtx-articles-row,
+  .rtx-codebase-row,
+  .rtx-experts-row
+) {
+  background: var(--bg-secondary) !important;
+  box-shadow: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock :is(
+  .rtx-trade-row,
+  .rtx-exposure-row,
+  .rtx-journal-row,
+  .rtx-calendar-row,
+  .rtx-articles-row,
+  .rtx-codebase-row,
+  .rtx-experts-row
+):nth-child(even),
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock :is(
+  .rtx-trade-row,
+  .rtx-exposure-row,
+  .rtx-journal-row,
+  .rtx-calendar-row,
+  .rtx-articles-row,
+  .rtx-codebase-row,
+  .rtx-experts-row
+):hover {
+  background: var(--bg-quaternary) !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock :is(
+  .rtx-trade-row--selected,
+  .rtx-calendar-row[data-selected='true'],
+  .rtx-articles-row[data-selected='true'],
+  .rtx-codebase-row[data-selected='true'],
+  .rtx-experts-row[data-selected='true']
+),
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock :is(
+  .rtx-trade-row--selected,
+  .rtx-calendar-row[data-selected='true'],
+  .rtx-articles-row[data-selected='true'],
+  .rtx-codebase-row[data-selected='true'],
+  .rtx-experts-row[data-selected='true']
+):hover {
+  background: var(--rtx-toolbox-selected) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock :is(
+  .rtx-trade-row--selected,
+  [data-selected='true']
+) :is(td, span, button) {
+  background-color: transparent !important;
+  color: #ffffff !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock table :is(th, td) {
+  border-color: var(--border-primary) !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock :is(
+  .rtx-trade-footer,
+  .rtx-exposure-account-bar
+) {
+  background: var(--rtx-toolbox-summary) !important;
+  box-shadow: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock .rtx-exposure-graph-track {
+  background: var(--bg-quaternary) !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock .rtx-bottom-dock__tabs {
+  background: var(--rtx-toolbox-tabs) !important;
+  box-shadow: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock .rtx-dock-tab.active-tab {
+  background: var(--bg-secondary) !important;
+  border-top-color: #c2c2c2 !important;
+  box-shadow: none !important;
+}
+
+/* The report form shares Trade's flat surfaces and grid color. */
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bug-report-dialog,
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bug-report-header {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-primary) !important;
+  background-image: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bug-report-dialog :is(
+  .rtx-bug-report-control,
+  code,
+  li,
+  button[class*='bg-[#191a1e]']
+) {
+  background: var(--bg-quaternary) !important;
+  border-color: var(--border-primary) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bug-report-dialog .rtx-bug-report-control:focus-visible {
+  outline: 1px solid var(--rtx-toolbox-selected);
+  outline-offset: 1px;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bug-report-dialog button[type='submit'] {
+  background: var(--rtx-toolbox-selected) !important;
+  background-image: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bug-report-dialog form > :is(.border-t, .border-l-2) {
+  border-color: var(--border-primary) !important;
+}
+
+/* Portals do not inherit the dock palette. Scope it to actual floating boxes,
+   leaving full-screen backdrops, chart canvases and trading action fills alone. */
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
+  [role='dialog']:not([class*='backdrop']):not(.inset-0),
+  [role='alertdialog']:not(.inset-0),
+  [role='menu']:not(:has(> :is(.rtx-menu-surface, .rtx-file-menu))),
+  [role='listbox'],
+  .rtx-action-sheet,
+  .rtx-application-menu,
+  .rtx-menu-surface,
+  .rtx-chart-context-menu,
+  .rtx-confirm-dialog,
+  .rtx-chart-template-dialog,
+  .rtx-indicator-dialog,
+  .rtx-export-sheet,
+  .rtx-dom-dialog,
+  .rtx-chart-symbol-dropdown,
+  .web-drawing-tools-menu,
+  .web-drawing-tools-tooltip,
+  .web-drawing-selection-toolbar,
+  .rtx-chart-text-input-popover,
+  .rtx-market-watch__dropdown,
+  .rtx-connection-dropdown,
+  .rtx-drawing-operations__menu
+) {
+  --bg-primary: #1f1f1f;
+  --bg-secondary: #1f1f1f;
+  --bg-tertiary: #1f1f1f;
+  --bg-quaternary: #2a2a2a;
+  --bg-elevated: #2a2a2a;
+  --border-primary: #444444;
+  --border-secondary: #444444;
+  --border-tertiary: #555555;
+  --rtx-toolbox-selected: #0078d7;
+  --rtx-panel-sheen: none;
+  --rtx-chrome-sheen: none;
+  --rtx-control-sheen: none;
+  --rtx-finish-edge: transparent;
+
+  /* Component-owned neutral tokens share the same underlying surfaces. */
+  --login-surface: #1f1f1f;
+  --login-field: #2a2a2a;
+  --login-surface-border: #444444;
+  --login-border: #444444;
+  --login-divider: #444444;
+  --login-button-secondary-bg: #2a2a2a;
+  --login-button-secondary-border: #444444;
+  --login-button-secondary-bg-hover: #333333;
+  --login-button-secondary-border-hover: #555555;
+  --login-button-disabled-bg: #2a2a2a;
+  --login-button-disabled-border: #444444;
+  --auth-surface: #1f1f1f;
+  --auth-subtle: #1f1f1f;
+  --auth-control: #2a2a2a;
+  --auth-hover: #2a2a2a;
+  --auth-border: #444444;
+  --auth-border-strong: #555555;
+  --account-surface: #1f1f1f;
+  --account-subtle: #2a2a2a;
+  --account-field: #2a2a2a;
+  --account-hover: #2a2a2a;
+  --account-border: #444444;
+  --account-footer: #1f1f1f;
+  --options-bg: #1f1f1f;
+  --options-sidebar: #1f1f1f;
+  --options-panel: #1f1f1f;
+  --options-field: #2a2a2a;
+  --options-hover: #2a2a2a;
+  --options-border: #444444;
+  --options-divider: #444444;
+  --options-active: #2a2a2a;
+  --order-control-bg: #2a2a2a;
+
+  background-color: var(--bg-secondary) !important;
+  background-image: none !important;
+  border-color: var(--border-primary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+
+  /* Older dialogs still carry neutral utility fills. Keep their content and
+     chrome flat without selecting semantic alerts or BUY/SELL controls. */
+  :is(
+    [class*='bg-[#0d0d11]'],
+    [class*='bg-[#101216]'],
+    [class*='bg-[#131316]'],
+    [class*='bg-[#191a1e]'],
+    [class*='bg-[#1e222d]'],
+    [class*='bg-[#252a37]'],
+    .bg-zinc-900,
+    .bg-zinc-950,
+    .rtx-confirm-dialog__header,
+    .rtx-confirm-dialog__content,
+    .rtx-confirm-dialog__footer,
+    .rtx-order-dialog__header,
+    .rtx-cp-header,
+    .rtx-cp-content,
+    .rtx-cp-footer,
+    .rtx-modify-header,
+    .rtx-modify-form-panel,
+    .rtx-modify-chart-panel,
+    .rtx-modify-chart-header,
+    .rtx-modify-chart-toolbar,
+    .rtx-modify-notice,
+    .rtx-print-preview__header,
+    .rtx-print-preview__footer
+  ) {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: none !important;
+  }
+
+  :is(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']),
+    textarea,
+    select,
+    [class*='bg-[#252528]'],
+    [class*='bg-[#252526]'],
+    [class*='bg-[#2b2b2b]'],
+    .bg-zinc-800,
+    .rtx-order-dialog__control,
+    .rtx-order-dialog__volume-control,
+    .rtx-modify-volume-compound,
+    .rtx-modify-volume-stepper,
+    .rtx-modify-volume-desc,
+    .rtx-modify-badge-id,
+    .rtx-modify-chart-spread-pill,
+    .rtx-modify-chart-quote-pills,
+    .rtx-modify-quote-strip,
+    .rtx-modify-quote-spread,
+    .rtx-modify-btn--submit,
+    .rtx-dom-stepper
+  ) {
+    background: var(--bg-quaternary) !important;
+    background-image: none !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: none !important;
+  }
+
+  :is([class*='border-zinc-'], [class*='border-gray-'], .rtx-menu-divider, .rtx-application-menu__divider) {
+    border-color: var(--border-primary) !important;
+  }
+
+  :is(
+    .rtx-application-menu__root-item,
+    .rtx-menu-row,
+    .rtx-file-menu button:not(.rtx-file-menu__logout),
+    [role='menuitem']:not([aria-disabled='true']),
+    [role='option'],
+    .web-drawing-tools-menu__item
+  ):is(:hover, :focus-visible, .is-active, .is-open):not(:disabled) {
+    background: var(--bg-quaternary) !important;
+    background-image: none !important;
+  }
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-chart-context-menu {
+  --ctx-bg: var(--bg-secondary);
+  --ctx-border: var(--border-primary);
+  --ctx-hover: var(--bg-quaternary);
+  --ctx-active-bg: var(--rtx-toolbox-selected);
+  --ctx-item-active-bg: var(--bg-quaternary);
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
+  .rtx-auth-backdrop,
+  .rtx-login-backdrop,
+  .rtx-modify-overlay,
+  .rtx-open-account-backdrop,
+  .rtx-order-dialog-backdrop,
+  .rtx-options-dialog-backdrop
+) {
+  background-color: rgb(0 0 0 / 60%) !important;
+}

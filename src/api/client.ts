@@ -8,6 +8,8 @@ import {
 } from '../config/api';
 import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
 import { debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
+import { getAccessToken, getRefreshToken as getBoundRefreshToken } from '../services/brokerSession';
+import { assertBrokerRequestAllowed } from './brokerRequestGuard';
 
 type DynamicBrokerTarget = {
   backend_url?: string;
@@ -91,15 +93,13 @@ export class ApiError extends Error {
 
 // Get auth token from localStorage
 const getToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  return getAccessToken();
 };
 
 export const getAuthToken = getToken;
 
 const getRefreshToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
+  return getBoundRefreshToken();
 };
 
 export const parseTokenExpiresAt = (expiresAt: unknown): number | null => {
@@ -376,11 +376,16 @@ const handleResponse = async <T>(
         const refreshController = new AbortController();
         const refreshTimeoutId = setTimeout(() => refreshController.abort(), 30000);
         const refreshPromise = (async (): Promise<string> => {
+          assertBrokerRequestAllowed(context.refreshEndpoint);
+          if (!isDesktopBackendTarget() && !isRequestContextCurrent(originalRequest)) {
+            throw new ApiError(401, 'The broker session changed before token refresh.');
+          }
           const refreshResponse = await fetch(context.refreshEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refresh_token: refreshToken }),
             signal: refreshController.signal,
+            redirect: 'error',
           });
 
           if (!refreshResponse.ok) {
@@ -443,6 +448,10 @@ const handleResponse = async <T>(
       }
 
       throwIfAborted(signal);
+      assertBrokerRequestAllowed(originalRequest.url);
+      if (!isDesktopBackendTarget() && getToken() !== accessToken) {
+        throw new ApiError(401, 'The broker session changed during token refresh.');
+      }
       const retryRequest = withBearerToken(originalRequest, accessToken);
       const retryResponse = await fetch(retryRequest.url, retryRequest.init);
       throwIfAborted(signal);
@@ -529,10 +538,11 @@ export interface ApiRequestOptions extends RequestInit {
 
 // Use the backend URL directly only in Electron; in the browser, use
 // relative paths so requests go through the Vite dev-server proxy and avoid CORS.
-const BACKEND_URL = import.meta.env.VITE_API_URL as string || getBackendTarget();
+const BACKEND_URL = getBackendTarget();
 
 const getBaseUrl = (): string => {
   if (typeof window === 'undefined') return BACKEND_URL;
+  if (!isDesktopBackendTarget()) return getBackendTarget();
   // Use URL stored by Login (setBaseUrl) if available
   const stored = localStorage.getItem('api_base_url');
   if (stored) return stored;
@@ -593,6 +603,7 @@ const buildRequestConfig = (
   const config: RequestInit = {
     ...requestInit,
     method,
+    redirect: 'error',
     headers: buildHeaders(
       withApiKey(options?.headers, options?.apiKey),
       shouldSkipAuth,
@@ -685,6 +696,7 @@ const executeRequest = async <T>(
   const baseUrl = options?.baseUrl || getBaseUrl();
   const normalizedEndpoint = normalizeEndpoint(endpoint);
   const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
+  assertBrokerRequestAllowed(url);
   if (method === 'GET' || method === 'POST') {
     debugLog(`[API Client] ${method} URL:`, redactUrlForDebugLog(url));
   }
@@ -701,6 +713,10 @@ const executeRequest = async <T>(
 
   try {
     const requestConfig = buildRequestConfig(method, options, shouldSkipAuth, controller.signal, body);
+    const bearer = getRequestBearerToken(requestConfig);
+    if (!isDesktopBackendTarget() && bearer && bearer !== getToken()) {
+      throw new ApiError(401, 'Credentials do not belong to the active deployment broker session.');
+    }
     const requestContext = options?.authToken === null
       ? null
       : options?.requestContext

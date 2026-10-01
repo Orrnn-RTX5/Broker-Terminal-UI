@@ -16,7 +16,15 @@
 
 // ─── Session Change Event Bus ────────────────────────────────────────────────
 
-import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
+import {
+  getBackendTarget,
+  getPublicWsTarget,
+  getRuntimeConfiguredBrokerId,
+  getRuntimeBrokerConfiguration,
+  isConfiguredBrokerEndpoint,
+  isDesktopBackendTarget,
+  normalizeBrokerInfoForTarget,
+} from '../config/backendTarget.js';
 import { isCleartextDowngradeAllowedHost } from '../config/urlSecurity';
 import { brokerDisplayName } from './brokerDisplayName';
 import { normalizeBrokerThemeColor } from './brokerThemeColor';
@@ -80,7 +88,17 @@ let committedBrokerAccountSessionScope: CommittedBrokerAccountSessionScope = {
 };
 
 const normalizeCommittedScopeText = (value: unknown): string =>
-  String(value ?? '').trim().replace(/\/+$/, '').toLowerCase();
+  String(value ?? '').trim();
+
+const normalizeCommittedServerUrl = (value: unknown): string => {
+  const raw = String(value ?? '').trim().replace(/\/+$/, '');
+  try {
+    const url = new URL(raw);
+    return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return raw;
+  }
+};
 
 const readCurrentBrokerId = (): string => normalizeCommittedScopeText(
   getLocalStorageItem('broker_id') || getLocalStorageItem('rtx_broker_id') || '',
@@ -95,7 +113,7 @@ export const createCommittedBrokerAccountSessionScope = (
     authenticated,
     accountId,
     brokerId: normalizeCommittedScopeText(input.brokerId ?? readCurrentBrokerId()),
-    serverUrl: normalizeCommittedScopeText(input.serverUrl ?? getServerUrl()),
+    serverUrl: normalizeCommittedServerUrl(input.serverUrl ?? getServerUrl()),
   };
 };
 
@@ -246,6 +264,7 @@ export interface BrokerSessionDiscoveryInput {
   access_token?: string | null;
   token?: string | null;
   broker_id?: string | null;
+  feed_broker_id?: string | null;
   broker_name?: string | null;
   brokerName?: string | null;
   name?: string | null;
@@ -413,11 +432,9 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 const isAllowedPublicBrokerHostname = (hostname: string): boolean => {
   const normalized = hostname.toLowerCase();
-  return (normalized.startsWith('services.')
-    || normalized === 'backend.orrnn.com'
-    || normalized === 'testbrokerbackend.orrnn.com'
-    || normalized === 'fxtrustbrokerbackend.orrnn.com')
+  return Boolean(normalized)
     && !LOCAL_HOSTS.has(normalized)
+    && !normalized.endsWith('.localhost')
     && !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized)
     && !normalized.includes(':');
 };
@@ -512,78 +529,19 @@ const isSameOrUnknownBroker = (nextBrokerId: string): boolean => {
   return !currentBrokerId || !nextBrokerId || currentBrokerId === nextBrokerId;
 };
 
-/**
- * Deploy-time webterminal ids (brokers.json / container names) that must NOT be
- * sent as feed WS `broker_id` query auth. Map them to the feed/backend broker id.
- */
-const FEED_BROKER_ID_ALIASES: Record<string, string> = {
-  'grow-trading-academy': 'gta_broker',
-};
-
-const DEPLOY_ONLY_BROKER_ALIASES = new Set(Object.keys(FEED_BROKER_ID_ALIASES));
-
-const mapFeedBrokerAlias = (brokerId: string): string => {
-  const trimmed = String(brokerId || '').trim();
-  if (!trimmed) return '';
-  return FEED_BROKER_ID_ALIASES[trimmed] || FEED_BROKER_ID_ALIASES[trimmed.toLowerCase()] || trimmed;
-};
-
-const getBuildTimeFeedBrokerId = (): string => mapFeedBrokerAlias(String(
-  import.meta.env.VITE_FEED_BROKER_ID
-  || import.meta.env.VITE_BROKER_ID
-  || ''
-).trim());
-
-const isDeployOnlyBrokerAlias = (brokerId: string): boolean => {
-  const trimmed = String(brokerId || '').trim();
-  if (!trimmed) return false;
-  return DEPLOY_ONLY_BROKER_ALIASES.has(trimmed) || DEPLOY_ONLY_BROKER_ALIASES.has(trimmed.toLowerCase());
-};
-
-/**
- * Broker id used ONLY to label the feed WS connection (`broker_id` query).
- * Prefer runtime feed/backend ids over localStorage deploy aliases that are
- * written after login/discovery (e.g. grow-trading-academy).
- */
+/** Use the exact feed identity supplied by the backend or configuration. */
 const getFeedBrokerId = (): string => {
   if (typeof window === 'undefined') return '';
-
-  // a) Explicit feed broker id storage
-  const storedFeedBrokerId = String(getLocalStorageItem('feed_broker_id') || '').trim();
-  if (storedFeedBrokerId) return mapFeedBrokerAlias(storedFeedBrokerId);
-
-  // b) Runtime FEED_BROKER_ID / VITE_FEED_BROKER_ID (docker-entrypoint injects these)
-  const runtimeFeedBrokerId = getRuntimeConfigValue(['FEED_BROKER_ID', 'VITE_FEED_BROKER_ID']);
-  if (runtimeFeedBrokerId) return mapFeedBrokerAlias(runtimeFeedBrokerId);
-
-  // c) Runtime BROKER_ID when it is a real feed/backend id (not a deploy-only alias)
-  const runtimeBrokerId = getRuntimeConfigValue(['BROKER_ID']);
-  if (runtimeBrokerId && !isDeployOnlyBrokerAlias(runtimeBrokerId)) {
-    return runtimeBrokerId;
+  if (!isDesktopBackendTarget()) {
+    const config = getRuntimeBrokerConfiguration();
+    return config.valid ? config.feedBrokerId || config.brokerId : '';
   }
-
-  // e) localStorage broker_id / rtx_broker_id after alias map
-  //    (d = alias map applied here and below)
-  const storedBrokerId = String(
-    getLocalStorageItem('broker_id')
-    || getLocalStorageItem('rtx_broker_id')
-    || ''
-  ).trim();
-  if (storedBrokerId) return mapFeedBrokerAlias(storedBrokerId);
-
-  // Map deploy-only runtime BROKER_ID if localStorage had nothing usable
-  if (runtimeBrokerId) return mapFeedBrokerAlias(runtimeBrokerId);
-
-  // f) runtime VITE_BROKER_ID after alias map
-  const viteBrokerId = getRuntimeConfigValue(['VITE_BROKER_ID']);
-  if (viteBrokerId) return mapFeedBrokerAlias(viteBrokerId);
-
-  // g) Build-time broker identity. Packaged Electron has no server-side
-  // runtime injection before a broker is selected.
-  const buildTimeFeedBrokerId = getBuildTimeFeedBrokerId();
-  if (buildTimeFeedBrokerId) return buildTimeFeedBrokerId;
-
-  return '';
+  const storedFeedId = String(getLocalStorageItem('feed_broker_id') || '').trim();
+  if (storedFeedId) return storedFeedId;
+  const selectedBrokerId = String(getLocalStorageItem('broker_id') || getLocalStorageItem('rtx_broker_id') || '').trim();
+  const configuration = getRuntimeBrokerConfiguration();
+  if (selectedBrokerId && selectedBrokerId !== configuration.brokerId) return selectedBrokerId;
+  return configuration.feedBrokerId || selectedBrokerId || configuration.brokerId;
 };
 
 const shouldKeepCurrentMarketOrigin = (
@@ -667,13 +625,29 @@ const pickPersistedWsUrl = (
 export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput): void {
   if (typeof window === 'undefined') return;
 
+  if (!isDesktopBackendTarget()) {
+    const config = getRuntimeBrokerConfiguration();
+    if (!config.valid) throw new Error(config.errors.join(' ') || 'Broker deployment configuration is invalid.');
+    const brokerId = String(input.broker_id || '').trim();
+    if (brokerId && brokerId !== config.brokerId) {
+      throw new Error('The broker session does not match this terminal deployment.');
+    }
+    // Session metadata can describe a broker, but cannot authorize new routing.
+    // The configured deployment origins are the authority for browser requests.
+    input = { ...input, broker_id: config.brokerId, feed_broker_id: config.feedBrokerId || config.brokerId };
+  }
+
   const normalizedInput = normalizeBrokerInfoForTarget(input) as BrokerSessionDiscoveryInput;
   const token = String(normalizedInput.access_token || normalizedInput.token || '').trim();
   const brokerId = String(normalizedInput.broker_id || '').trim();
   const hasToken = Boolean(token);
   const sameBroker = isSameOrUnknownBroker(brokerId);
   const currentMarketOrigin = getCurrentValidMarketOrigin();
-  const explicitMarketUrl = pickFirstMarketHttpUrl(normalizedInput.market_api_url, normalizedInput.backend_url);
+  const explicitMarketUrl = pickFirstMarketHttpUrl(
+    ...(!isDesktopBackendTarget()
+      ? [normalizedInput.backend_url, normalizedInput.market_api_url]
+      : [normalizedInput.market_api_url, normalizedInput.backend_url]),
+  );
   const hasExplicitValidMarketUrl = isValidMarketOrigin(explicitMarketUrl);
   const backendCandidateUrl = explicitMarketUrl;
   const serverCandidateUrl = explicitMarketUrl || pickFirstMarketHttpUrl(normalizedInput.server_url, normalizedInput.broker_server);
@@ -691,12 +665,7 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   const feedStatusUrl = normalizeOptionalHttpUrl(normalizedInput.feed_status_url);
   const logoUrl = String(normalizedInput.logo_url || '').trim();
   const themeColor = normalizeBrokerThemeColor(normalizedInput.theme_color);
-  const brokerChangedWithoutToken = !token && brokerChanged;
-
-  if (token) {
-    setLocalStorageItem('auth_token', token);
-    emitAuthTokenUpdated();
-  } else if (brokerChangedWithoutToken) {
+  if (brokerChanged) {
     [
       'auth_token',
       'refresh_token',
@@ -711,7 +680,6 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
       removeLocalStorageItem(key);
       removeSessionStorageItem(key);
     });
-    emitAuthTokenUpdated();
   }
   if (brokerId) {
     setLocalStorageItem('broker_id', brokerId);
@@ -731,6 +699,8 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
     removeLocalStorageItem('feed_broker_id');
     removeSessionStorageItem('feed_broker_id');
   }
+  const feedBrokerId = String(normalizedInput.feed_broker_id || '').trim();
+  if (feedBrokerId) setLocalStorageItem('feed_broker_id', feedBrokerId);
   if (logoUrl) setLocalStorageItem('logo_url', logoUrl);
   setOrRemove('broker_theme_color', themeColor);
 
@@ -745,6 +715,10 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
     setLocalStorageItem('broker_name', resolvedBrokerName);
   }
 
+  // Publish credentials only after their broker routing has been committed.
+  // Transition listeners must never observe broker B's token at broker A's URL.
+  if (token) setLocalStorageItem('auth_token', token);
+  if (token || brokerChanged) emitAuthTokenUpdated();
   emitSessionChange(token ? 'login' : 'broker_url_change');
 }
 
@@ -772,7 +746,53 @@ export function getServerUrl(): string {
 /** Step 3 — Access token stored after successful login. */
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
+  if (!credentialsAreBoundToDeployment()) return null;
   return getLocalStorageItem('auth_token') || getSessionStorageItem('auth_token') || null;
+}
+
+/** Prevent a restored token or refresh token from crossing deployment ownership. */
+export function credentialsAreBoundToDeployment(): boolean {
+  const brokerId = String(getLocalStorageItem('broker_id') || getLocalStorageItem('rtx_broker_id') || '').trim();
+  const server = String(getLocalStorageItem('server_url') || getLocalStorageItem('backend_url') || '').trim();
+  if (isDesktopBackendTarget()) {
+    // Saved desktop credentials belong to a selected broker, never to a
+    // packaged default that happens to be available after routing is lost.
+    // Keep direct HTTP/IP/local deployments, but require their saved scope.
+    if (!brokerId || !server) return false;
+    try {
+      const selected = new URL(server);
+      if (!['http:', 'https:'].includes(selected.protocol) || selected.username || selected.password) return false;
+    } catch {
+      return false;
+    }
+    // Desktop discovery may use an identity alias accepted by its backend.
+    // Existing transport/backend authorization retains that selected contract.
+    return true;
+  }
+  const config = getRuntimeBrokerConfiguration();
+  if (!config.valid || !config.brokerId || !config.apiHost) return false;
+  if (brokerId !== config.brokerId || !isConfiguredBrokerEndpoint(server, 'http')) return false;
+  const tokens = [
+    getLocalStorageItem('auth_token') || getSessionStorageItem('auth_token'),
+    getLocalStorageItem('refresh_token') || getSessionStorageItem('refresh_token'),
+  ];
+  return tokens.every((token) => {
+    if (!token || token.split('.').length !== 3) return true;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      const claimedBroker = payload?.broker_id ?? payload?.brokerId;
+      return claimedBroker === undefined || String(claimedBroker).trim() === config.brokerId;
+    } catch {
+      // Some supported backends issue opaque bearer credentials. Decoding a
+      // claim is an additional ownership check, never frontend authorization.
+      return true;
+    }
+  });
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === 'undefined' || !credentialsAreBoundToDeployment()) return null;
+  return getLocalStorageItem('refresh_token') || getSessionStorageItem('refresh_token') || null;
 }
 
 /** Current account login (numeric MT5 login). */
@@ -803,7 +823,7 @@ export function getAccountLogin(): number | null {
 // ─── Step 4 — Build WS Origins ──────────────────────────────────────────────
 
 /** Convert HTTP broker origin to WSS and append a path.
- *  e.g. https://broker.orrnn.com → wss://broker.orrnn.com/ws/v2 */
+ *  e.g. https://broker.example → wss://broker.example/ws/v2 */
 export function getBrokerWsHost(serverUrl: string): string {
   const trimmed = String(serverUrl || '').trim();
   if (!trimmed) return '';
@@ -967,6 +987,15 @@ const appendFeedBrokerIdToWsUrl = (url: string): string => {
 
 /** Build authenticated WebSocket URI for the /ws/v2 endpoint (candles, account, positions). */
 export function buildBrokerWsV2Uri(token?: string | null): string {
+  if (!isDesktopBackendTarget()) {
+    const config = getRuntimeBrokerConfiguration();
+    if (!config.valid) return '';
+    const base = normalizeWsUrlToV2(getPublicWsTarget());
+    // Explicit tokens are used during an already scoped login handshake. A
+    // restored token is available only through the ownership-checked accessor.
+    const activeToken = token !== undefined ? token : getAccessToken();
+    return toLocalDevProxyWsUrl(activeToken ? appendTokenToWsUrl(base, activeToken) : base);
+  }
   const server = getRuntimeMarketOrigin();
   const activeToken = token !== undefined ? token : getAccessToken();
   const storedWsCandidate = typeof window !== 'undefined'
@@ -978,9 +1007,7 @@ export function buildBrokerWsV2Uri(token?: string | null): string {
   const storedWsUrl = pickStoredWsUrl([storedWsCandidate, storedFeedCandidate], server);
   const fallback = normalizeWsUrlToV2(
     getRuntimeConfigValue(['WS_HOST', 'VITE_WS_HOST', 'VITE_RTX5_WS_URL', 'VITE_WS_URL', 'VITE_MARKET_WS_URL'])
-    || import.meta.env.VITE_RTX5_WS_URL as string
-    || import.meta.env.VITE_WS_URL as string
-    || import.meta.env.VITE_MARKET_WS_URL as string
+    || getPublicWsTarget()
     || ''
   );
   const secureStoredWsUrl = forceWssForHttpsFrontend(storedWsUrl);
@@ -999,6 +1026,10 @@ export function buildBrokerWsV2Uri(token?: string | null): string {
 
 /** Build WebSocket URI for the /ws/feed endpoint (live bid/ask quotes). */
 export function buildBrokerWsFeedUri(): string {
+  if (!isDesktopBackendTarget()) {
+    if (!getRuntimeBrokerConfiguration().valid) return '';
+    return toLocalDevProxyWsUrl(appendFeedBrokerIdToWsUrl(normalizeWsUrlToFeed(getPublicWsTarget())));
+  }
   const server = getRuntimeMarketOrigin();
   const providedFeedUrl = normalizeWsUrl(getStoredUrlByKeys(['feed_url']));
   if (canUseStoredWsUrl(providedFeedUrl, server)) {
@@ -1012,8 +1043,7 @@ export function buildBrokerWsFeedUri(): string {
 
   const fallback = normalizeWsUrlToFeed(
     getRuntimeConfigValue(['WS_HOST', 'VITE_WS_HOST', 'VITE_MARKET_WS_URL', 'VITE_RTX5_WS_URL', 'VITE_WS_URL'])
-    || import.meta.env.VITE_MARKET_WS_URL as string
-    || import.meta.env.VITE_RTX5_WS_URL as string
+    || getPublicWsTarget()
     || ''
   );
   if (!server) return toLocalDevProxyWsUrl(appendFeedBrokerIdToWsUrl(forceWssForHttpsFrontend(fallback)));
@@ -1023,13 +1053,8 @@ export function buildBrokerWsFeedUri(): string {
 /** Build REST API v2 base URL. */
 export function buildBrokerApiV2(path = ''): string {
   const server = getServerUrl();
-  const fallback = normalizeServerUrl(
-    import.meta.env.VITE_RTX5_API_URL as string
-    || import.meta.env.VITE_API_URL as string
-    || import.meta.env.VITE_BACKEND_URL as string
-    || ''
-  );
-  const base = server ? `${server}/api/v2` : (fallback ? `${fallback.replace(/\/$/, '')}/api/v2` : '');
+  if (!server) return '';
+  const base = `${server}/api/v2`;
   return path ? `${base}${path.startsWith('/') ? '' : '/'}${path}` : base;
 }
 
@@ -1059,6 +1084,7 @@ export function getWsFeedUrl(): string {
 
 /** Helper: extract server URL from socket URI for reconnect checks. */
 export function getSocketServerOrigin(): string {
+  if (!isDesktopBackendTarget()) return getPublicWsTarget();
   const server = getServerUrl();
   if (!server) return '';
   return httpToWss(server);

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const webConfig = (brokerId: string) => ({ CONFIG_SOURCE: 'deployment', BROKER_ID: brokerId, API_HOST: brokerId === 'TEST' ? 'https://test-broker.example' : `https://${brokerId}.example`, WS_HOST: brokerId === 'TEST' ? 'wss://test-broker.example' : `wss://${brokerId}.example`, DEFAULT_MT5_SERVER: `${brokerId}-Live` });
+
 const runtimeWindow = window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
 
 describe('broker login policy', () => {
@@ -10,10 +12,10 @@ describe('broker login policy', () => {
     vi.resetModules();
   });
 
-  it('prefers the active session broker (Navigator) over the env-configured broker', async () => {
+  it('ignores the stale active session broker in a pinned web deployment', async () => {
     vi.stubEnv('VITE_LOCAL_DESKTOP_BUILD', 'false');
     vi.stubEnv('VITE_BACKEND_TARGET', 'web');
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BROKER_ID: 'TEST' };
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('TEST');
     localStorage.setItem('broker_id', 'Nexa');
     vi.resetModules();
     const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
@@ -22,14 +24,14 @@ describe('broker login policy', () => {
       { broker_id: 'TEST', broker_name: 'TEST', server_url: 'https://test-broker.example' },
       { broker_id: 'Nexa', broker_name: 'Nexa', server_url: 'https://nexa.example' },
     ], { hostname: 'localhost' })).toMatchObject({
-      status: 'ready', brokerId: 'Nexa', displayName: 'Nexa', locked: true,
+      status: 'ready', brokerId: 'TEST', displayName: 'TEST', locked: true,
     });
   });
 
   it('ignores a stored session broker that discovery does not list', async () => {
     vi.stubEnv('VITE_LOCAL_DESKTOP_BUILD', 'false');
     vi.stubEnv('VITE_BACKEND_TARGET', 'web');
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BROKER_ID: 'TEST' };
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('TEST');
     localStorage.setItem('broker_id', 'ghost-broker');
     vi.resetModules();
     const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
@@ -39,10 +41,10 @@ describe('broker login policy', () => {
     ], { hostname: 'localhost' })).toMatchObject({ status: 'ready', brokerId: 'TEST' });
   });
 
-  it('fails closed when the session broker differs from the deployment domain broker', async () => {
+  it('keeps the deployment broker when saved session metadata names another broker', async () => {
     vi.stubEnv('VITE_LOCAL_DESKTOP_BUILD', 'false');
     vi.stubEnv('VITE_BACKEND_TARGET', 'web');
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BROKER_ID: 'broker-a' };
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('broker-a');
     localStorage.setItem('broker_id', 'broker-b');
     vi.resetModules();
     const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
@@ -50,13 +52,13 @@ describe('broker login policy', () => {
     expect(resolveBrokerLoginPolicy([
       { broker_id: 'broker-a', broker_name: 'Broker A', webterminal_domain: 'terminal.broker-a.test' },
       { broker_id: 'broker-b', broker_name: 'Broker B' },
-    ], { hostname: 'terminal.broker-a.test' })).toMatchObject({ status: 'error', brokerId: '' });
+    ], { hostname: 'terminal.broker-a.test' })).toMatchObject({ status: 'ready', brokerId: 'broker-a' });
   });
 
   it('locks a live terminal to the exact verified runtime/domain broker', async () => {
     vi.stubEnv('VITE_LOCAL_DESKTOP_BUILD', 'false');
     vi.stubEnv('VITE_BACKEND_TARGET', 'web');
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BROKER_ID: 'broker-a' };
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('broker-a');
     vi.resetModules();
     const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
 
@@ -71,7 +73,7 @@ describe('broker login policy', () => {
   it('fails closed when the deployment URL and runtime broker disagree', async () => {
     vi.stubEnv('VITE_LOCAL_DESKTOP_BUILD', 'false');
     vi.stubEnv('VITE_BACKEND_TARGET', 'web');
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BROKER_ID: 'broker-b' };
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('broker-b');
     vi.resetModules();
     const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
 
@@ -84,7 +86,7 @@ describe('broker login policy', () => {
   it('ignores path and query text because only the exact hostname is evaluated', async () => {
     vi.stubEnv('VITE_LOCAL_DESKTOP_BUILD', 'false');
     vi.stubEnv('VITE_BACKEND_TARGET', 'web');
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BROKER_ID: 'broker-a' };
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('broker-a');
     vi.resetModules();
     const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
 

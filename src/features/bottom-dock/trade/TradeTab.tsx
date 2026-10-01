@@ -104,6 +104,7 @@ export const TradeTab = memo(function TradeTab({
     const [volumeMode, setVolumeMode] = useState<TradeVolumeMode>(() => safeReadString(TRADE_VOLUME_MODE_STORAGE_KEY, ['lots', 'amounts'] as const, 'lots'));
     const [showOnChartsAutoUpdate, setShowOnChartsAutoUpdate] = useState<boolean>(() => safeReadBoolean(TRADE_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY, true));
     const [selectedPositionKey, setSelectedPositionKey] = useState<string | null>(null);
+    const tradeTabRef = useRef<HTMLDivElement>(null);
     const [resizingColumn, setResizingColumn] = useState<TradeColumnWidthKey | null>(null);
     const columnResizeRef = useRef<{ key: TradeColumnWidthKey; startX: number; startWidth: number } | null>(null);
 
@@ -311,8 +312,8 @@ export const TradeTab = memo(function TradeTab({
     // placeholder instead of a misleading zero.
     const totalLivePnL = floatingPnL;
     const floatingProfitColor = totalLivePnL !== null && totalLivePnL > 0
-        ? 'text-[#22c55e]'
-        : totalLivePnL !== null && totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100';
+        ? 'text-profit'
+        : totalLivePnL !== null && totalLivePnL < 0 ? 'text-loss' : 'text-zinc-100';
     const floatingProfitLabel = totalLivePnL === null ? METRIC_UNAVAILABLE : formatMoney(totalLivePnL);
     const accountBalance = accountMetricResolution.balance;
     const liveEquity = accountMetricResolution.equity;
@@ -437,17 +438,17 @@ export const TradeTab = memo(function TradeTab({
             case 'equity':
                 return liveEquity === null
                     ? <UnavailableTradeMetric />
-                    : <TradeMetricValue value={liveEquity} formatFn={formatMoney} />;
+                    : <TradeMetricValue value={liveEquity} formatFn={formatMoney} flashDirection={false} />;
             case 'margin':
                 return margin === null ? <UnavailableTradeMetric /> : <TradeMetricValue value={margin} formatFn={formatMoney} />;
             case 'freeMargin':
                 return liveFreeMargin === null
                     ? <UnavailableTradeMetric />
-                    : <TradeMetricValue value={liveFreeMargin} formatFn={formatMoney} />;
+                    : <TradeMetricValue value={liveFreeMargin} formatFn={formatMoney} flashDirection={false} />;
             case 'marginLevel':
                 return liveMarginLevel === null
                     ? <UnavailableTradeMetric />
-                    : <TradeMetricValue value={liveMarginLevel} formatFn={formatMarginLevel} />;
+                    : <TradeMetricValue value={liveMarginLevel} formatFn={formatMarginLevel} flashDirection={false} />;
             case 'swap':
                 return <TradeMetricValue value={totalSwap} formatFn={formatMoney} defaultColor={totalSwap < 0 ? 'text-[#f87171]' : 'text-zinc-300'} />;
             case 'commission':
@@ -577,6 +578,22 @@ export const TradeTab = memo(function TradeTab({
             setSelectedPositionKey(null);
         }
     }, [getPositionKey, livePositions, selectedPositionKey]);
+
+    useEffect(() => {
+        if (!selectedPositionKey) return;
+        const clearSelection = (event: PointerEvent) => {
+            const target = event.target;
+            if (target instanceof Element) {
+                const row = target.closest('.rtx-trade-row');
+                if (row && tradeTabRef.current?.contains(row)) return;
+                // The Trade context menu is portalled outside this panel.
+                if (tradeContextMenu && target.closest('[role="menu"]')) return;
+            }
+            setSelectedPositionKey(null);
+        };
+        document.addEventListener('pointerdown', clearSelection, true);
+        return () => document.removeEventListener('pointerdown', clearSelection, true);
+    }, [selectedPositionKey, tradeContextMenu]);
 
     const getTradePointsValue = useCallback((pos: ToolboxTradePosition) => {
         const openPrice = Number(pos.price_open ?? pos.open_price ?? pos.openPrice ?? pos.entryPrice ?? pos.price);
@@ -896,7 +913,7 @@ ${rows}
     }, [ensureTradeLevelsVisibleForLivePositions, showOnChartsAutoUpdate, livePositions]);
 
     return (
-        <div className="rtx-trade-tab h-full cursor-default flex flex-col relative bg-[#131316] overflow-hidden">
+        <div ref={tradeTabRef} className="rtx-trade-tab h-full cursor-default flex flex-col relative bg-[#131316] overflow-hidden">
             <TradeTable
                 account={account}
                 columnWidths={columnWidths}

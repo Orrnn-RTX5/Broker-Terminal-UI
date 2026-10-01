@@ -578,7 +578,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
   return (
     <div
       className="flex items-center gap-[3px] px-1.5 py-[3px] border-b select-none shrink-0"
-      style={{ borderColor: C.borderPrimary, background: C.bgTertiary }}
+      style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-tertiary)' }}
     >
       {/* Bar Chart */}
       <button
@@ -807,7 +807,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
     return (
       <div
         className="rtx-depth-of-market flex flex-col items-center justify-center h-full select-none"
-        style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: typography.fontSize, fontWeight: typography.bodyWeight, lineHeight: 1.5, color: C.textSecondary }}
+        style={{ background: 'var(--bg-secondary)', fontFamily: FONT, fontSize: typography.fontSize, fontWeight: typography.bodyWeight, lineHeight: 1.5, color: C.textSecondary }}
       >
         <div className="text-center">
           {depthLoading && <div className="w-4 h-4 border-2 border-zinc-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-2" />}
@@ -820,14 +820,14 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   return (
     <div
       className="rtx-depth-of-market flex flex-col w-full h-full select-none overflow-hidden"
-      style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: typography.fontSize, fontWeight: typography.bodyWeight, lineHeight: 1.5, borderRadius: 10 }}
+      style={{ background: 'var(--bg-secondary)', fontFamily: FONT, fontSize: typography.fontSize, fontWeight: typography.bodyWeight, lineHeight: 1.5, borderRadius: 10 }}
     >
       {/* ── Title Bar ── */}
       <div
         className="flex min-h-[30px] items-center justify-between px-2.5 py-1 border-b shrink-0 cursor-move"
         style={{
-          background: C.bgTertiary,
-          borderColor: C.borderPrimary,
+          background: 'var(--bg-tertiary)',
+          borderColor: 'var(--border-primary)',
           color: C.textPrimary,
           borderRadius: '10px 10px 0 0',
         }}
@@ -882,7 +882,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
       <div ref={mainContentRef} className="flex flex-1 min-h-0 overflow-hidden">
 
         {/* ── Left: Tick Chart ── */}
-        <div className="flex-[55] border-r min-w-0" style={{ borderColor: C.borderPrimary }}>
+        <div className="flex-[55] border-r min-w-0" style={{ borderColor: 'var(--border-primary)' }}>
           <TickChart
             symbol={symbol}
             width={250}
@@ -905,24 +905,24 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
               minHeight: COLUMN_HEADER_HEIGHT,
               fontSize: typography.fontSize,
               fontWeight: typography.controlWeight,
-              borderColor: C.borderPrimary,
-              background: C.bgTertiary,
+              borderColor: 'var(--border-primary)',
+              background: 'var(--bg-tertiary)',
             }}
           >
             <div
               className="flex items-center justify-center border-r uppercase"
-              style={{ borderColor: C.borderPrimary, color: C.textTertiary, letterSpacing: '0.06em' }}
+              style={{ borderColor: 'var(--border-primary)', color: C.textTertiary, letterSpacing: '0.06em' }}
               title={depthLevels.synthetic ? tr("No depth feed for this symbol — showing a price ladder around the live quote") : undefined}
             >
               {tr("Volume")}</div>
-            <div className="flex items-center justify-center border-r uppercase" style={{ borderColor: C.borderPrimary, color: C.textTertiary, letterSpacing: '0.06em' }}>
+            <div className="flex items-center justify-center border-r uppercase" style={{ borderColor: 'var(--border-primary)', color: C.textTertiary, letterSpacing: '0.06em' }}>
               {tr("Price")}</div>
             <div className="flex items-center justify-center uppercase" style={{ color: C.textTertiary, letterSpacing: '0.06em' }}>
               {tr("Trade")}</div>
           </div>
 
           {/* Scrollable Price Levels */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ background: C.bgSecondary }}>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ background: 'var(--bg-secondary)' }}>
             {depthLevels.asks.length === 0 && depthLevels.bids.length === 0 && (
               <div className="flex items-center justify-center h-full px-3 text-center text-[14px] leading-[21px] font-normal" style={{ color: C.textTertiary }}>
                 {depthLoading ? tr("Loading market depth...") : depthError || tr("No market depth available")}
@@ -941,12 +941,12 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                     gridTemplateColumns: ladderColumns,
                     height: ROW_H,
                     background: isNearSpread ? C.askBgBest : C.askBg,
-                    borderBottom: `1px solid ${C.borderPrimary}`,
+                    borderBottom: '1px solid var(--border-primary)',
                   }}
                   onClick={() => onPlaceOrder?.(buildDepthOrderRequest('SELL', level.price, volume, 'limit', digits, sl, tp))}
                   onMouseDown={e => e.stopPropagation()}
                 >
-                  <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: C.borderPrimary }}>
+                  <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: 'var(--border-primary)' }}>
                     <div className="rtx-dom-volbar absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.lossDim }} />
                     {level.volume > 0 && (
                       <span className="relative z-10" style={{ fontFamily: MONO, color: C.loss, opacity: isNearSpread ? 1 : 0.75 }}>
@@ -954,7 +954,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: C.borderPrimary }}>
+                  <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: 'var(--border-primary)' }}>
                     <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#e58a8a' }}>
                       {priceBase}<span style={{ color: '#fca5a5', fontWeight: 600 }}>{pricePips}</span>
                     </span>
@@ -980,9 +980,9 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                 className="rtx-depth-of-market__row flex items-center justify-center gap-1.5"
                 style={{
                   height: ROW_H,
-                  background: C.spreadBg,
-                  borderBottom: `1px solid ${C.borderSecondary}`,
-                  borderTop: `1px solid ${C.borderSecondary}`,
+                  background: 'var(--bg-quaternary)',
+                  borderBottom: '1px solid var(--border-secondary)',
+                  borderTop: '1px solid var(--border-secondary)',
                 }}
               >
                 <span className="uppercase" style={{ color: C.textTertiary, fontSize: 11, letterSpacing: '0.08em' }}>
@@ -1007,12 +1007,12 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                     gridTemplateColumns: ladderColumns,
                     height: ROW_H,
                     background: isNearSpread ? C.bidBgBest : C.bidBg,
-                    borderBottom: `1px solid ${C.borderPrimary}`,
+                    borderBottom: '1px solid var(--border-primary)',
                   }}
                   onClick={() => onPlaceOrder?.(buildDepthOrderRequest('BUY', level.price, volume, 'limit', digits, sl, tp))}
                   onMouseDown={e => e.stopPropagation()}
                 >
-                  <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: C.borderPrimary }}>
+                  <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: 'var(--border-primary)' }}>
                     <div className="rtx-dom-volbar absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.profitDim }} />
                     {level.volume > 0 && (
                       <span className="relative z-10" style={{ fontFamily: MONO, color: C.profit, opacity: isNearSpread ? 1 : 0.75 }}>
@@ -1020,7 +1020,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: C.borderPrimary }}>
+                  <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: 'var(--border-primary)' }}>
                     <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#7ba4e0' }}>
                       {priceBase}<span style={{ color: '#93c5fd', fontWeight: 600 }}>{pricePips}</span>
                     </span>
@@ -1046,7 +1046,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
       {/* ── Bottom Controls: SL | Volume | TP ── */}
       <div
         className="flex items-center justify-between gap-2 px-2 py-[5px] border-t shrink-0"
-        style={{ borderColor: C.borderPrimary, background: C.bgTertiary }}
+        style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-tertiary)' }}
         onMouseDown={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-1.5">
@@ -1108,7 +1108,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
       </div>
 
       {/* ── Sell / Close / Buy Buttons ── */}
-      <div className="flex shrink-0" style={{ borderTop: `1px solid ${C.borderPrimary}` }}>
+      <div className="flex shrink-0" style={{ borderTop: '1px solid var(--border-primary)' }}>
         <button
           type="button"
           onClick={() => onPlaceOrder?.(buildDepthOrderRequest('SELL', bestBid, volume, 'market', digits, sl, tp))}

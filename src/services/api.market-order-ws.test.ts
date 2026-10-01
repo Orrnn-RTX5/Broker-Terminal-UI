@@ -109,6 +109,12 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     mocks.restPlaceOrder.mockReset();
     mocks.restGetOrderCommand.mockReset();
     localStorage.clear();
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'desktop', API_HOST: 'https://broker.example', WS_HOST: 'wss://broker.example',
+      BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
+    };
+    localStorage.setItem('server_url', 'https://broker.example');
+    localStorage.setItem('broker_id', 'Fixture');
     clearTradeOrderLatencySamples();
 
     tradeSocket = {
@@ -127,6 +133,7 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
   });
 
   afterEach(() => {
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
     window.removeEventListener('rtx:new-trade-placed', onNewTrade);
     window.removeEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, onPlacementState);
     vi.restoreAllMocks();

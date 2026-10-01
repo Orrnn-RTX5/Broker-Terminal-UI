@@ -8,6 +8,8 @@ This directory contains maintained operational, architecture, design, and verifi
 - [Desktop startup](desktop-startup.md)
 - [Electron release](electron-github-release.md)
 - [Broker-specific web configuration](deployment/web-broker-setup.md)
+- [Broker-neutral image configuration and release verification](deployment/broker-neutral-release.md)
+- [Broker API compatibility evidence](deployment/broker-api-compatibility-2026-10-01.md)
 - [Editor preview](ANTIGRAVITY_EDITOR_PREVIEW.md)
 
 ## Architecture and verification
@@ -24,5 +26,6 @@ This directory contains maintained operational, architecture, design, and verifi
 
 - [`design/`](design/) contains design research, implementation notes, and visual reference pages.
 - [`trading/`](trading/) contains trading behavior and calculation documentation.
+- [Daily Change integration](trading/daily-change.md) documents quote/reference rules and broker data requirements.
 
 Date-stamped audit documents describe the checkout and runtime evidence available on that date. They are historical evidence, not automatic certification of the current release candidate.

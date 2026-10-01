@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../api/client';
 import {
@@ -211,6 +211,7 @@ describe('BottomDock History live-deal integration', () => {
         useAppStore.getState().reset();
         useAppStore.setState({ accountId: '200001' });
         toolboxMocks.refresh.mockClear();
+        vi.spyOn(tradeGatewayApi, 'getBalanceHistory').mockResolvedValue([]);
 
         // BottomDock mounts the Trade tab once before History is selected. Keep
         // its existing row-key warning from obscuring this History-only contract.
@@ -226,6 +227,82 @@ describe('BottomDock History live-deal integration', () => {
         useAppStore.getState().reset();
         localStorage.clear();
         vi.restoreAllMocks();
+    });
+
+    it('continues the history table with native financial totals and updates the reported account balance', async () => {
+        useAppStore.setState({ account: {
+            balance: 99_264.73, equity: 99_264.73, margin: 0, freeMargin: 99_264.73,
+            unrealizedPL: 0, marginLevel: 0, currency: 'USD', leverage: 100,
+            hasBackendBalance: true,
+        } });
+        const exit = { ...dealHistoryTrade, profit: -730.28, swap: -4.99, commission: 0 };
+        vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet({
+            deals: [exit, exit, { ...exit, id: 3, dealTicket: 3, dealType: 'balance', profit: 100_000, swap: 0 }],
+        }));
+        vi.mocked(tradeGatewayApi.getBalanceHistory).mockResolvedValue([
+            { id: 1, account_login: 200001, type: 'deposit', amount: 100_000, time: 1_790_836_200 },
+        ]);
+        const { container } = renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
+        const summary = await screen.findByRole('group', { name: 'History financial summary' });
+        await waitFor(() => expect(summary).toHaveTextContent('Profit: -735.27 Credit: 0.00 Deposit: 100 000.00 Withdrawal: 0.00 Balance: 99 264.73'));
+        expect(container.querySelector('.rtx-history-table tfoot')?.previousElementSibling?.tagName).toBe('TBODY');
+        expect(summary.querySelector('[class*="text-[#"]')).toBeNull();
+        expect(screen.getByLabelText('Total gross profit')).toHaveTextContent('-730.28');
+
+        // Switching from position aggregates to raw deals does not count totals twice.
+        const menu = await openHistorySurfaceMenu();
+        fireEvent.click(within(menu).getByRole('menuitem', { name: 'Deals' }));
+        expect(summary).toHaveTextContent('Profit: -735.27');
+        act(() => useAppStore.setState(state => ({ account: { ...state.account!, balance: 99_000 } })));
+        await waitFor(() => expect(summary).toHaveTextContent('Balance: 99 000.00'));
+    });
+
+    it('filters executions and cash movements by period while keeping Balance current', async () => {
+        vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet({ deals: [
+            { ...dealHistoryTrade, id: 1, dealTicket: 1, openTime: '2020-01-01T00:00:00Z', closeTime: '2020-01-01T00:00:00Z', profit: 100, commission: 0 },
+            { ...dealHistoryTrade, id: 2, dealTicket: 2, openTime: new Date().toISOString(), closeTime: new Date().toISOString(), profit: 5, commission: -1 },
+        ] }));
+        vi.mocked(tradeGatewayApi.getBalanceHistory).mockResolvedValue([
+            { id: 1, type: 'deposit', amount: 1000, time: Date.parse('2020-01-01T00:00:00Z') / 1000 },
+            { id: 2, type: 'withdrawal', amount: -20, time: Date.now() / 1000 },
+        ]);
+        renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
+        const summary = await screen.findByRole('group', { name: 'History financial summary' });
+        await waitFor(() => expect(summary).toHaveTextContent('Profit: 104.00 Credit: 0.00 Deposit: 1 000.00 Withdrawal: -20.00 Balance: —'));
+        fireEvent.click(screen.getByRole('button', { name: 'Last Month' }));
+        expect(summary).toHaveTextContent('Profit: 4.00 Credit: 0.00 Deposit: 0.00 Withdrawal: -20.00 Balance: —');
+    });
+
+    it('keeps trade records usable when the ledger fails and shows unavailable financial sources as dashes', async () => {
+        vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue({
+            ...historyDataSet(), deals: [], errors: { positions: null, deals: 'Deals unavailable', orders: null },
+        });
+        vi.mocked(tradeGatewayApi.getBalanceHistory).mockRejectedValue(new Error('Ledger unavailable'));
+        renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
+        await screen.findByText('1 records');
+        const summary = screen.getByRole('group', { name: 'History financial summary' });
+        await waitFor(() => expect(summary).toHaveTextContent('Profit: — Credit: — Deposit: — Withdrawal: — Balance: —'));
+        expect(within(summary).getByText('Deposit: —')).toHaveAttribute('title', 'Ledger unavailable');
+    });
+
+    it('rejects a late ledger response from the previous account', async () => {
+        let resolveOld!: (rows: Record<string, unknown>[]) => void;
+        vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet());
+        vi.mocked(tradeGatewayApi.getBalanceHistory).mockImplementation(login => login === 200001
+            ? new Promise(resolve => { resolveOld = resolve; })
+            : Promise.resolve([{ id: 2, account_login: 200002, type: 'deposit', amount: 200 }]));
+        renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
+        await screen.findByText('1 records');
+        act(() => useAppStore.setState({ accountId: '200002' }));
+        const summary = screen.getByRole('group', { name: 'History financial summary' });
+        await waitFor(() => expect(summary).toHaveTextContent('Deposit: 200.00'));
+        await act(async () => resolveOld([{ id: 1, type: 'deposit', amount: 9999 }]));
+        expect(summary).toHaveTextContent('Deposit: 200.00');
+        expect(summary).not.toHaveTextContent('9 999.00');
     });
 
     it('renders 72 rows from 144 bare deal events without merging closed-position fallback rows', async () => {
@@ -254,7 +331,7 @@ describe('BottomDock History live-deal integration', () => {
             />,
         );
 
-        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
 
         await waitFor(() => expect(screen.getByText('72 records')).toBeInTheDocument());
 
@@ -285,12 +362,148 @@ describe('BottomDock History live-deal integration', () => {
         );
     });
 
+    it('limits Today to local midnight through now, excluding yesterday and future records', async () => {
+        const now = new Date(2026, 9, 1, 15, 45).getTime();
+        vi.spyOn(Date, 'now').mockReturnValue(now);
+        const times = [
+            new Date(2026, 9, 1, 0).toISOString(),
+            new Date(2026, 9, 1, 15).toISOString(),
+            new Date(2026, 8, 30, 23, 59, 59).toISOString(),
+            new Date(2026, 9, 1, 16).toISOString(),
+        ];
+        vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet({
+            positions: times.map((time, index) => ({
+                ...contextMenuHistoryTrade, id: 640001 + index, positionId: 640001 + index,
+                openTime: time, closeTime: time,
+            })),
+        }));
+        renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
+        await screen.findByText('4 records');
+        fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+        expect(screen.getByText('2 records')).toBeInTheDocument();
+        expect(screen.getByTitle('Ticket: 640001')).toBeInTheDocument();
+        expect(screen.getByTitle('Ticket: 640002')).toBeInTheDocument();
+        expect(screen.queryByTitle('Ticket: 640003')).not.toBeInTheDocument();
+        expect(screen.queryByTitle('Ticket: 640004')).not.toBeInTheDocument();
+    });
+
+    it('shows valid closed history when the broker repeats its first deal page', async () => {
+        const deals = Array.from({ length: 500 }, (_, index): GatewayDeal => ({
+            ticket: 900_000 + index, account_login: 200001,
+            position_ticket: 800_000 + Math.floor(index / 2), symbol: 'EURUSD',
+            action: index % 2 ? 'sell' : 'buy', entry: index % 2 ? 'entry_out' : 'entry_in',
+            volume: 0.01, price: 1.1, profit: index % 2 ? 2 : 0,
+            time: BASE_TIME_SECONDS + index,
+        }));
+        vi.spyOn(apiClient, 'get').mockImplementation(async <T,>(endpoint: string): Promise<T> => (
+            endpoint === '/deals/200001' ? deals : []
+        ) as T);
+        const { container } = renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
+        await screen.findByText('250 records');
+        expect(container.querySelectorAll('.rtx-history-tab tbody tr.rtx-trade-row').length).toBeGreaterThan(0);
+        expect(screen.getByRole('status')).toHaveTextContent('Broker repeated a history page');
+        expect(screen.getByRole('group', { name: 'History financial summary' })).toHaveTextContent('Profit: —');
+        expect(screen.getByRole('button', { name: 'Refresh', exact: true })).not.toBeDisabled();
+    });
+
+    it('filters recent positions, executions, and financial totals without reloading the broker history', async () => {
+        const now = new Date(2026, 9, 1, 15, 45).getTime();
+        vi.spyOn(Date, 'now').mockReturnValue(now);
+        const recent = new Date(now - 30 * 60_000).toISOString();
+        const earlier = new Date(now - 3 * 3_600_000).toISOString();
+        const older = new Date(now - 9 * 86_400_000).toISOString();
+        const fiveMonthsAgo = new Date(2026, 4, 1, 12).toISOString();
+        const eightMonthsAgo = new Date(2026, 1, 1, 12).toISOString();
+        const rows = [recent, earlier, older, fiveMonthsAgo, eightMonthsAgo].map((time, index) => ({
+            ...contextMenuHistoryTrade, id: 630001 + index, positionId: 630001 + index, dealTicket: 730001 + index,
+            openTime: time, closeTime: time, profit: (index + 1) * 10, commission: 0,
+        }));
+        const load = vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet({
+            positions: rows,
+            deals: rows.map(row => ({ ...row, historySource: 'deal' as const, type: 'entry_out' as const })),
+        }));
+        const { container } = renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
+        await screen.findByText('5 records');
+        const scroller = screen.getByLabelText('History records');
+        scroller.scrollTop = 900;
+        fireEvent.click(screen.getByRole('button', { name: 'Last Hour' }));
+        expect(screen.getByText('1 records')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Last Hour' })).toHaveAttribute('aria-pressed', 'true');
+        expect(scroller.scrollTop).toBe(0);
+        expect(container.querySelector('[title="Ticket: 630001"]')).not.toBeNull();
+        expect(container.querySelector('[title="Ticket: 630002"]')).toBeNull();
+        expect(screen.getByRole('group', { name: 'History financial summary' })).toHaveTextContent('Profit: 10.00');
+        fireEvent.click(screen.getByRole('button', { name: 'Last 3 Hours' }));
+        expect(screen.getByText('2 records')).toBeInTheDocument();
+        expect(screen.getByRole('group', { name: 'History financial summary' })).toHaveTextContent('Profit: 30.00');
+        fireEvent.click(screen.getByRole('button', { name: 'Last 24 Hours' }));
+        expect(screen.getByText('2 records')).toBeInTheDocument();
+        expect(screen.getByRole('group', { name: 'History financial summary' })).toHaveTextContent('Profit: 30.00');
+        fireEvent.click(screen.getByRole('button', { name: 'Last 7 Days' }));
+        expect(screen.getByText('2 records')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Last 30 Days' }));
+        expect(screen.getByText('3 records')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Last 3 Months' }));
+        expect(screen.getByText('3 records')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Last 6 Months' }));
+        expect(screen.getByText('4 records')).toBeInTheDocument();
+        expect(container.querySelector('[title="Ticket: 630004"]')).not.toBeNull();
+        expect(container.querySelector('[title="Ticket: 630005"]')).toBeNull();
+        expect(screen.getByRole('group', { name: 'History financial summary' })).toHaveTextContent('Profit: 100.00');
+        expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it('loads full backend deal history for the session account and refreshes every financial amount', async () => {
+        const body = btoa(JSON.stringify({ account_login: 200001 })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        localStorage.setItem('auth_token', `header.${body}.sig`);
+        useAppStore.setState({ account: {
+            balance: 20_490, equity: 20_490, margin: 0, freeMargin: 20_490,
+            unrealizedPL: 0, marginLevel: 0, currency: 'USD', leverage: 100, hasBackendBalance: true,
+        } });
+        const firstPage = Array.from({ length: 500 }, (_, index): GatewayDeal => ({
+            ticket: index + 1, account_login: 200001, symbol: 'EURUSD', action: 'deal_buy', entry: 'entry_out',
+            profit: 1, commission: 0, swap: 0, time: BASE_TIME_SECONDS + index,
+        }));
+        let afterRefresh = false;
+        vi.spyOn(apiClient, 'get').mockImplementation(async <T,>(endpoint: string, options?: { params?: object }): Promise<T> => {
+            if (endpoint === '/deals/200001') throw new Error('Use the paginated trader route');
+            if (endpoint === '/account/deals') return (afterRefresh ? [{
+                ticket: 999, account_login: 200001, symbol: 'EURUSD', action: 'deal_sell', entry: 'entry_out',
+                profit: -5, commission: -1, swap: -0.5, time: BASE_TIME_SECONDS,
+            }] : (options?.params as { offset?: number })?.offset === 0 ? firstPage : [{
+                ticket: 501, account_login: 200001, symbol: 'EURUSD', action: 'deal_sell', entry: 'entry_out',
+                profit: -10, commission: 0, swap: 0, time: BASE_TIME_SECONDS,
+            }]) as T;
+            return [] as T;
+        });
+        vi.mocked(tradeGatewayApi.getBalanceHistory).mockResolvedValue([
+            { id: 1, account_login: 200001, type: 'deposit', amount: 20_000 },
+            { id: 2, account_login: 200001, type: 'credit', amount: 50 },
+            { id: 3, account_login: 200001, type: 'withdrawal', amount: 100 },
+        ]);
+        renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
+        const summary = await screen.findByRole('group', { name: 'History financial summary' });
+        await screen.findByText('501 records');
+        await waitFor(() => expect(summary).toHaveTextContent('Profit: 490.00 Credit: 50.00 Deposit: 20 000.00 Withdrawal: -100.00 Balance: 20 490.00'));
+        afterRefresh = true;
+        vi.mocked(tradeGatewayApi.getBalanceHistory).mockResolvedValue([
+            { id: 4, account_login: 200001, type: 'deposit', amount: 30_000 },
+        ]);
+        act(() => useAppStore.setState(state => ({ account: { ...state.account!, balance: 29_993.5 } })));
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+        await waitFor(() => expect(summary).toHaveTextContent('Profit: -6.50 Credit: 0.00 Deposit: 30 000.00 Withdrawal: 0.00 Balance: 29 993.50'));
+    });
+
     it('opens the exact MT5 History root menu on empty space and switches all four datasets', async () => {
         useAppStore.setState({ accountId: '300001', selectedSymbol: 'AUDUSD', positions: [] });
         vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet());
 
         renderHistoryDock();
-        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
         await screen.findByTitle('Ticket: 610001');
 
         let menu = await openHistorySurfaceMenu();
@@ -302,9 +515,20 @@ describe('BottomDock History live-deal integration', () => {
             'Orders & Deals',
             'Symbols',
             'Volumes',
-            'All History',
-            'Last 3 Months',
+            'Today',
+            'Last Hour',
+            'Last 3 Hours',
+            'Last 6 Hours',
+            'Last 12 Hours',
+            'Last 24 Hours',
+            'Last 3 Days',
+            'Last 7 Days',
+            'Last 14 Days',
+            'Last 30 Days',
             'Last Month',
+            'Last 3 Months',
+            'Last 6 Months',
+            'All History',
             'Custom Period',
             'Report',
             'Show on Charts',
@@ -370,7 +594,7 @@ describe('BottomDock History live-deal integration', () => {
 
         try {
             renderHistoryDock();
-            fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+            fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
             await screen.findByText('0 records');
 
             const menu = await openHistorySurfaceMenu();
@@ -391,7 +615,7 @@ describe('BottomDock History live-deal integration', () => {
         const catalog = [{ symbol: 'EURUSD', contractSize: 100_000 }];
 
         const firstRender = renderHistoryDock(catalog);
-        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
         await screen.findByTitle('Ticket: 610001');
         expect(screen.getByRole('columnheader', { name: 'Volume' })).toBeInTheDocument();
 
@@ -407,7 +631,7 @@ describe('BottomDock History live-deal integration', () => {
 
         firstRender.unmount();
         renderHistoryDock(catalog);
-        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
         await screen.findByTitle('Ticket: 610001');
         expect(screen.getByRole('columnheader', { name: 'Amount' })).toBeInTheDocument();
         expect(screen.queryByRole('columnheader', { name: 'Volume' })).not.toBeInTheDocument();
@@ -418,7 +642,7 @@ describe('BottomDock History live-deal integration', () => {
         vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet());
 
         renderHistoryDock([{ symbol: 'EURUSD', contractSize: 100_000 }]);
-        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
         await screen.findByTitle('Ticket: 610001');
 
         expect(screen.getByRole('columnheader', { name: 'Ticket' })).toBeInTheDocument();
@@ -475,7 +699,7 @@ describe('BottomDock History live-deal integration', () => {
         vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet({ positions: periodRows }));
 
         renderHistoryDock();
-        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
         await screen.findByText('4 records');
 
         const menu = await openHistorySurfaceMenu();
@@ -506,12 +730,12 @@ describe('BottomDock History live-deal integration', () => {
         const getHistory = vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet());
 
         renderHistoryDock();
-        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
         await screen.findByTitle('Ticket: 610001');
         expect(getHistory).toHaveBeenCalledTimes(1);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Open positions and live account summary' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Closed orders and account history' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Trade — Open positions and live account summary' }));
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
 
         expect(screen.getByTitle('Ticket: 610001')).toBeInTheDocument();
         expect(screen.queryByText('Loading trade history…')).not.toBeInTheDocument();

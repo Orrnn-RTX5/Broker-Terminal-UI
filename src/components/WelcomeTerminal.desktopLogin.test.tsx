@@ -1,4 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { webcrypto } from 'node:crypto';
+import { IDBFactory } from 'fake-indexeddb';
+import { loadSavedLogin, saveLogin } from '../services/savedLogins';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyBrokerChrome } from '../services/brokerPresentation';
 import { LAST_AUTHENTICATED_BROKER_ID_KEY, WelcomeTerminal, type BrokerServerItem } from './WelcomeTerminal';
@@ -8,6 +11,10 @@ const runtime = vi.hoisted(() => ({
 }));
 const runtimeWindow = window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
 vi.mock('../hooks/useUiTranslation', () => ({ useUiTranslation: () => (text: string) => text }));
+vi.mock('../config/api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../config/api')>(),
+  BROKER_DISCOVERY_URL: 'https://directory.example.test',
+}));
 vi.mock('../startup/loginRuntime', () => ({
   preloadLoginTransportRuntime: async () => ({ authV2Api: { login: runtime.login }, persistBrokerSessionDiscovery: runtime.persist }),
   loadAuthenticatedLoginStoreRuntime: async () => ({ useAppStore: { getState: () => ({ setAuthenticated: runtime.setAuthenticated }) } }),
@@ -24,11 +31,11 @@ const achiever: BrokerServerItem = {
   server_ip: '192.0.2.1', server_port: 8091,
 };
 const gta: BrokerServerItem = {
-  broker_id: 'gta_broker', broker_name: 'Grow Trading Academy', logo_url: '',
+  broker_id: 'gta_broker', broker_name: 'Grow Trading Academy', logo_url: '', login_hero_url: 'https://cdn.example/gta-hero.webp',
   server_url: 'https://services.growtradingacademy.com', active: true, enabled: true,
 };
 const myprop: BrokerServerItem = {
-  broker_id: 'myprop-trade', broker_name: 'MyProp', logo_url: '',
+  broker_id: 'myprop-trade', broker_name: 'MyProp', logo_url: '', login_hero_url: 'https://cdn.example/myprop-hero.webp',
   server_url: 'https://services.myprop.test', active: true, enabled: true,
 };
 const nexa: BrokerServerItem = {
@@ -78,6 +85,39 @@ afterEach(() => {
 });
 
 describe('desktop broker directory login', () => {
+  it('restores a saved password on the welcome screen and forgets it when unchecked', async () => {
+    vi.stubGlobal('indexedDB', new IDBFactory());
+    vi.stubGlobal('crypto', webcrypto);
+    const scope = { brokerId: achiever.broker_id, serverUrl: achiever.server_url! };
+    await saveLogin(scope, '12345', 'fixture-password');
+    render(<WelcomeTerminal onLogin={vi.fn()} />);
+    await waitFor(() => expect(screen.getByLabelText('Password', { selector: 'input' })).toHaveValue('fixture-password'));
+    expect(screen.getByLabelText('Account ID')).toHaveValue('12345');
+    expect(screen.getByLabelText('Password', { selector: 'input' })).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('Password', { selector: 'input' })).toHaveClass('rtx-secret-input');
+    expect(screen.getByLabelText('Password', { selector: 'input' })).toHaveAttribute('autocomplete', 'off');
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    expect(screen.getByRole('checkbox', { name: 'Save password' })).toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Save password' }));
+    await waitFor(async () => expect(await loadSavedLogin(scope, '12345')).toBeNull());
+    expect(runtime.login).not.toHaveBeenCalled();
+  });
+
+  it('saves the welcome-screen password only after a successful opted-in login', async () => {
+    vi.stubGlobal('indexedDB', new IDBFactory());
+    vi.stubGlobal('crypto', webcrypto);
+    const loggedIn = vi.fn();
+    render(<WelcomeTerminal onLogin={loggedIn} />);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    fillCredentials();
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Save password' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Save password' }));
+    submit();
+    await waitFor(() => expect(loggedIn).toHaveBeenCalled());
+    expect(await loadSavedLogin({ brokerId: achiever.broker_id, serverUrl: achiever.server_url! }, '12345')).toEqual({ login: '12345', password: 'test-password' });
+    expect(localStorage.getItem('rtx_saved_password')).toBeNull();
+  });
+
   it('paints the remembered broker immediately while fresh directory verification is pending', async () => {
     const directoryResponse = pending<Response>();
     let directoryRequestCount = 0;
@@ -269,7 +309,7 @@ describe('desktop broker directory login', () => {
   });
 
   it('keeps web broker selection locked to its configured deployment', async () => {
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'web', BROKER_ID: achiever.broker_id, API_HOST: achiever.server_url };
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'web', BROKER_ID: achiever.broker_id, API_HOST: achiever.server_url, WS_HOST: achiever.server_url!.replace(/^https:/, 'wss:'), DEFAULT_MT5_SERVER: 'Achiever-Live', DISCOVERY_BASE_URL: 'https://directory.test' };
     render(<WelcomeTerminal onLogin={vi.fn()} />);
     await screen.findByText('Online');
     expect(screen.getByLabelText('Broker Server')).toHaveAttribute('readonly');

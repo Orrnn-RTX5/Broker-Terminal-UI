@@ -9,7 +9,8 @@ import {
 import { api } from '../../services/api';
 import { brokerApi } from '../../api/brokerApi';
 import { chartDataService } from '../../services/chartDataService';
-import { getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
+import { getAccessToken, getRefreshToken, getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
+import { ensureConfiguredWebSession } from '../../startup/configuredWebSession';
 import { seedValidatedSessionAccountSummary } from '../../services/tradeStartupSnapshot';
 import { updateDynamicUrls } from '../../config/api';
 import { useAppStore } from '../../store/useAppStore';
@@ -129,7 +130,7 @@ export const useAppSessionLifecycle = ({
     setAccountId(String(loginId));
     const storeState = useAppStore.getState();
     if (!storeState.isAuthenticated || storeState.accountId !== String(loginId)) {
-      const refreshToken = localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token') || undefined;
+      const refreshToken = getRefreshToken() || undefined;
       const expiresAt = getStoredTokenExpiryMs() || undefined;
       storeState.setAuthenticated(true, String(loginId), token, refreshToken, expiresAt);
     }
@@ -218,10 +219,14 @@ export const useAppSessionLifecycle = ({
       const sessionGeneration = authSessionGenerationRef.current;
       setIsAutoAuthenticating(true);
       setAutoAuthError(null);
+      if (!ensureConfiguredWebSession()) {
+        performSessionExpiredLogout('broker_deployment_changed');
+        return;
+      }
       updateDynamicUrls();
 
-      const token = localStorage.getItem('auth_token');
-      const refreshToken = localStorage.getItem('refresh_token');
+      const token = getAccessToken();
+      const refreshToken = getRefreshToken();
       const rememberedLogin = localStorage.getItem('rtx_saved_username') || localStorage.getItem('rtx_last_login');
       localStorage.removeItem('rtx_saved_password');
 
@@ -282,8 +287,8 @@ export const useAppSessionLifecycle = ({
         const restoredAccountId = accountData.id || String(loginId);
         const expiresAtString = localStorage.getItem('token_expires_at');
         const expiresAt = expiresAtString ? new Date(expiresAtString).getTime() : undefined;
-        const activeToken = localStorage.getItem('auth_token') || token;
-        const activeRefresh = localStorage.getItem('refresh_token') || refreshToken;
+        const activeToken = getAccessToken();
+        const activeRefresh = getRefreshToken();
         if (!activeToken) throw new Error('Session restore did not produce an access token');
 
         useAppStore.getState().setAuthTokens(activeToken, activeRefresh || undefined, expiresAt);

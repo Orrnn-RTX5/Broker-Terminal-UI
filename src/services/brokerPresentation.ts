@@ -1,6 +1,8 @@
 import { normalizeBrokerServerUrl, toLocalDevProxyUrl } from '../config/api';
 import { isBrokerName } from './brokerDisplayName';
 import { normalizeBrokerThemeColor } from './brokerThemeColor';
+import { isConfiguredBrokerEndpoint, isDesktopBackendTarget, getRuntimeConfiguredBrokerId } from '../config/backendTarget.js';
+import { assertBrokerRequestAllowed } from '../api/brokerRequestGuard';
 
 export { normalizeBrokerThemeColor } from './brokerThemeColor';
 
@@ -108,14 +110,22 @@ export async function loadBrokerPresentation(
 ): Promise<BrokerPresentationConfig | null> {
   const url = buildBrokerPresentationUrl(broker.server_url, broker.broker_id);
   if (!url) return null;
+  if (!isDesktopBackendTarget() && String(broker.broker_id) !== getRuntimeConfiguredBrokerId()) return null;
+  assertBrokerRequestAllowed(url);
 
   const response = await fetch(toLocalDevProxyUrl(url), {
     signal,
     cache: 'no-store',
+    credentials: 'omit',
+    redirect: 'error',
   });
   if (!response.ok) return null;
 
-  return normalizeBrokerPresentationConfig(await response.json(), broker.server_url);
+  const payload = await response.json();
+  if (!isDesktopBackendTarget() && (!isConfiguredBrokerEndpoint(url, 'http')
+    || String(broker.broker_id) !== getRuntimeConfiguredBrokerId()
+    || (payload?.broker_id !== undefined && String(payload.broker_id) !== getRuntimeConfiguredBrokerId()))) return null;
+  return normalizeBrokerPresentationConfig(payload, broker.server_url);
 }
 
 export const mergeBrokerPresentation = <T extends BrokerPresentationSource>(

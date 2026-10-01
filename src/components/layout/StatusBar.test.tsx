@@ -22,16 +22,8 @@ vi.mock('../../hooks/useTerminalTitle', () => ({
   getLogoUrl: (url: string) => url,
   formatTerminalTitle: () => 'RTX 5 Web Terminal',
 }));
-vi.mock('../../hooks/useDesktopRelease', () => ({
-  useDesktopRelease: () => ({ status: 'idle', release: null }),
-}));
 vi.mock('../../hooks/useDesktopUpdater', () => ({
   useDesktopUpdater: () => ({ updatePhase: 'idle', updateLabel: '' }),
-}));
-vi.mock('../../services/desktopRelease', () => ({
-  getDesktopReleaseButtonTitle: () => 'Download Desktop App',
-  getDesktopReleaseVersionLabel: () => '',
-  openDesktopReleaseDownload: vi.fn(),
 }));
 vi.mock('../../store/useWebSocketStore', () => ({
   useWebSocketStore: (selector: (state: unknown) => unknown) => selector({
@@ -92,15 +84,11 @@ describe.each(['web', 'packaged desktop'] as const)('StatusBar in %s', (runtime)
     });
   });
 
-  it('offers the desktop download only in the web runtime', () => {
+  it('shows the terminal version without a desktop download shortcut', () => {
     render(<StatusBar wsRef={{ current: null }} />);
     const download = screen.queryByRole('button', { name: 'Desktop App' });
-    if (runtime === 'packaged desktop') {
-      expect(download).toBeNull();
-      expect(screen.getByText('v1.0.25')).toBeVisible();
-    } else {
-      expect(download).toBeVisible();
-    }
+    expect(download).toBeNull();
+    expect(screen.getByText(runtime === 'web' ? 'v1.0.0' : 'v1.0.25')).toBeVisible();
   });
 
   it('hides and restores the bar while preserving the mounted connection control', () => {

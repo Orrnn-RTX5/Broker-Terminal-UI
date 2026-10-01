@@ -165,6 +165,29 @@ describe('DockWorkspace chart diagnostic attributes', () => {
     useChartSettingsStore.setState({ symbolProperties: {} });
   });
 
+  it('does not rerender market/chart panels when a parent overlay opens, but still reacts to chart changes', async () => {
+    const symbols = ['BTCUSD', 'XAUUSD'];
+    useDockLayoutStore.setState({ layout: chartAndMarketWatchLayout('BTCUSD') });
+    const props = {
+      globalChartType: 'candlestick' as const, globalTimeframe: 'M5' as const,
+      allSymbols: symbols, chartSymbols: symbols, tradeSymbols: symbols,
+      activeMarketSnapshot: createActiveMarketSnapshot({ symbols }),
+      marketInstrumentsSnapshot: createMarketInstrumentsSnapshot(),
+      selectedSymbol: 'BTCUSD', onSymbolSelect: vi.fn(), onClosePosition: vi.fn(),
+      onModifyPosition: vi.fn(), onCancelOrder: vi.fn(), onCloseBulk: vi.fn(),
+    };
+    const view = (open: boolean) => <><DockWorkspace {...props} />{open && <div role="dialog">New Order</div>}</>;
+    const mounted = render(view(false));
+    await waitFor(() => expect(chartMocks.render).toHaveBeenCalled());
+    chartMocks.render.mockClear();
+    chartMocks.marketWatchRender.mockClear();
+    mounted.rerender(view(true));
+    expect(chartMocks.render).not.toHaveBeenCalled();
+    expect(chartMocks.marketWatchRender).not.toHaveBeenCalled();
+    act(() => useDockLayoutStore.setState({ layout: chartAndMarketWatchLayout('XAUUSD') }));
+    await waitFor(() => expect(chartMocks.render).toHaveBeenCalledWith(expect.objectContaining({ symbol: 'XAUUSD' })));
+  });
+
   it('grows the chart grid by one window per Arrange Windows command from the toolbar icon', () => {
     renderWorkspace(chartLayout('chart-1', 'BTCUSD'), 'BTCUSD');
     expect(useDockLayoutStore.getState().getChartCount()).toBe(1);

@@ -8,6 +8,7 @@ import {
   readDailyChangePriceMode,
   type DailyChangePriceMode,
 } from '../utils/dailyChange';
+import { getSymbolDigits } from '../utils/symbolUtils';
 
 export interface DailyChangePriceModeCatalogRow {
   symbol?: unknown;
@@ -17,6 +18,7 @@ export interface DailyChangePriceModeCatalogRow {
 
 let activeScopeKey = '';
 let modesBySymbol = new Map<string, DailyChangePriceMode>();
+let digitsBySymbol = new Map<string, number>();
 
 const normalizeSymbol = (value: unknown): string => String(value ?? '').trim().toUpperCase();
 
@@ -32,6 +34,7 @@ const isUsableScope = (scope: CommittedBrokerAccountSessionScope): boolean => (
 const resetForScope = (scope: CommittedBrokerAccountSessionScope): void => {
   activeScopeKey = isUsableScope(scope) ? scopeKey(scope) : '';
   modesBySymbol = new Map();
+  digitsBySymbol = new Map();
 };
 
 resetForScope(getCommittedBrokerAccountSessionScope());
@@ -78,14 +81,27 @@ export const registerDailyChangePriceModes = (
   if (!currentScopeKey || expectedScopeKey !== currentScopeKey) return false;
 
   const next = new Map<string, DailyChangePriceMode>();
+  const nextDigits = new Map<string, number>();
   rows.forEach((row) => {
     const symbol = normalizeSymbol(row.symbol);
     const mode = readCatalogMode(row);
     if (symbol && mode) next.set(symbol, mode);
+    const specification = asRecord(row.brokerSpecification) ?? asRecord(row.specification) ?? asRecord(row);
+    const digits = specification?.digits ?? asRecord(specification?.specification)?.digits;
+    if (symbol && typeof digits === 'number' && Number.isInteger(digits) && digits >= 0 && digits <= 12) nextDigits.set(symbol, digits);
   });
   activeScopeKey = currentScopeKey;
   modesBySymbol = next;
+  digitsBySymbol = nextDigits;
   return true;
+};
+
+/** Broker precision first; existing symbol display convention when omitted. */
+export const resolveDailyChangeDisplayDigits = (symbol: string, quoteDigits?: unknown): number => {
+  const registered = getCurrentDailyChangePriceModeScopeKey() === activeScopeKey ? digitsBySymbol.get(normalizeSymbol(symbol)) : undefined;
+  if (registered !== undefined) return registered;
+  if (typeof quoteDigits === 'number' && Number.isInteger(quoteDigits) && quoteDigits >= 0 && quoteDigits <= 12) return quoteDigits;
+  return getSymbolDigits(symbol);
 };
 
 export const readRegisteredDailyChangePriceMode = (

@@ -41,12 +41,12 @@ describe('chart header symbol tabs', () => {
       const closeInactive = screen.getByRole('button', { name: 'Close EURUSD tab' });
       fireEvent.mouseDown(closeInactive);
       fireEvent.click(closeInactive);
-      expect(screen.queryByRole('tab', { name: 'EURUSD, H1' })).toBeNull();
-      expect(screen.getByRole('tab', { name: 'XAUUSD, M1' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.queryByRole('tab', { name: 'EURUSD H1' })).toBeNull();
+      expect(screen.getByRole('tab', { name: 'XAUUSD M1' })).toHaveAttribute('aria-selected', 'true');
 
       fireEvent.click(screen.getByRole('button', { name: 'Close XAUUSD tab' }));
-      expect(screen.queryByRole('tab', { name: 'XAUUSD, M1' })).toBeNull();
-      expect(screen.getByRole('tab', { name: 'BTCUSD, M5' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.queryByRole('tab', { name: 'XAUUSD M1' })).toBeNull();
+      expect(screen.getByRole('tab', { name: 'BTCUSD M5' })).toHaveAttribute('aria-selected', 'true');
 
       fireEvent.click(screen.getByRole('button', { name: 'Close BTCUSD tab' }));
       expect(screen.queryByRole('tablist', { name: 'Symbol charts' })).toBeNull();
@@ -75,15 +75,21 @@ describe('chart header symbol tabs', () => {
       applyChartTimeframeCommand({ panelId: 'chart', timeframe: 'M5' }, () => {});
       render(<Header />);
       expect(screen.queryByRole('button', { name: /Change symbol for/ })).toBeNull();
-      expect(screen.getByRole('tab', { name: 'BTCUSD, M5' })).toHaveAttribute('aria-selected', 'true');
-      fireEvent.click(screen.getByRole('tab', { name: 'XAUUSD, M1' }));
-      expect(screen.getByRole('tab', { name: 'XAUUSD, M1' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', { name: 'BTCUSD M5' })).toHaveAttribute('aria-selected', 'true');
+      fireEvent.click(screen.getByRole('tab', { name: 'XAUUSD M1' }));
+      expect(screen.getByRole('tab', { name: 'XAUUSD M1' })).toHaveAttribute('aria-selected', 'true');
       expect(findChartPanelById(useDockLayoutStore.getState().layout, 'chart')?.props).toMatchObject({ symbol: 'XAUUSD', timeframe: 'M1' });
-      fireEvent.click(screen.getByRole('tab', { name: 'BTCUSD, M5' }));
-      expect(screen.getByRole('tab', { name: 'BTCUSD, M5' })).toHaveAttribute('aria-selected', 'true');
+      fireEvent.click(screen.getByRole('tab', { name: 'BTCUSD M5' }));
+      expect(screen.getByRole('tab', { name: 'BTCUSD M5' })).toHaveAttribute('aria-selected', 'true');
       expect(findChartPanelById(useDockLayoutStore.getState().layout, 'chart')?.props).toMatchObject({ symbol: 'BTCUSD', timeframe: 'M5' });
       expect(screen.getAllByRole('tab')).toHaveLength(2);
+      const tablist = screen.getByRole('tablist', { name: 'Symbol charts' });
+      expect(tablist.querySelectorAll('button:not([role="tab"])')).toHaveLength(0);
+      expect(screen.getByRole('button', { name: 'Close BTCUSD tab' }).closest('[role="tablist"]')).toBeNull();
       expect(openChart).toHaveBeenCalledTimes(2);
+      fireEvent.keyDown(screen.getByRole('tab', { name: 'BTCUSD M5' }), { key: 'Home' });
+      expect(screen.getByRole('tab', { name: 'XAUUSD M1' })).toHaveFocus();
+      expect(screen.getByRole('tab', { name: 'XAUUSD M1' })).toHaveAttribute('aria-selected', 'true');
     } finally { window.removeEventListener('openChart', openChart); }
   });
 

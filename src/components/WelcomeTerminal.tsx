@@ -1,5 +1,6 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useDesktopStartupReady } from '../startup/useDesktopStartupReady';
+import { useSavedLogin } from '../hooks/useSavedLogin';
 /**
  * WelcomeTerminal renders the lightweight pre-authentication webterminal.
  * Authenticated chart, data, and WebSocket modules are loaded separately.
@@ -10,7 +11,9 @@ import './WelcomeTerminal.css';
 import { normalizeBrokerServerUrl, updateDynamicUrls, toLocalDevProxyUrl } from '../config/api';
 import {
     getBackendTarget,
+    isConfiguredBrokerEndpoint,
     getRuntimeConfiguredBrokerId,
+    getRuntimeBrokerConfiguration,
     isDesktopBackendTarget,
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
@@ -86,6 +89,8 @@ export interface BrokerServerItem {
     manager_url?: string;
     logo_url: string;
     theme_color?: string;
+    login_hero_url?: string;
+    login_hero_mobile_url?: string;
     region?: string;
     [key: string]: unknown;
 }
@@ -97,14 +102,13 @@ interface WelcomeTerminalProps {
 }
 
 const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
-const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
 const RTX5_GREEN = '#80c33f';
 const LOGIN_FIELD_BORDER = '#24424a';
 const LOGIN_FIELD_FOCUS = '#35d8b2';
 const LOGIN_FIELD_FOCUS_SHADOW = '0 0 0 3px rgba(53, 216, 178, 0.12)';
-const ACHIEVER_LOGIN_FIELD_BORDER = '#1d3f68';
-const ACHIEVER_LOGIN_FIELD_FOCUS = '#2f8cff';
-const ACHIEVER_LOGIN_FIELD_FOCUS_SHADOW = '0 0 0 3px rgba(47, 140, 255, 0.16)';
+const ACCENT_LOGIN_FIELD_BORDER = '#1d3f68';
+const ACCENT_LOGIN_FIELD_FOCUS = '#2f8cff';
+const ACCENT_LOGIN_FIELD_FOCUS_SHADOW = '0 0 0 3px rgba(47, 140, 255, 0.16)';
 const LOGIN_TITLE_TEXT = 'Sign in to';
 const LOGIN_TITLE_ACCESSIBLE_LABEL = 'Sign in to RTX5';
 const RTX5_TITLE_LOGO_SRC = toPublicAssetPath('brand/rtx5-login-wordmark.png');
@@ -368,16 +372,40 @@ export const findBrokerForRuntimeDomain = (
 export const findBrokerForWebRuntime = (
     brokers: BrokerServerItem[],
     runtimeHostname = getRuntimeHostname()
-): BrokerServerItem | undefined =>
-    findBrokerForRuntimeTarget(brokers) || findBrokerForRuntimeDomain(brokers, runtimeHostname);
+): BrokerServerItem | undefined => {
+    if (!isDesktopBackendTarget()) {
+        const configuration = getRuntimeBrokerConfiguration();
+        if (!configuration.valid) return undefined;
+        return brokers.find(broker => broker.broker_id === configuration.brokerId);
+    }
+    return findBrokerForRuntimeTarget(brokers) || findBrokerForRuntimeDomain(brokers, runtimeHostname);
+};
 
-const brokerMatchesLookup = (broker: BrokerServerItem, value: string | number | null | undefined): boolean => {
-    const lookup = String(value || '').trim().toLowerCase();
-    if (!lookup) return false;
+const normalizeLegacyBrokerLookup = (value: unknown): string => {
+    const raw = String(value ?? '').trim().replace(/\/+$/, '');
+    try {
+        // URL hosts are case-insensitive; paths remain case-sensitive.
+        return new URL(raw).toString().replace(/\/+$/, '');
+    } catch {
+        return raw.toLowerCase();
+    }
+};
 
-    return [broker.broker_id, broker.server, broker.server_url]
-        .map(candidate => String(candidate || '').trim().toLowerCase())
-        .includes(lookup);
+const findBrokerForLookup = (
+    brokers: BrokerServerItem[],
+    value: string | number | null | undefined,
+): BrokerServerItem | undefined => {
+    const lookup = String(value ?? '').trim();
+    if (!lookup) return undefined;
+    const exactBroker = brokers.find(broker => String(broker.broker_id ?? '').trim() === lookup);
+    if (exactBroker) return exactBroker;
+
+    // Preserve old saved server handles/URLs only when they identify one row.
+    // A shared gateway cannot identify a registered broker or restore its login.
+    const legacyLookup = normalizeLegacyBrokerLookup(lookup);
+    const legacyMatches = brokers.filter(broker => [broker.server, broker.server_url]
+        .some(candidate => candidate && normalizeLegacyBrokerLookup(candidate) === legacyLookup));
+    return legacyMatches.length === 1 ? legacyMatches[0] : undefined;
 };
 
 const isLoopbackDirectoryBroker = (broker: BrokerServerItem): boolean => {
@@ -398,13 +426,12 @@ const isLoopbackDirectoryBroker = (broker: BrokerServerItem): boolean => {
 };
 
 export const buildConfiguredRuntimeBroker = (): BrokerServerItem | undefined => {
-    const brokerId = String(getRuntimeConfiguredBrokerId() || import.meta.env.VITE_BROKER_ID || '').trim();
+    const configuration = getRuntimeBrokerConfiguration();
+    const brokerId = String(getRuntimeConfiguredBrokerId() || '').trim();
     const backendUrl = String(getBackendTarget() || '').trim();
-    if (!brokerId) return undefined;
+    if (!configuration.valid || !brokerId || !backendUrl) return undefined;
     const cachedPresentation = readBrokerPresentationCache(brokerId);
-    const configuredBrokerName = brokerId === String(import.meta.env.VITE_BROKER_ID || '').trim()
-        ? String(import.meta.env.VITE_DEFAULT_MT5_SERVER || '').trim()
-        : '';
+    const configuredBrokerName = configuration.brokerName || configuration.defaultMt5Server;
     const storedBrokerId = typeof window === 'undefined'
         ? ''
         : String(localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '').trim();
@@ -414,12 +441,12 @@ export const buildConfiguredRuntimeBroker = (): BrokerServerItem | undefined => 
 
     return {
         broker_id: brokerId,
-        broker_name: cachedPresentation?.brokerName || configuredBrokerName || brokerId,
-        server: brokerId,
+        broker_name: configuredBrokerName || cachedPresentation?.brokerName || brokerId,
+        server: configuration.defaultMt5Server,
         server_url: backendUrl,
         backend_url: backendUrl,
         market_api_url: backendUrl,
-        logo_url: buildBrokerDirectoryLogoUrl(brokerId) || cachedPresentation?.logoUrl || storedLogoUrl,
+        logo_url: configuration.brokerLogoUrl || buildBrokerDirectoryLogoUrl(brokerId) || cachedPresentation?.logoUrl || storedLogoUrl,
         region: cachedPresentation?.region,
     };
 };
@@ -433,15 +460,17 @@ export const pickDiscoveryBroker = (
     } = {}
 ): BrokerServerItem | undefined => {
     const isDesktop = Boolean(options.isDesktopBrokerSelection);
+    if (!isDesktop && !getRuntimeBrokerConfiguration().valid) return undefined;
     if (isDesktop) brokers = brokers.filter(isDirectoryBrokerSelectable);
-    const runtimeBroker = isDesktop ? undefined : findBrokerForWebRuntime(brokers);
-    const savedBroker = brokers.find(broker => brokerMatchesLookup(broker, options.savedBrokerId));
+    const savedBroker = findBrokerForLookup(brokers, options.savedBrokerId);
     const authenticatedSavedBroker = savedBroker
-        && brokerMatchesLookup(savedBroker, options.lastAuthenticatedBrokerId)
+        && findBrokerForLookup(brokers, options.lastAuthenticatedBrokerId) === savedBroker
         ? savedBroker
         : undefined;
-    const configuredBrokerId = getRuntimeConfiguredBrokerId() || DEFAULT_BROKER_ID;
-    const configuredBroker = brokers.find(broker => brokerMatchesLookup(broker, configuredBrokerId));
+    const configuredBrokerId = getRuntimeConfiguredBrokerId();
+    const configuredBroker = isDesktop
+        ? findBrokerForLookup(brokers, configuredBrokerId)
+        : brokers.find(broker => broker.broker_id === configuredBrokerId);
     const configuredRuntimeBroker = buildConfiguredRuntimeBroker();
 
     // A browser deployment owns its broker. A login saved on this same local
@@ -450,7 +479,6 @@ export const pickDiscoveryBroker = (
     // Suspended brokers stay visible in the directory but are never auto-picked.
     const activeAuthenticatedSavedBroker = isBrokerSuspended(authenticatedSavedBroker) ? undefined : authenticatedSavedBroker;
     const activeConfiguredBroker = isBrokerSuspended(configuredBroker) ? undefined : configuredBroker;
-    const activeRuntimeBroker = isBrokerSuspended(runtimeBroker) ? undefined : runtimeBroker;
     const selectableBroker = firstSelectableBroker(brokers);
     // Shared directories can include local development fixtures. Keep them in
     // the desktop menu, but do not make a loopback endpoint the first launch
@@ -459,7 +487,7 @@ export const pickDiscoveryBroker = (
     const desktopDefaultBroker = brokers.find(broker => !isLoopbackDirectoryBroker(broker)) || selectableBroker;
     return isDesktop
         ? activeAuthenticatedSavedBroker || activeConfiguredBroker || desktopDefaultBroker
-        : activeConfiguredBroker || configuredRuntimeBroker || activeRuntimeBroker || activeAuthenticatedSavedBroker || selectableBroker;
+        : activeConfiguredBroker || configuredRuntimeBroker;
 };
 
 const isAbortError = (err: unknown): boolean =>
@@ -496,8 +524,7 @@ export function WelcomeTerminal({
     useDesktopStartupReady();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [username, setUsername] = useState(() => localStorage.getItem('rtx_saved_username') || '');
-    const [password, setPassword] = useState('');
+    const [initialUsername] = useState(() => localStorage.getItem('rtx_saved_username') || '');
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(() => Boolean(localStorage.getItem('rtx_saved_username')));
 
@@ -521,6 +548,14 @@ export function WelcomeTerminal({
         !isDesktopBrokerSelection && configuredRuntimeBroker ? [configuredRuntimeBroker] : []
     ));
     const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(startupBroker);
+    const { login: username, password, setLogin: setUsername, setPassword, savePassword, setSavePassword, available: passwordSavingAvailable, restoring, storageError, persistPassword } = useSavedLogin(
+        true,
+        initialUsername,
+        selectedBroker ? {
+            brokerId: selectedBroker.broker_id,
+            serverUrl: isDesktopBrokerSelection ? selectedBroker.server_url! : resolveBrokerExtApiUrl(selectedBroker),
+        } : null,
+    );
     const selectedBrokerRef = useRef(selectedBroker);
     const [searchQuery, setSearchQuery] = useState(startupBroker?.broker_name || '');
     const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -629,7 +664,11 @@ export function WelcomeTerminal({
         try {
             const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
             const healthPath = isDesktopBrokerSelection ? '/health' : '/api/v2/time';
-            const response = await fetch(toLocalDevProxyUrl(`${cleanUrl}${healthPath}`), { signal: controller.signal, cache: 'no-store' });
+            const healthUrl = `${cleanUrl}${healthPath}`;
+            if (!isConfiguredBrokerEndpoint(healthUrl)) throw new Error('Broker health URL does not match this deployment.');
+            const response = await fetch(toLocalDevProxyUrl(healthUrl), {
+                signal: controller.signal, cache: 'no-store', redirect: 'error', credentials: 'omit',
+            });
             if (healthAbortRef.current !== controller || controller.signal.aborted) return;
             setHealthStatus(response.ok ? 'online' : 'offline');
             if (response.ok) {
@@ -753,13 +792,11 @@ export function WelcomeTerminal({
 
     useEffect(() => {
         if (!isDesktopBrokerSelection) return;
-        const heroTheme = resolveLoginHeroAsset(selectedBroker).theme;
         applyBrokerChrome({
             brokerId: selectedBroker?.broker_id,
             brokerName: selectedBroker?.broker_name,
             logoUrl: selectedBroker?.logo_url,
-            themeColor: normalizeBrokerThemeColor(selectedBroker?.theme_color)
-                || (heroTheme === 'achiever' ? ACHIEVER_LOGIN_FIELD_FOCUS : ''),
+            themeColor: normalizeBrokerThemeColor(selectedBroker?.theme_color),
             updateLoginTitle: true,
         });
     }, [isDesktopBrokerSelection, selectedBroker]);
@@ -782,6 +819,7 @@ export function WelcomeTerminal({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (submittingRef.current) return;
+        if (restoring) return;
         submittingRef.current = true;
         beginLoginPerformanceMeasurement();
         setLoading(true);
@@ -834,6 +872,11 @@ export function WelcomeTerminal({
 
             const token = data.access_token || data.token;
             if (!token) throw new Error('No authentication token received');
+            try {
+                await persistPassword({ brokerId: submitBroker.broker_id, serverUrl: brokerExtApiUrl }, String(data.account_login ?? username.trim()), password);
+            } catch {
+                throw new Error('Unable to save the password. Turn off Save password to log in without saving it.');
+            }
             markAuthenticationAccepted();
             await feedbackPaintPromise;
 
@@ -943,27 +986,27 @@ export function WelcomeTerminal({
                     : '#71717a';
     const filteredBrokers = filterBrokerDirectory(brokerList, searchQuery, selectedBroker);
     const loginHeroAsset = resolveLoginHeroAsset(selectedBroker);
-    const isAchieverLoginTheme = loginHeroAsset.theme === 'achiever';
+    const isAccentLoginTheme = loginHeroAsset.theme === 'accent';
     const selectedBrokerThemeColor = normalizeBrokerThemeColor(selectedBroker?.theme_color);
     const loginOverlayClassName = [
         'rtx-login-overlay',
-        isAchieverLoginTheme ? 'rtx-login-overlay--achiever' : '',
+        isAccentLoginTheme ? 'rtx-login-overlay--accent' : '',
         isDesktopBrokerSelection && selectedBroker ? 'rtx-login-overlay--broker-selected' : '',
     ].filter(Boolean).join(' ');
-    const loginFieldBlurBorder = isAchieverLoginTheme ? ACHIEVER_LOGIN_FIELD_BORDER : LOGIN_FIELD_BORDER;
-    const loginFieldFocus = isAchieverLoginTheme ? ACHIEVER_LOGIN_FIELD_FOCUS : LOGIN_FIELD_FOCUS;
-    const loginFieldFocusShadow = isAchieverLoginTheme
-        ? ACHIEVER_LOGIN_FIELD_FOCUS_SHADOW
+    const loginFieldBlurBorder = isAccentLoginTheme ? ACCENT_LOGIN_FIELD_BORDER : LOGIN_FIELD_BORDER;
+    const loginFieldFocus = isAccentLoginTheme ? ACCENT_LOGIN_FIELD_FOCUS : LOGIN_FIELD_FOCUS;
+    const loginFieldFocusShadow = isAccentLoginTheme
+        ? ACCENT_LOGIN_FIELD_FOCUS_SHADOW
         : LOGIN_FIELD_FOCUS_SHADOW;
-    const brokerStatusTone = isAchieverLoginTheme && healthStatus === 'online'
-        ? ACHIEVER_LOGIN_FIELD_FOCUS
+    const brokerStatusTone = isAccentLoginTheme && healthStatus === 'online'
+        ? ACCENT_LOGIN_FIELD_FOCUS
         : healthTone;
-    const activeLabelStyle = isAchieverLoginTheme ? achieverLabelStyle : labelStyle;
+    const activeLabelStyle = isAccentLoginTheme ? accentLabelStyle : labelStyle;
     const loginHeroVisualStyle: React.CSSProperties = {
         backgroundColor: '#020507',
     };
     const loginOverlayStyle: LoginOverlayStyle = {
-        '--rtx-broker-accent': selectedBrokerThemeColor || (isAchieverLoginTheme ? ACHIEVER_LOGIN_FIELD_FOCUS : LOGIN_FIELD_FOCUS),
+        '--rtx-broker-accent': selectedBrokerThemeColor || (isAccentLoginTheme ? ACCENT_LOGIN_FIELD_FOCUS : LOGIN_FIELD_FOCUS),
     };
     const desktopHeroFit = loginHeroAsset.fit ?? 'cover';
     const desktopHeroPosition = loginHeroAsset.position ?? 'center center';
@@ -1343,9 +1386,22 @@ export function WelcomeTerminal({
                                     <label htmlFor="wtRemember">{tr("Remember account ID")}</label>
                                 </div>
 
+                                <div className="rtx-remember-row">
+                                    <input
+                                        type="checkbox"
+                                        id="wtSavePassword"
+                                        name="savePassword"
+                                        checked={savePassword}
+                                        onChange={event => setSavePassword(event.target.checked)}
+                                        disabled={loading || restoring || !passwordSavingAvailable}
+                                    />
+                                    <label htmlFor="wtSavePassword">{tr("Save password")}</label>
+                                </div>
+                                {storageError && <div className="rtx-inline-status" role="status">{tr(storageError)}</div>}
+
                                 <button
                                     type="submit"
-                                    disabled={loading || (isDesktopBrokerSelection && !desktopLoginReady)}
+                                    disabled={loading || restoring || (isDesktopBrokerSelection && !desktopLoginReady)}
                                     aria-busy={loading}
                                     className="rtx-login-button"
                                     data-rtx-login-submit
@@ -1376,7 +1432,7 @@ const labelStyle: React.CSSProperties = {
     fontFamily: 'var(--font-login-sans, var(--font-sans))',
 };
 
-const achieverLabelStyle: React.CSSProperties = {
+const accentLabelStyle: React.CSSProperties = {
     ...labelStyle,
     color: '#b8cdf0',
 };

@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { removeToken, setToken } from './client';
 import { tradingApi } from './endpoints';
-import { API_V2_BASE_URL } from '../config/api';
+import { API_V2_BASE_URL, updateDynamicUrls } from '../config/api';
 
 const jsonResponse = (body: unknown, init: ResponseInit = {}): Response =>
   new Response(JSON.stringify(body), {
@@ -16,6 +16,17 @@ describe('single full-position close API', () => {
     localStorage.clear();
     sessionStorage.clear();
     removeToken();
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web', API_HOST: 'https://broker.example', WS_HOST: 'wss://broker.example',
+      BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
+    };
+    localStorage.setItem('server_url', 'https://broker.example');
+    localStorage.setItem('broker_id', 'Fixture');
+    updateDynamicUrls();
+  });
+  afterEach(() => {
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
+    localStorage.clear(); sessionStorage.clear(); vi.unstubAllGlobals();
   });
 
   it('posts an exact full-close request to the configured broker v2 endpoint', async () => {

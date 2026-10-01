@@ -27,10 +27,6 @@ type BrokerLogoInfo = {
     brokerId?: string;
 };
 
-const NEXA_BROKER_ID = 'Nexa';
-const NEXA_DISCOVERY_HOST = 'https://fxtrustsuperbackned.orrnn.com';
-const NEXA_DEFAULT_LOGO_URL = `${NEXA_DISCOVERY_HOST}/api/v1/brokers/${NEXA_BROKER_ID}/logo`;
-
 const normalizeNavigatorText = (value: unknown): string => String(value || '').trim();
 
 const getStoredNavigatorValue = (key: string): string => {
@@ -54,12 +50,6 @@ const extractHost = (value: unknown): string => {
     }
 };
 
-const isNexaNameOrHost = (value: unknown): boolean => {
-    const text = normalizeNavigatorText(value).toLowerCase();
-    if (!text) return false;
-    return text === 'nexa' || extractHost(text).includes('nexa');
-};
-
 const resolveNavigatorLogoUrl = (url: string, baseCandidates: string[]): string => {
     const rawUrl = normalizeNavigatorText(url);
     if (!rawUrl) return '';
@@ -68,9 +58,6 @@ const resolveNavigatorLogoUrl = (url: string, baseCandidates: string[]): string 
     }
 
     if (rawUrl.startsWith('/api/v1/brokers/')) {
-        if (/nexa/i.test(rawUrl)) {
-            return NEXA_DEFAULT_LOGO_URL;
-        }
         const discoveryBase = normalizeLogoBaseUrl(getRuntimeDiscoveryBaseUrl());
         if (discoveryBase) return `${discoveryBase}${rawUrl}`;
     }
@@ -149,18 +136,14 @@ const matchesCurrentStoredBroker = (serverName: string): boolean => {
 };
 
 const getStoredBrokerLogoInfo = (serverName: string): BrokerLogoInfo | null => {
-    const isNexa = isNexaNameOrHost(serverName);
-    if (!matchesCurrentStoredBroker(serverName) && !isNexa) return null;
+    if (!matchesCurrentStoredBroker(serverName)) return null;
 
     const storedLogoUrl = getStoredNavigatorValue('logo_url');
     const brokerId = getStoredNavigatorValue('broker_id')
-        || getStoredNavigatorValue('rtx_broker_id')
-        || (isNexa ? NEXA_BROKER_ID : '');
+        || getStoredNavigatorValue('rtx_broker_id');
 
     let logoUrl = storedLogoUrl;
-    if (!logoUrl && isNexa) {
-        logoUrl = NEXA_DEFAULT_LOGO_URL;
-    } else if (!logoUrl && brokerId) {
+    if (!logoUrl && brokerId) {
         logoUrl = buildBrokerDirectoryLogoUrl(brokerId);
     }
 
@@ -188,17 +171,10 @@ const buildBrokerLogoInfo = (
         ? brokers.find((broker) => broker.broker_id === (matchedServer?.broker_id || matchedDirectory?.broker_id))
         : undefined;
 
-    const isNexa = isNexaNameOrHost(serverName)
-        || isNexaNameOrHost(matchedDirectory?.broker_id)
-        || isNexaNameOrHost(matchedDirectory?.broker_name)
-        || isNexaNameOrHost(matchedServer?.broker_id)
-        || isNexaNameOrHost(matchedServer?.broker_name);
-
     const brokerId = normalizeNavigatorText(
         matchedDirectory?.broker_id
         || matchedServer?.broker_id
         || matchedBroker?.broker_id
-        || (isNexa ? NEXA_BROKER_ID : '')
     );
 
     const brokerName = brokerDisplayName(
@@ -214,9 +190,7 @@ const buildBrokerLogoInfo = (
         || normalizeNavigatorText(matchedServer?.logo_url)
         || normalizeNavigatorText(matchedBroker?.logo_url);
 
-    if (!logoUrl && isNexa) {
-        logoUrl = NEXA_DEFAULT_LOGO_URL;
-    } else if (!logoUrl && brokerId) {
+    if (!logoUrl && brokerId) {
         logoUrl = buildBrokerDirectoryLogoUrl(brokerId);
     }
 
@@ -564,18 +538,12 @@ function BrokerServerIcon({
             add(resolved);
         }
 
-        const isNexa = isNexaNameOrHost(serverName) || isNexaNameOrHost(logoInfo?.brokerName) || isNexaNameOrHost(logoInfo?.brokerId);
-        if (isNexa) {
-            add(NEXA_DEFAULT_LOGO_URL);
-        }
-
-        const brokerId = logoInfo?.brokerId
-            || (isNexa ? NEXA_BROKER_ID : '');
+        const brokerId = logoInfo?.brokerId;
         if (brokerId) {
             add(buildBrokerDirectoryLogoUrl(brokerId));
         }
 
-        if (matchesCurrentStoredBroker(serverName) || isNexa) {
+        if (matchesCurrentStoredBroker(serverName)) {
             add(getStoredNavigatorValue('logo_url'));
         }
 

@@ -2,6 +2,31 @@
   font-family: var(--font-login-sans, var(--font-sans));
 }
 
+.rtx-login-save-password {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--login-label, var(--text-primary));
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.rtx-login-save-password input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--login-accent, var(--accent-primary));
+}
+
+.rtx-login-storage-note {
+  margin: -10px 0 0;
+  color: var(--login-muted, var(--text-secondary));
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .rtx-login-layer {
   position: fixed;
   inset: 0;

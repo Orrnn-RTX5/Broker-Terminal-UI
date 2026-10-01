@@ -11,6 +11,7 @@ import { removeToken, setRefreshToken, setToken } from '../api/client';
 import { normalizeBrokerServerUrl, updateDynamicUrls, toLocalDevProxyUrl } from '../config/api';
 import {
     getBackendTarget,
+    isConfiguredBrokerEndpoint,
     isDesktopBackendTarget,
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
@@ -27,6 +28,7 @@ import {
 import { pickDiscoveryBroker, type BrokerServerItem } from './WelcomeTerminal';
 import { User, X, ChevronDown, LockKeyhole, LoaderCircle, Server, AlertCircle } from 'lucide-react';
 import '../styles/login-dialog.css';
+import { useSavedLogin } from '../hooks/useSavedLogin';
 
 interface LoginDialogProps {
     isOpen: boolean;
@@ -42,7 +44,6 @@ interface LoginDialogProps {
 }
 
 const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
-const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
 
 const isAbortError = (err: unknown): boolean =>
     err instanceof DOMException
@@ -82,10 +83,16 @@ export function LoginDialog({
     const isDesktop = isDesktopBackendTarget();
     const [directoryLoading, setDirectoryLoading] = useState(false);
     const submittingRef = useRef(false);
-    const [login, setLogin] = useState('');
-    const [password, setPassword] = useState('');
     const [brokerList, setBrokerList] = useState<BrokerServerItem[]>([]);
     const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(null);
+    const { login, password, setLogin, setPassword, savePassword, setSavePassword, available: passwordSavingAvailable, restoring, storageError, persistPassword } = useSavedLogin(
+        isOpen,
+        initialLogin || useAppStore.getState().accountId || '',
+        selectedBroker ? {
+            brokerId: selectedBroker.broker_id,
+            serverUrl: isDesktop ? getDirectoryBrokerServerUrl(selectedBroker) : resolveBrokerExtApiUrl(selectedBroker),
+        } : null,
+    );
     const [searchQuery, setSearchQuery] = useState('');
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(null);
@@ -123,9 +130,6 @@ export function LoginDialog({
     useEffect(() => {
         if (!isOpen) invalidatePendingLogin();
         if (isOpen) {
-            const accountId = initialLogin || useAppStore.getState().accountId || '';
-            setLogin(accountId);
-            setPassword('');
             setError(null);
             setSearchQuery('');
             setTimeout(() => loginInputRef.current?.select(), 100);
@@ -155,7 +159,11 @@ export function LoginDialog({
 
         try {
             const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
-            const response = await fetch(toLocalDevProxyUrl(`${cleanUrl}${isDesktop ? '/health' : '/api/v2/time'}`), { signal: controller.signal });
+            const healthUrl = `${cleanUrl}${isDesktop ? '/health' : '/api/v2/time'}`;
+            if (!isConfiguredBrokerEndpoint(healthUrl)) throw new Error('Broker health URL does not match this deployment.');
+            const response = await fetch(toLocalDevProxyUrl(healthUrl), {
+                signal: controller.signal, redirect: 'error', credentials: 'omit',
+            });
             clearTimeout(timeoutId);
             if (healthAbortRef.current !== controller || controller.signal.aborted) return;
             if (response.ok) {
@@ -173,11 +181,11 @@ export function LoginDialog({
 
     const handleSelectBroker = (item: BrokerServerItem) => {
         if (submittingRef.current || (isDesktop && !isDirectoryBrokerSelectable(item))) return;
-        if (isDesktop) setPassword('');
         setError(null);
         if (lockedBrokerKey && normalizeBrokerId(item.broker_id) !== lockedBrokerKey) return;
         const normalizedBroker = normalizeBrokerInfoForTarget(item) as BrokerServerItem;
         const normalizedServerUrl = isDesktop ? getDirectoryBrokerServerUrl(item) : resolveBrokerBackendUrl(normalizedBroker);
+        if (isDesktop && (selectedBroker?.broker_id !== item.broker_id || getDirectoryBrokerServerUrl(selectedBroker) !== normalizedServerUrl)) setPassword('');
         const nextBroker = {
             ...normalizedBroker,
             server_url: normalizedServerUrl,
@@ -245,7 +253,7 @@ export function LoginDialog({
                 if (lockedBrokerKey && data.length === 0 && lockedFallback) data.push(lockedFallback);
                 setBrokerList(data);
 
-                const savedBrokerId = lockedBrokerId || initialServer || localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || DEFAULT_BROKER_ID;
+                const savedBrokerId = lockedBrokerId || initialServer || localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '';
                 const selectedDiscoveryBroker = pickDiscoveryBroker(data, {
                     isDesktopBrokerSelection: isDesktopBackendTarget(),
                     savedBrokerId,
@@ -312,6 +320,7 @@ export function LoginDialog({
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (submittingRef.current) return;
+        if (restoring) return;
         if (isDesktop && (directoryLoading || !isDirectoryBrokerSelectable(selectedBroker) || healthStatus !== 'online')) {
             setError('Select an available broker server and wait for the server check.');
             return;
@@ -390,6 +399,13 @@ export function LoginDialog({
             updateDynamicUrls();
 
             const accountId = data.account_login ?? login.trim();
+
+            try {
+                await persistPassword({ brokerId: submitBroker.broker_id, serverUrl: brokerExtApiUrl }, String(accountId), password);
+            } catch {
+                throw new Error('Unable to save the password. Turn off Save password to log in without saving it.');
+            }
+            if (!isCurrentRequest()) return;
 
             localStorage.setItem('rtx_last_login', String(accountId));
             localStorage.setItem('rtx_saved_username', String(accountId));
@@ -658,6 +674,19 @@ export function LoginDialog({
                         </div>
                     </div>}
 
+                    <label className="rtx-login-save-password">
+                        <input
+                            type="checkbox"
+                            name="savePassword"
+                            checked={savePassword}
+                            onChange={event => setSavePassword(event.target.checked)}
+                            disabled={loading || restoring || !passwordSavingAvailable}
+                        />
+                        <span>{tr("Save password")}</span>
+                    </label>
+                    {!passwordSavingAvailable && <p className="rtx-login-storage-note">{tr("Password saving is unavailable on this device.")}</p>}
+                    {storageError && <p role="status" className="rtx-login-storage-note">{tr(storageError)}</p>}
+
                     {/* Error */}
                     {error && (
                         <div role="alert" className="rtx-login-error">
@@ -678,7 +707,7 @@ export function LoginDialog({
                         </button>
                         <button
                             type="submit"
-                            disabled={loading || (isDesktop && (directoryLoading || !selectedBroker || healthStatus !== 'online'))}
+                            disabled={loading || restoring || (isDesktop && (directoryLoading || !selectedBroker || healthStatus !== 'online'))}
                             className="rtx-login-button rtx-login-button--primary"
                         >
                             {loading ? <LoaderCircle size={16} className="rtx-login-spinner" aria-hidden="true" /> : null}

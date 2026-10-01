@@ -32,7 +32,8 @@ import {
 } from './liveTickDispatcher';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { useAppStore } from '../store/useAppStore';
-import { getMarketWatchDisplayMetadata } from '../store/useMarketWatchDisplayMetadataStore';
+import { getMarketWatchDisplayMetadata, useMarketWatchDisplayMetadataStore, resolveMarketWatchDisplayMetadata } from '../store/useMarketWatchDisplayMetadataStore';
+import { processIncomingQuotePayload } from './quotePayloadNormalizer';
 import { commitBrokerAccountSessionScope } from './brokerSession';
 
 const originalMarketBatch = useMarketDataStore.getState().updateTicksBatch;
@@ -76,6 +77,54 @@ describe('liveTickDispatcher market data freeze', () => {
     vi.restoreAllMocks();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('batches shared daily values from an authoritative snapshot and sparse ticks without changing quote sides', () => {
+    const at = 1_788_176_700_000;
+    const revision = useMarketWatchDisplayMetadataStore.getState().revision;
+    const publish = (raw: unknown) => processIncomingQuotePayload(raw).forEach(value => enqueueLiveTick(value.symbol, value));
+    publish({ symbol: 'FUTURE.r', bid: 100, ask: 101, last: 2025, previous_close: 2000,
+      chart_mode: 'last', provider: 'exchange', session_id: 'session-a', time: at });
+    publish({ symbol: 'FUTURE.r', bid: 101, ask: 102, last: 2030, time: at + 1 });
+    publish({ symbol: 'FUTURE.r', last: 2035, time: at + 2 });
+    expect(useMarketWatchDisplayMetadataStore.getState().revision).toBe(revision);
+    flushLiveTicks();
+    expect(useMarketWatchDisplayMetadataStore.getState().revision).toBe(revision + 1);
+    expect(getMarketWatchDisplayMetadata('FUTURE.r')?.daily).toMatchObject({ price: 2035, change: 35, percent: expect.closeTo(1.75, 12), sessionId: 'session-a' });
+    expect(useAppStore.getState().ticks['FUTURE.R']).toMatchObject({ bid: 101, ask: 102 });
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).toHaveBeenLastCalledWith('FUTURE.R', expect.closeTo(1.75, 12), at + 2, 'quote', undefined, 35);
+    publish({ symbol: 'FUTURE.r', last: 2005, previous_close: 2000, time: at - 1 });
+    flushLiveTicks();
+    expect(getMarketWatchDisplayMetadata('FUTURE.r')?.daily?.percent).toBeCloseTo(1.75, 12);
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: 'other', serverUrl: 'https://other.test' });
+    expect(getMarketWatchDisplayMetadata('FUTURE.r')).toBeUndefined();
+  });
+
+  it('does not expose a guessed Bid calculation when chart mode is unavailable', () => {
+    const value = processIncomingQuotePayload({ symbol: 'UNKNOWN', bid: 105, ask: 106, previous_close: 100, time: 1_788_176_700_000 })[0];
+    enqueueLiveTick(value.symbol, value);
+    flushLiveTicks();
+    const display = resolveMarketWatchDisplayMetadata(useAppStore.getState().ticks.UNKNOWN, getMarketWatchDisplayMetadata('UNKNOWN'));
+    expect(display.dailyChange).toBeUndefined();
+    expect(display.dailyChangePrice).toBeUndefined();
+    expect(display.daily?.issue).toBe('price-mode-unavailable');
+  });
+
+  it('uses raw Bid snapshots and sparse Bid updates with the session reference', () => {
+    const at = 1_788_176_700_000;
+    const publish = (raw: unknown) => processIncomingQuotePayload(raw).forEach(value => enqueueLiveTick(value.symbol, value));
+    publish({ symbol: 'FX.r', bid: 105, ask: 106, last: 200, previous_close: 100,
+      chart_mode: 'bid', session_id: 'session-a', time: at });
+    publish({ symbol: 'FX.r', bid: 110, ask: 111, time: at + 1 });
+    flushLiveTicks();
+    expect(getMarketWatchDisplayMetadata('FX.r')?.daily).toMatchObject({ price: 110, change: 10, percent: 10 });
+    publish({ symbol: 'FX.r', session_id: 'session-b', previous_close: 110, time: at + 2 });
+    flushLiveTicks();
+    expect(getMarketWatchDisplayMetadata('FX.r')?.daily?.price).toBeUndefined();
+    expect(getMarketWatchDisplayMetadata('FX.r')?.daily?.change).toBeUndefined();
+    publish({ symbol: 'FX.r', bid: 115, ask: 116, time: at + 3 });
+    flushLiveTicks();
+    expect(getMarketWatchDisplayMetadata('FX.r')?.daily).toMatchObject({ price: 115, change: 5, percent: expect.closeTo(5 / 110 * 100, 12) });
   });
 
   it('keeps the last cached tick while a symbol is frozen', () => {

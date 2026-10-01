@@ -279,11 +279,11 @@ function renderPosition(input: ForecastingMeasurementRendererInput, long: boolea
     number(input.plot.left),
     number(input.plot.left) + input.plot.width,
   );
-  node(input.group, 'rect', `${prefix}-profit-zone`, { x: anchor.x, y: Math.min(anchor.y, targetY), width: Math.max(1, right - anchor.x), height: Math.max(1, Math.abs(anchor.y - targetY)), fill: '#26a69a', stroke: '#26a69a', 'stroke-width': 1, opacity: .22 });
-  node(input.group, 'rect', `${prefix}-loss-zone`, { x: anchor.x, y: Math.min(anchor.y, stopY), width: Math.max(1, right - anchor.x), height: Math.max(1, Math.abs(anchor.y - stopY)), fill: '#ef5350', stroke: '#ef5350', 'stroke-width': 1, opacity: .22 });
+  node(input.group, 'rect', `${prefix}-profit-zone`, { x: anchor.x, y: Math.min(anchor.y, targetY), width: Math.max(1, right - anchor.x), height: Math.max(1, Math.abs(anchor.y - targetY)), fill: 'var(--color-profit, #4597ff)', stroke: 'var(--color-profit, #4597ff)', 'stroke-width': 1, opacity: .22 });
+  node(input.group, 'rect', `${prefix}-loss-zone`, { x: anchor.x, y: Math.min(anchor.y, stopY), width: Math.max(1, right - anchor.x), height: Math.max(1, Math.abs(anchor.y - stopY)), fill: 'var(--color-loss, #ff4d4f)', stroke: 'var(--color-loss, #ff4d4f)', 'stroke-width': 1, opacity: .22 });
   node(input.group, 'line', `${prefix}-entry`, { x1: anchor.x, y1: anchor.y, x2: right, y2: anchor.y, stroke: input.color ?? '#2962ff', 'stroke-width': 1.5 });
-  node(input.group, 'line', `${prefix}-target`, { x1: anchor.x, y1: targetY, x2: right, y2: targetY, stroke: '#26a69a', 'stroke-width': 1 });
-  node(input.group, 'line', `${prefix}-stop`, { x1: anchor.x, y1: stopY, x2: right, y2: stopY, stroke: '#ef5350', 'stroke-width': 1 });
+  node(input.group, 'line', `${prefix}-target`, { x1: anchor.x, y1: targetY, x2: right, y2: targetY, stroke: 'var(--color-profit, #4597ff)', 'stroke-width': 1 });
+  node(input.group, 'line', `${prefix}-stop`, { x1: anchor.x, y1: stopY, x2: right, y2: stopY, stroke: 'var(--color-loss, #ff4d4f)', 'stroke-width': 1 });
   const riskAmount = Math.max(Math.abs(entry - stop), Number.EPSILON);
   const rewardAmount = Math.abs(target - entry);
   const ratio = rewardAmount / riskAmount;
@@ -298,14 +298,14 @@ function renderPosition(input: ForecastingMeasurementRendererInput, long: boolea
   const stopTicks = riskAmount / tickSize;
   const targetLabel = `Target: ${priceText(input, rewardAmount)} (${targetPercent.toFixed(2)}%) ${targetTicks.toLocaleString(undefined, { maximumFractionDigits: 1 })}, Amount: ${amountText(sizing.targetAmount)}`;
   const stopLabel = `Stop: ${priceText(input, riskAmount)} (${stopPercent.toFixed(2)}%) ${stopTicks.toLocaleString(undefined, { maximumFractionDigits: 1 })}, Amount: ${amountText(sizing.stopAmount)}`;
-  callout(input, `${prefix}-target-label`, anchor.x, targetY - 22, [targetLabel], { fill: '#089981' });
-  callout(input, `${prefix}-stop-label`, anchor.x, stopY + 2, [stopLabel], { fill: '#f23645' });
+  callout(input, `${prefix}-target-label`, anchor.x, targetY - 22, [targetLabel], { fill: 'var(--color-profit, #4597ff)' });
+  callout(input, `${prefix}-stop-label`, anchor.x, stopY + 2, [stopLabel], { fill: 'var(--color-loss, #ff4d4f)' });
   callout(input, `${prefix}-stats`, (anchor.x + right) / 2, anchor.y + (long ? 8 : -38), [
     `${pnl.status === 'closed' ? 'Closed' : 'Open'} PnL: ${pnl.value === null ? '—' : priceText(input, pnl.value)}, Qty: ${positionQuantityText(sizing.quantity, input.positionSizing?.quantityPrecision)}`,
     `Risk/reward ratio: ${ratio.toFixed(2).replace(/\.00$/, '')}`,
     ...(pnl.status === 'ambiguous' ? ['Target and stop touched in one candle'] : []),
     ...(sizing.quantity === null ? ['Set position sizing inputs'] : []),
-  ], { fill: pnl.value === null ? '#787b86' : pnl.value >= 0 ? '#089981' : '#f23645', anchor: 'middle' });
+  ], { fill: pnl.value === null ? '#787b86' : pnl.value >= 0 ? 'var(--color-profit, #4597ff)' : 'var(--color-loss, #ff4d4f)', anchor: 'middle' });
   if (input.selected) {
     for (const [role, y] of [[`${prefix}-target-handle`, targetY], [`${prefix}-stop-handle`, stopY]] as const) {
       node(input.group, 'circle', role, {

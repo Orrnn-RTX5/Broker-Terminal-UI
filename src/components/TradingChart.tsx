@@ -15,6 +15,10 @@ import { createChartRuler, rulerMetrics } from '../drawing-tools/chartRuler';
 import { ColorType, LineStyle, TickMarkType, CandlestickSeries, LineSeries, BarSeries, AreaSeries, HistogramSeries } from 'lightweight-charts';
 import type { IChartApi, IPriceLine, ISeriesApi, Logical, SeriesType, Time } from 'lightweight-charts';
 import { useCrosshair } from '../hooks/useCrosshair';
+import { installChartCursorInteractions } from '../drawing-tools/chartCursorInteractions';
+import { buildAreaPointHoverLabel, installChartAreaHover } from '../drawing-tools/chartAreaHover';
+import { buildChartValuesTooltip, installChartValuesTooltip, nearestCandle } from '../drawing-tools/chartValuesTooltip';
+import { chartCursorShowsCrosshair, useChartCursorStore } from '../store/useChartCursorStore';
 import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import { useSelectedHistoryRequestOwner } from '../hooks/useSelectedHistoryRequestOwner';
@@ -43,6 +47,7 @@ import { IndicatorManager, type IndicatorConfig } from '../services/indicatorMan
 import { candleCache } from '../services/candleCache';
 import { createChartHistoryBackfillDiagnostics, createSelectedTimeframeHistoryCoordinator, resolveDeferredVisibleRangeHistoryAction, type ChartHistoryBackfillDiagnostics } from '../services/chartHistoryLoader';
 import { getChartPriceFromQuote, createRenderedPriceReference, isPriceCompatibleWithReference, normalizeCandlesToReference, resetLiveQuoteGuardState, type RenderedPriceReference } from '../services/chartPriceGuards';
+import { ChartOverlayGeometryPrimitive } from '../utils/chartOverlayGeometryPrimitive';
 import { getRawQuoteSides } from '../utils/spreadMarkup';
 import { getEffectiveChartColors, useChartSettingsStore } from '../store/useChartSettingsStore';
 import { defaultChartObjectState, getChartObjectState, useChartObjectStateStore } from '../store/useChartObjectStateStore';
@@ -299,15 +304,27 @@ export const TradingChart = React.memo(function TradingChart({
     periodSeparatorNodesRef.current = [];
   }, []);
 
-  // Custom crosshair
-  const [crosshairEnabled, setCrosshairEnabled] = useState(false);
+  // Custom crosshair follows the shared Cursors flyout. Cross and Dot show it.
+  const cursorMode = useChartCursorStore((state) => state.mode);
+  const crosshairEnabled = chartCursorShowsCrosshair(cursorMode);
   const crosshairEnabledRef = useRef(crosshairEnabled);
   crosshairEnabledRef.current = crosshairEnabled;
 
+  useEffect(() => useChartCursorStore.subscribe((state) => {
+    crosshairEnabledRef.current = chartCursorShowsCrosshair(state.mode);
+  }), []);
+
   useEffect(() => commandBus.subscribe('TOGGLE_CROSSHAIR', (payload) => {
     if (!isChartCommandTarget(payload)) return;
-    setCrosshairEnabled((enabled) => !enabled);
+    const mode = useChartCursorStore.getState().mode;
+    useChartCursorStore.getState().setMode(chartCursorShowsCrosshair(mode) ? 'arrow' : 'cross');
   }), [isChartCommandTarget]);
+
+  useEffect(() => {
+    const wrapper = containerRef.current?.closest<HTMLElement>('.rtx-chart-wrapper') ?? null;
+    if (!wrapper) return undefined;
+    return installChartCursorInteractions(wrapper);
+  }, []);
   const [brokerTimeOffsetSec, setBrokerTimeOffsetSec] = useState(0);
   const brokerTimeOffsetSecRef = useRef(0);
 
@@ -320,6 +337,7 @@ export const TradingChart = React.memo(function TradingChart({
     seriesRef,
     containerRef,
     enabled: isActive && crosshairEnabled,
+    marker: cursorMode === 'dot' ? 'dot' : 'cross',
     digits: resolvedPriceDigits,
     timeframe,
     brokerOffsetSeconds: brokerTimeOffsetSec,
@@ -490,6 +508,24 @@ export const TradingChart = React.memo(function TradingChart({
     return createChartDataSnapshot(candle, symbol, activeTimeframe, resolvedPriceDigitsRef.current, brokerTimeOffsetSecRef.current);
   };
   useEffect(() => { dataWindowHoverTimeRef.current = null; }, [symbol, activeTimeframe, brokerAccountSessionScope]);
+  useEffect(() => {
+    const wrapper = containerRef.current?.closest<HTMLElement>('.rtx-chart-wrapper') ?? null;
+    if (!wrapper) return undefined;
+    return installChartValuesTooltip(wrapper, (point) => buildChartValuesTooltip({
+      symbol,
+      timeframe: activeTimeframe,
+      digits: resolvedPriceDigitsRef.current,
+      offsetSeconds: brokerTimeOffsetSecRef.current,
+      candles: candlesRef.current,
+      clientX: point.clientX,
+      chartLeft: containerRef.current?.getBoundingClientRect().left ?? point.clientX,
+      coordinateToTime: (x) => {
+        const time = chartRef.current?.timeScale().coordinateToTime(x);
+        return typeof time === 'number' ? time : null;
+      },
+      indicatorRows: (time) => localIndicatorManager.getReadoutAt(time),
+    }));
+  }, [activeTimeframe, localIndicatorManager, symbol]);
 
   const liveCandleMutationGenerationRef = useRef(0);
   const liveCandleMutationGenerationByTimeRef = useRef(new Map<number, number>());
@@ -632,7 +668,6 @@ export const TradingChart = React.memo(function TradingChart({
     getLivePriceDirectionalColor,
     hideLivePriceOverlay,
     lastLivePriceDirectionalColorRef,
-    liveBidMarkupOffsetRef,
     livePriceBadgeRef,
     livePriceColorPaletteRef,
     livePriceCountdownRef,
@@ -911,6 +946,60 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     chartThemeRef.current = chartTheme;
   }, [chartTheme]);
+
+  useEffect(() => {
+    const wrapper = containerRef.current?.closest<HTMLElement>('.rtx-chart-wrapper') ?? null;
+    if (!wrapper) return undefined;
+    return installChartAreaHover(wrapper, ({ clientX, clientY }) => {
+      if ((prevChartTypeRef.current || chartType) !== 'area') return null;
+      if (wrapper.dataset.trendDrawingActive === 'true') return null;
+      const chart = chartRef.current;
+      const series = seriesRef.current;
+      const container = containerRef.current;
+      if (!chart || !series || !container) return null;
+
+      const chartRect = container.getBoundingClientRect();
+      const localX = clientX - chartRect.left;
+      const localY = clientY - chartRect.top;
+      const priceScaleWidth = series.priceScale().width();
+      const timeScaleHeight = chart.timeScale().height();
+      const plotHeight = Math.max(0, chartRect.height - timeScaleHeight);
+      if (localX < 0 || localX > chartRect.width - priceScaleWidth || localY < 0 || localY > plotHeight) return null;
+      const time = chart.timeScale().coordinateToTime(localX);
+      if (typeof time !== 'number') return null;
+      const candle = nearestCandle(candlesRef.current, time);
+      if (!candle) return null;
+      const barX = chart.timeScale().timeToCoordinate(candle.time as Time);
+      const barY = series.priceToCoordinate(candle.close);
+      if (barX === null || barY === null) return null;
+
+      const label = buildAreaPointHoverLabel(
+        candle.time,
+        candle.close,
+        resolvedPriceDigitsRef.current,
+        prevTimeframeRef.current || activeTimeframe,
+        brokerTimeOffsetSecRef.current,
+        i18n.resolvedLanguage || 'en',
+      );
+      if (!label) return null;
+
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const originLeft = chartRect.left - wrapperRect.left;
+      const originTop = chartRect.top - wrapperRect.top;
+      const theme = chartThemeRef.current;
+      const direction = areaTrendDirectionRef.current ?? 'up';
+      return {
+        ...label,
+        x: originLeft + barX,
+        y: originTop + barY,
+        color: direction === 'down' ? theme.areaDownLine : theme.areaUpLine,
+        plotTop: originTop,
+        plotBottom: originTop + plotHeight,
+        plotLeft: originLeft,
+        plotRight: originLeft + Math.max(0, chartRect.width - priceScaleWidth),
+      };
+    });
+  }, [activeTimeframe, chartType]);
 
   const isChartSurfaceLight = useCallback(() => (
     isLightChartBackground(chartThemeRef.current.background)
@@ -2011,6 +2100,10 @@ useTradingChartInitialization({
           lastValueVisible: false,
         });
     }
+    series.attachPrimitive(new ChartOverlayGeometryPrimitive(() => {
+      if (isDisposedRef.current || !isActiveRef.current || seriesRef.current !== series) return;
+      repaintTradeOverlayGeometryRef.current();
+    }));
     return series;
   }, [areaTrendDirectionRef]);
 
@@ -2465,7 +2558,6 @@ useTradingChartLiveCandleRuntime({
     lastStoreCandleSecRef,
     lastVisibleLogicalRangeRef,
     leftVisibleTimeRef,
-    liveBidMarkupOffsetRef,
     liveCandleMutationGenerationByTimeRef,
     liveCandleMutationGenerationRef,
     liveMarketDataFrozenRef,

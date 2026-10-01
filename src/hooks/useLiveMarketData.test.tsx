@@ -641,8 +641,8 @@ describe('useLiveQuotes REST fallback batching', () => {
 
     const { unmount } = renderHook(() => useLiveQuotes(['AMBIGUOUS.LAST-ONLY']));
     await flushPromises();
-
-    expect(enqueueLiveTick).not.toHaveBeenCalled();
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(1);
+    expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({ bid: 0, ask: 0, dailyChange: undefined, dailyChangeInput: { mode: undefined, last: 120 } });
 
     unmount();
   });

@@ -20,9 +20,9 @@
   --bg-elevated:   #2a2a30;   /* Dropdowns, tooltips */
 
   /* === Trading Colors (semantic — keep exactly) === */
-  --color-profit:        #00c896;
-  --color-profit-dim:    #00c89640;
-  --color-profit-dimmer: #00c89620;
+  --color-profit:        #4597ff;
+  --color-profit-dim:    #4597ff40;
+  --color-profit-dimmer: #4597ff20;
   --color-loss:          #ff4d4f;
   --color-loss-dim:      #ff4d4f40;
   --color-loss-dimmer:   #ff4d4f20;
@@ -171,9 +171,9 @@
   --border-secondary: #c8c8d0;
   --border-tertiary: #808088;
 
-  --color-profit: #16a34a;
-  --color-profit-dim: #16a34a30;
-  --color-profit-dimmer: #16a34a15;
+  --color-profit: #1d4ed8;
+  --color-profit-dim: #1d4ed830;
+  --color-profit-dimmer: #1d4ed815;
   --color-loss: #dc2626;
   --color-loss-dim: #dc262630;
   --color-loss-dimmer: #dc262615;
@@ -990,6 +990,9 @@ textarea {
   color: var(--color-loss);
 }
 
+/* Terminal commands stay in place while pressed; use color for feedback. */
+.rtx-main-toolbar button:active,
+.rtx-indicator-dialog button:active,
 .rtx-application-menu button:active,
 .rtx-menu-surface button:active {
   transform: none;
@@ -1831,10 +1834,10 @@ html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
 }
 
 .rtx-history-overlay-menu {
-  --rtx-history-overlay-accent: #0078d4;
-  --rtx-history-overlay-accent-hover: #026ec1;
-  --rtx-history-overlay-accent-pressed: #005a9e;
-  --rtx-history-overlay-focus: #66b7f0;
+  --rtx-history-overlay-accent: var(--color-primary);
+  --rtx-history-overlay-accent-hover: color-mix(in srgb, var(--color-primary) 85%, var(--text-primary));
+  --rtx-history-overlay-accent-pressed: color-mix(in srgb, var(--color-primary) 85%, var(--bg-primary));
+  --rtx-history-overlay-focus: var(--color-primary);
   --rtx-type-family: "Segoe UI", Tahoma, Arial, sans-serif;
   --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
   --rtx-type-weight: 400;
@@ -1862,9 +1865,7 @@ html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
   gap: 10px;
   padding: 9px 10px;
   border-bottom: 1px solid var(--border-primary);
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--rtx-history-overlay-accent) 8%, transparent), transparent 72%),
-    var(--bg-tertiary);
+  background: var(--bg-tertiary);
 }
 
 .rtx-history-overlay-menu__header-icon {
@@ -1873,16 +1874,16 @@ html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
   height: 32px;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--rtx-history-overlay-accent) 38%, var(--border-secondary));
+  border: 1px solid var(--border-secondary);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--rtx-history-overlay-accent) 11%, var(--bg-secondary));
-  color: var(--rtx-history-overlay-accent);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .rtx-history-overlay-menu__header-icon svg {
   width: 18px;
   height: 18px;
-  stroke-width: 1.25;
+  stroke-width: 1.75;
 }
 
 .rtx-history-overlay-menu__heading,
@@ -2007,14 +2008,15 @@ html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
 }
 
 .rtx-history-overlay-menu__preview svg {
-  width: 22px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.75;
 }
 
 .rtx-history-overlay-menu__option[data-enabled='true'] .rtx-history-overlay-menu__preview {
-  border-color: color-mix(in srgb, var(--rtx-history-overlay-accent) 42%, var(--border-secondary));
-  background: color-mix(in srgb, var(--rtx-history-overlay-accent) 11%, var(--bg-tertiary));
-  color: var(--rtx-history-overlay-accent);
+  border-color: var(--border-secondary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .rtx-history-overlay-menu__option-copy {
@@ -2093,7 +2095,7 @@ html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
 }
 
 .rtx-history-overlay-menu__control input:checked + .rtx-history-overlay-menu__switch::after {
-  background: #ffffff;
+  background: var(--text-inverse);
   transform: translateX(16px);
 }
 
@@ -2164,4 +2166,3 @@ html.rtx-desktop-shell-active.rtx-skin-untitled-light .rtx-trade-table :is(thead
   border-right: none !important;
   border-bottom: 1px solid var(--rtx-light-border-strong, #d1d5db) !important;
 }
-

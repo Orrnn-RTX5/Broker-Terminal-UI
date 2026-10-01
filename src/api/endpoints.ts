@@ -2,6 +2,8 @@ import { apiClient } from './client';
 import { loadSharedAuthenticatedInstruments } from '../services/authenticatedInstruments';
 import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
 import { API_V2_BASE_URL, isLocalViteDevServer, normalizeBrokerServerUrl } from '../config/api';
+import { isDesktopBackendTarget } from '../config/backendTarget.js';
+import { getRefreshToken } from '../services/brokerSession';
 import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
 import { createTradeOrderUuid, isTradeOrderUuidV4 } from './tradeSocket';
@@ -425,8 +427,12 @@ export const authApi = {
   logout: () =>
     apiClient.post<void>('/auth/logout', {}, { baseUrl: API_V2_BASE_URL }),
 
-  refresh: (refresh_token: string) =>
-    apiClient.post<LoginResponse>('/auth/refresh', { refresh_token }, { baseUrl: API_V2_BASE_URL }),
+  refresh: (refresh_token: string) => {
+    if (!isDesktopBackendTarget() && (!refresh_token || refresh_token !== getRefreshToken())) {
+      return Promise.reject(new Error('Refresh token does not belong to the active deployment broker session.'));
+    }
+    return apiClient.post<LoginResponse>('/auth/refresh', { refresh_token }, { baseUrl: API_V2_BASE_URL });
+  },
 };
 
 // ====================

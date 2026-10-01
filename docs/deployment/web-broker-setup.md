@@ -1,5 +1,7 @@
 # Select the web terminal broker
 
+For production, the backend/panel supplies public settings from the registered broker record to the shared image. A new broker does not require a frontend source-code change or image rebuild. See [backend-managed registration](broker-neutral-release.md). The named blocks below are local development examples, not a production broker allowlist.
+
 Edit `.env.web`. Lines starting with `#` are disabled. Remove `#` from **every setting in one broker block**, and add `#` to the settings in all other broker blocks. Keep the shared web settings enabled.
 
 For example, to use Achiever Financials, uncomment the **Achiever Financials** block and comment out the **TEST** block. The active broker ID should then be:
@@ -26,6 +28,8 @@ npm run build:web
 
 Deploy the resulting `dist` directory. Vite automatically generates `dist/runtime-config.js` from the selected environment. Editing `public/runtime-config.js` is unnecessary.
 
-Docker keeps the broker selected during the build when no deployment broker override is supplied. To override the image at container startup, provide that broker's complete runtime configuration, including `BROKER_ID`, `API_HOST`, `WS_HOST`, `DEFAULT_MT5_SERVER`, and `DISCOVERY_BASE_URL` (plus the corresponding feed settings when required).
+Docker requires a complete deployment configuration at container startup. It replaces the compiled configuration; it never inherits an image's broker identity, API, sockets, or discovery settings. Missing or invalid settings stop startup or show a configuration error with broker requests disabled. Supply `BROKER_ID`, `API_HOST`, `WS_HOST`, and `DEFAULT_MT5_SERVER`; discovery is optional for a pinned direct deployment.
+
+See [the broker-neutral release guide](broker-neutral-release.md) for the exact environment template, supported aliases, validation, API compatibility, and approval-dependent release commands.
 
 Electron uses its own broker/session selection and `.env.electron`; web configuration does not replace its selected broker.

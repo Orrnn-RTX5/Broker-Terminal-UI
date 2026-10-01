@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BottomDock } from './BottomDock';
 import { useAppStore } from '../store/useAppStore';
@@ -68,28 +68,77 @@ describe('Trade backend financial rendering', () => {
       '.rtx-trade-footer-floating > span:not(.rtx-trade-footer-currency)',
     );
 
-    expect(floatingAmount()).toHaveClass('text-[#ff2d2d]');
+    expect(floatingAmount()).toHaveClass('text-loss');
 
     trade.positions = [{ ...trade.positions[0], profit: -2.2, unrealizedPnL: -2.2 }];
     rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(floatingAmount()).toHaveTextContent('-2.20');
-    expect(floatingAmount()).toHaveClass('text-[#ff2d2d]');
-    expect(floatingAmount()).not.toHaveClass('text-[#22c55e]');
+    expect(floatingAmount()).toHaveClass('text-loss');
+    expect(floatingAmount()).not.toHaveClass('text-profit');
 
     trade.positions = [{ ...trade.positions[0], profit: 2.3, unrealizedPnL: 2.3 }];
     rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
-    expect(floatingAmount()).toHaveClass('text-[#22c55e]');
+    expect(floatingAmount()).toHaveClass('text-profit');
 
     trade.positions = [{ ...trade.positions[0], profit: 2.2, unrealizedPnL: 2.2 }];
     rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(floatingAmount()).toHaveTextContent('2.20');
-    expect(floatingAmount()).toHaveClass('text-[#22c55e]');
-    expect(floatingAmount()).not.toHaveClass('text-[#ff2d2d]');
+    expect(floatingAmount()).toHaveClass('text-profit');
+    expect(floatingAmount()).not.toHaveClass('text-loss');
 
     trade.positions = [{ ...trade.positions[0], profit: 0, unrealizedPnL: 0 }];
     rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(floatingAmount()).toHaveTextContent('0.00');
     expect(floatingAmount()).toHaveClass('text-zinc-100');
+  });
+
+  it('updates equity, free margin and level from live profit without direction flashes', () => {
+    trade.account = {
+      ...trade.account, equity: 1007, freeMargin: 987, marginLevel: 5035, unrealizedPL: 7,
+    };
+    const { rerender } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    const expectMetrics = (values: string[]) => {
+      ['Equity', 'Free margin', 'Level'].forEach((label, index) => {
+        const amount = screen.getByText(label).parentElement?.lastElementChild;
+        expect(amount).toHaveTextContent(values[index]);
+        expect(amount).toHaveClass('text-zinc-100');
+        expect(amount).not.toHaveClass('text-profit');
+        expect(amount).not.toHaveClass('text-loss');
+      });
+    };
+    expectMetrics(['1 007.00', '987.00', '5035.00%']);
+
+    trade.positions = [{ ...trade.positions[0], profit: 10, unrealizedPnL: 10 }];
+    rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expectMetrics(['1 010.00', '990.00', '5050.00%']);
+
+    trade.positions = [{ ...trade.positions[0], profit: -5, unrealizedPnL: -5 }];
+    rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expectMetrics(['995.00', '975.00', '4975.00%']);
+  });
+
+  it('clears the selected trade row when clicking empty space or another panel', () => {
+    const { container } = render(<>
+      <button type="button">Chart area</button>
+      <BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />
+    </>);
+    const row = screen.getByText('71').closest('tr')!;
+    fireEvent.click(screen.getByText('71'));
+    expect(row).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.pointerDown(screen.getByText('71'));
+    expect(row).toHaveAttribute('aria-selected', 'true');
+    fireEvent.pointerDown(container.querySelector('.rtx-trade-scroll')!);
+    expect(row).toHaveAttribute('aria-selected', 'false');
+
+    fireEvent.click(screen.getByText('71'));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Chart area' }));
+    expect(row).toHaveAttribute('aria-selected', 'false');
+    expect(row).not.toHaveClass('rtx-trade-row--selected');
+
+    fireEvent.contextMenu(row);
+    fireEvent.pointerDown(screen.getByRole('menu'));
+    expect(row).toHaveAttribute('aria-selected', 'true');
   });
 
   it('shows unavailable monetary fields instead of a calculated profit or zero placeholders', () => {

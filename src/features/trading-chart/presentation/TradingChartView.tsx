@@ -377,26 +377,27 @@ return (
       />
 
       {/* ── Custom crosshair — 5 GPU-composited divs, all pointer-events:none ── */}
-      {/* Vertical line: 1px wide, full height, snapped to nearest candle X */}
+      {/* TradingView-style dashed guides; the hook clips them to the plot. */}
       <div ref={vertLineRef} style={{
         position: 'absolute', left: 0, top: 0,
         width: 1, height: '100%',
-        background: useEnterpriseLightChartPalette ? '#64748b' : 'rgba(148,163,184,0.75)',
+        background: `repeating-linear-gradient(to bottom, ${useEnterpriseLightChartPalette ? 'rgba(82, 92, 108, 0.78)' : 'rgba(177, 181, 190, 0.72)'} 0 5px, transparent 5px 9px)`,
         pointerEvents: 'none', zIndex: 14, opacity: 0,
         willChange: 'transform',
       }} />
-      {/* Horizontal line: 1px tall, full width, exact cursor Y */}
+      {/* Horizontal guide tracks the pointer price. */}
       <div ref={horizLineRef} style={{
         position: 'absolute', left: 0, top: 0,
         width: '100%', height: 1,
-        background: useEnterpriseLightChartPalette ? '#64748b' : 'rgba(148,163,184,0.75)',
+        background: `repeating-linear-gradient(to right, ${useEnterpriseLightChartPalette ? 'rgba(82, 92, 108, 0.78)' : 'rgba(177, 181, 190, 0.72)'} 0 5px, transparent 5px 9px)`,
         pointerEvents: 'none', zIndex: 14, opacity: 0,
         willChange: 'transform',
       }} />
-      {/* Centre "+" marker: 12×12, two thin crossed lines */}
-      <div ref={centerRef} style={{
+      {/* Centre marker: cross, or a dot when Dot cursor is selected. */}
+      <div ref={centerRef} className="rtx-chart-crosshair-center" style={{
         position: 'absolute', left: 0, top: 0,
         width: 12, height: 12,
+        color: useEnterpriseLightChartPalette ? '#64748b' : 'rgba(148,163,184,0.95)',
         pointerEvents: 'none', zIndex: 15, opacity: 0,
         willChange: 'transform',
       }}>

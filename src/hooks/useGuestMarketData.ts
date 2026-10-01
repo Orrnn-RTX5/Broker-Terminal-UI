@@ -14,10 +14,11 @@ export function useGuestMarketData(enabled: boolean) {
         const quotes = await loadPublicQuotes(controller.signal);
         if (controller.signal.aborted) return;
         quotes.forEach(quote => {
-          if (quote.bid === undefined || quote.ask === undefined || !quote.time) return;
+          if (!quote.time || (quote.bid === undefined && quote.ask === undefined && quote.dailyChangeInput?.last === undefined)) return;
           const timestamp = quote.time > 1e12 ? quote.time : quote.time * 1000;
-          enqueueLiveTick(quote.symbol, { symbol: quote.symbol, bid: quote.bid, ask: quote.ask,
-            spread: quote.ask - quote.bid, timestamp, sourceTimestamp: timestamp });
+          enqueueLiveTick(quote.symbol, { symbol: quote.symbol, bid: quote.bid ?? 0, ask: quote.ask ?? 0,
+            dailyChangeInput: quote.dailyChangeInput,
+            spread: (quote.ask ?? 0) - (quote.bid ?? 0), timestamp, sourceTimestamp: timestamp });
         });
       } catch {
         // Preserve upstream timestamps: a failed refresh never makes prices fresh.

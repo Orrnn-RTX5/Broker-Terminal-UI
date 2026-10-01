@@ -3,8 +3,15 @@ import { brokerDisplayName } from './brokerDisplayName';
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllEnvs());
 describe('broker display labels', () => {
+  it('does not infer broker names from known domains or ids', () => {
+    expect(brokerDisplayName('https://service.achieverfinancials.com')).toBe('Broker');
+    expect(brokerDisplayName('https://services.growtradingacademy.com')).toBe('Broker');
+    expect(brokerDisplayName('gta_broker')).toBe('gta_broker');
+  });
   it('uses the configured full name for an older matching saved session only', () => {
     vi.stubEnv('VITE_BACKEND_URL', 'https://service.achieverfinancials.com');
+    vi.stubEnv('VITE_WS_HOST', 'wss://service.achieverfinancials.com');
+    vi.stubEnv('VITE_BROKER_ID', 'achiever-financials');
     vi.stubEnv('VITE_DEFAULT_MT5_SERVER', 'Achiever Financials');
     expect(brokerDisplayName('https://service.achieverfinancials.com', 'Broker')).toBe('Achiever Financials');
     expect(brokerDisplayName('https://other.example')).toBe('Broker');
@@ -26,6 +33,8 @@ describe('broker display labels', () => {
   it('does not relabel a selected desktop broker as the configured default broker', () => {
     vi.stubEnv('VITE_BACKEND_TARGET', 'electron');
     vi.stubEnv('VITE_BACKEND_URL', 'https://service.achieverfinancials.com');
+    vi.stubEnv('VITE_WS_HOST', 'wss://service.achieverfinancials.com');
+    vi.stubEnv('VITE_BROKER_ID', 'achiever-financials');
     vi.stubEnv('VITE_BROKER_ID', 'achiever-financials');
     vi.stubEnv('VITE_DEFAULT_MT5_SERVER', 'Achiever Financials');
     expect(brokerDisplayName('https://nexa.orrnn.com')).toBe('Broker');

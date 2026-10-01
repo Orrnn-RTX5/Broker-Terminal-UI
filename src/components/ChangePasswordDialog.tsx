@@ -67,7 +67,7 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
             <div
-                className="bg-[#131316] border border-zinc-700 rounded-lg shadow-2xl w-[400px] overflow-hidden"
+                className="rtx-action-sheet bg-[#131316] border border-zinc-700 rounded-lg shadow-2xl w-[400px] overflow-hidden"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-[#191a1e]">

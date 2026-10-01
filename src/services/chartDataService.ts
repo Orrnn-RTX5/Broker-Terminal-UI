@@ -5,7 +5,7 @@
 
 import type { TickData } from '../types/history';
 import type { FetchCandlesOptions, OHLCData } from '../types/chartData';
-import { getPublicBackendTarget, isDesktopBackendTarget } from '../config/backendTarget.js';
+import { getPublicBackendTarget, getRuntimeBrokerConfiguration, getRuntimeConfiguredBrokerId, isDesktopBackendTarget } from '../config/backendTarget.js';
 import {
   API_V2_BASE_URL,
   RTX5_API_URL,
@@ -15,7 +15,9 @@ import {
 import {
   buildBrokerApiV2,
   buildBrokerWsV2Uri,
+  getAccessToken,
 } from './brokerSession';
+import { assertBrokerRequestAllowed } from '../api/brokerRequestGuard';
 import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
 import { decodeJwtPayload } from '../utils/jwt';
 import { candleCache } from './candleCache';
@@ -60,6 +62,12 @@ export interface CandleStreamSubscription {
 }
 
 export const CANDLE_STREAM_BASE_RECONNECT_DELAY_MS = 1_000;
+
+const candleDeploymentIdentity = (): string => {
+  if (isDesktopBackendTarget()) return 'desktop';
+  const configuration = getRuntimeBrokerConfiguration();
+  return JSON.stringify([configuration.valid, configuration.brokerId, configuration.apiHost, configuration.apiHostExt, configuration.wsHost]);
+};
 export const CANDLE_STREAM_OPEN_TIMEOUT_MS = 10_000;
 export const CANDLE_STREAM_SUBSCRIPTION_ACK_TIMEOUT_MS = 3_000;
 export const CANDLE_STREAM_MAX_SUBSCRIPTION_RETRIES = 3;
@@ -118,8 +126,7 @@ const buildPublicBridgeCandleUrl = (
 };
 
 const getAuthToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  return getAccessToken();
 };
 
 export class CandleAuthBrokerMismatchError extends Error {
@@ -131,24 +138,15 @@ export class CandleAuthBrokerMismatchError extends Error {
 
 const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim();
 
-const canonicalizeBrokerId = (value: unknown): string => {
-  const normalized = normalizeBrokerId(value).toLowerCase();
-  if (normalized === 'test' || normalized === 'fxtrust') return 'fxtrust';
-  return normalized;
-};
-
-// The public /api/v1 candle bridge only exists for the TEST/FX Trust environment.
-// Other brokers must go straight to the authenticated /api/v2 endpoint, otherwise
-// every chart load pays for a doomed bridge round-trip first.
-const isPublicBridgeCandleBroker = (brokerId: string): boolean =>
-  !brokerId || canonicalizeBrokerId(brokerId) === 'fxtrust';
+// The legacy bridge is an explicit backend capability, independent of broker ID.
+const hasPublicCandleBridge = (): boolean => getRuntimeBrokerConfiguration().publicCandleBridge;
 
 const getActiveBrokerId = (): string => {
+  if (!isDesktopBackendTarget()) return getRuntimeConfiguredBrokerId();
   if (typeof window === 'undefined') return '';
   return normalizeBrokerId(
     localStorage.getItem('broker_id')
     || localStorage.getItem('rtx_broker_id')
-    || import.meta.env.VITE_BROKER_ID
     || ''
   );
 };
@@ -163,7 +161,6 @@ const assertCandleAuthMatchesActiveBroker = (token: string): void => {
   const tokenBrokerId = getTokenBrokerId(token);
   if (!expectedBrokerId || !tokenBrokerId) return;
   if (expectedBrokerId === tokenBrokerId) return;
-  if (canonicalizeBrokerId(expectedBrokerId) === canonicalizeBrokerId(tokenBrokerId)) return;
 
   candleCache.clearAll();
   console.warn(
@@ -582,6 +579,13 @@ export class ChartDataService {
     const apiTf = this.normalizeTimeframe(timeframe);
     const apiV2BaseUrl = runtimeApiV2BaseUrl();
     const token = getAuthToken();
+    const deploymentIdentity = candleDeploymentIdentity();
+    const assertRequestSession = () => {
+      if (deploymentIdentity !== candleDeploymentIdentity()
+        || (!isDesktopBackendTarget() && token !== getAuthToken())) {
+        throw new DOMException('The deployment broker session changed while loading candle history.', 'AbortError');
+      }
+    };
     const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
     const queryParams = normalizeCandleApiQueryParams({
       timeframe: apiTf,
@@ -596,9 +600,9 @@ export class ChartDataService {
       isAuthenticatedCore?: boolean;
     }> = [];
 
-    let authenticatedAttemptAdded = false;
-    if (!token && !isDesktopBackendTarget()) {
-      attempts.push({ url: toLocalDevProxyUrl(`${getPublicBackendTarget()}/api/v2/candles/${encodeURIComponent(symbol)}${buildQuery(queryParams)}`) });
+    const publicBackend = getPublicBackendTarget();
+    if (!token && !isDesktopBackendTarget() && publicBackend) {
+      attempts.push({ url: toLocalDevProxyUrl(`${publicBackend}/api/v2/candles/${encodeURIComponent(symbol)}${buildQuery(queryParams)}`), headers: { 'X-Broker-ID': getRuntimeConfiguredBrokerId() } });
     }
     if (token && apiV2BaseUrl) {
       try {
@@ -608,18 +612,16 @@ export class ChartDataService {
           headers: authHeaders,
           isAuthenticatedCore: true,
         });
-        authenticatedAttemptAdded = true;
       } catch (error) {
         if (!(error instanceof CandleAuthBrokerMismatchError)) throw error;
         console.warn('[ChartData] Skipping authenticated v2 candles after broker mismatch; trying public feed candles.');
       }
     }
 
-    // TEST/FX Trust also exposes a short process-era snapshot on the public
-    // `/api/v1/candles` bridge. It is a fallback only: authenticated v2 history
-    // is authoritative and can contain substantially more rows than the bridge.
+    // A deployment can explicitly enable its legacy public candle bridge.
+    // Authenticated v2 history remains the authoritative first source.
     if (from === undefined && to === undefined
-      && (!token || !authenticatedAttemptAdded || isPublicBridgeCandleBroker(getActiveBrokerId()))) {
+      && hasPublicCandleBridge()) {
       const publicUrl = buildPublicBridgeCandleUrl(symbol, apiTf, queryParams.limit);
       if (publicUrl) attempts.push({ url: publicUrl });
     }
@@ -633,11 +635,18 @@ export class ChartDataService {
     let sawSuccessfulSource = false;
     for (const attempt of attempts) {
       try {
+        assertRequestSession();
+        assertBrokerRequestAllowed(attempt.url);
+        if (!isDesktopBackendTarget() && attempt.headers?.Authorization
+          && attempt.headers.Authorization !== `Bearer ${getAuthToken()}`) {
+          throw new Error('The broker session changed before loading candle history.');
+        }
         if (!token && !isDesktopBackendTarget()) {
           const prefetched = takePublicStartupHistory(attempt.url, signal);
           if (prefetched) {
             try {
               const candles = this.normalizeCandleResponse(await prefetched, apiTf, symbol);
+              assertRequestSession();
               if (candles.length > 0) {
                 options.onStartupPrefetchConsumed?.();
                 return candles;
@@ -648,10 +657,12 @@ export class ChartDataService {
             }
           }
         }
+        assertRequestSession();
         const response = await fetch(attempt.url, {
           signal,
           headers: attempt.headers,
           cache: 'no-store',
+          redirect: 'error',
           ...(!token ? { credentials: 'omit' as const } : {}),
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -659,6 +670,7 @@ export class ChartDataService {
         let candles: OHLCData[];
         try {
           candles = this.normalizeCandleResponse(await response.json(), apiTf, symbol);
+          assertRequestSession();
         } catch (error) {
           if ((error as Error).name === 'AbortError') throw error;
           const normalizedError = error instanceof Error ? error : new Error('Malformed candle response');
@@ -690,6 +702,8 @@ export class ChartDataService {
     const apiTf = this.normalizeTimeframe(options.timeframe);
     const symbol = normalizeSymbol(options.symbol);
     const channel = `candles.${symbol}.${apiTf}`;
+    const deploymentIdentity = candleDeploymentIdentity();
+    let socketToken: string | null = null;
     let closed = false;
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -752,7 +766,20 @@ export class ChartDataService {
       publicPollingFallbackActive = false;
     };
 
+    const retireChangedDeployment = (): boolean => {
+      if (deploymentIdentity === candleDeploymentIdentity()) return false;
+      closed = true;
+      clearReconnectTimer(); clearOpenTimer(); clearSubscriptionAckTimer(); clearHeartbeat();
+      stopPublicPollingFallback();
+      const socket = ws;
+      ws = null;
+      try { socket?.close(1000, 'Deployment broker changed'); } catch { /* ignore */ }
+      options.onError?.(new DOMException('The deployment broker changed.', 'AbortError'));
+      return true;
+    };
+
     const startPublicPollingFallback = (): boolean => {
+      if (retireChangedDeployment()) return false;
       if (!allowPublicPollingFallback || closed || publicPollingFallbackActive) return false;
 
       publicPollingFallbackActive = true;
@@ -770,6 +797,7 @@ export class ChartDataService {
       publicPollingController = controller;
       const refresh = async () => {
         try {
+          if (retireChangedDeployment()) return;
           if (document.visibilityState === 'hidden') return;
           const candles = await this.fetchCandles({
             symbol: options.symbol,
@@ -777,7 +805,7 @@ export class ChartDataService {
             count: 3,
             signal: controller.signal,
           });
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || retireChangedDeployment()) return;
           options.onConnected?.();
           candles.forEach(candle => options.onCandle?.(candle));
         } catch (error) {
@@ -797,7 +825,8 @@ export class ChartDataService {
       // token rotation cannot silently reopen against stale session inputs.
       const token = getAuthToken();
       const brokerUrl = buildBrokerWsV2Uri(token);
-      const wsBase = brokerUrl || RTX5_WS_URL.replace(/\/$/, '');
+      const wsBase = brokerUrl || (isDesktopBackendTarget() ? RTX5_WS_URL.replace(/\/$/, '') : '');
+      if (!wsBase) return { url: '', token: null };
       const separator = wsBase.includes('?') ? '&' : '?';
       return {
         url: brokerUrl || `${wsBase}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}`,
@@ -827,8 +856,18 @@ export class ChartDataService {
       }, delay);
     };
 
+    const retireStaleSocket = (socket: WebSocket): boolean => {
+      if (closed || ws !== socket || retireChangedDeployment()) return true;
+      if (isDesktopBackendTarget() || socketToken === getAuthToken()) return false;
+      clearOpenTimer(); clearSubscriptionAckTimer(); clearHeartbeat();
+      ws = null;
+      try { socket.close(1000, 'Broker session token changed'); } catch { /* ignore */ }
+      scheduleReconnect();
+      return true;
+    };
+
     const sendSubscription = (socket: WebSocket) => {
-      if (closed || ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+      if (retireStaleSocket(socket) || socket.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify({ action: 'subscribe', channel, channels: [channel] }));
       clearSubscriptionAckTimer();
       subscriptionAckTimer = setTimeout(() => {
@@ -855,7 +894,7 @@ export class ChartDataService {
     const startHeartbeat = (socket: WebSocket) => {
       clearHeartbeat();
       heartbeatTimer = setInterval(() => {
-        if (closed || ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+        if (retireStaleSocket(socket) || socket.readyState !== WebSocket.OPEN) return;
         if (isRuntimeSuspended()) return;
         try { socket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() })); } catch { /* deadline below reconnects */ }
         if (pongTimer !== null) return;
@@ -879,11 +918,13 @@ export class ChartDataService {
 
     connect = () => {
       if (closed || publicPollingFallbackActive) return;
+      if (retireChangedDeployment()) return;
       if (isRuntimeSuspended()) {
         reconnectPendingWhileSuspended = true;
         return;
       }
       const { url, token } = buildStreamUrl();
+      socketToken = token;
       if (!url) {
         if (startPublicPollingFallback()) return;
         options.onError?.(new Error(`Candle stream URL is unavailable for ${channel}`));
@@ -914,7 +955,7 @@ export class ChartDataService {
         socket.onopen = () => {
           // FIX: Socket identity guards prevent late events from a replaced
           // broker/account connection from mutating the active chart.
-          if (closed || ws !== socket) return;
+          if (retireStaleSocket(socket)) return;
           clearOpenTimer();
           reconnectPendingWhileSuspended = false;
           reconnectAttempts = 0;
@@ -924,7 +965,7 @@ export class ChartDataService {
         };
 
         socket.onmessage = (event) => {
-          if (closed || ws !== socket) return;
+          if (retireStaleSocket(socket)) return;
           recordTransportActivity();
           try {
             const message = JSON.parse(event.data);

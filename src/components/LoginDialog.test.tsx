@@ -14,6 +14,7 @@ vi.mock('../api/trade', () => ({
 
 describe('LoginDialog', () => {
   beforeEach(() => {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { CONFIG_SOURCE: 'deployment', API_HOST: 'https://broker.example', WS_HOST: 'wss://broker.example', BROKER_ID: 'runtime-broker', DEFAULT_MT5_SERVER: 'Runtime Broker', DISCOVERY_BASE_URL: 'https://directory.example' };
     localStorage.clear();
     sessionStorage.clear();
     useAppStore.getState().reset();

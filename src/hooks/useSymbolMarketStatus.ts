@@ -7,11 +7,15 @@ import {
   type NormalizedMarketStatus,
 } from '../utils/marketStatus';
 import { recordBrokerServerTime } from '../services/brokerServerClock';
+import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey, onCommittedBrokerAccountSessionScopeChange } from '../services/brokerSession';
+import { useBrokerAccountSessionScope } from './useBrokerAccountSessionScope';
+import { useLiveSymbolTradingStatus } from './useLiveSymbolTradingStatus';
 
 export interface SymbolMarketStatusState extends NormalizedMarketStatus {
   loading: boolean;
   error: string | null;
   refreshedAt: number | null;
+  sessionScope?: string;
 }
 
 interface UseSymbolMarketStatusOptions {
@@ -29,8 +33,16 @@ const MIN_VISIBLE_POLL_MS = 1_000;
 
 const statusCache = new Map<string, { status: NormalizedMarketStatus; refreshedAt: number }>();
 const inflightRequests = new Map<string, Promise<NormalizedMarketStatus>>();
+let scopeGeneration = 0;
+onCommittedBrokerAccountSessionScopeChange(() => {
+  scopeGeneration += 1;
+  statusCache.clear();
+  inflightRequests.clear();
+});
 
 const normalizeSymbolKey = (symbol: unknown): string => String(symbol ?? '').trim().toUpperCase();
+const currentScope = () => getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+const cacheKey = (symbol: string, scope = currentScope()) => `${scope}:${normalizeSymbolKey(symbol)}`;
 
 const toState = (
   status: NormalizedMarketStatus,
@@ -40,12 +52,14 @@ const toState = (
   loading: overrides.loading ?? false,
   error: overrides.error ?? null,
   refreshedAt: overrides.refreshedAt ?? null,
+  sessionScope: currentScope(),
 });
 
 export const getCachedSymbolMarketStatus = (symbol: string): SymbolMarketStatusState | null => {
   const key = normalizeSymbolKey(symbol);
   if (!key) return null;
-  const cached = statusCache.get(key);
+  const cached = statusCache.get(cacheKey(key));
+  if (cached && Date.now() - cached.refreshedAt >= CACHE_TTL_MS) return null;
   return cached ? toState(cached.status, { refreshedAt: cached.refreshedAt }) : null;
 };
 
@@ -56,27 +70,31 @@ export const fetchSymbolMarketStatus = async (
   const key = normalizeSymbolKey(symbol);
   if (!key) return createUnavailableMarketStatus(symbol);
 
-  const cached = statusCache.get(key);
+  const scope = currentScope();
+  const generation = scopeGeneration;
+  const requestKey = cacheKey(key, scope);
+  const cached = statusCache.get(requestKey);
   if (!options.force && cached && Date.now() - cached.refreshedAt < CACHE_TTL_MS) {
     return cached.status;
   }
 
-  const existingRequest = inflightRequests.get(key);
+  const existingRequest = inflightRequests.get(requestKey);
   if (existingRequest) return existingRequest;
 
   const requestStartedAt = Date.now();
   const request = marketV2Api.getSymbolStatus(key)
     .then(payload => {
+      if (generation !== scopeGeneration || currentScope() !== scope) return createUnavailableMarketStatus(key);
       recordBrokerServerTime((payload as { server_time?: unknown } | null)?.server_time, requestStartedAt);
       const normalized = normalizeMarketStatus(payload, { symbol: key });
-      statusCache.set(key, { status: normalized, refreshedAt: Date.now() });
+      statusCache.set(requestKey, { status: normalized, refreshedAt: Date.now() });
       return normalized;
     })
     .finally(() => {
-      inflightRequests.delete(key);
+      if (inflightRequests.get(requestKey) === request) inflightRequests.delete(requestKey);
     });
 
-  inflightRequests.set(key, request);
+  inflightRequests.set(requestKey, request);
   return request;
 };
 
@@ -88,6 +106,8 @@ export const useSymbolMarketStatus = (
   const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
   const visiblePollMs = pollMs > 0 ? Math.max(MIN_VISIBLE_POLL_MS, pollMs) : 0;
   const normalizedSymbol = useMemo(() => normalizeSymbolKey(symbol), [symbol]);
+  const sessionScope = useBrokerAccountSessionScope();
+  const feedTradable = useLiveSymbolTradingStatus(normalizedSymbol, sessionScope);
   const requestSeqRef = useRef(0);
   const [state, setState] = useState<SymbolMarketStatusState>(() => (
     getCachedSymbolMarketStatus(normalizedSymbol)
@@ -125,13 +145,13 @@ export const useSymbolMarketStatus = (
     try {
       const nextStatus = await fetchSymbolMarketStatus(normalizedSymbol, { force });
       const refreshedAt = Date.now();
-      if (requestSeqRef.current === requestId) {
+      if (requestSeqRef.current === requestId && currentScope() === sessionScope) {
         setState(toState(nextStatus, { refreshedAt }));
       }
       return nextStatus;
     } catch (error) {
       const unavailable = createUnavailableMarketStatus(normalizedSymbol);
-      if (requestSeqRef.current === requestId) {
+      if (requestSeqRef.current === requestId && currentScope() === sessionScope) {
         setState(toState(unavailable, {
           error: error instanceof Error ? error.message : 'Failed to load market status',
           refreshedAt: Date.now(),
@@ -139,7 +159,7 @@ export const useSymbolMarketStatus = (
       }
       return unavailable;
     }
-  }, [enabled, normalizedSymbol]);
+  }, [enabled, normalizedSymbol, sessionScope]);
 
   useEffect(() => {
     if (!enabled || !normalizedSymbol) {
@@ -201,12 +221,15 @@ export const useSymbolMarketStatus = (
     };
   }, [enabled, normalizedSymbol, refresh, visiblePollMs]);
 
-  if (normalizeSymbolKey(state.symbol) !== normalizedSymbol) {
-    return getCachedSymbolMarketStatus(normalizedSymbol)
+  const selectedState = normalizeSymbolKey(state.symbol) !== normalizedSymbol || state.sessionScope !== sessionScope
+    ? getCachedSymbolMarketStatus(normalizedSymbol)
       ?? toState(createUnavailableMarketStatus(normalizedSymbol), {
         loading: Boolean(enabled && normalizedSymbol),
-      });
-  }
-
-  return state;
+      })
+    : state;
+  // A fresh explicit hub permission resolves missing schedules; a price alone
+  // never grants permission and a known closed/pre/after session still wins.
+  return selectedState.status === 'unknown' && feedTradable === true
+    ? { ...selectedState, status: 'open', isOpen: true, isTradeBlocked: false, label: 'Market Open' }
+    : selectedState;
 };

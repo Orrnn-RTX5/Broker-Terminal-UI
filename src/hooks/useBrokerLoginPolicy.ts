@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { BROKER_DISCOVERY_URL } from '../config/api';
+import { DEV_BROKER_DISCOVERY_PROXY_PREFIX, toLocalDevProxyUrl } from '../config/api';
+import { getRuntimeDiscoveryBaseUrl } from '../config/backendTarget.js';
 import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
 import { resolveBrokerLoginPolicy, type BrokerLoginPolicy } from '../services/brokerLoginPolicy';
 
@@ -12,9 +13,11 @@ export const useBrokerLoginPolicy = (active: boolean): BrokerLoginPolicy | null 
   useEffect(() => {
     if (!active) return undefined;
     const immediate = resolveBrokerLoginPolicy([]);
-    if (immediate.local) return undefined;
+    setPolicy(immediate);
+    const discoveryUrl = getRuntimeDiscoveryBaseUrl();
+    if (immediate.local || immediate.status === 'error' || !discoveryUrl) return undefined;
     const controller = new AbortController();
-    fetch(`${BROKER_DISCOVERY_URL}/api/v2/broker/servers`, { signal: controller.signal })
+    fetch(toLocalDevProxyUrl(`${discoveryUrl}/api/v2/broker/servers`, DEV_BROKER_DISCOVERY_PROXY_PREFIX), { signal: controller.signal, credentials: 'omit', redirect: 'error' })
       .then((response) => {
         if (!response.ok) throw new Error('Broker discovery is unavailable.');
         return response.json();

@@ -218,8 +218,8 @@ describe('FileMenu Component', () => {
             expect(screen.getByText('Save')).toBeInTheDocument();
             expect(screen.getByText('Save As Picture')).toBeInTheDocument();
             expect(screen.getByText('Open Data Folder')).toBeInTheDocument();
-            expect(screen.getByText('Download Desktop App')).toBeInTheDocument();
-            expect(screen.getByText('v9.9.9')).toBeInTheDocument();
+            expect(screen.queryByText('Download Desktop App')).not.toBeInTheDocument();
+            expect(screen.queryByText('v9.9.9')).not.toBeInTheDocument();
             expect(screen.getByText('Print')).toBeInTheDocument();
             expect(screen.getByText('Print Preview')).toBeInTheDocument();
             expect(screen.getByText('Print Setup')).toBeInTheDocument();

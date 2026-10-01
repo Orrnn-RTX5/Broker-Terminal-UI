@@ -273,6 +273,7 @@ const Submenu = ({ children, label, icon, disabled }: {
 
             {open && (
                 <div
+                    className="rtx-chart-context-menu"
                     style={{
                         position: 'absolute',
                         zIndex: 10002,
@@ -456,6 +457,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
 
     const menuContent = (
         <div
+            className="rtx-chart-context-menu"
             ref={menuRef}
             style={{
                 position: 'fixed',

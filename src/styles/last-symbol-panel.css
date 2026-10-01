@@ -647,11 +647,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel > .last-sy
 }
 
 .last-symbol-close-button__value strong[data-tone='profit'] {
-  color: var(--lst-profit);
+  color: var(--color-profit);
 }
 
 .last-symbol-close-button__value strong[data-tone='loss'] {
-  color: var(--lst-sell);
+  color: var(--color-loss);
 }
 
 .last-symbol-account-summary {

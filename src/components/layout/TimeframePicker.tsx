@@ -87,7 +87,7 @@ export const TimeframePicker: React.FC<TimeframePickerProps> = ({
             type="button"
             role="radio"
             aria-checked={selected}
-            aria-label={tr("Timeframe: {{value0}}", { value0: tr(option.label) })}
+            aria-label={`${option.value} — ${tr("Timeframe: {{value0}}", { value0: tr(option.label) })}`}
             title={tr("Timeframe: {{value0}}", { value0: tr(option.label) })}
             tabIndex={selected ? 0 : -1}
             onClick={() => onSelect(option.value)}

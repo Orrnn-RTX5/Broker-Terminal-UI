@@ -142,6 +142,9 @@ jobs:
                 ls -l ${DEPLOY_DIR}/.env >&2 || true
                 exit 1
               fi
+            else
+              echo "ERROR: A complete per-broker runtime environment is required at ${DEPLOY_DIR}/.env." >&2
+              exit 1
             fi
 
             run_terminal_image() {
@@ -151,7 +154,6 @@ jobs:
                 -p 127.0.0.1:8103:80 \
                 $ENV_ARG \
                 --label "rtx5.component=webterminal" \
-                --label "rtx5.domain=webterminal.orrnn.com" \
                 "$1"
             }
 

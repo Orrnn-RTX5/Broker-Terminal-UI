@@ -20,6 +20,7 @@ import {
   compareCanonicalTickFreshness,
 } from '../utils/liveTickSemantics';
 import { QUOTE_SESSION_RANGE_FIELDS, type QuoteSessionRange } from '../utils/quoteSessionRange';
+import type { QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
 import {
   getDailyChangeAuthorityTimestamp,
   getLastAuthorityTimestamp,
@@ -33,8 +34,8 @@ export {
   retainSameQuoteDayDisplayFields,
   retainSameQuoteDayLast,
 };
-
-export interface Tick extends QuoteSessionRange {
+export interface Tick extends QuoteSessionRange, QuoteTradingStatusFields {
+  dailyChangeInput?: import('../utils/dailyChange').DailyChangeInput;
   symbol: string;
   bid: number;
   ask: number;
@@ -254,6 +255,7 @@ export interface Trade {
   positionId?: number;
   orderTicket?: number;
   dealTicket?: number;
+  dealType?: string;
   entry?: string;
   orderType?: string;
   fee?: number;

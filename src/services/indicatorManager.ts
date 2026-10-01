@@ -198,6 +198,29 @@ export class IndicatorManager {
     return Array.from(this.indicators.values());
   }
 
+  /** Named indicator values at one bar, for the long-press values tooltip. */
+  getReadoutAt(time: number): Array<{ label: string; value: number; color?: string }> {
+    if (this.hidden || !Number.isFinite(time)) return [];
+    const rows: Array<{ label: string; value: number; color?: string }> = [];
+    const colorOf = (color: unknown): string | undefined =>
+      typeof color === 'string' && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(color) ? color : undefined;
+    this.indicators.forEach((config, id) => {
+      if (config.visible === false) return;
+      const series: Array<[string, string, unknown]> = [[id, config.name, config.color]];
+      if (config.type === 'bollinger' || config.type === 'bb') {
+        series.push(
+          [`${id}_upper`, `${config.name} Upper`, config.parameters.upperColor],
+          [`${id}_lower`, `${config.name} Lower`, config.parameters.lowerColor],
+        );
+      }
+      for (const [key, label, color] of series) {
+        const value = this.indicatorValues.get(key)?.get(time);
+        if (typeof value === 'number' && Number.isFinite(value)) rows.push({ label, value, color: colorOf(color) });
+      }
+    });
+    return rows;
+  }
+
   /**
    * Create series for indicator
    */

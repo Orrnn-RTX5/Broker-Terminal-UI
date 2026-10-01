@@ -8,6 +8,7 @@ import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import { enrichTradesWithCachedLevels } from '../utils/tradeHistoryLevelCache';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
 import { readBackendNumber } from '../services/backendAccountMetrics';
+import { getAccessToken } from '../services/brokerSession';
 
 export type GatewayAccount = {
   login?: number;
@@ -144,6 +145,8 @@ export type TradeHistoryDataSet = {
   };
 };
 
+type DealHistoryRead = { deals: Trade[]; error: string | null };
+
 export type TradeGatewaySnapshot = {
   account: Account | null;
   positions: Position[];
@@ -164,7 +167,7 @@ export const getStoredAccountLogin = (): number | null => {
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
   }
 
-  const token = localStorage.getItem('auth_token');
+  const token = getAccessToken();
   if (!token) return null;
 
   // NOTE: this claim is read from an UNVERIFIED token (the client cannot check
@@ -508,6 +511,7 @@ export const normalizeDeal = (raw: GatewayDeal, index = 0): Trade => {
     positionId,
     orderTicket: finiteNumberOrUndefined(raw.order_ticket ?? raw.order),
     dealTicket,
+    dealType: action,
     entry: entry || undefined,
     ...(fee === undefined ? {} : { fee }),
     ...(magicNumber === undefined ? {} : { magicNumber }),
@@ -582,7 +586,6 @@ export const normalizeOrder = (raw: GatewayOrder, index = 0): Trade => {
 const sortHistoryRows = (rows: Trade[]): Trade[] => (
   [...rows]
     .sort((a, b) => historyTime(b) - historyTime(a))
-    .slice(0, 500)
 );
 
 export const buildClosedPositionHistory = (
@@ -613,10 +616,12 @@ const historyRequestError = (error: unknown): string => (
 
 const settledHistoryReads = new Map<string, unknown>();
 const inflightHistoryReads = new Map<string, Promise<unknown>>();
+let historyReadGeneration = 0;
 
 // History opens again after startup already read the same deals and closed
 // positions. Reuse that result until a fill, close, or explicit refresh.
 export const clearTradeHistoryRequestCache = (): void => {
+  historyReadGeneration += 1;
   settledHistoryReads.clear();
   inflightHistoryReads.clear();
 };
@@ -647,14 +652,15 @@ const cachedTradeRead = <T>(key: string, force: boolean, load: () => Promise<T>)
 const composeTradeHistoryDataSet = (
   login: number,
   closedResult: PromiseSettledResult<Trade[]>,
-  dealsResult: PromiseSettledResult<Trade[]>,
+  dealsResult: PromiseSettledResult<DealHistoryRead>,
   ordersResult: PromiseSettledResult<Trade[]> | null,
 ): TradeHistoryDataSet => {
   const closedPositions = closedResult.status === 'fulfilled' ? closedResult.value : [];
-  const deals = dealsResult.status === 'fulfilled' ? sortHistoryRows(dealsResult.value) : [];
+  const dealError = dealsResult.status === 'fulfilled' ? dealsResult.value.error : historyRequestError(dealsResult.reason);
+  const deals = dealsResult.status === 'fulfilled' ? sortHistoryRows(dealsResult.value.deals) : [];
   const orders = ordersResult?.status === 'fulfilled' ? sortHistoryRows(ordersResult.value) : [];
   const dealPositions = dealsResult.status === 'fulfilled'
-    ? buildClosedPositionHistory([], dealsResult.value, login)
+    ? buildClosedPositionHistory([], dealsResult.value.deals, login)
     : [];
   const positions = dealPositions.length > 0
     ? dealPositions
@@ -671,10 +677,11 @@ const composeTradeHistoryDataSet = (
         ? closedResult.status === 'fulfilled' && closedPositions.length > 0
           ? `${historyRequestError(dealsResult.reason)}; showing closed-position fallback`
           : historyRequestError(dealsResult.reason)
+        : dealError !== null ? dealError
         : dealPositions.length === 0 && closedResult.status === 'rejected'
           ? historyRequestError(closedResult.reason)
         : null,
-      deals: dealsResult.status === 'rejected' ? historyRequestError(dealsResult.reason) : null,
+      deals: dealError,
       orders: ordersResult === null
         ? null
         : ordersResult.status === 'rejected'
@@ -686,23 +693,64 @@ const composeTradeHistoryDataSet = (
 
 const ARRAY_WRAPPER_KEYS = ['data', 'items', 'results'] as const;
 
-const arrayFrom = <T>(data: unknown, key?: string): T[] => {
-  const extract = (value: unknown, depth = 0): T[] => {
+const arrayFrom = <T>(data: unknown, key?: string, requireArray = false): T[] => {
+  const extract = (value: unknown, depth = 0): T[] | null => {
     if (Array.isArray(value)) return value as T[];
-    if (!value || typeof value !== 'object' || depth > ARRAY_WRAPPER_KEYS.length) return [];
+    if (!value || typeof value !== 'object' || depth > ARRAY_WRAPPER_KEYS.length) return null;
 
     const record = value as Record<string, unknown>;
     if (key && Array.isArray(record[key])) return record[key] as T[];
 
     for (const wrapperKey of ARRAY_WRAPPER_KEYS) {
       const nested = extract(record[wrapperKey], depth + 1);
-      if (nested.length > 0) return nested;
+      if (nested !== null) return nested;
     }
 
-    return [];
+    return null;
   };
 
-  return extract(data);
+  const rows = extract(data);
+  if (rows === null && requireArray) throw new Error('Deal history response is unavailable');
+  return rows ?? [];
+};
+
+/** Financial history must include every page, not just the latest 500 deals. */
+const loadAllDealPages = async (endpoint: string, login?: number): Promise<DealHistoryRead> => {
+  const generation = historyReadGeneration;
+  const to = endpoint === '/account/deals' ? Math.floor(Date.now() / 1000) : undefined;
+  const rows: GatewayDeal[] = [];
+  const seen = new Set<string>();
+  const result = (error: string | null): DealHistoryRead => ({ deals: rows.map(normalizeDeal), error });
+  const incomplete = (reason: string) => result(`${reason}; showing ${rows.length} available deals. Older history records are unavailable.`);
+  for (let offset = 0; offset < 500_000; offset += 500) {
+    let page: GatewayDeal[];
+    try {
+      const data = await apiClient.get<GatewayDeal[] | { deals: GatewayDeal[] }>(endpoint, {
+        baseUrl: API_V2_BASE_URL,
+        params: { limit: 500, offset, ...(to === undefined ? {} : { to }) },
+      });
+      if (generation !== historyReadGeneration) throw new Error('History session changed');
+      page = arrayFrom<GatewayDeal>(data, 'deals', true);
+      if (page.some(row => !row || typeof row !== 'object'
+        || (login && row.account_login !== undefined && Number(row.account_login) !== login))) {
+        throw new Error('Invalid account deal history record');
+      }
+    } catch (caught) {
+      if (generation !== historyReadGeneration || rows.length === 0) throw caught;
+      return incomplete(`Further deal history could not be loaded: ${historyRequestError(caught)}`);
+    }
+    let added = 0;
+    for (const row of page) {
+      const identity = String(row.ticket ?? row.deal ?? JSON.stringify(row));
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      rows.push(row);
+      added += 1;
+    }
+    if (!added && page.length > 0) return incomplete('Broker repeated a history page');
+    if (page.length < 500) return result(null);
+  }
+  return incomplete('Deal history exceeds the supported page limit');
 };
 
 export const tradeGatewayApi = {
@@ -742,13 +790,25 @@ export const tradeGatewayApi = {
   },
 
   async getDeals(login?: number, options?: { force?: boolean }): Promise<Trade[]> {
-    const endpoint = login ? `/deals/${login}` : '/account/deals';
+    return (await this.getDealHistory(login, options)).deals;
+  },
+
+  async getDealHistory(login?: number, options?: { force?: boolean }): Promise<DealHistoryRead> {
+    // The trader route supports limit/offset; the legacy login route on some
+    // brokers always repeats its latest 500 rows. JWT claims select a route
+    // only; the server authorizes it and each returned account is validated.
+    const payload = decodeJwtPayload(getAccessToken());
+    const tokenLogin = readBackendNumber(payload?.account_login ?? payload?.login);
+    const ownAccount = login === undefined || tokenLogin === login;
+    const endpoint = ownAccount ? '/account/deals' : `/deals/${login}`;
     return cachedTradeRead(`deals:${login ?? 'session'}`, options?.force === true, async () => {
-      const data = await apiClient.get<GatewayDeal[] | { deals: GatewayDeal[] }>(endpoint, {
-        baseUrl: API_V2_BASE_URL,
-        params: { limit: 500, offset: 0 },
-      });
-      return arrayFrom<GatewayDeal>(data, 'deals').map(normalizeDeal);
+      try {
+        return await loadAllDealPages(endpoint, login);
+      } catch (caught) {
+        const status = caught && typeof caught === 'object' && 'status' in caught ? Number(caught.status) : null;
+        if (!ownAccount || !login || (status !== 404 && status !== 501)) throw caught;
+        return loadAllDealPages(`/deals/${login}`, login);
+      }
     });
   },
 
@@ -789,7 +849,7 @@ export const tradeGatewayApi = {
     // Start every source before waiting so a slow orders response cannot
     // delay the closed-position rows the History tab shows first.
     const closedPromise = this.getClosedPositions(login, { force });
-    const dealsPromise = this.getDeals(login, { force });
+    const dealsPromise = this.getDealHistory(login, { force });
     const ordersPromise = this.getOrders(login, { force });
     const [closedResult, dealsResult] = await Promise.allSettled([closedPromise, dealsPromise]);
     options?.onPartial?.(composeTradeHistoryDataSet(login, closedResult, dealsResult, null));
@@ -797,10 +857,10 @@ export const tradeGatewayApi = {
     return composeTradeHistoryDataSet(login, closedResult, dealsResult, ordersResult);
   },
 
-  async getBalanceHistory(login: number, limit = 10) {
+  async getBalanceHistory(login: number, limit = 10, offset = 0) {
     return apiClient.get<Record<string, unknown>[]>(`/accounts/${login}/history`, {
       baseUrl: API_V2_BASE_URL,
-      params: { limit, offset: 0 },
+      params: { limit, offset },
     });
   },
 

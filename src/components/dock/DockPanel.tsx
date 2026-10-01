@@ -111,12 +111,12 @@ export const DockPanel: React.FC<DockPanelProps> = ({
           {panel.component !== 'EmptyChartArea' && (
             <button
               type="button"
-              aria-label={isChart ? tr(minimized ? 'Restore chart {{symbol}}' : 'Minimize chart {{symbol}}', { symbol: chartSymbol }) : undefined}
+              aria-label={isChart ? tr(minimized ? 'Restore chart {{symbol}}' : 'Minimize chart {{symbol}}', { symbol: chartSymbol }) : `${tr(minimized ? 'Restore' : 'Minimize')} ${tr(panel.title)}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setMinimized(!minimized);
               }}
-              className={cn('dock-panel__action shrink-0 flex items-center justify-center rounded-sm hover:bg-zinc-600/80 text-zinc-400 hover:text-white transition-colors mr-0.5', isChart ? 'w-[22px] h-[22px]' : 'w-4 h-4')}
+              className="dock-panel__action shrink-0 flex items-center justify-center w-6 h-6 rounded-sm hover:bg-zinc-600/80 text-zinc-400 hover:text-white transition-colors mr-0.5"
               title={minimized ? tr("Restore") : tr("Minimize")}
             >
               {minimized ? <Icon name="chevron-up" size="xs" /> : <Minus className="w-2.5 h-2.5" />
@@ -128,12 +128,12 @@ export const DockPanel: React.FC<DockPanelProps> = ({
           {panel.closable !== false && (
             <button
               type="button"
-              aria-label={isChart ? tr('Close chart {{symbol}}', { symbol: chartSymbol }) : undefined}
+              aria-label={isChart ? tr('Close chart {{symbol}}', { symbol: chartSymbol }) : `${tr('Close')} ${tr(panel.title)}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onClose?.();
               }}
-              className={cn('dock-panel__action dock-panel__action--close shrink-0 flex items-center justify-center rounded-sm hover:bg-red-500/80 text-zinc-400 hover:text-white transition-colors', isChart ? 'w-[22px] h-[22px]' : 'w-4 h-4')}
+              className="dock-panel__action dock-panel__action--close shrink-0 flex items-center justify-center w-6 h-6 rounded-sm hover:bg-red-500/80 text-zinc-400 hover:text-white transition-colors"
               title={tr("Close")}
             >
               <X className="w-3 h-3" />

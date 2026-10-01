@@ -4,6 +4,9 @@ import {
 } from '../services/brokerSession';
 import {
   getBackendTarget,
+  resolveBrokerExtApiUrl,
+  getBrokerConfigurationError,
+  isConfiguredBrokerEndpoint,
   getRuntimeDiscoveryBaseUrl,
   isDesktopBackendTarget,
   normalizeBrokerInfoForTarget,
@@ -116,13 +119,9 @@ export const normalizeWsUrl = (value: string): string => {
   return `${getRuntimeWsProtocol()}//${trimmed}`;
 };
 
-const BACKEND = normalizeServerUrl(getBackendTarget() || (import.meta.env.VITE_BACKEND_URL as string) || '');
+let RTX5_API_URL = normalizeServerUrl(resolveBrokerExtApiUrl());
 
-const RTX5_API_URL = normalizeServerUrl(
-  getBackendTarget() || (import.meta.env.VITE_RTX5_API_URL as string) || (import.meta.env.VITE_API_V2_URL as string) || ''
-);
-
-const getDynamicServerUrl = (): string => {
+const getDynamicServerUrl = (extended = false): string => {
   if (typeof window === 'undefined') return '';
   const normalizedBroker = normalizeBrokerInfoForTarget({
     broker_id: getLocalStorageItem('broker_id') || getLocalStorageItem('rtx_broker_id') || '',
@@ -134,31 +133,28 @@ const getDynamicServerUrl = (): string => {
     feed_url: getLocalStorageItem('feed_url') || '',
     feed_ws_url: getLocalStorageItem('feed_url') || '',
   });
-  return normalizeDynamicServerUrl(normalizedBroker.server_url || '');
+  return normalizeDynamicServerUrl((extended ? normalizedBroker.market_api_url : normalizedBroker.server_url) || '');
 };
 
 const getRuntimeApiBase = (): string => {
   const brokerServer = getDynamicServerUrl();
   if (brokerServer) return toLocalDevProxyUrl(brokerServer);
 
-  return toLocalDevProxyUrl(normalizeServerUrl(BACKEND || (import.meta.env.VITE_API_URL as string)));
+  return toLocalDevProxyUrl(normalizeServerUrl(getBackendTarget()));
 };
 
 const getRuntimeBrokerApiBase = (): string => {
-  const brokerServer = getDynamicServerUrl();
+  const brokerServer = getDynamicServerUrl(true);
   if (brokerServer) return toLocalDevProxyUrl(brokerServer);
 
-  return toLocalDevProxyUrl(
-    RTX5_API_URL
-    || normalizeServerUrl(BACKEND || (import.meta.env.VITE_API_URL as string))
-  );
+  return toLocalDevProxyUrl(normalizeServerUrl(resolveBrokerExtApiUrl()));
 };
 
 const getRuntimeFixApiBase = (): string => {
   const brokerServer = getDynamicServerUrl();
   if (brokerServer) return toLocalDevProxyUrl(brokerServer);
 
-  return toLocalDevProxyUrl(normalizeServerUrl(BACKEND || (import.meta.env.VITE_FIX_API_URL as string)));
+  return toLocalDevProxyUrl(normalizeServerUrl(getBackendTarget()));
 };
 
 /** /ws/feed endpoint for live bid/ask quotes (Section 2 of WS flow). */
@@ -166,77 +162,18 @@ export let MARKET_WS_FEED_URL = buildBrokerWsFeedUri();
 
 const getInitialV2BaseUrl = (): string => {
   const base = getRuntimeBrokerApiBase();
-  return base ? `${base}/api/v2` : '/api/v2';
+  return base ? `${base}/api/v2` : '';
 };
 
 const getInitialHistoryBaseUrl = (): string => {
   const base = getRuntimeBrokerApiBase();
-  return base ? `${base}/history` : '/history';
+  return base ? `${base}/history` : '';
 };
 
-const getInitialWsUrl = (): string => {
-  if (typeof window !== 'undefined') {
-    const serverUrl = getLocalStorageItem('server_url');
-    if (serverUrl) {
-      return buildBrokerWsV2Uri(null);
-    }
-  }
-  const runtimeWsUrl = buildBrokerWsV2Uri(null);
-  if (runtimeWsUrl) return runtimeWsUrl;
-
-  const fallback = import.meta.env.VITE_RTX5_WS_URL as string || (RTX5_API_URL
-    ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2'
-    : '');
-  return normalizeWsUrl(fallback);
-};
-
-const getInitialMarketWsUrl = (): string => {
-  if (typeof window !== 'undefined') {
-    const serverUrl = getLocalStorageItem('server_url');
-    if (serverUrl) {
-      return buildBrokerWsV2Uri(null);
-    }
-  }
-  const runtimeWsUrl = buildBrokerWsV2Uri(null);
-  if (runtimeWsUrl) return runtimeWsUrl;
-
-  const fallback = import.meta.env.VITE_MARKET_WS_URL as string
-    || import.meta.env.VITE_RTX5_WS_URL as string
-    || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
-  return normalizeWsUrl(fallback);
-};
-
-const getInitialFixWsUrl = (): string => {
-  if (typeof window !== 'undefined') {
-    const serverUrl = getLocalStorageItem('server_url');
-    if (serverUrl) {
-      return buildBrokerWsV2Uri(null);
-    }
-  }
-  const runtimeWsUrl = buildBrokerWsV2Uri(null);
-  if (runtimeWsUrl) return runtimeWsUrl;
-
-  const fallback = import.meta.env.VITE_FIX_WS_URL as string
-    || import.meta.env.VITE_RTX5_WS_URL as string
-    || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
-  return normalizeWsUrl(fallback);
-};
-
-const getInitialGeneralWsUrl = (): string => {
-  if (typeof window !== 'undefined') {
-    const serverUrl = getLocalStorageItem('server_url');
-    if (serverUrl) {
-      return buildBrokerWsV2Uri(null);
-    }
-  }
-  const runtimeWsUrl = buildBrokerWsV2Uri(null);
-  if (runtimeWsUrl) return runtimeWsUrl;
-
-  const fallback = import.meta.env.VITE_WS_URL as string
-    || import.meta.env.VITE_RTX5_WS_URL as string
-    || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
-  return normalizeWsUrl(fallback);
-};
+const getInitialWsUrl = (): string => buildBrokerWsV2Uri(null);
+const getInitialMarketWsUrl = getInitialWsUrl;
+const getInitialFixWsUrl = getInitialWsUrl;
+const getInitialGeneralWsUrl = getInitialWsUrl;
 
 export let API_V2_BASE_URL = getInitialV2BaseUrl();
 export let API_HISTORY_BASE_URL = getInitialHistoryBaseUrl();
@@ -248,12 +185,15 @@ let FIX_WS_URL = getInitialFixWsUrl();
 let WS_URL = getInitialGeneralWsUrl();
 
 // Optional with undefined default
-const ADMIN_API_URL = import.meta.env.VITE_ADMIN_URL || API_BASE_URL;
+let ADMIN_API_URL = API_BASE_URL;
 export let MARKET_WS_URL = getInitialMarketWsUrl();
-const ADMIN_WS_URL = import.meta.env.VITE_ADMIN_WS_URL;
+let ADMIN_WS_URL = buildBrokerWsV2Uri(null);
 
 export function updateDynamicUrls(): void {
   API_BASE_URL = getRuntimeApiBase();
+  RTX5_API_URL = normalizeServerUrl(resolveBrokerExtApiUrl());
+  ADMIN_API_URL = API_BASE_URL;
+  ADMIN_WS_URL = buildBrokerWsV2Uri(null);
   API_V2_BASE_URL = getInitialV2BaseUrl();
   API_HISTORY_BASE_URL = getInitialHistoryBaseUrl();
   RTX5_WS_URL = getInitialWsUrl();
@@ -393,47 +333,50 @@ export let API_ENDPOINTS = buildApiEndpoints();
 // WebSocket Endpoints
 export const WS_ENDPOINTS = {
   get market() { return MARKET_WS_URL; },
-  admin: ADMIN_WS_URL,
+  get admin() { return ADMIN_WS_URL; },
   get general() { return WS_URL; },
   get rtx5() { return RTX5_WS_URL; },
   get v2() { return RTX5_WS_URL; },
 };
 
 // Helper functions
+const buildConfiguredHttpUrl = (endpoint: string, base: string): string => {
+  const error = getBrokerConfigurationError();
+  if (error) throw new Error(error);
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : `${base}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  if (!isConfiguredBrokerEndpoint(url)) throw new Error('Broker endpoint does not belong to this deployment.');
+  return url;
+};
+
 export function buildApiUrl(endpoint: string): string {
-  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
-    return endpoint;
-  }
-  return `${API_BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  return buildConfiguredHttpUrl(endpoint, getRuntimeApiBase());
 }
 
 export function buildApiV2Url(endpoint: string): string {
-  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
-    return endpoint;
-  }
-  return `${API_V2_BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  return buildConfiguredHttpUrl(endpoint, getInitialV2BaseUrl());
 }
 
 export function buildHistoryUrl(endpoint: string): string {
-  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
-    return endpoint;
-  }
-  return `${API_HISTORY_BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  return buildConfiguredHttpUrl(endpoint, getInitialHistoryBaseUrl());
 }
 
 export function buildAdminUrl(endpoint: string): string {
-  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
-    return endpoint;
-  }
-  return `${ADMIN_API_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  return buildConfiguredHttpUrl(endpoint, getRuntimeApiBase());
 }
 
 export function buildWsUrl(endpoint: string): string {
-  if (endpoint.startsWith('ws://') || endpoint.startsWith('wss://')) {
+  const error = getBrokerConfigurationError();
+  if (error) throw new Error(error);
+  if (/^wss?:\/\//i.test(endpoint)) {
+    if (!isConfiguredBrokerEndpoint(endpoint, 'ws')) throw new Error('WebSocket endpoint does not belong to this broker deployment.');
     return endpoint;
   }
-  const wsBase = WS_URL.replace(/\/(fix-)?ws$/, '');
-  return `${wsBase}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  const currentWsUrl = getInitialWsUrl();
+  if (!currentWsUrl) throw new Error('Broker WebSocket configuration is missing.');
+  const wsBase = new URL(currentWsUrl).origin;
+  const url = `${wsBase}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  if (!isConfiguredBrokerEndpoint(url, 'ws')) throw new Error('WebSocket endpoint does not belong to this broker deployment.');
+  return url;
 }
 
 export function buildApiV2WsUrl(token?: string): string {

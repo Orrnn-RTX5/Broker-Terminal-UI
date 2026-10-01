@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NavigatorPanel } from './NavigatorPanel';
 
 const brokerApiMocks = vi.hoisted(() => ({
@@ -43,9 +43,11 @@ vi.mock('../ui/ContextMenu', () => ({
 vi.mock('../LoginDialog', () => ({ LoginDialog: () => null }));
 vi.mock('../ChangePasswordDialog', () => ({ ChangePasswordDialog: () => null }));
 
-describe('NavigatorPanel Nexa broker logo resolution', () => {
+describe('NavigatorPanel backend broker logo resolution', () => {
+  afterEach(() => { delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__; });
   beforeEach(() => {
     localStorage.clear();
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { DISCOVERY_BASE_URL: 'https://directory.example' };
     mockSavedAccounts = [];
     mockStoredBrokerServer = 'https://nexa.orrnn.com';
     brokerApiMocks.getServers.mockReset().mockResolvedValue([]);
@@ -70,7 +72,7 @@ describe('NavigatorPanel Nexa broker logo resolution', () => {
 
     const logo = await screen.findByRole('img', { name: /Nexa Logo/i });
     expect(logo).toBeInTheDocument();
-    expect(logo).toHaveAttribute('src', 'https://fxtrustsuperbackned.orrnn.com/api/v1/brokers/Nexa/logo');
+    expect(logo).toHaveAttribute('src', 'https://directory.example/api/v1/brokers/Nexa/logo');
   });
 
   it('resolves relative /api/v1/brokers/Nexa/logo to discovery base URL instead of 404 server URL', async () => {
@@ -91,7 +93,7 @@ describe('NavigatorPanel Nexa broker logo resolution', () => {
     render(<NavigatorPanel />);
 
     const logo = await screen.findByRole('img', { name: /Nexa Logo/i });
-    expect(logo.getAttribute('src')).toBe('https://fxtrustsuperbackned.orrnn.com/api/v1/brokers/Nexa/logo');
+    expect(logo.getAttribute('src')).toBe('https://directory.example/api/v1/brokers/Nexa/logo');
     expect(logo.getAttribute('src')).not.toContain('https://nexa.orrnn.com/api/v1/brokers/Nexa/logo');
   });
 
@@ -118,7 +120,7 @@ describe('NavigatorPanel Nexa broker logo resolution', () => {
     await waitFor(() => {
       expect(screen.getByRole('img', { name: /Nexa Logo/i })).toHaveAttribute(
         'src',
-        'https://fxtrustsuperbackned.orrnn.com/api/v1/brokers/Nexa/logo',
+        'https://directory.example/api/v1/brokers/Nexa/logo',
       );
     });
   });
@@ -141,6 +143,6 @@ describe('NavigatorPanel Nexa broker logo resolution', () => {
 
     const logo = await screen.findByRole('img', { name: /Nexa Logo/i });
     expect(logo).toBeInTheDocument();
-    expect(logo).toHaveAttribute('src', 'https://fxtrustsuperbackned.orrnn.com/api/v1/brokers/Nexa/logo');
+    expect(logo).toHaveAttribute('src', 'https://directory.example/api/v1/brokers/Nexa/logo');
   });
 });

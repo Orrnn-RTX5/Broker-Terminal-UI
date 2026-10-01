@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
-import { BugReportDialog } from './BugReportDialog';
 import type { BugReportTradingContext } from '../services/bugReportService';
 import { getActiveChartSource } from '../services/activeChartSource';
 import { useMarketDataStore } from '../store/useMarketDataStore';
@@ -9,6 +8,7 @@ import { getCanonicalTickTimestamp } from '../utils/liveTickSemantics';
 
 /** Event the Help menu dispatches to open the dialog. */
 const BUG_REPORT_EVENT = 'rtx5:open-bug-report';
+const BugReportDialog = lazy(() => import('./BugReportDialog'));
 
 const collectBugReportContext = (context: BugReportTradingContext = {}): BugReportTradingContext => {
     const chart = getActiveChartSource();
@@ -40,7 +40,11 @@ export function BugReportHost() {
         return () => window.removeEventListener(BUG_REPORT_EVENT, onOpen);
     }, []);
 
-    return <BugReportDialog isOpen={open} onClose={() => setOpen(false)} context={context} />;
+    return open ? (
+        <Suspense fallback={null}>
+            <BugReportDialog isOpen onClose={() => setOpen(false)} context={context} />
+        </Suspense>
+    ) : null;
 }
 
 export default BugReportHost;

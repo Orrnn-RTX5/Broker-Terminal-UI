@@ -10,7 +10,7 @@ const runtimeWindow = window as Window & {
 const TEST_URL = 'https://fxtrustbrokerbackend.orrnn.com';
 const ACHIEVER_URL = 'https://service.achieverfinancials.com';
 const configure = (brokerId = 'achiever-financials', apiUrl = ACHIEVER_URL) => {
-  runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'web', BROKER_ID: brokerId, API_HOST: apiUrl };
+  runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'web', BROKER_ID: brokerId, API_HOST: apiUrl, WS_HOST: apiUrl.replace(/^https:/, 'wss:'), DEFAULT_MT5_SERVER: `${brokerId}-Live` };
 };
 const storeSession = (brokerId = 'TEST', backendUrl = TEST_URL) => {
   localStorage.setItem('broker_id', brokerId);
@@ -48,9 +48,10 @@ describe('configured web broker session ownership', () => {
     storeSession();
     localStorage.setItem('feed_url', 'wss://fxtrustbrokerbackend.orrnn.com/ws/feed');
     expect(ensureConfiguredWebSession()).toBe(false);
-    for (const key of ['auth_token', 'refresh_token', 'rtx_saved_username', 'rtx_last_login', 'feed_broker_id', 'rtx_last_authenticated_broker_id']) {
+    for (const key of ['auth_token', 'refresh_token', 'rtx_saved_username', 'rtx_last_login', 'rtx_last_authenticated_broker_id']) {
       expect(localStorage.getItem(key)).toBeNull();
     }
+    expect(localStorage.getItem('feed_broker_id')).toBe('achiever-financials');
     expect(sessionStorage.getItem('auth_token')).toBeNull();
     expect(sessionStorage.getItem('feed_broker_id')).toBeNull();
     expect(localStorage.getItem('broker_id')).toBe('achiever-financials');
@@ -67,9 +68,9 @@ describe('configured web broker session ownership', () => {
     expect(localStorage.getItem('rtx_last_login')).toBe('200001');
   });
 
-  it('retains GTA login credentials when deployment and authenticated broker ids use known aliases', () => {
+  it('retains credentials for the canonical backend broker id', () => {
     const gtaUrl = 'https://services.growtradingacademy.com';
-    configure('grow-trading-academy', gtaUrl);
+    configure('gta_broker', gtaUrl);
     storeSession('gta_broker', gtaUrl);
     expect(ensureConfiguredWebSession()).toBe(true);
     expect(ensureConfiguredWebSession()).toBe(true);
@@ -77,18 +78,18 @@ describe('configured web broker session ownership', () => {
     expect(localStorage.getItem('broker_id')).toBe('gta_broker');
   });
 
-  it('accepts a GTA login response after the deployment scope was initialized anonymously', () => {
+  it('accepts a matching backend broker id after anonymous initialization', () => {
     const gtaUrl = 'https://services.growtradingacademy.com';
-    configure('grow-trading-academy', gtaUrl);
+    configure('gta_broker', gtaUrl);
     expect(ensureConfiguredWebSession()).toBe(true);
     storeSession('gta_broker', gtaUrl);
     expect(ensureConfiguredWebSession()).toBe(true);
     expect(localStorage.getItem('auth_token')).toBe('old-access');
   });
 
-  it('still rejects GTA aliases when the stored API host belongs to another broker', () => {
+  it('rejects a different backend identity even on a matching API host', () => {
     configure('grow-trading-academy', 'https://services.growtradingacademy.com');
-    storeSession('gta_broker', TEST_URL);
+    storeSession('gta_broker', 'https://services.growtradingacademy.com');
     expect(ensureConfiguredWebSession()).toBe(false);
     expect(localStorage.getItem('auth_token')).toBeNull();
   });
@@ -154,11 +155,11 @@ describe('configured web broker session ownership', () => {
     expect(localStorage.getItem('auth_token')).toBeNull();
   });
 
-  it('does not bind or clear sessions without an explicit configured broker', () => {
-    delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+  it('rejects and clears sessions without an explicit configured broker', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { CONFIG_SOURCE: 'deployment' };
     storeSession();
-    expect(ensureConfiguredWebSession()).toBe(true);
-    expect(localStorage.getItem('auth_token')).toBe('old-access');
+    expect(ensureConfiguredWebSession()).toBe(false);
+    expect(localStorage.getItem('auth_token')).toBeNull();
     expect(localStorage.getItem(CONFIGURED_WEB_SESSION_KEY)).toBeNull();
   });
 

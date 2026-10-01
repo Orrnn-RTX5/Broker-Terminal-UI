@@ -1,0 +1,213 @@
+.rtx-market-watch-trading {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  container-type: inline-size;
+  background: var(--bg-secondary, #1f1f1f);
+  color: var(--text-primary, #e5e5e5);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rtx-market-watch-trading__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+}
+
+@container (max-width: 329px) {
+  .rtx-market-watch-trading__grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.rtx-market-watch-trading__card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-color, #444444);
+  background: var(--bg-secondary, #1f1f1f);
+}
+
+.rtx-market-watch-trading__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  min-height: 21px;
+  padding: 0 3px;
+}
+
+.rtx-market-watch-trading__symbol {
+  --rtx-type-size: 12px;
+  --rtx-type-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.rtx-market-watch-trading__time {
+  --rtx-type-size: 10px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-secondary, #b7b7b7);
+}
+
+.rtx-market-watch-trading__controls {
+  position: relative;
+  min-width: 0;
+}
+
+/* Only this presentation changes; the shared control keeps execution ownership. */
+html:root body .rtx-market-watch-trading__controls .rtx-oct {
+  position: relative !important;
+  inset: auto !important;
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+  z-index: auto;
+}
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct > [data-testid='one-click-trading-row'] {
+  position: relative;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-areas: 'sell buy' !important;
+  width: 100%;
+  gap: 1px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--border-color, #444444) !important;
+  box-shadow: none !important;
+}
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-trade-button {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 58px !important;
+  min-height: 58px !important;
+  max-height: 58px !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-trade-button[data-side='sell'] { grid-area: sell; }
+html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-trade-button[data-side='buy'] { grid-area: buy; }
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-side-label {
+  --rtx-type-size: 10px;
+  display: block;
+  order: -1;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 21px;
+  padding: 3px 4px !important;
+  font-size: 10px !important;
+  line-height: 15px !important;
+  white-space: nowrap;
+}
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct [data-side='sell'] .rtx-oct-side-label { text-align: left; }
+html:root body .rtx-market-watch-trading__controls .rtx-oct [data-side='buy'] .rtx-oct-side-label { text-align: right; }
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-price {
+  --rtx-type-size: clamp(13px, 4.2cqi, 19px);
+  --rtx-type-weight: 500;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 2px !important;
+  font-size: clamp(13px, 4.2cqi, 19px) !important;
+  font-weight: 500;
+  line-height: 24px !important;
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: none !important;
+}
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-volume-control {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  grid-area: auto !important;
+  z-index: 1;
+  width: 82px !important;
+  min-width: 82px !important;
+  max-width: 82px !important;
+  height: 21px !important;
+  min-height: 21px !important;
+  max-height: 21px !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--border-color, #444444) !important;
+  background: var(--bg-tertiary, #2a2a2a) !important;
+}
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-volume-control button {
+  width: 20px !important;
+  min-width: 20px !important;
+  height: 19px !important;
+  min-height: 19px !important;
+  max-height: 19px !important;
+  padding: 0 !important;
+  color: var(--text-secondary, #b7b7b7) !important;
+}
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-volume-control button svg {
+  width: 10px;
+  height: 10px;
+}
+
+html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-volume-control input {
+  --rtx-type-size: 10px;
+  --rtx-type-weight: 500;
+  width: 38px !important;
+  height: 19px !important;
+  min-height: 19px !important;
+  max-height: 19px !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  font-family: inherit !important;
+  color: var(--text-primary, #e5e5e5) !important;
+}
+
+/* The quote engine has no price yet: show availability, not a zero quote. */
+html:root body .rtx-market-watch-trading__card[data-has-quote='false'] .rtx-oct-price { display: none !important; }
+html:root body .rtx-market-watch-trading__card[data-has-quote='false'] .rtx-oct-trade-button::after {
+  content: '\2014';
+  display: block;
+  padding-top: 5px;
+  font-size: 19px;
+  line-height: 24px;
+}
+
+.rtx-market-watch-trading__stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
+  margin: 0;
+  border-top: 1px solid var(--border-color, #444444);
+  font-size: 10px;
+  text-align: center;
+}
+
+.rtx-market-watch-trading__stats > div {
+  min-width: 0;
+  padding: 3px 1px;
+}
+
+.rtx-market-watch-trading__stats > div + div { border-left: 1px solid var(--border-color, #444444); }
+.rtx-market-watch-trading__stats :is(dt, dd) { --rtx-type-size: 10px; }
+.rtx-market-watch-trading__stats dt { color: var(--text-secondary, #b7b7b7); line-height: 13px; }
+.rtx-market-watch-trading__stats dd { margin: 0; line-height: 14px; overflow-wrap: anywhere; }
+.rtx-market-watch-trading__empty { padding: 12px 8px; color: var(--text-secondary, #b7b7b7); text-align: center; }

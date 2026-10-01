@@ -8,7 +8,6 @@ import { translateUi } from './hooks/useUiTranslation';
 import { feedbackLabel, feedbackValue, feedbackSymbol, type UiMessage } from './utils/uiFeedback';
 import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { WelcomeTerminal } from './startup/WelcomeTerminalEntry';
-import { TradeAuthDialog } from './components/TradeAuthDialog';
 import { isElectronRuntime } from './config/backendTarget.js';
 import {
   completeTradingAuthentication,
@@ -87,7 +86,6 @@ import {
   isSameTradeOperationContext,
   type TradeOperationContext,
 } from './features/trading/session/tradeOperationContext';
-import { confirmBulkCloseForSession } from './features/trading/mutations/confirmBulkCloseForSession';
 import {
   getStoredAuthToken,
   getStoredTokenExpiryMs,
@@ -133,9 +131,7 @@ import {
 import { StatusBar } from './components/layout/StatusBar';
 import { UpdateBanner } from './components/layout/UpdateBanner';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
-import { BulkCloseConfirmDialog } from './components/ui/BulkCloseConfirmDialog';
 import { useConfirmStore } from './store/useConfirmStore';
-import { useBulkCloseConfirmStore } from './store/useBulkCloseConfirmStore';
 import { useChartSettingsStore } from './store/useChartSettingsStore';
 import {
   getActiveChartCommandTarget,
@@ -162,14 +158,12 @@ import { useNotifications } from './hooks/useNotifications';
 import { ToastContainer } from './components/notifications/Toast';
 import { ActionFeedbackToast, resolveActionFeedbackDurationMs, resolveActionFeedbackTone, type ActionFeedbackNotice, type ActionFeedbackType } from './components/notifications/ActionFeedbackToast';
 import { getPositionCloseOutcome, type PositionCloseReport } from './components/notifications/positionCloseReport';
+import { useCommittedCallback } from './hooks/useCommittedCallback';
+import { LazyLastSymbolPanel, LazyIndicatorNavigator, LazyAccountPanel,
+  LazyChartPropertiesDialog, LazyChartObjectsDialog, LazySaveWorkspaceDialog,
+  LazySymbolsDialog, useTerminalFeatureWarmup } from './startup/terminalFeatures';
 
-const LazyLastSymbolPanel = lazy(() => import('./components/LastSymbolPanel').then((module) => ({ default: module.LastSymbolPanel })));
-const LazyIndicatorNavigator = lazy(() => import('./components/IndicatorNavigator').then((module) => ({ default: module.IndicatorNavigator })));
-const LazyAccountPanel = lazy(() => import('./components/AccountPanel').then((module) => ({ default: module.AccountPanel })));
-const LazyChartPropertiesDialog = lazy(() => import('./components/dialogs/ChartPropertiesDialog').then((module) => ({ default: module.ChartPropertiesDialog })));
-const LazyChartObjectsDialog = lazy(() => import('./components/dialogs/ChartObjectsDialog').then((module) => ({ default: module.ChartObjectsDialog })));
-const LazySaveWorkspaceDialog = lazy(() => import('./components/dialogs/SaveWorkspaceDialog').then((module) => ({ default: module.SaveWorkspaceDialog })));
-const LazySymbolsDialog = lazy(() => import('./components/SymbolsDialog').then((module) => ({ default: module.SymbolsDialog })));
+const TradeAuthDialog = lazy(() => import('./components/TradeAuthDialog').then(module => ({ default: module.TradeAuthDialog })));
 
 const setChartVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
   const store = useChartSettingsStore.getState();
@@ -1022,7 +1016,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     );
     if (bulkCloseInFlightScopesRef.current.has(closeSessionScope)) return;
 
-    const previewCandidates = normalizePositions(useAppStore.getState().positions).filter((position) => {
+    const localCandidates = normalizePositions(useAppStore.getState().positions).filter((position) => {
       if (!(position.id > 0)) return false;
       if (symbol && position.symbol !== symbol) return false;
       if (type === 'ALL') return true;
@@ -1030,38 +1024,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       if (profit === null) return false;
       return type === 'WINNERS' ? profit > 0 : profit < 0;
     });
-    if (previewCandidates.length === 0) return;
-    const combinedProfit = previewCandidates.reduce(
-      (total, position) => total + (backendCloseProfit(position) ?? 0),
-      0,
-    );
-    const previewPositions = previewCandidates.map((position) => ({
-      id: position.id,
-      symbol: position.symbol,
-      side: position.side,
-      volume: position.volume,
-      openPrice: position.openPrice,
-      pnl: backendCloseProfit(position) ?? 0,
-    }));
-    const confirmed = await confirmBulkCloseForSession({
-      sessionScope: closeSessionScope,
-      getCurrentSessionScope: () => getCommittedBrokerAccountSessionScopeKey(
-        getCommittedBrokerAccountSessionScope(),
-      ),
-      subscribeToSessionChange: (listener) => onCommittedBrokerAccountSessionScopeChange(listener),
-      showConfirmation: () => useBulkCloseConfirmStore.getState().showBulkCloseConfirm({
-        type,
-        symbol,
-        positions: previewPositions,
-        combinedPnL: combinedProfit,
-      }),
-      cancelConfirmation: () => useBulkCloseConfirmStore.getState().closeBulkCloseConfirm(),
-    });
-    if (
-      !confirmed
-      || getLiveTradingLogin() !== accId
-      || getPositionCloseScope() !== closeMarkerScope
-    ) return;
+    if (localCandidates.length === 0) return;
 
     bulkCloseInFlightScopesRef.current.add(closeSessionScope);
 
@@ -1083,9 +1046,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         return type === 'WINNERS' ? profit > 0 : profit < 0;
       });
 
-      const localCandidates = selectMatchingCandidates(
-        normalizePositions(useAppStore.getState().positions),
-      );
       const closeResult = await closePositionsLocalFirst({
         sessionKey: closeSessionScope,
         getCurrentSessionKey: getCurrentCloseSessionKey,
@@ -1502,8 +1462,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     catalogSettled: hasLoadedChartSymbols,
     feedPreferenceSettled: activeMarketSymbolsSettled && hasAppliedLiveChartPreference,
   });
-
-
+  useTerminalFeatureWarmup(chartRuntimeReady);
+  // Stable actions let overlay opens skip the workspace render.
+  const workspaceClosePosition = useCommittedCallback(handleClosePosition);
+  const workspaceModifyPosition = useCommittedCallback(handleModifyPosition);
+  const workspaceCancelOrder = useCommittedCallback((id: string | number) => handleCancelOrder(String(id)));
+  const workspaceCloseBulk = useCommittedCallback(handleCloseBulk);
   useEffect(() => {
     return () => {
       terminateWorker();
@@ -1799,6 +1763,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         />
         <div
           className="rtx-app-shell flex flex-col h-screen w-full bg-[#131316] text-zinc-300 overflow-hidden font-sans"
+          role="main"
+          aria-label="Trading terminal"
           data-rtx-authenticated-shell={isAuthenticated ? 'true' : undefined}
           data-rtx-guest-shell={guestMode ? 'true' : undefined}
           {...chartSelectionDiagnosticAttributes}
@@ -1854,10 +1820,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                       selectedSymbol={selectedSymbol}
                       chartRuntimeEnabled={chartRuntimeReady}
                       onSymbolSelect={handleSymbolSelect}
-                      onClosePosition={handleClosePosition}
-                      onModifyPosition={handleModifyPosition}
-                      onCancelOrder={(id) => handleCancelOrder(String(id))}
-                      onCloseBulk={handleCloseBulk}
+                      onClosePosition={workspaceClosePosition}
+                      onModifyPosition={workspaceModifyPosition}
+                      onCancelOrder={workspaceCancelOrder}
+                      onCloseBulk={workspaceCloseBulk}
                     />
                   </ErrorBoundary>
                 </div>
@@ -1917,12 +1883,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             resolveAllowedSymbol={getAllowedSymbol}
           />
 
-          <TradeAuthDialog
+          {tradeAuthOpen && <Suspense fallback={null}><TradeAuthDialog
             isOpen={tradeAuthOpen}
             intent={pendingTradeIntent}
             onClose={handleTradeAuthClose}
             onAuthenticated={handleTradeAuthenticated}
-          />
+          /></Suspense>}
 
           {/* Save Workspace Dialog (Ctrl+S) */}
           {showSaveWorkspaceDialog && (
@@ -1992,7 +1958,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           {/* Last Symbol Trading Panel */}
           {lastSymbolPanelVisible && (
             <Suspense fallback={null}>
-              <LazyLastSymbolPanel />
+              <LazyLastSymbolPanel symbol={desktopToolbarSymbol} />
             </Suspense>
           )}
 
@@ -2004,9 +1970,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
           {/* Global Confirm Dialog */}
           <ConfirmDialog />
-
-          {/* Enterprise Bulk Close Confirm Dialog */}
-          <BulkCloseConfirmDialog />
 
           {/* Indicator Navigator (Insert > Indicators, toolbar button) */}
           {showIndicatorNavigator && (

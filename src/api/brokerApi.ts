@@ -7,6 +7,8 @@
 import { useAppStore } from '../store/useAppStore';
 import { normalizeBrokerServerUrl, normalizeServerUrl, toLocalDevProxyUrl } from '../config/api';
 import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
+import { getAccessToken, getRefreshToken } from '../services/brokerSession';
+import { assertBrokerRequestAllowed } from './brokerRequestGuard';
 
 export interface BrokerApiRequestOptions extends RequestInit {
   params?: Record<string, any>;
@@ -72,8 +74,8 @@ export class BrokerAPI {
     return JSON.stringify([
       this.getBaseUrl(),
       useAppStore.getState().accountId,
-      localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'),
-      localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token'),
+      getAccessToken(),
+      getRefreshToken(),
     ]);
   }
 
@@ -97,13 +99,8 @@ export class BrokerAPI {
       return toLocalDevProxyUrl(normalized);
     }
 
-    const fallback = localStorage.getItem('api_base_url')
-      || import.meta.env.VITE_RTX5_API_URL as string
-      || import.meta.env.VITE_API_V2_URL as string
-      || import.meta.env.VITE_API_URL as string
-      || import.meta.env.VITE_BACKEND_URL as string
-      || getBackendTarget()
-      || '';
+    const fallback = (isDesktopBackendTarget() ? localStorage.getItem('api_base_url') : '')
+      || getBackendTarget();
 
     return toLocalDevProxyUrl(normalizeServerUrl(fallback));
   }
@@ -134,8 +131,8 @@ export class BrokerAPI {
     if (typeof window === 'undefined') return null;
 
     const expiresAtStr = localStorage.getItem('token_expires_at') || sessionStorage.getItem('token_expires_at');
-    const refreshToken = localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
-    const accessToken = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+    const refreshToken = getRefreshToken();
+    const accessToken = getAccessToken();
 
     if (!expiresAtStr || !refreshToken || !accessToken) {
       return accessToken;
@@ -170,10 +167,12 @@ export class BrokerAPI {
     const refreshPromise: Promise<string> = (async () => {
       try {
         const url = `${this.getBaseUrl()}/api/v2/auth/refresh`;
+        assertBrokerRequestAllowed(url);
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh_token: refreshToken }),
+          redirect: 'error',
         });
 
         if (!response.ok) {
@@ -267,6 +266,7 @@ export class BrokerAPI {
     options: RequestInit,
     skipAuth = false
   ): Promise<Response> {
+    assertBrokerRequestAllowed(url);
     const headers = new Headers(options.headers || {});
     if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
       headers.set('Content-Type', 'application/json');
@@ -283,7 +283,12 @@ export class BrokerAPI {
     const mergedOptions: RequestInit = {
       ...options,
       headers,
+      redirect: 'error',
     };
+    if (!isDesktopBackendTarget() && headers.has('Authorization')
+      && headers.get('Authorization') !== `Bearer ${getAccessToken()}`) {
+      throw new BrokerApiError(401, 'SESSION_CHANGED', 'Credentials do not belong to the active deployment broker session.');
+    }
 
     return fetch(url, mergedOptions);
   }
@@ -312,7 +317,7 @@ export class BrokerAPI {
       // Reactive 401 Handling & Retry Exactly Once
       if (response.status === 401 && !skipAuth) {
         console.warn(`[BrokerAPI] 401 Unauthorized received on ${endpoint}. Attempting reactive refresh...`);
-        const refreshToken = localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
+        const refreshToken = getRefreshToken();
         if (refreshToken) {
           try {
             await this.coalesceRefresh(refreshToken);

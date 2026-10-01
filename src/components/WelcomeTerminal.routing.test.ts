@@ -48,7 +48,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
 
   it('prefers runtime API target matching over custom-domain identity matching', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
-      BACKEND_TARGET: 'web',
+      BACKEND_TARGET: 'web', BROKER_ID: 'achiever-financials',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
       API_HOST: 'https://service.achieverfinancials.com',
       API_HOST_EXT: 'https://service.achieverfinancials.com',
       WS_HOST: 'wss://service.achieverfinancials.com',
@@ -75,6 +76,7 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('pins TEST from runtime config when discovery only has unrelated local demo brokers', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
       API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
       API_HOST_EXT: 'https://fxtrustbrokerbackend.orrnn.com',
       WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
@@ -106,7 +108,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('still uses the discovery row when TEST is present in the super-admin list', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com', WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
       BROKER_ID: 'TEST',
     };
 
@@ -131,7 +134,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('gives the configured TEST broker its canonical broker-directory logo', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com', WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
       DISCOVERY_BASE_URL: 'https://fxtrustsuperbackned.orrnn.com',
       BROKER_ID: 'TEST',
     };
@@ -144,6 +148,7 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('selects the TEST row whose server URL matches the local FXTrust runtime', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
       API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
       WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
       BROKER_ID: 'TEST',
@@ -168,7 +173,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('does not let localhost discovery replace the explicitly configured TEST broker', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com', WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
       BROKER_ID: 'TEST',
     };
 
@@ -181,14 +187,15 @@ describe('WelcomeTerminal broker runtime selection', () => {
       }),
     ];
 
-    expect(findBrokerForWebRuntime(brokers, '127.0.0.1')?.broker_id).toBe('localdemo');
+    expect(findBrokerForWebRuntime(brokers, '127.0.0.1')).toBeUndefined();
     expect(pickDiscoveryBroker(brokers)?.broker_id).toBe('TEST');
   });
 
   it('ignores a stale saved broker that was never authenticated successfully', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com', WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
       BROKER_ID: 'TEST',
     };
 
@@ -203,7 +210,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('keeps the configured web broker even after another broker logged in successfully', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com', WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
       BROKER_ID: 'TEST',
     };
 
@@ -222,7 +230,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('switches a same-origin TEST login to the configured Achiever broker', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://service.achieverfinancials.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://service.achieverfinancials.com', WS_HOST: 'wss://service.achieverfinancials.com',
       BROKER_ID: 'achiever-financials',
     };
     const selected = pickDiscoveryBroker([
@@ -235,7 +244,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('keeps the configured web broker when the saved broker is the only directory row', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://service.achieverfinancials.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://service.achieverfinancials.com', WS_HOST: 'wss://service.achieverfinancials.com',
       BROKER_ID: 'achiever-financials',
     };
     const selected = pickDiscoveryBroker([
@@ -248,7 +258,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('retains the authenticated broker selection in desktop mode', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://service.achieverfinancials.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://service.achieverfinancials.com', WS_HOST: 'wss://service.achieverfinancials.com',
       BROKER_ID: 'achiever-financials',
     };
     const selected = pickDiscoveryBroker([
@@ -256,6 +267,81 @@ describe('WelcomeTerminal broker runtime selection', () => {
       broker({ broker_id: 'achiever-financials', broker_name: 'Achiever Financials' }),
     ], { isDesktopBrokerSelection: true, savedBrokerId: 'TEST', lastAuthenticatedBrokerId: 'TEST' });
     expect(selected?.broker_id).toBe('TEST');
+  });
+
+  it('restores the exact case-sensitive backend ID among brokers sharing a gateway and name', () => {
+    const brokers = [
+      broker({ broker_id: 'Registered', broker_name: 'Shared Trading', server_url: 'https://shared.example' }),
+      broker({ broker_id: 'registered', broker_name: 'Shared Trading', server_url: 'https://shared.example' }),
+    ];
+    expect(pickDiscoveryBroker(brokers, {
+      isDesktopBrokerSelection: true, savedBrokerId: 'registered', lastAuthenticatedBrokerId: 'registered',
+    })?.broker_id).toBe('registered');
+  });
+
+  it('does not restore another registered ID through case-insensitive saved identity matching', () => {
+    const brokers = [
+      broker({ broker_id: 'default-broker' }),
+      broker({ broker_id: 'registered', server_url: 'https://registered.example' }),
+    ];
+    expect(pickDiscoveryBroker(brokers, {
+      isDesktopBrokerSelection: true, savedBrokerId: 'REGISTERED', lastAuthenticatedBrokerId: 'REGISTERED',
+    })?.broker_id).toBe('default-broker');
+  });
+
+  it('requires the last authenticated identity to resolve to the same exact registered broker', () => {
+    const brokers = [
+      broker({ broker_id: 'default-broker' }),
+      broker({ broker_id: 'Registered', server_url: 'https://registered.example' }),
+      broker({ broker_id: 'registered', server_url: 'https://registered.example' }),
+    ];
+    expect(pickDiscoveryBroker(brokers, {
+      isDesktopBrokerSelection: true, savedBrokerId: 'registered', lastAuthenticatedBrokerId: 'Registered',
+    })?.broker_id).toBe('default-broker');
+  });
+
+  it.each(['https://shared.example', 'Shared-Live'])('does not restore a saved login from ambiguous legacy lookup %s', legacyLookup => {
+    const brokers = [
+      broker({ broker_id: 'default-broker' }),
+      broker({ broker_id: 'registered-one', server: 'Shared-Live', server_url: 'https://shared.example' }),
+      broker({ broker_id: 'registered-two', server: 'Shared-Live', server_url: 'https://shared.example' }),
+    ];
+    expect(pickDiscoveryBroker(brokers, {
+      isDesktopBrokerSelection: true, savedBrokerId: legacyLookup, lastAuthenticatedBrokerId: legacyLookup,
+    })?.broker_id).toBe('default-broker');
+  });
+
+  it.each(['https://UNIQUE.example/', 'unique-live'])('preserves a unique legacy saved server lookup %s', legacyLookup => {
+    const brokers = [
+      broker({ broker_id: 'default-broker' }),
+      broker({ broker_id: 'registered-new', server: 'Unique-Live', server_url: 'https://unique.example' }),
+    ];
+    expect(pickDiscoveryBroker(brokers, {
+      isDesktopBrokerSelection: true, savedBrokerId: legacyLookup, lastAuthenticatedBrokerId: legacyLookup,
+    })?.broker_id).toBe('registered-new');
+  });
+
+  it('prefers an exact registered ID over another broker using that value as a legacy server handle', () => {
+    const brokers = [
+      broker({ broker_id: 'other-registered', server: 'registered-new' }),
+      broker({ broker_id: 'registered-new', server_url: 'https://new.example' }),
+    ];
+    expect(pickDiscoveryBroker(brokers, {
+      isDesktopBrokerSelection: true, savedBrokerId: 'registered-new', lastAuthenticatedBrokerId: 'registered-new',
+    })?.broker_id).toBe('registered-new');
+  });
+
+  it('does not override a pinned browser broker with a case-distinct directory ID or a shared endpoint', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web', BROKER_ID: 'registered', DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://shared.example', WS_HOST: 'wss://shared.example',
+    };
+    const brokers = [
+      broker({ broker_id: 'Registered', server_url: 'https://shared.example' }),
+      broker({ broker_id: 'registered', server_url: 'https://shared.example' }),
+    ];
+    expect(pickDiscoveryBroker(brokers, { savedBrokerId: 'Registered', lastAuthenticatedBrokerId: 'Registered' })?.broker_id)
+      .toBe('registered');
   });
 
   it('prefers a public broker over loopback development rows on a fresh desktop launch', () => {
@@ -283,7 +369,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('skips suspended brokers when falling back to directory order', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://service.achieverfinancials.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://service.achieverfinancials.com', WS_HOST: 'wss://service.achieverfinancials.com',
       BROKER_ID: 'missing-broker',
     };
     const selected = pickDiscoveryBroker([
@@ -296,7 +383,8 @@ describe('WelcomeTerminal broker runtime selection', () => {
   it('uses a discovered desktop broker instead of an unavailable configured fallback', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
-      API_HOST: 'https://services.growtradingacademy.com',
+      DEFAULT_MT5_SERVER: 'Configured-Live',
+      API_HOST: 'https://services.growtradingacademy.com', WS_HOST: 'wss://services.growtradingacademy.com',
       BROKER_ID: 'gta_broker',
     };
     const selected = pickDiscoveryBroker([

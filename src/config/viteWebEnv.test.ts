@@ -20,6 +20,15 @@ afterEach(() => {
 const selected = { VITE_BROKER_ID: 'achiever-financials', VITE_BACKEND_URL: 'https://service.achieverfinancials.com' };
 
 describe('one active broker block', () => {
+  it.each(['API_HOST', 'API_URL', 'BACKEND_URL', 'RTX5_API_URL', 'API_V2_URL', 'FIX_API_URL'])('accepts unprefixed %s consistently with runtime configuration', key => {
+    const config = { BROKER_ID: 'never-seen-before', [key]: 'https://unrelated.example' };
+    expect(() => validateWebBrokerEnvironment(config, fixture('BROKER_ID=never-seen-before'))).not.toThrow();
+  });
+  it('does not revive a VITE_ broker ID or origin when the primary setting is explicitly empty', () => {
+    const directory = fixture('BROKER_ID=');
+    expect(() => validateWebBrokerEnvironment({ ...selected, BROKER_ID: '' }, directory)).toThrow('No complete web broker');
+    expect(() => validateWebBrokerEnvironment({ ...selected, API_HOST: '' }, directory)).toThrow('No complete web broker');
+  });
   it('accepts an uncommented broker beside commented alternatives', () => {
     expect(() => validateWebBrokerEnvironment(selected, fixture('# VITE_BROKER_ID=TEST\nVITE_BROKER_ID=achiever-financials\n'))).not.toThrow();
   });

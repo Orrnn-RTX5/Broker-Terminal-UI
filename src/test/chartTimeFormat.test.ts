@@ -5,6 +5,7 @@ import {
   getTradingChartDefaultVisibleBars,
   getTradingChartInitialLogicalRange,
   getTradingChartShiftRightOffset,
+  formatAreaPointHoverTime,
   formatTradingChartCrosshairLabel,
   formatTradingChartTickLabel,
   getTradingChartTickMarkCharacterLength,
@@ -12,6 +13,16 @@ import {
 } from '../utils/chartTimeFormat';
 
 describe('chartTimeFormat', () => {
+  it('formats the area-chart point card like a broker-time stamp', () => {
+    const timestamp = Math.floor(Date.UTC(2026, 8, 29, 6, 8, 0, 0) / 1000) as UTCTimestamp;
+    expect(formatAreaPointHoverTime(timestamp, 'M1', 5.5 * 60 * 60)).toEqual({
+      date: "29 Sep '26",
+      time: '11:38 UTC+5:30',
+    });
+    expect(formatAreaPointHoverTime(timestamp, 'D1', 0)?.time).toBe('');
+    expect(formatAreaPointHoverTime(timestamp, 'M1', -4 * 60 * 60)?.time).toBe('02:08 UTC-4');
+  });
+
   it.each(['fr', 'hi', 'ar'])('localizes month labels in %s without changing broker time', locale => {
     const date = new Date(Date.UTC(2026, 3, 1, 10, 25));
     const timestamp = (date.getTime() / 1000) as UTCTimestamp;

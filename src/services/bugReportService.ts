@@ -1,5 +1,6 @@
 import { API_V2_BASE_URL } from '../config/api';
 import { getAuthToken, getDynamicUrl } from '../api/client';
+import { assertBrokerRequestAllowed } from '../api/brokerRequestGuard';
 
 // Bug reporting from the web terminal.
 //
@@ -61,12 +62,17 @@ export interface BugReportReceipt {
   failed_attachments?: number[];
 }
 
-const endpointUrl = (path: string): string => getDynamicUrl(`${API_V2_BASE_URL}${path}`);
+const endpointUrl = (path: string): string => {
+  const url = getDynamicUrl(`${API_V2_BASE_URL}${path}`);
+  assertBrokerRequestAllowed(url);
+  return url;
+};
 
 export const fetchBugReportOptions = async (): Promise<{ enabled: boolean }> => {
   try {
     const response = await fetch(endpointUrl('/bug-reports/options'), {
       headers: { Accept: 'application/json', Authorization: `Bearer ${getAuthToken()}` },
+      redirect: 'error',
     });
     if (!response.ok) return { enabled: true };
     const data = await response.json();
@@ -212,6 +218,7 @@ export const submitBugReport = async ({
     method: 'POST',
     headers: { Accept: 'application/json', Authorization: `Bearer ${getAuthToken()}` },
     body,
+    redirect: 'error',
   });
 
   const text = await response.text();
@@ -230,6 +237,9 @@ export const submitBugReport = async ({
       throw new Error('The support service could not be reached. Please try again in a moment.');
     }
     throw new Error((data.message as string) || (data.error as string) || 'The report could not be sent');
+  }
+  if (typeof data?.report_id !== 'string' || !data.report_id.trim()) {
+    throw new Error('The server did not confirm the report. Please try again.');
   }
   return data as unknown as BugReportReceipt;
 };

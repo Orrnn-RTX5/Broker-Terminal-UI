@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import { advanceDailyChange, type DailyChangeSnapshot } from '../utils/dailyChangeSession';
+import type { DailyChangeInput } from '../utils/dailyChange';
+import { useWebSocketStore } from './useWebSocketStore';
 
 import {
   getCommittedBrokerAccountSessionScope,
@@ -22,6 +25,9 @@ export interface MarketWatchDisplayMetadata {
   dailyChangeSourceTimestamp?: number;
   timestamp: number;
   sourceTimestamp?: number;
+  /** Shared, session-owned state for both daily measures. Never executable. */
+  daily?: DailyChangeSnapshot;
+  dailyChangeInput?: DailyChangeInput;
 }
 
 export interface ResolvedMarketWatchDisplayMetadata {
@@ -30,7 +36,15 @@ export interface ResolvedMarketWatchDisplayMetadata {
   dailyChange?: number;
   dailyChangeSourceTimestamp?: number;
   timestamp?: number;
+  dailyChangePrice?: number;
+  daily?: DailyChangeSnapshot;
 }
+
+/** A historical pair must never fill one half of a newer quote's measures. */
+export const mayUseClosedDailyChange = (display: ResolvedMarketWatchDisplayMetadata): boolean => (
+  display.dailyChange === undefined && display.dailyChangePrice === undefined
+  && (!display.daily?.issue || ['reference-unavailable', 'session-unavailable', 'price-mode-unavailable', 'price-unavailable'].includes(display.daily.issue))
+);
 
 interface MarketWatchDisplayMetadataState {
   scopeKey: string;
@@ -66,10 +80,27 @@ export const useMarketWatchDisplayMetadataStore = create<MarketWatchDisplayMetad
   bySymbol: {},
   revision: 0,
 }));
+const pendingMetadata = new Map<string, MarketWatchDisplayMetadata>();
+
+export const flushMarketWatchDisplayMetadata = (): void => {
+  if (pendingMetadata.size === 0) return;
+  const batch = Object.fromEntries(pendingMetadata);
+  pendingMetadata.clear();
+  useMarketWatchDisplayMetadataStore.setState((state) => ({
+    bySymbol: { ...state.bySymbol, ...batch }, revision: state.revision + 1,
+  }));
+};
+const writeMetadata = (symbol: string, value: MarketWatchDisplayMetadata, deferred: boolean): void => {
+  if (deferred) { pendingMetadata.set(symbol, value); return; }
+  useMarketWatchDisplayMetadataStore.setState((state) => ({
+    bySymbol: { ...state.bySymbol, [symbol]: value }, revision: state.revision + 1,
+  }));
+};
 
 const ensureCurrentScope = (): string => {
   const scopeKey = currentScopeKey();
   if (useMarketWatchDisplayMetadataStore.getState().scopeKey !== scopeKey) {
+    pendingMetadata.clear();
     useMarketWatchDisplayMetadataStore.setState((state) => ({
       scopeKey,
       bySymbol: {},
@@ -90,6 +121,7 @@ export const publishMarketWatchDisplayMetadata = (
     MarketWatchDisplayMetadata,
     'symbol' | 'lastSourceTimestamp' | 'dailyChangeSourceTimestamp'
   >,
+  deferred = false,
 ): boolean => {
   ensureCurrentScope();
   if (!currentScopeKey()) return false;
@@ -99,7 +131,7 @@ export const publishMarketWatchDisplayMetadata = (
   const timestamp = finiteNumber(metadata.timestamp);
   const sourceTimestamp = finiteNumber(metadata.sourceTimestamp);
   if (!normalizedSymbol || timestamp === undefined || timestamp <= 0) return false;
-  if (!(last !== undefined && last > 0) && dailyChange === undefined) return false;
+  if (!(last !== undefined && last > 0) && dailyChange === undefined && !metadata.dailyChangeInput) return false;
 
   const incoming: MarketWatchDisplayMetadata = {
     symbol: normalizedSymbol,
@@ -118,12 +150,13 @@ export const publishMarketWatchDisplayMetadata = (
     : undefined;
 
   const state = useMarketWatchDisplayMetadataStore.getState();
-  const existing = state.bySymbol[normalizedSymbol];
+  const existing = pendingMetadata.get(normalizedSymbol) ?? state.bySymbol[normalizedSymbol];
+  const daily = metadata.dailyChangeInput
+    ? advanceDailyChange(existing?.daily, metadata.dailyChangeInput, incomingTime)
+    : existing?.daily;
+  if (daily) incoming.daily = daily;
   if (!existing) {
-    useMarketWatchDisplayMetadataStore.setState((current) => ({
-      bySymbol: { ...current.bySymbol, [normalizedSymbol]: incoming },
-      revision: current.revision + 1,
-    }));
+    writeMetadata(normalizedSymbol, incoming, deferred);
     return true;
   }
 
@@ -164,13 +197,11 @@ export const publishMarketWatchDisplayMetadata = (
     dailyChangeSourceTimestamp: nextFieldTimes.dailyChange,
     timestamp: carrier.timestamp,
     sourceTimestamp: carrier.sourceTimestamp,
+    ...(daily ? { daily } : {}),
   };
   if (areCanonicalUpstreamTicksEqual(existing, merged)) return false;
 
-  useMarketWatchDisplayMetadataStore.setState((current) => ({
-    bySymbol: { ...current.bySymbol, [normalizedSymbol]: merged },
-    revision: current.revision + 1,
-  }));
+  writeMetadata(normalizedSymbol, merged, deferred);
   return true;
 };
 
@@ -182,7 +213,7 @@ export const getMarketWatchDisplayMetadata = (
   if (!scopeKey || state.scopeKey !== scopeKey) return undefined;
   const normalizedSymbol = normalizeSymbol(symbol);
   return normalizedSymbol
-    ? state.bySymbol[normalizedSymbol]
+    ? pendingMetadata.get(normalizedSymbol) ?? state.bySymbol[normalizedSymbol]
     : undefined;
 };
 
@@ -198,8 +229,8 @@ export const useMarketWatchDisplayMetadata = (
   });
 };
 
-export const useMarketWatchDisplayMetadataRevision = (): number => (
-  useMarketWatchDisplayMetadataStore((state) => state.revision)
+export const useMarketWatchDisplayMetadataRevision = (enabled = true): number => (
+  useMarketWatchDisplayMetadataStore((state) => enabled ? state.revision : 0)
 );
 
 interface TimedDisplayField {
@@ -246,6 +277,7 @@ const selectDisplayField = (
 /** Merge display-only fields by per-field event authority, never quote sides. */
 export const resolveMarketWatchDisplayMetadata = (
   tick: {
+    dailyChangeInput?: DailyChangeInput;
     last?: number;
     lastSourceTimestamp?: number;
     dailyChange?: number;
@@ -309,13 +341,20 @@ export const resolveMarketWatchDisplayMetadata = (
   return {
     last: resolvedLast.value,
     lastSourceTimestamp: resolvedLast.authority,
-    dailyChange: resolvedDailyChange.value,
+    dailyChange: metadata?.daily
+      ? (!metadata.daily.reference && !tick?.dailyChangeInput && tickDailyChange !== undefined && tickDailyAuthority !== null
+        && tickDailyAuthority >= (metadata.daily.valuesAsOf ?? metadata.daily.asOf)
+        ? tickDailyChange : metadata.daily.percent)
+      : resolvedDailyChange.value,
+    dailyChangePrice: metadata?.daily?.change,
+    daily: metadata?.daily,
     dailyChangeSourceTimestamp: resolvedDailyChange.authority,
     timestamp: selectedAuthorities.length > 0 ? Math.max(...selectedAuthorities) : undefined,
   };
 };
 
 export const clearMarketWatchDisplayMetadata = (): void => {
+  pendingMetadata.clear();
   useMarketWatchDisplayMetadataStore.setState((state) => ({
     scopeKey: currentScopeKey(),
     bySymbol: {},
@@ -325,7 +364,28 @@ export const clearMarketWatchDisplayMetadata = (): void => {
 
 export const resetMarketWatchDisplayMetadataForTests = clearMarketWatchDisplayMetadata;
 
+// Connection changes retain the broker quote/reference and original value
+// timestamp. A new quote or reconnect snapshot clears transient stale status.
+useWebSocketStore.subscribe((connection, previous) => {
+  if (connection.fixConnectionState === previous.fixConnectionState && connection.isStale === previous.isStale) return;
+  if (connection.fixConnectionState === previous.fixConnectionState && !connection.isStale) return;
+  if (previous.fixConnectionState !== 'connected' && connection.fixConnectionState !== 'connected' && !connection.isStale) return;
+  flushMarketWatchDisplayMetadata();
+  const status = connection.fixConnectionState === 'connected' ? 'stale' : 'disconnected';
+  useMarketWatchDisplayMetadataStore.setState(state => {
+    const bySymbol = { ...state.bySymbol };
+    let changed = false;
+    Object.entries(bySymbol).forEach(([symbol, metadata]) => {
+      if (!metadata.daily || metadata.daily.status === 'closed' || metadata.daily.status === status) return;
+      bySymbol[symbol] = { ...metadata, daily: { ...metadata.daily, status } };
+      changed = true;
+    });
+    return changed ? { bySymbol, revision: state.revision + 1 } : state;
+  });
+});
+
 onCommittedBrokerAccountSessionScopeChange((scope) => {
+  pendingMetadata.clear();
   const identified = scope.authenticated
     ? Boolean(scope.accountId)
     : Boolean(scope.brokerId || scope.serverUrl);

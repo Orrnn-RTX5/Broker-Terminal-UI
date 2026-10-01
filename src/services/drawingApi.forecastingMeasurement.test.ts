@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { drawingApi, type ClientDrawing } from './drawingApi';
+vi.mock('../api/brokerRequestGuard', () => ({ assertBrokerRequestAllowed: () => undefined }));
 
 describe('Drawing API forecasting payloads', () => {
   beforeEach(() => {

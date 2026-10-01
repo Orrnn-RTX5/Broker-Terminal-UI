@@ -1,6 +1,7 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useTerminalStartupReady } from '../../startup/TerminalStartupBoundary';
 import React, { lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useWatchlistStore } from '../../store/useWatchlistStore';
@@ -14,6 +15,8 @@ import { MarketWatchSymbolExplorer } from './MarketWatchSymbolExplorer';
 import { MarketWatchGrid } from './MarketWatchGrid';
 import { MarketWatchSymbolDetails } from './MarketWatchSymbolDetails';
 import { MarketWatchViewTabs } from './MarketWatchViewTabs';
+import { MarketWatchServerClock } from '../layout/MarketWatchServerClock';
+import './market-watch-desktop.css';
 import type { ActiveMarketSymbolsSnapshot } from './marketWatchPanelTypes';
 import {
   closeMarketWatchDockPanel,
@@ -43,6 +46,7 @@ import {
 import { MARKET_WATCH_PROFILE_RESTORED_EVENT } from '../../services/localWorkspaceProfiles';
 import {
   loadMarketWatchColumns,
+  MARKET_WATCH_COLUMN_IDS,
   loadMarketWatchOptions,
   loadMarketWatchSavedSets,
   normalizeMarketWatchColumns,
@@ -71,6 +75,8 @@ import {
 
 const SymbolSpecificationDialog = lazy(() => import('../dialogs/SymbolSpecificationDialog')
   .then(module => ({ default: module.SymbolSpecificationDialog })));
+const MarketWatchTradingView = lazy(() => import('./MarketWatchTradingView')
+  .then(module => ({ default: module.MarketWatchTradingView })));
 
 export { MARKET_WATCH_EXPORT_HYDRATION_TIMEOUT_MS } from './marketWatchExportHydration';
 export type { ActiveMarketSymbolsSnapshot } from './marketWatchPanelTypes';
@@ -255,7 +261,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     useEffect(() => saveMarketWatchOptions(marketWatchOptions), [marketWatchOptions]);
     useEffect(() => saveMarketWatchColumns(columns), [columns]);
 
-    const displayedColumns = columns;
+    const displayedColumns = useMemo(() => MARKET_WATCH_COLUMN_IDS.filter(column => columns.includes(column)), [columns]);
 
     const {
       actionableSymbolSet,
@@ -764,46 +770,62 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
             event.stopPropagation();
             handleHideSymbol(selectedSymbol);
           }}
-          className={`rtx-market-watch ${className ?? ''}`}
+          className={`rtx-market-watch rtx-market-watch--desktop ${className ?? ''}`}
           style={{
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
             background: 'var(--bg-secondary)',
             color: '#e2e2e8',
-            fontFamily: 'var(--font-sans)',
-            fontSize: 14,
+            fontFamily: 'Segoe UI, Tahoma, Arial, sans-serif',
+            fontSize: 12,
             userSelect: 'none',
             overflow: 'hidden',
           }}
         >
           {/* ── Search / Add Symbol ──────────────────────────────── */}
-          <MarketWatchSymbolExplorer
-            filteredSymbols={filteredSymbols}
-            highlightIndex={highlightIndex}
-            inputRef={inputRef}
-            isSymbolListLoading={isSymbolListLoading}
-            marketWatchSymbolSet={marketWatchSymbolSet}
-            onClose={handleSearchBarClose}
-            onSearchChange={handleSearchChange}
-            onSearchKeyDown={handleSearchKeyDown}
-            onSelectSymbol={handleSelectSymbol}
-            search={search}
-            searchListboxId={searchListboxId}
-            searchUniverse={searchUniverse}
-            selectedSymbolGroup={selectedSymbolGroup}
-            setHighlightIndex={setHighlightIndex}
-            setSelectedSymbolGroupKey={setSelectedSymbolGroupKey}
-            setShowSymbolsPanel={setShowSymbolsPanel}
-            showSymbolsPanel={showSymbolsPanel}
-            showingSymbolGroups={showingSymbolGroups}
-            symbolDescriptionByName={symbolDescriptionByName}
-            symbolGroups={symbolGroups}
-            translate={tr}
-          />
+          <div className="rtx-market-watch__header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, height: 20, padding: '0 5px', borderBottom: '1px solid var(--border-primary)' }}>
+            <MarketWatchServerClock variant="header" />
+            <button
+              type="button"
+              title={tr('Close')}
+              aria-label={tr('Close Market Watch')}
+              onClick={closeMarketWatchDockPanel}
+              className="dock-panel__action dock-panel__action--close flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-zinc-400 transition-colors hover:bg-red-500/80 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-current"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </div>
 
-          {!showSymbolsPanel && marketWatchView === 'symbols' && (
+          {(showSymbolsPanel || marketWatchView === 'symbols') && (
             <MarketWatchGrid
+              showRows={!showSymbolsPanel}
+              footer={
+                <MarketWatchSymbolExplorer
+                  filteredSymbols={filteredSymbols}
+                  highlightIndex={highlightIndex}
+                  inputRef={inputRef}
+                  isSymbolListLoading={isSymbolListLoading}
+                  marketWatchSymbolSet={marketWatchSymbolSet}
+                  symbolCount={rows.length}
+                  onClose={handleSearchBarClose}
+                  onSearchChange={handleSearchChange}
+                  onSearchKeyDown={handleSearchKeyDown}
+                  onSelectSymbol={handleSelectSymbol}
+                  search={search}
+                  searchListboxId={searchListboxId}
+                  searchUniverse={searchUniverse}
+                  selectedSymbolGroup={selectedSymbolGroup}
+                  setHighlightIndex={setHighlightIndex}
+                  setSelectedSymbolGroupKey={setSelectedSymbolGroupKey}
+                  setShowSymbolsPanel={setShowSymbolsPanel}
+                  showSymbolsPanel={showSymbolsPanel}
+                  showingSymbolGroups={showingSymbolGroups}
+                  symbolDescriptionByName={symbolDescriptionByName}
+                  symbolGroups={symbolGroups}
+                  translate={tr}
+                />
+              }
               actionableSymbolSet={actionableSymbolSet}
               chartOpenableSymbolSet={chartOpenableSymbolSet}
               closedDailyChanges={closedDailyChanges}
@@ -860,6 +882,18 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
             />
           )}
 
+          {!showSymbolsPanel && marketWatchView === 'trading' && (
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <RetainedLazyFeature active>
+                <MarketWatchTradingView
+                  symbols={rows}
+                  tradeSymbols={Array.from(actionableSymbolSet)}
+                  instrumentCatalog={[...allSymbols, ...marketInstruments, ...authenticatedMarketInstruments]}
+                />
+              </RetainedLazyFeature>
+            </div>
+          )}
+
           {!showSymbolsPanel && (
             <>
               {marketWatchErrors.length > 0 && (
@@ -882,17 +916,16 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               )}
             </>
           )}
-          {!showSymbolsPanel && (
             <MarketWatchViewTabs
               activeView={marketWatchView}
               onSelectView={(view) => {
+                closeSymbolExplorer();
                 if (view === 'ticks') setTickChartSymbol(normalizeSymbol(selectedSymbol));
                 if (view === 'details') setDetailsSelection(null);
                 setMarketWatchView(view);
               }}
               translate={tr}
             />
-          )}
         </div>
         <MarketWatchSaveSetDialog
           isOpen={isSaveSetOpen}

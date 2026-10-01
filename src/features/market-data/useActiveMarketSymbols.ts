@@ -338,5 +338,6 @@ export function useActiveMarketSymbols() {
     };
   }, [reload, storageScope]);
 
-  return { symbols, loading, settled, current, error, reload };
+  return useMemo(() => ({ symbols, loading, settled, current, error, reload }),
+    [symbols, loading, settled, current, error, reload]);
 }

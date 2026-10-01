@@ -36,9 +36,9 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
   --color-primary: #7f56d9;
   --color-primary-dim: #7f56d930;
   --color-primary-dimmer: #7f56d918;
-  --color-profit: #12b76a;
-  --color-profit-dim: #12b76a24;
-  --color-profit-dimmer: #12b76a14;
+  --color-profit: #1d4ed8;
+  --color-profit-dim: #1d4ed824;
+  --color-profit-dimmer: #1d4ed814;
   --color-loss: #f04438;
   --color-loss-dim: #f0443824;
   --color-loss-dimmer: #f0443814;
@@ -561,7 +561,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr:hover t
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :where(.price-up, .pl-pos, .text-profit) {
-  color: #027a48 !important;
+  color: var(--color-profit) !important;
   text-shadow: none !important;
 }
 
@@ -571,7 +571,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(.price-down, .pl-neg, .tex
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :where(.bg-profit-dim) {
-  background-color: #ecfdf3 !important;
+  background-color: var(--color-profit-dim) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :where(.bg-loss-dim) {
@@ -1953,7 +1953,7 @@ html.rtx-desktop-shell-active.rtx-advanced-view .rtx-trade-tp-value {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-profit-value--positive {
-  color: #027a48 !important;
+  color: var(--color-profit) !important;
   text-shadow: none !important;
 }
 

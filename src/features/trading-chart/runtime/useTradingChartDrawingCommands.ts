@@ -1,5 +1,6 @@
 import { useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
+import { applyChartCursorMode } from '../../../drawing-tools/chartCursorInteractions';
 import { setTrendDrawingInputActive, usesDirectDrawingPointerInput } from '../../../drawing-tools/drawingInteractionPriority';
 import { resolveTrendToolColor } from '../../../drawing-tools/toolDefaults';
 import { getActiveChartSource } from '../../../services/activeChartSource';
@@ -48,6 +49,9 @@ export const useTradingChartDrawingCommands = (options: UseTradingChartDrawingCo
 useEffect(() => {
     const drawingInteractionContainer = containerRef.current;
     console.log('[TradingChart] ✅ SELECT_TOOL subscriber REGISTERED, chartRef=', !!chartRef.current, 'containerRef=', !!containerRef.current);
+    const restoreIdleCursor = () => {
+      applyChartCursorMode(containerRef.current?.closest<HTMLElement>('.rtx-chart-wrapper') ?? null);
+    };
 
     const handleSaved = (event: Event) => {
       const contextId = drawingRuntimeContextRef.current.contextId;
@@ -85,6 +89,7 @@ useEffect(() => {
         const wrapper = containerRef.current.parentElement;
         if (wrapper) wrapper.setAttribute('data-cursor', 'select');
       }
+      restoreIdleCursor();
     };
 
     window.addEventListener('drawing:saved', handleSaved);
@@ -117,6 +122,7 @@ useEffect(() => {
             });
             containerRef.current.parentElement?.setAttribute('data-cursor', 'select');
           }
+          restoreIdleCursor();
         }
         return;
       }
@@ -151,6 +157,7 @@ useEffect(() => {
           const wrapper = containerRef.current.parentElement;
           if (wrapper) wrapper.setAttribute('data-cursor', 'select');
         }
+        restoreIdleCursor();
         console.log('[Chart] Tool: cursor (selection mode — crosshair hidden)');
       } else {
         // Drawing mode: disable pressedMouseMove so drag doesn't pan, only click places points

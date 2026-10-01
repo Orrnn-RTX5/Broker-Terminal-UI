@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { drawingApi } from './drawingApi';
 import { BRUSH_SHAPE_TOOLS } from '../drawing-tools/brushShapeToolCatalog';
+vi.mock('../api/brokerRequestGuard', () => ({ assertBrokerRequestAllowed: () => undefined }));
 
 afterEach(() => vi.restoreAllMocks());
 

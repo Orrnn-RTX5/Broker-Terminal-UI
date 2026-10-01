@@ -62,7 +62,7 @@ describe('Charts Bar visibility', () => {
     render(<ChartWindow />);
     const chart = screen.getByTestId('live-chart');
     expect(screen.getAllByRole('tab')).toHaveLength(2);
-    expect(screen.getByRole('tab', { name: 'BTCUSD, M5' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'BTCUSD M5' })).toHaveAttribute('aria-selected', 'true');
 
     act(() => useTerminalBarsStore.getState().toggleChartsBar());
     expect(screen.queryByRole('tablist', { name: 'Symbol charts' })).not.toBeInTheDocument();
@@ -82,8 +82,8 @@ describe('Charts Bar visibility', () => {
 
     act(() => useTerminalBarsStore.getState().toggleChartsBar());
     expect(screen.getAllByRole('tab')).toHaveLength(2);
-    expect(screen.getByRole('tab', { name: 'BTCUSD, M5' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'XAUUSD, H1' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tab', { name: 'BTCUSD M5' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'XAUUSD H1' })).toHaveAttribute('aria-selected', 'false');
     const restoredPanel = findChartPanelById(useDockLayoutStore.getState().layout, 'chart')!;
     expect(restoredPanel.props).toEqual(originalProps);
     expect(restoredPanel.chartSymbolTabs).toEqual(originalTabs);

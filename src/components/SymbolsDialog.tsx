@@ -10,6 +10,8 @@ import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { API_ENDPOINTS, API_V2_BASE_URL, MARKET_WS_URL } from '../config/api';
 import { normalizeExactBrokerSymbol } from '../utils/exactBrokerSymbol';
 import { isShortcutOwnedBy, shouldIgnoreShortcutEvent } from '../services/keyboardShortcutManager';
+import { getAccessToken } from '../services/brokerSession';
+import { getBrokerConfigurationError, isConfiguredBrokerEndpoint } from '../config/backendTarget.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -142,13 +144,16 @@ const getSymbolSector = (sym: string) => {
 };
 
 const getAuthHeaders = (): HeadersInit => {
-  const token = localStorage.getItem('auth_token');
+  const token = getAccessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
 const fetchJson = async <T,>(url: string, options?: RequestInit): Promise<T> => {
+  const error = getBrokerConfigurationError();
+  if (error || !isConfiguredBrokerEndpoint(url)) throw new Error(error || 'Symbol endpoint does not belong to this broker deployment.');
   const res = await fetch(url, {
     ...options,
+    redirect: 'error',
     headers: {
       ...getAuthHeaders(),
       ...(options?.headers || {}),

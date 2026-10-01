@@ -1,9 +1,10 @@
-import { lazy, Suspense, type CSSProperties } from 'react';
+import { depthOfMarketFeature, dataWindowFeature } from '../../startup/terminalFeatures';
+import { Suspense, type CSSProperties } from 'react';
 import type { DepthOrderRequest } from '../../components/DepthOfMarket';
 import type { FloatingTerminalPanelsController, ResizeMode } from './useFloatingTerminalPanels';
 
-const LazyDepthOfMarket = lazy(() => import('../../components/DepthOfMarket').then((module) => ({ default: module.DepthOfMarket })));
-const LazyDataWindow = lazy(() => import('../../components/DataWindow'));
+const LazyDepthOfMarket = depthOfMarketFeature.Component;
+const LazyDataWindow = dataWindowFeature.Component;
 
 interface FloatingTerminalPanelsProps {
   panels: FloatingTerminalPanelsController;

@@ -332,6 +332,21 @@ const MenuItem: React.FC<MenuItemProps> = ({
       ? (skin === 'light' ? '#0f172a' : '#ffffff')
       : (skin === 'light' ? '#475569' : 'rgba(255, 255, 255, 0.70)');
 
+  const checkmark = (
+    <svg
+      className="w-3.5 h-3.5"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ color: item.disabled ? 'inherit' : (skin === 'light' ? '#0284c7' : '#38bdf8') }}
+    >
+      <polyline points="3 8.5 6.5 12 13 4.5" />
+    </svg>
+  );
+
   const rowStyle: React.CSSProperties = {
     height: isCompact ? 26 : 30,
     color: item.disabled
@@ -367,30 +382,19 @@ const MenuItem: React.FC<MenuItemProps> = ({
       aria-expanded={hasSubmenu && isSubmenuActive ? 'true' : 'false'}
       tabIndex={-1}
     >
-      {/* Check and icon keep their own reserved gutters so every label,
-          checked or not, starts on the same column. */}
-      <span className="flex w-[18px] shrink-0 items-center justify-center mr-0.5" aria-hidden="true">
-        {item.checked ? (
-          <svg
-            className="w-3.5 h-3.5"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{
-              color: item.disabled
-                ? 'inherit'
-                : (skin === 'light' ? '#0284c7' : '#38bdf8'),
-            }}
-          >
-            <polyline points="3 8.5 6.5 12 13 4.5" />
-          </svg>
-        ) : null}
-      </span>
-      <span className="flex w-5 shrink-0 items-center justify-center mr-2" aria-hidden="true">
-        {item.icon ? (
+      {/* Compact menus share one glyph column to keep labels close to the edge. */}
+      {!isCompact && (
+        <span className="flex w-[18px] shrink-0 items-center justify-center mr-0.5" aria-hidden="true">
+          {item.checked ? checkmark : null}
+        </span>
+      )}
+      <span
+        className={isCompact
+          ? 'flex w-[18px] shrink-0 items-center justify-center mr-1.5'
+          : 'flex w-5 shrink-0 items-center justify-center mr-2'}
+        aria-hidden="true"
+      >
+        {isCompact && item.checked ? checkmark : item.icon ? (
           <span
             className="flex items-center justify-center transition-colors"
             style={{ color: glyphColor }}

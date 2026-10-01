@@ -4,7 +4,7 @@ import { getInstrumentSymbolName } from '../../utils/symbolEligibility';
 import { formatPrice } from '../../utils/symbolUtils';
 
 /** Bottom tabs of the Market Watch window, in MT5 order. */
-export const MARKET_WATCH_VIEWS = ['symbols', 'details', 'ticks'] as const;
+export const MARKET_WATCH_VIEWS = ['symbols', 'details', 'trading', 'ticks'] as const;
 export type MarketWatchViewId = typeof MARKET_WATCH_VIEWS[number];
 
 export interface ScopedManualSymbols {

@@ -13,7 +13,6 @@ import { useCommandBus } from '../../hooks/useCommandBus';
 import { MarketWatchPanel, type ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';
 import type { MarketInstrumentsSnapshot } from '../../hooks/useLiveMarketData';
 import { NavigatorPanel } from '../layout/NavigatorPanel';
-import { MarketWatchServerClock } from '../layout/MarketWatchServerClock';
 import { BottomDock } from '../BottomDock';
 import { getInstrumentSymbolName, getUniqueSymbolNames, resolveAuthorizedChartSymbol } from '../../utils/symbolEligibility';
 import { getInstrumentPriceDigits } from '../../utils/chartPriceScale';
@@ -105,7 +104,7 @@ interface DockWorkspaceProps {
     onCloseBulk: (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => void;
 }
 
-export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
+export const DockWorkspace = React.memo(function DockWorkspace({
     globalChartType,
     globalTimeframe,
     allSymbols,
@@ -120,7 +119,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     onModifyPosition,
     onCancelOrder,
     onCloseBulk
-}) => {
+}: DockWorkspaceProps) {
     const tr = useUiTranslation();
     const tradeSymbolSet = useMemo(() => {
         return new Set(getUniqueSymbolNames(tradeSymbols ?? allSymbols));
@@ -195,7 +194,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         });
     }, [layout, resolvePanelChartSymbol]);
 
-    const renderPanel = useCallback((panel: DockPanelConfig, isActive: boolean) => {
+    const renderPanel = useCallback((panel: DockPanelConfig, isActive: boolean, isFloating = false) => {
         if (panel.component === 'Chart') {
             const panelSymbol = panel.props?.symbol ?? panel.title?.split(',')[0];
             const diagnosticPanelSymbol = getAuthorizedChartDiagnosticSymbol(
@@ -271,7 +270,6 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                             onSymbolSelect={onSymbolSelect}
                         />
                     </ErrorBoundary>
-                    <MarketWatchServerClock />
                 </div>
             );
         }
@@ -290,6 +288,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                     <ErrorBoundary>
                         <BottomDock
                             height="100%"
+                            onClose={isFloating || panel.closable === false ? undefined : () => useDockLayoutStore.getState().removePanel(panel.id)}
                             onClosePosition={onClosePosition as any}
                             onModifyPosition={onModifyPosition}
                             onCancelOrder={onCancelOrder as any}
@@ -327,7 +326,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     return (
         <DockWorkspaceClean renderPanel={renderPanel} />
     );
-};
+});
 
 // Clean workspace - just renders the dock layout
 const DockWorkspaceClean: React.FC<{

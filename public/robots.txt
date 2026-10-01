@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /__broker_api/
+Disallow: /__broker_discovery/
