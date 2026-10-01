@@ -1,9 +1,9 @@
 {
-  "errors": 360,
-  "warnings": 38,
+  "errors": 359,
+  "warnings": 37,
   "rules": {
-    "@typescript-eslint/no-explicit-any": 281,
-    "react-hooks/exhaustive-deps": 38,
+    "@typescript-eslint/no-explicit-any": 280,
+    "react-hooks/exhaustive-deps": 37,
     "react-hooks/preserve-manual-memoization": 2,
     "react-hooks/refs": 19,
     "react-hooks/set-state-in-effect": 25,
