@@ -1,7 +1,7 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useTerminalQuoteFreshness } from '../hooks/useTerminalQuoteFreshness';
 import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
-import { assertTerminalMarketOrderQuote, canSubmitTerminalMarketOrder, assertTerminalQuoteFresh, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
+import { assertTerminalMarketOrderQuote, canSubmitTerminalMarketOrder, assertTerminalQuoteFresh, terminalMarketQuoteAdvisory, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
@@ -575,6 +575,8 @@ export function OrderPanelDialog({
     ? propMarketStatus
     : liveMarketStatus;
   const quoteFreshness = useTerminalQuoteFreshness(symbol);
+  const quoteAdvisory = terminalQuoteFreshnessEnabled() && orderType === 'Market Execution'
+    ? terminalMarketQuoteAdvisory(quoteFreshness) : null;
   const quoteBlocked = terminalQuoteFreshnessEnabled() && !(orderType === 'Market Execution' ? canSubmitTerminalMarketOrder(quoteFreshness) : quoteFreshness.live);
   const marketBlockedMessage = quoteBlocked ? terminalQuoteBlockMessage(quoteFreshness.reason, symbol) : getMarketStatusTradeBlockMessage(effectiveMarketStatus, symbol);
   const isMarketExecutionBlocked = quoteBlocked || (orderType === 'Market Execution'
@@ -813,6 +815,9 @@ export function OrderPanelDialog({
             </div>
 
             {volumeMessage && !error && <div className="rtx-order-dialog__message rtx-order-dialog__message--warning" role="status">{volumeMessage}</div>}
+            {quoteAdvisory && !error && !isMarketExecutionBlocked && (
+              <div className="rtx-order-dialog__message rtx-order-dialog__message--warning" role="status">{tr(quoteAdvisory)}</div>
+            )}
             {error && (
               <div className="rtx-order-dialog__message rtx-order-dialog__message--error" role="alert">{tr(error)}</div>
             )}

@@ -37,7 +37,7 @@ import './OneClickTrading.css';
 import { hasAuthenticatedTradingSession, requireTradingAuth } from '../services/tradingAuthGate';
 import { requestMarketSymbolsRefresh } from '../hooks/useLiveMarketData';
 import { useTerminalQuoteFreshness } from '../hooks/useTerminalQuoteFreshness';
-import { assertTerminalMarketOrderQuote, canSubmitTerminalMarketOrder, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
+import { assertTerminalMarketOrderQuote, canSubmitTerminalMarketOrder, terminalMarketQuoteAdvisory, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
 
 interface OneClickTradingProps {
     symbol: string;
@@ -130,6 +130,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const [staleBlock, setStaleBlock] = useState<{ symbol: string; tick: unknown; clockOnly?: boolean } | null>(null);
     const strictFreshness = terminalQuoteFreshnessEnabled();
     const quoteFreshness = useTerminalQuoteFreshness(symbol);
+    const quoteAdvisory = strictFreshness ? terminalMarketQuoteAdvisory(quoteFreshness) : null;
     const blockedFreshness = useTerminalQuoteFreshness(staleBlock?.symbol ?? symbol);
     const blockedTick = useAppStore((state) => resolveExactBrokerSymbolValue(state.ticks, staleBlock?.symbol ?? symbol));
     const prevBidRef = useRef<number>(0);
@@ -687,6 +688,11 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     borderTop: 'none',
                 }}>
                     {tr(marketBlockedMessage || effectiveMarketStatus.label)}
+                </div>
+            )}
+            {quoteAdvisory && !error && !blockedMessage && (
+                <div role="status" style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', padding: '3px 8px' }}>
+                    {tr(quoteAdvisory)}
                 </div>
             )}
             {blockedMessage && (

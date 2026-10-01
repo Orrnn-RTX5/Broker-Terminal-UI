@@ -3,11 +3,20 @@ import { apiClient } from '../api/client';
 import { positionsApi } from './api';
 import { useAppStore, type Position } from '../store/useAppStore';
 import { closePositionsLocalFirst } from './localFirstCloseCoordinator';
+import { retainPositionCloseQuotes } from './positionCloseQuoteDemand';
 import {
   calibrateTerminalQuoteClock,
   ingestTerminalQuote,
   resetTerminalQuoteFreshness,
 } from './terminalQuoteFreshness';
+
+const demands = vi.hoisted(() => new Map<string, string[]>());
+vi.mock('./quoteSocketManager', () => ({
+  getQuoteSocketManager: () => ({
+    setDemand: (source: string, symbols: string[]) => demands.set(source, symbols),
+    removeDemand: (source: string) => demands.delete(source),
+  }),
+}));
 
 const position = (id: number): Position => ({
   id, symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83000,
@@ -28,10 +37,12 @@ describe('position close context through optimistic removal', () => {
   beforeEach(() => {
     vi.stubGlobal('RUNTIME_CONFIG', { TERMINAL_QUOTE_FRESHNESS: true });
     resetTerminalQuoteFreshness();
+    demands.clear();
     useAppStore.setState({ accountId: '200001', positions: [position(15730289)] });
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     resetTerminalQuoteFreshness();
     useAppStore.setState({ positions: [] });
@@ -110,5 +121,55 @@ describe('position close context through optimistic removal', () => {
     expect(result.confirmedTicketIds).toEqual([...local, discovered].map(row => row.id));
     expect(result.failedTicketIds).toEqual([]);
     expect(useAppStore.getState().positions).toEqual([]);
+  });
+
+  it.each([false, true])('retains held-only quotes across a slow first wave (session changes=%s)', async switchSession => {
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
+    quote();
+    const local = Array.from({ length: 7 }, (_, index) => position(15730289 + index));
+    useAppStore.setState({ positions: local });
+    demands.set('open-positions', ['BTCUSD']);
+    const lease = retainPositionCloseQuotes('bulk-close:test', ['BTCUSD']);
+    const waiting: (() => void)[] = [];
+    const post = vi.spyOn(apiClient, 'post').mockImplementation(async (endpoint, body) => {
+      if (waiting.length < 3) await new Promise<void>(resolve => waiting.push(resolve));
+      return {
+        ticket: Number(String(endpoint).match(/positions\/(\d+)/)![1]),
+        status: 'closed', client_order_id: (body as { client_order_id: string }).client_order_id,
+      } as never;
+    });
+    let current = true;
+    const running = closePositionsLocalFirst({
+      sessionKey: 'Nexa:200001', getCurrentSessionKey: () => current ? 'Nexa:200001' : 'Nexa:200002',
+      localCandidates: local, loadAuthoritativeCandidates: async () => [],
+      onCandidatesStarted: () => {
+        useAppStore.setState({ positions: [] });
+        demands.delete('open-positions');
+      },
+      closePosition: (ticketId, candidate) => positionsApi.closePosition(String(ticketId), {
+        account_login: 200001,
+        executionContext: { ticketId, symbol: candidate.symbol, isCurrent: () => current },
+      }),
+    });
+    try {
+      expect(post).toHaveBeenCalledTimes(3);
+      expect(waiting).toHaveLength(3);
+      vi.advanceTimersByTime(4000);
+      // Simulate ticks only for symbols retained by a real demand owner.
+      if ([...demands.values()].some(symbols => symbols.includes('BTCUSD'))) {
+        expect(ingestTerminalQuote('BTCUSD', {
+          bid: 83001, ask: 83002, provider_timestamp: Date.now(), source: 'test', sequence: '2',
+        })).toBe(true);
+      }
+      if (switchSession) current = false;
+      waiting.forEach(resolve => resolve());
+      const result = await running;
+      expect(post).toHaveBeenCalledTimes(switchSession ? 3 : 7);
+      expect(result.confirmedTicketIds).toHaveLength(switchSession ? 3 : 7);
+      expect(result.failedTicketIds).toHaveLength(switchSession ? 4 : 0);
+    } finally {
+      lease.release();
+    }
+    expect(demands.size).toBe(0);
   });
 });

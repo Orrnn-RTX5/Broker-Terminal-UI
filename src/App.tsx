@@ -29,6 +29,7 @@ import { getPositionCloseScope, markPositionsClosed, unmarkPositionsClosed, useA
 import { useMarketDataStore } from './store/useMarketDataStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
 import { getQuoteSocketManager } from './services/quoteSocketManager';
+import { retainPositionCloseQuotes } from './services/positionCloseQuoteDemand';
 import { captureTradeOrderIntent } from './services/orderLatencyTelemetry';
 import { WS_ENDPOINTS } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -849,16 +850,16 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       isCurrent: isCurrentCloseSession,
     };
 
-    // Give immediate execution feedback without weakening broker truth: hide
-    // the pending ticket now, then restore it if the correlated close rejects.
-    markLocalTradeMutation([id]);
-    dispatchTradeOverlayCloseState([id], 'pending', { snapshots: closeSnapshots });
-    useAppStore.getState().setPositions(
-      useAppStore.getState().positions.filter((position) => position.id !== id),
-      { removedTickets: [id] },
-    );
-
+    let closeQuoteDemand: ReturnType<typeof retainPositionCloseQuotes> | undefined;
     try {
+      closeQuoteDemand = retainPositionCloseQuotes(`close:${closeTicketKey}`, [closingPosition.symbol]);
+      // Hide the pending ticket while retaining its quote subscription through settlement.
+      markLocalTradeMutation([id]);
+      dispatchTradeOverlayCloseState([id], 'pending', { snapshots: closeSnapshots });
+      useAppStore.getState().setPositions(
+        useAppStore.getState().positions.filter((position) => position.id !== id),
+        { removedTickets: [id] },
+      );
       await api.positions.closePosition(String(id), {
         account_login: closeLogin,
         executionContext,
@@ -891,6 +892,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       }
       return false;
     } finally {
+      closeQuoteDemand?.release();
       closingTicketsRef.current.delete(closeTicketKey);
     }
   };
@@ -1088,6 +1090,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     const claimedBulkTicketIds: number[] = [];
     const closeSnapshotsByTicket = new Map<number, TradeOverlayCloseSnapshotPayload[]>();
+    let closeQuoteDemand: ReturnType<typeof retainPositionCloseQuotes> | undefined;
     const closeCandidatesByTicket = new Map<number, Position>();
     try {
       const getCurrentCloseSessionKey = () => {
@@ -1106,6 +1109,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
       const localCandidates = selectMatchingCandidates(
         normalizePositions(useAppStore.getState().positions),
+      );
+      closeQuoteDemand = retainPositionCloseQuotes(
+        `bulk-close:${closeSessionScope}`,
+        localCandidates.map((position) => position.symbol),
       );
       const closeResult = await closePositionsLocalFirst({
         sessionKey: closeSessionScope,
@@ -1133,6 +1140,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         // waits for correlated backend confirmation and restores rejections.
         onCandidatesStarted: (candidates) => {
           if (getCurrentCloseSessionKey() !== closeSessionScope) return;
+          closeQuoteDemand?.addSymbols(candidates.map((position) => position.symbol));
           const ticketIds = candidates.map((position) => position.id);
           candidates.forEach((position) => {
             closeCandidatesByTicket.set(position.id, position);
@@ -1203,6 +1211,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       publishOrderFeedback(formatOrderError(err));
       refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
     } finally {
+      closeQuoteDemand?.release();
       claimedBulkTicketIds.forEach((ticket) => closingTicketsRef.current.delete(
         createSessionScopedTicketKey(closeSessionScope, ticket),
       ));

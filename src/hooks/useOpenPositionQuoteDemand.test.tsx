@@ -22,6 +22,7 @@ vi.mock('../services/brokerSession', () => ({
   getServerUrl: vi.fn(() => ''),
   hasFeedBrokerToken: vi.fn(() => false),
   onSessionChange: vi.fn(() => vi.fn()),
+  onCommittedBrokerAccountSessionScopeChange: vi.fn(() => vi.fn()),
   buildBrokerWsFeedUri: vi.fn(() => 'wss://broker.example/ws/feed'),
   buildBrokerWsV2Uri: vi.fn(() => 'wss://broker.example/ws/v2'),
 }));
