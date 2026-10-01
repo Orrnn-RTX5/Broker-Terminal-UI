@@ -35,16 +35,16 @@ describe('marketStatus helpers', () => {
     );
   });
 
-  it('treats known crypto symbols as always open when backend status is unavailable', () => {
+  it('blocks crypto trading until the configured session status is available', () => {
     const normalized = normalizeMarketStatus(null, { symbol: 'BTCUSD' });
 
     expect(isLikelyAlwaysOpenCryptoSymbol('BTCUSD')).toBe(true);
     expect(isLikelyAlwaysOpenCryptoSymbol('ETHUSD.r')).toBe(true);
     expect(isLikelyAlwaysOpenCryptoSymbol('USDCNH')).toBe(false);
-    expect(normalized.status).toBe('open');
-    expect(normalized.label).toBe('Market Open');
-    expect(normalized.isOpen).toBe(true);
-    expect(normalized.isTradeBlocked).toBe(false);
+    expect(normalized.status).toBe('unknown');
+    expect(normalized.label).toBe('Status unavailable');
+    expect(normalized.isOpen).toBe(false);
+    expect(normalized.isTradeBlocked).toBe(true);
   });
 
   it('keeps explicit backend closed status authoritative for crypto symbols', () => {
@@ -52,7 +52,7 @@ describe('marketStatus helpers', () => {
 
     expect(normalized.status).toBe('closed');
     expect(normalized.isTradeBlocked).toBe(true);
-    expect(shouldBlockSymbolTrading(normalized, 'BTCUSD')).toBe(false);
+    expect(shouldBlockSymbolTrading(normalized, 'BTCUSD')).toBe(true);
   });
 
   it('blocks trading when the backend reports an unknown status for crypto symbols', () => {

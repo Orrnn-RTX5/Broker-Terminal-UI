@@ -48,6 +48,11 @@ const executeConfig = (source: string, overrides: Record<string, unknown> = {}, 
 }
 
 describe('environment-based web runtime configuration', () => {
+  it('enables terminal freshness only through its explicit public deployment setting', () => {
+    expect(createWebRuntimeConfig(testEnvironment).TERMINAL_QUOTE_FRESHNESS).toBe(false)
+    expect(createWebRuntimeConfig({ ...testEnvironment, VITE_TERMINAL_QUOTE_FRESHNESS: 'true' }).TERMINAL_QUOTE_FRESHNESS).toBe(true)
+  })
+
   it('maps the complete Orrnn VITE profile to browser runtime fields', () => {
     expect(createWebRuntimeConfig(orrnnEnvironment)).toEqual({
       BACKEND_TARGET: 'web',
@@ -61,6 +66,7 @@ describe('environment-based web runtime configuration', () => {
       VITE_BROKER_ID: 'Orrnn',
       FEED_BROKER_ID: 'Orrnn',
       USE_MOCK_DISCOVERY: false,
+      TERMINAL_QUOTE_FRESHNESS: false,
     })
   })
 

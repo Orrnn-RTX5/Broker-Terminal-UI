@@ -235,6 +235,71 @@ describe('broker websocket URL builder', () => {
     );
   });
 
+  it('prefers the deployment feed broker id over a stale localStorage one', () => {
+    // Regression: a browser profile carrying feed_broker_id from an earlier
+    // deployment pinned every /ws/feed handshake to that broker. The Nexa
+    // bridge answered 401 unknown_broker_id, so the terminal showed
+    // "Disconnected" with every symbol UNAVAILABLE - before login and after,
+    // because the feed is authenticated by the deployment's broker-scoped
+    // token and never by the user session. A deployment that pins
+    // FEED_BROKER_ID is declaring itself single-broker and must win.
+    localStorage.setItem('feed_broker_id', 'Orrnn');
+    localStorage.setItem('feed_broker_token', 'feed-secret');
+    localStorage.setItem('server_url', 'https://nexa.orrnn.com');
+    // Upstream web builds resolve hosts from the runtime config (service.orrnn.com
+    // fallback), so pin the hosts exactly as the deployed Nexa runtime-config.js does.
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://nexa.orrnn.com',
+      WS_HOST: 'wss://nexa.orrnn.com',
+      FEED_BROKER_ID: 'Nexa',
+    };
+
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://nexa.orrnn.com/ws/feed?broker_id=Nexa'
+    );
+  });
+
+  it('still uses stored feed broker id when the deployment pins none', () => {
+    // Packaged Electron and generic multi-broker deployments inject no runtime
+    // feed id, so the broker selected at login remains authoritative there.
+    localStorage.setItem('feed_broker_id', 'gta_broker');
+    localStorage.setItem('feed_broker_token', 'feed-secret');
+    localStorage.setItem('server_url', 'https://services.growtradingacademy.com');
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'desktop',
+    };
+
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker'
+    );
+  });
+
+  it('authenticates an older feed only with its pinned runtime credential', () => {
+    localStorage.setItem('feed_broker_id', 'previous-broker');
+    localStorage.setItem('feed_broker_token', 'ignored-storage-value');
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web', API_HOST: 'https://nexa.orrnn.com',
+      WS_HOST: 'wss://nexa.orrnn.com', FEED_BROKER_ID: 'Nexa',
+      FEED_BROKER_TOKEN: 'runtime-test-credential',
+    };
+    const url = new URL(buildBrokerWsFeedUri());
+    expect(url.origin).toBe('wss://nexa.orrnn.com');
+    expect(url.searchParams.get('broker_id')).toBe('Nexa');
+    expect(url.searchParams.get('token')).toBe('runtime-test-credential');
+  });
+
+  it('never sends the runtime credential to another stored feed origin or broker', () => {
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'desktop', WS_HOST: 'wss://nexa.orrnn.com',
+      FEED_BROKER_ID: 'Nexa', FEED_BROKER_TOKEN: 'runtime-test-credential',
+    };
+    localStorage.setItem('feed_url', 'wss://services.growtradingacademy.com/ws/feed');
+    expect(new URL(buildBrokerWsFeedUri()).searchParams.has('token')).toBe(false);
+    localStorage.setItem('feed_url', 'wss://nexa.orrnn.com/ws/feed?broker_id=another-broker');
+    expect(new URL(buildBrokerWsFeedUri()).searchParams.has('token')).toBe(false);
+  });
+
   it('never persists or replays a feed credential from discovery', () => {
     // Legacy discovery payloads may still carry these; they must be ignored.
     const legacyDiscoveryPayload = {

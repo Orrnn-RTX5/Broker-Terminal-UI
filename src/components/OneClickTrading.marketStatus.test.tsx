@@ -402,8 +402,8 @@ describe('OneClickTrading market status', () => {
     await act(async () => {
       rejectOlderOrder?.(Object.assign(new Error('Quote is stale for EURUSD'), { code: 'QUOTE_STALE' }));
     });
-    const backendError = screen.getByText('Order failed: Quote is stale for EURUSD');
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('quote for EURUSD is stale');
+    const backendError = screen.getByText('Order failed: Quote is stale for EURUSD', { exact: true });
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Quote is stale for EURUSD');
     fireEvent.click(screen.getByRole('button', { name: 'OK' }));
     expect(tradingRow.nextElementSibling).toBe(backendError);
 
@@ -434,16 +434,16 @@ describe('OneClickTrading market status', () => {
 
     expect(getTradeButton('BUY').disabled).toBe(true);
     expect(getTradeButton('SELL').disabled).toBe(true);
-    expect(screen.getByText('Market Closed')).not.toBeNull();
+    expect(screen.getByText(normalizeMarketStatus({ status }).label)).not.toBeNull();
     expect(screen.getByText('BUY')).not.toBeNull();
     expect(screen.getByText('SELL')).not.toBeNull();
     fireEvent.click(getTradeButton('BUY'));
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(getTradeButton('BUY').title).toBe('Market Closed');
+    expect(getTradeButton('BUY').title).toBe(normalizeMarketStatus({ status }).label);
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });
 
-  it('keeps BTCUSD BUY and SELL clickable even if backend status says closed', () => {
+  it('blocks BTCUSD BUY and SELL when its configured trading session is closed', () => {
     useAppStore.getState().setTicks({
       BTCUSD: {
         symbol: 'BTCUSD',
@@ -465,12 +465,12 @@ describe('OneClickTrading market status', () => {
       />,
     );
 
-    expect(getTradeButton('BUY').disabled).toBe(false);
-    expect(getTradeButton('SELL').disabled).toBe(false);
-    expect(screen.queryByText('Market Closed')).toBeNull();
+    expect(getTradeButton('BUY').disabled).toBe(true);
+    expect(getTradeButton('SELL').disabled).toBe(true);
+    expect(screen.queryByText('Market Closed')).not.toBeNull();
   });
 
-  it('uses compact Market Closed copy when status is unavailable', () => {
+  it('distinguishes unavailable status from a configured market closure', () => {
     render(
       <OneClickTrading
         symbol="EURUSD"
@@ -483,7 +483,7 @@ describe('OneClickTrading market status', () => {
 
     expect(getTradeButton('BUY').disabled).toBe(true);
     expect(getTradeButton('SELL').disabled).toBe(true);
-    expect(screen.getByText('Market Closed')).not.toBeNull();
+    expect(screen.getByText('Status unavailable')).not.toBeNull();
     expect(screen.queryByText(/Market status unavailable/i)).toBeNull();
   });
 });

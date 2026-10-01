@@ -29,6 +29,7 @@ import {
   onSessionChange,
 } from './brokerSession';
 import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
+import { resetTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import {
   processIncomingQuotePayload,
@@ -314,6 +315,10 @@ class QuoteSocketManager {
 
       socket.onopen = () => {
         if (this.ws !== socket) return;
+        if (terminalQuoteFreshnessEnabled()) {
+          resetTerminalQuoteFreshness();
+          window.dispatchEvent(new Event('rtx:quote-clock-refresh'));
+        }
         opened = true;
         this.clearOpenTimeout();
         // FIX: Use transport ping/pong for liveness so a quiet market does not
@@ -355,6 +360,7 @@ class QuoteSocketManager {
 
       socket.onclose = (event) => {
         if (this.ws !== socket) return;
+        if (terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
         this.clearOpenTimeout();
         this.clearStableOpenTimer();
         this.clearHeartbeat();
@@ -525,7 +531,7 @@ class QuoteSocketManager {
       if (isLiveMarketDataFrozen(tick.symbol)) return;
 
       // Step 14: Batched store path — enqueue for rAF-batched Zustand update
-      enqueueLiveTick(tick.symbol, tick as LiveTick);
+      if (!enqueueLiveTick(tick.symbol, tick as LiveTick)) return;
 
       // Last-only display metadata is intentionally isolated from raw quote
       // listeners: the selected-chart listener treats every callback as an
@@ -845,6 +851,7 @@ class QuoteSocketManager {
   // ─── Cleanup ─────────────────────────────────────────────────────────────
 
   private closeSocket(): void {
+    if (this.ws && terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
     this.cancelIdleClose();
     this.clearOpenTimeout();
     this.clearStableOpenTimer();
@@ -900,6 +907,7 @@ class QuoteSocketManager {
   };
 
   private handleOffline = (): void => {
+    if (terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
     console.log('[QuoteSocket] Network offline');
     this.clearHeartbeat();
     this.clearOpenTimeout();

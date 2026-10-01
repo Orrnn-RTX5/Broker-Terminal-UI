@@ -66,6 +66,15 @@ export const areCanonicalUpstreamTicksEqual = (left: unknown, right: unknown): b
 
 /** Positive means incoming is fresher; zero is the same broker event time. */
 export const compareCanonicalTickFreshness = (current: unknown, incoming: unknown): number => {
+  // Event-time ordering is scoped to one transport generation. Retained display
+  // prices from a disconnected session must not reject its first new quote.
+  const currentSession = getFiniteNumber(asRecord(current)?.terminalQuoteSession);
+  const incomingSession = getFiniteNumber(asRecord(incoming)?.terminalQuoteSession);
+  if (currentSession !== incomingSession) {
+    if (incomingSession === null) return -1;
+    if (currentSession === null) return 1;
+    return incomingSession > currentSession ? 1 : -1;
+  }
   const currentTimestamp = getCanonicalTickTimestamp(current);
   const incomingTimestamp = getCanonicalTickTimestamp(incoming);
   if (incomingTimestamp === null) return currentTimestamp === null ? 0 : -1;

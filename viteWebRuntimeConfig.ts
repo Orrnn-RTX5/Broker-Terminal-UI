@@ -12,6 +12,7 @@ export type WebRuntimeConfig = {
   VITE_BROKER_ID: string
   FEED_BROKER_ID: string
   USE_MOCK_DISCOVERY: boolean
+  TERMINAL_QUOTE_FRESHNESS: boolean
 }
 
 const first = (...values: Array<string | undefined>): string => {
@@ -59,6 +60,7 @@ export const createWebRuntimeConfig = (env: Record<string, string>): WebRuntimeC
     // copy server-only secrets or arbitrary environment entries into the page.
     FEED_BROKER_ID: first(env.VITE_FEED_BROKER_ID, brokerId),
     USE_MOCK_DISCOVERY: first(env.VITE_USE_MOCK_DISCOVERY).toLowerCase() === 'true',
+    TERMINAL_QUOTE_FRESHNESS: first(env.VITE_TERMINAL_QUOTE_FRESHNESS).toLowerCase() === 'true',
   }
 }
 

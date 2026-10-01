@@ -7,6 +7,7 @@ import { isEnhancedStoreHandledTickFrame, type WebSocketMessage } from '../../se
 import { isTradeSubscriptionControlFrame } from '../../services/tradeStreamMessage';
 import { decodePositionStreamMessage } from '../../services/tradePositionStream';
 import { requestPositionSnapshotRevalidation } from '../../services/positionSnapshotSafety';
+import { notifyInstrumentCatalogueChanged } from '../../services/instrumentCatalogueEvents';
 import { POSITION_CLOSED_EVENTS, readPositionStreamBatch, readPositionStreamEvent, reconcilePositionStreamBatch } from '../../services/positionStream';
 import { dispatchTradeOverlayCloseState } from '../../services/tradeOverlayHistory';
 import { markPositionsClosed, useAppStore, type Account, type Position } from '../../store/useAppStore';
@@ -92,6 +93,14 @@ export const useTradeStreamRuntime = ({
           || Number.isFinite(Number(data?.lastPrice))
         );
         const isLiveQuote = data.channel?.startsWith('quotes.');
+
+        if (data.channel === 'catalogue') {
+          const payload = asRecord(data.data) ?? data;
+          if (payload.type === 'instrument_catalogue_changed') {
+            notifyInstrumentCatalogueChanged(String(payload.revision ?? ''));
+          }
+          return;
+        }
 
         if (data.channel?.startsWith('state.')) {
           const login = getAcceptedChannelLogin(data.channel);

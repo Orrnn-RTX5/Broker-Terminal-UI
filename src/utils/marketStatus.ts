@@ -146,8 +146,6 @@ export const normalizeMarketStatus = (
     ? reportedStatus
     : !hasReportedStatus && tradeFlagOpen !== undefined
       ? (tradeFlagOpen ? 'open' : 'closed')
-    : !hasReportedStatus && isLikelyAlwaysOpenCryptoSymbol(symbol)
-      ? 'open'
     : 'unknown';
   const isOpen = normalizedStatus === 'open';
   const sessionOpenTimeMs = parseMarketSessionTimestampMs(status?.session_open) ?? undefined;
@@ -195,10 +193,8 @@ export const formatMarketStatusSchedule = (
 
 export const shouldBlockSymbolTrading = (
   marketStatus: Pick<NormalizedMarketStatus, 'isTradeBlocked' | 'symbol'>,
-  fallbackSymbol?: string,
+  _fallbackSymbol?: string,
 ): boolean => {
-  const resolvedSymbol = normalizeSymbol(marketStatus.symbol) ?? normalizeSymbol(fallbackSymbol);
-  if (isLikelyAlwaysOpenCryptoSymbol(resolvedSymbol)) return false;
   return marketStatus.isTradeBlocked;
 };
 

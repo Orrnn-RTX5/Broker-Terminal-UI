@@ -88,3 +88,8 @@ describe('formatOrderError', () => {
       .toBe('Order failed: no trading account is selected. Please sign in again.');
   });
 });
+
+it.each(['QUOTE_TIME_UNVERIFIED', 'QUOTE_UNAVAILABLE', 'QUOTE_SOURCE_MISMATCH', 'QUOTE_NOT_TRADABLE'])('preserves local reason %s and affected symbol', code => {
+  const error = Object.assign(new Error('Syncing time for XAUUSD'), {code, symbol:'XAUUSD'});
+  expect(formatOrderError(error)).toBe(code + ': Syncing time for XAUUSD');
+});

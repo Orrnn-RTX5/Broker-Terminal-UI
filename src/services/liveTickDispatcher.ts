@@ -27,10 +27,17 @@ import {
   publishMarketWatchDisplayMetadata,
   resolveMarketWatchDisplayMetadata,
 } from '../store/useMarketWatchDisplayMetadataStore';
+import {
+  getTerminalQuoteSession,
+  ingestTerminalQuote,
+  refreshTerminalQuotePrices,
+  resetTerminalQuoteFreshness,
+  terminalQuoteFreshnessEnabled,
+} from './terminalQuoteFreshness';
 
 // A logged-in account's quote is widened by its group spread markup here, once;
 // `rawBid`/`rawAsk` keep the feed sides for raw-bid consumers (chart candles).
-export type LiveTick = MarketTick & Partial<AppTick> & SpreadMarkupQuoteTag;
+export type LiveTick = MarketTick & Partial<AppTick> & SpreadMarkupQuoteTag & { terminalQuoteSession?: number };
 
 declare global {
   interface Window {
@@ -274,14 +281,19 @@ const retainFailedBatch = (
   scheduleRetry(retry);
 };
 
-export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
-  if (!symbol) return;
-  if (isLiveMarketDataFrozen(symbol)) return;
+const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boolean => {
+  if (!symbol) return false;
+  if (isLiveMarketDataFrozen(symbol)) return false;
   // Every quote transport (quote socket, REST seed, catalogue seed, legacy WS,
   // FIX, guest refresh) enters here, so the account markup is applied exactly
   // once and every store consumer sees the same effective bid/ask. The widening
   // is recomputed from the raw sides, so a re-enqueued tick never compounds.
-  const fullTick = applyAccountSpreadMarkup(symbol, { ...tick, symbol });
+  const freshnessEnabled = terminalQuoteFreshnessEnabled();
+  const fullTick = applyAccountSpreadMarkup(symbol, {
+    ...tick,
+    symbol,
+    ...(freshnessEnabled && !refreshMarkup ? { terminalQuoteSession: getTerminalQuoteSession() } : {}),
+  }) as LiveTick;
   const hasQuoteSide = hasAnyQuoteSide(fullTick);
   // TradingChart and trade consumers use the ordinary tick stores. A Last-only
   // event is ordered against the exact executable AppStore quote, then exits
@@ -300,7 +312,7 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
       timestamp: fullTick.timestamp,
       sourceTimestamp: fullTick.sourceTimestamp,
     });
-    if (!accepted) return;
+    if (!accepted) return false;
 
     const resolvedDisplay = resolveMarketWatchDisplayMetadata(
       executableTick,
@@ -328,7 +340,18 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
         console.error('[LiveTickDispatcher] Daily Change cache write failed:', error);
       }
     }
-    return;
+    return true;
+  }
+
+  if (freshnessEnabled) {
+    const accepted = refreshMarkup
+      ? refreshTerminalQuotePrices(symbol, fullTick, fullTick.terminalQuoteSession)
+      : ingestTerminalQuote(symbol, fullTick);
+    if (!accepted) return false;
+    if (fullTick.provider_timestamp !== undefined) {
+      fullTick.sourceTimestamp = fullTick.provider_timestamp;
+      fullTick.timestamp = fullTick.provider_timestamp;
+    }
   }
 
   const cachedTick = typeof window !== 'undefined' && window.rtxTickCache
@@ -342,19 +365,19 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
     const freshness = compareCanonicalTickFreshness(cachedTick, fullTick);
     if (freshness < 0) {
       deliveryTick = retainSameQuoteDayDisplayFields(normalizedFullTick, normalizedCachedTick);
-      if (!didDisplayFieldCandidateWin(normalizedFullTick, normalizedCachedTick, deliveryTick)) return;
+      if (!didDisplayFieldCandidateWin(normalizedFullTick, normalizedCachedTick, deliveryTick)) return false;
       shouldPersistQuote = false;
     } else {
       deliveryTick = retainSameQuoteDayDisplayFields(normalizedCachedTick, normalizedFullTick);
-      if (freshness === 0 && areCanonicalUpstreamTicksEqual(normalizedCachedTick, deliveryTick)) return;
+      if (freshness === 0 && areCanonicalUpstreamTicksEqual(normalizedCachedTick, deliveryTick)) return false;
     }
   }
 
   try {
-    if (!upsertFreshestLiveTick(pendingTicks, symbol, deliveryTick)) return;
+    if (!upsertFreshestLiveTick(pendingTicks, symbol, deliveryTick)) return false;
   } catch (error) {
     console.error(`[LiveTickDispatcher] Invalid tick for ${symbol}:`, error);
-    return;
+    return false;
   }
 
   const sourceTimestamp = typeof fullTick.sourceTimestamp === 'number'
@@ -406,7 +429,10 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
   }
   
   scheduleFlush();
+  return true;
 };
+
+export const enqueueLiveTick = (symbol: string, tick: LiveTick): boolean => enqueueTick(symbol, tick);
 
 export const flushLiveTicks = (): void => {
   if (pendingTicks.size === 0 && !hasRetryTicks()) return;
@@ -417,7 +443,14 @@ export const flushLiveTicks = (): void => {
   const marketStore = useMarketDataStore.getState();
   const appStore = useAppStore.getState();
 
-  const activeTicks = ticks.filter(([symbol]) => !isLiveMarketDataFrozen(symbol));
+  const ownsCurrentSession = ([, tick]: readonly [string, LiveTick]) => !terminalQuoteFreshnessEnabled()
+    || tick.terminalQuoteSession === getTerminalQuoteSession();
+  for (const retry of [marketRetry, appRetry]) {
+    for (const entry of retry.ticks) {
+      if (!ownsCurrentSession(entry)) retry.ticks.delete(entry[0]);
+    }
+  }
+  const activeTicks = ticks.filter((entry) => ownsCurrentSession(entry) && !isLiveMarketDataFrozen(entry[0]));
   // Defensive filter: metadata-only events exit in enqueueLiveTick and can
   // never enter Market/App delivery or either retry owner.
   const marketBatch = takeDeliveryBatch(
@@ -458,6 +491,7 @@ export const flushLiveTicks = (): void => {
 
 /** Clear every quote owner at a broker/account ownership boundary. */
 export const resetLiveMarketDataSession = (): void => {
+  resetTerminalQuoteFreshness();
   // FIX: Source timestamps are comparable only within one broker session. Old
   // queues/caches would otherwise reject or briefly repaint the new session.
   try {
@@ -493,7 +527,7 @@ export const reapplyAccountSpreadMarkupToCachedTicks = (): void => {
     cached.push(tick);
   });
   cached.forEach((tick) => {
-    if (tick.symbol) enqueueLiveTick(tick.symbol, tick);
+    if (tick.symbol) enqueueTick(tick.symbol, tick, true);
   });
 };
 
@@ -510,4 +544,3 @@ export const resetLiveTickDispatcherForTests = (): void => {
 onSessionChange((reason) => {
   if (reason !== 'token_rotation') resetLiveMarketDataSession();
 });
-

@@ -1,4 +1,10 @@
 export interface Tick {
+  provider_timestamp?: number;
+  sequence?: string | number;
+  source?: string;
+  source_mismatch?: boolean;
+  stale?: boolean;
+  tradable?: boolean;
   symbol: string;
   bid: number;
   ask: number;

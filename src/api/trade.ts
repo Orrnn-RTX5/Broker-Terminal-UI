@@ -1,3 +1,5 @@
+import { assertTerminalMarketOrderQuote, assertTerminalQuoteFresh } from '../services/terminalQuoteFreshness';
+import { assertStoredExecutionQuoteFresh, type PositionCloseContext } from '../services/terminalExecutionQuoteGuard';
 import { API_V2_BASE_URL, isLocalViteDevServer } from '../config/api';
 import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
 import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
@@ -452,6 +454,7 @@ export const accountV2Api = {
 };
 
 export interface ClosePositionRequestOptions extends ApiRequestOptions {
+  executionContext?: PositionCloseContext;
   volume?: number;
   client_order_id?: string;
   clientOrderId?: string;
@@ -786,6 +789,7 @@ export const tradingV2Api = {
     apiClient.get<Deal[]>('/account/deals', v2Options({ ...options, params })),
 
   placeOrder: (order: PlaceOrderRequest, options?: ApiRequestOptions) => {
+    assertTerminalMarketOrderQuote(order.symbol);
     const suppliedClientOrderId = String(order.client_order_id ?? '').trim();
     if (suppliedClientOrderId && !isTradeOrderUuidV4(suppliedClientOrderId)) {
       throw new Error('client_order_id must be a UUID v4');
@@ -873,6 +877,7 @@ export const tradingV2Api = {
     const attempts = normalizeRecoveryAttempts(opts.closeRecoveryAttempts);
     const intervalMs = normalizeRecoveryIntervalMs(opts.closeRecoveryIntervalMs);
     const restRequest: ClosePositionRequestOptions = { ...opts };
+    delete restRequest.executionContext;
     const rawParams = restRequest.params;
     delete restRequest.volume;
     delete restRequest.client_order_id;
@@ -891,6 +896,7 @@ export const tradingV2Api = {
       ...(Object.keys(postParams).length > 0 ? { params: postParams } : {}),
     });
     const statusRequestOptions: ApiRequestOptions = { ...restRequest, ...(rawParams && typeof rawParams === 'object' ? { params: { ...rawParams } } : {}) };
+    assertStoredExecutionQuoteFresh('positions', ticket, opts.executionContext);
     const endpoint = `/positions/${ticket}/close`;
     const body = { client_order_id: clientOrderId, volume };
     return (async (): Promise<Deal> => {
@@ -920,14 +926,18 @@ export const tradingV2Api = {
     })();
   },
 
-  modifyPosition: (id: number | string, changes: ModifyPositionRequest, options?: ApiRequestOptions) =>
-    apiClient.put<Position>(`/positions/${id}`, changes, v2Options(options)),
+  modifyPosition: (id: number | string, changes: ModifyPositionRequest, options?: ApiRequestOptions) => {
+    assertStoredExecutionQuoteFresh('positions', id);
+    return apiClient.put<Position>(`/positions/${id}`, changes, v2Options(options));
+  },
 
   getOrders: (login: number | string, params?: { limit?: number }, options?: ApiRequestOptions) =>
     apiClient.get<Order[]>(`/orders/${login}`, v2Options({ ...options, params })),
 
-  placePendingOrder: (order: PlacePendingOrderRequest, options?: ApiRequestOptions) =>
-    apiClient.post<PendingOrder>('/orders/pending', normalizePendingOrderRequest(order), v2Options(options)),
+  placePendingOrder: (order: PlacePendingOrderRequest, options?: ApiRequestOptions) => {
+    assertTerminalQuoteFresh(order.symbol);
+    return apiClient.post<PendingOrder>('/orders/pending', normalizePendingOrderRequest(order), v2Options(options));
+  },
 
   getPendingOrders: (login: number | string, options?: ApiRequestOptions) =>
     apiClient.get<PendingOrder[]>(`/orders/pending/${login}`, v2Options(options)),
@@ -935,11 +945,15 @@ export const tradingV2Api = {
   cancelPendingOrder: (ticket: number | string, options?: ApiRequestOptions) =>
     apiClient.delete<{ message?: string }>(`/orders/pending/${ticket}`, v2Options(options)),
 
-  modifyPendingOrder: (ticket: number | string, changes: ModifyPendingOrderRequest, options?: ApiRequestOptions) =>
-    apiClient.put<PendingOrder>(`/orders/pending/${ticket}`, normalizeModifyPendingOrderRequest(changes), v2Options(options)),
+  modifyPendingOrder: (ticket: number | string, changes: ModifyPendingOrderRequest, options?: ApiRequestOptions) => {
+    assertStoredExecutionQuoteFresh('orders', ticket);
+    return apiClient.put<PendingOrder>(`/orders/pending/${ticket}`, normalizeModifyPendingOrderRequest(changes), v2Options(options));
+  },
 
-  placeOco: (order: PlaceOcoRequest, options?: ApiRequestOptions) =>
-    apiClient.post<OcoPair>('/orders/oco', order, v2Options(options)),
+  placeOco: (order: PlaceOcoRequest, options?: ApiRequestOptions) => {
+    assertTerminalQuoteFresh(order.symbol);
+    return apiClient.post<OcoPair>('/orders/oco', order, v2Options(options));
+  },
 
   getOcoPairs: (login: number | string, options?: ApiRequestOptions) =>
     apiClient.get<OcoPair[]>(`/orders/oco/${login}`, v2Options(options)),

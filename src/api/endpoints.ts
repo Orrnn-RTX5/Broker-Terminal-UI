@@ -1,3 +1,5 @@
+import { assertTerminalMarketOrderQuote, assertTerminalQuoteFresh, getTerminalQuoteSession, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
+import { assertStoredExecutionQuoteFresh } from '../services/terminalExecutionQuoteGuard';
 import { apiClient } from './client';
 import { loadSharedAuthenticatedInstruments } from '../services/authenticatedInstruments';
 import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
@@ -492,6 +494,16 @@ export const accountApi = {
 
 
 
+// Preserve the immutable same-ID intent through transport recovery.
+const preparedOrderSubmissions = new WeakMap<object, number>();
+export function prepareOrderSubmission(order: CreateOrderRequest): Readonly<CreateOrderRequest> {
+  assertTerminalMarketOrderQuote(order.symbol);
+  // Allocate identity once, including callers that did not supply an ID.
+  const prepared = Object.freeze({ ...order, client_order_id: order.client_order_id || createTradeOrderUuid() });
+  preparedOrderSubmissions.set(prepared, getTerminalQuoteSession());
+  return prepared;
+}
+
 export const tradingApi = {
   getPositions: (login?: number, params?: { limit?: number; offset?: number }): Promise<TradingPositionsResponse> => {
     const resolvedLogin = requireLogin(login, '/api/v2/positions/{login}');
@@ -520,8 +532,16 @@ export const tradingApi = {
   getPendingOrders: (login: number): Promise<TradingOrdersResponse> =>
     apiClient.get<Order[]>(`/orders/pending/${requireLogin(login, '/api/v2/orders/pending/{login}')}`, { baseUrl: API_V2_BASE_URL }),
 
-  placeOrder: (order: CreateOrderRequest): Promise<Position | OrderCommandResponse> =>
-    apiClient.post<Position | OrderCommandResponse>('/orders', normalizeOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
+  placeOrder: (order: CreateOrderRequest): Promise<Position | OrderCommandResponse> => {
+    const owner = preparedOrderSubmissions.get(order);
+    if (terminalQuoteFreshnessEnabled() && owner !== undefined && owner !== getTerminalQuoteSession()) {
+      throw Object.assign(new Error('Trading session changed. Please submit a new order.'), { code: 'SESSION_CHANGED', symbol: order.symbol });
+    }
+    // An unsent WS fallback is a new create request: immutable intent is not a
+    // permanent freshness capability. Already-sent orders use GET reconciliation.
+    assertTerminalMarketOrderQuote(order.symbol);
+    return apiClient.post<Position | OrderCommandResponse>('/orders', normalizeOrderPayload(order), { baseUrl: API_V2_BASE_URL });
+  },
 
   getOrderCommand: (
     clientOrderId: string,
@@ -529,18 +549,22 @@ export const tradingApi = {
   ): Promise<OrderCommandResponse> =>
     tradingV2Api.getOrderCommand(clientOrderId, { baseUrl: API_V2_BASE_URL, ...options }),
 
-  placePendingOrder: (order: PendingOrderRequest): Promise<Order> =>
-    apiClient.post<Order>('/orders/pending', normalizePendingOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
+  placePendingOrder: (order: PendingOrderRequest): Promise<Order> => {
+    assertTerminalQuoteFresh(order.symbol);
+    return apiClient.post<Order>('/orders/pending', normalizePendingOrderPayload(order), { baseUrl: API_V2_BASE_URL });
+  },
 
   cancelOrder: (orderId: string | number): Promise<{ message?: string }> =>
     apiClient.delete<{ message?: string }>(`/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`, { baseUrl: API_V2_BASE_URL }),
 
-  modifyPendingOrder: (orderId: string | number, data: ModifyPendingOrderRequest): Promise<Order> =>
-    apiClient.put<Order>(
+  modifyPendingOrder: (orderId: string | number, data: ModifyPendingOrderRequest): Promise<Order> => {
+    assertStoredExecutionQuoteFresh('orders', orderId);
+    return apiClient.put<Order>(
       `/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`,
       normalizeModifyPendingOrderPayload(data),
       { baseUrl: API_V2_BASE_URL }
-    ),
+    );
+  },
 
   closePosition: (
     positionId: string | number,
@@ -553,8 +577,10 @@ export const tradingApi = {
         : { baseUrl: API_V2_BASE_URL, ...options },
     ).then(() => undefined),
 
-  modifyPosition: (positionId: string | number, data: ModifyPositionRequest): Promise<Position> =>
-    apiClient.put<Position>(`/positions/${requireTicket(positionId, '/api/v2/positions/{id}')}`, data, { baseUrl: API_V2_BASE_URL }),
+  modifyPosition: (positionId: string | number, data: ModifyPositionRequest): Promise<Position> => {
+    assertStoredExecutionQuoteFresh('positions', positionId);
+    return apiClient.put<Position>(`/positions/${requireTicket(positionId, '/api/v2/positions/{id}')}`, data, { baseUrl: API_V2_BASE_URL });
+  },
 
 };
 

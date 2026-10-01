@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { marketV2Api } from '../api/trade';
+import { INSTRUMENT_CATALOGUE_CHANGED_EVENT, INSTRUMENT_CATALOGUE_REFRESHED_EVENT } from '../services/instrumentCatalogueEvents';
+import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
+import { useBrokerAccountSessionScope } from './useBrokerAccountSessionScope';
 import {
   createUnavailableMarketStatus,
   normalizeMarketStatus,
@@ -29,8 +32,15 @@ const MIN_VISIBLE_POLL_MS = 1_000;
 
 const statusCache = new Map<string, { status: NormalizedMarketStatus; refreshedAt: number }>();
 const inflightRequests = new Map<string, Promise<NormalizedMarketStatus>>();
+let catalogueEpoch = 0;
+if (typeof window !== 'undefined') {
+  const invalidate = () => { catalogueEpoch += 1; statusCache.clear(); };
+  window.addEventListener(INSTRUMENT_CATALOGUE_CHANGED_EVENT, invalidate);
+  window.addEventListener(INSTRUMENT_CATALOGUE_REFRESHED_EVENT, invalidate);
+}
 
 const normalizeSymbolKey = (symbol: unknown): string => String(symbol ?? '').trim().toUpperCase();
+const scopedStatusKey = (symbol: string): string => `${getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())}|${catalogueEpoch}|${symbol}`;
 
 const toState = (
   status: NormalizedMarketStatus,
@@ -45,7 +55,7 @@ const toState = (
 export const getCachedSymbolMarketStatus = (symbol: string): SymbolMarketStatusState | null => {
   const key = normalizeSymbolKey(symbol);
   if (!key) return null;
-  const cached = statusCache.get(key);
+  const cached = statusCache.get(scopedStatusKey(key));
   return cached ? toState(cached.status, { refreshedAt: cached.refreshedAt }) : null;
 };
 
@@ -55,13 +65,14 @@ export const fetchSymbolMarketStatus = async (
 ): Promise<NormalizedMarketStatus> => {
   const key = normalizeSymbolKey(symbol);
   if (!key) return createUnavailableMarketStatus(symbol);
+  const cacheKey = scopedStatusKey(key);
 
-  const cached = statusCache.get(key);
+  const cached = statusCache.get(cacheKey);
   if (!options.force && cached && Date.now() - cached.refreshedAt < CACHE_TTL_MS) {
     return cached.status;
   }
 
-  const existingRequest = inflightRequests.get(key);
+  const existingRequest = inflightRequests.get(cacheKey);
   if (existingRequest) return existingRequest;
 
   const requestStartedAt = Date.now();
@@ -69,14 +80,14 @@ export const fetchSymbolMarketStatus = async (
     .then(payload => {
       recordBrokerServerTime((payload as { server_time?: unknown } | null)?.server_time, requestStartedAt);
       const normalized = normalizeMarketStatus(payload, { symbol: key });
-      statusCache.set(key, { status: normalized, refreshedAt: Date.now() });
+      if (cacheKey === scopedStatusKey(key)) statusCache.set(cacheKey, { status: normalized, refreshedAt: Date.now() });
       return normalized;
     })
     .finally(() => {
-      inflightRequests.delete(key);
+      inflightRequests.delete(cacheKey);
     });
 
-  inflightRequests.set(key, request);
+  inflightRequests.set(cacheKey, request);
   return request;
 };
 
@@ -85,10 +96,12 @@ export const useSymbolMarketStatus = (
   options: UseSymbolMarketStatusOptions = {},
 ): SymbolMarketStatusState => {
   const enabled = options.enabled ?? true;
+  const sessionScope = useBrokerAccountSessionScope();
   const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
   const visiblePollMs = pollMs > 0 ? Math.max(MIN_VISIBLE_POLL_MS, pollMs) : 0;
   const normalizedSymbol = useMemo(() => normalizeSymbolKey(symbol), [symbol]);
   const requestSeqRef = useRef(0);
+  const stateScopeRef = useRef(sessionScope);
   const [state, setState] = useState<SymbolMarketStatusState>(() => (
     getCachedSymbolMarketStatus(normalizedSymbol)
     ?? toState(createUnavailableMarketStatus(normalizedSymbol), {
@@ -99,6 +112,8 @@ export const useSymbolMarketStatus = (
   const refresh = useCallback(async (force = false): Promise<NormalizedMarketStatus> => {
     const requestId = requestSeqRef.current + 1;
     requestSeqRef.current = requestId;
+    const sameScope = stateScopeRef.current === sessionScope;
+    stateScopeRef.current = sessionScope;
 
     if (!enabled || !normalizedSymbol) {
       const unavailable = createUnavailableMarketStatus(normalizedSymbol);
@@ -113,7 +128,7 @@ export const useSymbolMarketStatus = (
     }
 
     setState(prev => (
-      normalizeSymbolKey(prev.symbol) === normalizedSymbol
+      sameScope && normalizeSymbolKey(prev.symbol) === normalizedSymbol
         ? {
           ...prev,
           loading: true,
@@ -139,7 +154,7 @@ export const useSymbolMarketStatus = (
       }
       return unavailable;
     }
-  }, [enabled, normalizedSymbol]);
+  }, [enabled, normalizedSymbol, sessionScope]);
 
   useEffect(() => {
     if (!enabled || !normalizedSymbol) {
@@ -192,16 +207,26 @@ export const useSymbolMarketStatus = (
       startPolling();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    const handleCatalogueChange = () => {
+      statusCache.delete(scopedStatusKey(normalizedSymbol));
+      requestSeqRef.current += 1;
+      setState(toState(createUnavailableMarketStatus(normalizedSymbol), { loading: true }));
+    };
+    const handleCatalogueRefreshed = () => { if (!disposed && isVisible) void refresh(true); };
+    window.addEventListener(INSTRUMENT_CATALOGUE_CHANGED_EVENT, handleCatalogueChange);
+    window.addEventListener(INSTRUMENT_CATALOGUE_REFRESHED_EVENT, handleCatalogueRefreshed);
 
     return () => {
       disposed = true;
       requestSeqRef.current += 1;
       stopPolling();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener(INSTRUMENT_CATALOGUE_CHANGED_EVENT, handleCatalogueChange);
+      window.removeEventListener(INSTRUMENT_CATALOGUE_REFRESHED_EVENT, handleCatalogueRefreshed);
     };
   }, [enabled, normalizedSymbol, refresh, visiblePollMs]);
 
-  if (normalizeSymbolKey(state.symbol) !== normalizedSymbol) {
+  if (stateScopeRef.current !== sessionScope || normalizeSymbolKey(state.symbol) !== normalizedSymbol) {
     return getCachedSymbolMarketStatus(normalizedSymbol)
       ?? toState(createUnavailableMarketStatus(normalizedSymbol), {
         loading: Boolean(enabled && normalizedSymbol),

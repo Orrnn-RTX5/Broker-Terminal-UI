@@ -107,6 +107,9 @@ const readStructuredBackendError = (
 };
 
 export const formatOrderError = (err: unknown): string => {
+  if (isRecord(err) && ['QUOTE_TIME_UNVERIFIED', 'QUOTE_UNAVAILABLE', 'QUOTE_SOURCE_MISMATCH', 'QUOTE_NOT_TRADABLE'].includes(readString(err.code))) {
+    return readString(err.code) + ': ' + scrub(readString(err.message));
+  }
   if (isRecord(err) && err.preserveBackendOrderError === true) {
     const code = readString(err.code);
     const backendMessage = readString(err.backendMessage);

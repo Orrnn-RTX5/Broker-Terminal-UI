@@ -27,11 +27,15 @@ export {
   extractActiveMarketSymbols,
   getActiveMarketSymbolsStorageKey,
   getLiveQuoteRestBatches,
+  getMarketSymbolFreshness,
   hasAuthoritativeMarketSymbolStatus,
   LIVE_QUOTES_REST_BATCH_SIZE,
+  MARKET_SYMBOLS_REFRESH_REQUESTED_EVENT,
   readCachedActiveMarketSymbols,
+  requestMarketSymbolsRefresh,
   useActiveMarketSymbols,
 } from '../features/market-data/useActiveMarketSymbols';
+export type { MarketSymbolFreshness } from '../features/market-data/useActiveMarketSymbols';
 
 export { useMarketInstruments } from '../features/market-data/useMarketInstruments';
 export { useLiveQuotes } from '../features/market-data/useLiveQuotes';

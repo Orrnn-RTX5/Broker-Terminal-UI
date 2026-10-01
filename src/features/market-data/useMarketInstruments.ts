@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ApiError } from '../../api/client';
+import { apiClient, ApiError } from '../../api/client';
 import { marketV2Api } from '../../api/trade';
 import { loadSharedAuthenticatedInstruments } from '../../services/authenticatedInstruments';
 import {
@@ -44,6 +44,10 @@ import type {
   MarketInstrumentsSnapshot,
 } from './marketDataTypes';
 import { setRemoteWatchlistCatalog } from './useRemoteWatchlistSync';
+import {
+  INSTRUMENT_CATALOGUE_CHANGED_EVENT,
+  INSTRUMENT_CATALOGUE_REFRESHED_EVENT,
+} from '../../services/instrumentCatalogueEvents';
 
 interface ScopedValue<T> {
   scope: string | null;
@@ -75,6 +79,7 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
   const sessionRevision = useBrokerSessionRevision();
   const requestGenerationRef = useRef(0);
   const requestAbortRef = useRef<AbortController | null>(null);
+  const catalogueRevisionRef = useRef<string | null>(null);
   const sessionDescriptor = useMemo(
     () => {
       void sessionRevision;
@@ -230,7 +235,10 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
       const session = requestSession;
       try {
         const authorizedResponse = await loadSharedAuthenticatedInstruments(
-          getCapturedRequestOptions(session, session.v2BaseUrl, controller.signal),
+          {
+            ...getCapturedRequestOptions(session, session.v2BaseUrl, controller.signal),
+            params: { include_revision: true },
+          },
           session,
         );
         if (!isCurrentRequest()) return;
@@ -238,6 +246,8 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
           .map(normalizeInstrument)
           .filter(Boolean) as MarketInstrument[];
         authenticatedCatalog = authorizedCatalog;
+        const revision = (authorizedResponse as { revision?: unknown })?.revision;
+        catalogueRevisionRef.current = typeof revision === 'string' ? revision : null;
         publishAccountUniverse(authorizedCatalog, session);
         // FIX: Retain authenticated broker specifications, not only their names,
         // so order controls can enforce each exact symbol's volume grid.
@@ -275,6 +285,7 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
       if (!isCurrentRequest()) return;
       if (loadsAccountCatalog) {
         if (authenticatedCatalog) {
+          window.dispatchEvent(new Event(INSTRUMENT_CATALOGUE_REFRESHED_EVENT));
           // Preserve saved pane selections until both sources settle before
           // allowing reconciliation against the account universe.
           setCompletedCatalogScope(catalogScope);
@@ -326,12 +337,40 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
   useEffect(() => {
     if (!enabled) return;
     void reload();
+    let disposed = false;
+    let checking = false;
+    const refresh = () => { void reload(); };
+    const checkRevision = async () => {
+      if (disposed || checking || !requestSession || document.visibilityState === 'hidden') return;
+      checking = true;
+      try {
+        const response = await apiClient.get<{ revision?: unknown }>('/instruments/revision',
+          getCapturedRequestOptions(requestSession, requestSession.v2BaseUrl));
+        if (disposed) return;
+        const revision = response?.revision;
+        if (typeof revision !== 'string' || revision !== catalogueRevisionRef.current) await reload();
+      } catch {
+        if (!disposed) {
+          catalogueRevisionRef.current = null;
+          setAuthorizedSymbols([]);
+          setCompletedCatalogScope(null);
+          setError('Trading configuration unavailable. Retrying automatically.');
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    window.addEventListener(INSTRUMENT_CATALOGUE_CHANGED_EVENT, refresh);
+    const timer = window.setInterval(() => { void checkRevision(); }, 5000);
     return () => {
+      disposed = true;
       requestGenerationRef.current += 1;
       requestAbortRef.current?.abort();
       requestAbortRef.current = null;
+      window.clearInterval(timer);
+      window.removeEventListener(INSTRUMENT_CATALOGUE_CHANGED_EVENT, refresh);
     };
-  }, [enabled, reload]);
+  }, [enabled, reload, requestSession]);
 
   // Derive synchronously so a login/logout/account switch never renders one
   // frame with the previous session's symbols or universe classification.

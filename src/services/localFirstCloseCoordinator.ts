@@ -12,7 +12,7 @@ export type LocalFirstCloseOptions<TCandidate extends LocalFirstCloseCandidate> 
   getCurrentSessionKey: () => string | null;
   localCandidates: readonly TCandidate[];
   loadAuthoritativeCandidates: () => Promise<readonly TCandidate[]>;
-  closePosition: (ticketId: number) => Promise<unknown>;
+  closePosition: (ticketId: number, candidate: TCandidate) => Promise<unknown>;
   tryClaimTicket?: (ticketId: number) => boolean;
   onCandidatesStarted?: (candidates: readonly TCandidate[]) => void;
   /** Fires as soon as the backend confirms one ticket's close, before the batch settles. */
@@ -55,8 +55,8 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
   } = options;
 
   const isSessionCurrent = () => getCurrentSessionKey() === sessionKey;
-  const closePosition = async (ticketId: number) => {
-    const result = await options.closePosition(ticketId);
+  const closePosition = async (ticketId: number, candidate: TCandidate) => {
+    const result = await options.closePosition(ticketId, candidate);
     // The close is already confirmed by the backend; a UI callback failure
     // must not report this ticket as failed.
     try {
@@ -77,6 +77,11 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
   }
 
   const seenTicketIds = new Set<number>();
+  const candidatesById = new Map<number, TCandidate>();
+  const closeCurrentPosition = (ticketId: number) => {
+    if (!isSessionCurrent()) return Promise.reject(new Error('Trading session changed; close cancelled'));
+    return closePosition(ticketId, candidatesById.get(ticketId)!);
+  };
   const attemptedTicketIds: number[] = [];
   const skippedTicketIds: number[] = [];
 
@@ -86,6 +91,7 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
     candidates.forEach((candidate) => {
       if (seenTicketIds.has(candidate.id)) return;
       seenTicketIds.add(candidate.id);
+      candidatesById.set(candidate.id, candidate);
 
       if (tryClaimTicket && !tryClaimTicket(candidate.id)) {
         skippedTicketIds.push(candidate.id);
@@ -105,7 +111,7 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
   // one Close All action must never create two concurrent bursts for an
   // account and exceed the gateway's per-account admission limit.
   const selectedLocalCandidates = selectNewCandidates(localCandidates);
-  const localClosePromise = closePositionsConcurrently(selectedLocalCandidates, closePosition);
+  const localClosePromise = closePositionsConcurrently(selectedLocalCandidates, closeCurrentPosition);
   if (selectedLocalCandidates.length > 0) onCandidatesStarted?.(selectedLocalCandidates);
 
   let authoritativeCandidates: readonly TCandidate[] = [];
@@ -122,7 +128,7 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
   if (authoritativeSnapshotError === null && isSessionCurrent()) {
     const selectedAuthoritativeCandidates = selectNewCandidates(authoritativeCandidates);
     if (selectedAuthoritativeCandidates.length > 0) onCandidatesStarted?.(selectedAuthoritativeCandidates);
-    authoritativeResult = await closePositionsConcurrently(selectedAuthoritativeCandidates, closePosition);
+    authoritativeResult = await closePositionsConcurrently(selectedAuthoritativeCandidates, closeCurrentPosition);
   }
   const closeResult = mergeCloseResults(localResult, authoritativeResult);
 

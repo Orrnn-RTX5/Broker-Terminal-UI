@@ -181,7 +181,7 @@ describe('local-first close coordinator', () => {
     expect(secondRun).toBe(firstRun);
     expect(coordinator.hasInFlight('broker-a:200002')).toBe(true);
     expect(closePosition).toHaveBeenCalledTimes(1);
-    expect(closePosition).toHaveBeenCalledWith(301);
+    expect(closePosition).toHaveBeenCalledWith(301, { id: 301 });
     expect(loadAuthoritativeCandidates).toHaveBeenCalledTimes(1);
 
     snapshot.resolve([]);

@@ -15,6 +15,7 @@ import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import {
     createUnavailableMarketStatus,
+    getMarketStatusTradeBlockMessage,
     shouldBlockSymbolTrading,
     type NormalizedMarketStatus,
 } from '../utils/marketStatus';
@@ -34,6 +35,9 @@ import { resolveExactBrokerSymbolValue } from '../utils/exactBrokerSymbol';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
 import './OneClickTrading.css';
 import { hasAuthenticatedTradingSession, requireTradingAuth } from '../services/tradingAuthGate';
+import { requestMarketSymbolsRefresh } from '../hooks/useLiveMarketData';
+import { useTerminalQuoteFreshness } from '../hooks/useTerminalQuoteFreshness';
+import { assertTerminalMarketOrderQuote, canSubmitTerminalMarketOrder, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
 
 interface OneClickTradingProps {
     symbol: string;
@@ -123,7 +127,11 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const [flashSide, setFlashSide] = useState<'buy' | 'sell' | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
-    useEffect(() => { setBlockedMessage(null); setError(null); }, [symbol]);
+    const [staleBlock, setStaleBlock] = useState<{ symbol: string; tick: unknown; clockOnly?: boolean } | null>(null);
+    const strictFreshness = terminalQuoteFreshnessEnabled();
+    const quoteFreshness = useTerminalQuoteFreshness(symbol);
+    const blockedFreshness = useTerminalQuoteFreshness(staleBlock?.symbol ?? symbol);
+    const blockedTick = useAppStore((state) => resolveExactBrokerSymbolValue(state.ticks, staleBlock?.symbol ?? symbol));
     const prevBidRef = useRef<number>(0);
     const prevAskRef = useRef<number>(0);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -148,6 +156,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         return () => observer.disconnect();
     }, [visible, symbol]);
     const authIdentity = useAppStore((state) => `${state.isAuthenticated}:${state.accountId}:${state.authToken}`);
+    useEffect(() => { setBlockedMessage(null); setError(null); setStaleBlock(null); }, [symbol, authIdentity]);
     const hasTradingSession = Boolean(authIdentity) && hasAuthenticatedTradingSession();
 
     // FIX: Broker symbols are opaque execution identities. Exact lookup avoids
@@ -250,13 +259,16 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     };
     const hasExecutablePrice = bid > 0 && ask > 0;
     const effectiveMarketStatus = marketStatus ?? createUnavailableMarketStatus(symbol);
-    const marketBlockedMessage = 'Market Closed';
+    const marketBlockedMessage = effectiveMarketStatus.label;
     const marketOpenForTrading = !shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
     const staleQuoteMessage = tr('Cannot place this trade because the quote for {{symbol}} is stale. Please wait for a fresh quote and try again.', { symbol });
-    const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice;
+    const quoteLive = !strictFreshness || canSubmitTerminalMarketOrder(quoteFreshness);
+    const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice && quoteLive;
     const tradeControlDisabled = hasTradingSession && !canSubmitOrder;
     const orderBlockedReason = !tradeAllowed
-        ? hasExecutablePrice ? staleQuoteMessage : tr('No live quote is available for {{symbol}}. Please wait for a fresh quote and try again.', { symbol })
+        ? strictFreshness ? tr('Trading is not available for {{symbol}}.', { symbol }) : hasExecutablePrice ? staleQuoteMessage : tr('No live quote is available for {{symbol}}. Please wait for a fresh quote and try again.', { symbol })
+        : !quoteLive
+            ? terminalQuoteBlockMessage(quoteFreshness.reason, symbol)
         : !marketOpenForTrading
             ? marketBlockedMessage
             : !isVolumeValid
@@ -264,6 +276,13 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 : !hasExecutablePrice
                     ? 'Waiting for a valid bid/ask price'
                     : undefined;
+
+    // Refresh data only: a blocked click never retains an executable order intent.
+    const beginStaleQuoteRefresh = useCallback(() => {
+        setStaleBlock({ symbol, tick: resolveExactBrokerSymbolValue(useAppStore.getState().ticks, symbol) });
+        setBlockedMessage(tr('Waiting for a fresh quote'));
+        void requestMarketSymbolsRefresh().catch(() => {});
+    }, [symbol, tr]);
 
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
         if (!requireTradingAuth({
@@ -280,14 +299,18 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             return;
         }
         if (!tradeAllowed) {
-            setBlockedMessage(orderBlockedReason || staleQuoteMessage);
+            if (strictFreshness) {
+                setBlockedMessage(tr('Trading is not available for {{symbol}}.', { symbol }));
+                return;
+            }
+            beginStaleQuoteRefresh();
             return;
         }
         // The rendered status is already refreshed in the background. Never
         // put an HTTP market-status request in front of a one-click order;
         // the backend still performs the authoritative execution validation.
         if (!marketOpenForTrading) {
-            setBlockedMessage(tr('Cannot place this trade because the market for {{symbol}} is closed.', { symbol }));
+            setBlockedMessage(getMarketStatusTradeBlockMessage(effectiveMarketStatus, symbol));
             return;
         }
         if (!symbol.trim()) {
@@ -318,12 +341,15 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 && getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()) === orderSessionScope;
         };
         try {
+            if (strictFreshness) assertTerminalMarketOrderQuote(symbol);
             const orderPromise = api.orders.placeMarketOrder({
                 side,
                 symbol,
                 volume,
                 login,
             }, { intentAtMs });
+            setBlockedMessage(null);
+            setStaleBlock(null);
             // placeMarketOrder reaches the warm WebSocket's synchronous send()
             // before returning this Promise. Queue cosmetic React feedback only
             // afterwards so it cannot add work ahead of the order frame.
@@ -357,12 +383,48 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             if (!ownsOrderSession()) return;
             console.error('[OneClick] Trade failed:', err);
             setError(formatOrderError(err));
-            if (isStaleOrderError(err)) setBlockedMessage(staleQuoteMessage);
+            const clockError = err && typeof err === 'object' && (err as LooseRecord).code === 'QUOTE_TIME_UNVERIFIED';
+            if (clockError || isStaleOrderError(err)) {
+                const formattedError = formatOrderError(err);
+                const record = err && typeof err === 'object' ? err as LooseRecord : {};
+                const data = record.data && typeof record.data === 'object' ? record.data as LooseRecord : {};
+                const code = String(data.error_code ?? data.code ?? record.code ?? '');
+                const detail = code && !formattedError.includes(code) ? `${code}: ${formattedError}` : formattedError;
+                // Account risk checks may reject an instrument other than the chart.
+                const affectedSymbol = String(data.symbol ?? record.symbol ?? detail.match(/(?:risk quote\s+|stale for\s+|quote for\s+)([A-Za-z0-9_.-]+)/i)?.[1] ?? symbol);
+                setStaleBlock({ symbol: affectedSymbol, clockOnly: Boolean(clockError), tick: resolveExactBrokerSymbolValue(useAppStore.getState().ticks, affectedSymbol) });
+                setBlockedMessage(clockError ? detail : detail + ' ' + tr('Waiting for a fresh quote'));
+                if (clockError) window.dispatchEvent(new Event('rtx:quote-clock-refresh'));
+                void requestMarketSymbolsRefresh().catch(() => {});
+            }
             setTimeout(() => setError(null), 6000);
         } finally {
             setTimeout(() => setFlashSide(null), 500);
         }
-    }, [isAuthenticated, tradeAllowed, marketOpenForTrading, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick, bid, ask, tr, orderBlockedReason, staleQuoteMessage]);
+    }, [isAuthenticated, tradeAllowed, effectiveMarketStatus, marketOpenForTrading, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick, bid, ask, tr, beginStaleQuoteRefresh, strictFreshness]);
+
+    // Recovery clears the block but never submits an order. Require newer
+    // evidence than the rejected attempt, including for another risk symbol.
+    useEffect(() => {
+        if (!staleBlock || (!staleBlock.clockOnly && blockedTick === staleBlock.tick)) return;
+        if (strictFreshness ? !blockedFreshness.live : !tradeAllowed) return;
+        setStaleBlock(null);
+        setBlockedMessage(null);
+        setError(null);
+    }, [staleBlock, blockedTick, blockedFreshness.live, strictFreshness, tradeAllowed]);
+
+    // A fully authenticated session renders stale-blocked symbols as disabled
+    // buttons, so no click can trigger the on-demand refresh; poll once when
+    // the block appears so the button re-enables as soon as the feed heals.
+    const staleBlockedWithSession = hasTradingSession && (!tradeAllowed || !quoteLive) && marketOpenForTrading && hasExecutablePrice && isVolumeValid;
+    const lastProactiveRefreshRef = useRef(0);
+    useEffect(() => {
+        if (!staleBlockedWithSession) return;
+        const now = Date.now();
+        if (now - lastProactiveRefreshRef.current < 5000) return;
+        lastProactiveRefreshRef.current = now;
+        void requestMarketSymbolsRefresh().catch(() => {});
+    }, [staleBlockedWithSession]);
 
     if (!visible || !symbol) return null;
 
@@ -627,7 +689,12 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     {tr(marketBlockedMessage || effectiveMarketStatus.label)}
                 </div>
             )}
-            {blockedMessage && <TradeUnavailableDialog message={blockedMessage} onClose={() => setBlockedMessage(null)} />}
+            {blockedMessage && (
+                <TradeUnavailableDialog
+                    message={blockedMessage}
+                    onClose={() => { setBlockedMessage(null); setStaleBlock(null); }}
+                />
+            )}
             {error && (
                 <div style={{
                     fontSize: 10,

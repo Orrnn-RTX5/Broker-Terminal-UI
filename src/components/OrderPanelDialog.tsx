@@ -1,4 +1,7 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
+import { useTerminalQuoteFreshness } from '../hooks/useTerminalQuoteFreshness';
+import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
+import { assertTerminalMarketOrderQuote, canSubmitTerminalMarketOrder, assertTerminalQuoteFresh, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
@@ -15,6 +18,7 @@ import { RTX_ADVANCED_VIEW_CHANGE_EVENT } from '../utils/advancedViewRootClasses
 import { tradeApi } from '../api/trade';
 import { getStoredAccountLogin } from '../api/tradeGateway';
 import { buildOrderTicketSymbolOptions } from '../utils/accountSymbolUniverse';
+import { formatTradeVolume, isTradeVolumeValid, parseTradeVolumeDraft, resolveTradeVolumeConstraints, type TradeVolumeMetadata } from '../utils/tradeVolume';
 import '../styles/order-panel-dialog.css';
 
 // Symbol display names
@@ -50,6 +54,9 @@ interface OrderPanelProps {
    * present in the tick store.
    */
   symbols?: readonly string[];
+  instruments?: ReadonlyArray<TradeVolumeMetadata & { symbol: string }>;
+  authorizedSymbols?: readonly string[];
+  authorizationSettled?: boolean;
 }
 
 // Instrument config helper.
@@ -440,11 +447,32 @@ export function OrderPanelDialog({
   onSubmitOrder,
   marketStatus,
   symbols: accountSymbols,
+  instruments,
+  authorizedSymbols,
+  authorizationSettled = true,
 }: OrderPanelProps) {
     const tr = useUiTranslation();
   const [symbol, setSymbol] = useState(initialSymbol);
+  const quoteDemandId = React.useId();
+  useQuoteSubscription(isOpen && symbol ? [symbol] : [], `order-dialog:${quoteDemandId}`, {
+    enabled: terminalQuoteFreshnessEnabled() && isOpen,
+  });
   const [orderType] = useState<OrderType>('Market Execution');
-  const [volumeStr, setVolumeStr] = useState(() => localStorage.getItem('lastLotSize') || '0.01');
+  const specification = instruments?.find(instrument => instrument.symbol === symbol);
+  const volumeConstraints = useMemo(() => resolveTradeVolumeConstraints(specification),
+    [specification?.minVolume, specification?.maxVolume, specification?.volumeStep]);
+  const hasVolumeSpecifications = instruments === undefined || Boolean(specification
+    && [specification.minVolume, specification.maxVolume, specification.volumeStep].every(value => typeof value === 'number' && Number.isFinite(value) && value > 0)
+    && specification.maxVolume! >= specification.minVolume!);
+  const tradingAuthorized = authorizationSettled && hasVolumeSpecifications
+    && (authorizedSymbols === undefined || authorizedSymbols.includes(symbol));
+  // Catalogue refreshes update validation without replacing the user's text.
+  const [volumeStr, setVolumeStr] = useState(() => localStorage.getItem('lastLotSize')
+    || formatTradeVolume(volumeConstraints.min, volumeConstraints));
+  const parsedVolume = parseTradeVolumeDraft(volumeStr);
+  const volumeValid = parsedVolume !== null && isTradeVolumeValid(parsedVolume, volumeConstraints);
+  const volumeMessage = !tradingAuthorized ? 'Trading configuration unavailable for this symbol.'
+    : !volumeValid ? `Volume must be between ${volumeConstraints.min} and ${volumeConstraints.max ?? 'the permitted maximum'}, in steps of ${volumeConstraints.step}.` : '';
   const [fillPolicy, setFillPolicy] = useState<FillPolicy>('Fill or Kill');
   const [comment, setComment] = useState('');
   const [isPlacing, setIsPlacing] = useState(false);
@@ -546,9 +574,11 @@ export function OrderPanelDialog({
   const effectiveMarketStatus = liveMarketStatus.loading && propMarketStatus
     ? propMarketStatus
     : liveMarketStatus;
-  const marketBlockedMessage = getMarketStatusTradeBlockMessage(effectiveMarketStatus, symbol);
-  const isMarketExecutionBlocked = orderType === 'Market Execution'
-    && shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
+  const quoteFreshness = useTerminalQuoteFreshness(symbol);
+  const quoteBlocked = terminalQuoteFreshnessEnabled() && !(orderType === 'Market Execution' ? canSubmitTerminalMarketOrder(quoteFreshness) : quoteFreshness.live);
+  const marketBlockedMessage = quoteBlocked ? terminalQuoteBlockMessage(quoteFreshness.reason, symbol) : getMarketStatusTradeBlockMessage(effectiveMarketStatus, symbol);
+  const isMarketExecutionBlocked = quoteBlocked || (orderType === 'Market Execution'
+    && shouldBlockSymbolTrading(effectiveMarketStatus, symbol));
 
   const formatPrice = (price: number) => {
     return formatPriceParts(price, symbol, digits);
@@ -562,8 +592,8 @@ export function OrderPanelDialog({
       return;
     }
     const login = getStoredAccountLogin();
-    const volume = parseFloat(volumeStr);
-    if (!login || !symbol || !Number.isFinite(volume) || volume <= 0) {
+    const volume = parsedVolume;
+    if (!login || !symbol || !tradingAuthorized || !volumeValid || volume === null) {
       setRequiredMargin(null);
       return;
     }
@@ -588,16 +618,16 @@ export function OrderPanelDialog({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [isOpen, symbol, volumeStr]);
+  }, [isOpen, symbol, parsedVolume, tradingAuthorized, volumeValid]);
 
   const adjustVolume = (delta: number) => {
-    const current = parseFloat(volumeStr) || 0;
-    const next = Math.max(0.01, Math.round((current + delta) * 100) / 100);
-    setVolumeStr(next.toString());
+    const current = parseTradeVolumeDraft(volumeStr) ?? volumeConstraints.min;
+    setVolumeStr(formatTradeVolume(current + delta * volumeConstraints.step, volumeConstraints));
   };
 
   const handleSubmit = useCallback(async (side: 'buy' | 'sell') => {
     if (isPlacing) return;
+    if (!tradingAuthorized || !volumeValid || parsedVolume === null) { setError(volumeMessage); return; }
     if (isMarketExecutionBlocked) {
       setError(marketBlockedMessage || tr('Market is closed for {{value0}}.', { value0: symbol }));
       return;
@@ -606,7 +636,9 @@ export function OrderPanelDialog({
     setError(null);
 
     try {
-      const volume = parseFloat(volumeStr) || 0.01;
+      if (orderType === 'Market Execution') assertTerminalMarketOrderQuote(symbol);
+      else assertTerminalQuoteFresh(symbol);
+      const volume = parsedVolume;
       localStorage.setItem('lastLotSize', volume.toString());
 
       await onSubmitOrder({
@@ -624,7 +656,7 @@ export function OrderPanelDialog({
     } finally {
       setIsPlacing(false);
     }
-  }, [isPlacing, isMarketExecutionBlocked, marketBlockedMessage, volumeStr, comment, symbol, onSubmitOrder, onClose, tr]);
+  }, [orderType, isPlacing, isMarketExecutionBlocked, marketBlockedMessage, tradingAuthorized, volumeValid, parsedVolume, volumeMessage, comment, symbol, onSubmitOrder, onClose, tr]);
 
   if (!isOpen) return null;
 
@@ -715,6 +747,10 @@ export function OrderPanelDialog({
                     id={volumeFieldId}
                     type="text"
                     inputMode="decimal"
+                    aria-invalid={!volumeValid}
+                    data-volume-min={volumeConstraints.min}
+                    data-volume-max={volumeConstraints.max}
+                    data-volume-step={volumeConstraints.step}
                     value={volumeStr}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -724,11 +760,9 @@ export function OrderPanelDialog({
                       }
                     }}
                     onBlur={() => {
-                      const parsed = parseFloat(volumeStr);
-                      if (isNaN(parsed) || parsed < 0.01) {
-                        setVolumeStr('0.01');
-                      } else {
-                        setVolumeStr(parsed.toString());
+                      const parsed = parseTradeVolumeDraft(volumeStr);
+                      if (hasVolumeSpecifications && parsed !== null && isTradeVolumeValid(parsed, volumeConstraints)) {
+                        setVolumeStr(formatTradeVolume(parsed, volumeConstraints));
                       }
                     }}
                     className="rtx-order-dialog__volume-input"
@@ -737,13 +771,13 @@ export function OrderPanelDialog({
                     <button
                       type="button"
                       aria-label={tr("Increase volume")}
-                      onClick={() => adjustVolume(0.01)}
+                      onClick={() => adjustVolume(1)}
                       className="rtx-order-dialog__spinner-button"
                     >▲</button>
                     <button
                       type="button"
                       aria-label={tr("Decrease volume")}
-                      onClick={() => adjustVolume(-0.01)}
+                      onClick={() => adjustVolume(-1)}
                       className="rtx-order-dialog__spinner-button"
                     >▼</button>
                   </div>
@@ -778,6 +812,7 @@ export function OrderPanelDialog({
               />
             </div>
 
+            {volumeMessage && !error && <div className="rtx-order-dialog__message rtx-order-dialog__message--warning" role="status">{volumeMessage}</div>}
             {error && (
               <div className="rtx-order-dialog__message rtx-order-dialog__message--error" role="alert">{tr(error)}</div>
             )}
@@ -812,7 +847,7 @@ export function OrderPanelDialog({
                 <button
                   type="button"
                   onClick={() => handleSubmit('sell')}
-                  disabled={isPlacing || bid <= 0 || isMarketExecutionBlocked}
+                  disabled={isPlacing || bid <= 0 || isMarketExecutionBlocked || !tradingAuthorized || !volumeValid}
                   className="rtx-order-dialog__action rtx-order-dialog__action--sell"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
@@ -821,7 +856,7 @@ export function OrderPanelDialog({
                 <button
                   type="button"
                   onClick={() => handleSubmit('buy')}
-                  disabled={isPlacing || ask <= 0 || isMarketExecutionBlocked}
+                  disabled={isPlacing || ask <= 0 || isMarketExecutionBlocked || !tradingAuthorized || !volumeValid}
                   className="rtx-order-dialog__action rtx-order-dialog__action--buy"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -833,7 +868,7 @@ export function OrderPanelDialog({
                 <button
                   type="button"
                   onClick={() => handleSubmit(orderType.includes('Buy') ? 'buy' : 'sell')}
-                  disabled={isPlacing}
+                  disabled={isPlacing || quoteBlocked || !tradingAuthorized || !volumeValid}
                   className={`rtx-order-dialog__action ${orderType.includes('Buy')
                     ? 'rtx-order-dialog__action--buy'
                     : 'rtx-order-dialog__action--sell'}`}

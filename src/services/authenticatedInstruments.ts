@@ -19,7 +19,9 @@ const inFlight = new Map<string, InstrumentRequest>();
 onCommittedBrokerAccountSessionScopeChange(() => inFlight.clear());
 onSessionChange(() => inFlight.clear());
 
-const shareableOptions = new Set(['baseUrl', 'authToken', 'requestContext', 'skipDynamicUrl', 'signal', 'timeoutMs']);
+// `params` is shareable because it is part of the key (Nexa reads the catalogue
+// revision via ?include_revision=true on every authorized catalogue load).
+const shareableOptions = new Set(['baseUrl', 'authToken', 'requestContext', 'skipDynamicUrl', 'signal', 'timeoutMs', 'params']);
 const abortError = () => new DOMException('The request was aborted.', 'AbortError');
 
 /** Shares only concurrent, identical authorized catalog reads; never stores a result. */
@@ -52,7 +54,7 @@ export const loadSharedAuthenticatedInstruments = (
   // Include refresh inputs and deadline so different recovery policies never join.
   const key = JSON.stringify([
     getCommittedBrokerAccountSessionScopeKey(scope), url, token, refreshToken,
-    refreshEndpoint, options.timeoutMs ?? 30_000,
+    refreshEndpoint, options.timeoutMs ?? 30_000, options.params ?? null,
   ]);
   let request = inFlight.get(key);
   if (!request) {

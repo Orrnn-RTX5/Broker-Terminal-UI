@@ -15,8 +15,9 @@ import {
   readFirstNonEmptyString as readRecordNonEmptyString,
 } from '../utils/recordFields';
 import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
+import { readQuoteFreshnessMetadata, type TerminalQuoteMetadata } from './terminalQuoteFreshness';
 
-export interface NormalizedQuoteTick extends QuoteSessionRange {
+export interface NormalizedQuoteTick extends QuoteSessionRange, TerminalQuoteMetadata {
   symbol: string;
   bid: number;
   ask: number;
@@ -258,6 +259,10 @@ const normalizeQuotePayload = (
     'lpName',
   ]);
   const sourceTimestamp = readSourceTimestamp(payload, ...envelopes);
+  const freshnessMetadata = envelopes.reduce<TerminalQuoteMetadata>(
+    (metadata, envelope) => readQuoteFreshnessMetadata(metadata, envelope),
+    readQuoteFreshnessMetadata(payload),
+  );
 
   return {
     symbol,
@@ -266,6 +271,7 @@ const normalizeQuotePayload = (
     spread: toNumber(payload.spread, ask - bid),
     timestamp: sourceTimestamp ?? Date.now(),
     sourceTimestamp,
+    ...freshnessMetadata,
     lp,
     volume,
     last,

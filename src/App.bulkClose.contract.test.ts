@@ -40,7 +40,9 @@ describe('Close All source contract', () => {
     expect(bulkHandler).toContain('localCandidates,');
     expect(bulkHandler).toContain('loadAuthoritativeCandidates: async () =>');
     expect(bulkHandler).toContain('onCandidatesStarted: (candidates) => {');
-    expect(bulkHandler).toContain("(ticketId) => api.positions.closePosition(String(ticketId), { account_login: accId })");
+    expect(bulkHandler).toContain('(ticketId, candidate) => api.positions.closePosition(String(ticketId), {');
+    expect(bulkHandler).toContain('symbol: candidate.symbol');
+    expect(bulkHandler).toContain('isCurrent: () => getCurrentCloseSessionKey() === closeSessionScope');
     expect(bulkHandler).not.toContain('for (const position of candidates)');
     expect(bulkHandler).not.toContain('accountV2Api.closeAllPositions');
   });
@@ -122,7 +124,7 @@ describe('single position close source contract', () => {
   it('removes the row before waiting for confirmation and restores a rejection', () => {
     expect(singleStart).toBeGreaterThan(-1);
     expect(singleEnd).toBeGreaterThan(singleStart);
-    const closeRequest = singleHandler.indexOf("await api.positions.closePosition(String(id), { account_login: closeLogin });");
+    const closeRequest = singleHandler.indexOf('await api.positions.closePosition(String(id), {');
     expect(closeRequest).toBeGreaterThan(-1);
     for (const pendingStep of [
       'markLocalTradeMutation([id]);',
@@ -143,7 +145,10 @@ describe('single position close source contract', () => {
     expect(singleHandler).toContain('const closeLogin = getLiveTradingLogin();');
     expect(singleHandler).toContain('const closeSessionScope = getCommittedBrokerAccountSessionScopeKey(');
     expect(singleHandler).toContain('const isCurrentCloseSession = () => Boolean(');
-    expect(singleHandler).toContain('{ account_login: closeLogin }');
+    expect(singleHandler).toContain('account_login: closeLogin,');
+    expect(singleHandler).toContain('symbol: closingPosition.symbol,');
+    expect(singleHandler).toContain('isCurrent: isCurrentCloseSession,');
+    expect(singleHandler).toContain('executionContext,');
     expect(singleHandler).toContain('if (!isCurrentCloseSession()) {');
   });
 

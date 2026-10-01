@@ -8,6 +8,7 @@ import {
 import { apiClient, ApiError } from '../../api/client';
 import { getServerUrl } from '../../services/brokerSession';
 import { recordBrokerServerTime } from '../../services/brokerServerClock';
+import { INSTRUMENT_CATALOGUE_REFRESHED_EVENT } from '../../services/instrumentCatalogueEvents';
 import {
   getApiRootBaseUrl,
   useBrokerSessionRevision,
@@ -171,6 +172,71 @@ export const extractActiveMarketSymbols = (response: unknown): string[] => {
   return activeFromStatus;
 };
 
+export const MARKET_SYMBOLS_REFRESH_REQUESTED_EVENT = 'rtx:market-symbols-refresh-requested';
+
+export interface MarketSymbolFreshness {
+  symbol: string;
+  ageSec: number | null;
+  fresh: boolean;
+  stale: boolean;
+  silent: boolean;
+  observedAt: number;
+}
+
+const latestMarketSymbolFreshness = new Map<string, MarketSymbolFreshness>();
+
+const recordMarketSymbolStatusRows = (response: unknown): void => {
+  const record = asRecord(response);
+  if (!Array.isArray(record.symbol_status)) return;
+  const observedAt = Date.now();
+  for (const entry of record.symbol_status) {
+    const row = asRecord(entry);
+    const symbol = normalizeSymbol(row.symbol ?? row.name ?? row.id);
+    if (!symbol) continue;
+    const age = toOptionalNumber(row.last_tick_age_sec ?? row.lastTickAgeSec);
+    latestMarketSymbolFreshness.set(symbol, {
+      symbol,
+      ageSec: age !== undefined && age >= 0 ? Math.round(age) : null,
+      fresh: row.fresh === true,
+      stale: row.stale === true,
+      silent: row.silent === true,
+      observedAt,
+    });
+  }
+};
+
+export const getMarketSymbolFreshness = (symbol: string): MarketSymbolFreshness | null => {
+  const key = normalizeSymbol(symbol);
+  return key ? latestMarketSymbolFreshness.get(key) ?? null : null;
+};
+
+const refreshSettlers = new Set<() => void>();
+let refreshFallbackTimer: number | undefined;
+
+const notifyMarketSymbolsRefreshed = (): void => {
+  if (refreshFallbackTimer !== undefined) {
+    clearTimeout(refreshFallbackTimer);
+    refreshFallbackTimer = undefined;
+  }
+  const settlers = Array.from(refreshSettlers);
+  refreshSettlers.clear();
+  settlers.forEach((settle) => settle());
+};
+
+export const requestMarketSymbolsRefresh = (): Promise<void> => {
+  if (typeof window === 'undefined') return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    refreshSettlers.add(resolve);
+    window.dispatchEvent(new Event(MARKET_SYMBOLS_REFRESH_REQUESTED_EVENT));
+    if (refreshFallbackTimer === undefined) {
+      refreshFallbackTimer = window.setTimeout(() => {
+        refreshFallbackTimer = undefined;
+        notifyMarketSymbolsRefreshed();
+      }, 4000);
+    }
+  });
+};
+
 export const readCachedActiveMarketSymbols = (scope?: string): ActiveMarketSymbolsCache => {
   const storage = getBrowserLocalStorage();
   if (!storage) return { symbols: [], updatedAt: 0 };
@@ -262,6 +328,7 @@ export function useActiveMarketSymbols() {
       recordBrokerServerTime(response.server_time, requestStartedAt);
       if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
       const nextSymbols = extractActiveMarketSymbols(response);
+      recordMarketSymbolStatusRows(response);
 
       if (nextSymbols.length > 0 || hasAuthoritativeMarketSymbolStatus(response)) {
         writeCachedActiveMarketSymbols({
@@ -294,9 +361,20 @@ export function useActiveMarketSymbols() {
         requestAbortRef.current = null;
         setSettled(true);
         setLoading(false);
+        notifyMarketSymbolsRefreshed();
       }
     }
   }, [apiRootBaseUrl, storageScope]);
+
+  useEffect(() => {
+    const handleRefreshRequested = () => { void reload(); };
+    window.addEventListener(MARKET_SYMBOLS_REFRESH_REQUESTED_EVENT, handleRefreshRequested);
+    window.addEventListener(INSTRUMENT_CATALOGUE_REFRESHED_EVENT, handleRefreshRequested);
+    return () => {
+      window.removeEventListener(MARKET_SYMBOLS_REFRESH_REQUESTED_EVENT, handleRefreshRequested);
+      window.removeEventListener(INSTRUMENT_CATALOGUE_REFRESHED_EVENT, handleRefreshRequested);
+    };
+  }, [reload]);
 
   useEffect(() => {
     let cancelled = false;

@@ -207,6 +207,7 @@ describe.skipIf(!existsSync(shell))('container broker environment', {
       VITE_BROKER_ID: 'Orrnn',
       FEED_BROKER_ID: 'Orrnn',
       USE_MOCK_DISCOVERY: false,
+      TERMINAL_QUOTE_FRESHNESS: false,
     });
   });
 

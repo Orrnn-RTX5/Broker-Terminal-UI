@@ -26,6 +26,23 @@ const flushPromises = async () => {
 };
 
 describe('useSymbolMarketStatus polling lifecycle', () => {
+  it('blocks on catalogue invalidation and applies the new crypto session without waiting for the poll', async () => {
+    const { result, unmount } = renderHook(() => useSymbolMarketStatus('SOLUSD'));
+    await flushPromises();
+    expect(result.current.isTradeBlocked).toBe(false);
+    act(() => window.dispatchEvent(new Event('rtx:instrument-catalogue-changed')));
+    expect(result.current.isTradeBlocked).toBe(true);
+    getSymbolStatus.mockResolvedValue({ symbol: 'SOLUSD', status: 'closed' });
+    act(() => window.dispatchEvent(new Event('rtx:instrument-catalogue-refreshed')));
+    await flushPromises();
+    expect(result.current.status).toBe('closed');
+    expect(result.current.isTradeBlocked).toBe(true);
+    getSymbolStatus.mockResolvedValue({ symbol: 'SOLUSD', status: 'open' });
+    act(() => window.dispatchEvent(new Event('rtx:instrument-catalogue-refreshed')));
+    await flushPromises();
+    expect(result.current.isTradeBlocked).toBe(false);
+    unmount();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     getSymbolStatus.mockReset();

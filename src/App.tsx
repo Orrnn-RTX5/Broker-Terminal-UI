@@ -33,6 +33,9 @@ import { captureTradeOrderIntent } from './services/orderLatencyTelemetry';
 import { WS_ENDPOINTS } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useActiveMarketSymbols, useMarketInstruments } from './hooks/useLiveMarketData';
+import { useTerminalQuoteClock } from './hooks/useTerminalQuoteClock';
+import { useOpenPositionQuoteDemand } from './hooks/useOpenPositionQuoteDemand';
+import { notifyInstrumentCatalogueChanged } from './services/instrumentCatalogueEvents';
 import { getCachedSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useSymbolMarketStatus';
 import {
   getUniqueSymbolNames as getAllowedSymbolNames,
@@ -220,6 +223,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
   // Mount the SL/TP refresh supervisor; broker/backend owns actual stop execution.
   useAutoCloseMonitor(500);
+  useTerminalQuoteClock();
+  useOpenPositionQuoteDemand();
 
   // Start closed and restore only after a validated token or active authenticated store session.
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -831,6 +836,19 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       );
     };
 
+    const closingPosition = closingPositions[0];
+    if (!closingPosition?.symbol) {
+      closingTicketsRef.current.delete(closeTicketKey);
+      publishSingleCloseFailure('Position is no longer available. Refresh and try again.');
+      return false;
+    }
+    // Quote validation must retain the position identity after optimistic removal.
+    const executionContext = {
+      ticketId: id,
+      symbol: closingPosition.symbol,
+      isCurrent: isCurrentCloseSession,
+    };
+
     // Give immediate execution feedback without weakening broker truth: hide
     // the pending ticket now, then restore it if the correlated close rejects.
     markLocalTradeMutation([id]);
@@ -841,7 +859,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     );
 
     try {
-      await api.positions.closePosition(String(id), { account_login: closeLogin });
+      await api.positions.closePosition(String(id), {
+        account_login: closeLogin,
+        executionContext,
+      });
       if (!isCurrentCloseSession()) {
         clearOptimisticClosedTickets([id], closeMarkerScope);
         return false;
@@ -1093,7 +1114,14 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         loadAuthoritativeCandidates: async () => selectMatchingCandidates(normalizePositions(await tradingV2Api
           .getPositions(accId, { limit: 500, offset: 0 })
           .catch(() => api.positions.getPositions(accId) as any))),
-        closePosition: (ticketId) => api.positions.closePosition(String(ticketId), { account_login: accId }),
+        closePosition: (ticketId, candidate) => api.positions.closePosition(String(ticketId), {
+          account_login: accId,
+          executionContext: {
+            ticketId,
+            symbol: candidate.symbol,
+            isCurrent: () => getCurrentCloseSessionKey() === closeSessionScope,
+          },
+        }),
         tryClaimTicket: (ticketId) => {
           const ticketKey = createSessionScopedTicketKey(closeSessionScope, ticketId);
           if (closingTicketsRef.current.has(ticketKey)) return false;
@@ -1204,6 +1232,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     previousTradeConnectionStateRef.current = connectionState;
     if (previousState !== 'connected' && connectionState === 'connected') {
       window.dispatchEvent(new Event('rtx:trade-stream-recovered'));
+      notifyInstrumentCatalogueChanged();
     }
   }, [connectionState]);
 
@@ -1300,6 +1329,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       `orders.${loginId}`,
       `deals.${loginId}`,
       `state.${loginId}`,
+      'catalogue',
     ];
 
     console.log('[WS] Subscribing to account v2 channels:', channels.join(', '));
