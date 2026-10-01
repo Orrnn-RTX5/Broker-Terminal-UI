@@ -21,6 +21,7 @@ const chartSource = [
   'src/features/trading-chart/runtime/useTradingChartTradeLevelDrag.ts',
   'src/features/trading-chart/runtime/tradeOverlayRuntimeConstants.ts',
 ].map(readChartSource).join('\n');
+const closeHandlerSource = readChartSource('src/app/trading/createPositionCloseHandler.ts');
 const appSource = readFileSync(
   resolve(process.cwd(), 'src/App.tsx'),
   'utf8',
@@ -284,6 +285,7 @@ describe('cTrader-style position controls contract', () => {
     expect(closeGuard).toBeGreaterThan(closeAwait);
     expect(reverseOrder).toBeGreaterThan(closeGuard);
     // Close returns a boolean so reverse can sequence without showing a single-close success sheet.
-    expect(appSource).toContain('const handleClosePosition = async (\n    id: number,\n    { showFailureFeedback = true }: { showFailureFeedback?: boolean } = {},\n  ): Promise<boolean> => {');
+    expect(appSource).toContain('const handleClosePosition = createPositionCloseHandler({');
+    expect(closeHandlerSource).toContain('const handleClosePosition = async (\n    id: number,\n    { showFailureFeedback = true }: { showFailureFeedback?: boolean } = {},\n  ): Promise<boolean> => {');
   });
 });
