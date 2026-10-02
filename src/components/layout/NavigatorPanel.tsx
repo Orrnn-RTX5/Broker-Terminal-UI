@@ -3,9 +3,10 @@ import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
 import React, { lazy, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore, type SavedAccount } from '../../store/useAppStore';
-import { FileCode } from 'lucide-react';
-import { ContextMenu } from '../ui/ContextMenu';
+import { ArrowDownToLine, ArrowUpFromLine, FileCode } from 'lucide-react';
+import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
 import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
+import { openAccountFeature } from '../../startup/terminalFeatures';
 import { ChangePasswordDialog } from '../ChangePasswordDialog';
 import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
@@ -15,10 +16,12 @@ import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config
 import { buildBrokerDirectoryLogoUrl } from '../BrokerLogoImage';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
 import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
+import { openWebTrader } from '../../services/webTrader';
 import type { Broker, BrokerServer } from '../../types/api';
 import type { BrokerDiscoveryItem } from '../../services/brokerDiscovery';
 
 const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
+const OpenAccountDialog = openAccountFeature.Component;
 
 type BrokerLogoInfo = {
     logoUrl: string;
@@ -227,8 +230,13 @@ export const NavigatorPanel: React.FC = () => {
     // must not present them as an active session. Once the user logs out the
     // Navigator returns to its logged-out placeholder ("Click to login...").
     const visibleAccounts = isAuthenticated ? savedAccounts : [];
+    const favoriteAccounts = savedAccounts.filter(account => account.isFavorite);
+    const isAccountActive = (account: SavedAccount) => isAuthenticated
+        && account.login.toString() === accountId
+        && account.server === getStoredBrokerServer();
 
     const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+    const [openAccountDialogOpen, setOpenAccountDialogOpen] = useState(false);
     const [selectedAccountForLogin, setSelectedAccountForLogin] = useState<SavedAccount | null>(null);
     const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
     const [selectedAccountForPassword, setSelectedAccountForPassword] = useState<SavedAccount | null>(null);
@@ -323,28 +331,50 @@ export const NavigatorPanel: React.FC = () => {
 
     // Switch account: require interactive login unless this account is already active.
     const handleSwitchAccount = useCallback(async (acc: SavedAccount) => {
-        if (acc.login.toString() === accountId) return;
+        if (isAuthenticated && acc.login.toString() === accountId && acc.server === getStoredBrokerServer()) return;
 
         localStorage.setItem('rtx_saved_username', String(acc.login));
         localStorage.setItem('rtx_last_login', String(acc.login));
         localStorage.removeItem('rtx_saved_password');
         addSavedAccount({ ...acc, lastUsed: Date.now() });
         handleLoginToAccount(acc);
-    }, [accountId, addSavedAccount]);
+    }, [accountId, isAuthenticated, addSavedAccount]);
 
-    const getAccountContextMenuItems = (acc: SavedAccount) => [
+    const openAccountMenuItem: ContextMenuItemConfig = {
+        label: 'Open an Account',
+        icon: <Icon name="plus" size="xs" />,
+        shortcut: 'Insert',
+        action: () => setOpenAccountDialogOpen(true),
+    };
+
+    const getAccountContextMenuItems = (acc: SavedAccount): ContextMenuItemConfig[] => [
+        openAccountMenuItem,
+        { divider: true },
         {
             label: 'Login to Trade Account',
             icon: <Icon name="user" size="xs" />,
             shortcut: 'Enter',
             action: () => handleLoginToAccount(acc)
         },
-        { label: 'Login to Web Trader', icon: <Icon name="globe" size="xs" />, disabled: true },
+        {
+            label: 'Login to Web Trader',
+            icon: <Icon name="globe" size="xs" />,
+            disabled: !isAccountActive(acc),
+            action: async () => {
+                const result = await openWebTrader();
+                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                    detail: result.status === 'opened'
+                        ? { message: `Opened ${result.brokerName} Web Trader.`, type: 'success' }
+                        : { message: result.message, type: 'error' },
+                }));
+            },
+        },
         { label: 'Login to RTX5.community', icon: <Icon name="zap" size="xs" />, disabled: true },
         { divider: true },
         {
             label: 'Change Password',
             icon: <Icon name="lock" size="xs" />,
+            disabled: !isAccountActive(acc),
             action: () => {
                 setSelectedAccountForPassword(acc);
                 setChangePasswordDialogOpen(true);
@@ -356,28 +386,28 @@ export const NavigatorPanel: React.FC = () => {
             shortcut: 'Delete',
             action: () => {
                 if (confirm(`Remove account ${acc.login} from saved list?`)) {
-                    removeSavedAccount(acc.login);
+                    removeSavedAccount(acc.login, acc.server);
                     // If deleting the currently active/authenticated account,
                     // log out so charts stop and show the placeholder
-                    if (acc.login.toString() === accountId) {
+                    if (isAccountActive(acc)) {
                         api.auth.logout();
                     }
                 }
             }
         },
         { divider: true },
-        { label: 'Add to Favorites', icon: <Icon name="star" size="xs" />, disabled: true },
-        { label: 'Register as Signal', icon: <Icon name="activity" size="xs" />, disabled: true },
-        { label: 'Register a Virtual Server', icon: <Icon name="globe" size="xs" />, disabled: true },
+        { label: 'Deposit', icon: <ArrowDownToLine size={12} />, disabled: true },
+        { label: 'Withdrawal', icon: <ArrowUpFromLine size={12} />, disabled: true },
+        { divider: true },
+        {
+            label: acc.isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+            icon: <Icon name="star" size="xs" />,
+            action: () => addSavedAccount({ ...acc, isFavorite: !acc.isFavorite }),
+        },
     ];
 
     const getGeneralAccountContextMenuItems = () => [
-        {
-            label: 'Open an Account',
-            icon: <Icon name="plus" size="xs" />,
-            shortcut: 'Insert',
-            action: () => handleLoginToAccount()
-        },
+        openAccountMenuItem,
         {
             label: 'Login to Trade Account',
             icon: <Icon name="user" size="xs" />,
@@ -390,7 +420,7 @@ export const NavigatorPanel: React.FC = () => {
         <div className="navigator-panel flex flex-col h-full bg-[#131316] text-zinc-100 select-none border-r border-zinc-700">
             <div className="navigator-panel__body flex-1 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-zinc-700">
                 {/* Accounts */}
-                <ContextMenu items={getGeneralAccountContextMenuItems()}>
+                <ContextMenu key={`${isAuthenticated}:${accountId}`} items={getGeneralAccountContextMenuItems()} variant="theme">
                     <TreeItem label={tr("Accounts")} icon={<Icon name="user" size="sm" />} defaultOpen>
                         {servers.map((serverName, sIdx) => {
                             const accountsInServer = visibleAccounts.filter(a => a.server === serverName);
@@ -405,7 +435,7 @@ export const NavigatorPanel: React.FC = () => {
                                     isLast={isLastServer && visibleAccounts.length > 0}
                                 >
                                     {accountsInServer.map((acc, aIdx) => {
-                                        const isActive = acc.login.toString() === accountId;
+                                        const isActive = isAccountActive(acc);
                                         const isLastAccount = aIdx === accountsInServer.length - 1;
                                         const isSwitching = switchingLogin === acc.login;
                                         // Only show name if it's different from login number
@@ -413,11 +443,12 @@ export const NavigatorPanel: React.FC = () => {
                                             ? `${acc.login}: ${acc.name}`
                                             : `${acc.login}`;
                                         return (
-                                            <ContextMenu key={acc.login} items={getAccountContextMenuItems(acc)}>
+                                            <ContextMenu key={acc.login} items={getAccountContextMenuItems(acc)} variant="theme">
                                                 <TreeItem
                                                     label={isSwitching ? tr("{{value0}} (switching...)", { value0: displayName }) : tr(displayName)}
                                                     icon={<AccountIcon isActive={isActive} isLive={isLive ?? false} />}
                                                     isLast={isLastAccount}
+                                                    isFavorite={acc.isFavorite}
                                                     onItemClick={() => {
                                                         handleSwitchAccount(acc);
                                                     }}
@@ -459,6 +490,24 @@ export const NavigatorPanel: React.FC = () => {
                     </TreeItem>
                 </ContextMenu>
 
+                <section aria-label={tr('Favorites')}>
+                    <TreeItem label={tr('Favorites')} icon={<Icon name="star" size="sm" className="text-amber-400" />} defaultOpen>
+                        {favoriteAccounts.length === 0 ? (
+                            <p className="px-5 py-2 text-[12px] text-[var(--text-secondary)]">{tr('No favorite accounts yet')}</p>
+                        ) : favoriteAccounts.map((acc, index) => (
+                            <ContextMenu key={`${acc.server}:${acc.login}`} items={getAccountContextMenuItems(acc)} variant="theme">
+                                <TreeItem
+                                    label={`${acc.login}${acc.name && acc.name !== String(acc.login) ? `: ${acc.name}` : ''} · ${brokerDisplayName(acc.server, brokerLogos[acc.server]?.brokerName)}`}
+                                    icon={<AccountIcon isActive={isAccountActive(acc)} isLive={acc.isLive} />}
+                                    isFavorite
+                                    isLast={index === favoriteAccounts.length - 1}
+                                    onItemClick={() => handleLoginToAccount(acc)}
+                                />
+                            </ContextMenu>
+                        ))}
+                    </TreeItem>
+                </section>
+
                 {/* Indicators */}
                 <TreeItem label={tr("Indicators")} icon={<Icon name="trending-up" size="sm" />} defaultOpen disabled>
                     <TreeItem label={tr("Trend")} icon={<Icon name="folder" size="sm" className="text-amber-300" />}>
@@ -496,6 +545,13 @@ export const NavigatorPanel: React.FC = () => {
                     <TreeItem label={tr("Virtual Hosting")} icon={<Icon name="globe" size="sm" className="text-zinc-400" />} isLast />
                 </TreeItem>
             </div>
+
+            <RetainedLazyFeature active={openAccountDialogOpen}>
+                <OpenAccountDialog
+                    isOpen={openAccountDialogOpen}
+                    onClose={() => setOpenAccountDialogOpen(false)}
+                />
+            </RetainedLazyFeature>
 
             <RetainedLazyFeature active={loginDialogOpen}>
             <LoginDialog
@@ -589,6 +645,8 @@ function TreeItem({
     defaultOpen = false,
     isLast = false,
     onItemClick,
+    onContextMenu,
+    isFavorite = false,
     disabled = false,
 }: {
     label: string;
@@ -597,6 +655,8 @@ function TreeItem({
     defaultOpen?: boolean;
     isLast?: boolean;
     onItemClick?: () => void;
+    onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
+    isFavorite?: boolean;
     disabled?: boolean;
 }) {
     const tr = useUiTranslation();
@@ -643,6 +703,7 @@ function TreeItem({
                     : 'group cursor-pointer hover:bg-[#222226]'
                     }`}
                 aria-disabled={disabled || undefined}
+                onContextMenu={disabled ? undefined : onContextMenu}
                 aria-label={disabled ? tr("{{value0}}, currently unavailable", { value0: label }) : undefined}
                 title={disabled ? tr("{{value0}} is currently unavailable", { value0: label }) : undefined}
                 onClick={disabled ? undefined : () => {
@@ -662,6 +723,11 @@ function TreeItem({
                 {!isExpandable && <span className="w-3 flex-shrink-0" />}
                 <span className={`navigator-tree-item__icon flex-shrink-0 ${disabled ? 'text-zinc-600' : 'text-zinc-300 group-hover:text-zinc-100'}`}>{icon}</span>
                 <span className={`navigator-tree-item__label truncate text-[14px] font-normal ${disabled ? 'text-zinc-500' : 'text-zinc-100 group-hover:text-white'}`}>{label}</span>
+                {isFavorite && (
+                    <span className="ml-auto mr-1 flex-shrink-0" title={tr('Favorite account')} aria-label={tr('Favorite account')}>
+                        <Icon name="star" size="xs" className="text-amber-400" />
+                    </span>
+                )}
                 {disabled && (
                     <span className="navigator-tree-item__lock ml-auto mr-1 flex-shrink-0 text-zinc-500" aria-hidden="true">
                         <Icon name="lock" size="xs" />

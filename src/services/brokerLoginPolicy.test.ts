@@ -5,6 +5,41 @@ const webConfig = (brokerId: string) => ({ CONFIG_SOURCE: 'deployment', BROKER_I
 const runtimeWindow = window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
 
 describe('broker login policy', () => {
+  it('selects the exact registered ID despite a case-distinct row arriving first', async () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('Orrnn');
+    const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
+    expect(resolveBrokerLoginPolicy([
+      { broker_id: 'orrnn', broker_name: 'Other tenant' },
+      { broker_id: 'Orrnn', broker_name: 'Orrnn' },
+    ], { hostname: 'localhost' })).toMatchObject({ status: 'ready', brokerId: 'Orrnn' });
+  });
+
+  it('supports registered brokers sharing a gateway without directory-order selection', async () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('broker-a');
+    const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
+    const rows = [
+      { broker_id: 'broker-b', broker_name: 'Other broker', server_url: 'https://broker-a.example' },
+      { broker_id: 'broker-a', broker_name: 'Configured broker', server_url: 'https://broker-a.example' },
+    ];
+    expect(resolveBrokerLoginPolicy(rows, { hostname: 'localhost' })).toMatchObject({ status: 'ready', brokerId: 'broker-a' });
+    expect(resolveBrokerLoginPolicy([...rows].reverse(), { hostname: 'localhost' })).toMatchObject({ status: 'ready', brokerId: 'broker-a' });
+  });
+
+  it('rejects a conflicting terminal hostname even if another row matches the API first', async () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('broker-a');
+    const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
+    expect(resolveBrokerLoginPolicy([
+      { broker_id: 'broker-a', server_url: 'https://broker-a.example' },
+      { broker_id: 'broker-b', webterminal_domain: 'terminal.other.example' },
+    ], { hostname: 'terminal.other.example' })).toMatchObject({ status: 'error', brokerId: '' });
+  });
+
+  it('does not enable account access for a disabled configured broker', async () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = webConfig('broker-a');
+    const { resolveBrokerLoginPolicy } = await import('./brokerLoginPolicy');
+    expect(resolveBrokerLoginPolicy([{ broker_id: 'broker-a', enabled: false }], { hostname: 'localhost' }))
+      .toMatchObject({ status: 'error', brokerId: '' });
+  });
   afterEach(() => {
     delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
     localStorage.clear();

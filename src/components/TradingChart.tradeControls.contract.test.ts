@@ -80,7 +80,7 @@ describe('cTrader-style position controls contract', () => {
     expect(entryControls).not.toContain('slDockOffset');
     // Controls stay at their actual price and above the line's drag target.
     expect(entryControls).toContain("appendActiveInteractionNode(controlBar.root, { kind: 'price-badge', price: trade.entryPrice });");
-    expect(chartSource).toContain("appendOverlayNode(levelBar, { kind: 'price-badge', price: levelPrice }, 'active');");
+    expect(chartSource).toContain("appendActiveInteractionNode(levelBar, { kind: 'price-badge', price: levelPrice });");
     // Relayout must restore each node's own display mode — forcing 'block'
     // onto the flex control bars drops their buttons onto the text baseline.
     expect(chartSource).toContain("el.style.display = el.dataset.display || 'block';");

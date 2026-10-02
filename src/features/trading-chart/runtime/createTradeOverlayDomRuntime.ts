@@ -664,7 +664,10 @@ export const createTradeOverlayDomRuntime = ({
         const title = getLocalizedTradeTitle(trade, role, levelPrice);
         levelBar.setAttribute('aria-label', title);
       });
-      appendOverlayNode(levelBar, { kind: 'price-badge', price: levelPrice }, 'active');
+      // Match the line hit-area's host so the bar's z-index can put its
+      // remove button above that full-width drag target. The drawing overlay
+      // creates a lower stacking context, regardless of the bar's z-index.
+      appendActiveInteractionNode(levelBar, { kind: 'price-badge', price: levelPrice });
       for (const node of levelNodes) {
         if (node.classList.contains('rtx-trade-level-hit-area')) bindTradeLevelHoverTarget(levelBar, node);
       }

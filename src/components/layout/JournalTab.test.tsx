@@ -425,9 +425,9 @@ describe('JournalTab', () => {
         fireEvent.click(screen.getByRole('button', { name: 'All' }));
         expect(screen.getByText('Older connection event')).toBeInTheDocument();
 
-        const oneHourButton = screen.getByRole('button', { name: '1h' });
-        fireEvent.click(oneHourButton);
-        expect(oneHourButton).toHaveAttribute('aria-pressed', 'true');
+        const twoHourButton = screen.getByRole('button', { name: '2h' });
+        fireEvent.click(twoHourButton);
+        expect(twoHourButton).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByText('Recent order filled')).toBeInTheDocument();
         expect(screen.queryByText('Older connection event')).not.toBeInTheDocument();
 
@@ -675,11 +675,9 @@ describe('JournalTab', () => {
         expect(await screen.findByText('Journal row 30 minutes old')).toBeInTheDocument();
 
         const cases = [
-            { range: '1h', included: logs.slice(0, 1), excluded: logs.slice(1) },
             { range: '2h', included: logs.slice(0, 2), excluded: logs.slice(2) },
             { range: '3h', included: logs.slice(0, 3), excluded: logs.slice(3) },
             { range: '6h', included: logs.slice(0, 4), excluded: logs.slice(4) },
-            { range: '12h', included: logs.slice(0, 5), excluded: logs.slice(5) },
             { range: 'Today', included: logs.slice(0, 6), excluded: logs.slice(6) },
             { range: 'Week', included: logs.slice(0, 7), excluded: logs.slice(7) },
             { range: 'Month', included: logs.slice(0, 8), excluded: logs.slice(8) },

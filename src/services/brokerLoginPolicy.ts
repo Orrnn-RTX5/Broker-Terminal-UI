@@ -5,6 +5,7 @@ import {
   isDesktopBackendTarget,
 } from '../config/backendTarget.js';
 import type { BrokerDiscoveryItem } from './brokerDiscovery';
+import { isBrokerSuspended } from './brokerDiscovery';
 
 export interface BrokerLoginPolicy {
   status: 'ready' | 'error';
@@ -26,7 +27,7 @@ const TARGET_FIELDS = [
   'web_backend_url', 'services_url',
 ] as const;
 
-const normalizeId = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+const normalizeId = (value: unknown): string => String(value ?? '').trim();
 
 const hostnameOf = (value: unknown): string => {
   const raw = String(value ?? '').trim();
@@ -91,6 +92,17 @@ export const resolveBrokerLoginPolicy = (
   const runtimeBroker = brokers.find((broker) => normalizeId(broker.broker_id) === runtimeId);
   const hostname = hostnameOf(locationLike?.hostname);
   const targetOrigin = originOf(getBackendTarget());
+  if (webDeployment) {
+    if (!runtimeBroker || !runtimeId) return failedPolicy('This terminal does not have a verified broker configured.');
+    if (isBrokerSuspended(runtimeBroker)) return failedPolicy('The configured broker is unavailable for account access.');
+    const hostMatches = isLocalHostname(hostname) ? [] : brokers.filter(broker => brokerMatchesHostname(broker, hostname));
+    const targetMatches = brokers.filter(broker => brokerMatchesTarget(broker, targetOrigin));
+    if ((hostMatches.length && !hostMatches.includes(runtimeBroker))
+      || (targetMatches.length && !targetMatches.includes(runtimeBroker))) {
+      return failedPolicy('This terminal broker configuration does not match its deployment URL.');
+    }
+    return readyPolicy(runtimeBroker);
+  }
   // A developer's localhost is shared by every broker's local frontend. It
   // cannot identify a broker, even if discovery lists a demo on that hostname.
   const hostBroker = isLocalHostname(hostname)
