@@ -23,7 +23,7 @@ const dockEnd = bottomDockSource.indexOf('// Helpers', dockStart);
 const dockHandler = bottomDockSource.slice(dockStart, dockEnd);
 
 describe('Close All source contract', () => {
-  it('does not remove dock positions before App confirmation and execution', () => {
+  it('delegates dock bulk actions to App execution without removing positions itself', () => {
     expect(dockStart).toBeGreaterThan(-1);
     expect(dockEnd).toBeGreaterThan(dockStart);
     expect(dockHandler).toContain('onCloseBulk?.(type, symbol)');
@@ -48,23 +48,23 @@ describe('Close All source contract', () => {
     expect(bulkHandler).not.toContain('accountV2Api.closeAllPositions');
   });
 
-  it('keeps the first confirmation for Close All, In-Profit, and In-Loss', () => {
-    const confirmation = bulkHandler.indexOf('await confirmBulkCloseForSession({');
+  it('executes Close All, In-Profit, and In-Loss directly without a confirmation sheet', () => {
     const execution = bulkHandler.indexOf('bulkCloseInFlightScopesRef.current.add(closeSessionScope);');
-    const beforeConfirmation = bulkHandler.slice(0, confirmation);
+    const closeRequest = bulkHandler.indexOf('await closePositionsLocalFirst({');
+    const beforeExecution = bulkHandler.slice(0, execution);
 
     expect(bulkStart).toBeGreaterThan(-1);
     expect(bulkHandler).toContain("type: 'ALL' | 'WINNERS' | 'LOSERS'");
-    expect(bulkHandler).toContain('positions: previewPositions,');
-    expect(bulkHandler).toContain('combinedPnL: combinedProfit,');
-    expect(bulkHandler).toContain('!confirmed');
-    expect(bulkHandler).toContain('cancelConfirmation: () => useBulkCloseConfirmStore.getState().closeBulkCloseConfirm()');
-    expect(confirmation).toBeGreaterThan(-1);
-    expect(execution).toBeGreaterThan(confirmation);
-    expect(beforeConfirmation).not.toContain('await ');
-    expect(beforeConfirmation).not.toContain('getPositions(');
-    expect(beforeConfirmation).not.toContain('setTimeout');
-    expect(beforeConfirmation).not.toContain('requestAnimationFrame');
+    expect(bulkHandler).toContain('if (localCandidates.length === 0) return;');
+    expect(appSource).not.toContain('confirmBulkCloseForSession');
+    expect(appSource).not.toContain('useBulkCloseConfirmStore');
+    expect(appSource).not.toContain('BulkCloseConfirmDialog');
+    expect(execution).toBeGreaterThan(-1);
+    expect(closeRequest).toBeGreaterThan(execution);
+    expect(beforeExecution).not.toContain('await ');
+    expect(beforeExecution).not.toContain('getPositions(');
+    expect(beforeExecution).not.toContain('setTimeout');
+    expect(beforeExecution).not.toContain('requestAnimationFrame');
   });
 
   it('removes every claimed row immediately, then makes confirmations durable', () => {

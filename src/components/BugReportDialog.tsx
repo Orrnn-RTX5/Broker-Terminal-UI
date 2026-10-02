@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState, FormEvent } from 'react';
+import { Bug, CheckCircle2, ChevronDown, FileText, LoaderCircle, Paperclip, Send, X } from 'lucide-react';
+import '../styles/bug-report-dialog.css';
 
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import {
@@ -8,7 +10,6 @@ import {
     CATEGORY_LABELS,
     MAX_ATTACHMENTS,
     SEVERITY_LABELS,
-    captureScreenshot,
     fetchBugReportOptions,
     submitBugReport,
     validateAttachment,
@@ -20,9 +21,8 @@ interface BugReportDialogProps {
     context?: BugReportTradingContext;
 }
 
-// Kept low on purpose, and matched by the control plane. The first live test
-// reports ("check", "check ing") were blocked by a 10-character minimum the
-// form never mentioned; only an empty-ish field is worth refusing.
+// Text-only reports need enough information to send. Attachment reports can
+// use a basic title and description while preserving any text the user enters.
 const MIN_TITLE_LENGTH = 3;
 const MIN_DESCRIPTION_LENGTH = 3;
 const EMPTY_FORM: BugReportForm = {
@@ -35,8 +35,8 @@ const EMPTY_FORM: BugReportForm = {
     actual: '',
 };
 
-const inputClass = 'w-full bg-[#191a1e] border border-zinc-700 rounded px-2 py-1.5 text-[13px] text-zinc-200 outline-none focus:border-zinc-500';
-const labelClass = 'block text-[11px] font-medium uppercase tracking-wide text-zinc-400 mb-1';
+const inputClass = 'rtx-bug-report-control rtx-bug-report-input';
+const labelClass = 'rtx-bug-report-label';
 
 /**
  * Report a Bug, from the trading terminal.
@@ -53,12 +53,27 @@ export function BugReportDialog({ isOpen, onClose, context = {} }: BugReportDial
     const [attachments, setAttachments] = useState<File[]>([]);
     const [showDetails, setShowDetails] = useState(false);
     const [submitting, setSubmitting] = useState(false);
-    const [capturing, setCapturing] = useState(false);
     const [error, setError] = useState('');
     const [receipt, setReceipt] = useState<BugReportReceipt | null>(null);
     const [storageEnabled, setStorageEnabled] = useState(true);
 
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const titleInputRef = useRef<HTMLInputElement | null>(null);
+    const dialogRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const frame = window.requestAnimationFrame(() => titleInputRef.current?.focus());
+        return () => {
+            window.cancelAnimationFrame(frame);
+            if (previousFocus?.isConnected) previousFocus.focus();
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (receipt) dialogRef.current?.focus();
+    }, [receipt]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -99,34 +114,20 @@ export function BugReportDialog({ isOpen, onClose, context = {} }: BugReportDial
         });
     }, []);
 
-    const handleCapture = async () => {
-        setCapturing(true);
-        setError('');
-        try {
-            // The dialog is hidden for the capture so the screenshot shows the
-            // terminal the trader is complaining about, not this form.
-            const file = await captureScreenshot();
-            if (!file) {
-                setError('The screen could not be captured. You can attach an image instead.');
-                return;
-            }
-            addFiles([file]);
-        } finally {
-            setCapturing(false);
-        }
-    };
-
     if (!isOpen) return null;
 
     const titleLength = form.title.trim().length;
     const descriptionLength = form.description.trim().length;
-    const canSubmit = titleLength >= MIN_TITLE_LENGTH && descriptionLength >= MIN_DESCRIPTION_LENGTH && !submitting;
+    const hasAttachments = attachments.length > 0;
+    const canSubmit = (hasAttachments || (titleLength >= MIN_TITLE_LENGTH && descriptionLength >= MIN_DESCRIPTION_LENGTH)) && !submitting;
     // A disabled button with no reason is what stopped the first reports.
-    const submitHint = titleLength < MIN_TITLE_LENGTH
-        ? `Add a title (at least ${MIN_TITLE_LENGTH} characters) to send the report.`
-        : descriptionLength < MIN_DESCRIPTION_LENGTH
-            ? `Describe what happened (at least ${MIN_DESCRIPTION_LENGTH} characters) to send the report.`
-            : '';
+    const submitHint = hasAttachments
+        ? tr('Ready to send with attachments')
+        : titleLength < MIN_TITLE_LENGTH
+            ? `Add a title (at least ${MIN_TITLE_LENGTH} characters) to send the report.`
+            : descriptionLength < MIN_DESCRIPTION_LENGTH
+                ? `Describe what happened (at least ${MIN_DESCRIPTION_LENGTH} characters) to send the report.`
+                : '';
 
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault();
@@ -134,7 +135,16 @@ export function BugReportDialog({ isOpen, onClose, context = {} }: BugReportDial
         setSubmitting(true);
         setError('');
         try {
-            const result = await submitBugReport({ form, attachments, context });
+            const reportForm = hasAttachments ? {
+                ...form,
+                title: titleLength >= MIN_TITLE_LENGTH
+                    ? form.title
+                    : `${tr('Bug report with attachments')}${titleLength ? `: ${form.title.trim()}` : ''}`,
+                description: descriptionLength >= MIN_DESCRIPTION_LENGTH
+                    ? form.description
+                    : `${descriptionLength ? `${form.description.trim()}\n\n` : ''}${tr('Please review the attached files for the reported issue.')}`,
+            } : form;
+            const result = await submitBugReport({ form: reportForm, attachments, context });
             setReceipt(result);
         } catch (submitError) {
             setError(submitError instanceof Error ? submitError.message : 'The report could not be sent');
@@ -148,149 +158,168 @@ export function BugReportDialog({ isOpen, onClose, context = {} }: BugReportDial
             setForm((current) => ({ ...current, [key]: event.target.value }));
 
     return (
-        <div data-html2canvas-ignore="true" className="fixed inset-0 z-[150] flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-6" onClick={() => !submitting && onClose()}>
+        <div data-html2canvas-ignore="true" className="rtx-bug-report-overlay" onClick={() => !submitting && onClose()}>
             <div
-                className="bg-[#131316] border border-zinc-700 rounded-lg shadow-2xl w-full max-w-[600px] overflow-hidden"
+                ref={dialogRef}
+                tabIndex={-1}
+                className="rtx-bug-report-dialog"
                 onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (!submitting) onClose();
+                    }
+                    if (event.key !== 'Tab') return;
+                    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+                        'button, input:not([type="file"]), textarea, select',
+                    ) ?? []).filter((control) => !control.disabled);
+                    const first = controls[0];
+                    const last = controls[controls.length - 1];
+                    if (!first) { event.preventDefault(); return; }
+                    if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+                        event.preventDefault(); last.focus();
+                    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current)) {
+                        event.preventDefault(); first.focus();
+                    }
+                }}
                 role="dialog"
                 aria-modal="true"
                 aria-label={tr('Report a Bug')}
+                aria-describedby="terminal-bug-introduction"
             >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-[#191a1e]">
-                    <h2 className="text-zinc-200 font-medium text-[14px]">{tr('Report a Bug')}</h2>
-                    <button type="button" onClick={onClose} aria-label={tr('Close')} className="text-zinc-400 hover:text-white transition-colors">✕</button>
+                <div className="rtx-bug-report-header">
+                    <span className="rtx-bug-report-emblem" aria-hidden="true"><Bug size={20} strokeWidth={1.5} /></span>
+                    <div className="rtx-bug-report-heading">
+                        <h2>{tr('Report a Bug')}</h2>
+                        <p id="terminal-bug-introduction" className="rtx-bug-report-subtitle">{tr('Tell us what happened.')}</p>
+                    </div>
+                    <button type="button" onClick={onClose} disabled={submitting} aria-label={tr('Close')} className="rtx-bug-report-icon-button"><X size={18} strokeWidth={1.5} aria-hidden="true" /></button>
                 </div>
 
                 {receipt ? (
-                    <div className="px-5 py-8 text-center">
-                        <p className="text-[14px] font-medium text-zinc-100">{tr('Bug report sent')}</p>
-                        <p className="mt-1 text-[12px] text-zinc-400">
+                    <div className="rtx-bug-report-success">
+                        <CheckCircle2 size={36} strokeWidth={1.5} aria-hidden="true" />
+                        <h3>{tr('Bug report sent')}</h3>
+                        <p className="rtx-bug-report-subtitle">
                             {tr('Your broker and the RTX5 team can see this report.')}
                         </p>
-                        <code className="mt-4 inline-block rounded border border-zinc-700 bg-[#191a1e] px-3 py-2 font-mono text-[12px] text-zinc-200">
+                        <code className="rtx-bug-report-receipt">
                             {receipt.report_id}
                         </code>
                         {receipt.failed_attachments?.length ? (
-                            <p className="mt-3 text-[11px] text-amber-400">
+                            <p className="rtx-bug-report-notice">
                                 {tr('The report was sent, but an attachment could not be uploaded.')}
                             </p>
                         ) : null}
-                        <div className="mt-5">
-                            <button type="button" onClick={onClose} className="rounded border border-zinc-700 bg-[#191a1e] px-4 py-1.5 text-[12px] text-zinc-200 hover:bg-zinc-800">
+                        <div>
+                            <button type="button" onClick={onClose} className="rtx-bug-report-control rtx-bug-report-button">
                                 {tr('Close')}
                             </button>
                         </div>
                     </div>
                 ) : (
-                    <form onSubmit={handleSubmit} className="max-h-[70vh] overflow-y-auto p-4 space-y-3">
-                        {!storageEnabled ? (
-                            <p className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
-                                {tr('Bug reporting is not enabled on this server yet.')}
-                            </p>
-                        ) : null}
+                    <form onSubmit={handleSubmit} className="rtx-bug-report-form">
+                        <div className="rtx-bug-report-body">
+                            <div className="rtx-bug-report-fields">
+                                {!storageEnabled ? (
+                                    <p className="rtx-bug-report-notice">
+                                        {tr('Bug reporting is not enabled on this server yet.')}
+                                    </p>
+                                ) : null}
 
-                        <div>
-                            <label className={labelClass} htmlFor="terminal-bug-title">{tr('Title')}</label>
-                            <input id="terminal-bug-title" className={inputClass} value={form.title} onChange={update('title')} maxLength={200} placeholder={tr('Close All does nothing')} required />
-                        </div>
-
-                        <div>
-                            <label className={labelClass} htmlFor="terminal-bug-description">{tr('What happened?')}</label>
-                            <textarea id="terminal-bug-description" className={`${inputClass} min-h-[92px] resize-y`} value={form.description} onChange={update('description')} maxLength={8000} required />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className={labelClass} htmlFor="terminal-bug-category">{tr('Area')}</label>
-                                <select id="terminal-bug-category" className={inputClass} value={form.category} onChange={update('category')}>
-                                    {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                                        <option key={value} value={value}>{tr(label)}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className={labelClass} htmlFor="terminal-bug-severity">{tr('Severity')}</label>
-                                <select id="terminal-bug-severity" className={inputClass} value={form.severity} onChange={update('severity')}>
-                                    {Object.entries(SEVERITY_LABELS).map(([value, label]) => (
-                                        <option key={value} value={value}>{tr(label)}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div>
-                            <span className={labelClass}>{tr('Screenshot')}</span>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <button type="button" onClick={handleCapture} disabled={capturing} className="rounded border border-zinc-700 bg-[#191a1e] px-3 py-1.5 text-[11px] text-zinc-200 hover:bg-zinc-800 disabled:opacity-50">
-                                    {capturing ? tr('Capturing…') : tr('Capture this screen')}
-                                </button>
-                                <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded border border-zinc-700 bg-[#191a1e] px-3 py-1.5 text-[11px] text-zinc-200 hover:bg-zinc-800">
-                                    {tr('Attach file')}
-                                </button>
-                            </div>
-                            <input
-                                ref={fileInputRef} type="file" multiple hidden
-                                accept="image/png,image/jpeg,image/webp,text/plain,.log,.txt"
-                                onChange={(event) => { addFiles(event.target.files); event.target.value = ''; }}
-                            />
-                            {attachments.length ? (
-                                <ul className="mt-2 space-y-1">
-                                    {attachments.map((file, index) => (
-                                        <li key={`${file.name}-${index}`} className="flex items-center justify-between rounded border border-zinc-700 bg-[#191a1e] px-2 py-1 text-[11px] text-zinc-300">
-                                            <span className="truncate">{file.name}</span>
-                                            <button type="button" aria-label={`${tr('Remove')} ${file.name}`} onClick={() => setAttachments((current) => current.filter((_, i) => i !== index))} className="ml-2 text-zinc-500 hover:text-zinc-200">✕</button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : null}
-                            {/* Said plainly: a terminal screenshot shows balances and open positions. */}
-                            <p className="mt-1.5 text-[10px] leading-4 text-zinc-500">
-                                {tr('A screenshot of the terminal shows your balance and open positions. It is sent to your broker and the RTX5 team.')}
-                            </p>
-                        </div>
-
-                        <button type="button" onClick={() => setShowDetails((value) => !value)} aria-expanded={showDetails} className="text-[11px] font-medium text-zinc-400 hover:text-zinc-200">
-                            {showDetails ? tr('Hide details') : tr('Add steps to reproduce')}
-                        </button>
-
-                        {showDetails ? (
-                            <div className="space-y-3 border-l-2 border-zinc-800 pl-3">
                                 <div>
-                                    <label className={labelClass} htmlFor="terminal-bug-steps">{tr('Steps (one per line)')}</label>
-                                    <textarea id="terminal-bug-steps" className={`${inputClass} min-h-[70px] resize-y`} value={form.steps} onChange={update('steps')} />
+                                    <label className={labelClass} htmlFor="terminal-bug-title">{tr('Title')}</label>
+                                    <input ref={titleInputRef} id="terminal-bug-title" className={inputClass} value={form.title} onChange={update('title')} maxLength={200} placeholder={tr('Briefly describe the issue')} required={!hasAttachments} />
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
+
+                                <div>
+                                    <label className={labelClass} htmlFor="terminal-bug-description">{tr('What happened?')}</label>
+                                    <textarea id="terminal-bug-description" className={`${inputClass} rtx-bug-report-description`} value={form.description} onChange={update('description')} maxLength={8000} placeholder={tr('What were you doing, and what went wrong?')} required={!hasAttachments} />
+                                </div>
+
+                                <div className="rtx-bug-report-field-pair">
                                     <div>
-                                        <label className={labelClass} htmlFor="terminal-bug-expected">{tr('Expected')}</label>
-                                        <textarea id="terminal-bug-expected" className={`${inputClass} min-h-[54px] resize-y`} value={form.expected} onChange={update('expected')} />
+                                        <label className={labelClass} htmlFor="terminal-bug-category">{tr('Area')}</label>
+                                        <select id="terminal-bug-category" className={inputClass} value={form.category} onChange={update('category')}>
+                                            {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                                                <option key={value} value={value}>{tr(label)}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                     <div>
-                                        <label className={labelClass} htmlFor="terminal-bug-actual">{tr('Actual')}</label>
-                                        <textarea id="terminal-bug-actual" className={`${inputClass} min-h-[54px] resize-y`} value={form.actual} onChange={update('actual')} />
+                                        <label className={labelClass} htmlFor="terminal-bug-severity">{tr('Severity')}</label>
+                                        <select id="terminal-bug-severity" className={inputClass} value={form.severity} onChange={update('severity')}>
+                                            {Object.entries(SEVERITY_LABELS).map(([value, label]) => (
+                                                <option key={value} value={value}>{tr(label)}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
+
+                                <button type="button" onClick={() => setShowDetails((value) => !value)} aria-expanded={showDetails} aria-controls="terminal-bug-details" className="rtx-bug-report-details-toggle">
+                                    {showDetails ? tr('Hide details') : tr('Add steps to reproduce')}
+                                    <ChevronDown size={16} strokeWidth={1.5} aria-hidden="true" />
+                                </button>
+
+                                {showDetails ? (
+                                    <div id="terminal-bug-details" className="rtx-bug-report-details">
+                                        <div>
+                                            <label className={labelClass} htmlFor="terminal-bug-steps">{tr('Steps (one per line)')}</label>
+                                            <textarea id="terminal-bug-steps" className={inputClass} value={form.steps} onChange={update('steps')} />
+                                        </div>
+                                        <div className="rtx-bug-report-field-pair">
+                                            <div>
+                                                <label className={labelClass} htmlFor="terminal-bug-expected">{tr('Expected')}</label>
+                                                <textarea id="terminal-bug-expected" className={inputClass} value={form.expected} onChange={update('expected')} />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass} htmlFor="terminal-bug-actual">{tr('Actual')}</label>
+                                                <textarea id="terminal-bug-actual" className={inputClass} value={form.actual} onChange={update('actual')} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {error ? (
+                                    <p role="alert" className="rtx-bug-report-error">{error}</p>
+                                ) : null}
                             </div>
-                        ) : null}
 
-                        <p className="text-[10px] leading-4 text-zinc-500">
-                            {tr('Your account, symbol, connection state and recent terminal activity are attached automatically. Your password is never included.')}
-                        </p>
+                            <aside className="rtx-bug-report-evidence" aria-label={tr('Screenshot')}>
+                                <div className="rtx-bug-report-evidence-title"><h3>{tr('Attachments')}</h3><span className="rtx-bug-report-file-count">{attachments.length} / {MAX_ATTACHMENTS}</span></div>
+                                {attachments.length ? (
+                                    <ul className="rtx-bug-report-files">
+                                        {attachments.map((file, index) => (
+                                            <li key={`${file.name}-${index}`}>
+                                                <FileText size={18} strokeWidth={1.5} aria-hidden="true" />
+                                                <div className="rtx-bug-report-file-info"><span title={file.name}>{file.name}</span><small>{file.size < 1024 * 1024 ? `${Math.max(1, Math.ceil(file.size / 1024))} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}</small></div>
+                                                <button type="button" disabled={submitting} aria-label={`${tr('Remove')} ${file.name}`} onClick={() => setAttachments((current) => current.filter((_, i) => i !== index))} className="rtx-bug-report-icon-button"><X size={16} strokeWidth={1.5} aria-hidden="true" /></button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : null}
+                                <div className="rtx-bug-report-evidence-actions">
+                                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={submitting || attachments.length >= MAX_ATTACHMENTS} className="rtx-bug-report-control rtx-bug-report-button"><Paperclip size={16} strokeWidth={1.5} aria-hidden="true" />{tr('Attach file')}</button>
+                                </div>
+                                <input ref={fileInputRef} type="file" multiple hidden accept="image/png,image/jpeg,image/webp,text/plain,.log,.txt" onChange={(event) => { addFiles(event.target.files); event.target.value = ''; }} />
+                                <p className="rtx-bug-report-fine-print">{tr('Optional. Up to 5 files, 8 MB each.')}</p>
+                                {hasAttachments ? <p className="rtx-bug-report-fine-print">{tr('Title and description are optional when a file is attached.')}</p> : null}
+                                <p className="rtx-bug-report-fine-print">{tr('Screenshots include visible account details and are shared with your broker and the RTX5 team.')}</p>
+                            </aside>
+                        </div>
 
-                        {submitHint && !submitting ? (
-                            <p className="text-[11px] text-amber-300">{submitHint}</p>
-                        ) : null}
-
-                        {error ? (
-                            <p role="alert" className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-300">{error}</p>
-                        ) : null}
-
-                        <div className="flex items-center justify-end gap-2 border-t border-zinc-800 pt-3">
-                            <button type="button" onClick={onClose} disabled={submitting} className="rounded border border-zinc-700 px-4 py-1.5 text-[12px] text-zinc-400 hover:text-zinc-200 disabled:opacity-50">
-                                {tr('Cancel')}
-                            </button>
-                            <button type="submit" disabled={!canSubmit} className="rounded bg-blue-600 px-4 py-1.5 text-[12px] font-medium text-white hover:bg-blue-500 disabled:opacity-40">
-                                {submitting ? tr('Sending…') : tr('Send report')}
-                            </button>
+                        <div className="rtx-bug-report-footer">
+                            <p className="rtx-bug-report-submit-hint" aria-live="polite">{submitting ? tr('Sending…') : submitHint || tr('Ready to send')}</p>
+                            <div className="rtx-bug-report-footer-actions">
+                                <button type="button" onClick={onClose} disabled={submitting} className="rtx-bug-report-control rtx-bug-report-button">
+                                    {tr('Cancel')}
+                                </button>
+                                <button type="submit" disabled={!canSubmit} className="rtx-bug-report-button rtx-bug-report-send">
+                                    {submitting ? <LoaderCircle className="rtx-bug-report-spinner" size={16} aria-hidden="true" /> : <Send size={16} strokeWidth={1.5} aria-hidden="true" />}
+                                    {submitting ? tr('Sending…') : tr('Send report')}
+                                </button>
+                            </div>
                         </div>
                     </form>
                 )}

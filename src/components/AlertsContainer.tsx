@@ -16,22 +16,8 @@ const ALERT_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQ
 
 export function AlertsContainer({ wsConnection }: AlertsContainerProps) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [hasNotificationPermission, setHasNotificationPermission] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const autoHideTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-
-  // Request notification permission on mount
-  useEffect(() => {
-    if ('Notification' in window) {
-      if (Notification.permission === 'granted') {
-        setHasNotificationPermission(true);
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(permission => {
-          setHasNotificationPermission(permission === 'granted');
-        });
-      }
-    }
-  }, []);
 
   // Initialize audio element
   useEffect(() => {
@@ -64,7 +50,8 @@ export function AlertsContainer({ wsConnection }: AlertsContainerProps) {
     }
 
     // Show browser notification
-    if (hasNotificationPermission && 'Notification' in window) {
+    // Respect an existing browser permission without prompting during startup.
+    if ('Notification' in window && Notification.permission === 'granted') {
       new Notification(`${alert.severity} Alert`, {
         body: alert.message,
         icon: '/favicon.ico',
@@ -88,7 +75,7 @@ export function AlertsContainer({ wsConnection }: AlertsContainerProps) {
       }, 10000);
       autoHideTimeouts.current.set(alert.id, timeout);
     }
-  }, [hasNotificationPermission, dismissAlert]);
+  }, [dismissAlert]);
 
   // WebSocket message handler
   useEffect(() => {

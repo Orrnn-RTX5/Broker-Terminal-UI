@@ -16,12 +16,13 @@ export const MARKET_WATCH_COLUMN_IDS = [
   'volume',
   'spread',
   'time',
+  'dailyChangePrice',
   'dailyChange',
   'source',
 ] as const;
 
 export type MarketWatchColumnId = typeof MARKET_WATCH_COLUMN_IDS[number];
-export type MarketWatchSortMode = 'symbol' | 'industry' | 'sector' | 'gainers' | 'losers' | 'volume' | null;
+export type MarketWatchSortMode = 'symbol' | 'industry' | 'sector' | 'gainers' | 'losers' | 'change-asc' | 'change-desc' | 'volume' | null;
 
 export interface MarketWatchOptions {
   useSystemColors: boolean;
@@ -191,6 +192,7 @@ export const deleteMarketWatchSavedSet = (name: string): Record<string, MarketWa
 };
 
 const readSortableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || typeof value === 'boolean' || (typeof value === 'string' && !value.trim())) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
@@ -198,7 +200,7 @@ const readSortableNumber = (value: unknown): number | null => {
 export const sortMarketWatchSymbols = (
   symbols: readonly string[],
   mode: MarketWatchSortMode,
-  getTick: (symbol: string) => Pick<Tick, 'dailyChange' | 'volume'> | null | undefined,
+  getTick: (symbol: string) => (Pick<Tick, 'dailyChange' | 'volume'> & { dailyChangePrice?: number }) | null | undefined,
   metadata: ReadonlyMap<string, MarketWatchSortMetadata>,
 ): string[] => {
   if (!mode) return [...symbols];
@@ -217,15 +219,15 @@ export const sortMarketWatchSymbols = (
       return leftValue.localeCompare(rightValue) || left.localeCompare(right) || stableFallback(left, right);
     }
 
-    const field = mode === 'volume' ? 'volume' : 'dailyChange';
+    const field = mode === 'volume' ? 'volume' : mode === 'change-asc' || mode === 'change-desc' ? 'dailyChangePrice' : 'dailyChange';
     const leftValue = readSortableNumber(getTick(left)?.[field]);
     const rightValue = readSortableNumber(getTick(right)?.[field]);
     if (leftValue === null && rightValue !== null) return 1;
     if (leftValue !== null && rightValue === null) return -1;
     if (leftValue !== null && rightValue !== null && leftValue !== rightValue) {
-      return mode === 'losers' ? leftValue - rightValue : rightValue - leftValue;
+      return mode === 'losers' || mode === 'change-asc' ? leftValue - rightValue : rightValue - leftValue;
     }
-    return left.localeCompare(right) || stableFallback(left, right);
+    return stableFallback(left, right);
   });
 };
 

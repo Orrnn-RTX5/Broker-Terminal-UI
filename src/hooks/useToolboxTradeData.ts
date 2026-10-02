@@ -23,6 +23,7 @@ import {
 } from '../services/marketOrderPlacementEvents';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import { readBackendNumber } from '../services/backendAccountMetrics';
+import { isConfiguredBrokerEndpoint } from '../config/backendTarget.js';
 
 type TradeWsState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -610,8 +611,11 @@ async function requestBrokerJson<T>(
   if (!baseUrl) throw new Error('Missing broker server_url. Trade tab will not fall back to localhost.');
   if (!token) throw new Error('Missing auth token');
 
-  const response = await fetch(buildUrl(baseUrl, path, params), {
+  const url = buildUrl(baseUrl, path, params);
+  if (!isConfiguredBrokerEndpoint(url)) throw new Error('Trade endpoint does not belong to this broker deployment.');
+  const response = await fetch(url, {
     signal,
+    redirect: 'error',
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',

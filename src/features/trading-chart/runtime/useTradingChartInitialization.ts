@@ -24,6 +24,7 @@ import type { ChartPostInteractionCoordinator } from '../../../utils/chartPostIn
 import { resolveVisibleRangeHistoryAction } from '../../../services/chartHistoryLoader';
 import { computeMinimumVisiblePriceSpan } from '../../../utils/chartPriceScale';
 import { computePriceAxisDragRange } from '../../../utils/priceAxisDragZoom';
+import { createChartWheelSmoothing } from '../../../utils/chartWheelSmoothing';
 import {
   getTradingChartShiftRightOffset,
   getTradingChartTickMarkCharacterLength,
@@ -375,9 +376,16 @@ useEffect(() => {
         && event.clientY < rect.bottom - timeScaleHeight;
     };
 
-    const handleWheelInteractionStart = () => {
-      visibleRangeHistoryUserInitiatedRef.current = true;
-      interactionOwnership.noteWheelActivity();
+    const handleWheelInteractionStart = (event: WheelEvent) => {
+      if (!event.cancelable || !isChartPaneWheel(event)) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('button, input, select, textarea, a, [role="button"], [role="menu"], [role="dialog"]')) return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect || !wheelSmoothing.handleWheel(event, event.clientX - rect.left)) return;
+      // Consume only plot gestures claimed by the controller. Native axis,
+      // touch/pinch, and locked drawing interactions retain their own handlers.
+      event.preventDefault();
+      event.stopPropagation();
     };
 
     const repaintLivePriceOverlayGeometry = () => {
@@ -413,7 +421,8 @@ useEffect(() => {
         repaintTradeOverlayGeometryRef.current();
         // SVG drawings use the same price transform. A price-axis drag does
         // not emit a time-range change, so it must also queue their repaint.
-        if (drawingRenderFrameRef.current === null && drawingRenderSettledFrameRef.current === null) {
+        if (drawingManager.hasRenderableContent(drawingManagerOverlayContainer)
+          && drawingRenderFrameRef.current === null && drawingRenderSettledFrameRef.current === null) {
           const drawingContext = drawingRuntimeContextRef.current;
           scheduleDrawingRenderAfterChartData(drawingContext.symbol, drawingContext.timeframe as Timeframe);
         }
@@ -427,7 +436,24 @@ useEffect(() => {
     const handleTimeScaleSizeChange = () => queuePriceBoundOverlayGeometryRepaint();
     chart.timeScale().subscribeSizeChange(handleTimeScaleSizeChange);
 
+    const wheelSmoothing = createChartWheelSmoothing({
+      chart,
+      canInteract: () => !isDisposedRef.current && isActiveRef.current
+        && chartRef.current === chart && !interactionOwnership.isHeld()
+        && document.visibilityState !== 'hidden',
+      onActivity: () => {
+        visibleRangeHistoryUserInitiatedRef.current = true;
+        interactionOwnership.noteWheelActivity();
+        if (autoScrollTimer) {
+          clearTimeout(autoScrollTimer);
+          autoScrollTimer = null;
+        }
+      },
+      onFrame: queuePriceBoundOverlayGeometryRepaint,
+    });
+
     const handlePointerInteractionStart = (event: PointerEvent) => {
+      wheelSmoothing.cancel();
       if (!interactionOwnership.beginPointer({
         pointerId: event.pointerId,
         button: event.button,
@@ -525,6 +551,7 @@ useEffect(() => {
     };
 
     const handleTouchInteractionStart = (event: TouchEvent) => {
+      wheelSmoothing.cancel();
       visibleRangeHistoryUserInitiatedRef.current = true;
       interactionOwnership.setTouchFallbackHeld(event.touches.length > 0);
       isChartUserInteractingRef.current = true;
@@ -546,6 +573,7 @@ useEffect(() => {
     };
 
     const clearLocalChartPointerState = () => {
+      wheelSmoothing.cancel();
       heldChartPointerId = null;
       rightPriceScalePointerId = null;
       rightPriceScaleDragStartY = null;
@@ -573,7 +601,7 @@ useEffect(() => {
       chartContainer.addEventListener('lostpointercapture', handleLostPointerCapture);
       chartContainer.addEventListener('pointerleave', interactionOwnership.notePointerLeave);
       chartContainer.addEventListener('touchstart', handleTouchInteractionStart, { passive: true, capture: true });
-      chartContainer.addEventListener('wheel', handleWheelInteractionStart, { passive: true, capture: true });
+      chartContainer.addEventListener('wheel', handleWheelInteractionStart, { passive: false, capture: true });
       chartContainer.addEventListener('wheel', handleWheelInteraction, { passive: true });
       window.addEventListener('pointermove', handleHeldChartPointerMove, { passive: true });
       window.addEventListener('pointerup', handlePointerInteractionEnd, true);
@@ -657,6 +685,7 @@ useEffect(() => {
       if (settleAutoScrollPolicyRef.current === resetAutoScrollTimer) {
         settleAutoScrollPolicyRef.current = () => undefined;
       }
+      wheelSmoothing.dispose();
       interactionOwnership.dispose();
       postInteractionCoordinatorRef.current?.clear();
       if (chartInteractionOwnershipRef.current === interactionOwnership) {

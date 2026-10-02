@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useAppStore } from './useAppStore';
+import { SAVED_ACCOUNTS_STORAGE_KEY, useAppStore } from './useAppStore';
 import {
   getCommittedBrokerAccountSessionScope,
   onSessionChange,
@@ -12,6 +12,7 @@ describe('useAppStore authenticated login commit', () => {
   beforeEach(() => {
     localStorage.clear();
     useAppStore.getState().reset();
+    useAppStore.setState({ savedAccounts: [] });
     vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
   });
 
@@ -67,6 +68,87 @@ describe('useAppStore authenticated login commit', () => {
       login: 200001,
       name: 'Updated',
     });
+  });
+
+  it('restores favorite accounts from storage after a fresh session without storing credentials', async () => {
+    useAppStore.getState().addSavedAccount({
+      login: 200001, name: 'Favorite', server: 'Broker A', isLive: false, isFavorite: true,
+      password: 'must-not-persist', authToken: 'must-not-persist', refreshToken: 'must-not-persist',
+    } as Parameters<ReturnType<typeof useAppStore.getState>['addSavedAccount']>[0]);
+    const persisted = localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)!;
+    expect(persisted).not.toContain('must-not-persist');
+    expect(JSON.parse(persisted)).toEqual([
+      expect.objectContaining({ login: 200001, server: 'Broker A', isFavorite: true }),
+    ]);
+
+    useAppStore.setState({ savedAccounts: [] });
+    localStorage.setItem(SAVED_ACCOUNTS_STORAGE_KEY, persisted);
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().savedAccounts).toEqual([
+      expect.objectContaining({ login: 200001, server: 'Broker A', isFavorite: true }),
+    ]);
+    expect(useAppStore.getState().isAuthenticated).toBe(false);
+  });
+
+  it('hydrates legacy account labels while discarding credentials and invalid entries', async () => {
+    localStorage.removeItem(SAVED_ACCOUNTS_STORAGE_KEY);
+    localStorage.setItem('trading-app-storage', JSON.stringify({ version: 0, state: {
+      savedAccounts: [
+        { login: 200001, name: 'Legacy', server: 'Broker A', isLive: false, isFavorite: true,
+          password: 'legacy-secret', access_token: 'legacy-token' },
+        null, { login: -1, server: 'Broker A' }, { login: 200002, server: '' },
+      ],
+    } }));
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().savedAccounts).toEqual([
+      { login: 200001, name: 'Legacy', server: 'Broker A', isLive: false, isFavorite: true },
+    ]);
+  });
+
+  it('survives old-tab settings writes and application exit resets', async () => {
+    useAppStore.getState().addSavedAccount({ login: 200001, name: 'Favorite', server: 'Broker A', isLive: false, isFavorite: true });
+    useAppStore.getState().reset();
+    localStorage.setItem('trading-app-storage', JSON.stringify({ version: 0, state: { timeframe: 'M5', savedAccounts: [] } }));
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().savedAccounts[0].isFavorite).toBe(true);
+  });
+
+  it('synchronizes favorites added or removed in another tab', () => {
+    const account = { login: 200001, name: 'Favorite', server: 'Broker A', isLive: false, isFavorite: true };
+    localStorage.setItem(SAVED_ACCOUNTS_STORAGE_KEY, JSON.stringify([account]));
+    window.dispatchEvent(new StorageEvent('storage', { key: SAVED_ACCOUNTS_STORAGE_KEY, storageArea: localStorage }));
+    expect(useAppStore.getState().savedAccounts).toEqual([account]);
+    localStorage.setItem(SAVED_ACCOUNTS_STORAGE_KEY, '[]');
+    window.dispatchEvent(new StorageEvent('storage', { key: SAVED_ACCOUNTS_STORAGE_KEY, storageArea: localStorage }));
+    expect(useAppStore.getState().savedAccounts).toEqual([]);
+  });
+
+  it('keeps favorite preferences through login updates and logout, and persists removal', async () => {
+    const account = { login: 200001, name: 'Favorite', server: 'Broker A', isLive: false };
+    useAppStore.getState().addSavedAccount({ ...account, isFavorite: true });
+    useAppStore.getState().setAuthenticated(true, '200001', 'token', undefined, undefined, account);
+    expect(useAppStore.getState().savedAccounts[0].isFavorite).toBe(true);
+    useAppStore.getState().setAuthenticated(false);
+    expect(useAppStore.getState().savedAccounts[0].isFavorite).toBe(true);
+    useAppStore.getState().addSavedAccount({ ...account, isFavorite: false });
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().savedAccounts[0].isFavorite).toBe(false);
+    useAppStore.getState().removeSavedAccount(200001, 'Broker A');
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().savedAccounts).toEqual([]);
+  });
+
+  it('keeps identical login numbers on different brokers independent', () => {
+    const account = { login: 200001, name: 'Account', server: 'Broker A', isLive: false };
+    useAppStore.getState().addSavedAccount({ ...account, isFavorite: true });
+    useAppStore.getState().addSavedAccount({ ...account, server: 'Broker B' });
+    useAppStore.getState().addSavedAccount({ ...account, server: 'Broker B', isFavorite: false });
+    expect(useAppStore.getState().savedAccounts).toHaveLength(2);
+    expect(useAppStore.getState().savedAccounts[0].isFavorite).toBe(true);
+    useAppStore.getState().removeSavedAccount(200001, 'Broker B');
+    expect(useAppStore.getState().savedAccounts).toEqual([
+      expect.objectContaining({ server: 'Broker A', isFavorite: true }),
+    ]);
   });
 
   it('clears prior-account trade data synchronously when the active account changes', () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getStoredAccountLogin } from '../../../api/tradeGateway';
 import { ContextMenu, type ContextMenuItemConfig } from '../../../components/ui/ContextMenu';
 import { Icon } from '../../../components/ui/Icon';
@@ -13,14 +13,15 @@ import {
   createDefaultHistoryCustomPeriod,
   getHistoryPeriodStart,
   getHistoryRowTime,
-  HISTORY_OVERSCAN,
-  HISTORY_ROW_HEIGHT,
-  HISTORY_VIEWPORT_FALLBACK,
+  HISTORY_PERIOD_PRESETS,
   parseLocalDateBoundary,
   type HistoryCustomPeriod,
   type HistoryPeriodFilter,
 } from './historyFilters';
 import { useHistoryDataController } from './useHistoryDataController';
+import { useHistoryVirtualWindow } from './useHistoryVirtualWindow';
+import { calculateHistoryFinancialSummary } from './historyFinancialSummary';
+import './history-summary.css';
 import {
   DEFAULT_HISTORY_COLUMNS,
   HISTORY_AUTO_ARRANGE_STORAGE_KEY,
@@ -41,9 +42,10 @@ import {
 type HistoryTabProps = {
     formatMoney: (value: number | undefined | null) => string;
     instrumentCatalog?: readonly unknown[];
+    accountBalance?: number | null;
 };
 
-export function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabProps) {
+export function HistoryTab({ formatMoney, instrumentCatalog = [], accountBalance = null }: HistoryTabProps) {
     const tr = useUiTranslation();
     const accountId = useAppStore((state) => state.accountId);
     const activeChartSymbol = useAppStore((state) => state.selectedSymbol);
@@ -51,11 +53,15 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabPr
     const activeScopeKey = getCurrentBrokerAccountSessionScopeKey();
     const {
         historyData,
+        historyLoadedAt,
         loading,
         ordersPending,
         error,
         sessionResetVersion,
         fetchHistory,
+        financialDealsAvailable,
+        balanceHistory,
+        balanceHistoryError,
     } = useHistoryDataController(activeLogin, activeScopeKey);
     const [historyView, setHistoryView] = useState<HistoryViewMode>('positions');
     const [periodFilter, setPeriodFilter] = useState<HistoryPeriodFilter>('all');
@@ -85,8 +91,24 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabPr
         safeReadBoolean(HISTORY_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY, true)
     ));
     const [isLightSkin, setIsLightSkin] = useState(false);
-    const historyScrollRef = useRef<HTMLDivElement>(null);
-    const [historyViewport, setHistoryViewport] = useState({ scrollTop: 0, height: HISTORY_VIEWPORT_FALLBACK });
+    const [filterNow, setFilterNow] = useState(Date.now);
+    useEffect(() => {
+        if (periodFilter === 'all' || periodFilter === 'custom') return;
+        const timer = window.setInterval(() => setFilterNow(Date.now()), 60_000);
+        return () => window.clearInterval(timer);
+    }, [periodFilter]);
+    const selectPeriod = useCallback((period: HistoryPeriodFilter) => {
+        setFilterNow(Date.now());
+        setPeriodFilter(period);
+    }, []);
+    const periodRange = useMemo(() => {
+        const now = Math.max(filterNow, historyLoadedAt);
+        return {
+            start: periodFilter === 'custom' ? parseLocalDateBoundary(customPeriod.from, false)
+                : getHistoryPeriodStart(periodFilter, now),
+            end: periodFilter === 'custom' ? parseLocalDateBoundary(customPeriod.to, true) : now,
+        };
+    }, [customPeriod, filterNow, historyLoadedAt, periodFilter]);
 
     useEffect(() => {
         if (sessionResetVersion === 0) return;
@@ -166,10 +188,7 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabPr
 
     const currentSymbol = normalizeTradeSymbol(activeChartSymbol);
     const matchesCurrentHistoryFilters = useCallback((trade: Trade) => {
-        const now = Date.now();
-        const periodStart = getHistoryPeriodStart(periodFilter, now);
-        const customStart = periodFilter === 'custom' ? parseLocalDateBoundary(customPeriod.from, false) : null;
-        const customEnd = periodFilter === 'custom' ? parseLocalDateBoundary(customPeriod.to, true) : null;
+        const { start, end } = periodRange;
         const selectedSymbol = symbolFilter.mode === 'current'
             ? currentSymbol
             : symbolFilter.mode === 'symbol'
@@ -187,12 +206,12 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabPr
                 : [closeTime, openTime];
         const validRowTimes = rowTimes.filter(time => Number.isFinite(time));
         if (periodFilter === 'custom') {
-            return customStart !== null
-                && customEnd !== null
-                && validRowTimes.some(time => time >= customStart && time <= customEnd);
+            return start !== null
+                && end !== null
+                && validRowTimes.some(time => time >= start && time <= end);
         }
-        return periodStart === null || validRowTimes.some(time => time >= periodStart && time <= now);
-    }, [currentSymbol, customPeriod, historyView, periodFilter, symbolFilter]);
+        return start === null || validRowTimes.some(time => time >= start && end !== null && time <= end);
+    }, [currentSymbol, historyView, periodFilter, periodRange, symbolFilter]);
     const filteredOrders = useMemo(
         () => historyRows.filter(matchesCurrentHistoryFilters),
         [historyRows, matchesCurrentHistoryFilters],
@@ -201,6 +220,26 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabPr
         () => historyData.positions.filter(matchesCurrentHistoryFilters),
         [historyData.positions, matchesCurrentHistoryFilters],
     );
+
+    const financialSummary = useMemo(() => {
+        const { start, end } = periodRange;
+        const inPeriod = (time: number | null) => periodFilter === 'all' || (
+            time !== null && end !== null && (start === null || time >= start) && time <= end
+        );
+        const selectedSymbol = symbolFilter.mode === 'current' ? currentSymbol
+            : symbolFilter.mode === 'symbol' ? normalizeTradeSymbol(symbolFilter.symbol) : '';
+        // Execution time governs financial totals in every table view. Position
+        // aggregates and orders never contribute again to the deal totals.
+        const dealTimesAvailable = periodFilter === 'all' || historyData.deals.every(deal => getHistoryRowTime(deal) > 0);
+        const deals = financialDealsAvailable && dealTimesAvailable ? historyData.deals.filter(deal => (
+            inPeriod(getHistoryRowTime(deal) || null)
+            && (symbolFilter.mode === 'all' || normalizeTradeSymbol(deal.symbol) === selectedSymbol)
+        )) : null;
+        // Cash movements have no instrument; filter them by period only.
+        const cashTimesAvailable = periodFilter === 'all' || balanceHistory?.every(operation => operation.time !== null);
+        const operations = cashTimesAvailable ? balanceHistory?.filter(operation => inPeriod(operation.time)) ?? null : null;
+        return calculateHistoryFinancialSummary(deals, operations);
+    }, [balanceHistory, currentSymbol, financialDealsAvailable, historyData.deals, periodFilter, periodRange, symbolFilter]);
 
     const viewError = historyView === 'positions'
         ? historyData.errors.positions
@@ -250,18 +289,16 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabPr
 
     const moneyColor = (value: number | undefined | null) => {
         const numeric = Number(value ?? 0);
-        if (numeric > 0) return 'text-[#22c55e]';
-        if (numeric < 0) return 'text-[#ff2d2d]';
+        if (numeric > 0) return 'text-profit';
+        if (numeric < 0) return 'text-loss';
         return 'text-zinc-100';
-    };
-
-    const typeColor = (type: string) => {
-        const normalized = (type || '').toLowerCase();
-        return normalized.includes('buy') ? 'text-[#45bff7]' : normalized.includes('sell') ? 'text-[#ff2d2d]' : 'text-zinc-100';
     };
 
     const isColumnVisible = (key: HistoryColumnKey) => columnVisibility[key] !== false;
     const visibleColumnCount = 10 + HISTORY_COLUMN_DEFS.filter(column => isColumnVisible(column.key)).length;
+    const summaryTrailingColumns = 1 + ['commission', 'swap', 'fee', 'changePercent', 'magicNumber', 'comment']
+        .filter(key => isColumnVisible(key as HistoryColumnKey)).length;
+    const formatSummaryMoney = (value: number | null) => value === null || !Number.isFinite(value) ? '—' : formatMoney(value);
     const toggleColumn = (key: HistoryColumnKey) => {
         setColumnVisibility(current => ({ ...current, [key]: current[key] === false }));
     };
@@ -279,8 +316,15 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabPr
         return contractSizeBySymbol.get(normalizeTradeSymbol(trade.symbol)) ?? null;
     };
 
+    const numberFormatters = useMemo(() => ({
+        lots: new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 }),
+        money: new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        amount: new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+    }), []);
     const formatGroupedNumber = (value: number, minimumFractionDigits = 0, maximumFractionDigits = 2): string => (
-        value.toLocaleString('en-US', { minimumFractionDigits, maximumFractionDigits }).replace(/,/g, ' ')
+        (maximumFractionDigits === 8 ? numberFormatters.lots
+            : minimumFractionDigits === 2 ? numberFormatters.money : numberFormatters.amount)
+            .format(value).replace(/,/g, ' ')
     );
 
     const formatHistoryVolume = (trade: Trade): string => {
@@ -348,13 +392,8 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [] }: HistoryTabPr
                 ? 'Orders'
                 : 'Orders & Deals';
 
-    const periodFilterLabel = periodFilter === 'all'
-        ? 'All History'
-        : periodFilter === 'last-three-months'
-            ? 'Last 3 Months'
-            : periodFilter === 'last-month'
-                ? 'Last Month'
-                : `${customPeriod.from} - ${customPeriod.to}`;
+    const periodFilterLabel = periodFilter === 'custom' ? `${customPeriod.from} - ${customPeriod.to}`
+        : HISTORY_PERIOD_PRESETS.find(([period]) => period === periodFilter)![1];
 
     const symbolFilterLabel = symbolFilter.mode === 'all'
         ? 'All Symbols'
@@ -556,9 +595,9 @@ ${rows}
                 ],
             },
             { divider: true },
-            { label: 'All History', checked: periodFilter === 'all', action: () => setPeriodFilter('all') },
-            { label: 'Last 3 Months', checked: periodFilter === 'last-three-months', action: () => setPeriodFilter('last-three-months') },
-            { label: 'Last Month', checked: periodFilter === 'last-month', action: () => setPeriodFilter('last-month') },
+            ...HISTORY_PERIOD_PRESETS.map(([period, label]) => ({
+                label, checked: periodFilter === period, action: () => selectPeriod(period),
+            })),
             {
                 label: 'Custom Period',
                 checked: periodFilter === 'custom',
@@ -632,54 +671,10 @@ ${rows}
         setHistoryContextMenu({ x: event.clientX, y: event.clientY, ...(trade ? { trade } : {}) });
     };
 
-    const syncHistoryViewport = useCallback(() => {
-        const element = historyScrollRef.current;
-        if (!element) return;
-        const scrollTop = element.scrollTop;
-        const measured = element.clientHeight;
-        setHistoryViewport(current => {
-            const height = measured > 0 ? measured : current.height;
-            if (current.scrollTop === scrollTop && current.height === height) return current;
-            return { scrollTop, height };
-        });
-    }, []);
-
-    useLayoutEffect(() => {
-        const element = historyScrollRef.current;
-        if (element && element.scrollTop !== 0) element.scrollTop = 0;
-        // The virtual viewport follows the explicit filter/view change above.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setHistoryViewport(current => current.scrollTop === 0 ? current : { ...current, scrollTop: 0 });
-    }, [historyView, periodFilter, symbolFilter, customPeriod]);
-
-    useLayoutEffect(() => {
-        syncHistoryViewport();
-        const element = historyScrollRef.current;
-        if (!element || typeof ResizeObserver === 'undefined') return;
-        const observer = new ResizeObserver(() => syncHistoryViewport());
-        observer.observe(element);
-        return () => observer.disconnect();
-    }, [syncHistoryViewport, filteredOrders.length]);
-
-    const historyVirtualWindow = useMemo(() => {
-        const count = filteredOrders.length;
-        const { scrollTop, height } = historyViewport;
-        if (count === 0) {
-            return { startIndex: 0, endIndex: 0, topSpacerHeight: 0, bottomSpacerHeight: 0 };
-        }
-        const rawStart = Math.max(0, Math.floor(scrollTop / HISTORY_ROW_HEIGHT) - HISTORY_OVERSCAN);
-        const startIndex = Math.min(rawStart, count - 1);
-        const endIndex = Math.min(
-            count,
-            Math.max(startIndex + 1, Math.ceil((scrollTop + height) / HISTORY_ROW_HEIGHT) + HISTORY_OVERSCAN),
-        );
-        return {
-            startIndex,
-            endIndex,
-            topSpacerHeight: startIndex * HISTORY_ROW_HEIGHT,
-            bottomSpacerHeight: Math.max(0, count - endIndex) * HISTORY_ROW_HEIGHT,
-        };
-    }, [filteredOrders.length, historyViewport]);
+    const historyViewportReset = useMemo(() => ({ historyView, periodFilter, symbolFilter, customPeriod, activeScopeKey, activeLogin }),
+        [historyView, periodFilter, symbolFilter, customPeriod, activeScopeKey, activeLogin]);
+    const { scrollRef: historyScrollRef, window: historyVirtualWindow, onScroll: syncHistoryViewport }
+        = useHistoryVirtualWindow(filteredOrders.length, historyViewportReset);
     const visibleHistoryOrders = filteredOrders.slice(historyVirtualWindow.startIndex, historyVirtualWindow.endIndex);
     const historyRowsLoading = filteredOrders.length === 0 && (
         loading || (ordersPending && (historyView === 'orders' || historyView === 'orders-and-deals'))
@@ -692,16 +687,13 @@ ${rows}
     return (
         <div className="rtx-history-tab h-full flex flex-col relative bg-[#131316] overflow-hidden">
             <div className="rtx-history-toolbar flex items-center gap-2 px-1.5 py-1 border-b border-zinc-700 bg-[#191a1e] shrink-0 text-[12px] font-normal text-zinc-300 tabular-nums">
-                <div className="flex items-center gap-1">
-                    {([
-                        ['all', 'All History'],
-                        ['last-three-months', 'Last 3 Months'],
-                        ['last-month', 'Last Month'],
-                    ] as const).map(([period, label]) => (
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap" role="group" aria-label={tr('History time filters')}>
+                    {HISTORY_PERIOD_PRESETS.map(([period, label]) => (
                         <button
                             key={period}
                             type="button"
-                            onClick={() => setPeriodFilter(period)}
+                            aria-pressed={periodFilter === period}
+                            onClick={() => selectPeriod(period)}
                             className={`rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm transition-colors ${periodFilter === period ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                         >
                             {tr(label)}
@@ -709,20 +701,20 @@ ${rows}
                     ))}
                     <button
                         type="button"
+                        aria-pressed={periodFilter === 'custom'}
                         onClick={openCustomPeriodDialog}
                         className={`rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm transition-colors ${periodFilter === 'custom' ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                     >
                         {tr('Custom Period')}
                     </button>
                 </div>
-                <div className="flex-1" />
-                <span className="text-[12px] font-normal text-zinc-500">{tr(historyViewLabel)} · {tr(symbolFilterLabel)} · {tr(periodFilterLabel)}</span>
-                <span className="text-[12px] font-normal text-zinc-500">{filteredOrders.length} {tr(" records")}</span>
+                <span className="hidden shrink-0 text-[12px] font-normal text-zinc-500 xl:inline">{tr(historyViewLabel)} · {tr(symbolFilterLabel)} · {tr(periodFilterLabel)}</span>
+                <span className="shrink-0 whitespace-nowrap text-[12px] font-normal text-zinc-500">{filteredOrders.length} {tr(" records")}</span>
                 <button
                     type="button"
                     onClick={() => fetchHistory({ force: true })}
                     disabled={loading}
-                    className="rtx-history-refresh-btn text-[12px] font-normal px-2 py-0.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 disabled:cursor-wait disabled:opacity-50"
+                    className="rtx-history-refresh-btn shrink-0 text-[12px] font-normal px-2 py-0.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 disabled:cursor-wait disabled:opacity-50"
                 >
                     <Icon name="refresh" size="xs" className={loading ? 'animate-spin' : ''} />
                     {loading ? tr("Loading…") : tr("Refresh")}
@@ -747,7 +739,7 @@ ${rows}
             >
                 <table
                     className="rtx-trade-table rtx-history-table w-full text-center border-collapse"
-                    aria-rowcount={filteredOrders.length + 1}
+                    aria-rowcount={filteredOrders.length + 2}
                     data-auto-arrange={autoArrange ? 'true' : 'false'}
                     data-grid={showGrid ? 'true' : 'false'}
                     style={{
@@ -814,7 +806,7 @@ ${rows}
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums whitespace-nowrap`} title={tr("Open time: {{value0}}", { value0: formatTs(order.openTime) })}>{formatTs(order.openTime)}</td>
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center font-normal text-zinc-100 whitespace-nowrap`} title={tr("Symbol: {{value0}}", { value0: order.symbol || '-' })}>{order.symbol || '-'}</td>
                                     {isColumnVisible('ticket') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums whitespace-nowrap`} title={tr("Ticket: {{value0}}", { value0: ticket })}>{ticket}</td>}
-                                    <td className={`${typeColor(order.side)} px-1.5 py-[2px] ${cellDividerClass} text-center font-normal text-[13px]`} title={tr("Type: {{value0}}", { value0: tr(sideLabel) })}>
+                                    <td className={`text-zinc-100 px-1.5 py-[2px] ${cellDividerClass} text-center font-normal text-[13px]`} title={tr("Type: {{value0}}", { value0: tr(sideLabel) })}>
                                         <div className="flex items-center justify-center"><span>{tr(sideLabel)}</span></div>
                                     </td>
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center font-normal text-zinc-100 tabular-nums`} title={tr(volumeMode === 'lots' ? "Volume: {{value0}}" : "Amount: {{value0}}", { value0: volumeLabel })}>{volumeLabel}</td>
@@ -823,7 +815,7 @@ ${rows}
                                         <span className={(order.sl ?? 0) > 0 ? "text-[#ff7676] bg-red-950/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>{formatLevelCell(order.sl, order.symbol)}</span>
                                     </td>
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums`} title={tr("Take Profit: {{value0}}", { value0: formatLevelCell(order.tp, order.symbol) })}>
-                                        <span className={(order.tp ?? 0) > 0 ? "text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>{formatLevelCell(order.tp, order.symbol)}</span>
+                                        <span className={(order.tp ?? 0) > 0 ? "rtx-history-tp-value text-profit px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>{formatLevelCell(order.tp, order.symbol)}</span>
                                     </td>
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums whitespace-nowrap`} title={tr("Close time: {{value0}}", { value0: formatTs(order.closeTime) })}>{formatTs(order.closeTime)}</td>
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums`} title={tr("Close price: {{value0}}", { value0: formatPriceCell(order.closePrice, order.symbol) })}>{formatPriceCell(order.closePrice, order.symbol)}</td>
@@ -844,6 +836,38 @@ ${rows}
                             </tr>
                         )}
                     </tbody>
+                    <tfoot>
+                        <tr className="rtx-history-summary-row" aria-rowindex={filteredOrders.length + 2}>
+                            <td colSpan={visibleColumnCount - summaryTrailingColumns}>
+                                <div role="group" aria-label={tr('History financial summary')} className="rtx-history-summary-values">
+                                    <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                        <circle cx="6" cy="6" r="4.5" stroke="currentColor" />
+                                        <path d="M3.5 6h5" stroke="currentColor" />
+                                    </svg>
+                                    {([
+                                        ['Profit', financialSummary.profit],
+                                        ['Credit', financialSummary.credit],
+                                        ['Deposit', financialSummary.deposit],
+                                        ['Withdrawal', financialSummary.withdrawal],
+                                        ['Balance', accountBalance],
+                                    ] as const).map(([label, value]) => (
+                                        <span key={label} className={label === 'Profit' ? moneyColor(value) : undefined} title={value === null ? (
+                                            label === 'Balance' ? tr('Account balance unavailable')
+                                                : label === 'Profit' ? tr('Complete backend deal history unavailable')
+                                                    : balanceHistoryError ?? tr(balanceHistory === null ? 'Balance history loading' : 'Balance history timestamps unavailable')
+                                        ) : undefined}>{tr(label)}: {formatSummaryMoney(value)}{' '}</span>
+                                    ))}
+                                </div>
+                            </td>
+                            {isColumnVisible('commission') && <td aria-label={tr('Total commission')}>{formatSummaryMoney(financialSummary.commission)}</td>}
+                            {isColumnVisible('swap') && <td aria-label={tr('Total swap')}>{formatSummaryMoney(financialSummary.swap)}</td>}
+                            {isColumnVisible('fee') && <td aria-label={tr('Total fee')}>{formatSummaryMoney(financialSummary.fee)}</td>}
+                            <td className={moneyColor(financialSummary.grossProfit)} aria-label={tr('Total gross profit')}>{formatSummaryMoney(financialSummary.grossProfit)}</td>
+                            {isColumnVisible('changePercent') && <td />}
+                            {isColumnVisible('magicNumber') && <td />}
+                            {isColumnVisible('comment') && <td />}
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
 

@@ -199,7 +199,7 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
           .map(normalizeInstrument)
           .filter(Boolean) as MarketInstrument[];
         if (catalog.length === 0) {
-          throw new ApiError(0, 'No symbols returned by /api/v1/market/symbols');
+          throw new ApiError(0, 'No symbols returned by the configured public market API');
         }
         publicCatalog = catalog;
 
@@ -387,7 +387,7 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
     ? symbolsState.value
     : EMPTY_MARKET_INSTRUMENTS;
 
-  return {
+  return useMemo(() => ({
     symbols: visibleSymbols,
     authorizedInstruments: enabled ? authorizedInstruments : [],
     authorizedSymbols: enabled ? authorizedSymbols : [],
@@ -399,5 +399,7 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
     error,
     reload,
     loadSymbolSpecification,
-  };
+  }), [visibleSymbols, enabled, authorizedInstruments, authorizedSymbols, disabledSymbols,
+    authorizationSettled, completedCatalogScope, catalogScope, effectiveAccountCatalogStatus,
+    loading, error, reload, loadSymbolSpecification]);
 }

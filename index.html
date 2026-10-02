@@ -6,7 +6,9 @@
   <link rel="icon" type="image/png" href="/favicon.png" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="RTX 5 Web Terminal provides live market charts, account history, and trading tools in your browser." />
   <title>RTX 5 Web Terminal</title>
+  <script src="/runtime-config-validator.js"></script>
   <script src="/runtime-config.js"></script>
   <script>
     (function prepareInstantShellAndMetrics() {
@@ -222,46 +224,62 @@
       // Web visitors enter the guest terminal even without a saved account.
       // Keep this choice aligned with AppShell so its static status can paint
       // while the terminal modules load, without requesting unused login art.
-      var runtimeConfig = Object.assign({}, window.RUNTIME_CONFIG || {}, window.__RTX_RUNTIME_CONFIG__ || {});
+      var runtimeConfig = typeof window.__RTX_SELECT_BROKER_CONFIG__ === 'function'
+        ? window.__RTX_SELECT_BROKER_CONFIG__([window.__RTX_RUNTIME_CONFIG__, window.RUNTIME_CONFIG, window.__RUNTIME_CONFIG__]) || {}
+        : {};
+      var validatedBrokerConfig = typeof window.__RTX_VALIDATE_BROKER_CONFIG__ === 'function'
+        ? window.__RTX_VALIDATE_BROKER_CONFIG__(runtimeConfig) : null;
       function firstConfiguredValue(values) {
         for (var index = 0; index < values.length; index++) {
-          var value = String(values[index] || '').trim().toLowerCase();
-          if (value) return value;
+          if (values[index] !== undefined && values[index] !== null) return String(values[index]).trim().toLowerCase();
         }
         return '';
       }
       var runtimeTarget = firstConfiguredValue([
+        runtimeConfig.BACKEND_TARGET, runtimeConfig.BACKEND_MODE,
+        runtimeConfig.VITE_BACKEND_TARGET, runtimeConfig.VITE_BACKEND_MODE,
         runtimeConfig.backendTarget, runtimeConfig.backend_target,
-        runtimeConfig.BACKEND_TARGET, runtimeConfig.VITE_BACKEND_TARGET,
-        runtimeConfig.runtimeTarget, runtimeConfig.runtime_target,
-        runtimeConfig.target, runtimeConfig.platform, '%VITE_BACKEND_TARGET%'
-      ]);
-      var runtimeMode = firstConfiguredValue([
-        runtimeConfig.backendMode, runtimeConfig.backend_mode,
-        runtimeConfig.BACKEND_MODE, runtimeConfig.VITE_BACKEND_MODE
+        runtimeConfig.backendMode, runtimeConfig.backend_mode
       ]);
       var desktopRuntime = Boolean(
         (window.electron && window.electron.window)
         || window.electronAPI
         || window.location.protocol === 'file:'
         || navigator.userAgent.indexOf('Electron') !== -1
-        || /^(desktop|electron|direct)$/.test(runtimeTarget)
-        || /^(desktop|electron|direct)$/.test(runtimeMode)
+        || (runtimeConfig.CONFIG_SOURCE !== 'deployment'
+          && /^(localhost|127\.0\.0\.1|\[?::1\]?)$|\.localhost$/i.test(window.location.hostname || '')
+          && /^(desktop|electron|direct)$/.test(runtimeTarget))
       );
       var initialTerminal = sessionCandidate || !desktopRuntime;
       root.setAttribute('data-rtx-initial-view', initialTerminal ? 'terminal' : 'login');
 
+      // Match config/localDevProxy before its module loads so the normal
+      // catalog/chart readers can take these exact requests once. Vite
+      // substitutes its built-in flags; deployed and Electron URLs stay direct.
+      function publicStartupRequestUrl(value) {
+        var hostname = String(window.location.hostname || '').trim().toLowerCase();
+        var loopback = hostname === 'localhost' || hostname === '127.0.0.1'
+          || hostname === '::1' || hostname.endsWith('.localhost');
+        if ('%DEV%' !== 'true' || '%MODE%' === 'test' || desktopRuntime
+          || !/^https?:$/.test(window.location.protocol) || !loopback) return value;
+        var parsed = new URL(value);
+        return '/__broker_api/' + encodeURIComponent(parsed.origin)
+          + (parsed.pathname === '/' ? '' : parsed.pathname) + parsed.search + parsed.hash;
+      }
+
       // Start the public catalog and the first chart page while the terminal
       // modules are still downloading. The app consumes each response once.
       try {
-        if (initialTerminal && typeof fetch === 'function') {
-          var apiHost = String(runtimeConfig.API_HOST || runtimeConfig.API_HOST_EXT || '').trim().replace(/\/+$/, '');
+        if (initialTerminal && validatedBrokerConfig && validatedBrokerConfig.valid && typeof fetch === 'function') {
+          var apiHost = validatedBrokerConfig.apiHost;
           if (/^https:\/\//i.test(apiHost)) {
-            var startupRequests = { symbolsUrl: apiHost + '/api/v1/market/symbols' };
-            startupRequests.symbols = fetch(startupRequests.symbolsUrl, { credentials: 'omit', cache: 'no-store' });
+            var gatewayMarket = validatedBrokerConfig.publicMarketApi === 'gateway-v2';
+            var publicHeaders = gatewayMarket ? { 'X-Broker-ID': validatedBrokerConfig.brokerId } : {};
+            var startupRequests = { brokerId: validatedBrokerConfig.brokerId, symbolsUrl: publicStartupRequestUrl(apiHost + (gatewayMarket ? '/api/v2/instruments' : '/api/v1/market/symbols')) };
+            startupRequests.symbols = fetch(startupRequests.symbolsUrl, { credentials: 'omit', cache: 'no-store', redirect: 'error', headers: publicHeaders });
             if (!sessionCandidate) {
-              startupRequests.candlesUrl = apiHost + '/api/v2/candles/BTCUSD?timeframe=M1&limit=500';
-              startupRequests.candles = fetch(startupRequests.candlesUrl, { credentials: 'omit', cache: 'no-store' });
+              startupRequests.candlesUrl = publicStartupRequestUrl(apiHost + '/api/v2/candles/BTCUSD?timeframe=M1&limit=500');
+              startupRequests.candles = fetch(startupRequests.candlesUrl, { credentials: 'omit', cache: 'no-store', redirect: 'error', headers: { 'X-Broker-ID': validatedBrokerConfig.brokerId } });
             }
             window.__RTX_EARLY_PUBLIC_STARTUP__ = startupRequests;
           }
@@ -275,12 +293,11 @@
       try {
         var preconnected = {};
         [
-          runtimeConfig.API_HOST, runtimeConfig.api_host,
-          runtimeConfig.VITE_API_HOST, runtimeConfig.API_HOST_EXT,
-          runtimeConfig.api_host_ext, runtimeConfig.VITE_API_URL,
-          runtimeConfig.VITE_BACKEND_URL,
-          runtimeConfig.WS_HOST, runtimeConfig.ws_host, runtimeConfig.VITE_WS_URL
+          validatedBrokerConfig && validatedBrokerConfig.apiHost,
+          validatedBrokerConfig && validatedBrokerConfig.apiHostExt,
+          validatedBrokerConfig && validatedBrokerConfig.wsHost
         ].forEach(function (value) {
+          if (!validatedBrokerConfig || !validatedBrokerConfig.valid) return;
           var raw = String(value || '').trim();
           if (!raw) return;
           if (!/^[a-z][a-z\d+.-]*:\/\//i.test(raw)) raw = 'https://' + raw;
@@ -309,37 +326,14 @@
         wordmarkPreload.setAttribute('fetchpriority', 'high');
         document.head.appendChild(wordmarkPreload);
 
-        // Resolve the broker visual from runtime configuration or the last
-        // verified presentation cache, then load its responsive source in
-        // parallel with the real login JavaScript.
-        var heroIdentity = '';
-        try {
-          heroIdentity = JSON.stringify(window.RUNTIME_CONFIG || window.__RTX_RUNTIME_CONFIG__ || {})
-            + ' ' + (localStorage.getItem('rtx_broker_presentation_v1') || '')
-            + ' ' + window.location.hostname;
-        } catch (_) { /* Use the TEST/default hero. */ }
-        heroIdentity = heroIdentity.toLowerCase().replace(/[^a-z0-9]+/g, '');
+        // Desktop selection has not been verified yet: preload only shared
+        // artwork, never images inferred from stored broker names or hostnames.
         var desktopHeroPath = './login/trading-desk-hero.webp';
         var mobileHeroPath = './login/trading-desk-hero-mobile.webp';
-        var mobileHeroType = 'image/webp';
-        if (heroIdentity.indexOf('myprop') >= 0) {
-          desktopHeroPath = './login/myprop-hero-wide.webp';
-          mobileHeroPath = './login/myprop-hero-mobile.jpg';
-          mobileHeroType = 'image/jpeg';
-        } else if (heroIdentity.indexOf('achiever') >= 0 || heroIdentity.indexOf('achiver') >= 0) {
-          desktopHeroPath = './login/achiever-hero-desktop-fit.webp';
-          mobileHeroPath = './login/achiever-hero-mobile.jpg';
-          mobileHeroType = 'image/jpeg';
-        } else if (heroIdentity.indexOf('growtradingacademy') >= 0 || heroIdentity.indexOf('gtabroker') >= 0) {
-          desktopHeroPath = './login/gta-hero-desktop-fit.webp';
-          mobileHeroPath = './login/gta-hero-mobile.jpg';
-          mobileHeroType = 'image/jpeg';
-        }
         var heroPreload = document.createElement('link');
         heroPreload.rel = 'preload';
         heroPreload.as = 'image';
         heroPreload.href = desktopHeroPath;
-        heroPreload.type = 'image/webp';
         heroPreload.media = '(min-width: 761px)';
         heroPreload.setAttribute('fetchpriority', 'high');
         document.head.appendChild(heroPreload);
@@ -348,7 +342,6 @@
         mobileHeroPreload.rel = 'preload';
         mobileHeroPreload.as = 'image';
         mobileHeroPreload.href = mobileHeroPath;
-        mobileHeroPreload.type = mobileHeroType;
         mobileHeroPreload.media = '(max-width: 760px)';
         mobileHeroPreload.setAttribute('fetchpriority', 'high');
         document.head.appendChild(mobileHeroPreload);

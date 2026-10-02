@@ -34,6 +34,12 @@ const clearStoredRouting = () => {
     configurable: true,
   });
   localStorage.clear();
+  (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+    BACKEND_TARGET: 'desktop', API_HOST: 'https://broker.example', WS_HOST: 'wss://broker.example',
+    BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
+  };
+  localStorage.setItem('server_url', 'https://broker.example');
+  localStorage.setItem('broker_id', 'Fixture');
   updateDynamicUrls();
 };
 
@@ -158,6 +164,14 @@ describe('login payload normalization', () => {
       broker_id: 'testorrnn',
     });
     expect(request.body).not.toHaveProperty('server');
+  });
+
+  it('allows the backend to identify the broker when no broker id is configured', async () => {
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__!.BROKER_ID;
+    localStorage.removeItem('broker_id');
+    await api.auth.login('100001', 'FixturePassword123', { server: 'https://new-broker.example' });
+    expect(lastFetchCall().body).toEqual({ login: 100001, password: 'FixturePassword123' });
+    expect(localStorage.getItem('broker_id')).toBe('testorrnn');
   });
 
   it('preserves numeric account login and emits only whitelisted fields', async () => {
@@ -404,7 +418,9 @@ describe('journalApi.getLogs authentication', () => {
     (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
       API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com', BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
     };
+    localStorage.setItem('server_url', 'https://fxtrustbrokerbackend.orrnn.com');
     localStorage.setItem('auth_token', 'journal-jwt');
     updateDynamicUrls();
 
@@ -422,7 +438,9 @@ describe('journalApi.getLogs authentication', () => {
     (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
       API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com', BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
     };
+    localStorage.setItem('server_url', 'https://fxtrustbrokerbackend.orrnn.com');
     localStorage.setItem('auth_token', 'expired-journal-jwt');
     localStorage.setItem('refresh_token', 'journal-refresh-token');
     updateDynamicUrls();

@@ -48,7 +48,8 @@ vi.mock('../config/api', () => ({
   toLocalDevProxyUrl: (url: string) => url,
   updateDynamicUrls: vi.fn(),
 }));
-vi.mock('../config/backendTarget.js', () => ({
+vi.mock('../config/backendTarget.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../config/backendTarget.js')>(),
   isElectronRuntime: () => true,
   isDesktopBackendTarget: () => true,
   getBackendTarget: () => 'https://environment-broker.test',
@@ -82,6 +83,7 @@ describe('desktop trading authentication', () => {
     mocks.login.mockResolvedValue({ access_token: 'desktop-test-token', account_login: 200001, broker_id: 'achiever' });
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'ok' })));
     vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('electron', { window: {} });
   });
 
   afterEach(() => vi.unstubAllGlobals());

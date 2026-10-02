@@ -19,7 +19,7 @@ export const MarketWatchViewTabs: React.FC<MarketWatchViewTabsProps> = ({
     aria-label={translate('Market Watch views')}
     style={{
       display: 'flex',
-      minHeight: 26,
+      minHeight: 22,
       borderTop: '1px solid var(--border-primary)',
       background: 'var(--bg-secondary)',
     }}
@@ -32,17 +32,19 @@ export const MarketWatchViewTabs: React.FC<MarketWatchViewTabsProps> = ({
         aria-selected={activeView === view}
         onClick={() => onSelectView(view)}
         style={{
-          minWidth: 64,
-          border: 0,
-          borderBottom: activeView === view ? '2px solid #0078d7' : '2px solid transparent',
-          background: activeView === view ? 'var(--bg-quaternary)' : 'transparent',
+          minWidth: 0,
+          padding: '0 10px',
+          border: '1px solid transparent',
+          borderTopColor: activeView === view ? 'var(--text-secondary)' : 'transparent',
+          borderInlineColor: activeView === view ? 'var(--text-secondary)' : 'transparent',
+          background: activeView === view ? 'var(--bg-secondary)' : 'transparent',
           color: activeView === view ? 'var(--text-primary)' : 'var(--text-secondary)',
           fontFamily: 'inherit',
-          fontSize: 11,
+          fontSize: 12,
           cursor: 'pointer',
         }}
       >
-        {view === 'symbols' ? translate('Symbols') : view === 'details' ? translate('Details') : translate('Ticks')}
+        {translate(view === 'symbols' ? 'Symbols' : view === 'details' ? 'Details' : view === 'trading' ? 'Trading' : 'Ticks')}
       </button>
     ))}
   </div>

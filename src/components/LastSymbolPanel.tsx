@@ -2,11 +2,11 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import i18n from '../i18n';
 /**
  * Last Symbol Trading Panel
- * Floating panel that always trades the last used symbol.
- * Prevents wrong-symbol mistakes when multiple charts are open.
+ * Floating panel that follows the selected chart immediately, with the last
+ * traded symbol as a fallback when no chart selection is supplied.
  * 
  * Features:
- * - Live BID/ASK display for last traded symbol
+ * - Live BID/ASK display for the selected symbol
  * - One-click BUY LAST / SELL LAST 
  * - Close all positions on last symbol
  * - Volume control with risk-based sizing option
@@ -17,6 +17,7 @@ import i18n from '../i18n';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useFloatingPanelDrag } from '../hooks/useFloatingPanelDrag';
 import { Icon } from './ui/Icon';
+import { DailyChangeSummary } from './market-watch/DailyChangeSummary';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
@@ -57,12 +58,12 @@ const clampPanelPosition = (position: { x: number; y: number }, panel: HTMLDivEl
     )),
 });
 
-export function LastSymbolPanel() {
+export function LastSymbolPanel({ symbol }: { symbol?: string } = {}) {
     const tr = useUiTranslation();
     const {
-        lastSymbol,
-        lastTradeSide,
-        lastTradeTime,
+        lastSymbol: lastTradedSymbol,
+        lastTradeSide: recordedTradeSide,
+        lastTradeTime: recordedTradeTime,
         volume,
         useRiskSizing,
         riskPercent,
@@ -79,7 +80,14 @@ export function LastSymbolPanel() {
         setTPPips,
     } = useLastSymbolStore();
 
-    const ticks = useAppStore((s) => s.ticks);
+    const lastSymbol = (symbol ?? lastTradedSymbol).trim();
+    const exactLastSymbol = normalizeExactBrokerSymbol(lastSymbol);
+    const matchesLastTrade = exactLastSymbol === normalizeExactBrokerSymbol(lastTradedSymbol);
+    const lastTradeSide = matchesLastTrade ? recordedTradeSide : null;
+    const lastTradeTime = matchesLastTrade ? recordedTradeTime : 0;
+    // Resolve only the exact broker contract; unrelated ticks do not render
+    // the entire trader panel and suffixes never borrow another quote.
+    const tick = useAppStore((s) => resolveExactBrokerSymbolValue(s.ticks, exactLastSymbol) ?? null);
     const account = useAppStore((s) => s.account);
     const positions = useAppStore((s) => s.positions);
     const accountId = useAppStore((s) => s.accountId);
@@ -101,11 +109,6 @@ export function LastSymbolPanel() {
     const marketStatus = useSymbolMarketStatus(lastSymbol, {
         enabled: Boolean(lastSymbol),
     });
-
-    // FIX: Resolve only the exact broker contract. Stripping punctuation could
-    // display or execute XAUUSD with a quote received for XAUUSD.raw.
-    const exactLastSymbol = normalizeExactBrokerSymbol(lastSymbol);
-    const tick = resolveExactBrokerSymbolValue(ticks, exactLastSymbol) ?? null;
 
     const bid = tick?.bid ?? 0;
     const ask = tick?.ask ?? 0;
@@ -211,6 +214,11 @@ export function LastSymbolPanel() {
             // HTTP check here previously added a complete network RTT per click.
             if (!canPlaceTrade) {
                 flash(tradeBlockedMessage, 'error');
+                return;
+            }
+            const executionPrice = side === 'BUY' ? ask : bid;
+            if (!Number.isFinite(executionPrice) || executionPrice <= 0) {
+                flash(tr('Awaiting quote'), 'info');
                 return;
             }
 
@@ -403,9 +411,9 @@ export function LastSymbolPanel() {
                     </div>
                 </header>
 
-                <section className="last-symbol-summary" aria-label={tr("Last traded symbol")}>
+                <section className="last-symbol-summary" aria-label={tr(symbol === undefined ? "Last traded symbol" : "Selected symbol")}>
                     <div className="last-symbol-section-heading">
-                        <span>{tr("Last traded symbol")}</span>
+                        <span>{tr(symbol === undefined ? "Last traded symbol" : "Selected symbol")}</span>
                         <span className="last-symbol-status" data-tone={executionStatus.tone}>
                             <span className="last-symbol-status__dot" aria-hidden="true" />
                             {tr(executionStatus.label)}
@@ -416,6 +424,7 @@ export function LastSymbolPanel() {
                             <div className="last-symbol-value" data-empty={!lastSymbol}>
                                 {lastSymbol || tr('Missing symbol')}
                             </div>
+                            {lastSymbol && <DailyChangeSummary symbol={lastSymbol} digits={digits} />}
                         </div>
                         {lastTradeSide ? (
                             <div className="last-symbol-history">

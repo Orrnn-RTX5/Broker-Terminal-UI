@@ -1,9 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useAppStore } from '../store/useAppStore';
 import { TradeAuthDialog } from './TradeAuthDialog';
 import { registerRuntimeBrokerDemoAccount } from '../api/demoRegistration';
+import { loadAppBrokerDirectory, loadBrokerDirectory } from '../services/brokerDirectory';
+
+vi.mock('../services/brokerDirectory', () => ({
+  loadBrokerDirectory: vi.fn(),
+  loadAppBrokerDirectory: vi.fn(),
+}));
 
 vi.mock('../api/demoRegistration', () => ({
   registerRuntimeBrokerDemoAccount: vi.fn(),
@@ -18,7 +24,13 @@ describe('TradeAuthDialog', () => {
     localStorage.clear();
     sessionStorage.clear();
     (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, string> }).__RTX_RUNTIME_CONFIG__ = {
+      CONFIG_SOURCE: 'deployment',
+      BACKEND_TARGET: 'web',
       BROKER_ID: 'runtime-broker',
+      API_HOST: 'https://runtime-broker.example',
+      WS_HOST: 'wss://runtime-broker.example',
+      DEFAULT_MT5_SERVER: 'Runtime Broker-Live',
+      DISCOVERY_BASE_URL: 'https://directory.example',
     };
     useAppStore.setState({
       isAuthenticated: false,
@@ -29,13 +41,21 @@ describe('TradeAuthDialog', () => {
       savedAccounts: [],
     });
     vi.mocked(registerRuntimeBrokerDemoAccount).mockReset();
+    const brokers = [
+      { broker_id: 'other-broker', broker_name: 'Other Broker', server_url: 'https://other-broker.example', logo_url: '' },
+      { broker_id: 'runtime-broker', broker_name: 'Runtime Broker', server_url: 'https://runtime-broker.example', logo_url: '' },
+    ];
+    vi.mocked(loadBrokerDirectory).mockReset().mockResolvedValue(brokers);
+    vi.mocked(loadAppBrokerDirectory).mockReset().mockResolvedValue(brokers);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ([
-        { broker_id: 'other-broker', broker_name: 'Other Broker', logo_url: '' },
-        { broker_id: 'runtime-broker', broker_name: 'Runtime Broker', logo_url: '' },
-      ]),
+      json: async () => brokers,
     }));
+  });
+
+  afterEach(() => {
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, string> }).__RTX_RUNTIME_CONFIG__;
+    vi.unstubAllGlobals();
   });
 
   it('creates a demo session and returns the draft to App for review', async () => {

@@ -70,6 +70,11 @@ describe('marketWatchView storage', () => {
     ]);
   });
 
+  it.each([['dailyChangePrice'], ['dailyChange'], ['dailyChangePrice', 'dailyChange']] as const)('persists daily columns independently: %j', (...columns) => {
+    saveMarketWatchColumns(['symbol', 'bid', 'ask', ...columns]);
+    expect(loadMarketWatchColumns()).toEqual(['symbol', 'bid', 'ask', ...columns]);
+  });
+
   it('accepts only boolean option overrides and persists the normalized contract', () => {
     const normalized = normalizeMarketWatchOptions({
       useSystemColors: false,
@@ -135,6 +140,14 @@ describe('marketWatchView storage', () => {
 });
 
 describe('sortMarketWatchSymbols', () => {
+  it('sorts signed price changes numerically, keeps equal rows stable and leaves missing values last', () => {
+    const rows = ['Z', 'missing', 'A', 'negative', 'zero'];
+    const amounts: Record<string, number> = { Z: 25, A: 25, negative: -2.5, zero: 0 };
+    const read = (symbol: string) => ({ dailyChangePrice: amounts[symbol] });
+    expect(sortMarketWatchSymbols(rows, 'change-asc', read, new Map())).toEqual(['negative', 'zero', 'Z', 'A', 'missing']);
+    expect(sortMarketWatchSymbols(rows, 'change-desc', read, new Map())).toEqual(['Z', 'A', 'zero', 'negative', 'missing']);
+  });
+
   const emptyMetadata = new Map<string, MarketWatchSortMetadata>();
   const ticks: Record<string, Pick<Tick, 'dailyChange' | 'volume'> | undefined> = {
     ALPHA: { dailyChange: 2, volume: 10 },
@@ -161,15 +174,15 @@ describe('sortMarketWatchSymbols', () => {
 
     expect(sortMarketWatchSymbols(symbols, 'gainers', getTick, emptyMetadata)).toEqual([
       'ECHO',
-      'ALPHA',
       'BRAVO',
+      'ALPHA',
       'CHARLIE',
       'MISSING',
     ]);
     expect(sortMarketWatchSymbols(symbols, 'losers', getTick, emptyMetadata)).toEqual([
       'CHARLIE',
-      'ALPHA',
       'BRAVO',
+      'ALPHA',
       'ECHO',
       'MISSING',
     ]);
@@ -177,8 +190,8 @@ describe('sortMarketWatchSymbols', () => {
       'BRAVO',
       'ALPHA',
       'ECHO',
-      'CHARLIE',
       'MISSING',
+      'CHARLIE',
     ]);
   });
 

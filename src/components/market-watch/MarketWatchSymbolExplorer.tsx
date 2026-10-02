@@ -30,6 +30,7 @@ interface MarketWatchSymbolExplorerProps {
   inputRef: RefObject<HTMLInputElement | null>;
   isSymbolListLoading: boolean;
   marketWatchSymbolSet: ReadonlySet<string>;
+  symbolCount?: number;
   onClose: () => void;
   onSearchChange: (value: string) => void;
   onSearchKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
@@ -55,6 +56,7 @@ export const MarketWatchSymbolExplorer = ({
   inputRef,
   isSymbolListLoading,
   marketWatchSymbolSet,
+  symbolCount = marketWatchSymbolSet.size,
   onClose,
   onSearchChange,
   onSearchKeyDown,
@@ -155,26 +157,26 @@ export const MarketWatchSymbolExplorer = ({
 
   return (
     <div
-      className="rtx-market-watch__search"
+      className={`rtx-market-watch__search${showSymbolsPanel ? ' rtx-market-watch__search--open' : ' rtx-market-watch__search--inline'}`}
       style={{
         display: 'flex',
         flexDirection: 'column',
         flex: showSymbolsPanel ? '1 1 auto' : '0 0 auto',
         minHeight: 0,
-        borderBottom: '1px solid var(--border-primary)',
+        borderBottom: showSymbolsPanel ? '1px solid var(--border-primary)' : undefined,
         background: 'var(--bg-secondary)',
       }}
     >
-      <div className="rtx-market-watch__search-bar" style={{ position: 'relative', height: 42, flexShrink: 0 }}>
+      <div className="rtx-market-watch__search-bar" style={{ position: 'relative', height: showSymbolsPanel ? 26 : 22, flexShrink: 0 }}>
         <Icon
-          name="search"
-          size={20}
+          name={showSymbolsPanel ? 'search' : 'plus'}
+          size={12}
           style={{
             position: 'absolute',
-            left: 13,
+            left: 5,
             top: '50%',
             transform: 'translateY(-50%)',
-            color: 'var(--text-primary)',
+            color: showSymbolsPanel ? 'var(--text-primary)' : '#4d9e87',
             pointerEvents: 'none',
           }}
         />
@@ -190,8 +192,8 @@ export const MarketWatchSymbolExplorer = ({
             background: 'transparent',
             border: '1px solid transparent',
             borderRadius: 0,
-            padding: '0 42px 0 42px',
-            fontSize: 14,
+            padding: showSymbolsPanel ? '0 26px 0 22px' : '0 84px 0 22px',
+            fontSize: 12,
             fontWeight: 400,
             color: 'var(--text-primary)',
             outline: 'none',
@@ -204,26 +206,35 @@ export const MarketWatchSymbolExplorer = ({
           aria-controls={showSymbolsPanel ? searchListboxId : undefined}
           aria-activedescendant={activeOptionId}
           autoComplete="off"
-          placeholder={translate('Search symbol')}
+          placeholder={translate(showSymbolsPanel ? 'Search symbol' : 'click to add...')}
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
           onKeyDown={onSearchKeyDown}
           onFocus={() => setShowSymbolsPanel(true)}
         />
-        <button
+        {!showSymbolsPanel && (
+          <span
+            className="rtx-market-watch__symbol-count"
+            aria-label={translate('Displayed symbols: {{displayed}} of {{total}}', { displayed: symbolCount, total: searchUniverse.length })}
+            style={{ position: 'absolute', right: 5, top: 0, height: '100%', display: 'flex', alignItems: 'center', pointerEvents: 'none', color: 'var(--text-primary)', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
+          >
+            {symbolCount} / {searchUniverse.length}
+          </span>
+        )}
+        {showSymbolsPanel && <button
           type="button"
-          aria-label={showSymbolsPanel ? translate('Close symbol search') : translate('Close Market Watch')}
-          title={showSymbolsPanel ? translate('Close symbol search') : translate('Close')}
+          aria-label={translate('Close symbol search')}
+          title={translate('Close symbol search')}
           onMouseDown={(event) => event.preventDefault()}
           onClick={onClose}
           className="rtx-market-watch__close"
           style={{
             position: 'absolute',
-            right: 8,
+            right: 5,
             top: '50%',
             transform: 'translateY(-50%)',
-            width: 30,
-            height: 30,
+            width: 16,
+            height: 16,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -233,8 +244,8 @@ export const MarketWatchSymbolExplorer = ({
             cursor: 'pointer',
           }}
         >
-          <Icon name="x-close" size={18} />
-        </button>
+          <Icon name="x-close" size={12} />
+        </button>}
       </div>
 
       {showSymbolsPanel && (

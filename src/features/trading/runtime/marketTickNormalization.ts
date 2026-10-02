@@ -2,6 +2,7 @@ import {
   composeDailyChangeQuoteContext,
   readDailyChangeLastPrice,
   readDailyChangePercent,
+  readDailyChangeInput,
   readDailyChangePreviousClose,
   resolveDailyChangePercent,
 } from '../../../utils/dailyChange';
@@ -9,8 +10,10 @@ import { resolveDailyChangePriceMode } from '../../../services/dailyChangePriceM
 import { asUnknownRecord, readBrokerTimestampMs } from '../../../utils/brokerStreamSemantics';
 import { readQuoteSessionRange, type QuoteSessionRange } from '../../../utils/quoteSessionRange';
 import { readFirstFiniteNumber } from '../../../utils/recordFields';
+import { readQuoteTradingStatus, type QuoteTradingStatusFields } from '../../../utils/quoteTradingStatus';
 
-export interface NormalizedRealtimeTick extends QuoteSessionRange {
+export interface NormalizedRealtimeTick extends QuoteSessionRange, QuoteTradingStatusFields {
+  dailyChangeInput?: import('../../../utils/dailyChange').DailyChangeInput;
   symbol: string;
   bid: number;
   ask: number;
@@ -140,6 +143,7 @@ export const normalizeRealtimeTick = (
     spread,
     timestamp: sourceTimestamp ?? Date.now(),
     sourceTimestamp,
+    tradingStatus: readQuoteTradingStatus(record),
     lp: typeof record.lp === 'string' && record.lp.trim() ? record.lp : 'YOFX',
     dailyChange: resolveDailyChangePercent(
       readDailyChangePercent(dailyChangeContext),
@@ -148,6 +152,7 @@ export const normalizeRealtimeTick = (
       dailyChangeContext,
       priceMode,
     ),
+    dailyChangeInput: readDailyChangeInput({ ...dailyChangeContext, bid: Number.isFinite(parsedBid) ? parsedBid : undefined }, priceMode),
     high24h: toNumber(record.high_24h ?? record.high24h, previous?.high24h ?? Math.max(bid, ask)),
     low24h: toNumber(record.low_24h ?? record.low24h, previous?.low24h ?? Math.min(bid, ask)),
     volume: toNumber(record.volume_24h ?? record.volume ?? candle?.volume, previous?.volume ?? 0),

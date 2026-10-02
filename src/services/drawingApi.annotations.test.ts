@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { drawingApi } from './drawingApi';
+vi.mock('../api/brokerRequestGuard', () => ({ assertBrokerRequestAllowed: () => undefined }));
 afterEach(() => vi.restoreAllMocks());
 it('preserves annotation text, typography, table content and image sizing in save and update payloads', async () => {
   const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ success: true, drawingId: 'saved' }), { status: 200 }));

@@ -19,6 +19,7 @@ export type ToolbarAction =
   | { type: 'SET_CHART_TYPE'; chartType: ToolbarState['chartType'] }
   | { type: 'SET_TIMEFRAME'; timeframe: string }
   | { type: 'TOGGLE_CROSSHAIR' }
+  | { type: 'SET_CROSSHAIR'; enabled: boolean }
   | { type: 'TOGGLE_AUTO_SCROLL' }
   | { type: 'SET_AUTO_SCROLL'; enabled: boolean }
   | { type: 'TOGGLE_CHART_SHIFT' }
@@ -70,6 +71,12 @@ export function toolbarReducer(state: ToolbarState, action: ToolbarAction): Tool
       return {
         ...state,
         crosshairEnabled: !state.crosshairEnabled
+      };
+
+    case 'SET_CROSSHAIR':
+      return state.crosshairEnabled === action.enabled ? state : {
+        ...state,
+        crosshairEnabled: action.enabled,
       };
 
     case 'TOGGLE_AUTO_SCROLL':

@@ -1,5 +1,6 @@
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import type { Tick } from '../../store/useAppStore';
+import { formatDailyChange } from '../../utils/dailyChange';
 import { getQuoteAskMarkupOffset, getQuoteBidMarkupOffset } from '../../utils/spreadMarkup';
 import { hasMarketWatchQuote, readFiniteDailyChange } from './marketWatchPanelModel';
 
@@ -182,5 +183,5 @@ export const formatMarketWatchDetailsPrice = (value: number | null, digits: numb
 );
 
 export const formatMarketWatchDetailsPercent = (value: number | null): string | null => (
-  value === null ? null : `${value.toFixed(2)}%`
+  value === null ? null : formatDailyChange(value, 2, true)
 );

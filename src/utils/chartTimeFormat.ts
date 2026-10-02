@@ -198,6 +198,38 @@ const formatHigherTimeframeTickLabel = (
   return formatDayMonth(date, locale);
 };
 
+const formatUtcOffsetLabel = (offsetSeconds: number): string => {
+  if (!Number.isFinite(offsetSeconds) || offsetSeconds === 0) return 'UTC';
+  const sign = offsetSeconds < 0 ? '-' : '+';
+  const totalMinutes = Math.round(Math.abs(offsetSeconds) / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes === 0 ? `UTC${sign}${hours}` : `UTC${sign}${hours}:${pad2(minutes)}`;
+};
+
+/** Date and clock under the area-chart point card. Intraday includes the broker zone. */
+export const formatAreaPointHoverTime = (
+  time: Time,
+  timeframe: string,
+  brokerOffsetSeconds = 0,
+  locale = 'en',
+): { date: string; time: string } | null => {
+  const date = toDisplayDate(time, brokerOffsetSeconds);
+  if (!date) return null;
+
+  const metrics = getTimeframeMetrics(timeframe);
+  const year = String(date.getUTCFullYear()).slice(-2);
+  const month = formatMonth(date, locale);
+  const dateLabel = metrics.unit === 'month'
+    ? `${month} '${year}`
+    : `${date.getUTCDate()} ${month} '${year}`;
+
+  return {
+    date: dateLabel,
+    time: metrics.isIntraday ? `${formatTime(date)} ${formatUtcOffsetLabel(brokerOffsetSeconds)}` : '',
+  };
+};
+
 export const formatTradingChartCrosshairLabel = (
   time: Time,
   timeframe: string,

@@ -1,3 +1,4 @@
+import { resolveDailyChangeDisplayDigits } from '../../services/dailyChangePriceModeRegistry';
 import {
   useCallback,
   useEffect,
@@ -12,9 +13,13 @@ import { createPortal } from 'react-dom';
 import { useFloatingPanelDrag } from '../../hooks/useFloatingPanelDrag';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
+import { formatDailyChange } from '../../utils/dailyChange';
+import { dailyChangeDescription } from '../../utils/dailyChangeSession';
+import { readCurrentMarketWatchDailyChangePrice, describeCurrentMarketWatchDailyChange } from '../../services/marketWatchDailyChangeCache';
 import { type Tick, useTick } from '../../store/useAppStore';
 import {
   resolveMarketWatchDisplayMetadata,
+  mayUseClosedDailyChange,
   useMarketWatchDisplayMetadata,
 } from '../../store/useMarketWatchDisplayMetadataStore';
 import {
@@ -175,7 +180,10 @@ function PopupPriceCard({
     : undefined;
   const bid = hasLiveQuote ? liveBid : retainedQuote?.bid ?? retainedClose?.close ?? 0;
   const ask = hasLiveQuote ? liveAsk : retainedQuote?.ask ?? 0;
-  const dailyChange = finiteNumber(resolvedDisplayMetadata.dailyChange) ?? finiteNumber(fallbackDailyChange);
+  const dailyChange = finiteNumber(resolvedDisplayMetadata.dailyChange) ?? (mayUseClosedDailyChange(resolvedDisplayMetadata) ? finiteNumber(fallbackDailyChange) : null);
+  const dailyTitle = (fallbackDailyChange != null && mayUseClosedDailyChange(resolvedDisplayMetadata) ? describeCurrentMarketWatchDailyChange(symbol) : dailyChangeDescription(resolvedDisplayMetadata.daily));
+  const dailyAmount = resolvedDisplayMetadata.dailyChangePrice
+    ?? (fallbackDailyChange != null && mayUseClosedDailyChange(resolvedDisplayMetadata) ? readCurrentMarketWatchDailyChangePrice(symbol) : undefined);
   const hasBidAskQuote = hasLiveQuote || retainedQuote !== undefined;
   const hasDisplayedPrice = hasBidAskQuote || retainedClose !== undefined;
   const quoteTimestamp = getLatestMarketWatchTimestamp(
@@ -183,9 +191,7 @@ function PopupPriceCard({
     resolvedDisplayMetadata.timestamp,
   ) ?? retainedQuote?.asOf ?? retainedClose?.asOf;
   const updatedDate = quoteDate(quoteTimestamp);
-  const dailyChangeText = dailyChange === null
-    ? '—'
-    : `${dailyChange > 0 ? '+' : ''}${dailyChange.toFixed(2)}%`;
+  const dailyChangeText = formatDailyChange(dailyChange, 2, true);
   const dailyTone = dailyChange === null || dailyChange === 0
     ? 'neutral'
     : dailyChange > 0 ? 'positive' : 'negative';
@@ -273,8 +279,14 @@ function PopupPriceCard({
           )}
           {columns.includes('dailyChange') && (
             <div className="rtx-popup-prices__metric">
-              <span>{tr('Daily Change')}</span>
-              <strong data-tone={dailyTone} aria-label={`${tr('Daily Change')} ${dailyChangeText}`}>{dailyChangeText}</strong>
+              <span>{tr('Change %')}</span>
+              <strong title={dailyTitle} data-tone={dailyTone} aria-label={`${tr('Change %')} ${dailyChangeText}`}>{dailyChangeText}</strong>
+            </div>
+          )}
+          {columns.includes('dailyChangePrice') && (
+            <div className="rtx-popup-prices__metric">
+              <span>{tr('Change')}</span>
+              <strong title={dailyTitle} data-tone={!dailyAmount ? 'neutral' : dailyAmount > 0 ? 'positive' : 'negative'}>{formatDailyChange(dailyAmount, resolveDailyChangeDisplayDigits(symbol, tick?.digits))}</strong>
             </div>
           )}
           {columns.includes('source') && (

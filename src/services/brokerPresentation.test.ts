@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyBrokerChrome,
   buildBrokerPresentationUrl,
@@ -10,10 +10,15 @@ import {
 } from './brokerPresentation';
 
 describe('broker presentation', () => {
+  beforeEach(() => {
+    // This suite exercises directory-selected desktop presentation.
+    Object.defineProperty(window, 'electron', { configurable: true, value: { window: {} } });
+  });
   afterEach(() => {
     applyBrokerChrome({});
     document.title = '';
     vi.unstubAllGlobals();
+    delete window.electron;
   });
 
   it('builds a selected broker config endpoint without changing its server origin', () => {

@@ -1,5 +1,6 @@
 import { BROKER_DISCOVERY_URL } from '../config/api';
-import { getRuntimeConfiguredBrokerId } from '../config/backendTarget.js';
+import { getBrokerConfigurationError, getRuntimeBrokerConfiguration, getRuntimeConfiguredBrokerId, isDesktopBackendTarget } from '../config/backendTarget.js';
+import { DEV_BROKER_DISCOVERY_PROXY_PREFIX, toLocalDevProxyUrl } from '../config/localDevProxy';
 import { extractBrokerDiscoveryList, type BrokerDiscoveryItem } from './brokerDiscovery';
 
 const WEB_TRADER_URL_FIELDS = [
@@ -94,6 +95,9 @@ const getStorage = (override: StorageReader | null | undefined): StorageReader |
 };
 
 export const getCurrentWebTraderBrokerId = (options: ResolveWebTraderOptions = {}): string => {
+  if (!isDesktopBackendTarget()) {
+    return normalizeBrokerIdentity(getRuntimeConfiguredBrokerId());
+  }
   if (options.brokerId !== undefined) {
     return normalizeBrokerIdentity(options.brokerId);
   }
@@ -210,8 +214,21 @@ export const resolveWebTraderTarget = async (
   let brokers: BrokerDiscoveryItem[];
 
   try {
-    const response = await fetcher(getDiscoveryEndpoint(options.discoveryUrl || BROKER_DISCOVERY_URL), {
+    let discoveryUrl = options.discoveryUrl || BROKER_DISCOVERY_URL;
+    if (!isDesktopBackendTarget()) {
+      const configuration = getRuntimeBrokerConfiguration();
+      const error = getBrokerConfigurationError();
+      if (error) throw new Error(error);
+      const configuredRequestUrl = toLocalDevProxyUrl(configuration.discoveryBaseUrl, DEV_BROKER_DISCOVERY_PROXY_PREFIX);
+      if (!configuration.discoveryBaseUrl || (options.discoveryUrl && ![configuration.discoveryBaseUrl, configuredRequestUrl].includes(options.discoveryUrl.replace(/\/+$/, '')))) {
+        throw new Error('The discovery URL does not match this broker deployment.');
+      }
+      discoveryUrl = configuredRequestUrl;
+    }
+    const response = await fetcher(getDiscoveryEndpoint(discoveryUrl), {
       headers: { Accept: 'application/json' },
+      redirect: 'error',
+      credentials: 'omit',
     });
     if (!response.ok) {
       throw new Error(`Broker discovery failed (${response.status})`);
@@ -227,7 +244,9 @@ export const resolveWebTraderTarget = async (
 
   const normalizedBrokerId = brokerId.toLowerCase();
   const broker = brokers.find((item) =>
-    normalizeBrokerIdentity(item.broker_id || item.id).toLowerCase() === normalizedBrokerId,
+    isDesktopBackendTarget()
+      ? normalizeBrokerIdentity(item.broker_id || item.id).toLowerCase() === normalizedBrokerId
+      : normalizeBrokerIdentity(item.broker_id || item.id) === brokerId,
   );
   if (!broker) {
     return {

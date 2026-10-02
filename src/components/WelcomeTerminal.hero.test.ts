@@ -1,176 +1,55 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { resolveLoginHeroAsset, toPublicAssetPath, type LoginHeroBroker } from './welcomeHeroAssets';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resolveLoginHeroAsset, toPublicAssetPath } from './welcomeHeroAssets';
 
-type RuntimeWindow = Window & {
-  RUNTIME_CONFIG?: Record<string, unknown>;
-  __RTX_RUNTIME_CONFIG__?: Record<string, unknown>;
+const runtimeWindow = window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown>; RUNTIME_CONFIG?: Record<string, unknown>; __RUNTIME_CONFIG__?: Record<string, unknown> };
+const configure = (extra: Record<string, unknown> = {}) => {
+  runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+    CONFIG_SOURCE: 'deployment', BACKEND_TARGET: 'web', API_HOST: 'https://unknown-broker.example',
+    WS_HOST: 'wss://unknown-broker.example', BROKER_ID: 'NewRegisteredID', DEFAULT_MT5_SERVER: 'Provisioned-Live', ...extra,
+  };
 };
+const clear = () => {
+  delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+  delete runtimeWindow.RUNTIME_CONFIG;
+  delete runtimeWindow.__RUNTIME_CONFIG__;
+};
+beforeEach(clear);
+afterEach(clear);
 
-const runtimeWindow = window as RuntimeWindow;
-
-describe('resolveLoginHeroAsset', () => {
-  beforeEach(() => {
-    delete runtimeWindow.RUNTIME_CONFIG;
-    delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
-  });
-
-  it('resolves public asset paths for packaged Electron and web bases', () => {
+describe('configuration-driven login artwork', () => {
+  it('resolves public asset paths for Electron and web bases', () => {
     expect(toPublicAssetPath('/login/trading-desk-hero.webp', './')).toBe('./login/trading-desk-hero.webp');
-    expect(toPublicAssetPath('/login/achiever-hero.webp', '/')).toBe('/login/achiever-hero.webp');
+    expect(toPublicAssetPath('/login/trading-desk-hero.webp', '/')).toBe('/login/trading-desk-hero.webp');
   });
-
-  it('keeps the default trading desk image for unbranded brokers', () => {
-    expect(resolveLoginHeroAsset({
-      broker_id: 'other-broker',
-      broker_name: 'Other Broker',
-      logo_url: '',
-    }).src).toBe(toPublicAssetPath('login/trading-desk-hero.webp'));
+  it.each(['achiever', 'myprop-trade', 'gta_broker', 'Orrnn', 'previously-unknown'])('does not select artwork from a broker name, ID or domain: %s', id => {
+    configure({ BROKER_ID: id });
+    expect(resolveLoginHeroAsset({ broker_id: id, broker_name: id, server_url: `https://${id.toLowerCase()}.example` }).src)
+      .toBe(toPublicAssetPath('login/trading-desk-hero.webp'));
   });
-
-  it('uses the GTA image for Grow Trading Academy broker identities', () => {
-    const growTradingAcademyAsset = resolveLoginHeroAsset({
-      broker_id: 'grow-trading-academy',
-      broker_name: 'Grow Trading Academy',
-      logo_url: '',
-    });
-
-    expect(growTradingAcademyAsset.src).toBe(toPublicAssetPath('login/gta-hero-desktop-fit.webp'));
-    expect(growTradingAcademyAsset.fit).toBe('cover');
-    expect(growTradingAcademyAsset.position).toBe('center center');
-    expect(growTradingAcademyAsset.mobileFit).toBe('contain');
-
-    expect(resolveLoginHeroAsset({
-      broker_id: 'gta_broker',
-      broker_name: 'GTA',
-      logo_url: '',
-    }).src).toBe(toPublicAssetPath('login/gta-hero-desktop-fit.webp'));
+  it('uses explicit runtime artwork without needing a broker in source code', () => {
+    configure({ BROKER_LOGIN_HERO_URL: 'https://cdn.unrelated.example/new-hero.webp', BROKER_LOGIN_HERO_MOBILE_URL: 'https://cdn.unrelated.example/mobile.jpg' });
+    expect(resolveLoginHeroAsset(null)).toMatchObject({ src: 'https://cdn.unrelated.example/new-hero.webp', mobileSrc: 'https://cdn.unrelated.example/mobile.jpg', theme: 'accent', fit: 'cover', mobileFit: 'contain' });
   });
-
-  it('uses the MyProp image for MyProp broker identities', () => {
-    const myPropAsset = resolveLoginHeroAsset({
-      broker_id: 'myprop-trade',
-      broker_name: 'MyProp',
-      logo_url: '',
-    });
-
-    expect(myPropAsset.src).toBe(toPublicAssetPath('login/myprop-hero-wide.webp'));
-    expect(myPropAsset.fit).toBe('contain');
-    expect(myPropAsset.position).toBe('center center');
-    expect(myPropAsset.mobileFit).toBe('contain');
+  it('uses the configured desktop image on mobile if no mobile image is supplied', () => {
+    configure({ BROKER_LOGIN_HERO_URL: 'https://cdn.example/hero.webp' });
+    expect(resolveLoginHeroAsset(null).mobileSrc).toBe('https://cdn.example/hero.webp');
   });
-
-  it('uses the Achiever image for Achiever broker identities', () => {
-    const achieverAsset = resolveLoginHeroAsset({
-      broker_id: 'achiever-financials',
-      broker_name: 'Achiever Financials',
-      logo_url: '',
-    });
-
-    expect(achieverAsset.src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
-    expect(achieverAsset.mobileSrc).toBe(toPublicAssetPath('login/achiever-hero-mobile.jpg'));
-    expect(achieverAsset.theme).toBe('achiever');
-    expect(achieverAsset.fit).toBe('cover');
-    expect(achieverAsset.mobileFit).toBe('contain');
-
-    for (const brokerId of ['achieverfinancials', 'achiever', 'achiver']) {
-      expect(resolveLoginHeroAsset({
-        broker_id: brokerId,
-        broker_name: 'Neutral Broker',
-        logo_url: '',
-      }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
-    }
+  it('never takes artwork from stale or foreign metadata for a pinned web deployment', () => {
+    configure({ BROKER_LOGIN_HERO_URL: 'https://cdn.example/current.webp' });
+    expect(resolveLoginHeroAsset({ broker_id: 'NewRegisteredID', login_hero_url: 'https://foreign.example/hero.webp' }).src).toBe('https://cdn.example/current.webp');
+    expect(resolveLoginHeroAsset({ broker_id: 'foreign', login_hero_url: 'https://foreign.example/hero.webp' }).src).toContain('trading-desk-hero');
   });
-
-  it('uses the Achiever image for approved Achiever domain and URL identities', () => {
-    for (const domain of [
-      'admin.achieverfinancials.com',
-      'manager.achieverfinancials.com',
-      'webterminal.achieverfinancials.com',
-      'service.achieverfinancials.com',
-    ]) {
-      expect(resolveLoginHeroAsset({
-        broker_id: 'unbranded',
-        broker_name: 'Unbranded',
-        domain,
-        logo_url: '',
-      }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
-    }
-
-    expect(resolveLoginHeroAsset({
-      broker_id: 'unbranded',
-      broker_name: 'Unbranded',
-      domains: ['example.com', 'webterminal.achieverfinancials.com'],
-      logo_url: '',
-    }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
-
-    expect(resolveLoginHeroAsset({
-      broker_id: 'unbranded',
-      broker_name: 'Unbranded',
-      domains: 'example.com, manager.achieverfinancials.com',
-      logo_url: '',
-    }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
+  it('does not show configured artwork when deployment configuration is invalid', () => {
+    configure({ WS_HOST: '', BROKER_LOGIN_HERO_URL: 'https://cdn.example/hero.webp' });
+    expect(resolveLoginHeroAsset(null).src).toContain('trading-desk-hero');
   });
-
-  it('uses the Achiever image from selected broker webterminal, admin, and manager fields independently', () => {
-    const fieldCases = [
-      ['webterminal_domain', 'webterminal.achieverfinancials.com'],
-      ['admin_domain', 'admin.achieverfinancials.com'],
-      ['manager_domain', 'manager.achieverfinancials.com'],
-    ] as const satisfies readonly (readonly [keyof LoginHeroBroker, string])[];
-
-    for (const [field, domain] of fieldCases) {
-      const broker: LoginHeroBroker = {
-        broker_id: 'unbranded',
-        broker_name: 'Unbranded',
-        logo_url: '',
-        [field]: domain,
-      };
-
-      expect(resolveLoginHeroAsset(broker).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
-    }
+  it('uses explicit directory artwork for independently selected Electron brokers', () => {
+    configure({ BACKEND_TARGET: 'desktop', CONFIG_SOURCE: 'build' });
+    expect(resolveLoginHeroAsset({ broker_id: 'new', login_hero_url: 'https://cdn.example/new.webp' }).src).toBe('https://cdn.example/new.webp');
+    expect(resolveLoginHeroAsset({ broker_id: 'other' }).src).toContain('trading-desk-hero');
   });
-
-  it('does not use the Achiever image for unrelated words that contain achiever', () => {
-    expect(resolveLoginHeroAsset({
-      broker_id: 'overachiever-capital',
-      broker_name: 'Overachiever Capital',
-      logo_url: '',
-    }).src).toBe(toPublicAssetPath('login/trading-desk-hero.webp'));
-  });
-
-  it('uses runtime broker hosts when discovery has not resolved yet', () => {
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
-      BACKEND_TARGET: 'web',
-      API_HOST: 'https://services.myprop.trade',
-    };
-
-    expect(resolveLoginHeroAsset(null).src).toBe(toPublicAssetPath('login/myprop-hero-wide.webp'));
-
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
-      BACKEND_TARGET: 'web',
-      API_HOST: 'https://services.growtradingacademy.com',
-    };
-
-    expect(resolveLoginHeroAsset(null).src).toBe(toPublicAssetPath('login/gta-hero-desktop-fit.webp'));
-
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
-      BACKEND_TARGET: 'desktop',
-      API_HOST: 'https://service.achieverfinancials.com',
-    };
-
-    expect(resolveLoginHeroAsset(null).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
-  });
-
-  it('does not let runtime identity override an already selected unbranded broker', () => {
-    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
-      BACKEND_TARGET: 'web',
-      API_HOST: 'https://services.myprop.trade',
-    };
-
-    expect(resolveLoginHeroAsset({
-      broker_id: 'other-broker',
-      broker_name: 'Other Broker',
-      logo_url: '',
-    }).src).toBe(toPublicAssetPath('login/trading-desk-hero.webp'));
+  it.each(['javascript:alert(1)', 'http://cdn.example/hero.jpg', 'https://user:password@cdn.example/hero.jpg', '//cdn.example/hero.jpg'])('ignores unsafe directory artwork: %s', login_hero_url => {
+    configure({ BACKEND_TARGET: 'desktop', CONFIG_SOURCE: 'build' });
+    expect(resolveLoginHeroAsset({ broker_id: 'new', login_hero_url }).src).toContain('trading-desk-hero');
   });
 });

@@ -4,7 +4,7 @@ import { useDrawingSidebarStore } from '../store/useDrawingSidebarStore';
 import { CHART_PATTERN_GROUPS, CHART_PATTERN_TOOLS } from './chartPatternToolCatalog';
 import { ChartPatternToolIcon } from './ChartPatternToolIcon';
 import { ChevronRight } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from '../components/ui/Icon';
 import { ToggleSwitch } from '../components/ui/ToggleSwitch';
@@ -49,6 +49,10 @@ import { isWebDrawingToolsRuntime } from './runtime';
 import './WebDrawingToolsRail.css';
 import { AnnotationToolIcon } from './AnnotationToolIcon';
 import { ANNOTATION_TOOLS as TEXT_NOTE_TOOLS } from './annotationToolCatalog';
+import { CursorToolIcon } from './CursorToolIcon';
+import { CURSOR_TOOLS, getCursorTool } from './cursorToolCatalog';
+import { useChartCursorStore } from '../store/useChartCursorStore';
+import type { ChartCursorMode } from '../store/useChartCursorStore';
 import {
   buildRemovalMenuItems,
   countRemovableDrawings,
@@ -66,6 +70,7 @@ const TOOLTIP_ID = 'web-drawing-tools-tooltip';
 
 type DrawingCommandTool = PayloadFor<'SELECT_TOOL'>['tool'];
 type RailMenuId =
+  | 'cursors'
   | 'trend'
   | 'fibonacci'
   | 'patterns'
@@ -157,6 +162,8 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
   const requestedMenu = useDrawingSidebarStore(state => state.requestedMenu);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const stampButtonRef = useRef<HTMLButtonElement>(null);
+  const cursorMode = useChartCursorStore((state) => state.mode);
+  const valuesTooltipOnLongPress = useChartCursorStore((state) => state.valuesTooltipOnLongPress);
   const magnetMode = useDrawingToolPreferencesStore((state) => state.magnetMode);
   const snapToIndicators = useDrawingToolPreferencesStore((state) => state.snapToIndicators);
   const keepDrawing = useDrawingToolPreferencesStore((state) => state.keepDrawing);
@@ -190,6 +197,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     && activeTargetContextId !== currentChartSourceId
     ? null
     : activeTool;
+  const selectedCursor = getCursorTool(cursorMode) ?? CURSOR_TOOLS[0];
   const selectedTool = getTrendLineTool(lastToolId) ?? TREND_LINE_TOOLS[0];
   const SelectedIcon = DRAWING_TOOL_ICONS[selectedTool.id];
   const activeTrendToolId = visibleActiveTool
@@ -262,6 +270,11 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
       type: 'SELECT_TOOL',
       payload: { tool: 'cursor', targetContextId },
     });
+  };
+
+  const selectCursorMode = (mode: ChartCursorMode) => {
+    useChartCursorStore.getState().setMode(mode);
+    selectCursor();
   };
 
   const openRailMenu = (menuId: RailMenuId, trigger: HTMLButtonElement) => {
@@ -646,7 +659,9 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
   const removalMenuItems = menuOpen === 'remove' ? buildRemovalMenuItems(removalCounts) : [];
 
-  const menuLabel = menuOpen === 'trend'
+  const menuLabel = menuOpen === 'cursors'
+    ? 'Cursors'
+    : menuOpen === 'trend'
     ? 'Lines, channels, and pitchforks'
     : menuOpen === 'fibonacci'
       ? 'Gann and Fibonacci tools'
@@ -682,6 +697,48 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
           ...(orientation === 'horizontal' ? { maxHeight: `calc(100vh - ${menuPosition.top + VIEWPORT_EDGE_GAP_PX}px)` } : {}) }
         : { left: 0, top: 0, visibility: 'hidden' }}
     >
+      {menuOpen === 'cursors' && (
+        <section className="web-drawing-tools-menu__group" aria-label={tr('Cursors')}>
+          <div className="web-drawing-tools-menu__heading">{tr('Cursors')}</div>
+          {CURSOR_TOOLS.map((tool) => {
+            const selected = cursorMode === tool.id;
+            return (
+              <Fragment key={tool.id}>
+                {tool.id === 'eraser' ? <div className="web-drawing-tools-menu__separator" /> : null}
+                <button
+                  className="web-drawing-tools-menu__item"
+                  data-selected={selected ? 'true' : 'false'}
+                  data-tool-id={tool.id}
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  type="button"
+                  onClick={() => selectCursorMode(tool.id)}
+                >
+                  <CursorToolIcon id={tool.id} />
+                  <span className="web-drawing-tools-menu__label">{tr(tool.label)}</span>
+                </button>
+              </Fragment>
+            );
+          })}
+          <div className="web-drawing-tools-menu__separator" />
+          <div
+            className="web-drawing-tools-menu__toggle-row"
+            data-cursor-setting="values-tooltip"
+            onClick={(event) => {
+              if (event.target instanceof Element && event.target.closest('[role="switch"]')) return;
+              useChartCursorStore.getState().setValuesTooltipOnLongPress(!valuesTooltipOnLongPress);
+            }}
+          >
+            <span className="web-drawing-tools-menu__label">{tr('Values tooltip on long press')}</span>
+            <ToggleSwitch
+              size="sm"
+              checked={valuesTooltipOnLongPress}
+              onChange={(checked) => useChartCursorStore.getState().setValuesTooltipOnLongPress(checked)}
+              ariaLabel="Values tooltip on long press"
+            />
+          </div>
+        </section>
+      )}
       {menuOpen === 'emojis' && (
         <EmojiPicker
           ready={Boolean(menuPosition)}
@@ -1032,6 +1089,20 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
       aria-orientation={orientation}
     >
       <div className="web-drawing-tools-rail__tools">
+        <button
+          className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-active={cursorMode !== 'arrow' && visibleActiveTool === null ? 'true' : 'false'}
+          type="button"
+          aria-label={tr('{{value0}} — Cursors', { value0: tr(selectedCursor.label) })}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen === 'cursors'}
+          onClick={(event) => openRailMenu('cursors', event.currentTarget)}
+          {...tooltipProps('cursors', `${tr(selectedCursor.label)} — ${tr('Cursors')}`)}
+        >
+          <CursorToolIcon id={selectedCursor.id} size={28} />
+          <ChevronRight className="web-drawing-tools-rail__flyout-mark" aria-hidden="true" size={7} />
+        </button>
+
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
           data-active={activeTrendToolId !== null ? 'true' : 'false'}

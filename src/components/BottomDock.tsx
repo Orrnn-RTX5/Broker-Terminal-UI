@@ -1,4 +1,5 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { Icon } from './ui/Icon';
 import { isUnavailableDockSection, unavailableDockSections } from '../config/terminalToolAvailability';
@@ -6,7 +7,6 @@ import { RetainedLazyFeature } from '../startup/RetainedLazyFeature';
 import { useAppStore } from '../store/useAppStore';
 import { useToolboxTradeData } from '../hooks/useToolboxTradeData';
 import { loadTerminalHistory, resetTerminalHistorySession } from '../services/terminalHistory';
-import { MARKET_ORDER_PLACEMENT_STATE_EVENT } from '../services/marketOrderPlacementEvents';
 import { acknowledgeBottomDockTab, getRequestedBottomDockTab } from '../services/bottomDockNavigation';
 import { onCommittedBrokerAccountSessionScopeChange } from '../services/brokerSession';
 import type {
@@ -16,7 +16,7 @@ import type {
   ModifyPositionAction,
 } from '../contracts/tradeActions';
 import { ExposureTab } from '../features/bottom-dock/exposure/ExposureTab';
-import { HistoryTab } from '../features/bottom-dock/history/HistoryTab';
+import { createPreloadableFeature } from '../startup/createPreloadableFeature';
 import { getCurrentBrokerAccountSessionScopeKey } from '../features/bottom-dock/sessionScope';
 import { ToolboxTab } from '../features/bottom-dock/toolbox/ToolboxTab';
 import { TradeTab } from '../features/bottom-dock/trade/TradeTab';
@@ -33,10 +33,11 @@ const CodeBaseTab = lazy(() => import('./layout/ResearchTabs').then(module => ({
 const ArticlesTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.ArticlesTab })));
 const ExpertsTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.ExpertsTab })));
 const JournalTab = lazy(() => import('./layout/JournalTab').then(module => ({ default: module.JournalTab })));
+const historyFeature = createPreloadableFeature(() => import('../features/bottom-dock/history/HistoryTab').then(module => ({ default: module.HistoryTab })));
 
 const MemoToolboxTab = memo(ToolboxTab);
 const MemoExposureTab = memo(ExposureTab);
-const MemoHistoryTab = memo(HistoryTab);
+const MemoHistoryTab = memo(historyFeature.Component);
 const MemoCalendarTab = memo(CalendarTab);
 const MemoCodeBaseTab = memo(CodeBaseTab);
 const MemoArticlesTab = memo(ArticlesTab);
@@ -48,6 +49,7 @@ const HIDDEN_TAB_ROWS: never[] = [];
 interface BottomDockProps {
   height?: number | string;
   onHeightChange?: (height: number) => void;
+  onClose?: () => void;
   onClosePosition: ClosePositionAction;
   onModifyPosition: ModifyPositionAction;
   onCancelOrder?: CancelOrderAction;
@@ -94,6 +96,7 @@ const TAB_HOVER_COMMENTS: Record<TabType, string> = {
 export function BottomDock({
     height,
     onHeightChange,
+    onClose,
     onClosePosition,
     onModifyPosition,
     onCloseBulk,
@@ -185,19 +188,6 @@ export function BottomDock({
 
         window.addEventListener('rtx:open-bottom-dock-tab', handleOpenBottomDockTab);
         return () => window.removeEventListener('rtx:open-bottom-dock-tab', handleOpenBottomDockTab);
-    }, []);
-
-    // Auto-switch to Trade tab when a trade is executed
-    useEffect(() => {
-        const handleTradeExecution = () => {
-            setActiveTab('Trade');
-        };
-        window.addEventListener('rtx:new-trade-placed', handleTradeExecution);
-        window.addEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, handleTradeExecution);
-        return () => {
-            window.removeEventListener('rtx:new-trade-placed', handleTradeExecution);
-            window.removeEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, handleTradeExecution);
-        };
     }, []);
 
     // Auto-switch to Journal if the account equity hits 0 (margin call / account blown)
@@ -299,10 +289,13 @@ export function BottomDock({
                     aria-hidden={activeTab !== 'History'}
                 >
                     {historyMounted && (
+                        <Suspense fallback={null}>
                         <MemoHistoryTab
                             formatMoney={formatMoney}
                             instrumentCatalog={historyInstrumentCatalog}
+                            accountBalance={resolveTradeAccountMetrics(toolboxTrade.account ?? account).balance}
                         />
+                        </Suspense>
                     )}
                 </div>
 
@@ -356,6 +349,7 @@ export function BottomDock({
 
             {/* Bottom Tabs */}
             <div className="rtx-bottom-dock__tabs relative flex h-[30px] min-h-[30px] max-h-[30px] flex-nowrap items-stretch overflow-hidden bg-[#080c18] border-t border-zinc-700/80 select-none p-0">
+                <div className="rtx-bottom-dock__tab-content flex h-full min-w-0 items-stretch overflow-hidden">
                 <div className="rtx-dock-tab-scroller flex h-full min-w-0 flex-nowrap items-stretch overflow-x-auto overflow-y-hidden">
                     {TABS.map((tab) => {
                         const unavailableReason = tab.locked && isUnavailableDockSection(tab.id)
@@ -368,8 +362,10 @@ export function BottomDock({
                                 disabled={Boolean(unavailableReason)}
                                 aria-disabled={unavailableReason ? true : undefined}
                                 title={tr(unavailableReason || TAB_HOVER_COMMENTS[tab.id])}
-                                aria-label={unavailableReason ? tr(tab.id) : tr(TAB_HOVER_COMMENTS[tab.id])}
+                                aria-label={unavailableReason ? tr(tab.id) : `${tr(tab.id)} — ${tr(TAB_HOVER_COMMENTS[tab.id])}`}
                                 aria-description={tr(unavailableReason || TAB_HOVER_COMMENTS[tab.id])}
+                                onMouseEnter={() => { if (tab.id === 'History') void historyFeature.preload().catch(() => undefined); }}
+                                onFocus={() => { if (tab.id === 'History') void historyFeature.preload().catch(() => undefined); }}
                                 onClick={() => {
                                     if (unavailableReason) return;
                                     setActiveTab(tab.id);
@@ -420,6 +416,20 @@ export function BottomDock({
                         <span className="rtx-bulk-close__label">{tr("Close All")}</span>
                     </button>
                 </div>
+                </div>
+                {onClose && (
+                    <div className="rtx-bottom-dock__window-controls flex h-full shrink-0 items-center justify-center px-1" role="group" aria-label={tr("Toolbox window controls")}>
+                        <button
+                            type="button"
+                            title={tr("Close")}
+                            aria-label={tr("Close Toolbox")}
+                            onClick={onClose}
+                            className="dock-panel__action dock-panel__action--close flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-zinc-400 transition-colors hover:bg-red-500/80 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-current"
+                        >
+                            <X className="h-3 w-3" aria-hidden="true" />
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

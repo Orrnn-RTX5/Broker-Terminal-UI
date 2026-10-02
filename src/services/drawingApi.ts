@@ -13,7 +13,10 @@
  * Handles all HTTP communication with /api/fix/drawings endpoints
  */
 
-import { FIX_API_URL } from '../config/api';
+import { FIX_API_URL, toLocalDevProxyUrl } from '../config/api';
+import { getRuntimeBrokerConfiguration, isDesktopBackendTarget } from '../config/backendTarget.js';
+import { getAccessToken } from './brokerSession';
+import { assertBrokerRequestAllowed } from '../api/brokerRequestGuard';
 import type { PositionSizing } from '../drawing-tools/positionDrawingValues';
 
 // Server response types
@@ -130,18 +133,19 @@ export interface ClientDrawing {
 }
 
 class DrawingApiService {
-  // Use relative URL in dev (Vite proxy handles it), absolute in production
+  // Resolve the configured broker through the same development proxy as trading.
   private get baseUrl() {
-    return import.meta.env.DEV
-      ? '/api/fix/drawings'
-      : `${FIX_API_URL}/api/fix/drawings`;
+    const origin = isDesktopBackendTarget() ? FIX_API_URL : getRuntimeBrokerConfiguration().apiHostExt;
+    const url = toLocalDevProxyUrl(`${origin}/api/fix/drawings`);
+    assertBrokerRequestAllowed(url);
+    return url;
   }
 
   /**
    * Get auth headers with Bearer token
    */
   private getHeaders(): HeadersInit {
-    const token = localStorage.getItem('auth_token');
+    const token = getAccessToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -157,7 +161,7 @@ class DrawingApiService {
    */
   private getUserId(): string {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAccessToken();
       if (!token) return 'guest';
 
       // JWT payload is base64 encoded
@@ -265,6 +269,7 @@ class DrawingApiService {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(payload),
+      redirect: 'error',
     });
 
     if (!response.ok) {
@@ -289,6 +294,7 @@ class DrawingApiService {
     const response = await fetch(`${this.baseUrl}/${encodeURIComponent(serverId)}`, {
       method: 'DELETE',
       headers: this.getHeaders(),
+      redirect: 'error',
     });
 
     if (!response.ok && response.status !== 404) {

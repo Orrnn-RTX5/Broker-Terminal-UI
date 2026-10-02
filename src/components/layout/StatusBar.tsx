@@ -1,15 +1,8 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useState, useEffect } from 'react';
-import { Icon } from '../ui/Icon';
 import { ConnectionStatus } from '../ConnectionStatus';
 import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
-import { useDesktopRelease } from '../../hooks/useDesktopRelease';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
-import {
-    getDesktopReleaseButtonTitle,
-    getDesktopReleaseVersionLabel,
-    openDesktopReleaseDownload,
-} from '../../services/desktopRelease';
 import {
     WEB_TERMINAL_TITLE,
     formatTerminalTitle,
@@ -49,16 +42,12 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
 
     const appVersion = getAppVersion();
     const hasUpdater = Boolean(window.electron?.updater?.isSupported);
-    const showDesktopDownload = !window.electron || !window.electron.isPackaged;
-    const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload });
-    const desktopReleaseVersionLabel = getDesktopReleaseVersionLabel(desktopReleaseState.release);
     const { updatePhase, updateLabel, updateButtonDisabled, handleUpdateClick } = useDesktopUpdater();
     const updateButtonTone =
         updatePhase === 'available' ? 'text-sky-300 hover:text-sky-100 border-sky-500/50 bg-sky-500/10 [.rtx-advanced-view_&]:text-sky-700 [.rtx-advanced-view_&]:hover:text-sky-900 [.rtx-advanced-view_&]:border-sky-400/60 [.rtx-advanced-view_&]:bg-sky-100/60'
             : updatePhase === 'downloaded' ? 'text-emerald-300 hover:text-emerald-100 border-emerald-500/50 bg-emerald-500/10 [.rtx-advanced-view_&]:text-emerald-700 [.rtx-advanced-view_&]:hover:text-emerald-900 [.rtx-advanced-view_&]:border-emerald-400/60 [.rtx-advanced-view_&]:bg-emerald-100/60'
                 : updatePhase === 'error' ? 'text-red-300 hover:text-red-100 border-red-500/50 bg-red-500/10 [.rtx-advanced-view_&]:text-red-700 [.rtx-advanced-view_&]:hover:text-red-900 [.rtx-advanced-view_&]:border-red-400/60 [.rtx-advanced-view_&]:bg-red-100/60'
                     : 'text-zinc-400 hover:text-zinc-100 border-zinc-700 bg-zinc-900/60 [.rtx-advanced-view_&]:text-zinc-600 [.rtx-advanced-view_&]:hover:text-black [.rtx-advanced-view_&]:border-zinc-400/70 [.rtx-advanced-view_&]:bg-zinc-100/60';
-    const desktopDownloadVersionLabel = desktopReleaseVersionLabel || (desktopReleaseState.status === 'loading' ? 'Latest' : '');
 
     return (
         // Keep ConnectionStatus mounted: it also handles login requests outside the bar.
@@ -77,24 +66,6 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                 </div>
             </div>
             <div className="flex shrink-0 items-center gap-4">
-                {showDesktopDownload && (
-                    <div className="flex items-center gap-2 border-r border-zinc-700 pr-4 [.rtx-advanced-view_&]:border-zinc-400">
-                            <button
-                                type="button"
-                                onClick={() => openDesktopReleaseDownload(desktopReleaseState.release)}
-                                className="rtx-status-bar__action group h-[18px] inline-flex items-center gap-1.5 rounded-[3px] border border-transparent bg-transparent px-0.5 text-[12px] font-normal leading-none text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500/70 [.rtx-advanced-view_&]:text-zinc-700 [.rtx-advanced-view_&]:hover:text-black"
-                                title={getDesktopReleaseButtonTitle(desktopReleaseState.release)}
-                            >
-                                <Icon name="download" size="xs" className="text-zinc-400 [.rtx-advanced-view_&]:text-zinc-500" />
-                                <span>{tr("Desktop App")}</span>
-                                {desktopDownloadVersionLabel && (
-                                    <span className="font-mono text-[12px] font-normal leading-none text-zinc-500 [.rtx-advanced-view_&]:text-zinc-600">
-                                        {desktopDownloadVersionLabel}
-                                    </span>
-                                )}
-                            </button>
-                    </div>
-                )}
                 {/* Connection Status Indicator (Live) */}
                 {wsRef && (
                     <ConnectionStatus wsRef={wsRef} reconnectCallback={reconnectCallback} />

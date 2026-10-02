@@ -8,13 +8,22 @@ describe('logout during broker token refresh', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+    localStorage.setItem('broker_id', 'Fixture');
+    localStorage.setItem('server_url', 'https://broker.example');
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      backendTarget: 'desktop', API_HOST: 'https://broker.example', WS_HOST: 'wss://broker.example',
+      BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
+    };
     useAppStore.getState().reset();
     vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
     useAppStore.getState().setAuthenticated(true, '200001', 'old-access', 'old-refresh', Date.now() + 30_000);
     useAppStore.getState().setAuthTokens('old-access', 'old-refresh', Date.now() + 30_000);
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
+    vi.unstubAllGlobals();
+  });
 
   it('does not restore credentials when a pending refresh finishes after logout', async () => {
     let complete!: (response: Response) => void;

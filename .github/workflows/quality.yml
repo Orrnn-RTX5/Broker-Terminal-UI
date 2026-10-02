@@ -8,11 +8,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: web-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+  PUPPETEER_SKIP_DOWNLOAD: "true"
+
 jobs:
   validate:
-    name: Validate source, tests, and builds
+    name: Validate source and build website
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -25,7 +33,7 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Check tracked secrets
         run: npm run check:secrets
@@ -44,13 +52,45 @@ jobs:
           npm run typecheck
           npm run typecheck:tests
 
-      - name: Run automated tests
-        run: npm run test:run -- --pool=threads --maxWorkers=2
-
       - name: Audit dependencies
         run: npm audit --audit-level=high
 
-      - name: Build web and Electron renderers
-        run: |
-          npm run build:web
-          npm run build:electron
+      # TypeScript was checked above; compile the website only once.
+      - name: Build website
+        run: npx vite build --mode web
+
+      - name: Save validated website for Docker packaging
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+      - name: Build Electron renderer
+        run: npx vite build --mode electron
+
+  tests:
+    name: Automated tests (${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run automated tests
+        run: npm run test:run -- --pool=threads --maxWorkers=2 --shard=${{ matrix.shard }}/2

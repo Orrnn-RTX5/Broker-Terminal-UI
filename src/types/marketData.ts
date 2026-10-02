@@ -1,4 +1,7 @@
-export interface Tick {
+import type { QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
+
+export interface Tick extends QuoteTradingStatusFields {
+  dailyChangeInput?: import('../utils/dailyChange').DailyChangeInput;
   provider_timestamp?: number;
   sequence?: string | number;
   source?: string;

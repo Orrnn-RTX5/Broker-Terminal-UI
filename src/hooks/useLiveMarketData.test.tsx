@@ -1,5 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { installTestBrokerRuntime } from '../test/brokerRuntime';
+
 import { useAppStore } from '../store/useAppStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
@@ -89,12 +91,16 @@ const setMajorWatchlistSymbols = (symbols: string[]) => {
 };
 
 describe('remote watchlist synchronization', () => {
+  let restoreBrokerRuntime: () => void;
   beforeEach(() => {
     vi.useFakeTimers();
     apiGet.mockReset();
     apiPut.mockReset();
     apiPut.mockResolvedValue([]);
-    localStorage.setItem('broker_id', `watchlist-test-${crypto.randomUUID()}`);
+    const brokerId = `watchlist-test-${crypto.randomUUID()}`;
+    restoreBrokerRuntime = installTestBrokerRuntime({ BROKER_ID: brokerId });
+    localStorage.setItem('broker_id', brokerId);
+    localStorage.setItem('server_url', 'https://broker.example');
     localStorage.setItem('auth_token', 'watchlist-test-token');
     setMajorWatchlistSymbols(['EURUSD']);
   });
@@ -102,6 +108,9 @@ describe('remote watchlist synchronization', () => {
   afterEach(() => {
     useAppStore.setState({ isAuthenticated: false, accountId: null });
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('broker_id');
+    localStorage.removeItem('server_url');
+    restoreBrokerRuntime();
     vi.useRealTimers();
   });
 
@@ -637,8 +646,8 @@ describe('useLiveQuotes REST fallback batching', () => {
 
     const { unmount } = renderHook(() => useLiveQuotes(['AMBIGUOUS.LAST-ONLY']));
     await flushPromises();
-
-    expect(enqueueLiveTick).not.toHaveBeenCalled();
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(1);
+    expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({ bid: 0, ask: 0, dailyChange: undefined, dailyChangeInput: { mode: undefined, last: 120 } });
 
     unmount();
   });

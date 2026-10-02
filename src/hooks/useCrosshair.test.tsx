@@ -15,6 +15,7 @@ const createChart = () => {
   const timeScale = {
     coordinateToLogical: vi.fn((x: number) => x),
     coordinateToTime: vi.fn(() => 1_788_176_700 as Time),
+    height: vi.fn(() => 22),
     subscribeVisibleLogicalRangeChange: vi.fn((listener: Listener) => visibleRangeListeners.add(listener)),
     unsubscribeVisibleLogicalRangeChange: vi.fn((listener: Listener) => visibleRangeListeners.delete(listener)),
     subscribeSizeChange: vi.fn((listener: Listener) => sizeListeners.add(listener)),
@@ -171,6 +172,8 @@ describe('useCrosshair dirty rendering', () => {
     flushFrames();
     expect(view.getByTestId('vertical').style.transform).toBe('translate3d(30px,0,0)');
     expect(view.getByTestId('horizontal').style.transform).toBe('translate3d(0,40px,0)');
+    expect(view.getByTestId('vertical').style.height).toBe('278px');
+    expect(view.getByTestId('horizontal').style.width).toBe('404px');
     expect(view.getByTestId('time-label').style.transform).toBe('translate3d(10px,278px,0)');
     expect(view.getByTestId('price-label').textContent).toBe('100.40');
     expect(offsetWidthReads).toBe(1);
@@ -267,6 +270,32 @@ describe('useCrosshair dirty rendering', () => {
     expect(offsetWidthReads).toBe(3);
   });
 
+  it('keeps Cross guides in the plot and hides them over the axes', () => {
+    const fixture = createChart();
+    const view = render(<Harness
+      chartRef={{ current: fixture.chart as unknown as IChartApi }}
+      seriesRef={{ current: { coordinateToPrice: vi.fn(() => 101) } as unknown as ISeriesApi<any> }}
+      enabled
+    />);
+    const container = view.getByTestId('container');
+    flushFrames();
+
+    fireEvent.pointerMove(container, { clientX: 50, clientY: 60 });
+    flushFrames();
+    expect(view.getByTestId('vertical').style.opacity).toBe('1');
+    expect(view.getByTestId('horizontal').style.opacity).toBe('1');
+
+    fireEvent.pointerMove(container, { clientX: 430, clientY: 60 });
+    flushFrames();
+    expect(view.getByTestId('vertical').style.opacity).toBe('0');
+    expect(view.getByTestId('price-label').style.opacity).toBe('0');
+
+    fireEvent.pointerMove(container, { clientX: 50, clientY: 300 });
+    flushFrames();
+    expect(view.getByTestId('horizontal').style.opacity).toBe('0');
+    expect(view.getByTestId('time-label').style.opacity).toBe('0');
+  });
+
   it('rebinds replaced charts and stops all scheduling while disabled or disposed', () => {
     const first = createChart();
     const second = createChart();
@@ -280,7 +309,7 @@ describe('useCrosshair dirty rendering', () => {
     );
     flushFrames();
     const container = view.getByTestId('container');
-    expect(container.style.cursor).toBe('none');
+    expect(container.style.cursor).toBe('grab');
 
     first.chart.timeScale.mockReturnValue(replacementScale.timeScale);
     view.rerender(
@@ -316,7 +345,7 @@ describe('useCrosshair dirty rendering', () => {
         horzLine: { visible: false, labelVisible: false },
       },
     });
-    expect(container.style.cursor).toBe('none');
+    expect(container.style.cursor).toBe('grab');
 
     view.rerender(
       <Harness chartRef={chartRef} seriesRef={seriesRef} enabled={false} renderVersion={3} initialCursor="grab" />,
@@ -332,7 +361,7 @@ describe('useCrosshair dirty rendering', () => {
       <Harness chartRef={chartRef} seriesRef={seriesRef} enabled renderVersion={4} initialCursor="grab" />,
     );
     flushFrames();
-    expect(container.style.cursor).toBe('none');
+    expect(container.style.cursor).toBe('grab');
     fireEvent.pointerMove(container, { clientX: 50, clientY: 70 });
     expect(frames.size).toBe(1);
     view.unmount();

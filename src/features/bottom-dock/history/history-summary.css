@@ -1,0 +1,35 @@
+/* MT5's summary continues the table directly after the final history row. */
+.rtx-history-summary-row {
+  --rtx-type-size: 12px;
+  --rtx-type-weight: 600;
+  background: var(--rtx-toolbox-summary, var(--bg-quaternary, #444444));
+  color: var(--text-primary, #ffffff);
+}
+
+.rtx-history-table .rtx-history-summary-row > td {
+  padding: 3px 6px;
+  height: 24px;
+  border: 0;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rtx-history-summary-values {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+}
+
+.rtx-history-summary-values > svg {
+  flex: 0 0 12px;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-history-summary-row,
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-history-summary-row :is(td, span) {
+  background: #444444 !important;
+  color: #ffffff !important;
+}

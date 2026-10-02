@@ -8,6 +8,17 @@ const chunk = (fileName: string, source: string | null, imports: string[] = [], 
 }) as unknown as OutputChunk;
 
 describe('production terminal preload graph', () => {
+  it('fetches required fallback translations early without preloading every language', () => {
+    const bundle: OutputBundle = {
+      'english-ui.js': chunk('english-ui.js', 'C:/repo/src/locales/en/ui.json'),
+      'english.js': chunk('english.js', 'C:/repo/src/locales/en/translation.json'),
+      'arabic.js': chunk('arabic.js', 'C:/repo/src/locales/ar/ui.json'),
+    };
+    expect(terminalPreloadAssets(bundle).filter(asset => !asset.style)).toEqual([
+      { href: '/english-ui.js', style: false },
+      { href: '/english.js', style: false },
+    ]);
+  });
   it('preloads the first viewport and shared dependencies once, excluding optional dynamic features', () => {
     const bundle: OutputBundle = {
       'App.js': chunk('App.js', 'C:/repo/src/App.tsx', ['shared.js'], ['Dialog.js']),

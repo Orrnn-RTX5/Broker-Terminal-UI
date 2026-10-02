@@ -4,16 +4,26 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { IChartApi } from 'lightweight-charts';
+import { afterEach } from 'vitest';
 import { chartPrinter, DEFAULT_PRINT_PREFERENCES, type ChartPrintData } from './chartPrinter';
 
 // Mock fetch
 global.fetch = vi.fn();
 const fetchMock = vi.mocked(global.fetch);
 
+afterEach(() => { delete (window as any).__RTX_RUNTIME_CONFIG__; });
+
 describe('ChartPrinterService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    (window as any).__RTX_RUNTIME_CONFIG__ = {
+      CONFIG_SOURCE: 'deployment', BACKEND_TARGET: 'web', BROKER_ID: 'printer-broker', DEFAULT_MT5_SERVER: 'Printer Server',
+      API_HOST: 'https://printer-broker.example', WS_HOST: 'wss://printer-broker.example',
+    };
+    localStorage.setItem('broker_id', 'printer-broker');
+    localStorage.setItem('server_url', 'https://printer-broker.example');
+    localStorage.setItem('auth_token', 'printer-session');
   });
 
   describe('Preferences Management', () => {
@@ -35,7 +45,7 @@ describe('ChartPrinterService', () => {
 
       const prefs = await chartPrinter.loadPreferences('test-account');
       expect(prefs.pageSize).toBe('Letter');
-      expect(global.fetch).toHaveBeenCalledWith('/api/accounts/test-account/print-preferences');
+      expect(global.fetch).toHaveBeenCalledWith('https://printer-broker.example/api/accounts/test-account/print-preferences', expect.objectContaining({ redirect: 'error', headers: { Authorization: 'Bearer printer-session' } }));
       expect(chartPrinter.getPreferences('test-account').pageSize).toBe('Letter');
     });
 
@@ -76,7 +86,8 @@ describe('ChartPrinterService', () => {
 
       expect(loaded.orientation).toBe('portrait');
       expect(global.fetch).toHaveBeenLastCalledWith(
-        '/api/accounts/local-only%2Faccount/print-preferences',
+        'https://printer-broker.example/api/accounts/local-only%2Faccount/print-preferences',
+        expect.objectContaining({ redirect: 'error' }),
       );
     });
 

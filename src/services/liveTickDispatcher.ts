@@ -13,6 +13,8 @@ import {
 import { onSessionChange } from './brokerSession';
 import { applyAccountSpreadMarkup, onAccountSpreadMarkupChange } from './accountSpreadMarkup';
 import type { SpreadMarkupQuoteTag } from '../utils/spreadMarkup';
+import { readDailyChangeInput } from '../utils/dailyChange';
+import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
 import {
   flushMarketWatchDailyChangeCache,
   rememberCurrentMarketWatchDailyChange,
@@ -23,6 +25,7 @@ import {
 } from './marketWatchQuoteCache';
 import {
   clearMarketWatchDisplayMetadata,
+  flushMarketWatchDisplayMetadata,
   getMarketWatchDisplayMetadata,
   publishMarketWatchDisplayMetadata,
   resolveMarketWatchDisplayMetadata,
@@ -295,23 +298,34 @@ const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boo
     ...(freshnessEnabled && !refreshMarkup ? { terminalQuoteSession: getTerminalQuoteSession() } : {}),
   }) as LiveTick;
   const hasQuoteSide = hasAnyQuoteSide(fullTick);
+  const executableTick = hasQuoteSide ? undefined : getExactAppTick(symbol);
+  if (executableTick && compareCanonicalTickFreshness(executableTick, fullTick) < 0
+    && !sharesUtcQuoteDay(executableTick, fullTick) && !tick.dailyChangeInput?.sessionId) return false;
+  // Use raw broker prices: account spread markup must never change instrument
+  // movement. Every transport publishes to this one display state.
+  const publishedMetadata = publishMarketWatchDisplayMetadata(symbol, {
+    last: tick.last,
+    dailyChange: tick.dailyChange,
+    dailyChangeInput: tick.dailyChangeInput ?? readDailyChangeInput(tick, resolveDailyChangePriceMode(tick, symbol)),
+    timestamp: tick.timestamp,
+    sourceTimestamp: tick.sourceTimestamp,
+  }, true);
+  if (publishedMetadata) scheduleFlush();
+  const dailyState = getMarketWatchDisplayMetadata(symbol)?.daily;
+  if (publishedMetadata && dailyState?.reference && dailyState.valuesAsOf === tick.sourceTimestamp
+    && dailyState.percent !== undefined && dailyState.change !== undefined) {
+    try {
+      rememberCurrentMarketWatchDailyChange(normalizeFreezeKey(symbol), dailyState.percent,
+        dailyState.valuesAsOf, 'quote', undefined, dailyState.change);
+    } catch (error) {
+      console.error('[LiveTickDispatcher] Daily Change cache write failed:', error);
+    }
+  }
   // TradingChart and trade consumers use the ordinary tick stores. A Last-only
   // event is ordered against the exact executable AppStore quote, then exits
   // through the dedicated Market Watch display channel without touching them.
   if (!hasQuoteSide) {
-    const executableTick = getExactAppTick(symbol);
-    if (
-      executableTick
-      && compareCanonicalTickFreshness(executableTick, fullTick) < 0
-      && !sharesUtcQuoteDay(executableTick, fullTick)
-    ) return;
-
-    const accepted = publishMarketWatchDisplayMetadata(symbol, {
-      last: fullTick.last,
-      dailyChange: fullTick.dailyChange,
-      timestamp: fullTick.timestamp,
-      sourceTimestamp: fullTick.sourceTimestamp,
-    });
+    const accepted = publishedMetadata;
     if (!accepted) return false;
 
     const resolvedDisplay = resolveMarketWatchDisplayMetadata(
@@ -435,6 +449,7 @@ const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boo
 export const enqueueLiveTick = (symbol: string, tick: LiveTick): boolean => enqueueTick(symbol, tick);
 
 export const flushLiveTicks = (): void => {
+  flushMarketWatchDisplayMetadata();
   if (pendingTicks.size === 0 && !hasRetryTicks()) return;
 
   const ticks = Array.from(pendingTicks.entries()) as Array<readonly [string, LiveTick]>;

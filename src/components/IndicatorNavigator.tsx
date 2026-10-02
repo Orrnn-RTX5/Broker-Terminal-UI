@@ -7,6 +7,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import { Icon } from './ui/Icon';
 import { useState } from 'react';
 import { TrendingUp, Activity, BarChart3, Zap } from 'lucide-react';
+import './IndicatorNavigator.css';
 
 export const SUPPORTED_INDICATOR_IDS = new Set(['ma', 'ema', 'bb', 'rsi', 'macd', 'volume']);
 
@@ -191,7 +192,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-zinc-900 rounded-lg shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col border border-zinc-800">
+      <div className="rtx-indicator-dialog bg-zinc-900 rounded-lg shadow-2xl w-full max-w-3xl h-[80vh] max-h-[80vh] flex flex-col border border-zinc-800">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-800">
           <h2 className="text-lg font-semibold text-zinc-100">{tr("Indicators")}</h2>
@@ -212,7 +213,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
               placeholder={tr("Search indicators...")}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              className="rtx-indicator-search w-full pl-10 pr-4 py-2 placeholder-zinc-500"
             />
           </div>
         </div>

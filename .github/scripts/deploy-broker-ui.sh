@@ -22,6 +22,11 @@ if ! command -v jq >/dev/null 2>&1; then
   apt-get install -y jq
 fi
 
+if ! jq -e '.env? | type == "object"' <<<"$broker_json" >/dev/null; then
+  echo "A complete per-broker .env object is required for the shared terminal image." >&2
+  exit 1
+fi
+
 require_field() {
   local jq_filter="$1"
   local value
@@ -89,7 +94,9 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${services_domain}/privkey.pem;
 
     set \$cors_origin "";
-    if (\$http_origin ~* "^https://(webterminal|manager|admin)\\.growtradingacademy\\.com$") {
+    # CORS permits this deployment's terminal origin. Backend authentication
+    # remains required; the domain does not confer account authorization.
+    if (\$http_origin = "https://${domain}") {
         set \$cors_origin \$http_origin;
     }
 
@@ -433,7 +440,8 @@ if jq -e '.env? | type == "object"' <<<"$broker_json" >/dev/null; then
   chmod 600 "$env_file"
   docker_env_file_arg="$env_file"
 else
-  rm -f "$env_file"
+  echo "A complete per-broker .env object is required for the shared terminal image." >&2
+  exit 1
 fi
 
 docker pull "$IMAGE_REF"

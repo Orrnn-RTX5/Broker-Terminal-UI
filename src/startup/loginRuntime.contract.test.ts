@@ -91,7 +91,7 @@ describe('interactive login runtime boundary source contract', () => {
       welcome.indexOf('</button>', welcome.indexOf('data-rtx-login-submit')),
     );
 
-    expect(button).toContain('disabled={loading || (isDesktopBrokerSelection && !desktopLoginReady)}');
+    expect(button).toContain('disabled={loading || restoring || (isDesktopBrokerSelection && !desktopLoginReady)}');
     expect(button).toContain("data-rtx-login-feedback={loading ? 'true' : undefined}");
     expect(button).toContain('Login');
     expect(button).not.toContain('Connecting');
@@ -164,11 +164,15 @@ describe('interactive login runtime boundary source contract', () => {
   it('keeps secondary tools lazy and trade-overlay coordination out of the unauthenticated shell', () => {
     const app = readSource('src/App.tsx');
     const floatingPanels = readSource('src/app/ui/FloatingTerminalPanels.tsx');
+    const features = readSource('src/startup/terminalFeatures.ts');
     const appShell = readSource('src/AppShell.tsx');
     const authenticatedRuntime = `${app}\n${floatingPanels}`;
 
-    expect(floatingPanels).toContain("const LazyDepthOfMarket = lazy(() => import('../../components/DepthOfMarket')");
-    expect(app).toContain("const LazyChartPropertiesDialog = lazy(() => import('./components/dialogs/ChartPropertiesDialog')");
+    expect(features).toContain("createPreloadableFeature(() => import('../components/DepthOfMarket')");
+    expect(features).toContain("createPreloadableFeature(() => import('../components/dialogs/ChartPropertiesDialog')");
+    expect(app).toContain('useTerminalFeatureWarmup(chartRuntimeReady)');
+    expect(features).toContain('if (!enabled) return;');
+    expect(features).toContain('scheduleFeatureWarmup(terminalFeatureLoaders)');
     expect(authenticatedRuntime).not.toContain("import { DepthOfMarket } from './components/DepthOfMarket'");
     expect(authenticatedRuntime).not.toContain("import { DepthOfMarket } from '../../components/DepthOfMarket'");
     expect(authenticatedRuntime).toContain("from './services/tradeOverlayHistory'");

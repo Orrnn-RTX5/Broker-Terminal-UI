@@ -13,7 +13,6 @@ describe('Journal toolbar visual contract', () => {
     expect(journalSource).toContain('rtx-journal-control h-7 min-w-[94px]');
     expect(journalSource).toContain('rtx-journal-control h-7 min-w-[112px]');
     expect(journalSource).toContain('rtx-journal-control h-7 w-full');
-    expect(journalSource).toContain("{ label: '1h', hours: 1 }");
     expect(journalSource).toContain("{ label: '2h', hours: 2 }");
     expect(journalSource).toContain("{ label: '3h', hours: 3 }");
     expect(journalSource).toContain("{ label: 'Today', hours: 24 }");

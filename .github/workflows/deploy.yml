@@ -26,10 +26,17 @@ jobs:
     name: Build and Push Docker Image
     needs: quality
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Download validated website
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist-${{ github.sha }}
+          path: dist
 
       - name: Lowercase image name
         run: echo "IMAGE_NAME=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
@@ -49,8 +56,9 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          build-args: |
-            VITE_MODE=web
+          target: ci-runtime
+          cache-from: type=gha,scope=web-runtime
+          cache-to: type=gha,scope=web-runtime,mode=min
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
@@ -78,9 +86,20 @@ jobs:
           GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_PASS: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
           ENV_FILE: ${{ secrets.PROD_ENV_FILE || secrets.ENV_FILE }}
+          WEB_BROKER_ID: ${{ vars.WEB_BROKER_ID }}
+          WEB_FEED_BROKER_ID: ${{ vars.WEB_FEED_BROKER_ID }}
           DEPLOY_DIR: /opt/Rtx5-broker-production/terminal-ui
         run: |
           set -euo pipefail
+
+          # Optional public identity settings override legacy env-file values.
+          # IDs are supplied by backend provisioning, never inferred or renamed.
+          for broker_identity in "${WEB_BROKER_ID:-}" "${WEB_FEED_BROKER_ID:-}"; do
+            if [ -n "$broker_identity" ] && [[ ! "$broker_identity" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+              echo "ERROR: Configured broker identity has invalid characters." >&2
+              exit 1
+            fi
+          done
 
           if [ -z "$SERVER_HOST" ]; then
             echo "ERROR: SERVER_HOST repository secret is not set!" >&2
@@ -116,7 +135,7 @@ jobs:
           fi
 
           ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" \
-            "IMAGE_TAG='$IMAGE_TAG' IMAGE_LATEST='$IMAGE_LATEST' DEPLOY_DIR='$DEPLOY_DIR' bash -s" <<'EOF'
+            "IMAGE_TAG='$IMAGE_TAG' IMAGE_LATEST='$IMAGE_LATEST' DEPLOY_DIR='$DEPLOY_DIR' WEB_BROKER_ID='$WEB_BROKER_ID' WEB_FEED_BROKER_ID='$WEB_FEED_BROKER_ID' bash -s" <<'EOF'
             set -euo pipefail
 
             echo "=== 1. Pulling image: $IMAGE_TAG ==="
@@ -142,6 +161,17 @@ jobs:
                 ls -l ${DEPLOY_DIR}/.env >&2 || true
                 exit 1
               fi
+            else
+              echo "ERROR: A complete per-broker runtime environment is required at ${DEPLOY_DIR}/.env." >&2
+              exit 1
+            fi
+
+            BROKER_ENV_OVERRIDES=()
+            if [ -n "${WEB_BROKER_ID:-}" ]; then
+              BROKER_ENV_OVERRIDES+=(-e "BROKER_ID=$WEB_BROKER_ID" -e "VITE_BROKER_ID=$WEB_BROKER_ID")
+            fi
+            if [ -n "${WEB_FEED_BROKER_ID:-}" ]; then
+              BROKER_ENV_OVERRIDES+=(-e "FEED_BROKER_ID=$WEB_FEED_BROKER_ID" -e "VITE_FEED_BROKER_ID=$WEB_FEED_BROKER_ID")
             fi
 
             run_terminal_image() {
@@ -150,8 +180,8 @@ jobs:
                 --restart unless-stopped \
                 -p 127.0.0.1:8103:80 \
                 $ENV_ARG \
+                "${BROKER_ENV_OVERRIDES[@]}" \
                 --label "rtx5.component=webterminal" \
-                --label "rtx5.domain=webterminal.orrnn.com" \
                 "$1"
             }
 
@@ -188,5 +218,6 @@ jobs:
               fi
               exit 1
             fi
+            docker inspect --format='Container {{.Name}}: {{.State.Status}}, image {{.Image}}' broker-terminal-ui
             echo "Deployment successful and verified."
           EOF

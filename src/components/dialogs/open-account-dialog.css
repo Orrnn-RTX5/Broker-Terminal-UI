@@ -1,8 +1,8 @@
 /* Account setup uses the terminal surfaces and its existing trading-action blue. */
 html:root .rtx-open-account-backdrop {
   padding: 16px;
-  background: rgb(4 8 15 / 68%);
-  backdrop-filter: blur(5px);
+  background: rgb(4 8 15 / 62%);
+  backdrop-filter: blur(3px);
 }
 
 html:root .rtx-open-account-dialog[data-step] {
@@ -12,23 +12,26 @@ html:root .rtx-open-account-dialog[data-step] {
   --account-hover: var(--bg-quaternary, #222226);
   --account-border: var(--border-secondary, #333338);
   --account-text: var(--text-primary, #e2e2e8);
-  --account-muted: var(--text-secondary, #808088);
-  --account-accent: #64b5f6;
-  --account-accent-soft: color-mix(in srgb, var(--account-primary) 16%, var(--account-surface));
+  --account-muted: color-mix(in srgb, var(--text-secondary, #808088) 80%, var(--account-text));
+  --account-accent: var(--color-info, #7aacca);
+  --account-accent-soft: color-mix(in srgb, var(--account-accent) 8%, var(--account-surface));
+  --account-border-strong: var(--border-tertiary, #404048);
   --account-primary: #0078d4;
   --account-primary-hover: #026ec1;
   --account-primary-pressed: #005a9e;
   --account-footer: var(--bg-primary, #0d0d11);
   --account-shadow: 0 24px 80px rgb(0 0 0 / 38%);
-  width: 600px;
+  width: 560px;
   max-width: 100%;
   max-height: calc(100dvh - 32px);
   border: 1px solid var(--account-border);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--account-surface);
   box-shadow: var(--account-shadow);
   color: var(--account-text);
   font-family: var(--rtx-ui-font-family, 'Segoe UI', sans-serif);
+  --rtx-type-size: var(--rtx-ui-font-size, 14px);
+  -webkit-font-smoothing: antialiased;
   line-height: 1.5;
 }
 
@@ -39,10 +42,11 @@ html:root.rtx-skin-untitled-light .rtx-open-account-dialog[data-step] {
   --account-field: var(--rtx-light-field, #fff);
   --account-hover: var(--rtx-light-hover, #f2f5fa);
   --account-border: var(--rtx-light-border, #dce2e9);
+  --account-border-strong: var(--rtx-light-border-strong, #c8d1dd);
   --account-text: var(--rtx-light-text, #1e293b);
   --account-muted: var(--rtx-light-text-secondary, #526174);
   --account-accent: var(--account-primary);
-  --account-accent-soft: color-mix(in srgb, var(--account-primary) 9%, var(--account-surface));
+  --account-accent-soft: color-mix(in srgb, var(--account-primary) 5%, var(--account-surface));
   --account-footer: var(--rtx-light-canvas, #f7f8fa);
   --account-shadow: 0 24px 80px rgb(15 23 42 / 18%);
 }
@@ -71,32 +75,43 @@ html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__badge {
   --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 2px);
   background: var(--account-subtle) !important;
   color: var(--account-muted) !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  max-width: 100%;
+  padding: 2px 7px;
+  border: 1px solid var(--account-border);
+  border-radius: 5px;
+  line-height: 16px;
 }
+.rtx-open-account-dialog__badge svg { width: 11px; height: 11px; flex-shrink: 0; }
 
 html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__header {
-  padding: 24px;
+  padding: 22px 24px;
   border-bottom: 1px solid var(--account-border);
   background: var(--account-surface);
 }
 html:root .rtx-open-account-dialog[data-step] .rtx-dialog-title {
+  --rtx-type-size: 20px;
   --rtx-type-weight: 600;
   margin: 0;
   letter-spacing: -0.3px;
 }
 html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__header p {
-  --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
+  --rtx-type-size: 13px;
   margin-top: 4px;
   line-height: 20px;
 }
 html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__header-icon {
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
   border: 1px solid var(--account-border);
   border-radius: 10px;
-  background: var(--account-accent-soft);
+  background: var(--account-subtle);
 }
-html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__header-icon svg { width: 21px; height: 21px; color: var(--account-accent) !important; }
+html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__header-icon svg { width: 20px; height: 20px; color: var(--account-text) !important; }
 html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__close {
   display: grid;
   place-items: center;
@@ -115,30 +130,32 @@ html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__close:ho
 }
 
 .rtx-open-account-dialog__broker-step { display: flex; flex-direction: column; min-height: 0; padding: 24px; overflow-y: auto; }
-.rtx-open-account-dialog__search { position: relative; flex-shrink: 0; margin-bottom: 22px; }
+.rtx-open-account-dialog__search { position: relative; flex-shrink: 0; margin-bottom: 20px; }
 .rtx-open-account-dialog__search > svg { position: absolute; left: 14px; top: 50%; width: 17px; height: 17px; transform: translateY(-50%); color: var(--account-muted); pointer-events: none; }
-.rtx-open-account-dialog__search input { width: 100%; height: 44px; padding: 0 14px 0 42px; border: 1px solid var(--account-border); border-radius: 7px; }
+.rtx-open-account-dialog__search input { --rtx-type-size: 13px; box-sizing: border-box; width: 100%; height: 44px; padding: 0 14px 0 42px; border: 1px solid var(--account-border); border-radius: 8px; transition: border-color 120ms ease, box-shadow 120ms ease; }
+html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__search:focus-within input { border-color: var(--account-accent) !important; outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--account-accent) 14%, transparent); }
+.rtx-open-account-dialog__search:focus-within > svg { color: var(--account-accent); }
 .rtx-open-account-dialog__list-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; flex-shrink: 0; color: var(--account-muted); }
-.rtx-open-account-dialog__list-heading > span { --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 2px); --rtx-type-weight: 500; }
-.rtx-open-account-dialog__count { display: inline-grid; place-items: center; min-width: 24px; height: 22px; padding-inline: 6px; border: 1px solid var(--account-border); border-radius: 5px; font-variant-numeric: tabular-nums; }
-.rtx-open-account-dialog__broker-list { flex: 0 0 auto; min-height: 80px; max-height: 274px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--account-border); border-radius: 8px; scrollbar-width: thin; scrollbar-color: var(--account-border) transparent; }
+.rtx-open-account-dialog__list-heading > span { --rtx-type-size: 12px; --rtx-type-weight: 500; }
+.rtx-open-account-dialog__count { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding-inline: 5px; border-radius: 5px; background: var(--account-subtle); font-variant-numeric: tabular-nums; }
+.rtx-open-account-dialog__broker-list { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; min-height: 80px; max-height: 288px; padding: 2px; margin: -2px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--account-border) transparent; }
+.rtx-open-account-dialog__empty { padding-inline: 16px; border: 1px dashed var(--account-border); border-radius: 10px; background: var(--account-subtle); }
 html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__broker-row {
   display: flex;
   align-items: center;
   gap: 14px;
   width: 100%;
-  min-height: 68px;
-  padding: 12px 16px;
-  border: 0;
-  border-bottom: 1px solid var(--account-border);
-  border-radius: 0;
+  flex-shrink: 0;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 1px solid var(--account-border);
+  border-radius: 10px;
   background: var(--account-surface);
   color: var(--account-text);
   text-align: left;
   cursor: pointer;
-  transition: background-color 120ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease;
 }
-html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__broker-row:last-child { border-bottom: 0; }
 html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__broker:hover {
   background: var(--account-hover) !important;
   border-color: var(--account-border) !important;
@@ -148,24 +165,30 @@ html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__broker[d
   background: var(--account-accent-soft) !important;
   color: var(--account-text) !important;
 }
-html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__broker-row[data-selected='true'] { box-shadow: inset 3px 0 var(--account-accent); }
+html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__broker-row:hover { border-color: var(--account-border-strong) !important; }
+html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__broker-row[data-selected='true'] { border-color: color-mix(in srgb, var(--account-accent) 55%, var(--account-border)) !important; }
 html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__broker-row:focus-visible { outline-offset: -3px; }
-.rtx-open-account-dialog__broker-name { --rtx-type-weight: 500; }
-.rtx-open-account-dialog__broker-id { --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 2px); color: var(--account-muted); line-height: 18px; }
-.rtx-open-account-dialog__broker-row :is(.rtx-open-account-dialog__logo, .rtx-open-account-dialog__initials) { display: grid; place-items: center; flex-shrink: 0; width: 38px; height: 38px; border: 1px solid var(--account-border); border-radius: 8px; overflow: hidden; }
+.rtx-open-account-dialog__broker-info { flex: 1; min-width: 0; }
+.rtx-open-account-dialog__broker-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; }
+.rtx-open-account-dialog__broker-name { --rtx-type-size: 14px; --rtx-type-weight: 600; line-height: 20px; }
+.rtx-open-account-dialog__broker-id { --rtx-type-size: 12px; display: flex; min-width: 0; margin-top: 3px; color: var(--account-muted); line-height: 18px; }
+.rtx-open-account-dialog__broker-row :is(.rtx-open-account-dialog__logo, .rtx-open-account-dialog__initials) { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border: 1px solid var(--account-border); border-radius: 9px; overflow: hidden; }
 .rtx-open-account-dialog__logo { background: #fff; }
 .rtx-open-account-dialog__logo img { width: 100%; height: 100%; padding: 5px; object-fit: contain; }
-.rtx-open-account-dialog__initials { --rtx-type-size: 12px; --rtx-type-weight: 600; background: var(--account-subtle); color: var(--account-muted); }
+.rtx-open-account-dialog__initials { --rtx-type-size: 13px; --rtx-type-weight: 600; background: var(--account-subtle); color: var(--account-text); }
 html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__avatar:not(.rtx-open-account-dialog__initials) { color: #fff !important; }
 .rtx-open-account-dialog__selected-icon, .rtx-open-account-dialog__row-chevron { width: 18px; height: 18px; flex-shrink: 0; color: var(--account-accent); }
 .rtx-open-account-dialog__row-chevron { width: 15px; height: 15px; color: var(--account-muted); }
-.rtx-open-account-dialog__selection { --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 2px); display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-top: 16px; color: var(--account-muted); }
-.rtx-open-account-dialog__selection > span { flex-shrink: 0; }
+.rtx-open-account-dialog__selection { --rtx-type-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding: 12px 0 0; border-top: 1px solid var(--account-border); color: var(--account-muted); }
+.rtx-open-account-dialog__selection > span { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.rtx-open-account-dialog__selection svg { width: 14px; height: 14px; color: var(--account-accent); }
 .rtx-open-account-dialog__selection strong { --rtx-type-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--account-text); }
 
 html:root .rtx-open-account-dialog[data-step] :is(.rtx-open-account-dialog__footer, .rtx-account-footer) { flex-shrink: 0; margin-top: auto; padding: 18px 24px; border-top: 1px solid var(--account-border); background: var(--account-footer); }
 .rtx-open-account-dialog__footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .rtx-open-account-dialog__footer-hint { --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 2px); flex: 1 1 180px; max-width: 270px; line-height: 18px; }
+.rtx-open-account-dialog__shortcut { --rtx-type-size: 12px; display: flex; align-items: center; gap: 7px; color: var(--account-muted); }
+.rtx-open-account-dialog__shortcut svg { width: 14px; height: 14px; flex-shrink: 0; }
 .rtx-open-account-dialog__footer-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 html:root .rtx-open-account-dialog[data-step] :is(.rtx-open-account-dialog__footer, .rtx-account-footer) button {
   --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 1px);
@@ -174,12 +197,12 @@ html:root .rtx-open-account-dialog[data-step] :is(.rtx-open-account-dialog__foot
   align-items: center;
   justify-content: center;
   gap: 9px;
-  height: 38px;
+  height: 40px;
   min-width: 88px;
   margin: 0;
   padding: 0 16px;
   border: 1px solid var(--account-border) !important;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--account-surface) !important;
   color: var(--account-text) !important;
   filter: none;
@@ -207,6 +230,10 @@ html:root.rtx-skin-untitled-light .rtx-open-account-dialog[data-step] :is(.text-
   html:root .rtx-open-account-dialog[data-step] { max-height: calc(100dvh - 24px); }
   html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__header { padding: 20px 16px; }
   .rtx-open-account-dialog__broker-step { padding: 20px 16px; }
+  html:root .rtx-open-account-dialog[data-step] .rtx-open-account-dialog__broker-row { padding: 12px; gap: 10px; }
+  .rtx-open-account-dialog__footer-hint { max-width: none; flex-basis: 100%; }
+  .rtx-open-account-dialog__selection { flex-wrap: wrap; gap: 6px; }
+  .rtx-open-account-dialog__selection strong { max-width: 100%; }
   html:root .rtx-open-account-dialog[data-step] :is(.rtx-open-account-dialog__footer, .rtx-account-footer) { padding: 16px; }
 }
 

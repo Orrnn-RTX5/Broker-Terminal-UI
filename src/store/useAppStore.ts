@@ -20,6 +20,7 @@ import {
   compareCanonicalTickFreshness,
 } from '../utils/liveTickSemantics';
 import { QUOTE_SESSION_RANGE_FIELDS, type QuoteSessionRange } from '../utils/quoteSessionRange';
+import type { QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
 import {
   getDailyChangeAuthorityTimestamp,
   getLastAuthorityTimestamp,
@@ -33,8 +34,8 @@ export {
   retainSameQuoteDayDisplayFields,
   retainSameQuoteDayLast,
 };
-
-export interface Tick extends QuoteSessionRange, TerminalQuoteMetadata {
+export interface Tick extends QuoteSessionRange, TerminalQuoteMetadata, QuoteTradingStatusFields {
+  dailyChangeInput?: import('../utils/dailyChange').DailyChangeInput;
   symbol: string;
   bid: number;
   ask: number;
@@ -254,6 +255,7 @@ export interface Trade {
   positionId?: number;
   orderTicket?: number;
   dealTicket?: number;
+  dealType?: string;
   entry?: string;
   orderType?: string;
   fee?: number;
@@ -269,6 +271,7 @@ export interface SavedAccount {
   server: string;
   isLive: boolean;
   lastUsed?: number;
+  isFavorite?: boolean;
 }
 
 export interface TradeApiStatus {
@@ -345,7 +348,7 @@ interface AppState {
   setTrades: (trades: Trade[]) => void;
   setAccount: (account: Account | null) => void;
   addSavedAccount: (account: SavedAccount) => void;
-  removeSavedAccount: (login: number) => void;
+  removeSavedAccount: (login: number, server?: string) => void;
   setActiveAccount: (login: number) => void;
   setChartMaximized: (isMaximized: boolean) => void;
   setChartType: (type: 'candlestick' | 'line' | 'area') => void;
@@ -413,9 +416,19 @@ const dispatchAuthTokenUpdated = () => {
 
 const sanitizeSavedAccount = (account: SavedAccount | (SavedAccount & { password?: unknown })): SavedAccount | null => {
   if (!account || typeof account !== 'object') return null;
-  const safeAccount = { ...(account as SavedAccount & { password?: unknown }) };
-  delete safeAccount.password;
-  return safeAccount;
+  const login = Number(account.login);
+  const server = typeof account.server === 'string' ? account.server.trim() : '';
+  if (!Number.isSafeInteger(login) || login <= 0 || !server) return null;
+  // Only account labels and preferences belong in persistent storage.
+  // Never copy credentials or arbitrary fields from a legacy saved account.
+  return {
+    login,
+    name: typeof account.name === 'string' ? account.name : String(login),
+    server,
+    isLive: account.isLive === true,
+    ...(typeof account.isFavorite === 'boolean' ? { isFavorite: account.isFavorite } : {}),
+    ...(Number.isFinite(account.lastUsed) ? { lastUsed: account.lastUsed } : {}),
+  };
 };
 
 const sanitizeSavedAccounts = (accounts: unknown): SavedAccount[] => {
@@ -423,6 +436,27 @@ const sanitizeSavedAccounts = (accounts: unknown): SavedAccount[] => {
   return accounts
     .map((account) => sanitizeSavedAccount(account as SavedAccount & { password?: unknown }))
     .filter((account): account is SavedAccount => account !== null);
+};
+
+export const SAVED_ACCOUNTS_STORAGE_KEY = 'rtx_saved_accounts_v1';
+
+const readSavedAccounts = (): SavedAccount[] | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY);
+    return raw === null ? null : sanitizeSavedAccounts(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+};
+
+const persistSavedAccounts = (accounts: SavedAccount[]): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SAVED_ACCOUNTS_STORAGE_KEY, JSON.stringify(sanitizeSavedAccounts(accounts)));
+  } catch {
+    // A storage failure must not interrupt account login or live trading.
+  }
 };
 
 clearLegacyCredentialStorage();
@@ -498,7 +532,9 @@ const upsertSavedAccount = (accounts: unknown, account: SavedAccount): SavedAcco
   if (!safeAccount) return retained;
 
   const nextAccount = { ...safeAccount, lastUsed: Date.now() };
-  const existingIndex = retained.findIndex((candidate) => candidate.login === safeAccount.login);
+  const existingIndex = retained.findIndex((candidate) => (
+    candidate.login === safeAccount.login && candidate.server === safeAccount.server
+  ));
   if (existingIndex < 0) return [...retained, nextAccount];
 
   return retained.map((candidate, index) => (
@@ -684,6 +720,7 @@ export const useAppStore = create<AppState>()(
     persist(
       (set) => ({
         ...initialState,
+        savedAccounts: readSavedAccounts() ?? [],
 
         setAuthenticated: (isAuth, accountId, authToken, refreshToken, expiresAt, savedAccount) => {
           if (isAuth && accountId) {
@@ -967,9 +1004,11 @@ export const useAppStore = create<AppState>()(
         addSavedAccount: (account) =>
           set((state) => ({ savedAccounts: upsertSavedAccount(state.savedAccounts, account) })),
 
-        removeSavedAccount: (login) =>
+        removeSavedAccount: (login, server) =>
           set((state) => ({
-            savedAccounts: state.savedAccounts.filter((a) => a.login !== login)
+            savedAccounts: state.savedAccounts.filter((a) => (
+              a.login !== login || (server !== undefined && a.server !== server)
+            ))
           })),
 
         setActiveAccount: (login) => {
@@ -1036,7 +1075,7 @@ export const useAppStore = create<AppState>()(
           resetMarkedClosedPositions();
           closedPositionTickets.clear();
           closedPositionScope = '';
-          set(initialState);
+          set((state) => ({ ...initialState, savedAccounts: state.savedAccounts }));
         },
       }),
       {
@@ -1054,16 +1093,33 @@ export const useAppStore = create<AppState>()(
         merge: (persistedState, currentState) => {
           const persisted = persistedState as Partial<AppState> | undefined;
           clearLegacyCredentialStorage();
+          const savedAccounts = readSavedAccounts() ?? sanitizeSavedAccounts(persisted?.savedAccounts);
+          persistSavedAccounts(savedAccounts);
           return {
             ...currentState,
             ...persisted,
-            savedAccounts: [],
+            savedAccounts,
           };
         },
       }
     )
   )
 );
+
+// Account bookmarks have their own record: frequent quote/settings writes in
+// another tab must not overwrite them. Only account-list mutations write it.
+useAppStore.subscribe((state, previous) => {
+  if (state.savedAccounts !== previous.savedAccounts) persistSavedAccounts(state.savedAccounts);
+});
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.storageArea !== localStorage || event.key !== SAVED_ACCOUNTS_STORAGE_KEY) return;
+    const savedAccounts = readSavedAccounts() ?? [];
+    if (JSON.stringify(savedAccounts) !== JSON.stringify(useAppStore.getState().savedAccounts)) {
+      useAppStore.setState({ savedAccounts });
+    }
+  });
+}
 
 // Ticket numbers are only meaningful within one broker/account session. Observe
 // both stores: broker ownership may change without changing the account number,

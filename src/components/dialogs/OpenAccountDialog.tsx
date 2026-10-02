@@ -1,12 +1,13 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, ChevronRight, ArrowRight, Building2, Shield, Globe, CheckCircle2, Copy, Loader2 } from 'lucide-react';
+import { X, Search, ChevronRight, ArrowRight, Building2, Shield, Globe, CheckCircle2, Copy, Loader2, MousePointer2 } from 'lucide-react';
 import { tradeApi } from '../../api/trade';
 import { parseTokenExpiresAt } from '../../api/client';
 import { BROKER_DISCOVERY_URL, normalizeBrokerServerUrl, updateDynamicUrls } from '../../config/api';
 import {
     isDesktopBackendTarget,
+    getRuntimeBrokerConfiguration,
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
     resolveBrokerExtApiUrl,
@@ -18,6 +19,7 @@ import { useAppStore } from '../../store/useAppStore';
 import type { BrokerServer } from '../../types/api';
 import { CountryCombobox } from './CountryCombobox';
 import './open-account-dialog.css';
+import { TradeAuthDialog } from '../TradeAuthDialog';
 
 // Palette cycling for broker avatar gradients
 const GRADIENTS = [
@@ -182,7 +184,14 @@ const availableDirectoryBrokers = (rows: BrokerDiscoveryItem[]): BrokerServer[] 
     .map(mapDiscoveryBroker)
     .filter(broker => Boolean(broker.broker_id && broker.broker_name));
 
-export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
+export const OpenAccountDialog: React.FC<Props> = (props) => {
+    if (!isDesktopBackendTarget()) {
+        return <TradeAuthDialog {...props} initialMode="demo" intent={null} onAuthenticated={props.onClose} />;
+    }
+    return <DesktopOpenAccountDialog {...props} />;
+};
+
+const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const tr = useUiTranslation();
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const [step, setStep] = useState(0);
@@ -264,6 +273,8 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         : brokers;
 
     const selectedBroker = brokers.find(b => String(b.id) === selected);
+    const runtimeConfiguration = isDesktopBackendTarget() ? null : getRuntimeBrokerConfiguration();
+    const termsUrl = runtimeConfiguration?.valid ? runtimeConfiguration.brokerTermsUrl : '';
 
     const resolveSelectedBrokerRouting = (broker: BrokerServer | undefined = selectedBroker) => {
         if (!broker) throw new Error('Please select a broker server.');
@@ -476,14 +487,14 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
 
             {/* Broker list */}
-            <div className="rtx-open-account-dialog__broker-list" aria-busy={loadingBrokers}>
+            <div className="rtx-open-account-dialog__broker-list" aria-label={tr("Available Brokers")} aria-busy={loadingBrokers}>
                 {loadingBrokers ? (
-                    <div className="flex flex-col items-center gap-2 py-10 text-[14px] font-normal text-zinc-600">
+                    <div className="rtx-open-account-dialog__empty flex flex-col items-center gap-2 py-10 text-[14px] font-normal text-zinc-600" role="status">
                         <Loader2 className="w-6 h-6 animate-spin opacity-50" />
                         <p>{tr("Loading brokers…")}</p>
                     </div>
                 ) : directoryError ? (
-                    <div className="py-6 text-center text-[14px] font-normal text-zinc-500">
+                    <div className="rtx-open-account-dialog__empty py-6 text-center text-[14px] font-normal text-zinc-500">
                         <p role="alert">{tr(directoryError)}</p>
                         <button
                             type="button"
@@ -494,7 +505,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         </button>
                     </div>
                 ) : filteredBrokers.length === 0 ? (
-                    <div className="py-10 text-center text-[14px] font-normal text-zinc-600">
+                    <div className="rtx-open-account-dialog__empty py-10 text-center text-[14px] font-normal text-zinc-600" role="status">
                         <Globe className="w-8 h-8 mx-auto mb-2 opacity-30" />
                         <p>{tr("No brokers found")}</p>
                     </div>
@@ -515,21 +526,21 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 <BrokerAvatar broker={broker} />
 
                                 {/* Info */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
+                                <div className="rtx-open-account-dialog__broker-info">
+                                    <div className="rtx-open-account-dialog__broker-heading">
                                         <span className="rtx-open-account-dialog__broker-name truncate">
                                             {broker.broker_name}
                                         </span>
                                         {broker.region && (
                                             <span
-                                                className="rtx-open-account-dialog__badge px-1.5 py-0.5 rounded-full text-[12px] font-medium flex-shrink-0"
-                                                style={{ background: '#232838', color: '#a5b4fc' }}
+                                                className="rtx-open-account-dialog__badge"
                                             >
+                                                <Globe aria-hidden="true" />
                                                 {broker.region}
                                             </span>
                                         )}
                                     </div>
-                                    <div className="rtx-open-account-dialog__broker-id flex items-center gap-2 mt-0.5">
+                                    <div className="rtx-open-account-dialog__broker-id">
                                         <span className="truncate">{broker.broker_id}</span>
                                     </div>
                                 </div>
@@ -545,7 +556,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
             {selectedBroker && !isDesktopShell && (
                 <div className="rtx-open-account-dialog__selection" role="status">
-                    <span>{tr("Selected broker")}</span>
+                    <span><CheckCircle2 aria-hidden="true" />{tr("Selected broker")}</span>
                     <strong title={selectedBroker.broker_name}>{selectedBroker.broker_name}</strong>
                 </div>
             )}
@@ -745,7 +756,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     />
                     <span>{tr("I agree with the terms and conditions for opening an account and the data protection policy")}</span>
                 </label>
-                <a href="https://rtx5.orrnn.com/terms-conditions" target="_blank" rel="noopener noreferrer">{tr("Terms and data protection policy")}</a>
+                {termsUrl && <a href={termsUrl} target="_blank" rel="noopener noreferrer">{tr("Terms and data protection policy")}</a>}
             </div>
             {createError && <div role="alert" className="rtx-account-error">{tr(createError)}</div>}
         </div>
@@ -791,11 +802,6 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         <option value="IN">{tr("India (IN)")}</option>
                     </select>
                 </div>
-                <div className="pl-[104px] pt-4">
-                    <p className="text-[14px] font-normal leading-tight text-zinc-500">
-                        {tr("Personal details are used for opening a trade account and are not passed to any third parties.")}<br />
-                        {tr("The information is handled securely and confidentially.")}</p>
-                </div>
             </div>
         </div>
     );
@@ -826,7 +832,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     <input aria-label={tr("Accept account terms")} type="checkbox" className="mt-0.5 accent-indigo-500 w-3 h-3" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} />
                     <div>
                         <span className="block text-[14px] font-normal text-zinc-300">{tr("I agree with the terms and conditions for opening an account and the data protection policy")}</span>
-                        <a href="https://rtx5.orrnn.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="mt-1 block text-[14px] font-normal text-indigo-400 hover:text-indigo-300">{tr("www.rtx5.orrnn.com")}</a>
+                        {termsUrl && <a href={termsUrl} target="_blank" rel="noopener noreferrer" className="mt-1 block text-[14px] font-normal text-indigo-400 hover:text-indigo-300">{tr("Terms and data protection policy")}</a>}
                     </div>
                 </div>
                 {createError && (
@@ -874,7 +880,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 </div>
                 <div className="mt-5 flex w-full items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-center text-[14px] font-normal leading-relaxed text-yellow-500/90">
                     <Shield className="w-4 h-4 flex-shrink-0 mt-0.5 opacity-80" />
-                    <span className="text-left">{tr("The terminal does not store account passwords. Copy any credentials returned by the broker and keep them private.")}</span>
+                    <span className="text-left">{tr("Keep these credentials private. You can save your password on this device when logging in.")}</span>
                 </div>
             </div>
         );
@@ -979,7 +985,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 ) : <div className="rtx-open-account-dialog__footer">
                     <div className="rtx-open-account-dialog__footer-hint">
                         {validationError ? <span role="alert" className="text-red-400">{tr(validationError)}</span> : (
-                            <span className="text-zinc-600">{step === 0 ? tr("Double-click to proceed immediately") : ''}</span>
+                            step === 0 ? <span className="rtx-open-account-dialog__shortcut"><MousePointer2 aria-hidden="true" />{tr("Double-click to proceed immediately")}</span> : null
                         )}
                     </div>
                     <div className="rtx-open-account-dialog__footer-actions">

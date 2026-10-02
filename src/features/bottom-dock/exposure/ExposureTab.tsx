@@ -77,7 +77,7 @@ export function ExposureTab({ positions, formatMoney, account }: ExposureTabProp
                 return (
                   <tr
                     key={row.asset}
-                    className={`h-[34px] border-b border-white/[0.02] transition-colors hover:bg-white/[0.03] ${index % 2 === 0 ? 'bg-[#111318]' : 'bg-[#0e0f14]'}`}
+                    className={`rtx-exposure-row h-[34px] border-b border-white/[0.02] transition-colors hover:bg-white/[0.03] ${index % 2 === 0 ? 'bg-[#111318]' : 'bg-[#0e0f14]'}`}
                   >
                     <td className="border-r border-zinc-800/80 p-1.5 pl-3 font-sans font-semibold">
                       <div className="inline-flex items-center gap-1.5">
@@ -97,7 +97,7 @@ export function ExposureTab({ positions, formatMoney, account }: ExposureTabProp
                       {formatMoney(row.value)}
                     </td>
                     <td className="p-1.5 px-4 align-middle">
-                      <div className="relative h-[13px] w-full min-w-[120px] overflow-hidden rounded-[3px] border border-white/[0.04] bg-[#161820]">
+                      <div className="rtx-exposure-graph-track relative h-[13px] w-full min-w-[120px] overflow-hidden rounded-[3px] border border-white/[0.04] bg-[#161820]">
                         <div
                           className={`absolute top-0 h-full rounded-[2px] transition-all duration-300 ${isLong
                             ? 'left-0 bg-gradient-to-r from-[#0284c7] to-[#38bdf8] shadow-[0_0_8px_rgba(56,189,248,0.3)]'

@@ -43,6 +43,10 @@ class FakeWebSocket {
 }
 
 beforeEach(() => {
+  (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+    BACKEND_TARGET: 'web', API_HOST: 'https://broker.example', WS_HOST: 'wss://broker.example',
+    BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
+  };
   FakeWebSocket.instances = [];
   localStorage.clear();
   sessionStorage.clear();
@@ -50,6 +54,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
   vi.unstubAllGlobals();
   vi.useRealTimers();
   localStorage.clear();
@@ -137,7 +142,7 @@ it('falls back to cancellable public REST refreshes when anonymous candles are r
   expect(onCandle).toHaveBeenCalledWith(expect.objectContaining({ close: 2 }));
   expect(fetchMock).toHaveBeenCalledWith(
     expect.stringContaining('/api/v2/candles/XAUUSD'),
-    expect.objectContaining({ credentials: 'omit', headers: undefined }),
+    expect.objectContaining({ credentials: 'omit', headers: { 'X-Broker-ID': 'Fixture' }, redirect: 'error' }),
   );
 
   await vi.advanceTimersByTimeAsync(3000);
@@ -166,4 +171,34 @@ it('falls back to public REST if an established anonymous stream later loses aut
 
   expect(fetchMock).toHaveBeenCalledOnce();
   stream.close();
+});
+
+it('sends no captured candle credentials when the socket opens after a broker switch', async () => {
+  vi.useFakeTimers();
+  localStorage.setItem('server_url', 'https://broker.example');
+  localStorage.setItem('broker_id', 'Fixture');
+  localStorage.setItem('auth_token', 'previous-broker-token');
+  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  const stream = new ChartDataService().subscribeCandles({ symbol: 'XAUUSD', timeframe: 'M1' });
+  const captured = FakeWebSocket.instances[0];
+  (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__!.BROKER_ID = 'NewBroker';
+  localStorage.setItem('broker_id', 'NewBroker'); localStorage.setItem('auth_token', 'new-broker-token');
+  captured.open();
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(captured.sent).toEqual([]);
+  expect(captured.readyState).toBe(FakeWebSocket.CLOSED);
+  expect(FakeWebSocket.instances).toHaveLength(1);
+  expect(fetchMock).not.toHaveBeenCalled();
+  stream.close();
+});
+
+it('discards delayed candle history when the broker changes on the same origin', async () => {
+  let complete!: (response: Response) => void;
+  const fetchMock = vi.fn(() => new Promise<Response>(resolve => { complete = resolve; }));
+  vi.stubGlobal('fetch', fetchMock);
+  const history = new ChartDataService().fetchCandles({ symbol: 'XAUUSD', timeframe: 'M1', count: 3 });
+  (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__!.BROKER_ID = 'NewBroker';
+  complete(new Response(JSON.stringify({ candles: [{ time: 1789479000, open: 1, high: 2, low: 1, close: 2, volume: 10 }] })));
+  await expect(history).rejects.toMatchObject({ name: 'AbortError' });
+  expect(fetchMock).toHaveBeenCalledOnce();
 });

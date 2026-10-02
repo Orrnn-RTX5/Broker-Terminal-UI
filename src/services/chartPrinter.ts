@@ -7,6 +7,9 @@ import type { IChartApi } from 'lightweight-charts';
 import { getActiveChartSource } from './activeChartSource';
 import i18n from '../i18n';
 import { translateUi as tr } from '../hooks/useUiTranslation';
+import { getAccessToken, getServerUrl } from './brokerSession';
+import { isConfiguredBrokerEndpoint } from '../config/backendTarget.js';
+import { toLocalDevProxyUrl } from '../config/localDevProxy';
 
 export type PageSize = 'A4' | 'Letter' | 'Legal' | 'A3';
 export type PageOrientation = 'portrait' | 'landscape';
@@ -221,8 +224,12 @@ class ChartPrinterService {
     this.rememberPreferences(accountScope, fallback);
 
     try {
+      const endpoint = `${getServerUrl()}/api/accounts/${encodeURIComponent(accountScope)}/print-preferences`;
+      const token = getAccessToken();
+      if (!token || !isConfiguredBrokerEndpoint(endpoint)) return { ...fallback };
       const response = await fetch(
-        `/api/accounts/${encodeURIComponent(accountScope)}/print-preferences`,
+        toLocalDevProxyUrl(endpoint),
+        { redirect: 'error', headers: { Authorization: `Bearer ${token}` } },
       );
       if (response.ok) {
         const prefs = this.normalizePreferences(await response.json(), fallback);
@@ -252,11 +259,15 @@ class ChartPrinterService {
     const local = this.writeLocalPreferences(accountScope, normalizedPreferences);
 
     try {
+      const endpoint = `${getServerUrl()}/api/accounts/${encodeURIComponent(accountScope)}/print-preferences`;
+      const token = getAccessToken();
+      if (!token || !isConfiguredBrokerEndpoint(endpoint)) return { local, remote: false };
       const response = await fetch(
-        `/api/accounts/${encodeURIComponent(accountScope)}/print-preferences`,
+        toLocalDevProxyUrl(endpoint),
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          redirect: 'error',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(normalizedPreferences),
         },
       );

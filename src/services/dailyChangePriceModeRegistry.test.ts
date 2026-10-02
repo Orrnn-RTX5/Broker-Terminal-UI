@@ -11,6 +11,7 @@ import {
   registerDailyChangePriceModes,
   resetDailyChangePriceModeRegistryForTests,
   resolveDailyChangePriceMode,
+  resolveDailyChangeDisplayDigits,
 } from './dailyChangePriceModeRegistry';
 import { mergeAccountCatalogWithPublic } from '../utils/accountSymbolUniverse';
 
@@ -57,6 +58,14 @@ describe('daily change price-mode registry', () => {
     expect(registerDailyChangePriceModes([
       { symbol: 'future.last', brokerSpecification: { chart_mode: 1 } },
     ], capturedScope)).toBe(false);
+  });
+
+  it('uses broker precision by exact symbol and clears it at a broker boundary', () => {
+    registerDailyChangePriceModes([{ symbol: 'EURUSD.r', brokerSpecification: { digits: 6 } }]);
+    expect(resolveDailyChangeDisplayDigits('eurusd.r', 3)).toBe(6);
+    expect(resolveDailyChangeDisplayDigits('EURUSD', 4)).toBe(4);
+    commitBrokerAccountSessionScope({ authenticated: true, accountId: '1001', brokerId: 'broker-b', serverUrl: 'https://broker-b.test' });
+    expect(resolveDailyChangeDisplayDigits('EURUSD.r', 3)).toBe(3);
   });
 
   it('lets raw mode win and blocks registry fallback for an explicit unknown raw mode', () => {

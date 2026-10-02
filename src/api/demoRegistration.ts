@@ -1,5 +1,5 @@
 import { API_V2_BASE_URL } from '../config/api';
-import { getRuntimeConfiguredBrokerId } from '../config/backendTarget.js';
+import { getRuntimeBrokerConfiguration, isDesktopBackendTarget } from '../config/backendTarget.js';
 import { apiClient } from './client';
 
 export interface DemoRegistrationInput {
@@ -36,23 +36,28 @@ const getStoredSessionBrokerId = (): string => {
 /**
  * Registers against this terminal's broker. The caller cannot pass group: the
  * resolved broker and the backend's enabled default demo group are the
- * authority. The broker is the active session broker (the one the Navigator
- * shows) when present, otherwise the runtime-configured deployment broker.
+ * authority. Web registration always uses the deployment identity and API;
+ * desktop registration can use the selected session broker.
  */
 export const registerRuntimeBrokerDemoAccount = async (
   input: DemoRegistrationInput,
   policyBrokerId?: string,
 ): Promise<DemoRegistrationResponse> => {
-  const configuredBrokerId = getRuntimeConfiguredBrokerId();
+  const configuration = getRuntimeBrokerConfiguration();
+  const desktop = isDesktopBackendTarget();
+  if (!desktop && !configuration.valid) {
+    throw new Error('Demo registration is unavailable because this terminal has no valid broker configuration.');
+  }
+  const configuredBrokerId = configuration.brokerId;
   const sessionBrokerId = getStoredSessionBrokerId();
-  const brokerId = String(policyBrokerId || sessionBrokerId || configuredBrokerId).trim();
+  const brokerId = String(desktop ? policyBrokerId || sessionBrokerId || configuredBrokerId : configuredBrokerId).trim();
   if (!brokerId) {
     throw new Error('Demo registration is unavailable because this terminal has no broker configured.');
   }
-  const allowedBrokerIds = [sessionBrokerId, configuredBrokerId]
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-  if (allowedBrokerIds.length && !allowedBrokerIds.includes(brokerId.toLowerCase())) {
+  const allowedBrokerIds = (desktop ? [sessionBrokerId, configuredBrokerId] : [configuredBrokerId])
+    .map(value => value.trim()).filter(Boolean);
+  if ((policyBrokerId && policyBrokerId.trim() !== brokerId)
+    || (allowedBrokerIds.length && !allowedBrokerIds.includes(brokerId))) {
     throw new Error('Demo registration broker does not match this terminal deployment.');
   }
 
@@ -63,10 +68,17 @@ export const registerRuntimeBrokerDemoAccount = async (
     name: input.name.trim(),
     broker_id: brokerId,
   }, {
-    baseUrl: API_V2_BASE_URL,
+    baseUrl: desktop ? API_V2_BASE_URL : `${configuration.apiHostExt.replace(/\/+$/, '')}/api/v2`,
+    skipDynamicUrl: true,
     skipAuth: true,
   });
 
+  if (!desktop && JSON.stringify(getRuntimeBrokerConfiguration()) !== JSON.stringify(configuration)) {
+    throw new Error('The broker configuration changed during demo registration. Please log in manually.');
+  }
+  if (response.broker_id && response.broker_id.trim() !== brokerId) {
+    throw new Error('The demo account was returned for a different broker.');
+  }
   const token = response.access_token || response.token;
   const login = response.account_login ?? response.login;
   if (!token || !login) {

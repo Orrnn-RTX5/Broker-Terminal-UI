@@ -13,12 +13,6 @@ const runtimeWindow = window as Window & {
 const shellMocks = vi.hoisted(() => ({
   terminalRender: vi.fn(),
   terminalUnmount: vi.fn(),
-  electron: true,
-}));
-
-vi.mock('./config/backendTarget.js', async (importOriginal) => ({
-  ...await importOriginal<typeof import('./config/backendTarget.js')>(),
-  isElectronRuntime: () => shellMocks.electron,
 }));
 
 vi.mock('./App', () => ({
@@ -45,6 +39,9 @@ vi.mock('./i18n', async (importOriginal) => ({
   i18nReady: Promise.resolve(),
 }));
 vi.mock('./authenticatedStyles', () => ({}));
+vi.mock('./startup/tradingChartRuntime', () => ({
+  preloadTradingChartRuntime: vi.fn().mockResolvedValue({}),
+}));
 
 vi.mock('./components/WelcomeTerminal', () => ({
   WelcomeTerminal: ({ onLogin, onPrepareTerminal }: {
@@ -54,18 +51,21 @@ vi.mock('./components/WelcomeTerminal', () => ({
       expiresAt: number;
       committedAt: number;
     }) => void;
-    onPrepareTerminal?: () => void;
+    onPrepareTerminal?: () => Promise<unknown>;
   }) => (
     <>
       <input data-testid="login-input" onFocus={onPrepareTerminal} />
       <button
         data-testid="login-success"
-        onClick={() => onLogin('200002', {
-          accountId: '200002',
-          token: 'fresh-token',
-          expiresAt: Date.now() + 60_000,
-          committedAt: Date.now(),
-        })}
+        onClick={async () => {
+          await onPrepareTerminal?.();
+          onLogin('200002', {
+            accountId: '200002',
+            token: 'fresh-token',
+            expiresAt: Date.now() + 60_000,
+            committedAt: Date.now(),
+          });
+        }}
       >
         Login
       </button>
@@ -75,7 +75,7 @@ vi.mock('./components/WelcomeTerminal', () => ({
 
 describe('AppShell startup boundary', () => {
   beforeEach(() => {
-    shellMocks.electron = true;
+    vi.stubGlobal('electron', { window: {} });
     localStorage.clear();
     sessionStorage.clear();
     shellMocks.terminalRender.mockClear();
@@ -92,6 +92,7 @@ describe('AppShell startup boundary', () => {
     delete runtimeWindow.RUNTIME_CONFIG;
     delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it('keeps a known-expired stored session on the lightweight login path', async () => {
@@ -149,31 +150,36 @@ describe('AppShell startup boundary', () => {
   });
 
   it('opens configured web markets after discarding a previous broker session', async () => {
-    shellMocks.electron = false;
+    vi.stubGlobal('electron', undefined);
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web', BROKER_ID: 'achiever-financials',
       API_HOST: 'https://service.achieverfinancials.com',
+      WS_HOST: 'wss://service.achieverfinancials.com',
+      DEFAULT_MT5_SERVER: 'Achiever-Live',
     };
     localStorage.setItem('broker_id', 'TEST');
     localStorage.setItem('server_url', 'https://fxtrustbrokerbackend.orrnn.com');
     localStorage.setItem('rtx_last_login', '200002');
     localStorage.setItem('auth_token', 'previous-broker-token');
     localStorage.setItem('token_expires_at', new Date(Date.now() + 60_000).toISOString());
-    const loadStoredSessionTerminal = vi.fn<() => Promise<typeof import('./App')>>();
-
-    const view = render(<AppShell loadStoredSessionTerminal={loadStoredSessionTerminal} />);
+    const view = render(<AppShell />);
 
     await view.findByTestId('authenticated-terminal');
-    expect(loadStoredSessionTerminal).not.toHaveBeenCalled();
+    expect(shellMocks.terminalRender).toHaveBeenCalledTimes(1);
     expect(shellMocks.terminalRender).toHaveBeenCalledWith(null);
     expect(localStorage.getItem('auth_token')).toBeNull();
+    expect(localStorage.getItem('rtx_last_login')).toBeNull();
     expect(localStorage.getItem('broker_id')).toBe('achiever-financials');
+    expect(localStorage.getItem('server_url')).toBe('https://service.achieverfinancials.com');
   });
 
   it('restores a matching configured broker session on reload', async () => {
+    vi.stubGlobal('electron', undefined);
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web', BROKER_ID: 'achiever-financials',
       API_HOST: 'https://service.achieverfinancials.com',
+      WS_HOST: 'wss://service.achieverfinancials.com',
+      DEFAULT_MT5_SERVER: 'Achiever-Live',
     };
     localStorage.setItem('broker_id', 'achiever-financials');
     localStorage.setItem('server_url', 'https://service.achieverfinancials.com');
@@ -226,7 +232,7 @@ describe('AppShell startup boundary', () => {
   });
 
   it('opens the real terminal for a web guest without an authenticated handoff', async () => {
-    shellMocks.electron = false;
+    vi.stubGlobal('electron', undefined);
     const view = render(<AppShell />);
     await waitFor(() => expect(view.getByTestId('authenticated-terminal')).toBeTruthy());
     expect(view.queryByTestId('login-input')).toBeNull();
@@ -235,7 +241,7 @@ describe('AppShell startup boundary', () => {
   });
 
   it('discards the account terminal instance on web logout while keeping guest markets available', async () => {
-    shellMocks.electron = false;
+    vi.stubGlobal('electron', undefined);
     localStorage.setItem('rtx_last_login', '200002');
     localStorage.setItem('auth_token', 'active-token');
     const view = render(<AppShell />);
@@ -249,7 +255,7 @@ describe('AppShell startup boundary', () => {
   });
 
   it('keeps web guests in the terminal after their session ends', async () => {
-    shellMocks.electron = false;
+    vi.stubGlobal('electron', undefined);
     const view = render(<AppShell />);
     await waitFor(() => expect(view.getByTestId('terminal-logout')).toBeTruthy());
     fireEvent.click(view.getByTestId('terminal-logout'));
@@ -258,7 +264,7 @@ describe('AppShell startup boundary', () => {
   });
 
   it('opens public charts for an expired web session without fabricating authentication', async () => {
-    shellMocks.electron = false;
+    vi.stubGlobal('electron', undefined);
     localStorage.setItem('rtx_last_login', '200001');
     localStorage.setItem('auth_token', 'expired-token');
     localStorage.setItem('token_expires_at', String(Date.now() - 60000));

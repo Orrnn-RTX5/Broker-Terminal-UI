@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
     loadBrokerDirectory: vi.fn(),
     loadAppBrokerDirectory: vi.fn(),
     getCachedBrokerDirectory: vi.fn(),
+    desktop: true,
+    configuration: { valid: true, brokerTermsUrl: '' },
 }));
 
 vi.mock('../../api/trade', () => ({
@@ -32,7 +34,8 @@ vi.mock('../../config/api', () => ({
 }));
 
 vi.mock('../../config/backendTarget.js', () => ({
-    isDesktopBackendTarget: () => true,
+    isDesktopBackendTarget: () => mocks.desktop,
+    getRuntimeBrokerConfiguration: () => mocks.configuration,
     normalizeBrokerInfoForTarget: (broker: Record<string, unknown>) => broker,
     resolveBrokerBackendUrl: (broker: Record<string, unknown>) =>
         String(broker.backend_url || broker.server_url || broker.server || ''),
@@ -109,6 +112,8 @@ const selectSecondBrokerAndContinue = async () => {
 describe('OpenAccountDialog account flows', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.desktop = true;
+        mocks.configuration = { valid: true, brokerTermsUrl: '' };
         localStorage.clear();
         mocks.loadAppBrokerDirectory.mockReset().mockResolvedValue(brokers);
         mocks.getCachedBrokerDirectory.mockReset().mockReturnValue(null);

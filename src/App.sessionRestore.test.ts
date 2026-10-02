@@ -60,6 +60,9 @@ const createRestoreHarness = () => {
     setIsAutoAuthenticating: vi.fn(),
     setAutoAuthError: vi.fn(),
     updateDynamicUrls: vi.fn(),
+    ensureConfiguredWebSession: () => true,
+    getAccessToken: () => localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'),
+    getRefreshToken: () => localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token'),
     // Module-level imports used by the restore success path.
     seedValidatedSessionAccountSummary: vi.fn(),
     chartDataService: { preloadStartupHistory: vi.fn() },

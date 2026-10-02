@@ -1,8 +1,10 @@
 import type { Plugin, ProxyOptions } from 'vite'
 import { defineConfig, loadEnv } from 'vite'
 import { validateWebBrokerEnvironment } from './viteWebEnv'
-import { webRuntimeConfigPlugin } from './viteWebRuntimeConfig'
+import { createWebRuntimeConfig, webRuntimeConfigPlugin } from './viteWebRuntimeConfig'
 import { terminalPreloadPlugin } from './viteTerminalPreload'
+import { validateBrokerRuntimeConfig } from './src/config/brokerRuntimeConfig'
+import { extractBrokerDiscoveryList, isDirectoryBrokerSelectable } from './src/services/brokerDiscovery'
 import react from '@vitejs/plugin-react'
 import reactSwc from '@vitejs/plugin-react-swc'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
@@ -120,27 +122,6 @@ const addOrigin = (origins: Set<string>, value: string): void => {
   if (origin) origins.add(origin)
 }
 
-const toHttpOnlyBrokerOrigin = (value: string): string | null => {
-  const trimmed = String(value || '').trim().replace(/\/+$/, '')
-  if (!trimmed) return null
-
-  try {
-    const parsed = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
-    if (parsed.protocol === 'https:') parsed.protocol = 'http:'
-    if (parsed.protocol === 'http:' && parsed.port === '443') parsed.port = ''
-    return parsed.origin
-  } catch {
-    return null
-  }
-}
-
-const addBrokerOrigin = (origins: Set<string>, value: string): void => {
-  addOrigin(origins, value)
-  const httpOnlyOrigin = toHttpOnlyBrokerOrigin(value)
-  if (httpOnlyOrigin) origins.add(httpOnlyOrigin)
-}
-
 const splitAllowlist = (value: string | undefined): string[] => {
   return String(value || '')
     .split(/[\s,]+/)
@@ -148,7 +129,7 @@ const splitAllowlist = (value: string | undefined): string[] => {
     .filter(Boolean)
 }
 
-const parseDynamicProxyTarget = (requestUrl: string, prefix: string): URL | null => {
+export const parseDynamicProxyTarget = (requestUrl: string, prefix: string): URL | null => {
   if (!requestUrl.startsWith(`${prefix}/`)) return null
 
   const pathAfterPrefix = requestUrl.slice(prefix.length + 1)
@@ -160,6 +141,7 @@ const parseDynamicProxyTarget = (requestUrl: string, prefix: string): URL | null
   try {
     const origin = new URL(decodeURIComponent(encodedOrigin))
     if (origin.protocol !== 'http:' && origin.protocol !== 'https:') return null
+    if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/') return null
     const queryIndex = targetPath.indexOf('?')
     const pathname = queryIndex >= 0 ? targetPath.slice(0, queryIndex) : targetPath
     const search = queryIndex >= 0 ? targetPath.slice(queryIndex) : ''
@@ -173,46 +155,68 @@ const parseDynamicProxyTarget = (requestUrl: string, prefix: string): URL | null
 }
 
 type BrokerProxyAccess = {
+  valid: boolean
+  pinned: boolean
+  brokerId: string
   trustedOrigins: Set<string>
+  brokerOrigins: Set<string>
+  discoveryOrigins: Set<string>
   envAllowedOrigins: Set<string>
   discoveredBrokerOrigins: Set<string>
 }
 
-const createBrokerProxyAccess = (env: Record<string, string>): BrokerProxyAccess => {
+export const getBrokerProxyTargets = (env: Record<string, string>) => {
+  const runtime = createWebRuntimeConfig(env)
+  const config = validateBrokerRuntimeConfig(runtime, { desktop: !runtime.PINNED_BROKER, allowLocal: !runtime.PINNED_BROKER })
+  // A desktop picker may start before choosing an account/broker. Malformed
+  // destinations still fail closed; only absent picker fields are tolerated.
+  const valid = config.valid || (!runtime.PINNED_BROKER && config.errors.every(error => /^\w+ is required for this broker deployment[.]$/.test(error)))
+  return {
+    valid, pinned: runtime.PINNED_BROKER, brokerId: config.brokerId,
+    backendTarget: valid ? config.apiHost : '',
+    brokerApiTarget: valid ? config.apiHostExt : '',
+    discoveryTarget: valid ? config.discoveryBaseUrl : '',
+    wsTarget: valid ? config.wsHost : '',
+    allowedOrigins: valid ? config.allowedOrigins : [],
+    extraDiscoveryUrls: valid && !runtime.PINNED_BROKER ? config.extraDiscoveryUrls : [],
+  }
+}
+
+export const createBrokerProxyAccess = (env: Record<string, string>): BrokerProxyAccess => {
+  const targets = getBrokerProxyTargets(env)
   const trustedOrigins = new Set<string>()
+  const brokerOrigins = new Set<string>()
+  const discoveryOrigins = new Set<string>()
   const envAllowedOrigins = new Set<string>()
-
-    ;[
-      'https://backend.orrnn.com',
-      'https://superbackend.orrnn.com',
-      'https://testsuperbackend.orrnn.com',
-      'https://testbrokerbackend.orrnn.com',
-      'https://fxtrustsuperbackned.orrnn.com',
-      'https://fxtrustbrokerbackend.orrnn.com',
-      'https://services.growtradingacademy.com',
-      env.VITE_API_URL,
-      env.VITE_BACKEND_URL,
-      env.VITE_BROKER_DISCOVERY_URL,
-      env.VITE_DEV_BROKER_API_URL,
-      env.VITE_RTX5_API_URL,
-      env.VITE_API_V2_URL,
-      env.VITE_FIX_API_URL,
-    ].forEach((value) => addOrigin(trustedOrigins, value || ''))
-
-  splitAllowlist(env.VITE_DEV_PROXY_ALLOWED_ORIGINS).forEach((value) => addOrigin(envAllowedOrigins, value))
-  splitAllowlist(env.VITE_DEV_BROKER_PROXY_ALLOWED_ORIGINS).forEach((value) => addOrigin(envAllowedOrigins, value))
+  if (targets.valid) {
+    targets.allowedOrigins.forEach(value => addOrigin(brokerOrigins, value))
+    ;[targets.discoveryTarget, ...targets.extraDiscoveryUrls].forEach(value => addOrigin(discoveryOrigins, value))
+    for (const origin of [...brokerOrigins, ...discoveryOrigins]) trustedOrigins.add(origin)
+    // Explicit development exceptions retain private-address routing. They do
+    // not rescue a missing/invalid pinned broker or change static API targets.
+    splitAllowlist(env.DEV_PROXY_ALLOWED_ORIGINS ?? env.VITE_DEV_PROXY_ALLOWED_ORIGINS)
+      .forEach(value => addOrigin(envAllowedOrigins, value))
+    splitAllowlist(env.DEV_BROKER_PROXY_ALLOWED_ORIGINS ?? env.VITE_DEV_BROKER_PROXY_ALLOWED_ORIGINS)
+      .forEach(value => addOrigin(envAllowedOrigins, value))
+  }
 
   return {
+    valid: targets.valid, pinned: targets.pinned, brokerId: targets.brokerId,
     trustedOrigins,
+    brokerOrigins,
+    discoveryOrigins,
     envAllowedOrigins,
     discoveredBrokerOrigins: new Set<string>(),
   }
 }
 
-const validateProxyTarget = async (
+export const validateProxyTarget = async (
   target: URL,
-  access: BrokerProxyAccess
+  access: BrokerProxyAccess,
+  kind: 'broker' | 'discovery' = 'broker',
 ): Promise<{ allowed: true; resolvedAddresses: ResolvedProxyAddress[] } | { allowed: false; reason: string }> => {
+  if (!access.valid) return { allowed: false, reason: 'Broker runtime configuration is missing or invalid' }
+  if (target.username || target.password || target.hash) return { allowed: false, reason: 'Broker proxy target contains credentials or a fragment' }
   const comparableOrigin = normalizeProxyAccessOrigin(target.origin)
   if (!comparableOrigin) {
     return { allowed: false, reason: 'Broker proxy target uses an unsupported protocol' }
@@ -220,8 +224,8 @@ const validateProxyTarget = async (
 
   const explicitlyAllowed = access.envAllowedOrigins.has(comparableOrigin)
   const knownOrigin = explicitlyAllowed
-    || access.trustedOrigins.has(comparableOrigin)
-    || access.discoveredBrokerOrigins.has(comparableOrigin)
+    || (kind === 'discovery' ? access.discoveryOrigins.has(comparableOrigin) : access.brokerOrigins.has(comparableOrigin))
+    || (kind === 'broker' && access.discoveredBrokerOrigins.has(comparableOrigin))
 
   if (!knownOrigin) {
     return { allowed: false, reason: 'Broker proxy target is not in the trusted origin allowlist' }
@@ -240,7 +244,9 @@ const validateProxyTarget = async (
   return { allowed: true, resolvedAddresses }
 }
 
-const learnBrokerOrigins = (body: Buffer, access: BrokerProxyAccess): void => {
+export const learnBrokerOrigins = (body: Buffer, access: BrokerProxyAccess): void => {
+  if (!access.valid) return
+  access.discoveredBrokerOrigins.clear()
   let payload: unknown
   try {
     payload = JSON.parse(body.toString('utf8'))
@@ -248,15 +254,12 @@ const learnBrokerOrigins = (body: Buffer, access: BrokerProxyAccess): void => {
     return
   }
 
-  const visit = (value: unknown): void => {
-    if (Array.isArray(value)) {
-      value.forEach(visit)
-      return
-    }
-
-    if (!value || typeof value !== 'object') return
-
-    const record = value as Record<string, unknown>
+  // Every fresh directory response replaces the old authority, including an
+  // empty catalog. Never retain a removed/suspended broker's origins.
+  for (const record of extractBrokerDiscoveryList(payload)) {
+    if (access.pinned && record.broker_id !== access.brokerId) continue
+    if (!access.pinned && !isDirectoryBrokerSelectable(record)) continue
+    if (record.active === false || record.enabled === false || /^(suspended|disabled|inactive|deleted)$/i.test(String(record.status || ''))) continue
     for (const key of [
       'server_url',
       'serverUrl',
@@ -279,14 +282,18 @@ const learnBrokerOrigins = (body: Buffer, access: BrokerProxyAccess): void => {
       'API_HOST_EXT',
       'api_host',
       'api_host_ext',
+      'ws_url', 'wsUrl', 'public_ws_url', 'publicWsUrl',
+      'feed_url', 'feedUrl', 'feed_ws_url', 'feedWsUrl',
     ]) {
-      if (typeof record[key] === 'string') addBrokerOrigin(access.discoveredBrokerOrigins, record[key])
+      if (typeof record[key] !== 'string') continue
+      try {
+        const url = new URL(record[key] as string)
+        if (url.username || url.password || url.search || url.hash) continue
+        if (!(access.pinned ? ['https:', 'wss:'] : ['https:', 'http:', 'wss:', 'ws:']).includes(url.protocol)) continue
+        addOrigin(access.discoveredBrokerOrigins, url.origin)
+      } catch { /* Invalid discovery destinations never become proxy authorities. */ }
     }
-
-    Object.values(record).forEach(visit)
   }
-
-  visit(payload)
 }
 
 const sendProxyError = (res: ServerResponse, statusCode: number, message: string): void => {
@@ -311,7 +318,7 @@ const forwardRequest = (
   const headers = copyProxyHeaders(req.headers)
   if (onResponseBody) {
     for (const key of Object.keys(headers)) {
-      if (key.toLowerCase() === 'accept-encoding') delete headers[key]
+      if (['accept-encoding', 'authorization', 'cookie', 'x-api-key'].includes(key.toLowerCase())) delete headers[key]
     }
   }
 
@@ -323,7 +330,7 @@ const forwardRequest = (
     method: req.method,
     headers,
     ...createPinnedConnectionOptions(resolvedAddresses),
-    rejectUnauthorized: false,
+    rejectUnauthorized: true,
   }
 
   if (target.protocol === 'https:' && !isIP(target.hostname.replace(/^\[|\]$/g, ''))) {
@@ -418,7 +425,7 @@ const bridgeWebSocketUpgrade = (
         host: target.hostname,
         port,
         servername: target.hostname,
-        rejectUnauthorized: false,
+        rejectUnauthorized: true,
         ...connectionOptions,
       },
       () => startPiping(tlsSocket),
@@ -449,6 +456,7 @@ const dynamicBrokerWsProxyPlugin = (prefix: string, access: BrokerProxyAccess): 
       try {
         const origin = new URL(decodeURIComponent(encodedOrigin))
         if (origin.protocol !== 'ws:' && origin.protocol !== 'wss:') throw new Error('unsupported ws protocol')
+        if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/') throw new Error('invalid ws origin')
         const queryIndex = targetPath.indexOf('?')
         origin.pathname = (queryIndex >= 0 ? targetPath.slice(0, queryIndex) : targetPath) || '/'
         origin.search = queryIndex >= 0 ? targetPath.slice(queryIndex) : ''
@@ -490,8 +498,8 @@ const dynamicBrokerProxyPlugin = (prefixes: string[], access: BrokerProxyAccess)
       }
 
       void (async () => {
-        const validation = await validateProxyTarget(target, access)
-        if (!validation.allowed) {
+        const validation = await validateProxyTarget(target, access, prefix === '/__broker_discovery' ? 'discovery' : 'broker')
+        if (validation.allowed === false) {
           sendProxyError(res, 403, validation.reason)
           return
         }
@@ -537,10 +545,7 @@ const DEV_WATCH_IGNORED_DIRS = [
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '');
   if (mode === 'web') validateWebBrokerEnvironment(env, process.cwd());
-  const backendTarget = env.VITE_API_URL || env.VITE_BACKEND_URL || 'https://backend.orrnn.com';
-  const discoveryTarget = env.VITE_BROKER_DISCOVERY_URL || 'https://testbrokerbackend.orrnn.com';
-  const brokerApiTarget = env.VITE_DEV_BROKER_API_URL || env.VITE_RTX5_API_URL || 'https://testbrokerbackend.orrnn.com';
-  const wsTarget = (env.VITE_WS_URL || env.VITE_FIX_WS_URL || 'wss://backend.orrnn.com/ws/v2').replace(/\/ws\/v2$/, '');
+  const { backendTarget, discoveryTarget, brokerApiTarget, wsTarget } = getBrokerProxyTargets(env);
   const brokerProxyAccess = createBrokerProxyAccess(env);
 
   const appVersion = String(JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')).version ?? '')
@@ -588,17 +593,17 @@ export default defineConfig(({ mode, command }) => {
           './src/components/layout/TopToolbar.tsx',
         ],
       },
-      proxy: {
+      proxy: Object.fromEntries(Object.entries({
         '/__broker_discovery': {
           target: discoveryTarget,
           changeOrigin: true,
-          secure: false,
+          secure: true,
           rewrite: (path) => path.replace(/^\/__broker_discovery/, ''),
         },
         '/__broker_api': {
           target: brokerApiTarget,
           changeOrigin: true,
-          secure: false,
+          secure: true,
           rewrite: (path) => path.replace(/^\/__broker_api/, ''),
         },
         '/api': {
@@ -611,7 +616,7 @@ export default defineConfig(({ mode, command }) => {
         '/fix-ws': {
           target: wsTarget,
           changeOrigin: true,
-          secure: false,
+          secure: true,
           ws: true,
           configure: configureWsProxy('fix-ws'),
         }
@@ -619,7 +624,7 @@ export default defineConfig(({ mode, command }) => {
         // which decodes the per-request broker origin (a static proxy target
         // sent every broker's WebSocket to the .env broker — breaking live data
         // whenever the runtime broker differs).
-      }
+      } satisfies Record<string, ProxyOptions>).filter(([, proxy]) => Boolean(proxy.target)))
     },
     optimizeDeps: {
       include: ['lightweight-charts', 'html2canvas-pro'],

@@ -141,6 +141,30 @@ describe('marketStatus helpers', () => {
     })).toBe('Aug 31, 11:45');
   });
 
+  it.each(['EURJPY', 'GBPJPY', 'XAGUSD'])('does not mislabel a missing %s schedule as closed', (symbol) => {
+    const normalized = normalizeMarketStatus({
+      symbol,
+      message: 'schedule unavailable',
+      quote_open: false,
+      trade_open: false,
+    });
+
+    expect(normalized.status).toBe('unknown');
+    expect(normalized.label).toBe('Status unavailable');
+    expect(normalized.isTradeBlocked).toBe(true);
+    expect(getMarketStatusTradeBlockMessage(normalized)).toContain('Market status unavailable');
+  });
+
+  it('preserves an explicit closed status even with a schedule warning', () => {
+    const normalized = normalizeMarketStatus({
+      symbol: 'EURJPY',
+      status: 'closed',
+      message: 'schedule unavailable',
+      trade_open: false,
+    });
+    expect(normalized.status).toBe('closed');
+  });
+
   it('preserves the server clock as a normalized millisecond timestamp', () => {
     expect(normalizeMarketStatus({ server_time: 1_788_176_700 }).serverTimeMs)
       .toBe(1_788_176_700_000);

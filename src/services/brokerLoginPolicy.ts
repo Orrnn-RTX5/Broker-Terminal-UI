@@ -1,8 +1,11 @@
 import {
   getBackendTarget,
   getRuntimeConfiguredBrokerId,
+  getBrokerConfigurationError,
+  isDesktopBackendTarget,
 } from '../config/backendTarget.js';
 import type { BrokerDiscoveryItem } from './brokerDiscovery';
+import { isBrokerSuspended } from './brokerDiscovery';
 
 export interface BrokerLoginPolicy {
   status: 'ready' | 'error';
@@ -24,7 +27,7 @@ const TARGET_FIELDS = [
   'web_backend_url', 'services_url',
 ] as const;
 
-const normalizeId = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+const normalizeId = (value: unknown): string => String(value ?? '').trim();
 
 const hostnameOf = (value: unknown): string => {
   const raw = String(value ?? '').trim();
@@ -81,10 +84,25 @@ export const resolveBrokerLoginPolicy = (
   brokers: readonly BrokerDiscoveryItem[],
   locationLike: Pick<Location, 'hostname'> | undefined = typeof window === 'undefined' ? undefined : window.location,
 ): BrokerLoginPolicy => {
+  const webDeployment = !isDesktopBackendTarget();
+  if (webDeployment && getBrokerConfigurationError()) {
+    return failedPolicy(getBrokerConfigurationError());
+  }
   const runtimeId = normalizeId(getRuntimeConfiguredBrokerId());
   const runtimeBroker = brokers.find((broker) => normalizeId(broker.broker_id) === runtimeId);
   const hostname = hostnameOf(locationLike?.hostname);
   const targetOrigin = originOf(getBackendTarget());
+  if (webDeployment) {
+    if (!runtimeBroker || !runtimeId) return failedPolicy('This terminal does not have a verified broker configured.');
+    if (isBrokerSuspended(runtimeBroker)) return failedPolicy('The configured broker is unavailable for account access.');
+    const hostMatches = isLocalHostname(hostname) ? [] : brokers.filter(broker => brokerMatchesHostname(broker, hostname));
+    const targetMatches = brokers.filter(broker => brokerMatchesTarget(broker, targetOrigin));
+    if ((hostMatches.length && !hostMatches.includes(runtimeBroker))
+      || (targetMatches.length && !targetMatches.includes(runtimeBroker))) {
+      return failedPolicy('This terminal broker configuration does not match its deployment URL.');
+    }
+    return readyPolicy(runtimeBroker);
+  }
   // A developer's localhost is shared by every broker's local frontend. It
   // cannot identify a broker, even if discovery lists a demo on that hostname.
   const hostBroker = isLocalHostname(hostname)
@@ -102,7 +120,7 @@ export const resolveBrokerLoginPolicy = (
     const sessionId = getStoredSessionBrokerId();
     return sessionId ? brokers.find((broker) => normalizeId(broker.broker_id) === sessionId) : undefined;
   })();
-  if (sessionBroker) {
+  if (!webDeployment && sessionBroker) {
     if (hostBroker && normalizeId(hostBroker.broker_id) !== normalizeId(sessionBroker.broker_id)) {
       return failedPolicy('The active broker session does not match this terminal deployment URL.');
     }
@@ -118,6 +136,10 @@ export const resolveBrokerLoginPolicy = (
   }
   if (normalizeId(broker.broker_id) !== runtimeId) {
     return failedPolicy('This terminal broker identity could not be verified.');
+  }
+
+  if (webDeployment && String(broker.broker_id).trim() !== getRuntimeConfiguredBrokerId()) {
+    return failedPolicy('This terminal broker identity does not match its configured broker.');
   }
 
   return readyPolicy(broker);

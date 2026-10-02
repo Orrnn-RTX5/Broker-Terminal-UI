@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiRequestOptions } from '../api/client';
 import { marketApi } from '../api/endpoints';
 import { loadSharedAuthenticatedInstruments } from './authenticatedInstruments';
+import { updateDynamicUrls } from '../config/api';
 
 const state = vi.hoisted(() => ({
   get: vi.fn(), token: 'token-a', expired: false,
@@ -18,6 +19,7 @@ vi.mock('../api/client', () => ({
 vi.mock('./brokerSession', async (importOriginal) => ({
   ...await importOriginal<typeof import('./brokerSession')>(),
   getCommittedBrokerAccountSessionScope: () => state.scope,
+  getRefreshToken: () => localStorage.getItem('refresh_token'),
   getCommittedBrokerAccountSessionScopeKey: (scope: unknown) => JSON.stringify(scope),
   onCommittedBrokerAccountSessionScopeChange: (callback: () => void) => { state.listeners.push(callback); },
   onSessionChange: (callback: () => void) => { state.listeners.push(callback); },
@@ -41,6 +43,11 @@ beforeEach(() => {
   state.token = 'token-a';
   state.expired = false;
   localStorage.setItem('refresh_token', 'refresh-a');
+  (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+    BACKEND_TARGET: 'web', API_HOST: state.scope.serverUrl, WS_HOST: 'wss://broker.test',
+    BROKER_ID: state.scope.brokerId, DEFAULT_MT5_SERVER: 'Fixture-Live',
+  };
+  updateDynamicUrls();
   pending = [];
   state.get.mockReset().mockImplementation((_endpoint: string, request: ApiRequestOptions) => new Promise((resolve, reject) => {
     pending.push({ resolve, reject, signal: request.signal });
@@ -49,6 +56,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
   state.listeners.forEach((listener) => listener());
   localStorage.clear();
 });

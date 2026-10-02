@@ -1,10 +1,14 @@
+import { resolveDailyChangeDisplayDigits } from '../../services/dailyChangePriceModeRegistry';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import type { Tick } from '../../store/useAppStore';
 import {
   getMarketWatchDisplayMetadata,
   resolveMarketWatchDisplayMetadata,
+  mayUseClosedDailyChange,
 } from '../../store/useMarketWatchDisplayMetadataStore';
 import { formatSpreadDisplay } from '../../utils/spread';
+import { formatDailyChange } from '../../utils/dailyChange';
+import { readCurrentMarketWatchDailyChangePrice } from '../../services/marketWatchDailyChangeCache';
 import {
   escapeMarketWatchCsvCell,
   escapeMarketWatchTsvCell,
@@ -47,7 +51,8 @@ const COLUMN_LABELS: Record<MarketWatchColumnId, string> = {
   volume: 'Volume',
   spread: 'Spread',
   time: 'Time',
-  dailyChange: 'Daily Change',
+  dailyChange: 'Change %',
+  dailyChangePrice: 'Change',
   source: 'Source',
 };
 
@@ -69,7 +74,9 @@ export const createMarketWatchExportSnapshot = ({
       getMarketWatchDisplayMetadata(symbol),
     );
     const dailyChange = readFiniteDailyChange(display.dailyChange)
-      ?? readFiniteDailyChange(closedDailyChanges.get(symbol));
+      ?? (mayUseClosedDailyChange(display) ? readFiniteDailyChange(closedDailyChanges.get(symbol)) : null);
+    const dailyAmount = display.dailyChangePrice
+      ?? (closedDailyChanges.has(symbol) && mayUseClosedDailyChange(display) ? readCurrentMarketWatchDailyChangePrice(symbol) : undefined);
     const fallback = hasLiveQuote ? undefined : lastPrices.get(symbol);
     const quote = hasLiveQuote ? tick : fallback?.kind === 'quote' ? fallback : undefined;
 
@@ -96,7 +103,8 @@ export const createMarketWatchExportSnapshot = ({
           ) ?? fallback?.asOf,
           showMilliseconds,
         );
-        case 'dailyChange': return dailyChange !== null ? `${dailyChange.toFixed(2)}%` : '-';
+        case 'dailyChange': return dailyChange !== null ? formatDailyChange(dailyChange, 2, true) : '-';
+        case 'dailyChangePrice': return dailyAmount != null ? formatDailyChange(dailyAmount, resolveDailyChangeDisplayDigits(symbol, tick?.digits)) : '-';
         case 'source': return tick?.lp ?? '-';
         default: return '-';
       }

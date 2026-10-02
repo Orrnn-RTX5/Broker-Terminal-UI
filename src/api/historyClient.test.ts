@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { installTestBrokerRuntime } from '../test/brokerRuntime';
 import { HistoryApiError, historyClient } from './historyClient';
 import { RTX5_API_URL } from '../config/api';
 
@@ -16,9 +17,16 @@ const lastFetchUrl = () => {
 };
 
 describe('historyClient v2 history contract calls', () => {
+  let restoreBrokerRuntime: () => void;
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([])));
     localStorage.clear();
+    restoreBrokerRuntime = installTestBrokerRuntime();
+  });
+
+  afterEach(() => {
+    restoreBrokerRuntime();
+    vi.unstubAllGlobals();
   });
 
   it('fetches downloader ticks through the supported v2 gateway ticks endpoint', async () => {

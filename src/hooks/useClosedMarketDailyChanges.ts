@@ -74,6 +74,7 @@ export async function hydrateClosedMarketDailyChanges({
           resolved.asOf,
           'history',
           resolved.completedAt,
+          resolved.change,
         );
         const persisted = readMarketWatchDailyChange(scopeKey, symbol);
         if (isFiniteNumber(persisted)) values.set(symbol, persisted);
@@ -129,6 +130,7 @@ export function useClosedMarketDailyChanges({
     if (!enabled || !activeScopeKey || normalizedSymbols.length === 0) return undefined;
 
     const controller = new AbortController();
+    const capturedScope = getCurrentMarketWatchDailyChangeScopeKey();
     let disposed = false;
     let nextSymbolIndex = 0;
 
@@ -160,7 +162,7 @@ export function useClosedMarketDailyChanges({
             count: 8,
             signal: controller.signal,
           });
-          if (disposed || controller.signal.aborted) return;
+          if (disposed || controller.signal.aborted || getCurrentMarketWatchDailyChangeScopeKey() !== capturedScope) return;
 
           const resolved = resolveCompletedDailyChange(candles);
           if (!resolved || !isFiniteNumber(resolved.value)) continue;
@@ -172,6 +174,7 @@ export function useClosedMarketDailyChanges({
             resolved.asOf,
             'history',
             resolved.completedAt,
+            resolved.change,
           );
           publishPersistedValue(symbol);
         } catch {

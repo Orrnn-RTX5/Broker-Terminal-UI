@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
-import { RTX5_API_URL, WS_URL } from '../config/api';
+import { RTX5_API_URL, WS_URL, updateDynamicUrls } from '../config/api';
 import {
   clearTradeHistoryRequestCache,
   collapseDealHistory,
@@ -25,10 +25,131 @@ vi.mock('./client', () => ({
   },
 }));
 
+beforeEach(() => {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'desktop', API_HOST: 'https://broker.example', WS_HOST: 'wss://broker.example',
+      BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
+    };
+    localStorage.setItem('server_url', 'https://broker.example');
+    localStorage.setItem('broker_id', 'Fixture');
+    updateDynamicUrls();
+});
+afterEach(() => {
+  delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
+  localStorage.clear();
+});
+
 describe('trade gateway normalization', () => {
   afterEach(() => {
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
+    localStorage.clear();
     vi.mocked(apiClient.get).mockReset();
     clearTradeHistoryRequestCache();
+  });
+
+  it('uses the paginated trader route for the session account and rejects another account page', async () => {
+    localStorage.setItem('auth_token', makeJwt({ account_login: 123 }));
+    try {
+      const first = Array.from({ length: 500 }, (_, index) => ({ ticket: index + 1, account_login: 123, action: 'deal_buy', profit: 1 }));
+      vi.mocked(apiClient.get).mockResolvedValueOnce(first)
+        .mockResolvedValueOnce([{ ticket: 501, account_login: 123, action: 'deal_sell', profit: -10 }]);
+      const read = await tradeGatewayApi.getDealHistory(123);
+      expect(read.error).toBeNull();
+      expect(read.deals).toHaveLength(501);
+      const firstOptions = vi.mocked(apiClient.get).mock.calls[0][1];
+      expect(apiClient.get).toHaveBeenNthCalledWith(1, '/account/deals', expect.objectContaining({ params: { limit: 500, offset: 0, to: expect.any(Number) } }));
+      expect(apiClient.get).toHaveBeenNthCalledWith(2, '/account/deals', expect.objectContaining({ params: { limit: 500, offset: 500, to: (firstOptions?.params as { to: number }).to } }));
+      clearTradeHistoryRequestCache();
+      vi.mocked(apiClient.get).mockResolvedValue([{ ticket: 1, account_login: 999 }]);
+      await expect(tradeGatewayApi.getDealHistory(123)).rejects.toThrow('Invalid account');
+    } finally {
+      localStorage.removeItem('auth_token');
+    }
+  });
+
+  it('retains the explicit login route for a different account and falls back only for unsupported trader routes', async () => {
+    localStorage.setItem('auth_token', makeJwt({ account_login: 123 }));
+    try {
+      vi.mocked(apiClient.get).mockResolvedValue([]);
+      await tradeGatewayApi.getDealHistory(456);
+      expect(apiClient.get).toHaveBeenCalledWith('/deals/456', expect.any(Object));
+      vi.mocked(apiClient.get).mockReset().mockRejectedValueOnce({ status: 404 }).mockResolvedValueOnce([]);
+      await expect(tradeGatewayApi.getDeals(123)).resolves.toEqual([]);
+      expect(apiClient.get).toHaveBeenNthCalledWith(2, '/deals/123', expect.any(Object));
+      clearTradeHistoryRequestCache();
+      vi.mocked(apiClient.get).mockReset().mockRejectedValue({ status: 401 });
+      await expect(tradeGatewayApi.getDeals(123)).rejects.toMatchObject({ status: 401 });
+      expect(apiClient.get).toHaveBeenCalledTimes(1);
+    } finally {
+      localStorage.removeItem('auth_token');
+    }
+  });
+
+  it('loads every execution page so financial history is not truncated at 500 deals', async () => {
+    const firstPage = Array.from({ length: 500 }, (_, index) => ({
+      ticket: index + 1, action: 'buy', profit: 1, time: 1760000000,
+    }));
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ deals: firstPage })
+      .mockResolvedValueOnce({ data: { deals: [firstPage[499], { ticket: 501, action: 'sell', profit: 2 }] } });
+    const deals = await tradeGatewayApi.getDeals(123);
+    expect(deals).toHaveLength(501);
+    expect(deals.reduce((total, deal) => total + deal.profit, 0)).toBe(502);
+    expect(apiClient.get).toHaveBeenNthCalledWith(2, '/deals/123', expect.objectContaining({ params: { limit: 500, offset: 500 } }));
+  });
+
+  it('keeps a repeated full page visible without reporting it as complete financial history', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ message: 'not supported' });
+    await expect(tradeGatewayApi.getDeals(124)).rejects.toThrow('response is unavailable');
+    const page = Array.from({ length: 500 }, (_, index) => ({ ticket: index + 1, action: 'buy' }));
+    vi.mocked(apiClient.get).mockResolvedValue({ deals: page });
+    const read = await tradeGatewayApi.getDealHistory(125);
+    expect(read.deals).toHaveLength(500);
+    expect(read.error).toContain('Broker repeated a history page');
+    await expect(tradeGatewayApi.getDeals(125)).resolves.toHaveLength(500);
+    expect(apiClient.get).toHaveBeenCalledTimes(3);
+  });
+
+  it('preserves already loaded deals when a later page fails', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(Array.from({ length: 500 }, (_, index) => ({
+      ticket: index + 1, action: 'buy', profit: 1,
+    }))).mockRejectedValueOnce(new Error('Page request failed'));
+    const read = await tradeGatewayApi.getDealHistory(127);
+    expect(read.deals).toHaveLength(500);
+    expect(read.error).toContain('Page request failed');
+  });
+
+  it('retains partial history in the dataset with an explicit completeness error', async () => {
+    const deals = Array.from({ length: 500 }, (_, index) => ({
+      ticket: index + 1, position_ticket: Math.floor(index / 2) + 1,
+      action: index % 2 ? 'sell' : 'buy', entry: index % 2 ? 'entry_out' : 'entry_in',
+      profit: index % 2 ? 1 : 0, volume: 0.01, price: 100, time: 1760000000 + index,
+    }));
+    vi.mocked(apiClient.get).mockImplementation(async <T,>(endpoint: string): Promise<T> => (
+      endpoint === '/deals/128' ? deals : []
+    ) as T);
+    const history = await tradeGatewayApi.getHistoryDataSet(128);
+    expect(history.positions).toHaveLength(250);
+    expect(history.deals).toHaveLength(500);
+    expect(history.errors.deals).toContain('Broker repeated a history page');
+    expect(history.errors.positions).toContain('showing 500 available deals');
+  });
+
+  it('forwards the account ledger pagination offset', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue([]);
+    await tradeGatewayApi.getBalanceHistory(123, 500, 500);
+    expect(apiClient.get).toHaveBeenCalledWith('/accounts/123/history', expect.objectContaining({ params: { limit: 500, offset: 500 } }));
+  });
+
+  it('preserves all executions in the composed history dataset for financial totals', async () => {
+    const firstPage = Array.from({ length: 500 }, (_, index) => ({ ticket: index + 1, action: 'buy', profit: 1 }));
+    vi.mocked(apiClient.get).mockImplementation(async <T,>(endpoint: string, options?: { params?: Record<string, unknown> }): Promise<T> => {
+      if (endpoint === '/deals/126') return (options?.params?.offset === 0
+        ? firstPage : [{ ticket: 501, action: 'sell', profit: 2 }]) as T;
+      return [] as T;
+    });
+    const history = await tradeGatewayApi.getHistoryDataSet(126);
+    expect(history.deals).toHaveLength(501);
+    expect(history.deals.reduce((sum, deal) => sum + deal.profit, 0)).toBe(502);
   });
 
   it('uses the shared v2 REST and websocket authority helpers', () => {

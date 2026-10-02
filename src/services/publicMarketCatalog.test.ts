@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadPublicMarketCatalog, preloadPublicMarketCatalog } from './publicMarketCatalog';
 import { loadPublicQuotes } from './publicMarket';
 
-vi.mock('../config/backendTarget.js', () => ({ getPublicBackendTarget: () => 'https://nexa.orrnn.com' }));
+vi.mock('../config/backendTarget.js', () => ({ getPublicBackendTarget: () => 'https://nexa.orrnn.com', getRuntimeBrokerConfiguration: () => ({ brokerId: 'Fixture', publicMarketApi: 'mt5-bridge-v1' }) }));
 vi.mock('../config/localDevProxy', () => ({ toLocalDevProxyUrl: (url: string) => url }));
+// Transport-sharing unit tests; deployment ownership is covered by brokerRequestIsolation.test.ts.
+vi.mock('../api/brokerRequestGuard', () => ({ assertBrokerRequestAllowed: () => undefined }));
 
 type PendingRequest = {
   signal: AbortSignal;
@@ -41,7 +43,7 @@ describe('public market catalog request sharing', () => {
     const quotes = loadPublicQuotes(new AbortController().signal);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(`${host}/api/v1/market/symbols`, {
-      signal: expect.any(AbortSignal), credentials: 'omit', cache: 'no-store',
+      signal: expect.any(AbortSignal), credentials: 'omit', cache: 'no-store', redirect: 'error',
     });
     pending[0].resolve(response());
     const [prefetched, displayed, quoteRows] = await Promise.all([prefetch, catalog, quotes]);

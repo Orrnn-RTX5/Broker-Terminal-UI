@@ -66,8 +66,8 @@ describe('PopupPricesDialog', () => {
     expect(cards).toHaveLength(2);
     expect(within(dialog).getByLabelText('EURUSD Bid 1.08456')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('EURUSD Ask 1.08474')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Daily Change +1.25%')).toHaveAttribute('data-tone', 'positive');
-    expect(within(dialog).getByLabelText('Daily Change -0.31%')).toHaveAttribute('data-tone', 'negative');
+    expect(within(dialog).getByLabelText('Change % +1.25%')).toHaveAttribute('data-tone', 'positive');
+    expect(within(dialog).getByLabelText('Change % -0.31%')).toHaveAttribute('data-tone', 'negative');
     expect(within(dialog).getAllByText('Quote')).toHaveLength(2);
     expect(dialog).not.toHaveAttribute('aria-modal');
   });
@@ -92,7 +92,7 @@ describe('PopupPricesDialog', () => {
 
     expect(screen.getByLabelText('FUTURE.LAST Bid unavailable')).toBeInTheDocument();
     expect(screen.getByLabelText('FUTURE.LAST Ask unavailable')).toBeInTheDocument();
-    expect(screen.getByLabelText('Daily Change +20.00%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Change % +20.00%')).toBeInTheDocument();
     expect(screen.getByText('22:13:20.200')).toBeInTheDocument();
     expect(useAppStore.getState().ticks['FUTURE.LAST']).toBeUndefined();
     expect(screen.getByRole('listitem', { name: 'FUTURE.LAST quote' }).querySelector('.price-display'))
@@ -149,7 +149,7 @@ describe('PopupPricesDialog', () => {
     expect(within(closeCard).getByText('Last close')).toBeInTheDocument();
     expect(within(closeCard).getByLabelText('XAUUSD Bid 4385.20')).toBeInTheDocument();
     expect(within(closeCard).getByLabelText('XAUUSD Ask unavailable')).toBeInTheDocument();
-    expect(within(closeCard).getByLabelText('Daily Change -0.42%')).toHaveAttribute('data-tone', 'negative');
+    expect(within(closeCard).getByLabelText('Change % -0.42%')).toHaveAttribute('data-tone', 'negative');
     expect(within(closeCard).getByText('03:04:05.042')).toBeInTheDocument();
     expect(within(closeCard).getByText('Spread').nextElementSibling).toHaveTextContent('—');
 
@@ -176,7 +176,7 @@ describe('PopupPricesDialog', () => {
     expect(within(card).getByText('Quote')).toBeInTheDocument();
     expect(within(card).queryByText('Last close')).not.toBeInTheDocument();
     expect(within(card).getByLabelText('EURUSD Bid 1.08456')).toBeInTheDocument();
-    expect(within(card).getByLabelText('Daily Change +1.25%')).toBeInTheDocument();
+    expect(within(card).getByLabelText('Change % +1.25%')).toBeInTheDocument();
   });
 
   it('closes on Escape and through the explicit window control', () => {

@@ -4,7 +4,7 @@ import { Icon } from '../ui/Icon';
 import { ChartCommandIcon, type ChartCommandIconName } from './ChartCommandIcon';
 import type { ChartType, Timeframe } from '../../types/chart';
 import {
-    Minus, Square, Copy, RotateCcw, X
+    Minus, Square, Copy, RotateCcw, X, History, GitCommitHorizontal, ArrowUpDown, Bug
 } from 'lucide-react';
 import { useToolbarState } from '../../hooks/useToolbarState';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcut';
@@ -13,6 +13,7 @@ import { useCommandBus } from '../../hooks/useCommandBus';
 import type { Command } from '../../types/commands';
 import { useAppStore } from '../../store/useAppStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
+import { lastSymbolFeature } from '../../startup/terminalFeatures';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import {
     defaultChartProperties,
@@ -22,6 +23,8 @@ import {
 import { useDrawingToolPreferencesStore } from '../../store/useDrawingToolPreferencesStore';
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
 import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
+import { getAccessToken } from '../../services/brokerSession';
+import { isConfiguredBrokerEndpoint } from '../../config/backendTarget.js';
 import { getActiveChartCommandTarget, getPanelIdFromChartContextId } from '../../services/chartCommandTarget';
 import { getActiveChartSourceId, subscribeActiveChartSource } from '../../services/activeChartSource';
 import { getDockPanelChartType, findChartPanel } from '../../services/chartTypeCommand';
@@ -66,7 +69,7 @@ const subscribeToolbarActiveChartSource = (listener: () => void): (() => void) =
 };
 
 const getLogoutBase = (): string => {
-    const fallback = normalizeServerUrl(RTX5_API_URL || import.meta.env.VITE_API_URL || '');
+    const fallback = normalizeServerUrl(RTX5_API_URL || '');
     if (typeof window === 'undefined') return fallback;
 
     const serverUrl = normalizeBrokerServerUrl(localStorage.getItem('server_url') || localStorage.getItem('rtx_broker_server') || '');
@@ -416,7 +419,8 @@ const MainToolbar = ({
     const accountId = useAppStore((s) => s.accountId) || '';
     const isAuthenticated = useAppStore((s) => s.isAuthenticated);
     const savedAccounts = useAppStore((s) => s.savedAccounts);
-    const lastSymbol = useLastSymbolStore((state) => state.lastSymbol);
+    const lastTradedSymbol = useLastSymbolStore((state) => state.lastSymbol);
+    const lastSymbol = symbol.trim() || lastTradedSymbol;
     const lastSymbolPanelVisible = useLastSymbolStore((state) => state.panelVisible);
     const timeframesVisible = useTerminalBarsStore(state => state.timeframesVisible);
     const toggleLastSymbolPanel = useLastSymbolStore((state) => state.togglePanel);
@@ -570,11 +574,13 @@ const MainToolbar = ({
     const handleLogout = () => {
         // Fire-and-forget the backend logout API (don't wait)
         const logoutBase = getLogoutBase().replace(/\/$/, '');
-        fetch(`${logoutBase}/api/logout`, {
+        const token = getAccessToken();
+        if (token && isConfiguredBrokerEndpoint(`${logoutBase}/api/logout`)) fetch(`${logoutBase}/api/logout`, {
             method: 'POST',
+            redirect: 'error',
             headers: {
                 'accept': '*/*',
-                'Authorization': `Bearer ${localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || ''}`,
+                'Authorization': `Bearer ${token}`,
             },
         }).catch(() => { /* ignore */ });
 
@@ -599,6 +605,26 @@ const MainToolbar = ({
         />
     );
 
+    const reportBugButton = (
+        <button
+            type="button"
+            className="rtx-toolbar-action rtx-report-bug-button mx-2 shrink-0 gap-1.5 px-2 whitespace-nowrap"
+            style={{ height: isDesktopShell ? 19 : 32, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title={tr('Report a Bug')}
+            aria-label={tr('Report a Bug')}
+            aria-haspopup="dialog"
+            onClick={() => {
+                const target = getActiveChartCommandTarget(symbol, toolbarState.timeframe || timeframe);
+                window.dispatchEvent(new CustomEvent('rtx5:open-bug-report', {
+                    detail: { symbol: target.symbol, timeframe: target.timeframe },
+                }));
+            }}
+        >
+            <Bug size={16} strokeWidth={1.5} aria-hidden="true" />
+            <span>{tr('Report a Bug')}</span>
+        </button>
+    );
+
     return (
         <div
             className={isDesktopShell
@@ -612,6 +638,7 @@ const MainToolbar = ({
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                 >
                     {menuBar}
+                    <div className="ml-auto shrink-0">{reportBugButton}</div>
                 </div>
             )}
             {!isDesktopShell && menuBar}
@@ -663,14 +690,13 @@ const MainToolbar = ({
                                 className="rtx-toolbar-action rtx-toolbar-action--last-symbol text-[13px] font-normal font-segoe"
                                 title="Last Symbol Trader Panel (Shift+B/S/X)"
                                 aria-label={lastSymbol
-                                    ? `Last Symbol Trader Panel: ${lastSymbol} (Shift+B/S/X)`
+                                    ? `Last Symbol ${lastSymbol} — Trader Panel (Shift+B/S/X)`
                                     : 'Last Symbol Trader Panel (Shift+B/S/X)'}
                                 aria-pressed={lastSymbolPanelVisible}
+                                onPointerEnter={() => { void lastSymbolFeature.preload().catch(() => undefined); }}
+                                onFocus={() => { void lastSymbolFeature.preload().catch(() => undefined); }}
                                 onClick={toggleLastSymbolPanel}
                             >
-                                <span className="rtx-toolbar-action__icon" aria-hidden="true">
-                                    <Icon name="activity" size={20} />
-                                </span>
                                 <span className="rtx-toolbar-action__label">Last Symbol</span>
                                 {lastSymbol && (
                                     <span className="rtx-toolbar-symbol-badge" aria-hidden="true">
@@ -753,7 +779,7 @@ const MainToolbar = ({
                                     >
                                         <div className="rtx-history-overlay-menu__header">
                                             <span className="rtx-history-overlay-menu__header-icon" aria-hidden="true">
-                                                <ChartCommandIcon name="sliders-horizontal" />
+                                                <History size={18} strokeWidth={1.75} />
                                             </span>
                                             <span className="rtx-history-overlay-menu__heading">
                                                 <span className="rtx-history-overlay-menu__eyebrow">{tr("Chart settings")}</span>
@@ -839,6 +865,7 @@ const MainToolbar = ({
                     />
                 )}
             </div>
+            {!isDesktopShell && reportBugButton}
             {!isDesktopShell && <WindowControls />}
         </div>
     );
@@ -868,15 +895,9 @@ const TradeHistoryOverlayOption = ({
     <label className="rtx-history-overlay-menu__option" data-enabled={checked ? 'true' : 'false'}>
         <span className="rtx-history-overlay-menu__preview" aria-hidden="true">
             {kind === 'line' ? (
-                <svg viewBox="0 0 24 16" focusable="false">
-                    <circle cx="4" cy="12" r="2" fill="currentColor" />
-                    <path d="M6 11L18 5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                    <circle cx="20" cy="4" r="2" fill="currentColor" />
-                </svg>
+                <GitCommitHorizontal size={18} strokeWidth={1.75} />
             ) : (
-                <svg viewBox="0 0 24 16" fill="none" focusable="false">
-                    <path d="M6 13V4M3 7l3-3 3 3M18 3v9m-3-3 3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <ArrowUpDown size={18} strokeWidth={1.75} />
             )}
         </span>
         <span className="rtx-history-overlay-menu__option-copy">

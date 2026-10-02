@@ -71,7 +71,10 @@ const makeJwt = (payload: Record<string, unknown>): string => {
 type RuntimeWindow = Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
 
 const setDesktopRuntime = () => {
-  (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { backendTarget: 'desktop' };
+  (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+    backendTarget: 'desktop', API_HOST: 'https://broker.example', WS_HOST: 'wss://broker.example',
+    BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live', PUBLIC_CANDLE_BRIDGE: true,
+  };
 };
 
 const expectedCandleUrl = () =>
@@ -145,6 +148,8 @@ describe('trade candle normalization and websocket cleanup', () => {
     localStorage.clear();
     sessionStorage.clear();
     setDesktopRuntime();
+    localStorage.setItem('server_url', 'https://broker.example');
+    localStorage.setItem('broker_id', 'Fixture');
   });
 
   afterEach(() => {
@@ -400,23 +405,19 @@ describe('trade candle normalization and websocket cleanup', () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/candles?symbol=GBPUSD&tf=1m');
   });
 
-  it('treats TEST and fxtrust as the same broker for candle auth', async () => {
-    localStorage.setItem('broker_id', 'TEST');
-    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
-    });
+  it.each([['TEST', 'fxtrust'], ['RegisteredID', 'registeredid'], ['new-broker', 'other-broker']])('does not alias different backend broker IDs %s and %s', async (active, tokenBroker) => {
+    localStorage.setItem('broker_id', active);
+    localStorage.setItem('auth_token', makeJwt({ broker_id: tokenBroker, account_login: 1001 }));
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__!.PUBLIC_CANDLE_BRIDGE = false;
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-
-    const service = new ChartDataService();
-    await expect(service.fetchCandles({ symbol: 'BTCUSD', timeframe: 'M5', count: 50 })).resolves.toHaveLength(1);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v2/candles/BTCUSD?timeframe=M5');
+    await expect(new ChartDataService().fetchCandles({ symbol: 'BTCUSD', timeframe: 'M5', count: 50 })).resolves.toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('prefers authenticated TEST v2 OHLC and does not query the public bridge when v2 is valid', async () => {
     localStorage.setItem('broker_id', 'TEST');
-    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'TEST', account_login: 1001 }));
     const authenticatedCandles = [
       { time: 1788508800, open: 4474.2, high: 4474.8, low: 4473.9, close: 4474.6, volume: 18 },
     ];
@@ -442,7 +443,7 @@ describe('trade candle normalization and websocket cleanup', () => {
 
   it('refreshes from the broker instead of reusing a stale in-memory snapshot', async () => {
     localStorage.setItem('broker_id', 'TEST');
-    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'TEST', account_login: 1001 }));
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
@@ -474,7 +475,7 @@ describe('trade candle normalization and websocket cleanup', () => {
 
   it('keeps same-key requests independent when an older request is aborted', async () => {
     localStorage.setItem('broker_id', 'TEST');
-    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'TEST', account_login: 1001 }));
     const firstController = new AbortController();
     const secondController = new AbortController();
     const abortError = new Error('Aborted');
@@ -513,7 +514,7 @@ describe('trade candle normalization and websocket cleanup', () => {
 
   it('does not reuse an in-memory candle snapshot across account sessions', async () => {
     localStorage.setItem('broker_id', 'TEST');
-    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'TEST', account_login: 1001 }));
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
@@ -658,6 +659,11 @@ describe('trade candle normalization and websocket cleanup', () => {
 
   it('keeps broker-discovered REST candles direct outside local Vite dev', async () => {
     await withWindowLocation({ protocol: 'https:', hostname: 'app.example.com' }, async () => {
+      (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+        BACKEND_TARGET: 'web', API_HOST: 'https://broker.example.com', WS_HOST: 'wss://broker.example.com',
+        BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
+      };
+      localStorage.setItem('broker_id', 'Fixture');
       localStorage.setItem('server_url', 'https://broker.example.com');
       localStorage.setItem('auth_token', 'jwt-token');
       const fetchMock = vi.fn().mockResolvedValue({

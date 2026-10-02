@@ -1,4 +1,5 @@
 type EarlyPublicStartup = {
+  brokerId?: string;
   symbolsUrl?: string;
   candlesUrl?: string;
   symbols?: Promise<Response> | null;
@@ -13,9 +14,10 @@ const earlyStartup = (): EarlyPublicStartup | null => {
 };
 
 /** Use the page's startup request once, and only when it targets this exact URL. */
-const takeEarlyResponse = (kind: 'symbols' | 'candles', url: string): Promise<Response> | null => {
+const takeEarlyResponse = (kind: 'symbols' | 'candles', url: string, brokerId?: string): Promise<Response> | null => {
   const early = earlyStartup();
   if (!early) return null;
+  if (brokerId && early.brokerId !== brokerId) return null;
   const expectedUrl = kind === 'symbols' ? early.symbolsUrl : early.candlesUrl;
   const request = kind === 'symbols' ? early.symbols : early.candles;
   if (!request || expectedUrl !== url) return null;
@@ -33,9 +35,10 @@ export const fetchEarlyPublicStartup = (
   kind: 'symbols' | 'candles',
   url: string,
   signal: AbortSignal,
+  headers?: Record<string, string>,
 ): Promise<Response> => {
-  const early = takeEarlyResponse(kind, url);
-  if (!early) return fetch(url, { signal, credentials: 'omit', cache: 'no-store' });
+  const early = takeEarlyResponse(kind, url, headers?.['X-Broker-ID']);
+  if (!early) return fetch(url, { signal, credentials: 'omit', cache: 'no-store', redirect: 'error', ...(headers ? { headers } : {}) });
   if (signal.aborted) return Promise.reject(signal.reason ?? abortError());
   return new Promise((resolve, reject) => {
     const onAbort = () => reject(signal.reason ?? abortError());

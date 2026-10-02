@@ -3,6 +3,7 @@ import {
   composeDailyChangeQuoteContext,
   readDailyChangeLastPrice,
   readDailyChangePercent,
+  readDailyChangeInput,
   readDailyChangePreviousClose,
   resolveDailyChangePercent,
 } from '../../utils/dailyChange';
@@ -298,9 +299,13 @@ export const normalizeTick = (raw: unknown, fallbackSymbol?: string): (Tick & Pa
   );
   const bid = toNumber(payload?.bid);
   const ask = toNumber(payload?.ask, bid);
+  const dailyInput = readDailyChangeInput({ ...dailyChangeContext, bid: payload?.bid }, priceMode);
   // Preserve Last-only data as metadata. Zero sides keep it non-executable and
   // let the dispatcher exclude it from market/OHLC paths.
-  if (bid <= 0 && ask <= 0 && !(priceMode === 'last' && last !== undefined)) return null;
+  if (bid <= 0 && ask <= 0 && dailyInput.last === undefined
+    && dailyInput.previousClose === undefined && dailyInput.settlement === undefined
+    && dailyInput.upstreamPercent === undefined && dailyInput.upstreamChange === undefined
+    && dailyInput.status === undefined && dailyInput.sessionId === undefined) return null;
 
   const spread = toNumber(payload?.spread, ask - bid);
   const previousClose = readDailyChangePreviousClose(dailyChangeContext);
@@ -349,6 +354,7 @@ export const normalizeTick = (raw: unknown, fallbackSymbol?: string): (Tick & Pa
     lp,
     volume,
     last,
+    dailyChangeInput: dailyInput,
     dailyChange: resolveDailyChangePercent(
       readDailyChangePercent(dailyChangeContext),
       bid,

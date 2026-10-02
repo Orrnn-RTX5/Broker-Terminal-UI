@@ -39,7 +39,8 @@ import {
   shouldCommitFirstLiveSelectionBaseline,
 } from '../../../utils/chartSelectionPresentation';
 import type { PeriodSeparator } from '../../../utils/periodSeparators';
-import { getQuoteBidMarkupOffset, getRawQuoteSides } from '../../../utils/spreadMarkup';
+import { getRawQuoteSides } from '../../../utils/spreadMarkup';
+import { resolveFormingCandleLiveClose } from '../../../utils/liveCandleQuote';
 import type { SynchronizedMarketClockAnchor } from '../../../utils/synchronizedMarketClock';
 import {
   alignTimeframeBoundarySeconds,
@@ -111,7 +112,6 @@ interface UseTradingChartLiveCandleRuntimeOptions {
   lastStoreCandleSecRef: RefObject<number>;
   lastVisibleLogicalRangeRef: RefObject<LogicalRangeLike | null>;
   leftVisibleTimeRef: RefObject<number | null>;
-  liveBidMarkupOffsetRef: RefObject<number>;
   liveCandleMutationGenerationByTimeRef: RefObject<Map<number, number>>;
   liveCandleMutationGenerationRef: RefObject<number>;
   liveMarketDataFrozenRef: RefObject<boolean>;
@@ -163,7 +163,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     isActiveRef, isChartInteractionActiveRef, isDisposedRef, isLivePriceSafeForCandles,
     isPotentialMarketClosedPlaceholder, isRebuildingRef, lastAcceptedQuoteRef,
     lastCrossRefreshDispatchAtRef, lastRenderedCandlesRef, lastStoreCandleSecRef,
-    lastVisibleLogicalRangeRef, leftVisibleTimeRef, liveBidMarkupOffsetRef,
+    lastVisibleLogicalRangeRef, leftVisibleTimeRef,
     liveCandleMutationGenerationByTimeRef, liveCandleMutationGenerationRef,
     liveMarketDataFrozenRef, mergeCandleIntoRef, mergeHistoryCache, periodSeparatorsRef,
     postInteractionCallbacksRef, postInteractionCoordinatorRef, prevChartTypeRef, prevPriceRef,
@@ -482,13 +482,8 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
 
       // Candles (history, candle stream and the raw quote listener above) are
       // the raw feed bid. A logged-in account's store quote is widened by its
-      // spread markup, so the candle model reads the raw sides while the bid/ask
-      // lines show the effective prices the account trades at.
-      const bidMarkupOffset = getQuoteBidMarkupOffset(tick);
-      if (bidMarkupOffset !== liveBidMarkupOffsetRef.current) {
-        liveBidMarkupOffsetRef.current = bidMarkupOffset;
-        if (currentCandleRef.current) repaintLivePriceOverlayOrDefer(currentCandleRef.current);
-      }
+      // spread markup. The candle and its current-price line share raw Bid;
+      // order controls and the optional Ask line retain executable quotes.
       const candleQuote = getRawQuoteSides(tick);
       const price = getChartPriceFromQuote(candleQuote);
       if (price == null || !tick || !candleQuote) return;
@@ -833,8 +828,13 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       // broker-synchronized M1 time, not arrival order or the local PC clock.
       return resolveCandleFinalityFromActivePeriod(candle, activeM1Period?.startTime);
     };
+    const resolveServerM1LiveClose = (candle: Candle): Candle => {
+      const quote = window.rtxTickCache?.get(normalizedSymbol)
+        ?? useAppStore.getState().ticks[normalizedSymbol];
+      return resolveFormingCandleLiveClose(candle, quote, symbol, 'M1', brokerTimeOffsetSecRef.current);
+    };
     const reconcileServerM1Candle = (candle: Candle): Candle => {
-      const classifiedCandle = classifyServerM1CandleFinality(candle);
+      const classifiedCandle = resolveServerM1LiveClose(classifyServerM1CandleFinality(candle));
       const [m1] = formatHistoryForOhlcv([classifiedCandle]);
       if (!m1) return classifiedCandle;
       candleAggregationService.reconcileServerCandle(
@@ -869,7 +869,8 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       onSnapshot: (snapshot) => {
         if (liveEffectClosed || isDisposedRef.current || isRebuildingRef.current || snapshot.length === 0) return;
         if (liveMarketDataFrozenRef.current) return;
-        const rawSnapshot = getValidSortedCandles(snapshot as Candle[]).map(classifyServerM1CandleFinality);
+        const rawSnapshot = getValidSortedCandles(snapshot as Candle[])
+          .map(classifyServerM1CandleFinality).map(resolveServerM1LiveClose);
         // FIX: Validate the exact backend scale before either painting M1 or
         // feeding M1 into a derived timeframe. An incompatible page fails closed.
         const reconciledSnapshot = reconcileCandlesWithLiveQuote(rawSnapshot, 'stream snapshot');

@@ -220,7 +220,6 @@ export function TradeTable({
               placementState && !['filled', 'confirmed'].includes(placementState),
             );
             const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
-            const isBuy = String(position.side).toUpperCase() === 'BUY';
             const profitValue = resolveTradeProfit(position).value;
             const pointsValue = getTradePointsValue(position);
             const profitIsPositive = profitMode === 'points'
@@ -324,7 +323,7 @@ export function TradeTable({
 
                 {/* side */}
                 {isColumnVisible('side') && (
-                  <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={tr('Type: {{value0}}', { value0: tr(sideLabel) })}>
+                  <td className="rtx-trade-side-cell px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px] text-zinc-100" title={tr('Type: {{value0}}', { value0: tr(sideLabel) })}>
                     <div className="flex items-center justify-center">
                       <span>{tr(sideLabel)}</span>
                     </div>
@@ -438,7 +437,7 @@ export function TradeTable({
 
                 {/* profit */}
                 {isColumnVisible('profit') && (
-                  <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${!profitIsAvailable ? 'text-zinc-500' : profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${tr(profitMode === 'points' ? 'Profit Points' : 'Profit')}: ${profitLabel}`}>
+                  <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${!profitIsAvailable ? 'text-zinc-500' : profitIsPositive ? 'rtx-trade-profit-value--positive text-profit' : 'rtx-trade-profit-value--negative text-loss'}`} title={`${tr(profitMode === 'points' ? 'Profit Points' : 'Profit')}: ${profitLabel}`}>
                     {profitLabel}
                   </td>
                 )}
@@ -535,7 +534,7 @@ export function TradeTable({
       </div>
       {displayedLivePositions.length === 0 && !loading && !error && (
         <div
-          className="rtx-trade-empty-state flex h-16 w-max min-w-full items-center justify-center text-center text-xs italic text-zinc-600"
+          className="rtx-trade-empty-state flex h-16 w-max min-w-full items-center justify-center text-center text-xs italic text-zinc-400"
           style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}
         >
           {tr('No open positions')}

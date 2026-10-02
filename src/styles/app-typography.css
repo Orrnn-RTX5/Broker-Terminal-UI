@@ -115,9 +115,14 @@ html:root :is(
 
 html:root :is(
   .rtx-market-watch__column-heading, .rtx-trade-table__head th,
-  .rtx-journal-table thead th, .rtx-depth-of-market__columns
+  .rtx-depth-of-market__columns
 ) {
   --rtx-type-weight: var(--rtx-font-weight-heading);
+}
+
+/* Uppercase journal headings retain their hierarchy with regular weight. */
+html:root .rtx-journal-table thead th {
+  --rtx-type-weight: var(--rtx-font-weight-body);
 }
 
 html:root :is(
@@ -164,12 +169,18 @@ html:root body :is(
   line-height: var(--rtx-ui-line-height) !important;
 }
 
+/* Trade columns use the same compact size as the terminal tabs. */
+html:root body .rtx-trade-table :is(th, td) {
+  --rtx-type-size: calc(var(--rtx-ui-font-size) - 2px);
+}
+
 /* Text fits the chrome at every supported font preference. */
 html:root .dock-panel__title {
   line-height: var(--rtx-ui-line-height) !important;
 }
 
 html:root .rtx-bottom-dock__tabs .rtx-dock-tab {
+  --rtx-type-size: calc(var(--rtx-ui-font-size) - 2px);
   line-height: var(--rtx-ui-line-height) !important;
   white-space: nowrap;
 }
@@ -185,13 +196,25 @@ html:root :is(
 
 /* Let the tab names scroll at narrow widths while keeping close actions in
    the same visible row. The old dark strip prevented this group shrinking. */
+html:root .rtx-bottom-dock__tabs {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* Tab and bulk-action overflow stays in the first column. The close icon has
+   its own right-hand column, including when the Toolbox is docked narrowly. */
+html:root .rtx-bottom-dock__tab-content {
+  min-width: 0;
+}
+
 html:root .rtx-dock-tab-scroller {
   flex: 0 1 auto;
   min-width: 0;
 }
 
 html:root .rtx-dock-tab-actions {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 100%;
   overflow-x: auto;
 }

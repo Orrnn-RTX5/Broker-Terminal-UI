@@ -662,7 +662,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).toContain('window.cancelAnimationFrame(priceBoundOverlayGeometryRepaintFrame)');
   });
 
-  it('lets native plot wheels zoom and pan time without overriding the price range or autoscale', () => {
+  it('smooths plot wheels without overriding the price range, native axes, or touch gestures', () => {
     const startStart = source.indexOf('const handleWheelInteractionStart =');
     const startEnd = source.indexOf('const repaintLivePriceOverlayGeometry =', startStart);
     const start = source.slice(startStart, startEnd);
@@ -672,8 +672,17 @@ describe('TradingChart interaction-priority contract', () => {
 
     expect(startStart).toBeGreaterThan(-1);
     expect(startEnd).toBeGreaterThan(startStart);
-    expect(start).toContain('visibleRangeHistoryUserInitiatedRef.current = true;');
-    expect(start).toContain('interactionOwnership.noteWheelActivity();');
+    expect(start).toContain('!event.cancelable || !isChartPaneWheel(event)');
+    expect(start).toContain('wheelSmoothing.handleWheel(event, event.clientX - rect.left)');
+    expect(start).toContain('target.closest(');
+    expect(start).toContain('event.preventDefault();');
+    expect(start).toContain('event.stopPropagation();');
+    expect(source).toContain('const wheelSmoothing = createChartWheelSmoothing({');
+    expect(source).toContain('visibleRangeHistoryUserInitiatedRef.current = true;');
+    expect(source).toContain('interactionOwnership.noteWheelActivity();');
+    expect(source).toContain('onFrame: queuePriceBoundOverlayGeometryRepaint');
+    expect(source).toContain('wheelSmoothing.cancel();');
+    expect(source).toContain('wheelSmoothing.dispose();');
     expect(wheelStart).toBeGreaterThan(-1);
     expect(wheelEnd).toBeGreaterThan(wheelStart);
     expect(wheel).toContain('if (!isChartPaneWheel(event)) return;');
@@ -686,14 +695,12 @@ describe('TradingChart interaction-priority contract', () => {
       expect(handler).not.toContain('autoScale');
       expect(handler).not.toContain('barSpacing');
       expect(handler).not.toContain('deltaY === 0');
-      expect(handler).not.toContain('preventDefault');
-      expect(handler).not.toContain('stopPropagation');
       expect(handler).not.toContain('isDesktopBackendTarget');
     }
 
     expect(source).not.toContain('wheelTimeScaleBarSpacingBefore');
     expect(source).not.toContain('captureChartWheelTimeScaleState');
-    expect(source).toContain("chartContainer.addEventListener('wheel', handleWheelInteractionStart, { passive: true, capture: true })");
+    expect(source).toContain("chartContainer.addEventListener('wheel', handleWheelInteractionStart, { passive: false, capture: true })");
     expect(source).toContain("chartContainer.addEventListener('wheel', handleWheelInteraction, { passive: true })");
     expect(source).toContain("chartContainer.removeEventListener('wheel', handleWheelInteractionStart, true)");
     expect(source).toContain("chartContainer.removeEventListener('wheel', handleWheelInteraction)");

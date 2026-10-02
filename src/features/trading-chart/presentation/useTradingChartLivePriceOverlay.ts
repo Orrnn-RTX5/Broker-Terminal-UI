@@ -13,7 +13,6 @@ import {
 import { defaultChartProperties, type ChartProperties } from '../../../store/useChartSettingsStore';
 import type { Candle, ChartType } from '../../../types/chart';
 import { formatChartAxisPrice } from '../../../utils/chartPriceScale';
-import { roundPriceToDigits } from '../../../utils/spreadMarkup';
 import type { ChartColorPalette } from './chartTheme';
 
 interface UseTradingChartLivePriceOverlayOptions {
@@ -42,7 +41,6 @@ export function useTradingChartLivePriceOverlay({
   const livePriceValueRef = useRef<HTMLSpanElement | null>(null);
   const livePriceCountdownRef = useRef<HTMLSpanElement | null>(null);
   const livePriceRef = useRef<number | null>(null);
-  const liveBidMarkupOffsetRef = useRef(0);
   const livePriceScaleWidthRef = useRef<number | null>(null);
   const livePriceRepaintFrameRef = useRef<number | null>(null);
   const livePriceOverlayColorsRef = useRef<LivePriceOverlayColors>(
@@ -214,11 +212,9 @@ export function useTradingChartLivePriceOverlay({
       hideLivePriceOverlay(false);
       return;
     }
-    const candleClose = Number(activeCandle.close);
-    const bidMarkupOffset = liveBidMarkupOffsetRef.current;
-    const livePrice = bidMarkupOffset > 0 && Number.isFinite(candleClose)
-      ? roundPriceToDigits(candleClose - bidMarkupOffset, Math.max(resolvedPriceDigitsRef.current, 0))
-      : candleClose;
+    // Candles are raw market Bid OHLC. The line and scale badge must meet the
+    // same Close; account spread markup belongs to the trading quote controls.
+    const livePrice = Number(activeCandle.close);
     if (
       !Number.isFinite(livePrice)
       || !livePriceLineRef.current
@@ -271,7 +267,6 @@ export function useTradingChartLivePriceOverlay({
     getLivePriceDirectionalColor,
     hideLivePriceOverlay,
     lastLivePriceDirectionalColorRef,
-    liveBidMarkupOffsetRef,
     livePriceBadgeRef,
     livePriceColorPaletteRef,
     livePriceCountdownRef,

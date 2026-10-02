@@ -187,6 +187,7 @@ describe('useClosedMarketDailyChanges', () => {
     chartHarness.fetchCandles.mockResolvedValue([
       dailyCandle(priorDate, 100),
       dailyCandle(lastDate, 100),
+      { ...dailyCandle(new Date(lastSessionStartedAt + 24 * 60 * 60 * 1000).toISOString(), 200), closed: false },
     ]);
 
     const { result, unmount } = renderHook(() => useClosedMarketDailyChanges({

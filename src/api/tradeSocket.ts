@@ -1,5 +1,8 @@
 import { RTX5_WS_URL, buildApiV2WsUrl } from '../config/api';
+import { getRuntimeBrokerConfiguration, isConfiguredBrokerEndpoint, isDesktopBackendTarget } from '../config/backendTarget.js';
+import { isLocalViteDevServer } from '../config/localDevProxy';
 import {
+  getAccessToken,
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
   onCommittedBrokerAccountSessionScopeChange,
@@ -145,6 +148,37 @@ const DEFAULT_MAX_ORDER_BUFFERED_AMOUNT = 16 * 1024;
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
 
+const tradeSocketTarget = (value: string): URL | null => {
+  try {
+    const url = new URL(value);
+    const proxyPrefix = '/__broker_feed_ws/';
+    if (isLocalViteDevServer()
+      && url.origin.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:') === window.location.origin
+      && url.pathname.startsWith(proxyPrefix)) {
+      const path = url.pathname.slice(proxyPrefix.length);
+      const slash = path.indexOf('/');
+      if (slash < 0) return null;
+      return new URL(`${decodeURIComponent(path.slice(0, slash))}${path.slice(slash)}${url.search}`);
+    }
+    return url;
+  } catch { return null; }
+};
+
+// URL credentials and an auth frame must both belong to the current deployment
+// session. Recheck this when a delayed socket opens and before each send.
+const isTradeSocketAllowed = (url: string, token: string | undefined, brokerId?: string): boolean => {
+  if (isDesktopBackendTarget()) return true;
+  const configuration = getRuntimeBrokerConfiguration();
+  const activeToken = getAccessToken();
+  const target = tradeSocketTarget(url);
+  if (!configuration.valid || !activeToken || token !== activeToken || !target
+    || (brokerId !== undefined && brokerId !== configuration.brokerId)
+    || target.pathname !== '/ws/v2' || target.hash
+    || !isConfiguredBrokerEndpoint(target.toString(), 'ws')) return false;
+  const queryTokens = target.searchParams.getAll('token');
+  return queryTokens.length <= 1 && (queryTokens.length === 0 || queryTokens[0] === activeToken);
+};
+
 const addReconnectJitter = (delay: number, maximum: number): number => {
   const jitter = Math.floor(delay * RECONNECT_JITTER_RATIO * Math.random());
   return Math.min(maximum, delay + jitter);
@@ -254,6 +288,7 @@ export class TradeWebSocketClient {
   private reconnectPendingWhileHidden = false;
   private activeToken: string | undefined;
   private activeUrl: string | undefined;
+  private activeBrokerId: string | undefined;
   private authFrameSent = false;
   private readonly channels = new Set<string>();
   private readonly handlers = new Map<string, Set<TradeSocketHandler>>();
@@ -295,7 +330,8 @@ export class TradeWebSocketClient {
     return this.ws?.readyState === WS_OPEN
       && this.state === 'open'
       && Boolean(this.activeToken)
-      && this.authFrameSent;
+      && this.authFrameSent
+      && this.hasCurrentDeploymentConnection();
   }
 
   usesConnection(token: string, url: string): boolean {
@@ -308,11 +344,27 @@ export class TradeWebSocketClient {
     }
 
     this.clearReconnectTimer();
+    if (!isDesktopBackendTarget() && this.activeBrokerId !== undefined
+      && this.activeBrokerId !== getRuntimeBrokerConfiguration().brokerId) {
+      this.setState('error');
+      return;
+    }
     this.activeToken = token;
+    this.activeBrokerId = getRuntimeBrokerConfiguration().brokerId;
     this.authFrameSent = false;
-    this.setState('connecting');
-    const url = this.options.url || (token ? buildApiV2WsUrl(token) : RTX5_WS_URL);
+    let url: string;
+    try {
+      url = this.options.url || (token ? buildApiV2WsUrl(token) : RTX5_WS_URL);
+    } catch {
+      this.setState('error');
+      return;
+    }
     this.activeUrl = url;
+    if (!isTradeSocketAllowed(url, token, this.activeBrokerId)) {
+      this.setState('error');
+      return;
+    }
+    this.setState('connecting');
 
     let socket: WebSocket;
     try {
@@ -326,6 +378,10 @@ export class TradeWebSocketClient {
 
     socket.onopen = () => {
       if (this.ws !== socket) return;
+      if (!this.hasCurrentDeploymentConnection()) {
+        this.disconnect();
+        return;
+      }
 
       if (token) {
         this.authFrameSent = this.send({ action: 'auth', token });
@@ -343,6 +399,10 @@ export class TradeWebSocketClient {
 
     socket.onmessage = event => {
       if (this.ws !== socket) return;
+      if (!this.hasCurrentDeploymentConnection()) {
+        this.disconnect();
+        return;
+      }
       const message = this.parseMessage(event.data);
       this.routePendingOrderMessage(message);
       this.dispatch(message);
@@ -425,7 +485,7 @@ export class TradeWebSocketClient {
   }
 
   send(message: TradeSocketMessage): boolean {
-    if (this.ws?.readyState !== WS_OPEN) return false;
+    if (this.ws?.readyState !== WS_OPEN || !this.hasCurrentDeploymentConnection()) return false;
 
     try {
       this.ws.send(JSON.stringify(message));
@@ -520,7 +580,7 @@ export class TradeWebSocketClient {
     const socket = this.ws;
     const bufferedAmountBefore = readBufferedAmount(socket);
 
-    if (!socket || socket.readyState !== WS_OPEN || this.ws !== socket) {
+    if (!socket || socket.readyState !== WS_OPEN || this.ws !== socket || !this.hasCurrentDeploymentConnection()) {
       recordTradeOrderLatency({
         phase: 'ws_transport_error',
         transport: 'websocket',
@@ -916,6 +976,10 @@ export class TradeWebSocketClient {
     if (type.includes('deal') && login) return `deals.${login}`;
 
     return undefined;
+  }
+
+  private hasCurrentDeploymentConnection(): boolean {
+    return Boolean(this.activeUrl && isTradeSocketAllowed(this.activeUrl, this.activeToken, this.activeBrokerId));
   }
 
   private scheduleReconnect(): void {

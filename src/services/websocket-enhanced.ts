@@ -12,10 +12,11 @@ import { useWebSocketStore } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
 import { buildBrokerWsV2Uri, getAccessToken, onSessionChange } from './brokerSession';
 import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
+import { isDesktopBackendTarget } from '../config/backendTarget.js';
 import {
   composeDailyChangeQuoteContext,
   readDailyChangeLastPrice,
-  readDailyChangePercent,
+  readDailyChangePercent, readDailyChangeInput,
   readDailyChangePreviousClose,
   resolveDailyChangePercent,
 } from '../utils/dailyChange';
@@ -156,6 +157,12 @@ export class EnhancedWebSocketService {
       // FIX: Own the unsubscribe synchronously so a destroyed service cannot be
       // resurrected later by a broker/account/token event.
       this.unsubSessionChange = onSessionChange((reason) => {
+        if (reason === 'logout' || reason === 'login' || reason === 'broker_url_change' || reason === 'account_change') {
+          // Buffered requests and prices belong to the previous owner. Never
+          // replay them after reconnecting under another broker/account token.
+          this.tickBuffer.clear();
+          this.messageQueue = [];
+        }
         if (reason === 'logout') {
           this.disconnect();
         } else if (
@@ -280,31 +287,31 @@ export class EnhancedWebSocketService {
     this.updateState('connecting');
 
     // Dynamically resolve WebSocket URL from saved server_url at connect-time
-    const serverUrl = localStorage.getItem('server_url');
-    const isFixApiBackend = this.url.includes('fixapibackend');
     // FIX: The canonical accessor includes sessionStorage and current token
     // rotation, keeping every account channel on the same authenticated owner.
     const token = getAccessToken();
     let urlWithAuth: string;
 
-    if (!isFixApiBackend && !token) {
+    if (!token) {
       console.warn('[WS] Skipping trade WebSocket connect until auth token is available');
       this.updateState('disconnected');
       return;
     }
 
-    if (!isFixApiBackend && serverUrl) {
-      this.url = buildBrokerWsV2Uri(null);
-      urlWithAuth = token ? buildBrokerWsV2Uri(token) : this.url;
-    } else {
+    const configuredUrl = buildBrokerWsV2Uri(null);
+    if (configuredUrl) {
+      this.url = configuredUrl;
+      urlWithAuth = buildBrokerWsV2Uri(token);
+    } else if (isDesktopBackendTarget()) {
       this.url = this.normalizeWsUrl(this.url);
-      urlWithAuth = isFixApiBackend ? this.url : this.addTokenToUrl(this.url, token);
+      urlWithAuth = this.addTokenToUrl(this.url, token);
+    } else {
+      this.updateState('disconnected');
+      return;
     }
+    if (!urlWithAuth) { this.updateState('disconnected'); return; }
 
     console.log(`[WS] Connecting to ${this.url}...`);
-    if (isFixApiBackend) {
-      console.log('[WS] Using fixapibackend (no auth token)');
-    }
 
     try {
       const socket = new WebSocket(urlWithAuth);
@@ -781,14 +788,14 @@ export class EnhancedWebSocketService {
       ask,
       spread: Number(data.spread) || (ask - bid),
       timestamp: ts,
-      // Do not label Date.now() fallback as broker time. Consumers can order
-      // genuine broker events by sourceTimestamp without treating receipt time
+      // Consumers can order genuine broker events by sourceTimestamp without treating receipt time
       // as proof that the execution quote cache is fresh.
       sourceTimestamp,
       lp,
       volume,
       last,
       dailyChange,
+      dailyChangeInput: readDailyChangeInput({ ...dailyChangeContext, bid: data.bid }, priceMode),
       high24h,
       low24h,
       high,
@@ -1243,6 +1250,7 @@ export class EnhancedWebSocketService {
   }
 
   private normalizeWsUrl(input: string): string {
+    if (!isDesktopBackendTarget()) return buildBrokerWsV2Uri(null);
     if (input?.includes('/ws/v2')) {
       return input;
     }
@@ -1262,19 +1270,13 @@ export class EnhancedWebSocketService {
         return fallback;
       }
 
-      // Migrate legacy market sockets to swagger v2.
-      if (
-        url.pathname === '/ws' &&
-        url.hostname.includes('rtxbackend') &&
-        !url.hostname.includes('fixapibackend')
-      ) {
+      // Legacy protocol paths migrate to the selected broker's v2 transport.
+      if (url.pathname === '/ws' && fallback) {
         return fallback;
       }
 
       return url.toString();
     } catch {
-      // If input contains fixapibackend, preserve it
-      if (input.includes('fixapibackend')) return input;
       // Last-resort fallback
       return fallback;
     }
@@ -1290,18 +1292,12 @@ let defaultWsInstanceKey: string | null = null;
 export const getEnhancedWebSocketService = (url?: string): EnhancedWebSocketService => {
   const normalizedRequestedUrl = (() => {
     if (!url) return undefined;
+    if (!isDesktopBackendTarget()) return buildBrokerWsV2Uri(null);
     if (url.includes('/ws/v2')) return url;
-    if (url.includes('fixapibackend.tradecopier.org')) {
-      return normalizeRuntimeWsUrl(buildBrokerWsV2Uri(null));
-    }
-    // Only rewrite known production legacy endpoint, not explicit local test endpoints.
-    if (url.includes('rtxbackend') && url.includes('/ws') && !url.includes('fixapi')) {
-      return normalizeRuntimeWsUrl(buildBrokerWsV2Uri(null));
-    }
     return url;
   })();
 
-  const requestedKey = normalizedRequestedUrl || url;
+  const requestedKey = normalizedRequestedUrl || (isDesktopBackendTarget() ? url : undefined);
   if (requestedKey) {
     let instance = wsInstances.get(requestedKey);
     if (!instance) {

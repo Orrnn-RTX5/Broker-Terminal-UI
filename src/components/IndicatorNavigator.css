@@ -1,0 +1,12 @@
+/* One stable field border, without stacked global and utility focus rings. */
+html:root .rtx-indicator-dialog input.rtx-indicator-search {
+  border: 1px solid var(--border-secondary) !important;
+  border-radius: 4px;
+  box-shadow: none !important;
+  outline: none !important;
+  transition: border-color 120ms ease;
+}
+
+html:root .rtx-indicator-dialog input.rtx-indicator-search:focus {
+  border-color: var(--color-primary) !important;
+}

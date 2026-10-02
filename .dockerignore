@@ -1,5 +1,5 @@
 node_modules
-dist
+# dist is the validated build artifact used by the ci-runtime target.
 artifacts
 draft
 jscpd-report

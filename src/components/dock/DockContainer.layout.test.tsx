@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { DockLayout } from '../../services/dockManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
@@ -67,7 +67,7 @@ afterAll(() => {
 });
 
 describe('DockContainer split sizing', () => {
-  it('keeps Navigator and docked Toolbox chrome while Market Watch stays headerless', () => {
+  it('keeps Navigator chrome while Market Watch and docked Toolbox stay headerless', () => {
     useDockLayoutStore.getState().setLayout(layoutWithToolbox());
 
     const { container } = render(
@@ -82,9 +82,8 @@ describe('DockContainer split sizing', () => {
     const toolbox = container.querySelector('[data-dock-panel-component="terminal"]');
 
     expect(marketWatch?.querySelector('.dock-panel__header')).toBeNull();
-    expect(toolbox?.querySelector('.dock-panel__header')).not.toBeNull();
-    expect(toolbox?.querySelector('.dock-panel__title')?.textContent).toBe('Toolbox');
-    expect(toolbox?.querySelector('button[title="Close"]')).not.toBeNull();
+    expect(toolbox?.querySelector('.dock-panel__header')).toBeNull();
+    expect(toolbox?.querySelector('.dock-panel__content')?.textContent).toBe('Terminal');
     expect(navigator?.querySelector('.dock-panel__header')).not.toBeNull();
     expect(navigator?.querySelector('.dock-panel__title')?.textContent).toBe('Navigator');
   });
@@ -116,10 +115,8 @@ describe('DockContainer split sizing', () => {
     expect(verticalHandles[0].querySelector('[data-dock-resize-hit-target="vertical"]')).not.toBeNull();
     expect(horizontalHandles[0].querySelector('[data-dock-resize-hit-target="horizontal"]')).not.toBeNull();
 
-    expect(toolbox?.querySelector('.dock-panel__header')).not.toBeNull();
-    const toolboxCloseButton = toolbox?.querySelector<HTMLButtonElement>('button[title="Close"]');
-    expect(toolboxCloseButton).not.toBeNull();
-    fireEvent.click(toolboxCloseButton!);
+    expect(toolbox?.querySelector('.dock-panel__header')).toBeNull();
+    act(() => useDockLayoutStore.getState().removePanel('toolbox'));
 
     await waitFor(() => {
       expect(container.querySelector('[data-dock-panel="toolbox"]')).toBeNull();

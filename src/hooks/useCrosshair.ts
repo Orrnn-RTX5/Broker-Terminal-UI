@@ -23,6 +23,7 @@ export interface UseCrosshairOptions {
   digits?: number;
   timeframe?: string;
   brokerOffsetSeconds?: number;
+  marker?: 'cross' | 'dot';
 }
 
 export interface CrosshairRefs {
@@ -41,6 +42,7 @@ export function useCrosshair({
   digits = 5,
   timeframe = 'M1',
   brokerOffsetSeconds = 0,
+  marker = 'cross',
 }: UseCrosshairOptions): CrosshairRefs {
   const vertLineRef = useRef<HTMLDivElement>(null);
   const horizLineRef = useRef<HTMLDivElement>(null);
@@ -88,10 +90,6 @@ export function useCrosshair({
       },
     } as const;
     chartRef.current?.applyOptions(enabledCrosshairOptions);
-    const previousInlineCursor = container.style.cursor;
-    let ownsCursor = true;
-    container.style.cursor = 'none';
-
     let disposed = false;
     let rect = container.getBoundingClientRect();
     let containerWidth = container.clientWidth;
@@ -171,7 +169,11 @@ export function useCrosshair({
       }
 
       const timeScale = chart.timeScale();
-      if (timeScale.coordinateToLogical(rawX) === null) {
+      const priceScaleWidth = chart.priceScale('right').width();
+      const timeScaleHeight = timeScale.height();
+      const plotWidth = Math.max(0, containerWidth - priceScaleWidth);
+      const plotHeight = Math.max(0, containerHeight - timeScaleHeight);
+      if (rawX < 0 || rawX >= plotWidth || y < 0 || y >= plotHeight) {
         hideAll();
         return;
       }
@@ -179,20 +181,21 @@ export function useCrosshair({
       const vertLine = vertLineRef.current;
       if (vertLine) {
         vertLine.style.opacity = '1';
-        vertLine.style.transform = `translate3d(${rawX}px,0,0)`;
+        vertLine.style.height = `${plotHeight}px`;
+        vertLine.style.transform = `translate3d(${Math.round(rawX)}px,0,0)`;
       }
 
       const horizLine = horizLineRef.current;
       if (horizLine) {
         horizLine.style.opacity = '1';
-        horizLine.style.transform = `translate3d(0,${y}px,0)`;
+        horizLine.style.width = `${plotWidth}px`;
+        horizLine.style.transform = `translate3d(0,${Math.round(y)}px,0)`;
       }
 
-      const center = centerRef.current;
-      if (center) {
-        center.style.opacity = '1';
-        center.style.transform = `translate(-50%,-50%) translate3d(${rawX}px,${y}px,0)`;
-      }
+      // The pointer glyph is a native CSS cursor. Keeping it out of this RAF
+      // path lets the OS/compositor move it at input frequency while the chart
+      // guides and labels remain frame-coalesced.
+      if (centerRef.current) centerRef.current.style.opacity = '0';
 
       const {
         digits: latestDigits,
@@ -223,7 +226,7 @@ export function useCrosshair({
           const text = price.toFixed(latestDigits);
           if (priceLabel.textContent !== text) priceLabel.textContent = text;
           priceLabel.style.opacity = '1';
-          const labelWidth = chart.priceScale('right').width();
+          const labelWidth = priceScaleWidth;
           priceLabel.style.width = `${labelWidth}px`;
           const halfHeight = (priceLabel.offsetHeight || 20) / 2;
           priceLabel.style.transform = `translate3d(${containerWidth - labelWidth}px,${y - halfHeight}px,0)`;
@@ -292,14 +295,14 @@ export function useCrosshair({
       container.removeEventListener('pointerleave', onPointerLeave);
       window.removeEventListener('resize', onViewportChanged);
       window.removeEventListener('scroll', onViewportChanged, true);
-      if (ownsCursor) {
-        container.style.cursor = previousInlineCursor;
-        ownsCursor = false;
-      }
       cursorRef.current = { ...cursorRef.current, visible: false };
       hideAll();
     };
   }, [chartRef, containerRef, enabled, seriesRef]);
+
+  useEffect(() => {
+    if (centerRef.current) centerRef.current.dataset.marker = marker;
+  }, [marker]);
 
   // Chart and series refs are populated/replaced by later TradingChart effects.
   // One dirty frame after a React commit rebinds them without polling while idle.

@@ -4,8 +4,10 @@
  * NO PLACEHOLDERS - Every action dispatches to real systems
  */
 
-import { API_BASE_URL as API_BASE } from '../config/api';
 import { formatSpreadDisplay } from '../utils/spread';
+import { watchlistV2Api } from '../api/trade';
+import { useAppStore } from '../store/useAppStore';
+import { getAccessToken } from './brokerSession';
 
 // ==========================================
 // TRADING ACTIONS
@@ -37,27 +39,16 @@ export function openNewOrderDialog(symbol: string): void {
 export async function executeQuickBuy(
   symbol: string,
   volume: number = 0.01,
-  accountId: string = 'RTX-000001'
+  accountId?: string
 ): Promise<{ success: boolean; orderId?: string; error?: string }> {
   try {
-    const response = await fetch(`${API_BASE}/api/orders/market`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        symbol,
-        side: 'BUY',
-        quantity: volume,
-        accountId
-      })
-    });
-
-    const result = await response.json();
-
-    if (!response.ok || result.error) {
-      return { success: false, error: result.error || 'Order failed' };
-    }
-
-    return { success: true, orderId: result.orderId };
+    const login = Number(accountId || useAppStore.getState().accountId);
+    const token = getAccessToken();
+    if (!token || !Number.isSafeInteger(login) || login <= 0) throw new Error('Log in to a trading account before placing an order.');
+    const { ordersApi } = await import('./api');
+    if (token !== getAccessToken()) throw new Error('The trading account session changed. Please try again.');
+    const result = await ordersApi.placeMarketOrder({ symbol, side: 'buy', volume, account_login: login });
+    return { success: true, orderId: String(result.ticket ?? result.id) };
   } catch (error) {
     console.error('[Quick Buy] Error:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -70,27 +61,16 @@ export async function executeQuickBuy(
 export async function executeQuickSell(
   symbol: string,
   volume: number = 0.01,
-  accountId: string = 'RTX-000001'
+  accountId?: string
 ): Promise<{ success: boolean; orderId?: string; error?: string }> {
   try {
-    const response = await fetch(`${API_BASE}/api/orders/market`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        symbol,
-        side: 'SELL',
-        quantity: volume,
-        accountId
-      })
-    });
-
-    const result = await response.json();
-
-    if (!response.ok || result.error) {
-      return { success: false, error: result.error || 'Order failed' };
-    }
-
-    return { success: true, orderId: result.orderId };
+    const login = Number(accountId || useAppStore.getState().accountId);
+    const token = getAccessToken();
+    if (!token || !Number.isSafeInteger(login) || login <= 0) throw new Error('Log in to a trading account before placing an order.');
+    const { ordersApi } = await import('./api');
+    if (token !== getAccessToken()) throw new Error('The trading account session changed. Please try again.');
+    const result = await ordersApi.placeMarketOrder({ symbol, side: 'sell', volume, account_login: login });
+    return { success: true, orderId: String(result.ticket ?? result.id) };
   } catch (error) {
     console.error('[Quick Sell] Error:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -289,14 +269,9 @@ export function getSymbolSets(): string[] {
  */
 export async function subscribeToSymbol(symbol: string): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE}/api/symbols/subscribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbol })
-    });
-
-    const result = await response.json();
-    return result.success || false;
+    if (!getAccessToken()) return false;
+    await watchlistV2Api.add(symbol);
+    return true;
   } catch (error) {
     console.error('[Subscribe] Error:', error);
     return false;

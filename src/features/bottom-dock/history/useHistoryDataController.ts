@@ -9,6 +9,7 @@ import {
 import { loadTerminalHistory, peekTerminalHistory } from '../../../services/terminalHistory';
 import { useAppStore } from '../../../store/useAppStore';
 import { EMPTY_HISTORY_DATA_SET } from './historyFilters';
+import { loadBalanceHistory, type HistoryBalanceOperation } from './balanceHistory';
 
 export type HistoryFetchOptions = {
   force?: boolean;
@@ -25,9 +26,13 @@ export const useHistoryDataController = (
   activeScopeKey: string,
 ): {
   historyData: TradeHistoryDataSet;
+  historyLoadedAt: number;
   loading: boolean;
   ordersPending: boolean;
   error: string | null;
+  financialDealsAvailable: boolean;
+  balanceHistory: HistoryBalanceOperation[] | null;
+  balanceHistoryError: string | null;
   sessionResetVersion: number;
   fetchHistory: (options?: HistoryFetchOptions) => Promise<void>;
 } => {
@@ -35,10 +40,16 @@ export const useHistoryDataController = (
   const [historyData, setHistoryData] = useState<TradeHistoryDataSet>(
     () => cachedHistory?.data ?? EMPTY_HISTORY_DATA_SET,
   );
+  const [historyLoadedAt, setHistoryLoadedAt] = useState(Date.now);
   const [loading, setLoading] = useState(() => !cachedHistory);
   const [ordersPending, setOrdersPending] = useState(() => cachedHistory?.ordersPending ?? false);
   const [error, setError] = useState<string | null>(null);
   const [sessionResetVersion, setSessionResetVersion] = useState(0);
+  const requestScope = `${activeScopeKey}\0${activeLogin}`;
+  const [financialScope, setFinancialScope] = useState<string | null>(() => cachedHistory ? requestScope : null);
+  const [ledger, setLedger] = useState<{
+    scope: string; operations: HistoryBalanceOperation[] | null; error: string | null;
+  } | null>(null);
   const requestSerialRef = useRef(0);
   const mountedRef = useRef(false);
 
@@ -68,6 +79,17 @@ export const useHistoryDataController = (
       && getCurrentSessionScopeKey() === activeScopeKey
     );
 
+    // A slow/unavailable ledger must not prevent the trade records from appearing.
+    void loadBalanceHistory(login, stillCurrent).then(operations => {
+      if (stillCurrent()) setLedger({ scope: `${activeScopeKey}\0${login}`, operations, error: null });
+    }).catch((caught: unknown) => {
+      if (stillCurrent()) setLedger({
+        scope: `${activeScopeKey}\0${login}`,
+        operations: null,
+        error: caught instanceof Error ? caught.message : 'Balance history unavailable',
+      });
+    });
+
     try {
       const data = await loadTerminalHistory(login, activeScopeKey, {
         force: options?.force,
@@ -75,6 +97,8 @@ export const useHistoryDataController = (
         onUpdate: (next, pending) => {
           if (!stillCurrent()) return;
           setHistoryData(next);
+          setHistoryLoadedAt(Date.now());
+          setFinancialScope(`${activeScopeKey}\0${login}`);
           setOrdersPending(pending);
           if (!pending || next.positions.length > 0 || next.deals.length > 0 || next.orders.length > 0) {
             setLoading(false);
@@ -83,6 +107,8 @@ export const useHistoryDataController = (
       });
       if (!stillCurrent()) return;
       setHistoryData(data);
+      setHistoryLoadedAt(Date.now());
+      setFinancialScope(`${activeScopeKey}\0${login}`);
       setOrdersPending(false);
     } catch (caught: unknown) {
       if (!stillCurrent()) return;
@@ -91,6 +117,7 @@ export const useHistoryDataController = (
       if (!options?.background) {
         setError(caught instanceof Error ? caught.message : 'Failed to load history');
       }
+      setFinancialScope(null);
     } finally {
       if (stillCurrent() && !options?.background) setLoading(false);
     }
@@ -102,12 +129,15 @@ export const useHistoryDataController = (
       setHistoryData(cached.data);
       setOrdersPending(cached.ordersPending);
       setLoading(false);
+      setFinancialScope(requestScope);
     } else {
       setHistoryData(EMPTY_HISTORY_DATA_SET);
       setOrdersPending(false);
+      setFinancialScope(null);
     }
+    setLedger(null);
     void fetchHistory({ background: Boolean(cached) });
-  }, [activeLogin, activeScopeKey, fetchHistory]);
+  }, [activeLogin, activeScopeKey, fetchHistory, requestScope]);
 
   useEffect(() => {
     const handleCompleted = (event: Event) => {
@@ -124,14 +154,20 @@ export const useHistoryDataController = (
     setHistoryData(EMPTY_HISTORY_DATA_SET);
     setOrdersPending(false);
     setError(null);
+    setFinancialScope(null);
+    setLedger(null);
     setSessionResetVersion(version => version + 1);
   }), []);
 
   return {
     historyData,
+    historyLoadedAt,
     loading,
     ordersPending,
     error,
+    financialDealsAvailable: financialScope === requestScope && !historyData.errors.deals,
+    balanceHistory: ledger?.scope === requestScope ? ledger.operations : null,
+    balanceHistoryError: ledger?.scope === requestScope ? ledger.error : null,
     sessionResetVersion,
     fetchHistory,
   };

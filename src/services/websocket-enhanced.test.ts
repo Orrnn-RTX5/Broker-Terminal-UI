@@ -492,9 +492,12 @@ describe('EnhancedWebSocketService trade state ownership', () => {
 
 describe('EnhancedWebSocketService connection startup', () => {
   beforeEach(() => {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'desktop' };
     ConnectingWebSocket.instances = [];
     localStorage.clear();
     sessionStorage.clear();
+    localStorage.setItem('broker_id', 'enhanced-ws-test');
+    localStorage.setItem('server_url', 'https://example.test');
     localStorage.setItem('auth_token', 'test-token');
     setVisibilityState('visible');
     vi.spyOn(Math, 'random').mockReturnValue(0);
@@ -503,6 +506,7 @@ describe('EnhancedWebSocketService connection startup', () => {
 
   afterEach(() => {
     destroyWebSocketService();
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
     vi.useRealTimers();
     localStorage.clear();
     sessionStorage.clear();
@@ -716,8 +720,10 @@ describe('EnhancedWebSocketService connection startup', () => {
     const second = getEnhancedWebSocketService(secondUrl);
 
     expect(first).not.toBe(second);
+    localStorage.setItem('ws_url', firstUrl);
     first.connect();
     const firstSocket = ConnectingWebSocket.instances[0];
+    localStorage.setItem('ws_url', secondUrl);
     second.connect();
 
     expect(ConnectingWebSocket.instances).toHaveLength(2);

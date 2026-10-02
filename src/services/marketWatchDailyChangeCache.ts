@@ -2,11 +2,13 @@ import {
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
 } from './brokerSession';
+import { calculateDailyChange } from '../utils/dailyChange';
 
 export type MarketWatchDailyChangeSource = 'quote' | 'history';
 
 export interface MarketWatchDailyChangeCacheEntry {
   value: number;
+  change?: number;
   asOf: number;
   /**
    * History-only boundary at which the D1 session represented by `asOf`
@@ -20,6 +22,7 @@ export interface MarketWatchDailyChangeCacheEntry {
 export interface MarketWatchDailyChangeInput {
   symbol: string;
   value: number;
+  change?: number;
   asOf: number;
   completedAt?: number;
   source: MarketWatchDailyChangeSource;
@@ -35,6 +38,7 @@ export interface DailyChangeCandle {
 
 export interface ResolvedDailyChange {
   value: number;
+  change: number;
   /** Broker D1 session-open timestamp. */
   asOf: number;
   /** Session boundary used to order the final D1 result against live quotes. */
@@ -57,8 +61,6 @@ export const MAX_MARKET_WATCH_DAILY_CHANGE_CACHE_ENTRIES = 500;
 
 const STORAGE_VERSION = 1 as const;
 const FLUSH_DELAY_MS = 250;
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_D1_ROLLOVER_GAP_MS = 26 * 60 * 60 * 1000;
 
 const entriesByScope = new Map<string, Map<string, MarketWatchDailyChangeCacheEntry>>();
 let loadedFromStorage = false;
@@ -101,6 +103,7 @@ const isStoredEntry = (value: unknown): value is StoredDailyChangeEntry => {
     && entry.symbol === symbol
     && typeof entry.value === 'number'
     && Number.isFinite(entry.value)
+    && (entry.change === undefined || (typeof entry.change === 'number' && Number.isFinite(entry.change)))
     && isFiniteTimestamp(entry.asOf)
     && (
       entry.completedAt === undefined
@@ -235,7 +238,7 @@ const ensureLoaded = (): void => {
   const envelope = parseStoredEnvelope(raw);
   if (!envelope) return;
 
-  envelope.entries.forEach(({ scopeKey, symbol, value, asOf, completedAt, savedAt, source }) => {
+  envelope.entries.forEach(({ scopeKey, symbol, value, change, asOf, completedAt, savedAt, source }) => {
     const scopedEntries = entriesByScope.get(scopeKey) ?? new Map<string, MarketWatchDailyChangeCacheEntry>();
     const candidate: MarketWatchDailyChangeCacheEntry = {
       value,
@@ -243,6 +246,7 @@ const ensureLoaded = (): void => {
       savedAt,
       source,
       ...(completedAt !== undefined ? { completedAt } : {}),
+      ...(change !== undefined ? { change } : {}),
     };
     if (shouldReplaceLoadedEntry(scopedEntries.get(symbol), candidate)) {
       scopedEntries.set(symbol, candidate);
@@ -309,6 +313,18 @@ export const readCurrentMarketWatchDailyChange = (symbol: string): number | null
   const scopeKey = getCurrentMarketWatchDailyChangeScopeKey();
   return scopeKey ? readMarketWatchDailyChange(scopeKey, symbol) : null;
 };
+export const readCurrentMarketWatchDailyChangePrice = (symbol: string): number | undefined => {
+  const scopeKey = getCurrentMarketWatchDailyChangeScopeKey();
+  return scopeKey ? readEntry(scopeKey, symbol)?.change : undefined;
+};
+
+export const describeCurrentMarketWatchDailyChange = (symbol: string): string => {
+  const scopeKey = getCurrentMarketWatchDailyChangeScopeKey();
+  const entry = scopeKey ? readEntry(scopeKey, symbol) : undefined;
+  if (!entry) return 'Daily reference unavailable';
+  const label = entry.source === 'history' ? 'Closed broker D1 session' : 'Last known quote';
+  return `${label} · ${new Date(entry.asOf).toISOString()}`;
+};
 
 export const readCurrentMarketWatchDailyChanges = (
   symbols: readonly string[],
@@ -325,6 +341,7 @@ const rememberEntry = (
   source: MarketWatchDailyChangeSource,
   savedAt: number,
   completedAt?: number,
+  change?: number,
 ): boolean => {
   const normalizedScopeKey = normalizeScopeKey(scopeKey);
   const normalizedSymbol = normalizeSymbol(symbol);
@@ -354,6 +371,7 @@ const rememberEntry = (
     savedAt,
     source,
     ...(completedAt !== undefined ? { completedAt } : {}),
+    ...(Number.isFinite(change) ? { change } : current?.asOf === asOf && current.value === value && current.change !== undefined ? { change: current.change } : {}),
   };
   if (current) {
     const order = compareEntryOrder(candidate, current);
@@ -364,6 +382,7 @@ const rememberEntry = (
       && current.asOf === asOf
       && current.completedAt === completedAt
       && current.value === value
+      && current.change === candidate.change
     ) return false;
   }
 
@@ -379,9 +398,10 @@ export const rememberMarketWatchDailyChange = (
   asOf: number,
   source: MarketWatchDailyChangeSource,
   completedAt?: number,
+  change?: number,
 ): boolean => {
   ensureLoaded();
-  const changed = rememberEntry(scopeKey, symbol, value, asOf, source, Date.now(), completedAt);
+  const changed = rememberEntry(scopeKey, symbol, value, asOf, source, Date.now(), completedAt, change);
   if (!changed) return false;
 
   pruneEntries();
@@ -396,8 +416,8 @@ export const rememberMarketWatchDailyChanges = (
   ensureLoaded();
   const savedAt = Date.now();
   let changedCount = 0;
-  changes.forEach(({ symbol, value, asOf, completedAt, source }) => {
-    if (rememberEntry(scopeKey, symbol, value, asOf, source, savedAt, completedAt)) {
+  changes.forEach(({ symbol, value, change, asOf, completedAt, source }) => {
+    if (rememberEntry(scopeKey, symbol, value, asOf, source, savedAt, completedAt, change)) {
       changedCount += 1;
     }
   });
@@ -415,10 +435,11 @@ export const rememberCurrentMarketWatchDailyChange = (
   asOf: number,
   source: MarketWatchDailyChangeSource,
   completedAt?: number,
+  change?: number,
 ): boolean => {
   const scopeKey = getCurrentMarketWatchDailyChangeScopeKey();
   return scopeKey
-    ? rememberMarketWatchDailyChange(scopeKey, symbol, value, asOf, source, completedAt)
+    ? rememberMarketWatchDailyChange(scopeKey, symbol, value, asOf, source, completedAt, change)
     : false;
 };
 
@@ -535,17 +556,13 @@ export const resolveCompletedDailyChange = (
   const closesByTime = new Map<number, { close: number; finalityRank: number; index: number }>();
   normalized.forEach((candle) => {
     // Broker finality is strongest. A later D1 candle proves the earlier
-    // bucket rolled over even when a gateway left `closed:false`. As a final
-    // safety net, an otherwise-latest row is usable only after a full nominal
-    // D1 period has elapsed. This excludes the current forming row without
-    // assuming that UTC Saturday/Sunday labels are non-trading days.
+    // bucket rolled over even when a gateway left `closed:false`. Elapsed
+    // hours and calendar weekdays cannot prove market closure.
     const finalityRank = candle.closed === true
       ? 3
       : candle.time < latestObservedTime
         ? 2
-        : candle.time + ONE_DAY_MS <= now
-          ? 1
-          : 0;
+        : 0;
     if (finalityRank === 0) return;
 
     const current = closesByTime.get(candle.time);
@@ -572,22 +589,17 @@ export const resolveCompletedDailyChange = (
     || prior.close <= 0
   ) return null;
 
-  const value = ((last.close - prior.close) / prior.close) * 100;
-  if (!Number.isFinite(value)) return null;
+  const values = calculateDailyChange(last.close, prior.close);
+  const value = values.percent;
+  if (value === undefined || values.change === undefined) return null;
 
   const nextObservedTime = normalized.reduce<number | null>((next, candle) => {
     if (candle.time <= lastTime) return next;
     return next === null || candle.time < next ? candle.time : next;
   }, null);
-  const nominalCompletedAt = lastTime + ONE_DAY_MS;
-  // A following D1 row is the best rollover evidence, including 23/25-hour
-  // DST sessions. Large gaps are not treated as one long session: doing so
-  // could let stale history overwrite a quote from a genuinely newer day.
-  const rolloverCompletedAt = nextObservedTime !== null
-    && nextObservedTime - lastTime <= MAX_D1_ROLLOVER_GAP_MS
-    ? nextObservedTime
-    : nominalCompletedAt;
-  const completedAt = Math.min(rolloverCompletedAt, now);
+  // Explicit finality or a following broker bucket is required. Elapsed
+  // device-clock hours cannot establish closure, a holiday or a DST boundary.
+  const completedAt = Math.min(nextObservedTime ?? lastTime, now);
 
-  return { value, asOf: lastTime, completedAt };
+  return { value, change: values.change, asOf: lastTime, completedAt };
 };

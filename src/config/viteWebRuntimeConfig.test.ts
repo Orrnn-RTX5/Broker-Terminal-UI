@@ -51,10 +51,33 @@ describe('environment-based web runtime configuration', () => {
   it('enables terminal freshness only through its explicit public deployment setting', () => {
     expect(createWebRuntimeConfig(testEnvironment).TERMINAL_QUOTE_FRESHNESS).toBe(false)
     expect(createWebRuntimeConfig({ ...testEnvironment, VITE_TERMINAL_QUOTE_FRESHNESS: 'true' }).TERMINAL_QUOTE_FRESHNESS).toBe(true)
+    expect(createWebRuntimeConfig({ ...testEnvironment, TERMINAL_QUOTE_FRESHNESS: 'true' }).TERMINAL_QUOTE_FRESHNESS).toBe(true)
+    expect(createWebRuntimeConfig({ ...testEnvironment, TERMINAL_QUOTE_FRESHNESS: '', VITE_TERMINAL_QUOTE_FRESHNESS: 'true' }).TERMINAL_QUOTE_FRESHNESS).toBe(false)
+    expect(createWebRuntimeConfig({ ...testEnvironment, TERMINAL_QUOTE_FRESHNESS: 'false', VITE_TERMINAL_QUOTE_FRESHNESS: 'true' }).TERMINAL_QUOTE_FRESHNESS).toBe(false)
   })
 
+  it('gives every unprefixed deployment alias precedence over VITE aliases, including empty values', () => {
+    const config = createWebRuntimeConfig({
+      ...orrnnEnvironment,
+      API_URL: 'https://service.achiever.orrnn.com',
+      WS_URL: 'wss://service.achiever.orrnn.com/ws/v2',
+      BROKER_ID: 'achiever', DEFAULT_MT5_SERVER: 'Achiever Trading Server',
+      DISCOVERY_BASE_URL: '', BROKER_DISCOVERY_URL: '',
+    })
+    expect(config).toMatchObject({ API_HOST: 'https://service.achiever.orrnn.com', WS_HOST: 'wss://service.achiever.orrnn.com', BROKER_ID: 'achiever', DISCOVERY_BASE_URL: '', BROKER_DISCOVERY_URL: '' })
+    // A separately supplied EXT address is contradictory until explicitly replaced.
+    expect(config.CONFIG_ERRORS.join(' ')).toContain('API_HOST_EXT')
+    expect(createWebRuntimeConfig({ ...orrnnEnvironment, API_HOST: '' }).API_HOST).toBe('')
+  })
+  it('leaves broker endpoints and identity empty when no configuration is supplied', () => {
+    expect(createWebRuntimeConfig({})).toMatchObject({
+      API_HOST: '', API_HOST_EXT: '', WS_HOST: '',
+      BROKER_ID: '', FEED_BROKER_ID: '', DEFAULT_MT5_SERVER: '',
+      DISCOVERY_BASE_URL: '', BROKER_DISCOVERY_URL: '',
+    })
+  })
   it('maps the complete Orrnn VITE profile to browser runtime fields', () => {
-    expect(createWebRuntimeConfig(orrnnEnvironment)).toEqual({
+    expect(createWebRuntimeConfig(orrnnEnvironment)).toMatchObject({
       BACKEND_TARGET: 'web',
       API_HOST: 'https://service.orrnn.com',
       API_HOST_EXT: 'https://service.orrnn.com',
@@ -78,7 +101,7 @@ describe('environment-based web runtime configuration', () => {
       location: { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost:5175' },
     })
     expect(runtime.RUNTIME_CONFIG).toEqual(expect.objectContaining({
-      BACKEND_TARGET: 'desktop', BROKER_ID: 'TEST',
+      BACKEND_TARGET: 'desktop', BROKER_ID: 'achiever-financials',
       API_HOST: 'http://localhost:5175', API_HOST_EXT: 'http://localhost:5175',
       WS_HOST: 'ws://localhost:5175',
     }))
@@ -121,7 +144,7 @@ describe('environment-based web runtime configuration', () => {
     expect(executeConfig(renderWebRuntimeConfig(config, false), { location }).RUNTIME_CONFIG)
       .toEqual(expect.objectContaining({ API_HOST: 'https://trivanta.orrnn.com', BROKER_ID: 'trivanta-markets', BACKEND_TARGET: 'desktop' }))
     expect(executeConfig(renderWebRuntimeConfig(config), { location }).RUNTIME_CONFIG)
-      .toEqual(expect.objectContaining({ API_HOST: location.origin, BROKER_ID: 'TEST' }))
+      .toEqual(expect.objectContaining({ API_HOST: location.origin, BROKER_ID: 'trivanta-markets' }))
   })
 
   it('derives all broker endpoints without retaining the prior broker', () => {
@@ -229,7 +252,7 @@ describe('environment-based web runtime configuration', () => {
     plugin.generateBundle.call({ emitFile } as unknown as PluginContext, {} as never, {}, true)
 
     expect(emitFile).toHaveBeenCalledWith(expect.objectContaining({ type: 'asset', fileName: 'runtime-config.js' }))
-    expect(executeConfig(emitFile.mock.calls[0][0].source).RUNTIME_CONFIG).toEqual(expect.objectContaining({ BROKER_ID: 'achiever-financials' }))
+    expect(executeConfig(emitFile.mock.calls.find(([asset]) => asset.fileName === 'runtime-config.js')![0].source).RUNTIME_CONFIG).toEqual(expect.objectContaining({ BROKER_ID: 'achiever-financials' }))
     expect(plugin.configurePreviewServer).toBeUndefined()
   })
 })

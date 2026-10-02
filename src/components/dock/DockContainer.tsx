@@ -37,7 +37,7 @@ const dockIntent = {
 };
 
 const CHART_FOCUS_COMPONENTS = new Set(['Chart', 'EmptyChartArea']);
-const HEADERLESS_DOCK_COMPONENTS = new Set(['EmptyChartArea', 'MarketWatch']);
+const HEADERLESS_DOCK_COMPONENTS = new Set(['EmptyChartArea', 'MarketWatch', 'Terminal']);
 
 const showsDockPanelHeader = (component: string): boolean => !HEADERLESS_DOCK_COMPONENTS.has(component);
 

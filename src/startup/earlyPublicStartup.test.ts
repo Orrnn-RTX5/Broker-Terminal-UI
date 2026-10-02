@@ -27,6 +27,7 @@ describe('early public startup fetch', () => {
       signal: expect.any(AbortSignal),
       credentials: 'omit',
       cache: 'no-store',
+      redirect: 'error',
     });
     second.catch(() => undefined);
   });
@@ -42,6 +43,16 @@ describe('early public startup fetch', () => {
     await fetchEarlyPublicStartup('symbols', symbolsUrl, new AbortController().signal);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reuse another broker startup response at the same configured origin', async () => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    (window as Window & { __RTX_EARLY_PUBLIC_STARTUP__?: unknown }).__RTX_EARLY_PUBLIC_STARTUP__ = {
+      brokerId: 'OldBroker', symbolsUrl, symbols: Promise.resolve(new Response('[]')),
+    };
+    await fetchEarlyPublicStartup('symbols', symbolsUrl, new AbortController().signal, { 'X-Broker-ID': 'NewBroker' });
+    expect(fetchMock).toHaveBeenCalledWith(symbolsUrl, expect.objectContaining({ headers: { 'X-Broker-ID': 'NewBroker' }, redirect: 'error', credentials: 'omit' }));
   });
 
   it('rejects an aborted caller without reading the early response', async () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -112,6 +112,61 @@ describe('LastSymbolPanel market-order transport', () => {
 
     await waitFor(() => expect(mocks.placeMarketOrder).toHaveBeenCalledTimes(1));
     expect(mocks.placeMarketOrder.mock.calls[0][0].symbol).toBe('XAUUSD.RAW');
+  });
+
+  it('switches the displayed symbol and quote immediately while a previous order is pending', async () => {
+    useLastSymbolStore.setState({ lastTradeSide: 'BUY', lastTradeTime: 123 });
+    useAppStore.getState().setTicks({
+      ...useAppStore.getState().ticks,
+      'XAUUSD.raw': { symbol: 'XAUUSD.raw', bid: 2500, ask: 2500.2, spread: 0.2, timestamp: Date.now(), digits: 2 },
+    });
+    let resolveOrder!: (result: { ticket: number }) => void;
+    mocks.placeMarketOrder.mockImplementationOnce(() => new Promise(resolve => { resolveOrder = resolve; }));
+    const view = render(<LastSymbolPanel symbol="EURUSD" />);
+    fireEvent.keyDown(window, { key: 'B', shiftKey: true });
+    expect(mocks.placeMarketOrder).toHaveBeenCalledTimes(1);
+
+    view.rerender(<LastSymbolPanel symbol="XAUUSD.raw" />);
+    const summary = screen.getByRole('region', { name: 'Selected symbol' });
+    expect(within(summary).getByText('XAUUSD.raw')).toBeInTheDocument();
+    expect(within(summary).queryByText('BUY')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buy XAUUSD.raw at market' })).toHaveTextContent('2500.20');
+    expect(useLastSymbolStore.getState().lastSymbol).toBe('EURUSD');
+
+    await act(async () => { resolveOrder({ ticket: 990001 }); });
+    expect(within(summary).getByText('XAUUSD.raw')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'S', shiftKey: true });
+    expect(mocks.placeMarketOrder.mock.calls[1][0]).toMatchObject({ symbol: 'XAUUSD.RAW', side: 'sell' });
+    await act(async () => {});
+  });
+
+  it('does not reuse the previous quote when the selected contract has no quote', () => {
+    const view = render(<LastSymbolPanel symbol="EURUSD" />);
+    expect(screen.getByRole('button', { name: 'Buy EURUSD at market' })).toBeEnabled();
+    view.rerender(<LastSymbolPanel symbol="EURUSD.r" />);
+    expect(screen.getByRole('button', { name: 'Buy EURUSD.r at market' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Sell EURUSD.r at market' })).toBeDisabled();
+    fireEvent.keyDown(window, { key: 'B', shiftKey: true });
+    fireEvent.keyDown(window, { key: 'S', shiftKey: true });
+    expect(mocks.placeMarketOrder).not.toHaveBeenCalled();
+    expect(useLastSymbolStore.getState().lastSymbol).toBe('EURUSD');
+  });
+
+  it('closes only the selected symbol after switching away from the last traded symbol', async () => {
+    const basePosition = {
+      side: 'BUY' as const, volume: 0.01, openPrice: 100, currentPrice: 101,
+      openTime: '2026-09-10T10:00:00Z', sl: 0, tp: 0, swap: 0, commission: 0, unrealizedPnL: 1,
+    };
+    useAppStore.setState({ positions: [
+      { ...basePosition, id: 901, symbol: 'EURUSD' },
+      { ...basePosition, id: 902, symbol: 'EURUSD.r' },
+    ] });
+    mocks.closePosition.mockResolvedValue({ success: true });
+    const view = render(<LastSymbolPanel symbol="EURUSD" />);
+    view.rerender(<LastSymbolPanel symbol="EURUSD.r" />);
+    fireEvent.keyDown(window, { key: 'X', shiftKey: true });
+    await waitFor(() => expect(mocks.closePosition).toHaveBeenCalledExactlyOnceWith('902'));
+    await waitFor(() => expect(useAppStore.getState().positions.map(position => position.id)).toEqual([901]));
   });
 
   const seedPosition = () => useAppStore.setState({ positions: [{

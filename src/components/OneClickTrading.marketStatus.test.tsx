@@ -434,12 +434,13 @@ describe('OneClickTrading market status', () => {
 
     expect(getTradeButton('BUY').disabled).toBe(true);
     expect(getTradeButton('SELL').disabled).toBe(true);
-    expect(screen.getByText(normalizeMarketStatus({ status }).label)).not.toBeNull();
+    const label = normalizeMarketStatus({ symbol: 'EURUSD', status }).label;
+    expect(screen.getByText(label)).not.toBeNull();
     expect(screen.getByText('BUY')).not.toBeNull();
     expect(screen.getByText('SELL')).not.toBeNull();
     fireEvent.click(getTradeButton('BUY'));
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(getTradeButton('BUY').title).toBe(normalizeMarketStatus({ status }).label);
+    expect(getTradeButton('BUY').title).toBe(label);
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });
 
@@ -470,14 +471,17 @@ describe('OneClickTrading market status', () => {
     expect(screen.queryByText('Market Closed')).not.toBeNull();
   });
 
-  it('distinguishes unavailable status from a configured market closure', () => {
+  it.each([
+    null,
+    { symbol: 'EURUSD', message: 'schedule unavailable', trade_open: false, quote_open: false },
+  ])('labels unavailable status accurately and keeps submission blocked: %j', (payload) => {
     render(
       <OneClickTrading
         symbol="EURUSD"
         timeframe="M5"
         visible
         tradeAllowed
-        marketStatus={normalizeMarketStatus(null, { symbol: 'EURUSD' })}
+        marketStatus={normalizeMarketStatus(payload, { symbol: 'EURUSD' })}
       />,
     );
 
@@ -485,5 +489,9 @@ describe('OneClickTrading market status', () => {
     expect(getTradeButton('SELL').disabled).toBe(true);
     expect(screen.getByText('Status unavailable')).not.toBeNull();
     expect(screen.queryByText(/Market status unavailable/i)).toBeNull();
+    expect(getTradeButton('BUY').title).toBe('Status unavailable');
+    expect(screen.queryByText('Market Closed')).toBeNull();
+    fireEvent.click(getTradeButton('BUY'));
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });
 });

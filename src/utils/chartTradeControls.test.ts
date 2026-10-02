@@ -270,8 +270,8 @@ describe('createEntryTradeControlBar', () => {
     const pips = root.querySelector<HTMLElement>('.rtx-trade-chip--pips')!;
     const money = root.querySelector<HTMLElement>('.rtx-trade-chip--money')!;
     const neutral = money.style.color;
-    const profit = isLightSurface ? '#00897b' : '#26a69a';
-    const loss = isLightSurface ? '#d32f2f' : '#f23645';
+    const profit = isLightSurface ? '#1d4ed8' : '#4597ff';
+    const loss = isLightSurface ? '#d32f2f' : '#ff4d4f';
     setLiveMetrics(12, 4.5);
     expect(pips).toHaveStyle({ color: profit });
     expect(money).toHaveStyle({ color: profit });
@@ -288,6 +288,28 @@ describe('createEntryTradeControlBar', () => {
     expect(pips.style.color).toBe(neutral);
     expect(money.style.color).toBe(neutral);
     expect(root.style.backgroundColor).toBe('transparent');
+  });
+
+  it('uses neutral dark surfaces and actions while keeping BUY as the trade accent', () => {
+    const { root } = createEntryTradeControlBar({
+      tradeKey: 'trade:dark', ticket: 987, symbol: 'XAUUSD', side: 'BUY',
+      volume: 0.01, isLightSurface: false, leftInset: 10, plainLabel: true,
+    });
+    const primary = root.querySelector<HTMLElement>('.rtx-trade-primary')!;
+    const secondary = root.querySelector<HTMLElement>('.rtx-trade-secondary')!;
+    const volume = root.querySelector<HTMLElement>('.rtx-trade-chip--volume')!;
+    const reverse = root.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--reverse')!;
+    const close = root.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--close')!;
+
+    expect(primary).toHaveStyle({ borderColor: '#404048', backgroundColor: '#191a1e' });
+    expect(secondary).toHaveStyle({ borderColor: '#404048', backgroundColor: '#191a1e' });
+    expect(volume).toHaveStyle({ backgroundColor: '#0078d4' });
+    expect(reverse).toHaveStyle({ color: '#f4f4f6' });
+    expect(close).toHaveStyle({ color: '#b9bcc6' });
+    reverse.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(reverse.style.backgroundColor).toBe('rgb(41, 42, 48)');
+    reverse.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(reverse).toHaveStyle({ color: '#f4f4f6' });
   });
 
   const buildBar = (onAction?: (action: string) => void) => createEntryTradeControlBar({

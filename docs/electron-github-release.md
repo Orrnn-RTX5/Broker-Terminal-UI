@@ -1,5 +1,7 @@
 # Electron GitHub Release Setup
 
+> Historical desktop setup. The Electron release workflow has been removed from this repository; active CI/CD publishes only the website. The instructions below describe the retired workflow, not an available release procedure.
+
 This project publishes the desktop updater feed to a separate public GitHub repository.
 
 - Private source repo: `rtx5-orrnn/rtx5-broker-webterminal-ui`

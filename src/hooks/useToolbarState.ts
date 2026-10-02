@@ -5,6 +5,7 @@ import { useCommandBus } from './useCommandBus';
 import type { Command } from '../types/commands';
 import { getActiveChartSource } from '../services/activeChartSource';
 import { useDrawingToolPreferencesStore } from '../store/useDrawingToolPreferencesStore';
+import { chartCursorShowsCrosshair, useChartCursorStore } from '../store/useChartCursorStore';
 
 export function useToolbarState() {
   const [state, dispatchLocal] = useReducer(toolbarReducer, initialToolbarState);
@@ -17,6 +18,16 @@ export function useToolbarState() {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    const applyCursor = (mode: Parameters<typeof chartCursorShowsCrosshair>[0]) => {
+      const enabled = chartCursorShowsCrosshair(mode);
+      if (stateRef.current.crosshairEnabled === enabled) return;
+      dispatchLocal({ type: 'SET_CROSSHAIR', enabled });
+    };
+    applyCursor(useChartCursorStore.getState().mode);
+    return useChartCursorStore.subscribe((cursor) => applyCursor(cursor.mode));
+  }, []);
 
   // Subscribe to command bus for incoming commands that affect toolbar state
   useEffect(() => {

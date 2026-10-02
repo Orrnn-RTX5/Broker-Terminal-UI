@@ -21,7 +21,6 @@ describe('TopToolbar primary command cluster', () => {
   it('uses dedicated outline command icons alongside the labeled action icons', () => {
     for (const icon of [
       'new-order',
-      'activity',
       'bar-chart',
       'candlestick',
       'line-chart',
@@ -41,7 +40,7 @@ describe('TopToolbar primary command cluster', () => {
 
     expect(markedCluster).not.toMatch(/<(?:FileText|TrendingUp|BarChart2|CandlestickChart|LineChart|AreaChart|ZoomIn|ZoomOut|LayoutPanelTop|RefreshCw)\b/);
     expect(markedCluster).toContain('<Icon name="new-order" size={20} />');
-    expect(markedCluster).toContain('<Icon name="activity" size={20} />');
+    expect(markedCluster).not.toContain('<Icon name="activity" size={20} />');
     expect(markedCluster).toContain('label={tr("Chart capture and overlays")}');
     expect(markedCluster).toContain('className="rtx-period-separator-toggle"');
     expect(markedCluster).toContain('className="rtx-trade-history-overlay-button"');

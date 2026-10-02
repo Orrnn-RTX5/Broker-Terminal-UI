@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const runtime = vi.hoisted(() => ({ desktop: false, host: 'https://broker.example' }));
+const runtime = vi.hoisted(() => ({ desktop: false, host: 'https://broker.example', brokerId: 'Fixture' }));
 vi.mock('../config/backendTarget.js', () => ({
   getPublicBackendTarget: () => runtime.host,
   isDesktopBackendTarget: () => runtime.desktop,
+  getRuntimeBrokerConfiguration: () => ({ brokerId: runtime.brokerId }),
 }));
 vi.mock('../config/localDevProxy', () => ({ toLocalDevProxyUrl: (url: string) => url }));
 
@@ -20,6 +21,7 @@ beforeEach(async () => {
   vi.resetModules();
   runtime.desktop = false;
   runtime.host = 'https://broker.example';
+  runtime.brokerId = 'Fixture';
   localStorage.clear(); sessionStorage.clear();
   requests = [];
   fetchMock = vi.fn((_url: string, options: RequestInit) => new Promise<Response>((resolve, reject) => {
@@ -37,14 +39,19 @@ afterEach(() => {
 });
 
 describe('public startup history handoff', () => {
-  it('starts one headerless first viewport request and hands it to exactly one chart', async () => {
+  it('does not fetch relative candles when the deployment origin is unavailable', () => {
+    runtime.host = '';
+    prefetch.preloadPublicStartupHistory();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('starts one credential-free first viewport request and hands it to exactly one chart', async () => {
     prefetch.preloadPublicStartupHistory();
     prefetch.preloadPublicStartupHistory();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(url, {
-      signal: expect.any(AbortSignal), credentials: 'omit', cache: 'no-store',
+      signal: expect.any(AbortSignal), credentials: 'omit', cache: 'no-store', redirect: 'error', headers: { 'X-Broker-ID': 'Fixture' },
     });
     const result = prefetch.takePublicStartupHistory(url);
     expect(result).not.toBeNull();
@@ -52,6 +59,22 @@ describe('public startup history handoff', () => {
     requests[0].resolve(response());
     await expect(result).resolves.toEqual(payload);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('isolates pending and claimed history when broker ID changes case on the same origin', async () => {
+    prefetch.preloadPublicStartupHistory();
+    const previous = prefetch.takePublicStartupHistory(url);
+    const rejected = expect(previous).rejects.toMatchObject({ name: 'AbortError' });
+    runtime.brokerId = 'fixture';
+    expect(prefetch.takePublicStartupHistory(url)).toBeNull();
+    prefetch.preloadPublicStartupHistory();
+    const current = prefetch.takePublicStartupHistory(url);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1].headers).toEqual({ 'X-Broker-ID': 'fixture' });
+    requests[0].resolve(response());
+    requests[1].resolve(new Response(JSON.stringify({ candles: [] })));
+    await rejected;
+    await expect(current).resolves.toEqual({ candles: [] });
   });
 
   it.each(['symbol', 'timeframe', 'count', 'broker'])('does not serve another %s request', async kind => {

@@ -23,19 +23,25 @@ interface ContextMenuProps {
   children?: React.ReactNode;
 }
 
-type ContextMenuVariant = 'dark' | 'mt5-light' | 'mt5-dark';
+type ContextMenuVariant = 'dark' | 'mt5-light' | 'mt5-dark' | 'theme';
 type ContextMenuDensity = 'default' | 'compact';
 
 // The app's own elevation ladder (theme.css) drives every surface below:
 // panels sit between --bg-tertiary and --bg-quaternary, hovered rows take
 // --bg-elevated, and the inset highlight is the only "gloss" in the sheet.
-type MenuSkin = 'dark' | 'light';
+type MenuSkin = 'dark' | 'light' | 'theme';
 
 const resolveMenuSkin = (variant: ContextMenuVariant): MenuSkin => (
-  variant === 'mt5-light' ? 'light' : 'dark'
+  variant === 'theme' ? 'theme' : variant === 'mt5-light' ? 'light' : 'dark'
 );
 
-const menuPanelStyle = (skin: MenuSkin): React.CSSProperties => ({
+const menuPanelStyle = (skin: MenuSkin): React.CSSProperties => skin === 'theme' ? ({
+  background: 'var(--bg-secondary)',
+  borderColor: 'var(--border-secondary)',
+  borderRadius: 4,
+  color: 'var(--text-primary)',
+  boxShadow: 'var(--shadow-xl)',
+}) : ({
   background: skin === 'light'
     ? 'rgba(255, 255, 255, 0.98)'
     : 'rgba(20, 21, 26, 0.96)',
@@ -317,7 +323,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
         role="separator"
         className="mx-1.5 my-1 h-px"
         style={{
-          background: skin === 'light'
+          background: skin === 'theme' ? 'var(--border-secondary)' : skin === 'light'
             ? 'linear-gradient(90deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.09) 15%, rgba(0,0,0,0.09) 85%, rgba(0,0,0,0.02) 100%)'
             : 'linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.08) 15%, rgba(255,255,255,0.08) 85%, rgba(255,255,255,0.02) 100%)',
         }}
@@ -326,23 +332,42 @@ const MenuItem: React.FC<MenuItemProps> = ({
   }
 
   const isActive = !item.disabled && (isSubmenuActive || isFocused || isPointerHovered || isHovered);
-  const glyphColor = item.disabled
+  const glyphColor = skin === 'theme'
+    ? (item.disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)')
+    : item.disabled
     ? (skin === 'light' ? 'rgba(0, 0, 0, 0.28)' : 'rgba(255, 255, 255, 0.25)')
     : isActive
       ? (skin === 'light' ? '#0f172a' : '#ffffff')
       : (skin === 'light' ? '#475569' : 'rgba(255, 255, 255, 0.70)');
 
+  const checkmark = (
+    <svg
+      className="w-3.5 h-3.5"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ color: item.disabled ? 'inherit' : (skin === 'light' ? '#0284c7' : '#38bdf8') }}
+    >
+      <polyline points="3 8.5 6.5 12 13 4.5" />
+    </svg>
+  );
+
   const rowStyle: React.CSSProperties = {
     height: isCompact ? 26 : 30,
-    color: item.disabled
+    color: skin === 'theme'
+      ? (item.disabled ? 'var(--text-tertiary)' : 'var(--text-primary)')
+      : item.disabled
       ? (skin === 'light' ? 'rgba(0, 0, 0, 0.32)' : 'rgba(255, 255, 255, 0.28)')
       : isActive
         ? (skin === 'light' ? '#0f172a' : '#ffffff')
         : (skin === 'light' ? '#1e293b' : 'rgba(255, 255, 255, 0.90)'),
     background: isActive
-      ? (skin === 'light' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)')
+      ? (skin === 'theme' ? 'var(--bg-elevated)' : skin === 'light' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)')
       : 'transparent',
-    boxShadow: isActive
+    boxShadow: isActive && skin !== 'theme'
       ? (skin === 'light'
         ? 'inset 0 1px 0 rgba(255,255,255,0.80)'
         : 'inset 0 1px 0 rgba(255,255,255,0.05)')
@@ -367,30 +392,19 @@ const MenuItem: React.FC<MenuItemProps> = ({
       aria-expanded={hasSubmenu && isSubmenuActive ? 'true' : 'false'}
       tabIndex={-1}
     >
-      {/* Check and icon keep their own reserved gutters so every label,
-          checked or not, starts on the same column. */}
-      <span className="flex w-[18px] shrink-0 items-center justify-center mr-0.5" aria-hidden="true">
-        {item.checked ? (
-          <svg
-            className="w-3.5 h-3.5"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{
-              color: item.disabled
-                ? 'inherit'
-                : (skin === 'light' ? '#0284c7' : '#38bdf8'),
-            }}
-          >
-            <polyline points="3 8.5 6.5 12 13 4.5" />
-          </svg>
-        ) : null}
-      </span>
-      <span className="flex w-5 shrink-0 items-center justify-center mr-2" aria-hidden="true">
-        {item.icon ? (
+      {/* Compact menus share one glyph column to keep labels close to the edge. */}
+      {!isCompact && (
+        <span className="flex w-[18px] shrink-0 items-center justify-center mr-0.5" aria-hidden="true">
+          {item.checked ? checkmark : null}
+        </span>
+      )}
+      <span
+        className={isCompact
+          ? 'flex w-[18px] shrink-0 items-center justify-center mr-1.5'
+          : 'flex w-5 shrink-0 items-center justify-center mr-2'}
+        aria-hidden="true"
+      >
+        {isCompact && item.checked ? checkmark : item.icon ? (
           <span
             className="flex items-center justify-center transition-colors"
             style={{ color: glyphColor }}
@@ -406,7 +420,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
         <span
           className="ml-auto whitespace-nowrap pl-4 pr-1 font-mono text-[11px] font-normal tracking-wide tabular-nums select-none leading-none transition-colors"
           style={{
-            color: item.disabled
+            color: skin === 'theme' ? 'var(--text-tertiary)' : item.disabled
               ? (skin === 'light' ? 'rgba(0, 0, 0, 0.25)' : 'rgba(255, 255, 255, 0.20)')
               : isActive
                 ? (skin === 'light' ? 'rgba(0, 0, 0, 0.60)' : 'rgba(255, 255, 255, 0.70)')

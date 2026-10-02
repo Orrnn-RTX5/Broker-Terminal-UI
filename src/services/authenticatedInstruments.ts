@@ -5,6 +5,7 @@ import {
   getCommittedBrokerAccountSessionScopeKey,
   onCommittedBrokerAccountSessionScopeChange,
   onSessionChange,
+  getRefreshToken,
 } from './brokerSession';
 
 interface InstrumentRequest {
@@ -33,8 +34,7 @@ export const loadSharedAuthenticatedInstruments = (
   if (signal?.aborted) return Promise.reject(signal.reason ?? abortError());
   const scope = getCommittedBrokerAccountSessionScope();
   const token = options.authToken === undefined ? getAuthToken() : options.authToken;
-  const storedRefreshToken = typeof window === 'undefined' ? null
-    : localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
+  const storedRefreshToken = getRefreshToken();
   const refreshToken = options.requestContext ? options.requestContext.refreshToken : storedRefreshToken;
   const rawUrl = `${options.baseUrl || API_V2_BASE_URL}/instruments`;
   const url = options.skipDynamicUrl ? rawUrl : getDynamicUrl(rawUrl);

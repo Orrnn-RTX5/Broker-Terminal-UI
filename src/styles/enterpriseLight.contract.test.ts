@@ -75,7 +75,7 @@ describe('enterprise light visual-system contract', () => {
       '--rtx-light-selected': '#eef2ff',
       '--rtx-light-buy': '#2563eb',
       '--rtx-light-sell': '#dc2626',
-      '--color-profit': '#047857',
+      '--color-profit': '#1d4ed8',
       '--color-loss': '#b91c1c',
     };
     for (const [token, color] of Object.entries(expectedPalette)) {

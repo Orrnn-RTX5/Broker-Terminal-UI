@@ -116,6 +116,12 @@ describe('TradeWebSocketClient market orders', () => {
     FakeWebSocket.instances = [];
     localStorage.clear();
     sessionStorage.clear();
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      backendTarget: 'desktop', API_HOST: 'https://broker.example', WS_HOST: 'wss://broker.example',
+      BROKER_ID: 'Fixture', DEFAULT_MT5_SERVER: 'Fixture-Live',
+    };
+    localStorage.setItem('server_url', 'https://broker.example');
+    localStorage.setItem('broker_id', 'Fixture');
     clearTradeOrderLatencySamples();
     setVisibilityState('visible');
     vi.spyOn(Math, 'random').mockReturnValue(0);
@@ -124,6 +130,7 @@ describe('TradeWebSocketClient market orders', () => {
 
   afterEach(() => {
     destroyTradeWebSocketClient();
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();

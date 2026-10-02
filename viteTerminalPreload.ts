@@ -26,7 +26,13 @@ export const terminalPreloadAssets = (bundle: OutputBundle, base = '/'): Array<{
     }
     // Shared exports can make Rollup omit the facade even for a dynamic entry.
     const sources = [chunk.facadeModuleId || '', ...Object.keys(chunk.modules || {})]
-    if (sources.some(source => /\/src\/(App|authenticatedStyles|components\/TradingChart)\.tsx?$/.test(source.replaceAll('\\', '/')))) visit(chunk.fileName)
+    // English is required as the fallback for every selected language. Fetch
+    // these namespaces beside the shell instead of waiting for i18n to run.
+    if (sources.some(source => {
+      const normalized = source.replaceAll('\\', '/')
+      return /\/src\/(App|authenticatedStyles|components\/TradingChart)\.tsx?$/.test(normalized)
+        || /\/src\/locales\/en\/(translation|ui)\.json$/.test(normalized)
+    })) visit(chunk.fileName)
   }
   return [
     ...Array.from(scripts, file => ({ href: base + file, style: false })),

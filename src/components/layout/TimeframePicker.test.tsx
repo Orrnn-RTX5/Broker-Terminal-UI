@@ -38,8 +38,8 @@ describe('TimeframePicker', () => {
       />,
     );
 
-    expect(screen.getByRole('radio', { name: 'Timeframe: 1 minute' })).toHaveAttribute('aria-checked', 'true');
-    await user.click(screen.getByRole('radio', { name: 'Timeframe: 15 minutes' }));
+    expect(screen.getByRole('radio', { name: 'M1 — Timeframe: 1 minute' })).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('radio', { name: 'M15 — Timeframe: 15 minutes' }));
     expect(onSelect).toHaveBeenCalledWith('M15');
   });
 
@@ -59,7 +59,7 @@ describe('TimeframePicker', () => {
     );
 
     const options = screen.getAllByRole('radio');
-    const selected = screen.getByRole('radio', { name: 'Timeframe: 15 minutes' });
+    const selected = screen.getByRole('radio', { name: 'M15 — Timeframe: 15 minutes' });
     expect(selected).toHaveAttribute('tabindex', '0');
     options.filter((option) => option !== selected).forEach((option) => {
       expect(option).toHaveAttribute('tabindex', '-1');
@@ -92,21 +92,21 @@ describe('TimeframePicker', () => {
 
     render(<Harness />);
 
-    const selected = screen.getByRole('radio', { name: 'Timeframe: 15 minutes' });
+    const selected = screen.getByRole('radio', { name: 'M15 — Timeframe: 15 minutes' });
     selected.focus();
 
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('radio', { name: 'Timeframe: 30 minutes' })).toHaveFocus();
-    expect(screen.getByRole('radio', { name: 'Timeframe: 30 minutes' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'M30 — Timeframe: 30 minutes' })).toHaveFocus();
+    expect(screen.getByRole('radio', { name: 'M30 — Timeframe: 30 minutes' })).toBeChecked();
 
     await user.keyboard('{ArrowLeft}');
-    expect(screen.getByRole('radio', { name: 'Timeframe: 15 minutes' })).toHaveFocus();
+    expect(screen.getByRole('radio', { name: 'M15 — Timeframe: 15 minutes' })).toHaveFocus();
 
     await user.keyboard('{End}');
-    expect(screen.getByRole('radio', { name: 'Timeframe: 1 month' })).toHaveFocus();
+    expect(screen.getByRole('radio', { name: 'MN — Timeframe: 1 month' })).toHaveFocus();
 
     await user.keyboard('{Home}');
-    expect(screen.getByRole('radio', { name: 'Timeframe: 1 minute' })).toHaveFocus();
+    expect(screen.getByRole('radio', { name: 'M1 — Timeframe: 1 minute' })).toHaveFocus();
     expect(selections).toEqual(['M30', 'M15', 'MN', 'M1']);
   });
 
@@ -122,12 +122,12 @@ describe('TimeframePicker', () => {
       />,
     );
 
-    const first = screen.getByRole('radio', { name: 'Timeframe: 1 minute' });
+    const first = screen.getByRole('radio', { name: 'M1 — Timeframe: 1 minute' });
     first.focus();
     await user.keyboard('{ArrowLeft}');
     expect(onSelect).toHaveBeenLastCalledWith('MN');
 
-    const last = screen.getByRole('radio', { name: 'Timeframe: 1 month' });
+    const last = screen.getByRole('radio', { name: 'MN — Timeframe: 1 month' });
     last.focus();
     await user.keyboard('{ArrowRight}');
     expect(onSelect).toHaveBeenLastCalledWith('M1');
