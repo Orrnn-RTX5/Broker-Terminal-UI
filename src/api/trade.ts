@@ -1,6 +1,7 @@
 import { API_V2_BASE_URL, isLocalViteDevServer } from '../config/api';
 import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
 import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
+import { getRuntimeBrokerConfiguration, isDesktopBackendTarget } from '../config/backendTarget.js';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
 import { requirePositionCloseTicket } from './positionClose';
 import { createTradeOrderUuid, isTradeOrderUuidV4 } from './tradeSocket';
@@ -226,9 +227,16 @@ const normalizeModifyPendingOrderRequest = (changes: ModifyPendingOrderRequest):
 
 export const authV2Api = {
   login: async (credentials: AuthLoginRequest, options?: ApiRequestOptions & { persistSession?: boolean }) => {
+    const configuration = isDesktopBackendTarget() ? null : getRuntimeBrokerConfiguration();
+    if (configuration && (!configuration.valid
+      || (credentials.broker_id && credentials.broker_id.trim() !== configuration.brokerId))) {
+      throw new Error('This terminal only accepts accounts for its configured broker.');
+    }
     const { persistSession = true, ...requestOverrides } = options ?? {};
     const shouldSkipDynamicUrl = (Boolean(options?.baseUrl) || Boolean(options?.skipDynamicUrl)) && !isLocalViteDevServer();
-    const payload = normalizeBrokerAuthLoginPayload(credentials);
+    const payload = normalizeBrokerAuthLoginPayload(configuration
+      ? { ...credentials, broker_id: configuration.brokerId }
+      : credentials);
     const requestOptions = v2Options({
       ...requestOverrides,
       skipAuth: true,
@@ -255,6 +263,14 @@ export const authV2Api = {
       response = await requestLogin();
     }
 
+    if (configuration) {
+      if (JSON.stringify(getRuntimeBrokerConfiguration()) !== JSON.stringify(configuration)) {
+        throw new Error('The broker configuration changed during login. Please log in again.');
+      }
+      if (response.broker_id && response.broker_id.trim() !== configuration.brokerId) {
+        throw new Error('The account belongs to a different broker.');
+      }
+    }
     if (persistSession) return persistAuth(response);
     const token = response.access_token || response.token;
     return { ...response, access_token: token, token };

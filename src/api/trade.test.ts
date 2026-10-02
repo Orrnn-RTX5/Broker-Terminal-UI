@@ -113,12 +113,12 @@ describe('trade v2 API contract calls', () => {
       refresh_token: 'refresh-token',
       expires_at: 1770000000,
       account_login: 123456,
-      broker_id: 'test_broker',
+      broker_id: 'test-broker',
     }));
 
     await authV2Api.login({
       username: 123456,
-      broker_id: 'test_broker',
+      broker_id: 'test-broker',
       password: runtimePassword,
     });
 
@@ -128,7 +128,7 @@ describe('trade v2 API contract calls', () => {
     expect(request.headers.Authorization).toBeUndefined();
     expect(request.body).toEqual({
       login: 123456,
-      broker_id: 'test_broker',
+      broker_id: 'test-broker',
       password: runtimePassword,
     });
     expect(localStorage.getItem('auth_token')).toBe('jwt-token');
@@ -141,7 +141,7 @@ describe('trade v2 API contract calls', () => {
 
     const login = authV2Api.login({
       username: 123456,
-      broker_id: 'test_broker',
+      broker_id: 'test-broker',
       password: 'FixturePassword123',
     }, { persistSession: false });
 
@@ -162,6 +162,31 @@ describe('trade v2 API contract calls', () => {
     expect(localStorage.getItem('token_expires_at')).toBeNull();
   });
 
+  it.each(['other-broker', 'TEST-BROKER'])('rejects login to %s before sending credentials', async brokerId => {
+    await expect(authV2Api.login({ username: '123456', password: 'Password1', broker_id: brokerId }))
+      .rejects.toThrow('only accepts accounts for its configured broker');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(['other-broker', 'TEST-BROKER'])('does not save tokens returned for %s', async brokerId => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ token: 'wrong-token', broker_id: brokerId }));
+    await expect(authV2Api.login({ username: '123456', password: 'Password1' }))
+      .rejects.toThrow('different broker');
+    expect(lastFetchCall().body.broker_id).toBe('test-broker');
+    expect(localStorage.getItem('auth_token')).toBeNull();
+  });
+
+  it('does not save a login response after broker deployment changes', async () => {
+    const deferred = createDeferred<Response>();
+    vi.mocked(fetch).mockReturnValueOnce(deferred.promise);
+    const request = authV2Api.login({ username: '123456', password: 'Password1' });
+    const rejection = expect(request).rejects.toThrow();
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__!.BROKER_ID = 'new-broker';
+    deferred.resolve(jsonResponse({ token: 'old-token', broker_id: 'test-broker' }));
+    await rejection;
+    expect(localStorage.getItem('auth_token')).toBeNull();
+  });
+
   it('does not retry direct broker login with legacy user/server credentials', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       code: 'MT_RET_ERR_PARAMS',
@@ -171,7 +196,7 @@ describe('trade v2 API contract calls', () => {
     await expect(authV2Api.login({
       username: '100001',
       password: 'FixturePassword123',
-      broker_id: 'gta_broker',
+      broker_id: 'test-broker',
     })).rejects.toMatchObject({
       name: 'ApiError',
       status: 400,
@@ -181,7 +206,7 @@ describe('trade v2 API contract calls', () => {
     expect(lastFetchCall().body).toEqual({
       login: 100001,
       password: 'FixturePassword123',
-      broker_id: 'gta_broker',
+      broker_id: 'test-broker',
     });
     expect(localStorage.getItem('auth_token')).toBeNull();
   });
@@ -197,7 +222,7 @@ describe('trade v2 API contract calls', () => {
     const response = await authV2Api.login({
       username: '200001',
       password: 'FixturePassword123',
-      broker_id: 'TEST',
+      broker_id: 'test-broker',
     });
 
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
@@ -214,7 +239,7 @@ describe('trade v2 API contract calls', () => {
     await expect(authV2Api.login({
       username: '200001',
       password: 'FixturePassword123',
-      broker_id: 'TEST',
+      broker_id: 'test-broker',
     })).rejects.toMatchObject({
       name: 'ApiError',
       status: 502,
@@ -230,7 +255,7 @@ describe('trade v2 API contract calls', () => {
     await expect(authV2Api.login({
       username: '200001',
       password: 'FixturePassword123',
-      broker_id: 'TEST',
+      broker_id: 'test-broker',
     })).rejects.toMatchObject({
       name: 'ApiError',
       status,
@@ -349,7 +374,7 @@ describe('trade v2 API contract calls', () => {
       const request = authV2Api.login({
         username: '200001',
         password: crypto.randomUUID(),
-        broker_id: 'TEST',
+        broker_id: 'test-broker',
       });
 
       await vi.advanceTimersByTimeAsync(30_000);
@@ -378,7 +403,7 @@ describe('trade v2 API contract calls', () => {
       const request = authV2Api.login({
         username: '200001',
         password: crypto.randomUUID(),
-        broker_id: 'TEST',
+        broker_id: 'test-broker',
       });
       const observedResult = request.catch(error => error);
 
@@ -626,13 +651,13 @@ describe('trade v2 API contract calls', () => {
 
     await authV2Api.login({
       username: '100001',
-      broker_id: 'testorrnn',
+      broker_id: 'test-broker',
       password: runtimePassword,
     });
 
     expect(lastFetchCall().body).toEqual({
       login: 100001,
-      broker_id: 'testorrnn',
+      broker_id: 'test-broker',
       password: runtimePassword,
     });
   });

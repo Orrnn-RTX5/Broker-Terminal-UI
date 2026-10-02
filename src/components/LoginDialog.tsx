@@ -11,6 +11,7 @@ import { removeToken, setRefreshToken, setToken } from '../api/client';
 import { normalizeBrokerServerUrl, updateDynamicUrls, toLocalDevProxyUrl } from '../config/api';
 import {
     getBackendTarget,
+    getRuntimeBrokerConfiguration,
     isConfiguredBrokerEndpoint,
     isDesktopBackendTarget,
     normalizeBrokerInfoForTarget,
@@ -53,7 +54,7 @@ const isAbortError = (err: unknown): boolean =>
 const getErrorMessage = (err: unknown, fallback: string): string =>
     err instanceof Error ? err.message : fallback;
 
-const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim();
 
 const buildLockedRuntimeBroker = (brokerId: string, displayName?: string): BrokerServerItem => {
     const backendUrl = getBackendTarget();
@@ -74,13 +75,22 @@ export function LoginDialog({
     initialLogin = '',
     initialServer,
     reason,
-    lockedBrokerId,
+    lockedBrokerId: requestedLockedBrokerId,
     lockedBrokerDisplayName,
 }: LoginDialogProps) {
     const tr = useUiTranslation();
     const dialogId = useId();
     const tradeLogin = reason === 'trade';
     const isDesktop = isDesktopBackendTarget();
+    const configuration = getRuntimeBrokerConfiguration();
+    const lockedBrokerId = isDesktop ? requestedLockedBrokerId : configuration.brokerId;
+    const deploymentError = !isDesktop
+        ? !configuration.valid
+            ? configuration.errors.join(' ') || 'This terminal does not have a broker configured.'
+            : requestedLockedBrokerId && requestedLockedBrokerId !== configuration.brokerId
+                ? 'This terminal only accepts accounts for its configured broker.'
+                : ''
+        : '';
     const [directoryLoading, setDirectoryLoading] = useState(false);
     const submittingRef = useRef(false);
     const [brokerList, setBrokerList] = useState<BrokerServerItem[]>([]);
@@ -228,6 +238,13 @@ export function LoginDialog({
     // Fetch broker servers from API
     useEffect(() => {
         if (!isOpen) return;
+        if (deploymentError) {
+            setError(deploymentError);
+            setBrokerList([]);
+            setSelectedBroker(null);
+            setDirectoryLoading(false);
+            return;
+        }
         let isMounted = true;
         setDirectoryLoading(true);
         const lockedFallback = lockedBrokerKey
@@ -240,7 +257,10 @@ export function LoginDialog({
             setDropdownOpen(false);
             runHealthCheck(resolveBrokerExtApiUrl(lockedFallback));
         }
-        loadAppBrokerDirectory({ forceRefresh: true, desktop: isDesktop })
+        const directoryRequest = !isDesktop && !configuration.discoveryBaseUrl
+            ? Promise.resolve(lockedFallback ? [lockedFallback] : [])
+            : loadAppBrokerDirectory({ forceRefresh: true, desktop: isDesktop });
+        directoryRequest
             .then((payload: unknown) => {
                 if (!isMounted) return;
                 const discovered = extractBrokerDiscoveryList(payload) as BrokerServerItem[];
@@ -267,7 +287,7 @@ export function LoginDialog({
             })
             .finally(() => { if (isMounted) setDirectoryLoading(false); });
         return () => { isMounted = false; healthAbortRef.current?.abort(); presentationAbortRef.current?.abort(); };
-    }, [isOpen, initialServer, lockedBrokerDisplayName, lockedBrokerId, lockedBrokerKey]);
+    }, [isOpen, initialServer, lockedBrokerDisplayName, lockedBrokerId, lockedBrokerKey, deploymentError, configuration.discoveryBaseUrl, isDesktop]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -319,6 +339,7 @@ export function LoginDialog({
 
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
+        if (deploymentError) { setError(deploymentError); return; }
         if (submittingRef.current) return;
         if (restoring) return;
         if (isDesktop && (directoryLoading || !isDirectoryBrokerSelectable(selectedBroker) || healthStatus !== 'online')) {
@@ -707,7 +728,7 @@ export function LoginDialog({
                         </button>
                         <button
                             type="submit"
-                            disabled={loading || restoring || (isDesktop && (directoryLoading || !selectedBroker || healthStatus !== 'online'))}
+                            disabled={Boolean(deploymentError) || loading || restoring || !selectedBroker || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
                             className="rtx-login-button rtx-login-button--primary"
                         >
                             {loading ? <LoaderCircle size={16} className="rtx-login-spinner" aria-hidden="true" /> : null}

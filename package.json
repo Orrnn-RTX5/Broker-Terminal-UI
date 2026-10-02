@@ -31,6 +31,7 @@
     "test:desktop-startup": "node --test scripts/desktopStartup.test.cjs",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
+    "test:web": "vitest run --config vitest.web.config.ts",
     "test:logic": "vitest run --project logic",
     "test:ui-components": "vitest run --project ui",
     "test:presentation": "vitest run --project presentation",

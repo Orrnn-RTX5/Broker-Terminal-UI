@@ -74,6 +74,37 @@ describe('LoginDialog', () => {
     });
   });
 
+  it.each(['Orrnn', 'new-broker-42'])('locks every web login entry point to %s without a lock prop', async brokerId => {
+    const runtime = window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
+    runtime.__RTX_RUNTIME_CONFIG__!.BROKER_ID = brokerId;
+    localStorage.setItem('broker_id', 'other-broker');
+    vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => [
+      { broker_id: 'other-broker', broker_name: 'Other Broker' },
+      { broker_id: brokerId.toUpperCase(), broker_name: 'Case-distinct Broker' },
+      { broker_id: brokerId, broker_name: 'Configured Broker' },
+    ] } as Response);
+    vi.mocked(authV2Api.login).mockResolvedValue({ access_token: 'scoped-token', account_login: 123456, broker_id: brokerId });
+    render(<LoginDialog isOpen onClose={vi.fn()} />);
+    const server = screen.getByPlaceholderText(/search broker/i);
+    await waitFor(() => expect(server).toHaveValue('Configured Broker'));
+    expect(server).toHaveAttribute('readonly');
+    fireEvent.change(screen.getByPlaceholderText('Account ID'), { target: { value: '123456' } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'Password1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+    await waitFor(() => expect(authV2Api.login).toHaveBeenCalledWith(
+      expect.objectContaining({ broker_id: brokerId }),
+      expect.objectContaining({ baseUrl: 'https://broker.example/api/v2' }),
+    ));
+    await waitFor(() => expect(useAppStore.getState().isAuthenticated).toBe(true));
+  });
+
+  it('refuses a caller attempting to unlock a different broker', async () => {
+    render(<LoginDialog isOpen onClose={vi.fn()} lockedBrokerId="other-broker" />);
+    expect(await screen.findByText('This terminal only accepts accounts for its configured broker.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeDisabled();
+    expect(authV2Api.login).not.toHaveBeenCalled();
+  });
+
   it.each(['close', 'unmount'] as const)(
     'does not authenticate when real login resolves after %s',
     async (action) => {

@@ -110,28 +110,6 @@ const selectSecondBrokerAndContinue = async () => {
 };
 
 describe('OpenAccountDialog account flows', () => {
-    it.each([
-        [true, 'https://legal.unknown-broker.example/terms', true],
-        [true, '', false],
-        [false, 'javascript:alert(1)', false],
-    ])('uses only valid configured account terms: valid=%s url=%s', async (valid, brokerTermsUrl, visible) => {
-        mocks.desktop = false;
-        mocks.configuration = { valid, brokerTermsUrl };
-        await renderDialog();
-        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-        fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Alex' } });
-        fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Taylor' } });
-        fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'alex@example.test' } });
-        fireEvent.change(screen.getByRole('combobox', { name: 'Country' }), { target: { value: 'Canada' } });
-        fireEvent.blur(screen.getByRole('combobox', { name: 'Country' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-        const link = screen.queryByRole('link', { name: 'Terms and data protection policy' });
-        if (visible) expect(link).toHaveAttribute('href', brokerTermsUrl);
-        else expect(link).toBeNull();
-        expect(document.querySelector('a[href*="orrnn.com"]')).toBeNull();
-        expect(mocks.createAccount).not.toHaveBeenCalled();
-    });
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.desktop = true;

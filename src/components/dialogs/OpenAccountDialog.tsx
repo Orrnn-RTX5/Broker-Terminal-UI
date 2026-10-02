@@ -19,6 +19,7 @@ import { useAppStore } from '../../store/useAppStore';
 import type { BrokerServer } from '../../types/api';
 import { CountryCombobox } from './CountryCombobox';
 import './open-account-dialog.css';
+import { TradeAuthDialog } from '../TradeAuthDialog';
 
 // Palette cycling for broker avatar gradients
 const GRADIENTS = [
@@ -183,7 +184,14 @@ const availableDirectoryBrokers = (rows: BrokerDiscoveryItem[]): BrokerServer[] 
     .map(mapDiscoveryBroker)
     .filter(broker => Boolean(broker.broker_id && broker.broker_name));
 
-export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
+export const OpenAccountDialog: React.FC<Props> = (props) => {
+    if (!isDesktopBackendTarget()) {
+        return <TradeAuthDialog {...props} initialMode="demo" intent={null} onAuthenticated={props.onClose} />;
+    }
+    return <DesktopOpenAccountDialog {...props} />;
+};
+
+const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const tr = useUiTranslation();
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const [step, setStep] = useState(0);

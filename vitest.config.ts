@@ -5,7 +5,7 @@ import testEnvironments from './config/vitest-environments.json'
 
 const nodeTests = [...testEnvironments.logic, ...testEnvironments.presentation]
 
-export default defineConfig({
+export const createTestConfig = (webOnly = false) => defineConfig({
   plugins: [react()],
   test: {
     globals: true,
@@ -21,7 +21,7 @@ export default defineConfig({
           name: 'logic',
           environment: 'node',
           setupFiles: [],
-          include: testEnvironments.logic,
+          include: testEnvironments.logic.filter(file => !webOnly || !/[^/]*(desktop|electron)[^/]*$/i.test(file)),
         },
       },
       {
@@ -30,7 +30,7 @@ export default defineConfig({
           name: 'presentation',
           environment: 'node',
           setupFiles: [],
-          include: testEnvironments.presentation,
+          include: testEnvironments.presentation.filter(file => !webOnly || !/[^/]*(desktop|electron)[^/]*$/i.test(file)),
         },
       },
       {
@@ -40,7 +40,10 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./src/test/setup.ts'],
           include: ['src/**/*.{test,spec}.{ts,tsx}'],
-          exclude: [...configDefaults.exclude, ...nodeTests],
+          exclude: [
+            ...configDefaults.exclude, ...nodeTests,
+            ...(webOnly ? ['**/*[dD]esktop*', '**/*[eE]lectron*'] : []),
+          ],
         },
       },
     ],
@@ -63,3 +66,5 @@ export default defineConfig({
     },
   },
 })
+
+export default createTestConfig()

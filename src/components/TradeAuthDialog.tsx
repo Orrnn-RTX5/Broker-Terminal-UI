@@ -8,20 +8,22 @@ import { parseTokenExpiresAt, setRefreshToken, setToken } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 import type { TradingAuthIntent } from '../services/tradingAuthGate';
 import { useBrokerLoginPolicy } from '../hooks/useBrokerLoginPolicy';
-import { isElectronRuntime } from '../config/backendTarget.js';
+import { getRuntimeBrokerConfiguration, isElectronRuntime } from '../config/backendTarget.js';
+import { persistBrokerSessionDiscovery } from '../services/brokerSession';
 
 interface TradeAuthDialogProps {
   isOpen: boolean;
   intent: TradingAuthIntent | null;
   onClose: () => void;
   onAuthenticated: (accountId: string) => void;
+  initialMode?: 'choice' | 'demo';
 }
 
 type DialogMode = 'choice' | 'login' | 'demo';
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Unable to create the demo account.';
-const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim();
 
 export function TradeAuthDialog(props: TradeAuthDialogProps) {
   // Desktop accounts belong to the selected directory server, not a web
@@ -40,8 +42,8 @@ export function TradeAuthDialog(props: TradeAuthDialogProps) {
   return <WebTradeAuthDialog {...props} />;
 }
 
-function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeAuthDialogProps) {
-  const [mode, setMode] = useState<DialogMode>('choice');
+function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialMode = 'choice' }: TradeAuthDialogProps) {
+  const [mode, setMode] = useState<DialogMode>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -53,21 +55,24 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
   const demoRequestGenerationRef = useRef(0);
   const brokerPolicy = useBrokerLoginPolicy(isOpen);
   const brokerId = brokerPolicy?.status === 'ready' ? brokerPolicy.brokerId : '';
+  const configuration = getRuntimeBrokerConfiguration();
+  const configurationIdentity = JSON.stringify(configuration);
+  const termsUrl = configuration.valid ? configuration.brokerTermsUrl : '';
 
   useEffect(() => {
     if (!isOpen) return;
-    setMode('choice');
+    setMode(initialMode);
     setError(null);
     setPassword('');
     setConfirmPassword('');
-  }, [isOpen]);
+  }, [isOpen, initialMode]);
 
   useLayoutEffect(() => {
     if (!isOpen) demoRequestGenerationRef.current += 1;
     return () => {
       demoRequestGenerationRef.current += 1;
     };
-  }, [isOpen]);
+  }, [isOpen, configurationIdentity]);
 
   const closeDialog = useCallback(() => {
     demoRequestGenerationRef.current += 1;
@@ -109,6 +114,7 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
     const expiresAt = parseTokenExpiresAt(response.expires_at)
       || (response.expires_in ? Date.now() + response.expires_in * 1000 : undefined);
 
+    persistBrokerSessionDiscovery({ broker_id: brokerId, broker_name: brokerPolicy?.displayName });
     setToken(token);
     if (response.refresh_token) {
       setRefreshToken(response.refresh_token);
@@ -147,6 +153,7 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
   const handleDemoSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    if (!brokerId || submitting) return;
 
     if (!name.trim() || !email.trim() || !password) {
       setError('Name, email, and password are required.');
@@ -409,11 +416,14 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated }: TradeA
                 </span>
               </div>
 
-              {error && (
+              {(error || !brokerId) && (
                 <div role="alert" className="rtx-auth-alert">
                   <AlertCircle size={13} strokeWidth={2.2} />
-                  <span>{error}</span>
+                  <span>{error || brokerPolicy?.error || 'Verifying this terminal broker configuration…'}</span>
                 </div>
+              )}
+              {termsUrl && (
+                <a href={termsUrl} target="_blank" rel="noopener noreferrer">Terms and data protection policy</a>
               )}
             </div>
 
