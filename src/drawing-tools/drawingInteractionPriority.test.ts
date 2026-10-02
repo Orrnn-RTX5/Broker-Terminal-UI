@@ -9,6 +9,7 @@ import { GANN_FIBONACCI_TOOLS } from './gannFibonacciToolCatalog';
 import { CHART_PATTERN_TOOLS } from './chartPatternToolCatalog';
 import { FORECASTING_MEASUREMENT_TOOLS } from './forecastingMeasurementToolCatalog';
 import { getPictographStamp } from './pictographCatalog';
+import { applyChartCursorMode } from './chartCursorInteractions';
 import { isTrendDrawingInputActive, setTrendDrawingInputActive, usesDirectDrawingPointerInput } from './drawingInteractionPriority';
 
 const readUseEffectCallbacks = (relativePath: string): string[] => {
@@ -91,7 +92,7 @@ const installCommandLifecycle = (contextId: string) => {
     chartRef: { current: { applyOptions: vi.fn() } }, seriesRef: { current: {} }, crosshairEnabledRef: { current: false },
     getActiveChartSource: () => ({ id: contextId }), bindDrawingManagerToChart: () => true,
     setTextInputOverlay: vi.fn(), resolveTrendToolColor: () => '#2962ff',
-    usesDirectDrawingPointerInput, setTrendDrawingInputActive,
+    usesDirectDrawingPointerInput, setTrendDrawingInputActive, applyChartCursorMode,
     TRADING_VIEW_HANDLE_SCROLL: {}, TRADING_VIEW_HANDLE_SCALE: {},
     DRAWING_LOCK_HANDLE_SCROLL: {}, DRAWING_LOCK_HANDLE_SCALE: {},
     commandBus: {

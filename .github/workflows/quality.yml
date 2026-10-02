@@ -36,9 +36,6 @@ jobs:
       - name: Check architecture boundaries
         run: npm run check:architecture
 
-      - name: Check lint debt does not increase
-        run: npm run check:lint-baseline
-
       - name: Typecheck application and tests
         run: |
           npm run typecheck

@@ -36,7 +36,7 @@ afterEach(() => {
     publishMarketWatchDisplayMetadata('BTCUSD', { timestamp: Date.now(), sourceTimestamp: Date.now(),
       dailyChangeInput: { mode: 'last', last: 2025, previousClose: 2000, sessionId: 'session-a' } });
     render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="BTCUSD" onSymbolSelect={vi.fn()} />);
-    expect(screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim())).toEqual(['Symbol', 'Bid', 'Ask', 'Change', 'Change %']);
+    expect(screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim())).toEqual(['Symbol', 'Bid', 'Ask', 'Change', 'Daily Change']);
     const cells = screen.getByText('BTCUSD').closest('tr')!.querySelectorAll('td');
     expect(cells[3]).toHaveTextContent('+25.00');
     expect(cells[4]).toHaveTextContent('+1.25%');
@@ -62,9 +62,9 @@ afterEach(() => {
     publishMarketWatchDisplayMetadata('BTCUSD', { timestamp: at, dailyChangeInput: { mode: 'last', last: 5, previousClose: 0, sessionId: 'session-a' } });
     publishMarketWatchDisplayMetadata('XAUUSD', { timestamp: at, dailyChangeInput: { mode: 'last', last: 97.5, previousClose: 100, sessionId: 'session-a' } });
     const { container } = render(<MarketWatchPanel allSymbols={marketHooks.activeSymbols} selectedSymbol="BTCUSD" onSymbolSelect={vi.fn()} />);
-    act(() => screen.getByRole('columnheader', { name: 'Change %' }).click());
+    act(() => screen.getByRole('columnheader', { name: 'Daily Change' }).click());
     expect(getRenderedRowSymbols(container)).toEqual(['XAUUSD', 'BTCUSD']);
-    act(() => screen.getByRole('columnheader', { name: 'Change %' }).click());
+    act(() => screen.getByRole('columnheader', { name: 'Daily Change' }).click());
     expect(getRenderedRowSymbols(container)).toEqual(['XAUUSD', 'BTCUSD']);
   });
 

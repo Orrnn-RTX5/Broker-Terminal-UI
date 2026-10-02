@@ -563,10 +563,13 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
     manager.destroy();
   });
 
-  it('accepts an explicit Last-mode tick without Bid/Ask and does not guess an omitted mode', () => {
+  it('retains Last-only display metadata without guessing an omitted mode or publishing executable quotes', () => {
     const manager = new QuoteSocketManager();
     const rawQuoteListener = vi.fn();
+    const anyQuoteListener = vi.fn();
     manager.onQuoteSnapshot('FUTURE.LAST-ONLY', rawQuoteListener);
+    manager.onQuoteSnapshot('AMBIGUOUS.LAST-ONLY', rawQuoteListener);
+    manager.onAnyQuote(anyQuoteListener);
 
     internals(manager).handleMessage([
       {
@@ -585,20 +588,32 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
       },
     ]);
 
-    expect(enqueueLiveTick).toHaveBeenCalledTimes(1);
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(2);
     expect(enqueueLiveTick).toHaveBeenCalledWith('FUTURE.LAST-ONLY', expect.objectContaining({
       bid: 0,
       ask: 0,
       last: 120,
       dailyChange: 50,
     }));
+    expect(enqueueLiveTick).toHaveBeenNthCalledWith(2, 'AMBIGUOUS.LAST-ONLY', expect.objectContaining({
+      bid: 0,
+      ask: 0,
+      last: 120,
+      dailyChange: undefined,
+      dailyChangeInput: expect.objectContaining({ mode: undefined, previousClose: 100 }),
+    }));
     expect(rawQuoteListener).not.toHaveBeenCalled();
+    expect(anyQuoteListener).not.toHaveBeenCalled();
 
     manager.destroy();
   });
 
   it('uses current-scope catalog mode for Last-only data while raw metadata wins', () => {
     const manager = new QuoteSocketManager();
+    const rawQuoteListener = vi.fn();
+    const anyQuoteListener = vi.fn();
+    manager.onQuoteSnapshot('CATALOG.LAST-ONLY', rawQuoteListener);
+    manager.onAnyQuote(anyQuoteListener);
     registerDailyChangePriceModes([
       { symbol: 'catalog.last-only', brokerSpecification: { chart_mode: 1 } },
     ]);
@@ -619,13 +634,22 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
       },
     ]);
 
-    expect(enqueueLiveTick).toHaveBeenCalledTimes(1);
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(2);
     expect(enqueueLiveTick).toHaveBeenCalledWith('CATALOG.LAST-ONLY', expect.objectContaining({
       bid: 0,
       ask: 0,
       last: 120,
       dailyChange: 20,
     }));
+    expect(enqueueLiveTick).toHaveBeenNthCalledWith(2, 'CATALOG.LAST-ONLY', expect.objectContaining({
+      bid: 0,
+      ask: 0,
+      last: 130,
+      dailyChange: undefined,
+      dailyChangeInput: expect.objectContaining({ mode: null, previousClose: 100 }),
+    }));
+    expect(rawQuoteListener).not.toHaveBeenCalled();
+    expect(anyQuoteListener).not.toHaveBeenCalled();
 
     manager.destroy();
   });

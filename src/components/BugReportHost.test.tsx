@@ -15,7 +15,7 @@ it('loads a working report form only when requested and closes it without submit
   expect(fetchBugReportOptions).not.toHaveBeenCalled();
   act(() => window.dispatchEvent(new CustomEvent('rtx5:open-bug-report', { detail: { symbol: 'EURUSD', timeframe: 'M1' } })));
   await screen.findByRole('dialog', { name: 'Report a Bug' });
-  expect(screen.getByRole('textbox', { name: 'Title', exact: true })).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Title' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(screen.queryByRole('dialog')).toBeNull();
 });

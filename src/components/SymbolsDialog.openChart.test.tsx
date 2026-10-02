@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SymbolsDialog } from './SymbolsDialog';
+import { updateDynamicUrls } from '../config/api';
 
 const brokerSymbol = 'XAUUSD.rtx';
 
@@ -31,6 +32,14 @@ const expectDialogInsideViewport = () => {
 
 describe('SymbolsDialog chart opening', () => {
   beforeEach(() => {
+    vi.stubGlobal('__RTX_RUNTIME_CONFIG__', {
+      CONFIG_SOURCE: 'deployment',
+      API_HOST: 'https://broker.example',
+      WS_HOST: 'wss://broker.example',
+      BROKER_ID: 'test-broker',
+      DEFAULT_MT5_SERVER: 'Test Broker-Live',
+    });
+    updateDynamicUrls();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -49,6 +58,7 @@ describe('SymbolsDialog chart opening', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    updateDynamicUrls();
   });
 
   it('opens the exact broker symbol from both row double-click and Open Chart', async () => {

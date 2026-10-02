@@ -139,7 +139,7 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(toolbarSource).not.toContain('bg-[#151820]');
     expect(toolbarSource).not.toContain('accent-blue-500');
 
-    expect(themeSource).toMatch(/\.rtx-history-overlay-menu \{[\s\S]*--rtx-history-overlay-accent: #0078d4;[\s\S]*background: var\(--bg-secondary\);/);
+    expect(themeSource).toMatch(/\.rtx-history-overlay-menu \{[\s\S]*--rtx-history-overlay-accent: var\(--color-primary\);[\s\S]*background: var\(--bg-secondary\);/);
     expect(themeSource).toMatch(/\.rtx-history-overlay-menu__control input:checked \+ \.rtx-history-overlay-menu__switch \{[\s\S]*background: var\(--rtx-history-overlay-accent\);/);
     expect(themeSource).toContain('@media (prefers-reduced-motion: reduce)');
   });

@@ -15,8 +15,8 @@ beforeEach(() => {
 });
 
 const fillReport = () => {
-  fireEvent.change(screen.getByRole('textbox', { name: 'Title', exact: true }), { target: { value: 'Trade row selection' } });
-  fireEvent.change(screen.getByRole('textbox', { name: 'What happened?', exact: true }), { target: { value: 'The highlight remains after clicking the chart.' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Trade row selection' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'What happened?' }), { target: { value: 'The highlight remains after clicking the chart.' } });
 };
 
 describe('bug report form', () => {
@@ -40,7 +40,7 @@ describe('bug report form', () => {
     fillReport();
     fireEvent.click(screen.getByRole('button', { name: 'Send report' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('The support service could not be reached.');
-    expect(screen.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Trade row selection');
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('Trade row selection');
     expect(screen.getByRole('button', { name: 'Send report' })).toBeEnabled();
     expect(screen.queryByText('Bug report sent')).not.toBeInTheDocument();
   });
@@ -79,8 +79,8 @@ describe('bug report form', () => {
   it('enables Send report for an attachment alone and supplies valid basic report text', async () => {
     vi.mocked(submitBugReport).mockResolvedValue({ report_id: 'attachment-only-report', status: 'submitted' });
     const { container } = render(<BugReportDialog isOpen onClose={vi.fn()} />);
-    const title = screen.getByRole('textbox', { name: 'Title', exact: true });
-    const description = screen.getByRole('textbox', { name: 'What happened?', exact: true });
+    const title = screen.getByRole('textbox', { name: 'Title' });
+    const description = screen.getByRole('textbox', { name: 'What happened?' });
     const screenshot = new File(['image'], 'issue.png', { type: 'image/png' });
     expect(screen.getByRole('button', { name: 'Send report' })).toBeDisabled();
     fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [screenshot] } });
@@ -106,7 +106,7 @@ describe('bug report form', () => {
     expect(screen.getByRole('button', { name: 'Send report' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Remove issue.png' }));
     expect(screen.getByRole('button', { name: 'Send report' })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: 'Title', exact: true })).toBeRequired();
+    expect(screen.getByRole('textbox', { name: 'Title' })).toBeRequired();
     fireEvent.change(input, { target: { files: [new File(['video'], 'issue.mp4', { type: 'video/mp4' })] } });
     expect(await screen.findByRole('alert')).toHaveTextContent('not an accepted type');
     expect(screen.getByRole('button', { name: 'Send report' })).toBeDisabled();
@@ -115,8 +115,8 @@ describe('bug report form', () => {
   it('keeps short user notes when preparing an attachment report', async () => {
     vi.mocked(submitBugReport).mockResolvedValue({ report_id: 'short-note-report', status: 'submitted' });
     const { container } = render(<BugReportDialog isOpen onClose={vi.fn()} />);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Title', exact: true }), { target: { value: 'UI' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'What happened?', exact: true }), { target: { value: '?' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'UI' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'What happened?' }), { target: { value: '?' } });
     fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['log'], 'issue.txt', { type: 'text/plain' })] } });
     fireEvent.click(screen.getByRole('button', { name: 'Send report' }));
     await screen.findByText('Bug report sent');
@@ -138,7 +138,7 @@ describe('bug report form', () => {
     trigger.focus();
     const onClose = vi.fn();
     const { rerender } = render(<BugReportDialog isOpen onClose={onClose} />);
-    const title = screen.getByRole('textbox', { name: 'Title', exact: true });
+    const title = screen.getByRole('textbox', { name: 'Title' });
     await waitFor(() => expect(title).toHaveFocus());
     const close = screen.getByRole('button', { name: 'Close' });
     const cancel = screen.getByRole('button', { name: 'Cancel' });

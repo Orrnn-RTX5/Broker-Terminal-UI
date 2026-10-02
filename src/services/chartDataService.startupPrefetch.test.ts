@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChartDataService } from './chartDataService';
 import { StartupHistorySessionChangedError } from '../startup/authenticatedHistoryPrefetch';
+import { installTestBrokerRuntime } from '../test/brokerRuntime';
 
 const takePrefetch = vi.hoisted(() => vi.fn());
 const takeAuthenticatedPrefetch = vi.hoisted(() => vi.fn());
@@ -13,10 +14,14 @@ vi.mock('../startup/authenticatedHistoryPrefetch', async importOriginal => ({
 const candle = { time: 1789479000, open: 100, high: 105, low: 98, close: 102, volume: 10 };
 const payload = { symbol: 'BTCUSD', timeframe: 'M1', candles: [candle] };
 let fetchMock: ReturnType<typeof vi.fn>;
+let restoreBrokerRuntime: () => void;
 
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  restoreBrokerRuntime = installTestBrokerRuntime();
+  localStorage.setItem('broker_id', 'test-broker');
+  localStorage.setItem('server_url', 'https://broker.example');
   takePrefetch.mockReset();
   takePrefetch.mockReturnValue(null);
   takeAuthenticatedPrefetch.mockReset();
@@ -26,6 +31,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  restoreBrokerRuntime();
   vi.unstubAllGlobals();
   localStorage.clear();
   sessionStorage.clear();
@@ -78,7 +84,13 @@ describe('chart startup history prefetch integration', () => {
       expect(history).toEqual([expect.objectContaining(candle)]);
       expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
         expect.stringMatching(/\/api\/v2\/candles\/BTCUSD\?timeframe=M1&limit=500$/),
-        expect.objectContaining({ signal, credentials: 'omit', cache: 'no-store', headers: undefined }),
+        expect.objectContaining({
+          signal,
+          credentials: 'omit',
+          cache: 'no-store',
+          redirect: 'error',
+          headers: { 'X-Broker-ID': 'test-broker' },
+        }),
       );
       expect(onStartupPrefetchConsumed).not.toHaveBeenCalled();
     },

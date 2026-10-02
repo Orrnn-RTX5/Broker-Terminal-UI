@@ -499,7 +499,7 @@ const dynamicBrokerProxyPlugin = (prefixes: string[], access: BrokerProxyAccess)
 
       void (async () => {
         const validation = await validateProxyTarget(target, access, prefix === '/__broker_discovery' ? 'discovery' : 'broker')
-        if (!validation.allowed) {
+        if (validation.allowed === false) {
           sendProxyError(res, 403, validation.reason)
           return
         }

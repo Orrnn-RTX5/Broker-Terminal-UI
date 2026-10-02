@@ -99,7 +99,10 @@ describe('DesktopQuickActions', () => {
 
     it('shows the account ID, owner, and broker name without exposing the broker service URL', () => {
         const accountServer = 'https://service.achieverfinancials.com';
-        renderQuickActions({ accountId: '200032', accountName: 'Raj Halder', accountServer });
+        renderQuickActions({
+            accountId: '200032', accountName: 'Raj Halder', accountServer,
+            accountBrokerName: 'Achiever Financials',
+        });
 
         fireEvent.click(screen.getByRole('button', { name: 'Account' }));
         const accountMenu = screen.getByRole('menu', { name: 'Account' });

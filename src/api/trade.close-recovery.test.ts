@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { installTestBrokerRuntime } from '../test/brokerRuntime';
 
 import { API_V2_BASE_URL } from '../config/api';
 import { ApiError, removeToken } from './client';
@@ -29,11 +30,18 @@ const clientIdFromStatusUrl = (url: unknown): string => {
 };
 
 describe('durable closePosition intent', () => {
+  let restoreBrokerRuntime: () => void;
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ok: true })));
     localStorage.clear();
     sessionStorage.clear();
     removeToken();
+    restoreBrokerRuntime = installTestBrokerRuntime();
+  });
+
+  afterEach(() => {
+    restoreBrokerRuntime();
+    vi.unstubAllGlobals();
   });
 
   it('sends one POST with a generated client_order_id and full volume', async () => {

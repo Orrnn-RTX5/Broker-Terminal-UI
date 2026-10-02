@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BrokerLogoImage, buildBrokerLogoCandidates } from './BrokerLogoImage';
 
 const testBroker = {
@@ -10,6 +10,8 @@ const testBroker = {
 };
 
 describe('BrokerLogoImage', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it('resolves a relative broker logo and retains the discovery logo as its next source', () => {
     expect(buildBrokerLogoCandidates(
       testBroker,
@@ -23,6 +25,14 @@ describe('BrokerLogoImage', () => {
   });
 
   it('advances to another source instead of leaving a broken image', () => {
+    vi.stubGlobal('__RTX_RUNTIME_CONFIG__', {
+      CONFIG_SOURCE: 'deployment',
+      API_HOST: testBroker.server_url,
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
+      BROKER_ID: testBroker.broker_id,
+      DEFAULT_MT5_SERVER: 'TEST-Live',
+      DISCOVERY_BASE_URL: 'https://directory.example',
+    });
     render(<BrokerLogoImage broker={{
       ...testBroker,
       logo_url: 'https://assets.example.test/missing.png',

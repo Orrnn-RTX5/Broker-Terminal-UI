@@ -36,6 +36,11 @@ vi.mock('../../services/brokerServers', () => ({
   getStoredBrokerServer: () => mockStoredBrokerServer,
 }));
 
+vi.mock('../../services/brokerDirectory', () => ({
+  getCachedBrokerDirectory: () => null,
+  loadAppBrokerDirectory: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock('../ui/ContextMenu', () => ({
   ContextMenu: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -47,7 +52,15 @@ describe('NavigatorPanel backend broker logo resolution', () => {
   afterEach(() => { delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__; });
   beforeEach(() => {
     localStorage.clear();
-    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { DISCOVERY_BASE_URL: 'https://directory.example' };
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      CONFIG_SOURCE: 'deployment',
+      API_HOST: 'https://nexa.orrnn.com',
+      WS_HOST: 'wss://nexa.orrnn.com',
+      BROKER_ID: 'Nexa',
+      BROKER_NAME: 'Nexa',
+      DEFAULT_MT5_SERVER: 'Nexa-Live',
+      DISCOVERY_BASE_URL: 'https://directory.example',
+    };
     mockSavedAccounts = [];
     mockStoredBrokerServer = 'https://nexa.orrnn.com';
     brokerApiMocks.getServers.mockReset().mockResolvedValue([]);

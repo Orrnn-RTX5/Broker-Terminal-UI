@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { installTestBrokerRuntime } from '../test/brokerRuntime';
 import { API_ENDPOINTS, RTX5_API_URL } from '../config/api';
 import { apiClient, ApiError, removeToken, setToken } from './client';
 import { marketApi } from './endpoints';
@@ -88,11 +89,21 @@ const abortLifecycleCalls = [
 ] as const;
 
 describe('trade v2 API contract calls', () => {
+  let restoreBrokerRuntime: () => void;
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ ok: true }))));
     delete (window as TestWindow).electronAPI;
     localStorage.clear();
     removeToken();
+    restoreBrokerRuntime = installTestBrokerRuntime();
+    localStorage.setItem('broker_id', 'test-broker');
+    localStorage.setItem('server_url', 'https://broker.example');
+  });
+
+  afterEach(() => {
+    delete (window as TestWindow).electronAPI;
+    restoreBrokerRuntime();
+    vi.unstubAllGlobals();
   });
 
   it('posts direct broker login credentials to the public v2 auth endpoint and persists returned tokens', async () => {

@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, type JSX } from 'react';
 import { act, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { createPreloadableFeature } from './createPreloadableFeature';

@@ -54,6 +54,7 @@ it('a price-only axis repaint also schedules drawings after the chart transform'
     window: { requestAnimationFrame: (callback: FrameRequestCallback) => { frameCallbacks.push(callback); return frameCallbacks.length; } },
     repaintLivePriceOverlayGeometry: vi.fn(), repaintTradeOverlayGeometryRef: { current: vi.fn() },
     drawingRenderFrameRef: drawingFrame, drawingRenderSettledFrameRef: { current: null },
+    drawingManager: { hasRenderableContent: () => true }, drawingManagerOverlayContainer: document.createElement('div'),
     drawingRuntimeContextRef: { current: { symbol: 'EURUSD', timeframe: 'H1' } }, scheduleDrawingRenderAfterChartData: schedule,
   });
   queue(); queue();

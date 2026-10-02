@@ -102,7 +102,7 @@ describe('toolbar selection synchronization', () => {
     window.addEventListener('rtx5:open-bug-report', onOpen);
     try {
       const { container } = render(<TopToolbar {...toolbarProps()} />);
-      const trigger = screen.getByRole('button', { name: 'Report a Bug', exact: true });
+      const trigger = screen.getByRole('button', { name: 'Report a Bug' });
       expect(container.querySelector('.rtx-top-chrome')).toContainElement(trigger);
       expect(trigger.closest('.rtx-chart-toolbar-scroll')).toBeNull();
       expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');

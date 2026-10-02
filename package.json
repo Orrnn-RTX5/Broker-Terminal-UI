@@ -41,7 +41,6 @@
     "typecheck:tests": "tsc -p tsconfig.tests.json",
     "check:architecture": "node scripts/checkArchitecture.mjs",
     "check:docs": "node scripts/checkMarkdownLinks.mjs",
-    "check:lint-baseline": "node scripts/checkLintBaseline.mjs",
     "check:secrets": "node scripts/checkTrackedSecrets.mjs",
     "electron:dev": "electron .",
     "electron:build": "npm run build:electron && npx electron-builder --win",

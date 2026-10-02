@@ -226,6 +226,7 @@ describe('BottomDock History live-deal integration', () => {
         cleanup();
         useAppStore.getState().reset();
         localStorage.clear();
+        vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
 
@@ -405,7 +406,7 @@ describe('BottomDock History live-deal integration', () => {
         expect(container.querySelectorAll('.rtx-history-tab tbody tr.rtx-trade-row').length).toBeGreaterThan(0);
         expect(screen.getByRole('status')).toHaveTextContent('Broker repeated a history page');
         expect(screen.getByRole('group', { name: 'History financial summary' })).toHaveTextContent('Profit: —');
-        expect(screen.getByRole('button', { name: 'Refresh', exact: true })).not.toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled();
     });
 
     it('filters recent positions, executions, and financial totals without reloading the broker history', async () => {
@@ -457,6 +458,16 @@ describe('BottomDock History live-deal integration', () => {
     });
 
     it('loads full backend deal history for the session account and refreshes every financial amount', async () => {
+        vi.stubGlobal('__RTX_RUNTIME_CONFIG__', {
+            CONFIG_SOURCE: 'deployment',
+            API_HOST: 'https://history-broker.example',
+            WS_HOST: 'wss://history-broker.example',
+            BROKER_ID: 'history-broker',
+            DEFAULT_MT5_SERVER: 'History-Live',
+        });
+        // A session token is usable only within its configured broker scope.
+        localStorage.setItem('broker_id', 'history-broker');
+        localStorage.setItem('server_url', 'https://history-broker.example');
         const body = btoa(JSON.stringify({ account_login: 200001 })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         localStorage.setItem('auth_token', `header.${body}.sig`);
         useAppStore.setState({ account: {
@@ -488,13 +499,16 @@ describe('BottomDock History live-deal integration', () => {
         fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
         const summary = await screen.findByRole('group', { name: 'History financial summary' });
         await screen.findByText('501 records');
+        expect(apiClient.get).toHaveBeenCalledWith('/account/deals', expect.objectContaining({
+            params: { limit: 500, offset: 500, to: expect.any(Number) },
+        }));
         await waitFor(() => expect(summary).toHaveTextContent('Profit: 490.00 Credit: 50.00 Deposit: 20 000.00 Withdrawal: -100.00 Balance: 20 490.00'));
         afterRefresh = true;
         vi.mocked(tradeGatewayApi.getBalanceHistory).mockResolvedValue([
             { id: 4, account_login: 200001, type: 'deposit', amount: 30_000 },
         ]);
         act(() => useAppStore.setState(state => ({ account: { ...state.account!, balance: 29_993.5 } })));
-        fireEvent.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
         await waitFor(() => expect(summary).toHaveTextContent('Profit: -6.50 Credit: 0.00 Deposit: 30 000.00 Withdrawal: 0.00 Balance: 29 993.50'));
     });
 
