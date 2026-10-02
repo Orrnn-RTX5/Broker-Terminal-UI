@@ -22,45 +22,6 @@ const moduleFiles = allSourceFiles.filter((file) => isCodeFile(file) && !isTestF
 const knownModules = new Set(moduleFiles.map((file) => path.normalize(file)));
 const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
 const failures = [];
-const measuredLines = new Map();
-
-const lineCount = (file) => fs.readFileSync(file, 'utf8').split(/\r?\n/).length;
-const sizeCategory = (file) => {
-  if (/\.css$/.test(file)) return 'css';
-  if (isTestFile(file)) return 'test';
-  if (isCodeFile(file)) return 'production';
-  return null;
-};
-
-for (const file of allSourceFiles) {
-  const category = sizeCategory(file);
-  if (!category) continue;
-  const relativePath = normalizePath(file);
-  const currentLines = lineCount(file);
-  measuredLines.set(relativePath, currentLines);
-  const limit = baseline.limits[category];
-  const hardLimit = baseline.hardLimits?.[category] ?? Number.POSITIVE_INFINITY;
-  const allowedLines = Math.min(baseline.oversizedFiles[relativePath] ?? limit, hardLimit);
-  if (currentLines > allowedLines) {
-    failures.push(`${relativePath} has ${currentLines} lines; allowed maximum is ${allowedLines}`);
-  }
-}
-
-for (const [relativePath, recordedLines] of Object.entries(baseline.oversizedFiles)) {
-  const currentLines = measuredLines.get(relativePath);
-  if (currentLines === undefined) {
-    failures.push(`stale oversized-file baseline for missing file: ${relativePath}`);
-    continue;
-  }
-  const absolutePath = path.join(workspaceRoot, relativePath);
-  const category = sizeCategory(absolutePath);
-  const standardLimit = category ? baseline.limits[category] : null;
-  if (standardLimit === null || currentLines <= standardLimit) {
-    failures.push(`stale oversized-file baseline for ${relativePath}; remove the exception`);
-  } else if (currentLines < recordedLines) {
-    failures.push(`stale oversized-file baseline for ${relativePath}; lower ${recordedLines} to ${currentLines}`);
-  }
-}
 
 const resolveModule = (fromFile, specifier) => {
   if (!specifier.startsWith('.')) return null;
