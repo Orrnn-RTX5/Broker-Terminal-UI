@@ -178,12 +178,12 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
         <td style={{ padding: '3px 8px', whiteSpace: 'nowrap', maxWidth: 0 }}>
           <div className="rtx-market-watch__symbol-content" style={{ display: 'flex', alignItems: 'center', columnGap: 5, minWidth: 0 }}>
             {hasData && bidDirection === 'up' && (
-              <svg className="rtx-market-watch__direction rtx-market-watch__direction--up" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: '#4ade80', opacity: quoteDataOpacity }}>
+              <svg className="rtx-market-watch__direction rtx-market-watch__direction--up" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: 'var(--color-profit)', opacity: quoteDataOpacity }}>
                 <path d="M2 8L8 2M3.5 2H8V6.5" stroke="currentColor" strokeWidth="1" />
               </svg>
             )}
             {hasData && bidDirection === 'down' && (
-              <svg className="rtx-market-watch__direction rtx-market-watch__direction--down" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: '#f87171', opacity: quoteDataOpacity }}>
+              <svg className="rtx-market-watch__direction rtx-market-watch__direction--down" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: 'var(--color-loss)', opacity: quoteDataOpacity }}>
                 <path d="M2 2L8 8M3.5 8H8V3.5" stroke="currentColor" strokeWidth="1" />
               </svg>
             )}

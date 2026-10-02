@@ -815,7 +815,7 @@ ${rows}
                                         <span className={(order.sl ?? 0) > 0 ? "text-[#ff7676] bg-red-950/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>{formatLevelCell(order.sl, order.symbol)}</span>
                                     </td>
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums`} title={tr("Take Profit: {{value0}}", { value0: formatLevelCell(order.tp, order.symbol) })}>
-                                        <span className={(order.tp ?? 0) > 0 ? "text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>{formatLevelCell(order.tp, order.symbol)}</span>
+                                        <span className={(order.tp ?? 0) > 0 ? "rtx-history-tp-value text-profit px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>{formatLevelCell(order.tp, order.symbol)}</span>
                                     </td>
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums whitespace-nowrap`} title={tr("Close time: {{value0}}", { value0: formatTs(order.closeTime) })}>{formatTs(order.closeTime)}</td>
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums`} title={tr("Close price: {{value0}}", { value0: formatPriceCell(order.closePrice, order.symbol) })}>{formatPriceCell(order.closePrice, order.symbol)}</td>

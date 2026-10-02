@@ -21,6 +21,12 @@ html:root .rtx-bottom-dock .rtx-history-table .rtx-history-summary-row .text-pro
   text-shadow: none !important;
 }
 
+html:root .rtx-bottom-dock .rtx-history-table .rtx-history-tp-value.text-profit {
+  color: var(--color-profit) !important;
+  background-color: var(--color-profit-dimmer) !important;
+  text-shadow: none !important;
+}
+
 html:root .rtx-bottom-dock .rtx-trade-table tbody tr.rtx-trade-row:is(.rtx-trade-row, .rtx-trade-row--selected) td.text-loss,
 html:root .rtx-bottom-dock .rtx-trade-footer .text-loss,
 html:root .rtx-bottom-dock .rtx-history-table .rtx-history-summary-row .text-loss {
