@@ -5,8 +5,10 @@ import {
   MAX_CANDLES_PER_CACHE_ENTRY,
   candleCache,
   type CandleCacheKeyParts,
+  type CandleCacheMetadata,
 } from './candleCache';
 import type { OHLCData } from './chartDataService';
+import { emitSessionChange } from './brokerSession';
 
 const baseKeyParts: CandleCacheKeyParts = {
   scope: 'https://broker.example/api/v2',
@@ -198,5 +200,129 @@ describe('candleCache', () => {
     expect(cached?.candles).toHaveLength(MAX_CANDLES_PER_CACHE_ENTRY);
     expect(cached?.oldestTime).toBe(6);
     expect(cached?.newestTime).toBe(MAX_CANDLES_PER_CACHE_ENTRY + 5);
+  });
+
+  it('matches public merge snapshots for live, historical, duplicate and invalid writes', () => {
+    const key = candleCache.createKey(baseKeyParts);
+    const actions: Array<{ candles: OHLCData[]; metadata?: CandleCacheMetadata }> = [
+      { candles: [], metadata: { ...baseKeyParts, source: 'derived-m1' } },
+      { candles: [candle(120)] },
+      { candles: [candle(120, 121)] },
+      { candles: [candle(180)], metadata: { ...baseKeyParts, brokerOffsetSeconds: 3600, source: 'backend' } },
+      { candles: [candle(60), candle(120, 122), candle(120, 123), candle(300), candle(240)] },
+      { candles: [candle(90)] },
+      { candles: [candle(300, 301)] },
+      { candles: [{ ...candle(360), time: '360' as unknown as number }] },
+      { candles: [candle(Number.NaN), candle(Number.POSITIVE_INFINITY)] },
+      { candles: [candle(420)], metadata: { ...baseKeyParts, source: 'derived-m1', version: 'custom-version' } },
+    ];
+    const exercise = (withoutSnapshot: boolean) => {
+      candleCache.clearAll();
+      vi.setSystemTime(new Date('2026-07-02T00:00:00Z'));
+      return actions.map(({ candles, metadata }) => {
+        vi.advanceTimersByTime(1000);
+        if (withoutSnapshot) candleCache.mergeLatestWithoutSnapshot(key, candles, metadata);
+        else candleCache.mergeLatest(key, candles, metadata);
+        return candleCache.getLatest(key);
+      });
+    };
+    expect(exercise(true)).toEqual(exercise(false));
+  });
+
+  it('keeps inputs and previous public snapshots isolated across live replacement and append', () => {
+    const key = candleCache.createKey(baseKeyParts);
+    const source = [Object.freeze(candle(60)), Object.freeze(candle(120))];
+    Object.freeze(source);
+    const setSnapshot = candleCache.setLatest(key, source, baseKeyParts);
+    const mergeSnapshot = candleCache.mergeLatest(key, [candle(180)], baseKeyParts);
+    const readSnapshot = candleCache.getLatest(key)!;
+    for (const snapshot of [setSnapshot, mergeSnapshot, readSnapshot]) {
+      snapshot.candles.forEach(Object.freeze);
+      Object.freeze(snapshot.candles);
+      Object.freeze(snapshot);
+    }
+    const replacement = candle(180, 181);
+    const appended = candle(240);
+    candleCache.mergeLatestWithoutSnapshot(key, [replacement]);
+    candleCache.mergeLatestWithoutSnapshot(key, [appended]);
+    replacement.close = 999;
+    appended.high = 999;
+
+    expect(setSnapshot.candles).toEqual(source);
+    expect(mergeSnapshot.candles.at(-1)?.close).toBe(180);
+    expect(readSnapshot.candles.at(-1)?.close).toBe(180);
+    const latest = candleCache.getLatest(key)!;
+    expect(latest.candles.map(row => row.close)).toEqual([60, 120, 181, 240]);
+    expect(latest.candles.at(-1)?.high).toBe(241);
+    latest.candles[0].close = 888;
+    expect(candleCache.getLatest(key)?.candles[0].close).toBe(60);
+  });
+
+  it('preserves the exact bounded history when appending or correcting at the cap', () => {
+    const key = candleCache.createKey(baseKeyParts);
+    const source = Array.from({ length: MAX_CANDLES_PER_CACHE_ENTRY }, (_, index) => candle(index + 1));
+    const exercise = (withoutSnapshot: boolean) => {
+      candleCache.clearAll();
+      candleCache.setLatest(key, source, baseKeyParts);
+      for (const incoming of [candle(20_000, 20_001), candle(20_001), candle(20_002), candle(20_002, 20_003)]) {
+        if (withoutSnapshot) candleCache.mergeLatestWithoutSnapshot(key, [incoming]);
+        else candleCache.mergeLatest(key, [incoming]);
+      }
+      return candleCache.getLatest(key);
+    };
+    expect(exercise(true)).toEqual(exercise(false));
+    expect(source[0].time).toBe(1);
+    expect(source.at(-1)?.close).toBe(20_000);
+  });
+
+  it('preserves merge revival, strict expiry and insertion-order eviction', () => {
+    const exercise = (withoutSnapshot: boolean) => {
+      candleCache.clearAll();
+      vi.setSystemTime(new Date('2026-07-02T00:00:00Z'));
+      const keys = Array.from({ length: MAX_CANDLE_CACHE_ENTRIES + 1 }, (_, index) => (
+        candleCache.createKey({ ...baseKeyParts, symbol: `LIVE${index}` })
+      ));
+      keys.slice(0, -1).forEach((key, index) => candleCache.setLatest(key, [candle(60)], {
+        ...baseKeyParts, symbol: `LIVE${index}`,
+      }));
+      const merge = withoutSnapshot
+        ? candleCache.mergeLatestWithoutSnapshot.bind(candleCache)
+        : candleCache.mergeLatest.bind(candleCache);
+      merge(keys[0], [candle(120)]);
+      merge(keys.at(-1)!, [candle(60)]);
+      const evicted = candleCache.getLatest(keys[0]);
+      vi.advanceTimersByTime(30 * 60_000 + 1);
+      // Existing merge revives an expired-but-not-yet-read entry; retain that.
+      merge(keys[1], [candle(180)]);
+      const revived = candleCache.getLatest(keys[1]);
+      const pruned = candleCache.getLatest(keys[2]);
+      vi.advanceTimersByTime(30 * 60_000);
+      const atBoundary = candleCache.getLatest(keys[1]);
+      vi.advanceTimersByTime(1);
+      const expired = candleCache.getLatest(keys[1]);
+      return { evicted, revived, pruned, atBoundary, expired };
+    };
+    const actual = exercise(true);
+    expect(actual).toEqual(exercise(false));
+    expect(actual.evicted).toBeNull();
+    expect(actual.revived?.candles.map(row => row.time)).toEqual([60, 180]);
+    expect(actual.pruned).toBeNull();
+    expect(actual.atBoundary).not.toBeNull();
+    expect(actual.expired).toBeNull();
+  });
+
+  it('does not retain private live rows across scope or broker session resets', () => {
+    const key = candleCache.createKey(baseKeyParts);
+    candleCache.mergeLatestWithoutSnapshot(key, [candle(60)]);
+    candleCache.mergeLatestWithoutSnapshot(key, [candle(120)]);
+    const snapshot = candleCache.getLatest(key)!;
+    candleCache.clearScope(baseKeyParts.scope);
+    candleCache.mergeLatestWithoutSnapshot(key, [candle(180)]);
+    expect(candleCache.getLatest(key)?.candles.map(row => row.time)).toEqual([180]);
+    emitSessionChange('account_change');
+    expect(candleCache.getLatest(key)).toBeNull();
+    candleCache.mergeLatestWithoutSnapshot(key, [candle(240)]);
+    expect(candleCache.getLatest(key)?.candles.map(row => row.time)).toEqual([240]);
+    expect(snapshot.candles.map(row => row.time)).toEqual([60, 120]);
   });
 });

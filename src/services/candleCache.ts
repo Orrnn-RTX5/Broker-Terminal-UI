@@ -127,6 +127,44 @@ class CandleCache {
     return this.cloneEntry(entry);
   }
 
+  /** Live writers do not need a cloned history snapshot after every update. */
+  mergeLatestWithoutSnapshot(key: CandleCacheKey, candles: OHLCData[], metadata?: CandleCacheMetadata): void {
+    const existing = this.entries.get(key);
+    const incoming = candles[0];
+    const time = Number(incoming?.time);
+    const latestTime = existing?.newestTime;
+    if (!existing || candles.length !== 1 || !Number.isFinite(time)
+      || (latestTime !== null && latestTime !== undefined && time < latestTime)) {
+      // Historical inserts, batches and invalid rows retain the established
+      // ordering, deduplication and normalization behavior.
+      this.mergeLatest(key, candles, metadata);
+      return;
+    }
+
+    const nextMetadata = this.normalizeMetadata(metadata ?? existing);
+    const source = this.mergeSources(existing.source, nextMetadata.source);
+    // Cached rows/arrays are private: set, merge and get all return independent
+    // snapshots. Copy incoming data before changing the private latest row.
+    const nextCandle = { ...incoming, time };
+    const retained = existing.candles;
+    if (retained.length > 0 && time === latestTime) {
+      retained[retained.length - 1] = nextCandle;
+    } else {
+      retained.push(nextCandle);
+      if (retained.length > MAX_CANDLES_PER_CACHE_ENTRY) retained.shift();
+    }
+    this.entries.set(key, {
+      key,
+      ...nextMetadata,
+      source,
+      candles: retained,
+      fetchedAt: Date.now(),
+      oldestTime: retained[0]?.time ?? null,
+      newestTime: retained[retained.length - 1]?.time ?? null,
+    });
+    this.pruneEntries();
+  }
+
   isStale(entry: CandleCacheEntry, staleAfterMs = STALE_AFTER_MS): boolean {
     return Date.now() - entry.fetchedAt > staleAfterMs;
   }
