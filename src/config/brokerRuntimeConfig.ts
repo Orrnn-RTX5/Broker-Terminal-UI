@@ -55,7 +55,18 @@ export function selectBrokerRuntimeConfig(candidates: unknown[]): Record<string,
       Array.isArray(value.CONFIG_ERRORS) ? value.CONFIG_ERRORS : [],
     ])
   }
-  if (deployments.some(value => identity(value) !== identity(selected))) {
+  // Legacy globals can reference the same deployment object. Comparing it
+  // with itself needlessly parses every origin in the live quote path. This
+  // cache lasts only for this selection, so in-place configuration changes
+  // are still checked on the next call.
+  const compared = new Set<Record<string, unknown>>([selected])
+  let selectedIdentity: string | undefined
+  if (deployments.some(value => {
+    if (compared.has(value)) return false
+    compared.add(value)
+    selectedIdentity ??= identity(selected)
+    return identity(value) !== selectedIdentity
+  })) {
     return { ...selected, CONFIG_ERRORS: [...(Array.isArray(selected.CONFIG_ERRORS) ? selected.CONFIG_ERRORS : []), 'Conflicting deployment runtime configuration sources.'] }
   }
   return selected
