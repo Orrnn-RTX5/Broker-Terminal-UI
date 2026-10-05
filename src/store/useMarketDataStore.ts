@@ -317,22 +317,6 @@ const findLastStrictlyOlderTick = (ticks: readonly Tick[], timestamp: number | n
   return null;
 };
 
-function calculateVWAP(ticks: Tick[]): number {
-  if (ticks.length === 0) return 0;
-
-  let totalVolume = 0;
-  let totalValue = 0;
-
-  ticks.forEach((tick) => {
-    const price = (tick.bid + tick.ask) / 2;
-    const volume = tick.volume || 1;
-    totalValue += price * volume;
-    totalVolume += volume;
-  });
-
-  return totalVolume > 0 ? totalValue / totalVolume : 0;
-}
-
 function calculateSMA(prices: number[], period: number): number {
   if (prices.length < period) return prices[prices.length - 1] || 0;
 
@@ -404,28 +388,40 @@ function calculateStats(
   const now = Date.now();
   const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
 
-  // Get ticks from last 24 hours
-  const ticks24h = tickBuffer.filter((t) => t.timestamp >= twentyFourHoursAgo);
-
-  // Calculate high/low
+  // Scan the retained window once, without a filtered copy. Keep each sum in
+  // original tick order: incremental subtraction would change rounding after
+  // capacity eviction or an equal-time correction.
   let high24h = currentTick.bid;
   let low24h = currentTick.ask;
   let volume24h = 0;
+  let totalVolume = 0;
+  let totalValue = 0;
+  let firstTick: Tick | undefined;
 
-  ticks24h.forEach((tick) => {
-    high24h = Math.max(high24h, tick.bid, tick.ask);
-    low24h = Math.min(low24h, tick.bid, tick.ask);
+  for (let index = 0; index < tickBuffer.length; index += 1) {
+    const tick = tickBuffer[index];
+    // Preserve the inclusive raw timestamp filter, including NaN exclusion.
+    if (!(tick.timestamp >= twentyFourHoursAgo)) continue;
+    if (firstTick === undefined) firstTick = tick;
+    const bid = tick.bid;
+    const ask = tick.ask;
+    high24h = Math.max(high24h, bid, ask);
+    low24h = Math.min(low24h, bid, ask);
     volume24h += tick.volume || 0;
-  });
+    const price = (bid + ask) / 2;
+    const volume = tick.volume || 1;
+    totalValue += price * volume;
+    totalVolume += volume;
+  }
 
   // Calculate change
   const currentPrice = (currentTick.bid + currentTick.ask) / 2;
-  const price24hAgo = ticks24h.length > 0 ? (ticks24h[0].bid + ticks24h[0].ask) / 2 : currentPrice;
+  const price24hAgo = firstTick ? (firstTick.bid + firstTick.ask) / 2 : currentPrice;
   const change24h = currentPrice - price24hAgo;
   const changePercent24h = price24hAgo > 0 ? (change24h / price24hAgo) * 100 : 0;
 
   // Calculate VWAP
-  const vwap = calculateVWAP(ticks24h);
+  const vwap = totalVolume > 0 ? totalValue / totalVolume : 0;
 
   // Calculate moving averages from OHLCV data
   const closePrices = ohlcv1h.map((candle) => candle.close);
