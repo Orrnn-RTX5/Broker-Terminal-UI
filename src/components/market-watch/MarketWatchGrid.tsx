@@ -278,7 +278,7 @@ export const MarketWatchGrid = ({
                     window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol } }));
                   }
                 }}
-                contextMenuItems={getContextMenuItems(symbol)}
+                getContextMenuItems={getContextMenuItems}
                 columns={columns}
                 showMilliseconds={marketWatchOptions.showMilliseconds}
                 isLightSkin={isLightSkin}

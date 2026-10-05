@@ -63,7 +63,7 @@ interface MarketWatchRowProps {
   onClick: () => void;
   onContextSelect: () => void;
   onDoubleClick: () => void;
-  contextMenuItems: ContextMenuItemConfig[];
+  getContextMenuItems: (symbol: string) => ContextMenuItemConfig[];
   columns: readonly MarketWatchColumnId[];
   showMilliseconds: boolean;
   isLightSkin: boolean;
@@ -81,7 +81,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   onClick,
   onContextSelect,
   onDoubleClick,
-  contextMenuItems,
+  getContextMenuItems,
   columns,
   showMilliseconds,
   isLightSkin,
@@ -147,7 +147,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   ) ?? fallbackPrice?.asOf;
 
   return (
-    <ContextMenu items={contextMenuItems} variant={isLightSkin ? 'mt5-light' : 'mt5-dark'} density="compact">
+    <ContextMenu items={() => getContextMenuItems(symbol)} variant={isLightSkin ? 'mt5-light' : 'mt5-dark'} density="compact">
       <tr
         ref={rowRef}
         draggable={isChartOpenable}

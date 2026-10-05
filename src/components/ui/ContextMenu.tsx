@@ -13,7 +13,7 @@ import type { ContextMenuItemConfig } from './context-menu.types';
 export type { ContextMenuItemConfig } from './context-menu.types';
 
 interface ContextMenuProps {
-  items: ContextMenuItemConfig[];
+  items: ContextMenuItemConfig[] | (() => ContextMenuItemConfig[]);
   onClose?: () => void;
   position?: { x: number; y: number };
   triggerSymbol?: string;
@@ -858,7 +858,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           </div>
         </div>
       )}
-      <Menu items={items} position={position} onClose={onClose} zIndex={9999} variant={variant} density={density} />
+      <Menu items={typeof items === 'function' ? items() : items} position={position} onClose={onClose} zIndex={9999} variant={variant} density={density} />
     </div>,
     document.body
   ) : null;
