@@ -44,6 +44,30 @@ describe('DrawingManager.setChart', () => {
     loadDrawings.mockClear();
   });
 
+  it('does no SVG mutation or geometry read when empty contexts receive repeated renderAll requests', async () => {
+    const manager = new DrawingManager();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    manager.setChart(chart, series, 'EMPTY', 1, container, 'M1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    const width = vi.spyOn(container, 'clientWidth', 'get');
+    const height = vi.spyOn(container, 'clientHeight', 'get');
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(container, { attributes: true, childList: true, subtree: true });
+    try {
+      for (let frame = 0; frame < 20; frame++) manager.renderAll();
+      expect(width).not.toHaveBeenCalled();
+      expect(height).not.toHaveBeenCalled();
+      expect(observer.takeRecords()).toHaveLength(0);
+    } finally {
+      observer.disconnect();
+      width.mockRestore();
+      height.mockRestore();
+      manager.dispose();
+    }
+  });
+
   it('does not rebuild drawings when the active chart context is identical', async () => {
     const manager = new DrawingManager();
     const container = document.createElement('div');
