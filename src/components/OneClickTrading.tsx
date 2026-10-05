@@ -12,6 +12,7 @@ import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import api from '../services/api';
 import { getTradeEntryPriceFromQuote } from '../services/chartPriceGuards';
 import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
+import { quoteDiagnosticsEnabled, recordQuoteDiagnostic } from '../services/quoteDiagnostics';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import {
     createUnavailableMarketStatus,
@@ -266,6 +267,21 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const quoteLive = !strictFreshness || canSubmitTerminalMarketOrder(quoteFreshness);
     const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice && quoteLive;
     const tradeControlDisabled = hasTradingSession && !canSubmitOrder;
+    // Disabled HTML buttons never run placeOrder, so capture decision transitions
+    // independently of submitted-order telemetry. Do not include account identity.
+    const diagnosticBlockReason = !hasTradingSession ? 'login-required' : !tradeAllowed ? 'symbol-not-eligible'
+        : !quoteLive ? quoteFreshness.reason : !marketOpenForTrading ? 'market-not-open'
+            : !isVolumeValid ? 'invalid-volume' : !hasExecutablePrice ? 'no-executable-price' : 'ready';
+    const captureQuoteDiagnostics = quoteDiagnosticsEnabled();
+    useEffect(() => {
+        if (!visible || !captureQuoteDiagnostics) return;
+        recordQuoteDiagnostic({ kind: 'trade-control', phase: 'rendered-state', symbol,
+            disabled: tradeControlDisabled, reason: diagnosticBlockReason, authenticated: hasTradingSession,
+            tradeAllowed, marketOpen: marketOpenForTrading, validVolume: isVolumeValid,
+            executablePrice: hasExecutablePrice, quotePermitsOrder: quoteLive,
+            freshnessReason: quoteFreshness.reason, clockStatus: quoteFreshness.clockStatus });
+    }, [captureQuoteDiagnostics, visible, symbol, tradeControlDisabled, diagnosticBlockReason, hasTradingSession, tradeAllowed,
+        marketOpenForTrading, isVolumeValid, hasExecutablePrice, quoteLive, quoteFreshness.reason, quoteFreshness.clockStatus]);
     const orderBlockedReason = !tradeAllowed
         ? strictFreshness ? tr('Trading is not available for {{symbol}}.', { symbol }) : hasExecutablePrice ? staleQuoteMessage : tr('No live quote is available for {{symbol}}. Please wait for a fresh quote and try again.', { symbol })
         : !quoteLive

@@ -8,6 +8,7 @@ import {
 import { apiClient, ApiError } from '../../api/client';
 import { getServerUrl } from '../../services/brokerSession';
 import { recordBrokerServerTime } from '../../services/brokerServerClock';
+import { quoteDiagnosticsEnabled, recordQuoteDiagnostic } from '../../services/quoteDiagnostics';
 import { INSTRUMENT_CATALOGUE_REFRESHED_EVENT } from '../../services/instrumentCatalogueEvents';
 import {
   getApiRootBaseUrl,
@@ -342,18 +343,24 @@ export function useActiveMarketSymbols() {
             : undefined,
         }, storageScope);
         setSymbols(nextSymbols);
+        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'feed-status', reason: 'authoritative-status',
+          feedCurrent: true, activeSymbolCount: nextSymbols.length });
         setCurrent(true);
         return;
       }
 
       const cached = readCachedActiveMarketSymbols(storageScope);
       setSymbols(cached.symbols);
+      if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'feed-status', reason: 'non-authoritative-status',
+        feedCurrent: false, activeSymbolCount: 0 });
       setCurrent(false);
       setError('No active feed symbols returned');
     } catch (err) {
       if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
       const cached = readCachedActiveMarketSymbols(storageScope);
       setSymbols(cached.symbols);
+      if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'feed-status', reason: 'status-request-failed',
+        feedCurrent: false, activeSymbolCount: 0, httpStatus: err instanceof ApiError ? err.status : undefined });
       setCurrent(false);
       setError(err instanceof ApiError ? err.message : 'Failed to load active feed symbols');
     } finally {

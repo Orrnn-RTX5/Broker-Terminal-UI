@@ -28,6 +28,7 @@ vi.mock('../hooks/useLiveMarketData', () => ({
 import { useAppStore } from '../store/useAppStore';
 import { normalizeMarketStatus } from '../utils/marketStatus';
 import { OneClickTrading } from './OneClickTrading';
+import { getQuoteDiagnosticDump } from '../services/quoteDiagnostics';
 
 const getTradeButton = (label: 'BUY' | 'SELL'): HTMLButtonElement => {
   const button = screen.getByText(label).closest('button');
@@ -79,6 +80,7 @@ describe('OneClickTrading stale-quote refresh', () => {
   });
 
   afterEach(() => {
+    delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__;
     cleanup();
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -93,6 +95,19 @@ describe('OneClickTrading stale-quote refresh', () => {
       marketStatus={normalizeMarketStatus({ symbol: 'BTCUSD', status: 'open' })}
     />,
   );
+
+  it('records a disabled-before-send permission decision even while the quote advisory allows orders', () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    freshnessMocks.enabled = true; freshnessMocks.live = false; freshnessMocks.reason = 'time-unverified';
+    renderPanel(false);
+    expect(getTradeButton('BUY')).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('server will validate');
+    fireEvent.click(getTradeButton('BUY'));
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+    expect(getQuoteDiagnosticDump().controls.at(-1)).toMatchObject({ kind: 'trade-control', phase: 'rendered-state',
+      symbol: 'BTCUSD', disabled: true, reason: 'symbol-not-eligible', quotePermitsOrder: true, tradeAllowed: false });
+    expect(JSON.stringify(getQuoteDiagnosticDump())).not.toContain('quote-refresh-test-token');
+  });
 
   it('preserves the actual backend error and only refreshes data after a stale rejection', async () => {
     orderMocks.placeMarketOrder.mockRejectedValueOnce(Object.assign(new Error('risk quote XAUUSD: Quote is stale'), {

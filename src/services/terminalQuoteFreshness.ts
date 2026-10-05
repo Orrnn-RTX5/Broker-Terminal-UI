@@ -1,3 +1,5 @@
+import { quoteDiagnosticsEnabled, recordQuoteDiagnostic, type QuoteDiagnosticContext } from './quoteDiagnostics';
+
 /** Provider evidence is independent of local price rendering and symbol permissions. */
 export interface TerminalQuoteMetadata {
   provider_timestamp?: number;
@@ -90,7 +92,16 @@ export function calibrateTerminalQuoteClock(serverTime: unknown, startMono: numb
   if (expectedSession !== session || server === undefined || !Number.isFinite(rtt) || rtt < 0 || rtt > 2000
     || !Number.isFinite(startMono) || !Number.isFinite(endMono) || !Number.isFinite(startWall) || !Number.isFinite(endWall)
     || Math.abs((endWall - startWall) - rtt) > 250
-    || (anchor && startMono < anchor.requestMono)) return false;
+    || (anchor && startMono < anchor.requestMono)) {
+    if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: false,
+      reason: expectedSession !== session ? 'session-mismatch' : server === undefined ? 'invalid-server-time'
+        : !Number.isFinite(rtt) || rtt < 0 || rtt > 2000 ? 'invalid-rtt'
+          : Math.abs((endWall - startWall) - rtt) > 250 ? 'wall-clock-discontinuity' : 'invalid-or-older-sample',
+      serverTimeMs: server, requestMonoMs: startMono, responseMonoMs: endMono, rttMs: rtt,
+      requestEpochMs: startWall, responseEpochMs: endWall,
+      wallElapsedMs: endWall - startWall, browserGeneration: session, expectedBrowserGeneration: expectedSession });
+    return false;
+  }
   anchor = { lower: server - 1, upper: server + rtt + 1, mono: endMono, wall: endWall, requestMono: startMono };
   if (Array.from(quotes.values()).some(quote => quote.provider_timestamp !== undefined && quote.provider_timestamp > anchor!.upper + 250)) {
     // Render caches may already contain this impossible packet. A new
@@ -100,6 +111,10 @@ export function calibrateTerminalQuoteClock(serverTime: unknown, startMono: numb
     sequenceWatermarks.clear();
   }
   publish();
+  if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: true, reason: 'calibrated',
+    serverTimeMs: server, requestMonoMs: startMono, responseMonoMs: endMono, rttMs: rtt,
+    requestEpochMs: startWall, responseEpochMs: endWall,
+    wallElapsedMs: endWall - startWall, browserGeneration: session, expectedBrowserGeneration: expectedSession });
   return true;
 }
 
@@ -112,35 +127,58 @@ function compareSequence(next: string | number, previous: string | number): numb
   return next === previous ? 0 : undefined;
 }
 
-export function ingestTerminalQuote(symbol: string, data: TerminalQuoteEvidence, expectedSession = session): boolean {
-  if (expectedSession !== session || !key(symbol)) return false;
+function recordIngestion(symbol: string, data: TerminalQuoteEvidence, expectedSession: number,
+  context: QuoteDiagnosticContext | undefined, ingestMonoMs: number | undefined, accepted: boolean, reason: string): boolean {
+  if (ingestMonoMs !== undefined) {
+    const state = getTerminalQuoteFreshness(symbol);
+    const incomingTime = readQuoteFreshnessMetadata(data).provider_timestamp;
+    const elapsed = anchor ? monoNow() - anchor.mono : 0;
+    const timed = state.clockStatus === 'verified' && incomingTime !== undefined;
+    recordQuoteDiagnostic({ ...context, kind: 'quote', symbol, source: data.source, providerTimestamp: incomingTime,
+      hubSequence: data.sequence, browserGeneration: session, expectedBrowserGeneration: expectedSession,
+      receiptMonoMs: context?.receiptMonoMs, transport: context?.transport, ingestMonoMs, accepted, reason,
+      freshnessReason: state.reason, clockStatus: state.clockStatus, ageMinMs: state.ageMinMs, ageMaxMs: state.ageMaxMs,
+      upstreamStale: data.stale, upstreamTradable: data.tradable, sourceMismatch: data.source_mismatch,
+      retainedProviderTimestamp: quotes.get(key(symbol))?.provider_timestamp,
+      incomingAgeMinMs: timed ? anchor!.lower + elapsed - elapsed / 1000 - incomingTime : null,
+      incomingAgeMaxMs: timed ? anchor!.upper + elapsed + elapsed / 1000 - incomingTime : null });
+  }
+  return accepted;
+}
+
+export function ingestTerminalQuote(symbol: string, data: TerminalQuoteEvidence, expectedSession = session,
+  context?: QuoteDiagnosticContext): boolean {
+  const ingestMonoMs = quoteDiagnosticsEnabled() ? monoNow() : undefined;
+  if (expectedSession !== session || !key(symbol)) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false,
+    expectedSession !== session ? 'session-mismatch' : 'invalid-symbol');
   const metadata = readQuoteFreshnessMetadata(data);
   const previous = quotes.get(key(symbol));
   if (metadata.provider_timestamp === undefined || !metadata.source?.trim() || !Number.isFinite(data.bid) || !Number.isFinite(data.ask)
-    || data.bid! <= 0 || data.ask! <= 0 || data.ask! < data.bid!) return false;
+    || data.bid! <= 0 || data.ask! <= 0 || data.ask! < data.bid!) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false,
+      metadata.provider_timestamp === undefined ? 'missing-provider-time' : !metadata.source?.trim() ? 'missing-source' : 'invalid-price');
   const sequenceText = metadata.sequence === undefined ? undefined : String(metadata.sequence);
   // Corrupt/future packets must not advance the sequence watermark and suppress recovery.
   if (sequenceText !== undefined && (!/^\d{1,20}$/.test(sequenceText)
     || BigInt(sequenceText) > 18446744073709551615n
-    || (typeof metadata.sequence === 'number' && !Number.isSafeInteger(metadata.sequence)))) return false;
+    || (typeof metadata.sequence === 'number' && !Number.isSafeInteger(metadata.sequence)))) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, 'invalid-sequence');
   const elapsed = anchor ? monoNow() - anchor.mono : NaN;
   const validClock = anchor && elapsed >= 0 && elapsed < 60000 && Math.abs((Date.now() - anchor.wall) - elapsed) <= 250;
-  if (validClock && metadata.provider_timestamp !== undefined && metadata.provider_timestamp > anchor!.upper + elapsed + elapsed / 1000 + 250) return false;
+  if (validClock && metadata.provider_timestamp !== undefined && metadata.provider_timestamp > anchor!.upper + elapsed + elapsed / 1000 + 250) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, 'future-provider-time');
   if (previous) {
     const nextTime = metadata.provider_timestamp;
     const oldTime = previous.provider_timestamp;
-    if (oldTime !== undefined && (nextTime === undefined || nextTime < oldTime)) return false;
+    if (oldTime !== undefined && (nextTime === undefined || nextTime < oldTime)) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, 'older-provider-time');
     const watermark = sequenceWatermarks.get(key(symbol));
     if (metadata.sequence !== undefined && watermark !== undefined) {
       const order = compareSequence(metadata.sequence, watermark);
-      if (order !== undefined && order < 0) return false;
-      if (order === 0) return applyVeto(previous, metadata, symbol);
-    } else if (oldTime !== undefined && nextTime === oldTime) return applyVeto(previous, metadata, symbol);
+      if (order !== undefined && order < 0) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, 'older-sequence');
+      if (order === 0) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, applyVeto(previous, metadata, symbol), 'duplicate-sequence');
+    } else if (oldTime !== undefined && nextTime === oldTime) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, applyVeto(previous, metadata, symbol), 'duplicate-provider-time');
   }
   quotes.set(key(symbol), { ...metadata, bid: data.bid, ask: data.ask });
   if (metadata.sequence !== undefined) sequenceWatermarks.set(key(symbol), metadata.sequence);
   publish();
-  return true;
+  return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, true, 'accepted');
 }
 
 /** Reprice an accepted event after an account markup change without renewing its evidence. */
@@ -235,7 +273,13 @@ export function canSubmitTerminalMarketOrder(state: TerminalQuoteFreshness): boo
 }
 
 export function assertTerminalMarketOrderQuote(symbol: string): void {
-  if (!terminalQuoteFreshnessEnabled() || canSubmitTerminalMarketOrder(getTerminalQuoteFreshness(symbol))) return;
+  if (!terminalQuoteFreshnessEnabled()) return;
+  const state = getTerminalQuoteFreshness(symbol);
+  const permits = canSubmitTerminalMarketOrder(state);
+  if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'trade-control', phase: 'market-assert', symbol,
+    reason: state.reason, freshnessReason: state.reason, clockStatus: state.clockStatus, quotePermitsOrder: permits,
+    browserGeneration: session, ageMinMs: state.ageMinMs, ageMaxMs: state.ageMaxMs });
+  if (permits) return;
   assertTerminalQuoteFresh(symbol);
 }
 

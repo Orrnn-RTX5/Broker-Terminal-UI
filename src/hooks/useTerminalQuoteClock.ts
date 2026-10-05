@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { apiClient } from '../api/client';
 import { API_V2_BASE_URL } from '../config/api';
 import { onSessionChange } from '../services/brokerSession';
+import { quoteDiagnosticsEnabled, recordQuoteDiagnostic } from '../services/quoteDiagnostics';
 import {
   calibrateTerminalQuoteClock, getTerminalQuoteSession, isTerminalQuoteClockVerified,
   resetTerminalQuoteFreshness, terminalQuoteFreshnessEnabled, subscribeTerminalQuoteFreshness,
@@ -46,6 +47,8 @@ export function useTerminalQuoteClock(): void {
         if (disposed || active.signal.aborted || request !== generation || owner !== getTerminalQuoteSession()) return;
         accepted = calibrateTerminalQuoteClock(response.server_time_ms, startMono, startWall, performance.now(), Date.now(), owner);
       } catch {
+        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: false, reason: active.signal.aborted ? 'request-aborted' : 'request-failed',
+          requestMonoMs: startMono, responseMonoMs: performance.now(), expectedBrowserGeneration: owner });
         // A failed refresh cannot discard the bounded 60-second holdover.
       } finally {
         if (controller === active) controller = undefined;

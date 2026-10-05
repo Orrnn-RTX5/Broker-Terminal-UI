@@ -13,6 +13,7 @@ import {
 import { onSessionChange } from './brokerSession';
 import { applyAccountSpreadMarkup, onAccountSpreadMarkupChange } from './accountSpreadMarkup';
 import type { SpreadMarkupQuoteTag } from '../utils/spreadMarkup';
+import type { QuoteDiagnosticContext } from './quoteDiagnostics';
 import { readDailyChangeInput } from '../utils/dailyChange';
 import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
 import {
@@ -284,7 +285,7 @@ const retainFailedBatch = (
   scheduleRetry(retry);
 };
 
-const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boolean => {
+const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false, diagnosticContext?: QuoteDiagnosticContext): boolean => {
   if (!symbol) return false;
   if (isLiveMarketDataFrozen(symbol)) return false;
   // Every quote transport (quote socket, REST seed, catalogue seed, legacy WS,
@@ -360,7 +361,7 @@ const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boo
   if (freshnessEnabled) {
     const accepted = refreshMarkup
       ? refreshTerminalQuotePrices(symbol, fullTick, fullTick.terminalQuoteSession)
-      : ingestTerminalQuote(symbol, fullTick);
+      : diagnosticContext ? ingestTerminalQuote(symbol, fullTick, undefined, diagnosticContext) : ingestTerminalQuote(symbol, fullTick);
     if (!accepted) return false;
     if (fullTick.provider_timestamp !== undefined) {
       fullTick.sourceTimestamp = fullTick.provider_timestamp;
@@ -446,7 +447,7 @@ const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boo
   return true;
 };
 
-export const enqueueLiveTick = (symbol: string, tick: LiveTick): boolean => enqueueTick(symbol, tick);
+export const enqueueLiveTick = (symbol: string, tick: LiveTick, diagnosticContext?: QuoteDiagnosticContext): boolean => enqueueTick(symbol, tick, false, diagnosticContext);
 
 export const flushLiveTicks = (): void => {
   flushMarketWatchDisplayMetadata();

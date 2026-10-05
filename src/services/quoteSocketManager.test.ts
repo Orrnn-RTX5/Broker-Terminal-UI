@@ -137,6 +137,7 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
   });
 
   afterEach(() => {
+    delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__;
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -197,6 +198,25 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
       bid: 76000, ask: 76001,
     }));
     expect(internals(manager).subscribedSymbols.has('BTCUSD')).toBe(true);
+    manager.destroy();
+  });
+
+  it('passes one frame receipt timestamp through every quote without adding diagnostic fields to ticks', () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    vi.spyOn(performance, 'now').mockReturnValue(1234);
+    brokerSessionMock.feedUri = 'wss://broker.example/ws/feed';
+    const manager = new QuoteSocketManager();
+    manager.setDemand('watchlist', ['BTCUSD', 'EURUSD']);
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.onmessage?.({ data: JSON.stringify({ type: 'ticks', ticks: [
+      { symbol: 'BTCUSD', bid: 76000, ask: 76001, provider_timestamp: 1_800_000_000_000, source: 'cserver', sequence: '18446744073709551614' },
+      { symbol: 'EURUSD', bid: 1.1, ask: 1.2, provider_timestamp: 1_800_000_000_000, source: 'cserver', sequence: '18446744073709551615' },
+    ] }) });
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(2);
+    expect(enqueueLiveTick).toHaveBeenNthCalledWith(1, 'BTCUSD', expect.objectContaining({ sequence: '18446744073709551614' }), expect.objectContaining({ receiptMonoMs: 1234, transport: 'feed' }));
+    expect(enqueueLiveTick).toHaveBeenNthCalledWith(2, 'EURUSD', expect.objectContaining({ sequence: '18446744073709551615' }), expect.objectContaining({ receiptMonoMs: 1234, transport: 'feed' }));
+    expect(enqueueLiveTick.mock.calls[0][1]).not.toHaveProperty('receiptMonoMs');
     manager.destroy();
   });
 

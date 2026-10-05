@@ -17,6 +17,7 @@ import {
 } from '../utils/recordFields';
 import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
 import { readQuoteFreshnessMetadata, type TerminalQuoteMetadata } from './terminalQuoteFreshness';
+import { quoteDiagnosticsEnabled, rememberQuoteWireEvidence } from './quoteDiagnostics';
 
 import { readQuoteTradingStatus, type QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
 
@@ -274,7 +275,7 @@ const normalizeQuotePayload = (
     readQuoteFreshnessMetadata(payload),
   );
 
-  return {
+  const normalized: NormalizedQuoteTick = {
     symbol,
     bid,
     ask,
@@ -303,6 +304,8 @@ const normalizeQuotePayload = (
     open: dailyOpen,
     close,
   };
+  if (quoteDiagnosticsEnabled()) rememberQuoteWireEvidence(normalized, payload, envelopes, bid, ask);
+  return normalized;
 };
 
 /** Convert a raw broker frame into validated, normalized quote ticks. */

@@ -6,6 +6,7 @@ import { useAppStore } from '../store/useAppStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
 import { ApiError } from '../api/client';
+import { getQuoteDiagnosticDump } from '../services/quoteDiagnostics';
 import {
   ACTIVE_MARKET_SYMBOLS_STORAGE_KEY_PREFIX,
   extractActiveMarketSymbols,
@@ -1775,6 +1776,32 @@ describe('active market symbol status cache', () => {
     expect(result.current.error).toBe('Feed status unavailable');
 
     unmount();
+  });
+
+  it('records failed, non-authoritative and recovered feed status without exporting the error or cached account scope', async () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    apiGet.mockRejectedValueOnce(new ApiError(503, 'https://secret.test/?token=private'))
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ symbol_status: [{ symbol: 'BTCUSD', fresh: true, bid: 86000, ask: 86015 }] });
+    const { result, unmount } = renderHook(() => useActiveMarketSymbols());
+    try {
+      await flushPromises();
+      expect(result.current.current).toBe(false);
+      await act(async () => { await result.current.reload(); });
+      expect(result.current.current).toBe(false);
+      await act(async () => { await result.current.reload(); });
+      expect(result.current.current).toBe(true);
+      const events = getQuoteDiagnosticDump().controls.filter(event => event.kind === 'feed-status').slice(-3);
+      expect(events).toEqual([
+        expect.objectContaining({ reason: 'status-request-failed', feedCurrent: false, activeSymbolCount: 0, httpStatus: 503 }),
+        expect.objectContaining({ reason: 'non-authoritative-status', feedCurrent: false, activeSymbolCount: 0 }),
+        expect.objectContaining({ reason: 'authoritative-status', feedCurrent: true, activeSymbolCount: 1 }),
+      ]);
+      expect(JSON.stringify(events)).not.toMatch(/secret|private|token|storageScope|sessionScope/);
+    } finally {
+      unmount();
+      delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__;
+    }
   });
 
   it('removes 0001.HK and clears its cache on an authoritative stale response', async () => {

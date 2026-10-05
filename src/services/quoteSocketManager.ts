@@ -30,6 +30,7 @@ import {
 } from './brokerSession';
 import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
 import { resetTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
+import { quoteDiagnosticsEnabled, readQuoteWireEvidence, recordQuoteDiagnostic, type QuoteDiagnosticContext } from './quoteDiagnostics';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import {
   processIncomingQuotePayload,
@@ -320,6 +321,7 @@ class QuoteSocketManager {
           window.dispatchEvent(new Event('rtx:quote-clock-refresh'));
         }
         opened = true;
+        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'connection', reason: 'opened', transport: nextTransport });
         this.clearOpenTimeout();
         // FIX: Use transport ping/pong for liveness so a quiet market does not
         // leave an OPEN-but-dead quote socket displaying stale prices.
@@ -342,11 +344,13 @@ class QuoteSocketManager {
 
       socket.onmessage = (event) => {
         if (this.ws !== socket) return;
+        const diagnosticContext: QuoteDiagnosticContext | undefined = quoteDiagnosticsEnabled()
+          ? { receiptMonoMs: performance.now(), transport: nextTransport } : undefined;
         this.recordTransportActivity();
 
         try {
           const data = JSON.parse(event.data);
-          this.handleMessage(data);
+          this.handleMessage(data, diagnosticContext);
         } catch (err) {
           console.error('[QuoteSocket] Failed to parse message:', err);
         }
@@ -360,6 +364,7 @@ class QuoteSocketManager {
 
       socket.onclose = (event) => {
         if (this.ws !== socket) return;
+        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'connection', reason: 'closed', transport: nextTransport, closeCode: event.code });
         if (terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
         this.clearOpenTimeout();
         this.clearStableOpenTimer();
@@ -471,7 +476,7 @@ class QuoteSocketManager {
 
   // ─── Step 9-13: Handle incoming tick payloads ────────────────────────────
 
-  private handleMessage(data: unknown): void {
+  private handleMessage(data: unknown, diagnosticContext?: QuoteDiagnosticContext): void {
     if (!isRecord(data)) return;
 
     // Handle pong
@@ -531,7 +536,10 @@ class QuoteSocketManager {
       if (isLiveMarketDataFrozen(tick.symbol)) return;
 
       // Step 14: Batched store path — enqueue for rAF-batched Zustand update
-      if (!enqueueLiveTick(tick.symbol, tick as LiveTick)) return;
+      const enqueued = diagnosticContext
+        ? enqueueLiveTick(tick.symbol, tick as LiveTick, { ...diagnosticContext, ...readQuoteWireEvidence(tick) })
+        : enqueueLiveTick(tick.symbol, tick as LiveTick);
+      if (!enqueued) return;
 
       // Last-only display metadata is intentionally isolated from raw quote
       // listeners: the selected-chart listener treats every callback as an
