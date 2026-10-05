@@ -858,6 +858,30 @@ describe('useLiveQuotes REST fallback batching', () => {
 });
 
 describe('useMarketInstruments normalization', () => {
+  it('foreground catalogue investigation: same-scope reload temporarily clears verified authorization without quote staleness', async () => {
+    const catalogue = { revision: 'unchanged-revision', symbols: [{ symbol: 'BTCUSD', trading_enabled: true, bid: 100, ask: 101 }] };
+    apiGet.mockResolvedValue(catalogue);
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    expect(result.current.authorizationSettled).toBe(true);
+    let resolveAuthorization!: (value: unknown) => void;
+    apiGet.mockImplementation((endpoint: string) => endpoint === '/instruments'
+      ? new Promise(resolve => { resolveAuthorization = resolve; })
+      : Promise.resolve(catalogue));
+    let reload!: Promise<void>;
+    act(() => { reload = result.current.reload(); });
+    await flushPromises();
+    // Characterizes the frozen candidate; not an instruction to bypass this authorization gate.
+    expect(result.current.symbols.map(row => row.symbol)).toEqual(['BTCUSD']);
+    expect(result.current.authorizedSymbols).toEqual([]);
+    expect(result.current.authorizationSettled).toBe(false);
+    await act(async () => { resolveAuthorization(catalogue); await reload; });
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    expect(result.current.authorizationSettled).toBe(true);
+    unmount();
+  });
+
   beforeEach(() => {
     apiGet.mockReset();
     apiPut.mockReset();

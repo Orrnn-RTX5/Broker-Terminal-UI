@@ -35,7 +35,6 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useActiveMarketSymbols, useMarketInstruments } from './hooks/useLiveMarketData';
 import { useTerminalQuoteClock } from './hooks/useTerminalQuoteClock';
 import { useOpenPositionQuoteDemand } from './hooks/useOpenPositionQuoteDemand';
-import { notifyInstrumentCatalogueChanged } from './services/instrumentCatalogueEvents';
 import { getCachedSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useSymbolMarketStatus';
 import {
   getUniqueSymbolNames as getAllowedSymbolNames,
@@ -1110,8 +1109,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const previousState = previousTradeConnectionStateRef.current;
     previousTradeConnectionStateRef.current = connectionState;
     if (previousState !== 'connected' && connectionState === 'connected') {
-      window.dispatchEvent(new Event('rtx:trade-stream-recovered'));
-      notifyInstrumentCatalogueChanged();
+      window.dispatchEvent(new CustomEvent('rtx:trade-stream-recovered', {
+        detail: { reason: 'transport-reconnect' },
+      }));
     }
   }, [connectionState]);
 
