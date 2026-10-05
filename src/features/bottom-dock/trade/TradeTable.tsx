@@ -15,6 +15,7 @@ import {
 } from '../../../components/BottomDock.trade';
 import { Icon } from '../../../components/ui/Icon';
 import { TradeMetricValue, UnavailableTradeMetric } from './TradeMetricValue';
+import { PositionDiagnosticRow } from './PositionDiagnosticRow';
 import {
   getTradeColumnDef,
   METRIC_UNAVAILABLE,
@@ -290,8 +291,12 @@ export function TradeTable({
               : `${rowSummary}\n${tr('Ticket: {{value0}}', { value0: ticketLabel })}\n${tr('Modify Position')} · ${tr('Context menu')}`;
 
             return (
-              <tr
+              <PositionDiagnosticRow
                 key={position.id ?? index}
+                position={position}
+                displayedPriceText={!isPendingPlacement && isColumnVisible('priceCurrent') ? currentPriceLabel : undefined}
+                displayedProfitText={!isPendingPlacement && isColumnVisible('profit') ? profitLabel : undefined}
+                profitMode={profitMode}
                 title={rowComment}
                 aria-selected={isSelected}
                 className={`rtx-trade-row h-[30px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-default`}
@@ -463,7 +468,7 @@ export function TradeTable({
                     {isPendingPlacement ? (isTerminalPlacementFailure || isOutcomeUnknown ? '!' : '…') : 'x'}
                   </button>
                 </td>
-              </tr>
+              </PositionDiagnosticRow>
             );
           })}
         </tbody>

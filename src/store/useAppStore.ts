@@ -3,6 +3,7 @@
  * Centralized state for trading application
  */
 import type { TerminalQuoteMetadata } from '../services/terminalQuoteFreshness';
+import { rememberRetainedPositionDeliveries } from '../services/positionDeliveryEvidence';
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { useSystemJournalStore } from './useSystemJournalStore';
@@ -981,6 +982,7 @@ export const useAppStore = create<AppState>()(
               store.setPositions(store.positions.filter((position) => !retainedOnlyTickets.has(position.id)));
             }, Math.max(0, retentionEndsAt - now) + 1);
 
+            rememberRetainedPositionDeliveries(state.positions, nextPositions);
             return { positions: nextPositions };
           }),
 

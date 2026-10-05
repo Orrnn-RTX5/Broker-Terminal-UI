@@ -75,6 +75,11 @@ export interface QuoteDiagnosticInput extends QuoteDiagnosticContext {
   backendPrice?: number;
   backendProfit?: number;
   positionCount?: number;
+  positionDeliveryId?: number;
+  positionSessionGeneration?: number;
+  displayedPrice?: number;
+  displayedProfit?: number;
+  profitMode?: string;
 }
 
 type DiagnosticValue = string | number | boolean | null;
@@ -117,9 +122,9 @@ export function quoteDiagnosticsEnabled(): boolean {
 
 // Field allowlists are intentional: passing a larger telemetry/error object
 // cannot accidentally export its URL, session scope, token or backend message.
-const numericFields = ['gapFromProviderTimeMs', 'gapToProviderTimeMs', 'providerTimestamp', 'browserGeneration', 'expectedBrowserGeneration', 'receiptMonoMs', 'ingestMonoMs', 'ageMinMs', 'ageMaxMs', 'retainedProviderTimestamp', 'incomingAgeMinMs', 'incomingAgeMaxMs', 'serverTimeMs', 'requestMonoMs', 'responseMonoMs', 'requestEpochMs', 'responseEpochMs', 'rttMs', 'wallElapsedMs', 'totalMs', 'closeCode', 'upstreamReceiveTimestamp', 'upstreamPublishTimestamp', 'hubIngestTimestamp', 'hubPublishTimestamp', 'rawBid', 'rawAsk', 'activeSymbolCount', 'httpStatus', 'chartUpdateMonoMs', 'domWriteMonoMs', 'frameOpportunityMonoMs', 'backendPrice', 'backendProfit', 'positionCount'] as const;
+const numericFields = ['gapFromProviderTimeMs', 'gapToProviderTimeMs', 'providerTimestamp', 'browserGeneration', 'expectedBrowserGeneration', 'receiptMonoMs', 'ingestMonoMs', 'ageMinMs', 'ageMaxMs', 'retainedProviderTimestamp', 'incomingAgeMinMs', 'incomingAgeMaxMs', 'serverTimeMs', 'requestMonoMs', 'responseMonoMs', 'requestEpochMs', 'responseEpochMs', 'rttMs', 'wallElapsedMs', 'totalMs', 'closeCode', 'upstreamReceiveTimestamp', 'upstreamPublishTimestamp', 'hubIngestTimestamp', 'hubPublishTimestamp', 'rawBid', 'rawAsk', 'activeSymbolCount', 'httpStatus', 'chartUpdateMonoMs', 'domWriteMonoMs', 'frameOpportunityMonoMs', 'backendPrice', 'backendProfit', 'positionCount', 'positionDeliveryId', 'positionSessionGeneration', 'displayedPrice', 'displayedProfit'] as const;
 const booleanFields = ['rawCoverageComplete', 'accepted', 'disabled', 'authenticated', 'tradeAllowed', 'marketOpen', 'validVolume', 'executablePrice', 'quotePermitsOrder', 'upstreamStale', 'upstreamTradable', 'sourceMismatch', 'feedCurrent', 'foreground'] as const;
-const identifierFields = ['symbol', 'source', 'reason', 'freshnessReason', 'clockStatus', 'phase', 'errorCode', 'terminalStatus', 'transport', 'brokerId', 'tickId', 'sourceTickId', 'timeframe'] as const;
+const identifierFields = ['symbol', 'source', 'reason', 'freshnessReason', 'clockStatus', 'phase', 'errorCode', 'terminalStatus', 'transport', 'brokerId', 'tickId', 'sourceTickId', 'timeframe', 'profitMode'] as const;
 const safeIdentifier = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(value);
 const safeSourceVersion = (value: unknown): value is string => safeIdentifier(value)
   || (typeof value === 'string' && /^legacy-feed-v1:[a-f0-9]{64}$/.test(value));

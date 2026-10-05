@@ -1,4 +1,5 @@
 import { lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { copyPositionDeliveryEvidence } from '../../../services/positionDeliveryEvidence';
 import { RetainedLazyFeature } from '../../../startup/RetainedLazyFeature';
 import { useUiTranslation } from '../../../hooks/useUiTranslation';
 import { useAppStore, type Account } from '../../../store/useAppStore';
@@ -228,7 +229,7 @@ export const TradeTab = memo(function TradeTab({
             const tp = override?.tp ?? pos?.price_tp ?? pos?.tp ?? 0;
             const comment = override?.comment ?? pos?.comment ?? '';
 
-            return {
+            return copyPositionDeliveryEvidence(pos, {
                 ...pos,
                 symbol,
                 volume,
@@ -253,7 +254,7 @@ export const TradeTab = memo(function TradeTab({
                 hasBackendProfit: profitResolution.source === 'backend',
                 profitSource: profitResolution.source,
                 profitWarnings: profitResolution.warnings,
-            } as ToolboxTradePosition;
+            } as ToolboxTradePosition);
         });
     }, [positions, tradeOverrides]);
 

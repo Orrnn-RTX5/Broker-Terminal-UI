@@ -1,4 +1,5 @@
 import type { Position } from '../store/useAppStore';
+import { copyPositionDeliveryEvidence } from '../services/positionDeliveryEvidence';
 import type { TradeProfitSource } from '../components/BottomDock.trade';
 import type { MarketOrderPlacementState } from '../services/marketOrderPlacementEvents';
 import { normalizePosition } from '../api/tradeGateway';
@@ -68,7 +69,7 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
   const profit = hasBackendProfit ? backendProfit! : 0;
   const openTime = resolvePositionOpenTime(raw, normalized.openTime || (typeof normalized.time_create === 'string' ? normalized.time_create : undefined));
 
-  return {
+  return copyPositionDeliveryEvidence(raw, {
     ...normalized,
     id: ticket,
     ticket,
@@ -99,7 +100,7 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     placementErrorCode: raw?.placementErrorCode ?? raw?.placement_error_code,
     placementErrorMessage: raw?.placementErrorMessage ?? raw?.placement_error_message,
     comment: raw?.comment ?? normalized.comment ?? '',
-  };
+  });
 };
 
 const positionSignature = (position: ToolboxTradePosition): string => [

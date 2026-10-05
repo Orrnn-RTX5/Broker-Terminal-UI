@@ -202,6 +202,8 @@ export const useTradeStreamRuntime = ({
             }
           } catch (error) {
             console.error('[WS POSITIONS ERROR]', error);
+          } finally {
+            recordAppliedPositionDiagnostics?.dispose();
           }
           return;
         }

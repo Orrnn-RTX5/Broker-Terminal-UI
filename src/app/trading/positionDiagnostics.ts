@@ -1,5 +1,6 @@
 import { quoteDiagnosticsEnabled, recordQuoteDiagnostic, type QuoteDiagnosticInput } from '../../services/quoteDiagnostics';
 import { getPositionId } from '../../services/positionStream';
+import { observePositionDeliveryCommit, positionDiagnosticGeneration, readPositionDeliveryEvidence } from '../../services/positionDeliveryEvidence';
 
 type Row = {
   symbol?: unknown; id?: unknown; ticket?: unknown; position_id?: unknown; position_ticket?: unknown;
@@ -34,10 +35,12 @@ const changed = (before: Row | undefined, after: Row): boolean => {
  * identity, multiple same-symbol positions cannot be uniquely joined externally.
  * receiptMonoMs is subscription callback entry, not browser network receipt.
  */
+type PositionDiagnosticCapture = ((after: readonly Row[]) => void) & { dispose: () => void };
 export function beginPositionDiagnostics(
   rows: readonly Row[], before: readonly Row[], receiptMonoMs: number | undefined,
-): ((after: readonly Row[]) => void) | undefined {
+): PositionDiagnosticCapture | undefined {
   if (receiptMonoMs === undefined || !quoteDiagnosticsEnabled()) return undefined;
+  const generation = positionDiagnosticGeneration();
   try {
     const previous = new Map(before.map(row => [getPositionId(row), row]));
     const captures = rows.flatMap(row => {
@@ -48,9 +51,13 @@ export function beginPositionDiagnostics(
       recordQuoteDiagnostic({ kind: 'position', phase: 'position-received', transport: 'v2', symbol, receiptMonoMs, ingestMonoMs: performance.now(), positionCount: before.length, ...evidence });
       return [{ id, existing, symbol, evidence }];
     });
-    return (after) => {
-      if (!quoteDiagnosticsEnabled()) return;
+    let committedRows: readonly Row[] | undefined;
+    const dispose = observePositionDeliveryCommit(before, rows => { committedRows = rows; });
+    const finish = (after: readonly Row[]) => {
+      dispose();
+      if (!quoteDiagnosticsEnabled() || generation !== positionDiagnosticGeneration()) return;
       try {
+        after = committedRows ?? after;
         const appliedAt = performance.now();
         const current = new Map(after.map(row => [getPositionId(row), row]));
         for (const capture of captures) {
@@ -65,9 +72,14 @@ export function beginPositionDiagnostics(
           if (capture.evidence.sourcePriceTimeMs !== undefined && capture.evidence.sourcePriceTimeMs !== state.sourcePriceTimeMs) continue;
           if (capture.evidence.backendPrice !== undefined && capture.evidence.backendPrice !== state.backendPrice) continue;
           if (capture.evidence.backendProfit !== undefined && capture.evidence.backendProfit !== state.backendProfit) continue;
-          recordQuoteDiagnostic({ kind: 'position', phase: 'position-applied', transport: 'v2', symbol: capture.symbol, receiptMonoMs, ingestMonoMs: appliedAt, positionCount: after.length, accepted: true, ...state });
+          // Pure reconciliation callers still produce legacy value evidence.
+          // Only an observed exact store commit may attach a delivery identity;
+          // observer-capacity/early-exit cases must never infer latest-by-ticket.
+          const retained = committedRows ? readPositionDeliveryEvidence(applied) : undefined;
+          recordQuoteDiagnostic({ kind: 'position', phase: 'position-applied', transport: 'v2', symbol: capture.symbol, receiptMonoMs, ingestMonoMs: retained?.ingestMonoMs ?? appliedAt, positionCount: after.length, accepted: true, ...state, ...retained });
         }
       } catch { /* Diagnostic failures cannot affect trading state. */ }
     };
+    return Object.assign(finish, { dispose });
   } catch { return undefined; }
 }
