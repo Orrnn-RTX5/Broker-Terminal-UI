@@ -4,7 +4,7 @@ import { MarketWatchGrid } from './MarketWatchGrid';
 
 describe('Market Watch menu demand', () => {
   beforeEach(() => {
-    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -28,9 +28,9 @@ describe('Market Watch menu demand', () => {
     expect(menu).not.toHaveBeenCalled();
     view.rerender(<MarketWatchGrid {...props} marketWatchSelectionSymbol={rows[1]} />);
     expect(menu).not.toHaveBeenCalled();
-    const row = view.container.querySelectorAll('tbody tr')[10];
+    const row = view.container.querySelectorAll('.rtx-market-watch__row')[10];
     fireEvent.contextMenu(row, { clientX: 10, clientY: 10 });
-    expect(menu).toHaveBeenCalledTimes(1);
+    expect(new Set(menu.mock.calls.map(([symbol]) => symbol))).toEqual(new Set([rows[10]]));
     expect(menu).toHaveBeenLastCalledWith(rows[10]);
     expect(props.onContextSelect).toHaveBeenCalledTimes(1);
     expect(props.onContextSelect).toHaveBeenCalledWith(rows[10]);

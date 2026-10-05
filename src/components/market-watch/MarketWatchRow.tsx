@@ -71,6 +71,8 @@ interface MarketWatchRowProps {
   lastPrice?: MarketWatchLastPrice;
   symbolUniverse: readonly string[];
   rowRef?: (node: HTMLTableRowElement | null) => void;
+  rowIndex?: number;
+  onMenuOpenChange?: (symbol: string, open: boolean) => void;
 }
 
 export const MarketWatchRow: FC<MarketWatchRowProps> = ({
@@ -89,6 +91,8 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   lastPrice,
   symbolUniverse,
   rowRef,
+  rowIndex,
+  onMenuOpenChange,
 }) => {
   const tr = useUiTranslation();
   const displaySymbol = getMarketWatchSymbolLabel(symbol, symbolUniverse);
@@ -147,9 +151,12 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   ) ?? fallbackPrice?.asOf;
 
   return (
-    <ContextMenu items={() => getContextMenuItems(symbol)} variant={isLightSkin ? 'mt5-light' : 'mt5-dark'} density="compact">
+    <ContextMenu items={() => getContextMenuItems(symbol)} onOpenChange={open => onMenuOpenChange?.(symbol, open)} variant={isLightSkin ? 'mt5-light' : 'mt5-dark'} density="compact">
       <tr
         ref={rowRef}
+        data-symbol={symbol}
+        aria-rowindex={rowIndex}
+        data-row-parity={rowIndex === undefined ? undefined : (rowIndex - 2) % 2 === 0 ? 'odd' : 'even'}
         draggable={isChartOpenable}
         onDragStart={(event) => {
           if (!isChartOpenable) {
@@ -231,7 +238,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
               padding: '1px 4px',
               borderRadius: 3,
               background: 'transparent',
-              transition: 'color 0.25s',
+              transition: 'none',
               letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',
               tabularNums: true,
@@ -252,7 +259,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
                 padding: '1px 4px',
                 borderRadius: 3,
                 background: 'transparent',
-                transition: 'color 0.25s',
+                transition: 'none',
                 letterSpacing: 'normal',
                 fontVariantNumeric: 'tabular-nums',
               }}>

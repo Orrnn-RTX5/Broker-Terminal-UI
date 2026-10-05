@@ -145,6 +145,7 @@ export const watchlistState = watchlistStateValue;
 
 export class ResizeObserverStub {
   observe(): void {}
+  unobserve(): void {}
   disconnect(): void {}
 }
 

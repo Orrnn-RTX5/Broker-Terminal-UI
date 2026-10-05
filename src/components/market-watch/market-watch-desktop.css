@@ -9,6 +9,15 @@ html:root .rtx-market-watch.rtx-market-watch--desktop {
   --mw-desktop-selection: #0078d7;
 }
 
+/* Spacers represent unmounted logical rows, not styled quote cells. */
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody .rtx-market-watch__spacer > td {
+  height: inherit;
+  padding: 0 !important;
+  border: 0 !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+}
+
 html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop {
   --mw-desktop-row: #1f1f1f;
   --mw-desktop-row-alt: #262626;
@@ -95,6 +104,14 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tb
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr:nth-child(even) td {
+  background: var(--mw-desktop-row-alt) !important;
+}
+
+/* Window spacer rows must not change the logical watchlist's alternating color. */
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[data-row-parity='odd'] td {
+  background: var(--mw-desktop-row) !important;
+}
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[data-row-parity='even'] td {
   background: var(--mw-desktop-row-alt) !important;
 }
 
