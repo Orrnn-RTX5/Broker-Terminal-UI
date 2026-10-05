@@ -430,18 +430,44 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         setError(null);
     }, [staleBlock, blockedTick, blockedFreshness.live, strictFreshness, tradeAllowed]);
 
-    // A fully authenticated session renders stale-blocked symbols as disabled
-    // buttons, so no click can trigger the on-demand refresh; poll once when
-    // the block appears so the button re-enables as soon as the feed heals.
+    // Disabled buttons cannot request recovery on click. Revalidate the feed
+    // snapshot when a block appears or quote/eligibility evidence changes.
+    // A fresh quote does not itself grant permission: the status response and
+    // account catalogue still determine tradeAllowed.
     const staleBlockedWithSession = hasTradingSession && (!tradeAllowed || !quoteLive) && marketOpenForTrading && hasExecutablePrice && isVolumeValid;
-    const lastProactiveRefreshRef = useRef(0);
+    const lastProactiveRefreshRef = useRef(-Infinity);
+    const proactiveRefreshInFlightRef = useRef<Promise<void> | null>(null);
     useEffect(() => {
         if (!staleBlockedWithSession) return;
-        const now = Date.now();
-        if (now - lastProactiveRefreshRef.current < 5000) return;
-        lastProactiveRefreshRef.current = now;
-        void requestMarketSymbolsRefresh().catch(() => {});
-    }, [staleBlockedWithSession]);
+        let cancelled = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const refresh = () => {
+            if (cancelled) return;
+            // Repeated transitions must not abort an outstanding status poll.
+            const inFlight = proactiveRefreshInFlightRef.current;
+            if (inFlight) {
+                void inFlight.then(refresh);
+                return;
+            }
+            // Scheduling uses a monotonic clock, independent of OS clock sync.
+            const delay = 5000 - (performance.now() - lastProactiveRefreshRef.current);
+            if (delay > 0) {
+                timer = setTimeout(refresh, delay);
+                return;
+            }
+            lastProactiveRefreshRef.current = performance.now();
+            const pending = requestMarketSymbolsRefresh().catch(() => {});
+            proactiveRefreshInFlightRef.current = pending;
+            void pending.then(() => {
+                if (proactiveRefreshInFlightRef.current === pending) proactiveRefreshInFlightRef.current = null;
+            });
+        };
+        refresh();
+        return () => {
+            cancelled = true;
+            if (timer !== undefined) clearTimeout(timer);
+        };
+    }, [staleBlockedWithSession, quoteLive, tradeAllowed, symbol, authIdentity]);
 
     if (!visible || !symbol) return null;
 
