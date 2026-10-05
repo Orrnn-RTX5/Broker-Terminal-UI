@@ -101,6 +101,12 @@ function selectedSymbols(): Set<string> | undefined {
   return symbolFilter;
 }
 
+/** Optional capture selection; callers decide which diagnostic kinds it scopes. */
+export function quoteDiagnosticSymbolSelected(symbol: string): boolean {
+  const filter = selectedSymbols();
+  return !filter || filter.has(symbol.trim().toUpperCase());
+}
+
 export function quoteDiagnosticsEnabled(): boolean {
   if (typeof window === 'undefined') return false;
   if (window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ !== undefined) return window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ === true;

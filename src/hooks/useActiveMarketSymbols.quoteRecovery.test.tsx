@@ -27,7 +27,7 @@ describe('new provider evidence supersedes an older stale-only feed status', () 
     const mono = performance.now();
     expect(calibrateTerminalQuoteClock(epoch, mono, epoch, mono, epoch)).toBe(true);
   });
-  afterEach(() => { cleanup(); resetTerminalQuoteFreshness(); vi.useRealTimers(); vi.restoreAllMocks(); delete window.__RTX_RUNTIME_CONFIG__; delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__; });
+  afterEach(() => { cleanup(); resetTerminalQuoteFreshness(); vi.useRealTimers(); vi.restoreAllMocks(); delete window.__RTX_RUNTIME_CONFIG__; delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__; delete window.__RTX_QUOTE_DIAGNOSTICS_SYMBOLS__; });
 
   it('restores authorized membership on a newer verified quote while the status refresh is still pending', async () => {
     apiGet.mockResolvedValueOnce(status()).mockImplementation(() => new Promise(() => {}));
@@ -135,13 +135,25 @@ describe('new provider evidence supersedes an older stale-only feed status', () 
 
   it('records the exact superseded status and newer quote identities only when diagnostics are enabled', async () => {
     window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    window.__RTX_QUOTE_DIAGNOSTICS_SYMBOLS__ = ['BTCUSD'];
+    const count = getQuoteDiagnosticDump().controls.filter(row => row.reason === 'stale-status-superseded').length;
     apiGet.mockResolvedValue(status()); const { result } = renderHook(() => useActiveMarketSymbols()); await flush(); ingest();
     expect(result.current.symbols).toEqual(['BTCUSD']);
     const records = getQuoteDiagnosticDump().controls.filter(row => row.reason === 'stale-status-superseded');
+    expect(records.length - count).toBe(2);
     expect(records.slice(-2)).toMatchObject([
       { phase: 'status', symbol: 'BTCUSD', source: 'cserver', providerTimestamp: epoch - 4000, hubSequence: '9007199254740992' },
       { phase: 'quote', symbol: 'BTCUSD', source: 'cserver', providerTimestamp: epoch - 50, hubSequence: '9007199254740993' },
     ]);
     expect(records.every(row => !('token' in row) && !('account' in row) && !('owner' in row))).toBe(true);
+  });
+
+  it('restores an unselected symbol without consuming diagnostic pair capacity', async () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    window.__RTX_QUOTE_DIAGNOSTICS_SYMBOLS__ = ['EURUSD'];
+    const before = getQuoteDiagnosticDump().controls.filter(row => row.reason === 'stale-status-superseded');
+    apiGet.mockResolvedValue(status()); const { result } = renderHook(() => useActiveMarketSymbols()); await flush(); ingest();
+    expect(result.current.symbols).toEqual(['BTCUSD']);
+    expect(getQuoteDiagnosticDump().controls.filter(row => row.reason === 'stale-status-superseded')).toEqual(before);
   });
 });

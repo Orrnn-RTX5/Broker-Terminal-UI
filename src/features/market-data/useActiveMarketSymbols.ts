@@ -11,7 +11,7 @@ import { getAccessToken, getCommittedBrokerAccountSessionScope, getCommittedBrok
 import { getTerminalQuoteSession, getNewerLiveTerminalQuoteEvidence, readQuoteFreshnessMetadata,
   subscribeTerminalQuoteFreshness, terminalQuoteFreshnessEnabled, type TerminalQuoteMetadata } from '../../services/terminalQuoteFreshness';
 import { recordBrokerServerTime } from '../../services/brokerServerClock';
-import { quoteDiagnosticsEnabled, recordQuoteDiagnostic } from '../../services/quoteDiagnostics';
+import { quoteDiagnosticSymbolSelected, quoteDiagnosticsEnabled, recordQuoteDiagnostic } from '../../services/quoteDiagnostics';
 import { INSTRUMENT_CATALOGUE_REFRESHED_EVENT } from '../../services/instrumentCatalogueEvents';
 import {
   getApiRootBaseUrl,
@@ -351,7 +351,7 @@ export function useActiveMarketSymbols() {
       const live = getNewerLiveTerminalQuoteEvidence(symbol, metadata, snapshot.quoteSession);
       if (live && !snapshot.restored.has(symbol)) {
         snapshot.restored.add(symbol); changed = true;
-        if (quoteDiagnosticsEnabled()) {
+        if (quoteDiagnosticsEnabled() && quoteDiagnosticSymbolSelected(symbol)) {
           // Adjacent records identify the exact old status and accepted quote;
           // neither exports account ownership or changes quote ingestion.
           for (const [phase, evidence] of [['status', metadata], ['quote', live]] as const) {
