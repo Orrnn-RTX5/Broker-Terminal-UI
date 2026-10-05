@@ -9,6 +9,7 @@ import { getQuoteDiagnosticDump } from '../services/quoteDiagnostics';
 const apiGet = vi.hoisted(() => vi.fn());
 vi.mock('../api/client', () => ({ apiClient: { get: apiGet }, ApiError: class ApiError extends Error {} }));
 const epoch = Date.UTC(2026, 9, 5, 15);
+const configWindow = () => window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
 const status = (patch: Record<string, unknown> = {}) => ({ symbol_status: [{ symbol: 'BTCUSD', has_data: true, fresh: false, stale: true,
   silent: false, tradable: false, source_mismatch: false, source: 'cserver', expected_source: 'cserver', last_tick_ms: epoch - 4000,
   sequence: '9007199254740992', last_tick_age_sec: 4, ...patch }], available_symbols: ['BTCUSD'], silent_symbols: [] });
@@ -22,12 +23,12 @@ describe('new provider evidence supersedes an older stale-only feed status', () 
   beforeEach(() => {
     vi.useFakeTimers(); vi.setSystemTime(epoch); apiGet.mockReset();
     localStorage.setItem('broker_id', 'recovery-fixture');
-    window.__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
+    configWindow().__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
     resetTerminalQuoteFreshness();
     const mono = performance.now();
     expect(calibrateTerminalQuoteClock(epoch, mono, epoch, mono, epoch)).toBe(true);
   });
-  afterEach(() => { cleanup(); resetTerminalQuoteFreshness(); vi.useRealTimers(); vi.restoreAllMocks(); delete window.__RTX_RUNTIME_CONFIG__; delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__; delete window.__RTX_QUOTE_DIAGNOSTICS_SYMBOLS__; });
+  afterEach(() => { cleanup(); resetTerminalQuoteFreshness(); vi.useRealTimers(); vi.restoreAllMocks(); delete configWindow().__RTX_RUNTIME_CONFIG__; delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__; delete window.__RTX_QUOTE_DIAGNOSTICS_SYMBOLS__; });
 
   it('restores authorized membership on a newer verified quote while the status refresh is still pending', async () => {
     apiGet.mockResolvedValueOnce(status()).mockImplementation(() => new Promise(() => {}));
