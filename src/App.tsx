@@ -1474,10 +1474,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   useEffect(() => {
     if (chartSymbolPicker && !hasArrangedChartWindows(dockLayout)) setChartSymbolPicker(null);
   }, [chartSymbolPicker, dockLayout]);
+  const chartPickerInstrumentIndex = useMemo(() => {
+    const index = new Map<string, (typeof allSymbols)[number]>();
+    for (const instrument of allSymbols) {
+      const symbol = normalizeSymbolName(typeof instrument === 'object' && instrument ? (instrument as any).symbol ?? (instrument as any).name : instrument);
+      // Preserve Array.find's first match when catalogue names normalize alike.
+      if (!index.has(symbol)) index.set(symbol, instrument);
+    }
+    return index;
+  }, [allSymbols]);
   const chartPickerInstruments = useMemo(() => chartEligibleSymbolNames.map(symbol => (
-    allSymbols.find(instrument => normalizeSymbolName(typeof instrument === 'object' && instrument ? (instrument as any).symbol ?? (instrument as any).name : instrument) === symbol)
-      ?? { symbol }
-  )), [allSymbols, chartEligibleSymbolNames]);
+    chartPickerInstrumentIndex.get(symbol) ?? { symbol }
+  )), [chartPickerInstrumentIndex, chartEligibleSymbolNames]);
   useEffect(() => { setChartSymbolPicker(null); }, [isAuthenticated, accountId]);
   // One feedback toast at a time. Each message gets a fresh id so the toast
   // remounts and restarts its full lifetime; the toast owns its own timer so
