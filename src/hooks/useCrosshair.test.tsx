@@ -33,7 +33,7 @@ const createChart = () => {
 
 interface HarnessProps {
   chartRef: { current: IChartApi | null };
-  seriesRef: { current: ISeriesApi<any> | null };
+  seriesRef: { current: ISeriesApi<'Candlestick'> | null };
   enabled: boolean;
   renderVersion?: number;
   initialCursor?: string;

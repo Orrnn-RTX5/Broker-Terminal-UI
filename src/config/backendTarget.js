@@ -79,7 +79,7 @@ export const getPublicWsTarget = () => {
   return config.valid ? config.wsHost : '';
 };
 export const getRuntimeConfiguredBrokerId = () => getRuntimeBrokerConfiguration().brokerId;
-export const getRuntimeDiscoveryBaseUrl = (_fallback = '') => {
+export const getRuntimeDiscoveryBaseUrl = () => {
   const config = getRuntimeBrokerConfiguration();
   return config.valid || isDesktopBackendTarget() ? config.discoveryBaseUrl : '';
 };

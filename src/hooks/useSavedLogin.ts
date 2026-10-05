@@ -5,20 +5,33 @@ export function useSavedLogin(open: boolean, initialLogin: string, scope: SavedL
   const [login, updateLogin] = useState(initialLogin);
   const [password, updatePassword] = useState('');
   const [savePassword, updateSavePassword] = useState(false);
-  const [restoring, setRestoring] = useState(false);
+  const [completedRestore, setCompletedRestore] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const available = supportsSavedLogins();
   const edits = useRef(0);
   const restored = useRef(false);
   const previousScope = useRef('');
   const scopeKey = scope?.serverUrl ? savedLoginScopeKey(scope) : '';
+  const [previousInput, setPreviousInput] = useState({ open, initialLogin, scopeKey });
+  const resetLogin = previousInput.open !== open || previousInput.initialLogin !== initialLogin;
+  const resetScope = previousInput.scopeKey !== scopeKey;
+  if (resetLogin || resetScope) {
+    // Reset before children commit so another account/broker never sees the
+    // previous scope's password, even while its asynchronous restore is pending.
+    setPreviousInput({ open, initialLogin, scopeKey });
+    if (resetLogin) updateLogin(initialLogin);
+    if (resetLogin || previousInput.scopeKey) {
+      updatePassword('');
+      updateSavePassword(false);
+      setStorageError(null);
+    }
+    setCompletedRestore(null);
+  }
+  const restoreKey = JSON.stringify([open, initialLogin, scopeKey, login, available]);
+  const restoring = open && Boolean(scopeKey) && available && completedRestore !== restoreKey;
 
   useEffect(() => {
     edits.current += 1;
-    updateLogin(initialLogin);
-    updatePassword('');
-    updateSavePassword(false);
-    setStorageError(null);
     restored.current = false;
   }, [open, initialLogin]);
 
@@ -26,14 +39,11 @@ export function useSavedLogin(open: boolean, initialLogin: string, scope: SavedL
     let cancelled = false;
     if (previousScope.current && previousScope.current !== scopeKey) {
       edits.current += 1;
-      updatePassword('');
-      updateSavePassword(false);
       restored.current = false;
     }
     previousScope.current = scopeKey;
-    if (!open || !scopeKey || !available) { setRestoring(false); return; }
+    if (!open || !scopeKey || !available) return;
     const version = edits.current;
-    setRestoring(true);
     const [brokerId, serverUrl] = JSON.parse(scopeKey) as [string, string];
     void loadSavedLogin({ brokerId, serverUrl }, login).then(saved => {
       if (cancelled || edits.current !== version || !saved) return;
@@ -43,9 +53,9 @@ export function useSavedLogin(open: boolean, initialLogin: string, scope: SavedL
       restored.current = true;
     }).catch(() => {
       if (!cancelled && edits.current === version) setStorageError('Unable to restore the saved password. Enter it again.');
-    }).finally(() => { if (!cancelled) setRestoring(false); });
+    }).finally(() => { if (!cancelled) setCompletedRestore(restoreKey); });
     return () => { cancelled = true; };
-  }, [open, scopeKey, login, available]);
+  }, [open, scopeKey, login, available, restoreKey]);
 
   const setLogin = useCallback((value: string) => {
     edits.current += 1;

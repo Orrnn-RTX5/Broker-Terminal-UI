@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSavedLogin } from './useSavedLogin';
 import { loadSavedLogin } from '../services/savedLogins';
 
@@ -57,4 +57,52 @@ it('clears the restored password and loads only the new broker scope', async () 
   expect(result.current.password).toBe('');
   expect(result.current.savePassword).toBe(false);
   expect(loadSavedLogin).toHaveBeenLastCalledWith({ ...scope, serverUrl: 'https://other.test' }, '12345');
+});
+
+const firstScope = scope;
+const secondScope = { brokerId: 'second', serverUrl: 'https://second.example' };
+
+describe('saved login restoration ownership', () => {
+  it('finishes a reset when the new initial login already matches the edited login', async () => {
+    const { result, rerender } = renderHook(({ initialLogin }) => useSavedLogin(true, initialLogin, firstScope), {
+      initialProps: { initialLogin: '100' },
+    });
+    await waitFor(() => expect(result.current.restoring).toBe(false));
+    act(() => result.current.setLogin('200'));
+    await waitFor(() => expect(result.current.restoring).toBe(false));
+    rerender({ initialLogin: '200' });
+    await waitFor(() => expect(result.current.restoring).toBe(false));
+    expect(result.current.login).toBe('200');
+  });
+
+  it('clears the old password before exposing a new scope and ignores its late restore', async () => {
+    let finishOldRestore!: (value: { login: string; password: string }) => void;
+    vi.mocked(loadSavedLogin).mockReturnValueOnce(new Promise(resolve => { finishOldRestore = resolve; }));
+    const { result, rerender } = renderHook(({ scope }) => useSavedLogin(true, '123', scope), {
+      initialProps: { scope: firstScope },
+    });
+    act(() => result.current.setPassword('typed-old-password'));
+    rerender({ scope: secondScope });
+    expect(result.current.password).toBe('');
+    expect(result.current.savePassword).toBe(false);
+    await act(async () => finishOldRestore({ login: '123', password: 'late-old-password' }));
+    await waitFor(() => expect(result.current.restoring).toBe(false));
+    expect(result.current.password).toBe('');
+  });
+
+  it('reports restoration pending again when the same dialog is reopened', async () => {
+    const { result, rerender } = renderHook(({ open }) => useSavedLogin(open, '123', firstScope), {
+      initialProps: { open: true },
+    });
+    await waitFor(() => expect(result.current.restoring).toBe(false));
+    act(() => result.current.setPassword('old-password'));
+    rerender({ open: false });
+    let finishRestore!: (value: null) => void;
+    vi.mocked(loadSavedLogin).mockReturnValueOnce(new Promise(resolve => { finishRestore = resolve; }));
+    rerender({ open: true });
+    expect(result.current.password).toBe('');
+    expect(result.current.restoring).toBe(true);
+    await act(async () => finishRestore(null));
+    expect(result.current.restoring).toBe(false);
+  });
 });

@@ -19,7 +19,6 @@
 import {
   getBackendTarget,
   getPublicWsTarget,
-  getRuntimeConfiguredBrokerId,
   getRuntimeBrokerConfiguration,
   isConfiguredBrokerEndpoint,
   isDesktopBackendTarget,

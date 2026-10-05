@@ -999,7 +999,7 @@ export const TradingChart = React.memo(function TradingChart({
         plotRight: originLeft + Math.max(0, chartRect.width - priceScaleWidth),
       };
     });
-  }, [activeTimeframe, chartType]);
+  }, [activeTimeframe, chartType, areaTrendDirectionRef]);
 
   const isChartSurfaceLight = useCallback(() => (
     isLightChartBackground(chartThemeRef.current.background)

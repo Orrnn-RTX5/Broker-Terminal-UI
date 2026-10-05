@@ -80,7 +80,7 @@ export function validateBrokerRuntimeConfig(
   if (!/^(web|browser|public|desktop|electron|direct)$/i.test(target)) errors.push('BACKEND_TARGET is not a supported transport mode.')
   if (source === 'deployment' && !/^(web|browser|public)$/i.test(target)) errors.push('Web container deployments must use BACKEND_TARGET=web.')
   const brokerId = read('BROKER_ID', 'VITE_BROKER_ID', 'brokerId', 'broker_id')
-  if (/[\u0000-\u001f\u007f]/.test(brokerId)) errors.push('BROKER_ID must not contain control characters.')
+  if (Array.from(brokerId).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) errors.push('BROKER_ID must not contain control characters.')
   const defaultMt5Server = read('DEFAULT_MT5_SERVER', 'VITE_DEFAULT_MT5_SERVER', 'defaultMt5Server')
   const apiValue = read('API_HOST', 'API_URL', 'BACKEND_URL', 'RTX5_API_URL', 'API_V2_URL', 'FIX_API_URL', 'VITE_API_HOST', 'VITE_API_URL', 'VITE_BACKEND_URL', 'VITE_RTX5_API_URL', 'VITE_API_V2_URL', 'VITE_FIX_API_URL')
   const extValue = read('API_HOST_EXT', 'API_URL_EXT', 'BACKEND_URL_EXT', 'VITE_API_HOST_EXT', 'VITE_API_URL_EXT', 'VITE_BACKEND_URL_EXT') || apiValue
