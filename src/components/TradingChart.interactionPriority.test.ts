@@ -321,7 +321,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(countdownEnd).toBeGreaterThan(countdownStart);
     expect(countdownEffect.match(/useActiveChartRuntimeEffect\(visibleRuntime\.interval/g)).toHaveLength(1);
     expect(countdownEffect).toContain('getChartCandleCountdownText(');
-    expect(countdownEffect).toContain('getSynchronizedChartMarketNowMs()');
+    expect(countdownEffect).toContain('getChartCandleCountdownNowMs(getSynchronizedChartMarketNowMs)');
     expect(countdownEffect).toContain('brokerTimeOffsetSecRef.current');
     expect(countdownEffect).toContain("livePriceBadgeRef.current?.style.display === 'block'");
     expect(countdownEffect).toContain('window.setInterval(updateLivePriceCountdown, 1000)');
@@ -329,7 +329,8 @@ describe('TradingChart interaction-priority contract', () => {
     expect(countdownEffect).toContain("document.addEventListener('visibilitychange', handleCountdownVisibilityChange)");
     expect(countdownEffect).toContain("document.removeEventListener('visibilitychange', handleCountdownVisibilityChange)");
     expect(countdownEffect).toContain('}, [activeTimeframe, getSynchronizedChartMarketNowMs, symbol]);');
-    expect(source).toContain('synchronizedMarketClockRef.current = null;\n  }, [symbol]);');
+    expect(source).toContain('synchronizedMarketClockRef.current = null;\n  }, [symbol, brokerAccountSessionScope]);');
+    expect(source).toContain('marketStatus.serverTimeMs && marketStatus.sessionScope === brokerAccountSessionScope');
   });
 
   it('owns loading and trade-overlay subscriptions only while active', () => {

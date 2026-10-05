@@ -19,7 +19,7 @@ export interface QuoteDiagnosticContext {
 }
 
 export interface QuoteDiagnosticInput extends QuoteDiagnosticContext {
-  kind: 'quote' | 'clock' | 'trade-control' | 'order' | 'connection' | 'feed-status';
+  kind: 'quote' | 'clock' | 'trade-control' | 'order' | 'connection' | 'feed-status' | 'position';
   symbol?: string;
   source?: string;
   hubSequence?: string | number;
@@ -62,6 +62,16 @@ export interface QuoteDiagnosticInput extends QuoteDiagnosticContext {
   terminalStatus?: string;
   totalMs?: number;
   closeCode?: number;
+  timeframe?: string;
+  chartUpdateMonoMs?: number;
+  domWriteMonoMs?: number;
+  frameOpportunityMonoMs?: number;
+  foreground?: boolean;
+  sourcePriceTimeMs?: string;
+  positionVersion?: string;
+  backendPrice?: number;
+  backendProfit?: number;
+  positionCount?: number;
 }
 
 type DiagnosticValue = string | number | boolean | null;
@@ -98,9 +108,9 @@ export function quoteDiagnosticsEnabled(): boolean {
 
 // Field allowlists are intentional: passing a larger telemetry/error object
 // cannot accidentally export its URL, session scope, token or backend message.
-const numericFields = ['providerTimestamp', 'browserGeneration', 'expectedBrowserGeneration', 'receiptMonoMs', 'ingestMonoMs', 'ageMinMs', 'ageMaxMs', 'retainedProviderTimestamp', 'incomingAgeMinMs', 'incomingAgeMaxMs', 'serverTimeMs', 'requestMonoMs', 'responseMonoMs', 'requestEpochMs', 'responseEpochMs', 'rttMs', 'wallElapsedMs', 'totalMs', 'closeCode', 'upstreamReceiveTimestamp', 'upstreamPublishTimestamp', 'hubIngestTimestamp', 'hubPublishTimestamp', 'rawBid', 'rawAsk', 'activeSymbolCount', 'httpStatus'] as const;
-const booleanFields = ['accepted', 'disabled', 'authenticated', 'tradeAllowed', 'marketOpen', 'validVolume', 'executablePrice', 'quotePermitsOrder', 'upstreamStale', 'upstreamTradable', 'sourceMismatch', 'feedCurrent'] as const;
-const identifierFields = ['symbol', 'source', 'reason', 'freshnessReason', 'clockStatus', 'phase', 'errorCode', 'terminalStatus', 'transport', 'brokerId', 'tickId', 'sourceTickId'] as const;
+const numericFields = ['providerTimestamp', 'browserGeneration', 'expectedBrowserGeneration', 'receiptMonoMs', 'ingestMonoMs', 'ageMinMs', 'ageMaxMs', 'retainedProviderTimestamp', 'incomingAgeMinMs', 'incomingAgeMaxMs', 'serverTimeMs', 'requestMonoMs', 'responseMonoMs', 'requestEpochMs', 'responseEpochMs', 'rttMs', 'wallElapsedMs', 'totalMs', 'closeCode', 'upstreamReceiveTimestamp', 'upstreamPublishTimestamp', 'hubIngestTimestamp', 'hubPublishTimestamp', 'rawBid', 'rawAsk', 'activeSymbolCount', 'httpStatus', 'chartUpdateMonoMs', 'domWriteMonoMs', 'frameOpportunityMonoMs', 'backendPrice', 'backendProfit', 'positionCount'] as const;
+const booleanFields = ['accepted', 'disabled', 'authenticated', 'tradeAllowed', 'marketOpen', 'validVolume', 'executablePrice', 'quotePermitsOrder', 'upstreamStale', 'upstreamTradable', 'sourceMismatch', 'feedCurrent', 'foreground'] as const;
+const identifierFields = ['symbol', 'source', 'reason', 'freshnessReason', 'clockStatus', 'phase', 'errorCode', 'terminalStatus', 'transport', 'brokerId', 'tickId', 'sourceTickId', 'timeframe'] as const;
 const safeIdentifier = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(value);
 const safeSourceVersion = (value: unknown): value is string => safeIdentifier(value)
   || (typeof value === 'string' && /^legacy-feed-v1:[a-f0-9]{64}$/.test(value));
@@ -145,7 +155,7 @@ export function recordQuoteDiagnostic(input: QuoteDiagnosticInput): void {
   // Never round either sequence through Number. The hub's sequence is NOT
   // the original upstream sequence. Unsafe numeric input is
   // identified by the ingestion reason and is omitted from the evidence.
-  for (const field of ['hubSequence', 'upstreamSourceSequence'] as const) {
+  for (const field of ['hubSequence', 'upstreamSourceSequence', 'positionVersion', 'sourcePriceTimeMs'] as const) {
     const value = safeSequence(input[field]);
     if (value !== undefined) record[field] = value;
   }

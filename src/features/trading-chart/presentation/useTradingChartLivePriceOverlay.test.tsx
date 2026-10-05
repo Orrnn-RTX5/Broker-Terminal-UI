@@ -14,6 +14,7 @@ describe('forming candle and chart price line alignment', () => {
     const priceToCoordinate = vi.fn(() => 142.5);
     const candle = { time: 1_790_860_020, open: close - 1, high: close + 1, low: close - 2, close, volume: 1 };
     const { result } = renderHook(() => useTradingChartLivePriceOverlay({
+      diagnosticChartId: 'test-chart', symbol: 'BTCUSD', timeframe: 'M1',
       askPriceLineRef: { current: null }, lastPriceLineRef: { current: null },
       chartSettingsRef: { current: defaultChartProperties }, chartType: 'candlestick',
       currentCandleRef: { current: candle }, isDisposedRef: { current: false },

@@ -136,6 +136,7 @@ function recordIngestion(symbol: string, data: TerminalQuoteEvidence, expectedSe
     const timed = state.clockStatus === 'verified' && incomingTime !== undefined;
     recordQuoteDiagnostic({ ...context, kind: 'quote', symbol, source: data.source, providerTimestamp: incomingTime,
       hubSequence: data.sequence, browserGeneration: session, expectedBrowserGeneration: expectedSession,
+      foreground: typeof document !== 'undefined' && document.visibilityState === 'visible',
       receiptMonoMs: context?.receiptMonoMs, transport: context?.transport, ingestMonoMs, accepted, reason,
       freshnessReason: state.reason, clockStatus: state.clockStatus, ageMinMs: state.ageMinMs, ageMaxMs: state.ageMaxMs,
       upstreamStale: data.stale, upstreamTradable: data.tradable, sourceMismatch: data.source_mismatch,
@@ -216,6 +217,12 @@ export function isTerminalQuoteClockVerified(): boolean {
   const elapsed = anchor ? monoNow() - anchor.mono : NaN;
   return !!anchor && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 60000
     && Math.abs((Date.now() - anchor.wall) - elapsed) <= 250;
+}
+
+/** Display-only midpoint of the current session's verified broker-time bounds. */
+export function getTerminalQuoteClockNowMs(): number | null {
+  if (!isTerminalQuoteClockVerified() || !anchor) return null;
+  return (anchor.lower + anchor.upper) / 2 + (monoNow() - anchor.mono);
 }
 
 export function getTerminalQuoteFreshness(symbol: string): TerminalQuoteFreshness {

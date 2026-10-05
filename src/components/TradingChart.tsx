@@ -41,7 +41,7 @@ import { isDesktopBackendTarget } from '../config/backendTarget.js';
 import { commandBus } from '../services/commandBus';
 import { formatChartAxisPrice, getPricePointFromDigits, resolveSymbolPriceDigits } from '../utils/chartPriceScale';
 import { SQUARE_CHART_GRID_CELL_SIZE_PX, SquareChartGridPrimitive } from '../utils/squareChartGridPrimitive';
-import { getChartCandleCountdownText } from '../utils/chartCandleCountdown';
+import { getChartCandleCountdownNowMs, getChartCandleCountdownText } from '../utils/chartCandleCountdown';
 import type { PeriodSeparator } from '../utils/periodSeparators';
 import { IndicatorManager, type IndicatorConfig } from '../services/indicatorManager';
 import { candleCache } from '../services/candleCache';
@@ -626,7 +626,7 @@ export const TradingChart = React.memo(function TradingChart({
   // wall-clock-independent candle reconciliation can begin.
   useEffect(() => {
     synchronizedMarketClockRef.current = null;
-  }, [symbol]);
+  }, [symbol, brokerAccountSessionScope]);
 
   const getSynchronizedChartMarketNowMs = useCallback((): number => {
     const monotonicNowMs = typeof performance !== 'undefined'
@@ -653,10 +653,10 @@ export const TradingChart = React.memo(function TradingChart({
   }, []);
 
   useEffect(() => {
-    if (marketStatus.serverTimeMs) {
+    if (marketStatus.serverTimeMs && marketStatus.sessionScope === brokerAccountSessionScope) {
       synchronizeChartMarketClock(marketStatus.serverTimeMs);
     }
-  }, [marketStatus.serverTimeMs, symbol, synchronizeChartMarketClock]);
+  }, [marketStatus.serverTimeMs, marketStatus.sessionScope, brokerAccountSessionScope, symbol, synchronizeChartMarketClock]);
 
   const chartSettings = useChartSettingsStore(state =>
     state.symbolProperties[symbol] || state.globalProperties
@@ -679,6 +679,9 @@ export const TradingChart = React.memo(function TradingChart({
     syncSupplementalPriceLines,
     useEnterpriseLightPricePaletteRef,
   } = useTradingChartLivePriceOverlay({
+    diagnosticChartId: chartQuoteSourceId,
+    symbol,
+    timeframe: activeTimeframe,
     askPriceLineRef,
     chartSettingsRef,
     chartType,
@@ -2520,6 +2523,7 @@ useTradingChartInitialization({
 
   // ─── Live tick subscription + candle rollover ─────────────────────────────
 useTradingChartLiveCandleRuntime({
+    diagnosticChartId: chartQuoteSourceId,
     activeTradeSnapshotsRef,
     applyAreaTrendColors,
     authToken,
@@ -2612,7 +2616,7 @@ useTradingChartLiveCandleRuntime({
         && currentCandleRef.current !== null
         && livePriceBadgeRef.current?.style.display === 'block';
       const text = hasCurrentPrice ? getChartCandleCountdownText(
-        getSynchronizedChartMarketNowMs(),
+        getChartCandleCountdownNowMs(getSynchronizedChartMarketNowMs),
         activeTimeframe,
         brokerTimeOffsetSecRef.current,
       ) : '';

@@ -437,7 +437,17 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const staleBlockedWithSession = hasTradingSession && (!tradeAllowed || !quoteLive) && marketOpenForTrading && hasExecutablePrice && isVolumeValid;
     const lastProactiveRefreshRef = useRef(-Infinity);
     const proactiveRefreshInFlightRef = useRef<Promise<void> | null>(null);
+    const recoveryEpisodeRef = useRef<{ symbol: string; authIdentity: string; live: boolean; immediateUsed: boolean } | null>(null);
+    const verifiedQuoteLive = strictFreshness && quoteFreshness.live && quoteFreshness.clockStatus === 'verified';
     useEffect(() => {
+        const previous = recoveryEpisodeRef.current;
+        const sameContext = previous?.symbol === symbol && previous.authIdentity === authIdentity;
+        // One prompt revalidation per excluded episode. Boundary jitter and
+        // uncertain-clock advisories must not repeatedly bypass the rate limit.
+        const immediateRecovery = sameContext && !tradeAllowed && !previous.live
+            && verifiedQuoteLive && !previous.immediateUsed;
+        recoveryEpisodeRef.current = { symbol, authIdentity, live: verifiedQuoteLive,
+            immediateUsed: !tradeAllowed && sameContext && (previous.immediateUsed || immediateRecovery) };
         if (!staleBlockedWithSession) return;
         let cancelled = false;
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -450,7 +460,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 return;
             }
             // Scheduling uses a monotonic clock, independent of OS clock sync.
-            const delay = 5000 - (performance.now() - lastProactiveRefreshRef.current);
+            const delay = immediateRecovery ? 0 : 5000 - (performance.now() - lastProactiveRefreshRef.current);
             if (delay > 0) {
                 timer = setTimeout(refresh, delay);
                 return;
@@ -467,7 +477,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             cancelled = true;
             if (timer !== undefined) clearTimeout(timer);
         };
-    }, [staleBlockedWithSession, quoteLive, tradeAllowed, symbol, authIdentity]);
+    }, [staleBlockedWithSession, quoteLive, verifiedQuoteLive, tradeAllowed, symbol, authIdentity]);
 
     if (!visible || !symbol) return null;
 

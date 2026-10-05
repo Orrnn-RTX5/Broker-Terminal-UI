@@ -14,8 +14,12 @@ import { defaultChartProperties, type ChartProperties } from '../../../store/use
 import type { Candle, ChartType } from '../../../types/chart';
 import { formatChartAxisPrice } from '../../../utils/chartPriceScale';
 import type { ChartColorPalette } from './chartTheme';
+import { cancelChartPaintDiagnostic, recordChartPricePaint } from '../../../services/chartQuoteDiagnostics';
 
 interface UseTradingChartLivePriceOverlayOptions {
+  diagnosticChartId: string;
+  symbol: string;
+  timeframe: string;
   askPriceLineRef: MutableRefObject<IPriceLine | null>;
   chartSettingsRef: MutableRefObject<ChartProperties>;
   chartType: ChartType;
@@ -27,6 +31,9 @@ interface UseTradingChartLivePriceOverlayOptions {
 }
 
 export function useTradingChartLivePriceOverlay({
+  diagnosticChartId,
+  symbol,
+  timeframe,
   askPriceLineRef,
   chartSettingsRef,
   chartType,
@@ -52,6 +59,7 @@ export function useTradingChartLivePriceOverlay({
   const useEnterpriseLightPricePaletteRef = useRef(false);
 
   const hideLivePriceOverlay = useCallback((clearPrice = true) => {
+    cancelChartPaintDiagnostic(livePriceValueRef.current);
     if (clearPrice) {
       livePriceRef.current = null;
       livePriceScaleWidthRef.current = null;
@@ -89,7 +97,11 @@ export function useTradingChartLivePriceOverlay({
     ) => {
       if (!visible || !Number.isFinite(price) || price <= 0) {
         try {
-          lineRef.current?.applyOptions({ lineVisible: false, axisLabelVisible: false });
+          const line = lineRef.current;
+          const current = line?.options();
+          if (line && (current?.lineVisible !== false || current?.axisLabelVisible !== false)) {
+            line.applyOptions({ lineVisible: false, axisLabelVisible: false });
+          }
         } catch {
           lineRef.current = null;
         }
@@ -110,7 +122,13 @@ export function useTradingChartLivePriceOverlay({
         if (!lineRef.current) {
           lineRef.current = series.createPriceLine(options);
         } else {
-          lineRef.current.applyOptions(options);
+          // LightweightCharts invalidates views even for identical options.
+          // Compare the line's actual state so external visibility/settings
+          // changes and executable Ask markup still take effect immediately.
+          const current = lineRef.current.options();
+          if ((Object.keys(options) as Array<keyof typeof options>).some(key => current[key] !== options[key])) {
+            lineRef.current.applyOptions(options);
+          }
         }
       } catch {
         lineRef.current = null;
@@ -205,7 +223,8 @@ export function useTradingChartLivePriceOverlay({
       livePriceValueRef.current.textContent = formatChartAxisPrice(livePrice, digits);
     }
     badge.style.display = 'block';
-  }, [applyLivePriceHorizontalGeometry, getLivePriceDirectionalColor, resolvedPriceDigitsRef]);
+    if (livePriceValueRef.current) recordChartPricePaint(diagnosticChartId, symbol, timeframe, livePrice, livePriceValueRef.current);
+  }, [applyLivePriceHorizontalGeometry, getLivePriceDirectionalColor, resolvedPriceDigitsRef, diagnosticChartId, symbol, timeframe]);
 
   const repaintLivePriceOverlayFromCurrentPrice = useCallback((activeCandle: Candle) => {
     if (!chartSettingsRef.current.showBidPriceLine) {

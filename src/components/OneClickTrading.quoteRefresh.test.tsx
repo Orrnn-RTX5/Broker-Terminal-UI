@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const freshnessMocks = vi.hoisted(() => ({ enabled: false, live: true, reason: 'live', assert: vi.fn() }));
 vi.mock('../services/terminalQuoteFreshness', () => ({ canSubmitTerminalMarketOrder: (state: {live:boolean;reason:string}) => state.live || state.reason === 'time-unverified', terminalMarketQuoteAdvisory: (state: {reason:string}) => state.reason === 'time-unverified' ? 'Quote age uncertain; server will validate' : null, assertTerminalMarketOrderQuote: freshnessMocks.assert, terminalQuoteBlockMessage: (reason: string, symbol: string) => reason === 'time-unverified' ? 'Syncing time for ' + symbol : 'Waiting for a fresh quote', terminalQuoteFreshnessEnabled: () => freshnessMocks.enabled, assertTerminalQuoteFresh: freshnessMocks.assert }));
-vi.mock('../hooks/useTerminalQuoteFreshness', () => ({ useTerminalQuoteFreshness: () => ({ live: freshnessMocks.live, ageMs: 0, reason: freshnessMocks.reason }) }));
+vi.mock('../hooks/useTerminalQuoteFreshness', () => ({ useTerminalQuoteFreshness: () => ({ live: freshnessMocks.live, ageMs: 0, reason: freshnessMocks.reason, clockStatus: freshnessMocks.reason === 'time-unverified' ? 'unverified' : 'verified' }) }));
 
 const orderMocks = vi.hoisted(() => ({
   placeMarketOrder: vi.fn(),
@@ -218,9 +218,9 @@ describe('OneClickTrading stale-quote refresh', () => {
     act(() => useAppStore.getState().setTicks({ BTCUSD: {
       ...useAppStore.getState().ticks.BTCUSD, bid: 78001, ask: 78011, timestamp: Date.now(),
     } }));
-    // Allow the existing refresh rate limit to expire. Recovery must not wait
-    // for the unrelated 30-second background status poll.
-    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    // Verified recovery gets one immediate revalidation, even inside the
+    // normal refresh rate limit. It still needs authoritative permission.
+    await act(async () => Promise.resolve());
     expect(feedMocks.requestMarketSymbolsRefresh).toHaveBeenCalledTimes(2);
     expect(getTradeButton('BUY')).not.toBeDisabled();
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
@@ -234,8 +234,8 @@ describe('OneClickTrading stale-quote refresh', () => {
     feedMocks.requestMarketSymbolsRefresh.mockResolvedValue(undefined);
     const view = renderPanel(false);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
-    freshnessMocks.live = true;
-    freshnessMocks.reason = 'live';
+    freshnessMocks.live = false;
+    freshnessMocks.reason = 'time-unverified';
     act(() => useAppStore.getState().setTicks({ BTCUSD: { ...useAppStore.getState().ticks.BTCUSD, bid: 78001 } }));
     expect(feedMocks.requestMarketSymbolsRefresh).toHaveBeenCalledOnce();
     if (change === 'unmount') view.unmount();
@@ -247,7 +247,7 @@ describe('OneClickTrading stale-quote refresh', () => {
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });
 
-  it('does not reset the trailing timer or start a refresh loop for unchanged fresh ticks and denied catalogue permission', async () => {
+  it('does not reset the trailing timer or start a refresh loop for unchanged executable ticks and denied catalogue permission', async () => {
     vi.useFakeTimers();
     useAppStore.setState({ tokenExpiresAt: Date.now() + 120_000 });
     freshnessMocks.enabled = true;
@@ -258,8 +258,8 @@ describe('OneClickTrading stale-quote refresh', () => {
       authorizedSymbols: ['EURUSD'], activeFeedSymbols: ['BTCUSD', 'EURUSD'] }).includes('BTCUSD');
     renderPanel(denied);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
-    freshnessMocks.live = true;
-    freshnessMocks.reason = 'live';
+    freshnessMocks.live = false;
+    freshnessMocks.reason = 'time-unverified';
     for (let i = 0; i < 4; i++) {
       act(() => useAppStore.getState().setTicks({ BTCUSD: { ...useAppStore.getState().ticks.BTCUSD, bid: 78001 + i } }));
       await act(async () => vi.advanceTimersByTimeAsync(1000));
@@ -303,13 +303,46 @@ describe('OneClickTrading stale-quote refresh', () => {
     renderPanel(false);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
     vi.setSystemTime(Date.now() - 60_000);
-    freshnessMocks.live = true;
-    freshnessMocks.reason = 'live';
+    freshnessMocks.live = false;
+    freshnessMocks.reason = 'time-unverified';
     act(() => useAppStore.getState().setTicks({ BTCUSD: { ...useAppStore.getState().ticks.BTCUSD, bid: 78001 } }));
     await act(async () => vi.advanceTimersByTimeAsync(3999));
     expect(feedMocks.requestMarketSymbolsRefresh).toHaveBeenCalledOnce();
     await act(async () => vi.advanceTimersByTimeAsync(1));
     expect(feedMocks.requestMarketSymbolsRefresh).toHaveBeenCalledTimes(2);
+    expect(getTradeButton('BUY')).toBeDisabled();
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+  });
+
+  it('allows only one immediate verified recovery per excluded episode despite boundary jitter', async () => {
+    vi.useFakeTimers();
+    freshnessMocks.enabled = true;
+    freshnessMocks.live = false;
+    freshnessMocks.reason = 'stale';
+    feedMocks.requestMarketSymbolsRefresh.mockResolvedValue(undefined);
+    renderPanel(false);
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    let tickCount = 0;
+    const publishState = (live: boolean, reason: string) => {
+      freshnessMocks.live = live;
+      freshnessMocks.reason = reason;
+      act(() => useAppStore.getState().setTicks({ BTCUSD: { ...useAppStore.getState().ticks.BTCUSD, bid: 78000 + ++tickCount } }));
+    };
+    publishState(false, 'time-unverified');
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(feedMocks.requestMarketSymbolsRefresh).toHaveBeenCalledOnce();
+    publishState(true, 'live');
+    await act(async () => Promise.resolve());
+    expect(feedMocks.requestMarketSymbolsRefresh).toHaveBeenCalledTimes(2);
+    for (let i = 0; i < 20; i++) {
+      publishState(false, 'stale');
+      await act(async () => vi.advanceTimersByTimeAsync(10));
+      publishState(true, 'live');
+      await act(async () => vi.advanceTimersByTimeAsync(10));
+    }
+    expect(feedMocks.requestMarketSymbolsRefresh).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTimeAsync(4600));
+    expect(feedMocks.requestMarketSymbolsRefresh).toHaveBeenCalledTimes(3);
     expect(getTradeButton('BUY')).toBeDisabled();
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });

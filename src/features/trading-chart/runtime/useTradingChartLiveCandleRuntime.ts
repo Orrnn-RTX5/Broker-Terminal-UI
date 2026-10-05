@@ -10,6 +10,7 @@ import {
 } from '../../../services/candleAggregationService';
 import type { CandleCacheSource } from '../../../services/candleCache';
 import { chartDataService } from '../../../services/chartDataService';
+import { recordChartQuoteSelection } from '../../../services/chartQuoteDiagnostics';
 import {
   canDropPreloadedCandlesForLiveQuoteMismatch,
   createRenderedPriceReference,
@@ -74,6 +75,7 @@ import {
 } from '../presentation/tradeOverlayPresentation';
 
 interface UseTradingChartLiveCandleRuntimeOptions {
+  diagnosticChartId: string;
   activeTradeSnapshotsRef: RefObject<Map<string, ActiveTradeSnapshot>>;
   applyAreaTrendColors: (latestClose?: number) => void;
   authToken: string | null;
@@ -152,6 +154,7 @@ interface UseTradingChartLiveCandleRuntimeOptions {
 }
 
 export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCandleRuntimeOptions): void => {
+  const { diagnosticChartId } = options;
   const {
     activeTradeSnapshotsRef, applyAreaTrendColors, authToken, autoScrollEnabledRef,
     brokerAccountSessionScope, brokerTimeOffsetSecRef, cancelQueuedChartRender, candlesRef,
@@ -611,6 +614,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       // Record only a real accepted quote mutation. A history refresh can then
       // distinguish a newer forming candle from the stale cache row that was
       // already present when its REST request started.
+      recordChartQuoteSelection(diagnosticChartId, symbol, activeTf, tick, price);
       const liveMutationGeneration = liveCandleMutationGenerationRef.current + 1;
       liveCandleMutationGenerationRef.current = liveMutationGeneration;
       const liveMutationTime = Number(candleTime);
@@ -988,6 +992,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       postInteractionCoordinatorRef.current?.clear();
     };
   }, [
+    diagnosticChartId,
     symbol,
     authToken,
     applyAreaTrendColors,
