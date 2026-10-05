@@ -34,6 +34,7 @@ import { WS_ENDPOINTS } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useActiveMarketSymbols, useMarketInstruments } from './hooks/useLiveMarketData';
 import { useTerminalQuoteClock } from './hooks/useTerminalQuoteClock';
+import { useTerminalQuoteRecovery } from './hooks/useTerminalQuoteRecovery';
 import { useOpenPositionQuoteDemand } from './hooks/useOpenPositionQuoteDemand';
 import { getCachedSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useSymbolMarketStatus';
 import {
@@ -218,6 +219,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // Mount the SL/TP refresh supervisor; broker/backend owns actual stop execution.
   useAutoCloseMonitor(500);
   useTerminalQuoteClock();
+  useTerminalQuoteRecovery();
   useOpenPositionQuoteDemand();
 
   // Start closed and restore only after a validated token or active authenticated store session.

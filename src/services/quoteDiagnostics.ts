@@ -4,7 +4,7 @@ export const QUOTE_CONTROL_DIAGNOSTIC_CAPACITY = 256;
 
 export interface QuoteDiagnosticContext {
   receiptMonoMs?: number;
-  transport?: 'feed' | 'v2';
+  transport?: 'feed' | 'v2' | 'rest';
   upstreamSourceSequence?: string | number;
   upstreamReceiveTimestamp?: number;
   upstreamPublishTimestamp?: number;

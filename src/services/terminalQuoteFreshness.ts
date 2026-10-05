@@ -41,11 +41,20 @@ function timestamp(value: unknown): number | undefined {
   return Number.isFinite(parsed) && parsed >= 1e12 && parsed <= 8.64e15 ? parsed : undefined;
 }
 
-export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown): TerminalQuoteMetadata {
-  const p = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
-  const e = envelope && typeof envelope === 'object' ? envelope as Record<string, unknown> : {};
+/** Display fallbacks must not turn a one-sided packet into executable evidence. */
+export function hasExplicitQuoteSides(payload: Record<string, unknown>): boolean {
+  return ['bid', 'ask'].every(side => {
+    const value = payload[side];
+    return (typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''))
+      && Number.isFinite(Number(value)) && Number(value) > 0;
+  });
+}
+
+export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown, outerEnvelopes: readonly unknown[] = []): TerminalQuoteMetadata {
+  const records = [payload, envelope, ...outerEnvelopes].map(value =>
+    value && typeof value === 'object' ? value as Record<string, unknown> : {});
   const pick = (...names: string[]) => {
-    for (const obj of [p, e]) for (const name of names) if (obj[name] !== undefined) return obj[name];
+    for (const obj of records) for (const name of names) if (obj[name] !== undefined) return obj[name];
     return undefined;
   };
   const sequence = pick('sequence', 'seq');
@@ -53,11 +62,9 @@ export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown)
   // Normalizers deliberately emit this own property even when upstream had no
   // provider timestamp. Never reinterpret their display sourceTimestamp alias
   // (which can come from event/server/receipt time) as provider evidence.
-  const providerTime = Object.prototype.hasOwnProperty.call(p, 'provider_timestamp')
-    ? p.provider_timestamp
-    : Object.prototype.hasOwnProperty.call(e, 'provider_timestamp')
-      ? e.provider_timestamp
-      : pick('time_ms', 'timestamp_ms', 'sourceTimestamp', 'last_tick_ms', 'quote_time_ms');
+  const providerRecord = records.find(record => Object.prototype.hasOwnProperty.call(record, 'provider_timestamp'));
+  const providerTime = providerRecord ? providerRecord.provider_timestamp
+    : pick('time_ms', 'timestamp_ms', 'sourceTimestamp', 'last_tick_ms', 'quote_time_ms');
   const result: TerminalQuoteMetadata = {
     provider_timestamp: timestamp(providerTime),
     sequence: typeof sequence === 'string' || typeof sequence === 'number' ? sequence : undefined,
@@ -68,7 +75,7 @@ export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown)
     if (typeof value === 'boolean') result[flag] = value;
     // Any explicit upstream veto wins over a permissive nested payload.
     const veto = flag === 'tradable' ? false : true;
-    if (p[flag] === veto || e[flag] === veto) result[flag] = veto;
+    if (records.some(record => record[flag] === veto)) result[flag] = veto;
   }
   return result;
 }
