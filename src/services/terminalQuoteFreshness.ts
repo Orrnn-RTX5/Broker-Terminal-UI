@@ -21,14 +21,14 @@ export interface TerminalQuoteFreshness {
 const quotes = new Map<string, TerminalQuoteEvidence>();
 const sequenceWatermarks = new Map<string, string | number>();
 const verifiedProviderTimes = new Map<string, number>();
-const listeners = new Set<() => void>();
+const listeners = new Set<(changedSymbol?: string) => void>();
 let timer: ReturnType<typeof setInterval> | undefined;
 let revision = 0;
 let session = 0;
 let anchor: { lower: number; upper: number; mono: number; wall: number; requestMono: number } | undefined;
 const monoNow = () => performance.now();
 const key = (symbol: string) => symbol.trim().toUpperCase();
-const publish = () => { revision++; listeners.forEach(listener => listener()); };
+const publish = (changedSymbol?: string) => { revision++; listeners.forEach(listener => listener(changedSymbol)); };
 
 export function terminalQuoteFreshnessEnabled(): boolean {
   if (typeof window === 'undefined') return false;
@@ -86,6 +86,18 @@ export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown,
 export const getTerminalQuoteSession = () => session;
 export const getTerminalQuoteFreshnessRevision = () => revision;
 export const getVerifiedQuoteProviderTime = (symbol: string) => verifiedProviderTimes.get(key(symbol));
+
+/** A stale feed snapshot is superseded only by newer accepted evidence from its own source/session. */
+export function getNewerLiveTerminalQuoteEvidence(symbol: string, previous: TerminalQuoteMetadata, expectedSession: number): TerminalQuoteMetadata | null {
+  if (!terminalQuoteFreshnessEnabled() || expectedSession !== session) return null;
+  const quote = quotes.get(key(symbol));
+  if (!quote || quote.source !== previous.source || quote.stale !== false || quote.tradable !== true
+    || quote.source_mismatch !== false || quote.provider_timestamp === undefined || previous.provider_timestamp === undefined
+    || quote.provider_timestamp <= previous.provider_timestamp || quote.sequence === undefined || previous.sequence === undefined) return null;
+  const freshness = getTerminalQuoteFreshness(symbol);
+  if (!freshness.live || freshness.clockStatus !== 'verified' || compareSequence(quote.sequence, previous.sequence) !== 1) return null;
+  return { provider_timestamp: quote.provider_timestamp, sequence: quote.sequence, source: quote.source };
+}
 
 export function resetTerminalQuoteFreshness(): void {
   session++;
@@ -201,7 +213,7 @@ export function ingestTerminalQuote(symbol: string, data: TerminalQuoteEvidence,
     verifiedProviderTimes.set(key(symbol), metadata.provider_timestamp);
   }
   if (metadata.sequence !== undefined) sequenceWatermarks.set(key(symbol), metadata.sequence);
-  publish();
+  publish(key(symbol));
   return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, true, 'accepted');
 }
 
@@ -218,7 +230,7 @@ export function refreshTerminalQuotePrices(symbol: string, data: TerminalQuoteEv
     // Preserve provider time, sequence, and all vetoes, including vetoes received
     // after the cached render event. Catalogue refreshes are not market ticks.
     quotes.set(key(symbol), { ...previous, bid: data.bid, ask: data.ask });
-    publish();
+    publish(key(symbol));
   }
   return true;
 }
@@ -231,7 +243,7 @@ function applyVeto(previous: TerminalQuoteEvidence, next: TerminalQuoteMetadata,
   if (next.source_mismatch === true) veto.source_mismatch = true;
   if (veto.stale !== previous.stale || veto.tradable !== previous.tradable || veto.source_mismatch !== previous.source_mismatch) {
     quotes.set(key(symbol), veto);
-    publish();
+    publish(key(symbol));
   }
   return false;
 }
@@ -278,7 +290,7 @@ export function terminalQuoteBlockMessage(reason: TerminalQuoteFreshnessReason, 
   }
 }
 
-export function subscribeTerminalQuoteFreshness(listener: () => void): () => void {
+export function subscribeTerminalQuoteFreshness(listener: (changedSymbol?: string) => void): () => void {
   listeners.add(listener);
   if (!timer) timer = setInterval(publish, 100);
   return () => {
