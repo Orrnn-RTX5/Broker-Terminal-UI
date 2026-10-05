@@ -133,4 +133,17 @@ describe('opt-in quote evidence', () => {
     expect(JSON.stringify(d.getQuoteDiagnosticDump())).not.toMatch(/secret|sourceGeneration/);
     expect(d.getQuoteDiagnosticDump().monotonicTimeOriginEpochMs).toBe(performance.timeOrigin);
   });
+  it('records bounded financial coverage status without retaining source payloads or account scope', async () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    const d = await import('./quoteDiagnostics');
+    d.recordQuoteDiagnostic({ kind: 'financial-gap', symbol: 'BTCUSD', browserGeneration: 7,
+      gapFromProviderTimeMs: epoch, gapToProviderTimeMs: epoch + 1000, rawCoverageComplete: false,
+      terminalStatus: 'snapshot-covered', token: 'hidden-token', account: 'hidden-account' } as never);
+    expect(d.getQuoteDiagnosticDump().controls).toEqual([expect.objectContaining({
+      kind: 'financial-gap', symbol: 'BTCUSD', browserGeneration: 7, gapFromProviderTimeMs: epoch,
+      gapToProviderTimeMs: epoch + 1000, rawCoverageComplete: false, terminalStatus: 'snapshot-covered',
+    })]);
+    expect(JSON.stringify(d.getQuoteDiagnosticDump().controls)).not.toMatch(/hidden-|token|account/);
+  });
+
 });

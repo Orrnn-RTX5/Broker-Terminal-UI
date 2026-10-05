@@ -21,6 +21,9 @@ import { assertBrokerRequestAllowed } from '../api/brokerRequestGuard';
 import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
 import { decodeJwtPayload } from '../utils/jwt';
 import { candleCache } from './candleCache';
+import { getTerminalQuoteSession } from './terminalQuoteFreshness';
+import { FINANCIAL_QUOTE_GAP_EVENT, readFinancialQuoteGap, type FinancialQuoteGap } from './financialQuoteRecovery';
+import { recordQuoteDiagnostic } from './quoteDiagnostics';
 import { takePublicStartupHistory } from '../startup/publicHistoryPrefetch';
 import { preloadAuthenticatedStartupHistory, StartupHistorySessionChangedError, takeAuthenticatedStartupHistory } from '../startup/authenticatedHistoryPrefetch';
 import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME, FIRST_PAINT_HISTORY_COUNT } from '../constants/chartDefaults';
@@ -48,6 +51,14 @@ export type { FetchCandlesOptions, OHLCData } from '../types/chartData';
 export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
 export type ApiTimeframe = BackendCandleTimeframe;
 
+// Coverage describes the received authoritative M1 snapshot, not restoration of
+// an aggregation model or inferred candle finality. Unflagged candles stay unflagged.
+export interface CandleFinancialGapStatus {
+  status: 'pending' | 'incomplete' | 'snapshot-covered';
+  gap: FinancialQuoteGap;
+  reason?: 'snapshot-range-missing' | 'timeout';
+}
+
 export interface CandleStreamOptions {
   symbol: string;
   timeframe: string;
@@ -55,6 +66,7 @@ export interface CandleStreamOptions {
   onCandle?: (candle: OHLCData) => void;
   onError?: (error: Error) => void;
   onConnected?: () => void;
+  onFinancialGapStatus?: (status: CandleFinancialGapStatus) => void;
 }
 
 export interface CandleStreamSubscription {
@@ -703,6 +715,7 @@ export class ChartDataService {
     const symbol = normalizeSymbol(options.symbol);
     const channel = `candles.${symbol}.${apiTf}`;
     const deploymentIdentity = candleDeploymentIdentity();
+    const subscriptionToken = getAuthToken();
     let socketToken: string | null = null;
     let closed = false;
     let ws: WebSocket | null = null;
@@ -718,6 +731,47 @@ export class ChartDataService {
     let publicPollingFallbackActive = false;
     let publicPollingController: AbortController | null = null;
     let publicPollingTimer: ReturnType<typeof setTimeout> | null = null;
+    let pendingFinancialGap: FinancialQuoteGap | null = null;
+    let financialGapTimer: ReturnType<typeof setTimeout> | null = null;
+    const ownsSubscription = () => !closed && deploymentIdentity === candleDeploymentIdentity()
+      && subscriptionToken === getAuthToken();
+    const ownsFinancialGap = () => ownsSubscription()
+      && pendingFinancialGap?.quoteSession === getTerminalQuoteSession();
+    const clearFinancialGap = () => {
+      if (financialGapTimer !== null) clearTimeout(financialGapTimer);
+      financialGapTimer = null;
+      pendingFinancialGap = null;
+    };
+    const reportFinancialGap = (status: CandleFinancialGapStatus['status'], reason?: CandleFinancialGapStatus['reason']) => {
+      if (!pendingFinancialGap || !ownsFinancialGap()) return;
+      recordQuoteDiagnostic({ kind: 'financial-gap', symbol, browserGeneration: pendingFinancialGap.quoteSession,
+        gapFromProviderTimeMs: pendingFinancialGap.fromProviderTimeMs, gapToProviderTimeMs: pendingFinancialGap.toProviderTimeMs,
+        rawCoverageComplete: false, terminalStatus: status, reason: reason ?? pendingFinancialGap.reason });
+      options.onFinancialGapStatus?.({ status, gap: { ...pendingFinancialGap }, ...(reason ? { reason } : {}) });
+    };
+    const snapshotCoversFinancialGap = (snapshot: unknown[], gap: FinancialQuoteGap): boolean => {
+      if (apiTf !== 'M1') return false;
+      const first = Math.floor(gap.fromProviderTimeMs / 60_000) * 60;
+      const last = Math.floor(gap.toProviderTimeMs / 60_000) * 60;
+      if ((last - first) / 60 + 1 > snapshot.length) return false;
+      const buckets = new Map<number, boolean>();
+      for (const raw of snapshot) {
+        const candle = this.normalizeCandle(raw, 'M1');
+        if (!candle) continue;
+        const row = asUnknownRecord(raw);
+        const volumes = Array.isArray(raw) ? [raw[5], raw[7]] : row ? [
+          row.tick_volume, row.tickVolume, row.tick_count, row.tickCount, row.ticks, row.TICK_VOLUME, row.TICK_COUNT,
+          row.volume, row.Volume, row.VOLUME, row.v, row.real_volume, row.realVolume, row.REAL_VOLUME,
+        ] : [];
+        // normalizeCandle defaults absent volume to zero; that is insufficient
+        // evidence that a dropped financial interval has authoritative volume.
+        buckets.set(candle.time, candle.volume >= 0 && volumes.some(value =>
+          (typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''))
+          && Number.isFinite(Number(value)) && Number(value) >= 0));
+      }
+      for (let time = first; time <= last; time += 60) if (!buckets.get(time)) return false;
+      return true;
+    };
 
     const isDocumentHidden = () => (
       typeof document !== 'undefined' && document.visibilityState === 'hidden'
@@ -769,6 +823,7 @@ export class ChartDataService {
     const retireChangedDeployment = (): boolean => {
       if (deploymentIdentity === candleDeploymentIdentity()) return false;
       closed = true;
+      clearFinancialGap();
       clearReconnectTimer(); clearOpenTimer(); clearSubscriptionAckTimer(); clearHeartbeat();
       stopPublicPollingFallback();
       const socket = ws;
@@ -984,10 +1039,20 @@ export class ChartDataService {
               // for this exact symbol/timeframe, not merely after TCP opens.
               options.onConnected?.();
             }
+            if (retireStaleSocket(socket)) return;
+            if (pendingFinancialGap && !ownsFinancialGap()) { clearFinancialGap(); return; }
 
             const snapshot = extractCandles(message);
             if (snapshot.length > 0) {
+              const gap = pendingFinancialGap;
               options.onSnapshot?.(this.normalizeCandles(snapshot, apiTf));
+              // Delivery can synchronously close the subscription or change the
+              // account. Never credit another socket/session with this snapshot.
+              if (gap && pendingFinancialGap === gap && ownsFinancialGap() && ws === socket) {
+                const covered = snapshotCoversFinancialGap(snapshot, gap);
+                reportFinancialGap(covered ? 'snapshot-covered' : 'incomplete', covered ? undefined : 'snapshot-range-missing');
+                if (covered && pendingFinancialGap === gap) clearFinancialGap();
+              }
               return;
             }
 
@@ -1050,6 +1115,30 @@ export class ChartDataService {
       connect();
     };
 
+    const handleFinancialGap = (event: Event) => {
+      const gap = readFinancialQuoteGap(event);
+      // Only active M1 subscriptions can validate every missing financial bucket.
+      // Symbols without a mounted subscription retain their normal history-load path.
+      if (!gap || apiTf !== 'M1' || normalizeSymbol(gap.symbol) !== symbol
+        || gap.quoteSession !== getTerminalQuoteSession() || !ownsSubscription()) return;
+      // Quote transport/calibration generations can change while this candle
+      // subscription remains correctly owned by the same broker/account.
+      if (pendingFinancialGap && pendingFinancialGap.quoteSession !== gap.quoteSession) clearFinancialGap();
+      const alreadyPending = pendingFinancialGap !== null;
+      pendingFinancialGap = pendingFinancialGap ? {
+        ...gap, fromProviderTimeMs: Math.min(pendingFinancialGap.fromProviderTimeMs, gap.fromProviderTimeMs),
+        toProviderTimeMs: Math.max(pendingFinancialGap.toProviderTimeMs, gap.toProviderTimeMs),
+      } : { ...gap };
+      reportFinancialGap('pending');
+      if (!ownsFinancialGap()) { clearFinancialGap(); return; }
+      if (alreadyPending) return;
+      financialGapTimer = setTimeout(() => {
+        financialGapTimer = null;
+        reportFinancialGap('incomplete', 'timeout');
+      }, 10_000);
+      refreshConnection('Financial quote gap; refreshing authoritative candles');
+    };
+
     const handleOnline = () => {
       if (closed) return;
       if (isDocumentHidden()) {
@@ -1086,6 +1175,7 @@ export class ChartDataService {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', handleOnline);
       window.addEventListener('offline', handleOffline);
+      window.addEventListener(FINANCIAL_QUOTE_GAP_EVENT, handleFinancialGap);
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }
     connect();
@@ -1093,6 +1183,7 @@ export class ChartDataService {
     return {
       close: () => {
         closed = true;
+        clearFinancialGap();
         clearReconnectTimer();
         clearOpenTimer();
         clearSubscriptionAckTimer();
@@ -1101,6 +1192,7 @@ export class ChartDataService {
         if (typeof window !== 'undefined') {
           window.removeEventListener('online', handleOnline);
           window.removeEventListener('offline', handleOffline);
+          window.removeEventListener(FINANCIAL_QUOTE_GAP_EVENT, handleFinancialGap);
           document.removeEventListener('visibilitychange', handleVisibilityChange);
         }
         const socket = ws;

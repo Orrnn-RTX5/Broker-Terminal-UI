@@ -2,6 +2,8 @@ import { quoteDiagnosticsEnabled, recordQuoteDiagnostic, type QuoteDiagnosticCon
 
 /** Provider evidence is independent of local price rendering and symbol permissions. */
 export interface TerminalQuoteMetadata {
+  /** Internal delivery provenance; never a provider source or timestamp. */
+  quoteDeliveryKind?: 'snapshot' | 'event';
   provider_timestamp?: number;
   sequence?: string | number;
   source?: string;
@@ -18,6 +20,7 @@ export interface TerminalQuoteFreshness {
 
 const quotes = new Map<string, TerminalQuoteEvidence>();
 const sequenceWatermarks = new Map<string, string | number>();
+const verifiedProviderTimes = new Map<string, number>();
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setInterval> | undefined;
 let revision = 0;
@@ -82,11 +85,13 @@ export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown,
 
 export const getTerminalQuoteSession = () => session;
 export const getTerminalQuoteFreshnessRevision = () => revision;
+export const getVerifiedQuoteProviderTime = (symbol: string) => verifiedProviderTimes.get(key(symbol));
 
 export function resetTerminalQuoteFreshness(): void {
   session++;
   quotes.clear();
   sequenceWatermarks.clear();
+  verifiedProviderTimes.clear();
   anchor = undefined;
   publish();
 }
@@ -116,6 +121,7 @@ export function calibrateTerminalQuoteClock(serverTime: unknown, startMono: numb
     session++;
     quotes.clear();
     sequenceWatermarks.clear();
+    verifiedProviderTimes.clear();
   }
   publish();
   if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: true, reason: 'calibrated',
@@ -125,7 +131,7 @@ export function calibrateTerminalQuoteClock(serverTime: unknown, startMono: numb
   return true;
 }
 
-function compareSequence(next: string | number, previous: string | number): number | undefined {
+export function compareSequence(next: string | number, previous: string | number): number | undefined {
   // Integer strings may exceed Number's exact range.
   if (/^\d+$/.test(String(next)) && /^\d+$/.test(String(previous))) {
     const a = BigInt(next); const b = BigInt(previous);
@@ -154,6 +160,22 @@ function recordIngestion(symbol: string, data: TerminalQuoteEvidence, expectedSe
   return accepted;
 }
 
+/** Shared immutable evidence validation; acceptance/ordering stays with each owner. */
+export function quoteEvidenceFailure(data: TerminalQuoteEvidence, metadata = readQuoteFreshnessMetadata(data)): string | null {
+  if (metadata.provider_timestamp === undefined || !metadata.source?.trim() || !Number.isFinite(data.bid) || !Number.isFinite(data.ask)
+    || data.bid! <= 0 || data.ask! <= 0 || data.ask! < data.bid!) return metadata.provider_timestamp === undefined
+      ? 'missing-provider-time' : !metadata.source?.trim() ? 'missing-source' : 'invalid-price';
+  const sequenceText = metadata.sequence === undefined ? undefined : String(metadata.sequence);
+  // Corrupt/future packets must not advance the sequence watermark and suppress recovery.
+  if (sequenceText !== undefined && (!/^\d{1,20}$/.test(sequenceText)
+    || BigInt(sequenceText) > 18446744073709551615n
+    || (typeof metadata.sequence === 'number' && !Number.isSafeInteger(metadata.sequence)))) return 'invalid-sequence';
+  const elapsed = anchor ? monoNow() - anchor.mono : NaN;
+  const validClock = anchor && elapsed >= 0 && elapsed < 60000 && Math.abs((Date.now() - anchor.wall) - elapsed) <= 250;
+  if (validClock && metadata.provider_timestamp !== undefined && metadata.provider_timestamp > anchor!.upper + elapsed + elapsed / 1000 + 250) return 'future-provider-time';
+  return null;
+}
+
 export function ingestTerminalQuote(symbol: string, data: TerminalQuoteEvidence, expectedSession = session,
   context?: QuoteDiagnosticContext): boolean {
   const ingestMonoMs = quoteDiagnosticsEnabled() ? monoNow() : undefined;
@@ -161,17 +183,8 @@ export function ingestTerminalQuote(symbol: string, data: TerminalQuoteEvidence,
     expectedSession !== session ? 'session-mismatch' : 'invalid-symbol');
   const metadata = readQuoteFreshnessMetadata(data);
   const previous = quotes.get(key(symbol));
-  if (metadata.provider_timestamp === undefined || !metadata.source?.trim() || !Number.isFinite(data.bid) || !Number.isFinite(data.ask)
-    || data.bid! <= 0 || data.ask! <= 0 || data.ask! < data.bid!) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false,
-      metadata.provider_timestamp === undefined ? 'missing-provider-time' : !metadata.source?.trim() ? 'missing-source' : 'invalid-price');
-  const sequenceText = metadata.sequence === undefined ? undefined : String(metadata.sequence);
-  // Corrupt/future packets must not advance the sequence watermark and suppress recovery.
-  if (sequenceText !== undefined && (!/^\d{1,20}$/.test(sequenceText)
-    || BigInt(sequenceText) > 18446744073709551615n
-    || (typeof metadata.sequence === 'number' && !Number.isSafeInteger(metadata.sequence)))) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, 'invalid-sequence');
-  const elapsed = anchor ? monoNow() - anchor.mono : NaN;
-  const validClock = anchor && elapsed >= 0 && elapsed < 60000 && Math.abs((Date.now() - anchor.wall) - elapsed) <= 250;
-  if (validClock && metadata.provider_timestamp !== undefined && metadata.provider_timestamp > anchor!.upper + elapsed + elapsed / 1000 + 250) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, 'future-provider-time');
+  const failure = quoteEvidenceFailure(data, metadata);
+  if (failure) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, failure);
   if (previous) {
     const nextTime = metadata.provider_timestamp;
     const oldTime = previous.provider_timestamp;
@@ -184,6 +197,9 @@ export function ingestTerminalQuote(symbol: string, data: TerminalQuoteEvidence,
     } else if (oldTime !== undefined && nextTime === oldTime) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, applyVeto(previous, metadata, symbol), 'duplicate-provider-time');
   }
   quotes.set(key(symbol), { ...metadata, bid: data.bid, ask: data.ask });
+  if (isTerminalQuoteClockVerified() && metadata.provider_timestamp !== undefined) {
+    verifiedProviderTimes.set(key(symbol), metadata.provider_timestamp);
+  }
   if (metadata.sequence !== undefined) sequenceWatermarks.set(key(symbol), metadata.sequence);
   publish();
   return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, true, 'accepted');

@@ -1,6 +1,8 @@
 import type { QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
 
 export interface Tick extends QuoteTradingStatusFields {
+  /** A current quote snapshot is not a financial stream event. */
+  quoteDeliveryKind?: 'snapshot' | 'event';
   dailyChangeInput?: import('../utils/dailyChange').DailyChangeInput;
   provider_timestamp?: number;
   sequence?: string | number;

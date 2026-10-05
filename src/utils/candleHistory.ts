@@ -464,6 +464,7 @@ export const applyBrokerTimeOffsetToCandles = <T extends CandleHistoryCandle>(
 );
 
 export interface FormattedOhlcvCandle {
+  isComplete?: boolean;
   time: number;
   open: number;
   high: number;
@@ -482,6 +483,7 @@ export const formatHistoryForOhlcv = (
     low: candle.low,
     close: candle.close,
     volume: candle.volume,
+    ...(typeof candle.closed === 'boolean' ? { isComplete: candle.closed } : {}),
   }))
 );
 

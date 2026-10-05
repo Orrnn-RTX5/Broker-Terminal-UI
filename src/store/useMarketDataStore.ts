@@ -12,6 +12,7 @@ import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { cancelPendingAggregations, getWorkerManager, type SymbolAggregationRequest, type SymbolAggregationResult } from '../services/aggregationWorkerManager';
 import type { CandleUpdateSource, OHLCV, Tick } from '../types/marketData';
+import { compareSequence } from '../services/terminalQuoteFreshness';
 import {
   isStructurallyValidPriceCandle,
   repairPriceCandle,
@@ -76,6 +77,8 @@ export interface CandleUpdate {
 
 export interface UpdateTickOptions {
   syncAppStore?: boolean;
+  /** Dispatcher has a separate ordered financial delivery for these quotes. */
+  displayOnly?: boolean;
 }
 
 export type MarketTickEntry = readonly [symbol: string, tick: Tick];
@@ -448,32 +451,42 @@ const applyMarketTick = (
   tick: Tick,
   data: SymbolData,
   now: number,
+  displayOnly = false,
 ): { data: SymbolData; aggregation: SymbolAggregationRequest | null; isCorrection: boolean } | null => {
   const freshness = data.currentTick
     ? compareCanonicalTickFreshness(data.currentTick, tick)
     : 1;
-  if (freshness < 0) return null;
-  if (freshness === 0 && areMarketTicksIdentical(data.currentTick, tick)) return null;
+  const snapshot = displayOnly || tick.quoteDeliveryKind === 'snapshot';
+  const displayAhead = freshness < 0 && tick.quoteDeliveryKind === 'event' && !snapshot;
+  if (freshness < 0 && !displayAhead) return null;
+  const lastEvent = data.tickBuffer.at(-1) ?? null;
+  const eventFreshness = lastEvent ? compareCanonicalTickFreshness(lastEvent, tick) : 1;
+  const eventSequence = lastEvent?.sequence !== undefined && tick.sequence !== undefined
+    ? compareSequence(tick.sequence, lastEvent.sequence) : undefined;
+  if (!snapshot && (eventFreshness < 0 || (eventFreshness === 0 && eventSequence !== undefined && eventSequence < 0))) return null;
+  if (snapshot && freshness === 0 && areMarketTicksIdentical(data.currentTick, tick)) return null;
+  if (!snapshot && eventFreshness === 0 && areMarketTicksIdentical(lastEvent, tick)) return null;
 
-  const isCorrection = freshness === 0;
+  const isCorrection = !snapshot && eventFreshness === 0 && (eventSequence === undefined || eventSequence === 0);
   const tickTimestamp = getCanonicalTickTimestamp(tick);
-  const previousTick = isCorrection
+  const previousTick = displayAhead ? data.previousTick : freshness === 0
     ? findLastStrictlyOlderTick(data.tickBuffer, tickTimestamp) ?? data.previousTick
     : data.currentTick;
-  const tickBuffer = isCorrection
+  const currentTick = displayAhead ? data.currentTick! : tick;
+  const tickBuffer = snapshot ? data.tickBuffer : isCorrection
     ? replaceSameTimestampTick(data.tickBuffer, tick)
     : appendBoundedTick(data.tickBuffer, tick);
-  const shouldAggregate = isCorrection || now - data.lastAggregation > 60_000;
+  const shouldAggregate = !snapshot && (isCorrection || now - data.lastAggregation > 60_000);
   const shouldUpdateStats = isCorrection || !data.stats || now - data.stats.lastUpdate > 1_000;
-  const stats = shouldUpdateStats
-    ? calculateStats(symbol, tick, previousTick, tickBuffer, data.ohlcv1h)
-    : data.stats;
+  const stats = snapshot
+    ? data.stats ? { ...data.stats, currentPrice: (currentTick.bid + currentTick.ask) / 2 } : null
+    : shouldUpdateStats ? calculateStats(symbol, currentTick, previousTick, tickBuffer, data.ohlcv1h) : data.stats;
 
   return {
     isCorrection,
     data: {
       ...data,
-      currentTick: tick,
+      currentTick,
       previousTick,
       stats,
       tickBuffer,
@@ -552,7 +565,7 @@ export const useMarketDataStore = create<MarketDataState>()(
             latestTicks.forEach(([symbol, tick]) => {
               try {
                 const currentData = nextSymbolData[symbol] || createEmptySymbolData();
-                const transition = applyMarketTick(symbol, tick, currentData, now);
+                const transition = applyMarketTick(symbol, tick, currentData, now, options.displayOnly);
                 if (!transition) return;
 
                 if (!changed) nextSymbolData = { ...state.symbolData };

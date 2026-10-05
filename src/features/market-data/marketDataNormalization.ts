@@ -420,7 +420,7 @@ export const normalizeOrderBook = (raw: unknown, fallbackSymbol?: string): LiveO
 };
 
 export const upsertTick = (tick: Tick & Partial<AppTick>): void => {
-  enqueueLiveTick(tick.symbol, tick);
+  enqueueLiveTick(tick.symbol, { ...tick, quoteDeliveryKind: 'snapshot' });
 };
 
 const hasUsablePrice = (value: unknown): value is number =>
