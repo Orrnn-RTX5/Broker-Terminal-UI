@@ -338,7 +338,7 @@ describe('TradingChart interaction-priority contract', () => {
     const loadingEnd = loadingPresentationSource.indexOf('return {', loadingStart);
     const loadingEffects = loadingPresentationSource.slice(loadingStart, loadingEnd);
     const overlayStart = source.indexOf('useActiveChartRuntimeEffect(visibleRuntime.overlay, () => {', source.indexOf('// ─── Trade Annotations on Chart'));
-    const overlayEnd = source.indexOf('}, [brokerTimeOffsetSec,', overlayStart);
+    const overlayEnd = source.indexOf('}, [brokerAccountSessionScope, positionCloseScope, brokerTimeOffsetSec,', overlayStart);
     const overlayEffect = source.slice(overlayStart, overlayEnd);
 
     expect(loadingEffects.match(/useActiveChartRuntimeEffect\(intervalEnabled/g)).toHaveLength(2);
@@ -346,7 +346,9 @@ describe('TradingChart interaction-priority contract', () => {
     expect(loadingEffects).toContain('window.clearInterval(interval)');
     expect(overlayStart).toBeGreaterThan(-1);
     expect(overlayEnd).toBeGreaterThan(overlayStart);
-    expect(overlayEffect).toContain('return bindTradeOverlayRuntimeSubscriptions({');
+    expect(overlayEffect).toContain('const unbindSubscriptions = bindTradeOverlayRuntimeSubscriptions({');
+    expect(overlayEffect).toContain('disposeTradeOverlayRelayout();');
+    expect(overlayEffect).toContain('unbindSubscriptions();');
     expect(tradeSubscriptionsSource).toContain('subscribeVisibleLogicalRangeChange(timeScaleHandler)');
     expect(tradeSubscriptionsSource).toContain('useAppStore.subscribe(');
     expect(tradeSubscriptionsSource).toContain('useChartSettingsStore.subscribe(');
@@ -476,7 +478,8 @@ describe('TradingChart interaction-priority contract', () => {
     expect(helperEnd).toBeGreaterThan(helperStart);
     expect(helper).toContain('if (!canPaintLiveChart())');
     expect(helper).toContain('requestDeferredLivePaint()');
-    expect(helper).toContain('repaintLivePriceOverlayFromCurrentPrice(c)');
+    expect(helper).toContain('const overlay = resolveOverlayCandle(c);');
+    expect(helper).toContain('repaintLivePriceOverlayFromCurrentPrice(overlay)');
     expect(serverCandleStart).toBeGreaterThan(-1);
     expect(serverCandleEnd).toBeGreaterThan(serverCandleStart);
     expect(serverCandle.match(/repaintLivePriceOverlayOrDefer\(/g)).toHaveLength(4);
@@ -640,7 +643,9 @@ describe('TradingChart interaction-priority contract', () => {
     expect(drag).not.toContain('renderTradeOverlay');
     expect(drag).not.toContain('repaintLivePriceOverlayFromCurrentPrice');
     expect(drag).not.toContain('flushPostInteractionWork');
-    expect(tradeRuntimeSource).toContain('const repaintTradeOverlayGeometry = () => updateLabelPositions(false);');
+    expect(tradeRuntimeSource).toContain('const repaintTradeOverlayGeometry = (committedDraw = false) => {');
+    expect(tradeRuntimeSource).toContain('if (committedDraw && committedTradeOverlayLayoutRef.current) committedTradeOverlayLayoutRef.current();');
+    expect(tradeRuntimeSource).toContain('else updateLabelPositions(false);');
     expect(tradeRuntimeSource).toContain('repaintTradeOverlayGeometryRef.current = repaintTradeOverlayGeometry;');
     expect(source).toContain('if (refreshMetrics) {');
 
@@ -871,7 +876,7 @@ describe('TradingChart interaction-priority contract', () => {
     const tickLoop = source.slice(tickLoopStart, tickLoopEnd);
     const timestampIndex = tickLoop.indexOf('const rawTickTimestamp = Number(tick.sourceTimestamp ?? tick.timestamp);');
     // The key uses the raw feed sides (not the spread-markup widened quote).
-    const keyIndex = tickLoop.indexOf('const tickKey = `${rawTickTimestamp}:${candleQuote.bid}:${candleQuote.ask ?? candleQuote.bid}:${price}`;');
+    const keyIndex = tickLoop.indexOf("const tickKey = `${rawTickTimestamp}:${candleQuote.bid}:${candleQuote.ask ?? candleQuote.bid}:${price}:${tick.quoteDeliveryKind ?? ''}`;");
     const reconciliationIndex = tickLoop.indexOf('validateRenderedCandlesAgainstLivePrice(price, activeTf)');
 
     expect(timestampIndex).toBeGreaterThan(-1);

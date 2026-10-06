@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useTradingChartTradeRuntime } from './useTradingChartTradeRuntime';
 import { useTradingChartTradeOverlayRenderer } from './useTradingChartTradeOverlayRenderer';
 import { layoutRebuiltTradeOverlay } from './layoutRebuiltTradeOverlay';
+import { createTradeOverlayRelayoutQueue } from './createTradeOverlayRelayoutQueue';
 import { tradeMarkerTooltipLayouts } from '../presentation/tradeOverlayPresentation';
 
 vi.mock('../../../services/drawingManager', () => ({ drawingManager: {} }));
@@ -45,8 +46,29 @@ function fixture() {
     resize: (w: number, h: number, s: number) => { width = w; height = h; scale = s; },
     move: (value: number | null) => { y = value; } };
 }
-afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 describe('trade overlay geometry presentation', () => {
+  it('a committed chart draw fulfils pending model geometry/metrics once, while axis repaints stay separate', () => {
+    const frames=new Map<number,FrameRequestCallback>();let id=0;
+    vi.stubGlobal('requestAnimationFrame',vi.fn((fn:FrameRequestCallback)=>{frames.set(++id,fn);return id;}));
+    vi.stubGlobal('cancelAnimationFrame',vi.fn((key:number)=>frames.delete(key)));
+    const f=fixture(), metrics=vi.fn();f.renderer.tradeControlLiveUpdatersRef.current=[metrics];
+    const scheduler=createTradeOverlayRelayoutQueue({frameRef:{current:null},isCurrent:()=>true,isInteracting:()=>false,
+      requestPostInteraction:vi.fn(),project:f.renderer.updateLabelPositions});
+    f.renderer.committedTradeOverlayLayoutRef.current=scheduler.projectCommittedGeometry;
+    scheduler.queue();const pending=frames.values().next().value!;
+    f.options.repaintTradeOverlayGeometryRef.current(true);
+    expect(f.node.style.top).toBe('100px');expect(f.widthRead).toHaveBeenCalledTimes(1);expect(metrics).toHaveBeenCalledTimes(1);
+    pending(0);expect(f.widthRead).toHaveBeenCalledTimes(1);expect(frames.size).toBe(0);
+    scheduler.queue();f.move(150);f.repaint();
+    expect(f.node.style.top).toBe('150px');expect(frames.size).toBe(1);expect(metrics).toHaveBeenCalledTimes(1);
+    f.options.repaintTradeOverlayGeometryRef.current(true);expect(frames.size).toBe(0);expect(metrics).toHaveBeenCalledTimes(2);
+    // With no installed owner callback (effect setup/cleanup), committed geometry
+    // still uses current refs, preserving the pre-existing primitive fallback.
+    f.renderer.committedTradeOverlayLayoutRef.current=null;f.move(180);
+    f.options.repaintTradeOverlayGeometryRef.current(true);expect(f.node.style.top).toBe('180px');
+    expect(metrics).toHaveBeenCalledTimes(2);scheduler.dispose();f.hook.unmount();
+  });
   it('projects the live price again after metric callbacks can change the scale', () => {
     const f = fixture();
     f.options.chartSettingsRef.current.showBidPriceLine = true;

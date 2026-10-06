@@ -80,7 +80,7 @@ export const createTradeOverlayModelRuntime = ({
       isCurrent: isRuntimeCurrent,
       isInteracting: () => isChartInteractionActiveRef.current,
       requestPostInteraction: () => postInteractionCoordinatorRef.current?.request({ overlay: true }),
-      project: () => updateLabelPositions(),
+      project: refreshMetrics => updateLabelPositions(refreshMetrics),
     });
     const queueTradeOverlayRelayout = relayoutQueue.queue;
 
@@ -459,6 +459,7 @@ export const createTradeOverlayModelRuntime = ({
 
   return {
     queueTradeOverlayRelayout,
+    projectCommittedTradeOverlayGeometry: relayoutQueue.projectCommittedGeometry,
     disposeTradeOverlayRelayout: relayoutQueue.dispose,
     flushPostInteractionTradeOverlay: relayoutQueue.flushPostInteraction,
     normalizeUnixSeconds,

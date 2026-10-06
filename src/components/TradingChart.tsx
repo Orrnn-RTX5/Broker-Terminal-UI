@@ -691,7 +691,7 @@ export const TradingChart = React.memo(function TradingChart({
     resolvedPriceDigitsRef,
     seriesRef,
   });
-  const repaintTradeOverlayGeometryRef = useRef<() => void>(() => undefined);
+  const repaintTradeOverlayGeometryRef = useRef<(committedDraw?: boolean) => void>(() => undefined);
   const leftVisibleTimeRef = useRef<number | null>(null);
   const lastAcceptedQuoteRef = useRef<number | null>(null);
   const incompatibleQuoteCountRef = useRef(0);
@@ -2105,7 +2105,7 @@ useTradingChartInitialization({
     }
     series.attachPrimitive(new ChartOverlayGeometryPrimitive(() => {
       if (isDisposedRef.current || !isActiveRef.current || seriesRef.current !== series) return;
-      repaintTradeOverlayGeometryRef.current();
+      repaintTradeOverlayGeometryRef.current(true);
     }));
     return series;
   }, [areaTrendDirectionRef]);

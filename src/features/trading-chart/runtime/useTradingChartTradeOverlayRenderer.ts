@@ -94,6 +94,7 @@ interface UseTradingChartTradeOverlayRendererOptions {
   persistTradeLevelOverrides: () => void;
   postInteractionCoordinatorRef: RefObject<ChartPostInteractionCoordinator | null>;
   postInteractionTradeOverlayLayoutRef: RefObject<(() => void) | null>;
+  committedTradeOverlayLayoutRef: RefObject<(() => void) | null>;
   prevTimeframeRef: RefObject<Timeframe>;
   resolvedPriceDigits: number;
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
@@ -153,6 +154,7 @@ export const useTradingChartTradeOverlayRenderer = ({
   persistTradeLevelOverrides,
   postInteractionCoordinatorRef,
   postInteractionTradeOverlayLayoutRef,
+  committedTradeOverlayLayoutRef,
   prevTimeframeRef,
   resolvedPriceDigits,
   seriesRef,
@@ -196,6 +198,7 @@ export const useTradingChartTradeOverlayRenderer = ({
 
     const {
       queueTradeOverlayRelayout,
+      projectCommittedTradeOverlayGeometry,
       disposeTradeOverlayRelayout,
       flushPostInteractionTradeOverlay,
       normalizeUnixSeconds,
@@ -247,6 +250,7 @@ export const useTradingChartTradeOverlayRenderer = ({
       isRuntimeCurrent,
     });
     postInteractionTradeOverlayLayoutRef.current = flushPostInteractionTradeOverlay;
+    committedTradeOverlayLayoutRef.current = projectCommittedTradeOverlayGeometry;
 
     const {
       createCollisionOffsetFactory,
@@ -938,6 +942,7 @@ export const useTradingChartTradeOverlayRenderer = ({
       activeGroups.dispose();
       historyGroups.dispose();
       if (postInteractionTradeOverlayLayoutRef.current === flushPostInteractionTradeOverlay) postInteractionTradeOverlayLayoutRef.current = null;
+      if (committedTradeOverlayLayoutRef.current === projectCommittedTradeOverlayGeometry) committedTradeOverlayLayoutRef.current = null;
       unbindSubscriptions();
     };
   }, [brokerAccountSessionScope, positionCloseScope, brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, TRADE_HISTORY_PRESENTATION_VERSION, updateLabelPositions]);

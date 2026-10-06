@@ -82,7 +82,7 @@ interface UseTradingChartTradeRuntimeOptions {
   postInteractionCoordinatorRef: RefObject<ChartPostInteractionCoordinator | null>;
   prevSymbolRef: RefObject<string>;
   prevTimeframeRef: RefObject<Timeframe>;
-  repaintTradeOverlayGeometryRef: RefObject<() => void>;
+  repaintTradeOverlayGeometryRef: RefObject<(committedDraw?: boolean) => void>;
   resolvedPriceDigits: number;
   resolvedPriceDigitsRef: RefObject<number>;
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
@@ -197,6 +197,7 @@ export const useTradingChartTradeRuntime = ({
 
   const tradeOverlayRafRef = useRef<number | null>(null);
   const postInteractionTradeOverlayLayoutRef = useRef<(() => void) | null>(null);
+  const committedTradeOverlayLayoutRef = useRef<(() => void) | null>(null);
 
 
 
@@ -762,7 +763,10 @@ export const useTradingChartTradeRuntime = ({
 
 
   useEffect(() => {
-    const repaintTradeOverlayGeometry = () => updateLabelPositions(false);
+    const repaintTradeOverlayGeometry = (committedDraw = false) => {
+      if (committedDraw && committedTradeOverlayLayoutRef.current) committedTradeOverlayLayoutRef.current();
+      else updateLabelPositions(false);
+    };
     repaintTradeOverlayGeometryRef.current = repaintTradeOverlayGeometry;
     return () => {
       if (repaintTradeOverlayGeometryRef.current === repaintTradeOverlayGeometry) {
@@ -825,6 +829,7 @@ export const useTradingChartTradeRuntime = ({
 
   useTradingChartTradeOverlayRenderer({
     postInteractionTradeOverlayLayoutRef,
+    committedTradeOverlayLayoutRef,
     activeOverlayNodeDataRef,
     activeOverlayNodesRef,
     activeTradeSnapshotsRef,
