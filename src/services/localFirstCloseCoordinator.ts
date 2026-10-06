@@ -14,6 +14,8 @@ export type LocalFirstCloseOptions<TCandidate extends LocalFirstCloseCandidate> 
   loadAuthoritativeCandidates: () => Promise<readonly TCandidate[]>;
   closePosition: (ticketId: number, candidate: TCandidate) => Promise<unknown>;
   tryClaimTicket?: (ticketId: number) => boolean;
+  /** Capture quote demand and immutable snapshots before dispatch; no UI work. */
+  onCandidatesPrepared?: (candidates: readonly TCandidate[]) => void;
   onCandidatesStarted?: (candidates: readonly TCandidate[]) => void;
   /** Fires as soon as the backend confirms one ticket's close, before the batch settles. */
   onTicketConfirmed?: (ticketId: number) => void;
@@ -50,6 +52,7 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
     localCandidates,
     loadAuthoritativeCandidates,
     tryClaimTicket,
+    onCandidatesPrepared,
     onCandidatesStarted,
     onTicketConfirmed,
   } = options;
@@ -60,7 +63,7 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
     // The close is already confirmed by the backend; a UI callback failure
     // must not report this ticket as failed.
     try {
-      onTicketConfirmed?.(ticketId);
+      if (isSessionCurrent()) onTicketConfirmed?.(ticketId);
     } catch (error) {
       console.error(`[Close] Confirmed-close handler failed for ticket ${ticketId}:`, error);
     }
@@ -105,19 +108,30 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
     return selected;
   };
 
+  const startPreparedBatch = (candidates: readonly TCandidate[]) => {
+    if (candidates.length > 0) onCandidatesPrepared?.(candidates);
+    // closeCurrentPosition rechecks scope for every slot, including after a
+    // preparation callback changes the session. Keep each original promise.
+    const closePromise = closePositionsConcurrently(candidates, closeCurrentPosition);
+    if (candidates.length > 0 && isSessionCurrent()) {
+      try { onCandidatesStarted?.(candidates); }
+      catch (error) { console.error('[Close] Pending-close presentation failed:', error); }
+    }
+    return closePromise;
+  };
+
   // Start a bounded local close queue before loading the snapshot so existing
   // visible tickets begin closing immediately. The snapshot read can discover
   // a position that was not yet rendered, but its closes wait for this queue:
   // one Close All action must never create two concurrent bursts for an
   // account and exceed the gateway's per-account admission limit.
   const selectedLocalCandidates = selectNewCandidates(localCandidates);
-  const localClosePromise = closePositionsConcurrently(selectedLocalCandidates, closeCurrentPosition);
-  if (selectedLocalCandidates.length > 0) onCandidatesStarted?.(selectedLocalCandidates);
+  const localClosePromise = startPreparedBatch(selectedLocalCandidates);
 
   let authoritativeCandidates: readonly TCandidate[] = [];
   let authoritativeSnapshotError: unknown | null = null;
   try {
-    authoritativeCandidates = await loadAuthoritativeCandidates();
+    if (isSessionCurrent()) authoritativeCandidates = await loadAuthoritativeCandidates();
   } catch (error) {
     authoritativeSnapshotError = error;
   }
@@ -127,8 +141,7 @@ export const closePositionsLocalFirst = async <TCandidate extends LocalFirstClos
   let authoritativeResult: ClosePositionsConcurrentlyResult = EMPTY_CLOSE_RESULT;
   if (authoritativeSnapshotError === null && isSessionCurrent()) {
     const selectedAuthoritativeCandidates = selectNewCandidates(authoritativeCandidates);
-    if (selectedAuthoritativeCandidates.length > 0) onCandidatesStarted?.(selectedAuthoritativeCandidates);
-    authoritativeResult = await closePositionsConcurrently(selectedAuthoritativeCandidates, closeCurrentPosition);
+    authoritativeResult = await startPreparedBatch(selectedAuthoritativeCandidates);
   }
   const closeResult = mergeCloseResults(localResult, authoritativeResult);
 

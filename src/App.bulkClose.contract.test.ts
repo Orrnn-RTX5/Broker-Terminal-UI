@@ -70,7 +70,7 @@ describe('Close All source contract', () => {
   it('removes every claimed row immediately, then makes confirmations durable', () => {
     expect(startedStart).toBeGreaterThan(-1);
     expect(startedEnd).toBeGreaterThan(startedStart);
-    expect(candidatesStartedHandler).toContain('markLocalTradeMutation(ticketIds);');
+    expect(candidatesStartedHandler).toContain('presentBulkClose(() => markLocalTradeMutation(ticketIds));');
     expect(candidatesStartedHandler).toContain("dispatchTradeOverlayCloseState(ticketIds, 'pending', {");
     expect(candidatesStartedHandler).toContain('.positions.filter((position) => !ticketSet.has(position.id))');
     expect(candidatesStartedHandler).toContain('{ removedTickets: ticketIds }');
@@ -81,8 +81,8 @@ describe('Close All source contract', () => {
   });
 
   it('restores failed tickets immediately and reports them', () => {
-    expect(bulkHandler).toContain('clearOptimisticClosedTickets(failedTicketIds, closeMarkerScope);');
-    expect(bulkHandler).toContain("dispatchTradeOverlayCloseState(failedTicketIds, 'failed');");
+    expect(bulkHandler).toContain('presentBulkClose(() => clearOptimisticClosedTickets(failedTicketIds, closeMarkerScope));');
+    expect(bulkHandler).toContain("presentBulkClose(() => dispatchTradeOverlayCloseState(failedTicketIds, 'failed'));");
     expect(bulkHandler).toContain('closeCandidatesByTicket.get(ticketId)');
     expect(bulkHandler).toContain('store.setPositions([...store.positions, ...restoredPositions]);');
     expect(bulkHandler).toContain("feedbackLabel('closed')");
