@@ -21,5 +21,12 @@ export interface ClosePositionRequestOptions extends ApiRequestOptions {
   accountLogin?: number | string;
   closeRecoveryAttempts?: number;
   closeRecoveryIntervalMs?: number;
+  /** Read-only continuation after foreground uncertainty; capped at five minutes. */
+  closeBackgroundReconciliationMs?: number;
+  onCloseCommandStatus?: (command: {
+    status: 'awaiting-confirmation' | 'filled' | 'rejected' | 'expired';
+    clientOrderId: string;
+    ticket: string;
+  }) => void;
 }
 export type ClosePositionSecondArg = ClosePositionRequestOptions | number | undefined;

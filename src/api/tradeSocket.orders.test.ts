@@ -141,6 +141,33 @@ describe('TradeWebSocketClient market orders', () => {
     }
   });
 
+  it.each([10, 25, 50])('correlates %i concurrent commands with reversed fills and unique original UUIDs', async count => {
+    const { client, socket } = createOpenClient();
+    const orders = Array.from({ length: count }, () => { socket.bufferedAmount = 0; return client.placeOrder(marketOrder); });
+    const requests = sentMessages(socket).filter(message => message.action === 'place_order');
+    expect(new Set(requests.map(r => r.client_order_id)).size).toBe(count);
+    expect(new Set(requests.map(r => r.request_id)).size).toBe(count);
+    [...requests].reverse().forEach((r, index) => socket.emit({ type: 'order_filled', status: 'filled',
+      request_id: r.request_id, client_order_id: r.client_order_id, data: { ...filledData, position_ticket: 990001 + index } }));
+    const results = await Promise.all(orders);
+    expect(results.map(r => r.client_order_id)).toEqual(requests.map(r => r.client_order_id));
+    expect(sentMessages(socket).filter(r => r.action === 'place_order')).toHaveLength(count);
+    client.disconnect();
+  });
+
+  it('preserves authoritative acceptance deadline and time evidence on status recovery failure', async () => {
+    const { client, socket } = createOpenClient();
+    const outcome = client.placeOrder(marketOrder).catch(error => error);
+    const request = findSentAction(socket, 'place_order');
+    const evidence = { execute_before: 1_800_000_030_000, accepted_at: 1_800_000_000_000, server_time_ms: 1_800_000_000_100 };
+    socket.emit({ type: 'order_accepted', ...evidence, request_id: request.request_id, client_order_id: request.client_order_id });
+    socket.emit({ type: 'order_status_error', request_id: request.request_id, client_order_id: request.client_order_id,
+      error: { code: 'STATUS_UNAVAILABLE', message: 'Unavailable' } });
+    await expect(outcome).resolves.toMatchObject({ orderWasSent: true, orderCommandResponse: evidence,
+      orderCommandReceivedAtMonoMs: expect.any(Number) });
+    client.disconnect();
+  });
+
   it('omits zero-value protection from place_order and resolves a direct fill', async () => {
     const { client, socket } = createOpenClient();
 

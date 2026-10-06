@@ -68,6 +68,8 @@ export interface Tick extends QuoteSessionRange, TerminalQuoteMetadata, QuoteTra
 export type AppTickEntry = readonly [symbol: string, tick: Tick];
 
 export interface Position {
+  closeCommandState?: 'awaiting-confirmation';
+  closeClientOrderId?: string;
   protection_version?: string | number;
   id: number;
   symbol: string;
@@ -107,13 +109,14 @@ export interface Position {
 export const RECENT_OPEN_POSITION_RETENTION_MS = 30_000;
 
 // Closed tickets must survive duplicate sockets and lagged REST snapshots.
-// Scope includes credentials so a new login session never inherits tombstones.
+// Session generation changes on logout/account/broker boundaries, while a
+// routine token refresh retains the same outstanding command ownership.
 let closedPositionScope = '';
 const closedPositionTickets = new Set<number>();
 
 export const isConfirmedClosedPosition = (ticket: number): boolean => {
   const state = useAppStore.getState();
-  return closedPositionScope === `${state.accountId ?? ''}:${state.authToken ?? ''}`
+  return closedPositionScope === `${state.accountId ?? ''}:${getPositionCloseScope()}`
     && closedPositionTickets.has(Number(ticket));
 };
 
@@ -129,6 +132,7 @@ export const isRecentlyAdmittedOpenPosition = (position: Position, now = Date.no
 const CLOSED_POSITION_TICKET_TTL_MS = 5 * 60_000;
 const markedClosedPositionTickets = new Map<number, number>();
 let positionCloseScope = 0;
+let credentialRefreshDepth = 0;
 
 /** Capture before an asynchronous close so its cleanup cannot affect a newer session. */
 export const getPositionCloseScope = (): number => positionCloseScope;
@@ -773,14 +777,20 @@ export const useAppStore = create<AppState>()(
             if (expiresAt) localStorage.setItem('token_expires_at', new Date(expiresAt).toISOString());
             dispatchAuthTokenUpdated();
           }
-          set((state) => {
-            tokenRotated = state.authToken !== authToken;
-            return {
-              authToken,
-              refreshToken: refreshToken !== undefined ? refreshToken : state.refreshToken,
-              tokenExpiresAt: expiresAt !== undefined ? expiresAt : state.tokenExpiresAt
-            };
-          });
+          const refreshesCurrentSession = Boolean(useAppStore.getState().isAuthenticated && useAppStore.getState().authToken && authToken);
+          if (refreshesCurrentSession) credentialRefreshDepth += 1;
+          try {
+            set((state) => {
+              tokenRotated = state.authToken !== authToken;
+              return {
+                authToken,
+                refreshToken: refreshToken !== undefined ? refreshToken : state.refreshToken,
+                tokenExpiresAt: expiresAt !== undefined ? expiresAt : state.tokenExpiresAt
+              };
+            });
+          } finally {
+            if (refreshesCurrentSession) credentialRefreshDepth -= 1;
+          }
           // FIX: Token refresh must rotate every socket, not only notify API
           // consumers through the browser event.
           if (tokenRotated) emitSessionChange('token_rotation');
@@ -798,7 +808,9 @@ export const useAppStore = create<AppState>()(
             }
             dispatchAuthTokenUpdated();
           }
-          set({ authToken: token });
+          const refreshesCurrentSession = Boolean(useAppStore.getState().isAuthenticated && previousToken && token);
+          if (refreshesCurrentSession) credentialRefreshDepth += 1;
+          try { set({ authToken: token }); } finally { if (refreshesCurrentSession) credentialRefreshDepth -= 1; }
           // FIX: The single-token setter participates in the same socket
           // credential lifecycle as the full refresh-token setter.
           if (previousToken !== token) emitSessionChange(token ? 'token_rotation' : 'logout');
@@ -867,8 +879,9 @@ export const useAppStore = create<AppState>()(
 
         setPositions: (positions, options = {}) =>
           set((state) => {
-            const scope = `${state.accountId ?? ''}:${state.authToken ?? ''}`;
-            if (scope !== closedPositionScope) {
+            const scope = `${state.accountId ?? ''}:${getPositionCloseScope()}`;
+            const closeScopeChanged = scope !== closedPositionScope;
+            if (closeScopeChanged) {
               closedPositionScope = scope;
               closedPositionTickets.clear();
             }
@@ -878,7 +891,8 @@ export const useAppStore = create<AppState>()(
             // Position streams can update on every tick. Index once so a burst
             // of filled orders merges in O(n), instead of doing an O(n) find
             // for every incoming row and blocking the next Buy/Sell click.
-            const existingById = new Map(state.positions.map((position) => [position.id, position]));
+            const existingById = new Map(state.positions.map((position) => [position.id, closeScopeChanged
+              ? { ...position, closeCommandState: undefined, closeClientOrderId: undefined } : position]));
             const nextPositions = positions.flatMap((incoming): Position[] => {
               if (closedPositionTickets.has(Number(incoming.id)) || removed.has(Number(incoming.id))) return [];
               const existing = existingById.get(incoming.id);
@@ -962,6 +976,14 @@ export const useAppStore = create<AppState>()(
             for (const existing of state.positions) {
               if (closedPositionTickets.has(Number(existing.id)) || removed.has(Number(existing.id))) continue;
               if (nextIds.has(existing.id)) continue;
+              // Snapshot omission is not proof that this particular close
+              // completed. Keep the original UUID visible until an explicit
+              // terminal outcome/tombstone, or an account/session reset.
+              if (!closeScopeChanged && existing.closeCommandState === 'awaiting-confirmation') {
+                nextPositions.push(existing);
+                nextIds.add(existing.id);
+                continue;
+              }
               if (!isRenderableOpenPosition(existing) || !isRetainableOpenPosition(existing, now)) continue;
               nextPositions.push(existing);
               nextIds.add(existing.id);
@@ -1125,11 +1147,11 @@ if (typeof window !== 'undefined') {
 
 // Ticket numbers are only meaningful within one broker/account session. Observe
 // both stores: broker ownership may change without changing the account number,
-// and token/reset changes may leave the committed broker/account key unchanged.
+// and logout/reset changes may leave the committed broker/account key unchanged.
 useAppStore.subscribe((state, previous) => {
   if (
     state.accountId !== previous.accountId
-    || state.authToken !== previous.authToken
+    || (state.authToken !== previous.authToken && credentialRefreshDepth === 0)
     || state.isAuthenticated !== previous.isAuthenticated
   ) resetMarkedClosedPositions();
 });

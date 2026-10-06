@@ -48,6 +48,11 @@ export function createPositionCloseHandler({
       return false;
     }
     const closeTicketKey = createSessionScopedTicketKey(closeSessionScope, id);
+    // The bounded reader may have stopped while the server outcome is still
+    // unknown. Preserve its intent identity instead of issuing another UUID.
+    if (useAppStore.getState().positions.some(position => position.id === id && position.closeCommandState === 'awaiting-confirmation')) {
+      return false;
+    }
     // Guard against double-click: skip if already closing this ticket
     if (closingTicketsRef.current.has(closeTicketKey)) {
       console.log(`[App] Close already in progress for ticket ${id}, skipping duplicate`);
@@ -99,6 +104,25 @@ export function createPositionCloseHandler({
       await api.positions.closePosition(String(id), {
         account_login: closeLogin,
         executionContext,
+        onCloseCommandStatus: ({ status, clientOrderId }) => {
+          if (!isCurrentCloseSession()) return;
+          if (status === 'awaiting-confirmation') {
+            clearOptimisticClosedTickets([id], closeMarkerScope);
+            const store = useAppStore.getState();
+            const current = store.positions.find(position => position.id === id) ?? closingPosition;
+            store.setPositions([...store.positions.filter(position => position.id !== id), {
+              ...current, closeCommandState: 'awaiting-confirmation', closeClientOrderId: clientOrderId,
+            }]);
+            publishOrderFeedback(
+              [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Awaiting confirmation'), feedbackValue(` (${clientOrderId})`)],
+              'warning',
+            );
+          } else if (status === 'rejected' || status === 'expired') {
+            const store = useAppStore.getState();
+            store.setPositions(store.positions.map(position => position.id === id
+              ? { ...position, closeCommandState: undefined, closeClientOrderId: undefined } : position));
+          }
+        },
       });
       if (!isCurrentCloseSession()) {
         clearOptimisticClosedTickets([id], closeMarkerScope);
@@ -118,12 +142,15 @@ export function createPositionCloseHandler({
       clearOptimisticClosedTickets([id], closeMarkerScope);
       const sessionCurrent = isCurrentCloseSession();
       if (sessionCurrent) {
-        dispatchTradeOverlayCloseState([id], 'failed');
+        const unresolved = Boolean(err && typeof err === 'object' && 'data' in err
+          && err.data && typeof err.data === 'object' && 'code' in err.data && err.data.code === 'ORDER_OUTCOME_UNKNOWN');
+        if (!unresolved) dispatchTradeOverlayCloseState([id], 'failed');
         const store = useAppStore.getState();
         const existingTickets = new Set(store.positions.map((position) => position.id));
         const restoredPositions = closingPositions.filter((position) => !existingTickets.has(position.id));
         if (restoredPositions.length > 0) store.setPositions([...store.positions, ...restoredPositions]);
-        publishSingleCloseFailure(formatOrderError(err));
+        if (unresolved) publishOrderFeedback(formatOrderError(err), 'warning');
+        else publishSingleCloseFailure(formatOrderError(err));
         refreshPositions(closeLogin, { allowWsCommit: true });
       }
       return false;

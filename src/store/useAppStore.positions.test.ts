@@ -60,6 +60,47 @@ describe('useAppStore setPositions burst merge', () => {
     expect(useAppStore.getState().positions[0]).toMatchObject({ profit: 7, price_time_msc: 2000 });
   });
 
+  it('preserves unknown close identity through full, partial and missing snapshots until confirmed', () => {
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    useAppStore.getState().setPositions([position(93, { closeCommandState: 'awaiting-confirmation', closeClientOrderId: id })]);
+    useAppStore.getState().setPositions([position(93, { currentPrice: 81000 })]);
+    useAppStore.getState().setPositions([{ id: 93, currentPrice: 82000 } as Position]);
+    useAppStore.getState().setPositions([]);
+    expect(useAppStore.getState().positions[0]).toMatchObject({ id: 93, currentPrice: 82000, closeCommandState: 'awaiting-confirmation', closeClientOrderId: id });
+    useAppStore.getState().setPositions([], { closedTickets: [93] });
+    useAppStore.getState().setPositions([position(93)]);
+    expect(useAppStore.getState().positions).toEqual([]);
+  });
+
+  it('clears unknown close identity on rejection or account scope change', () => {
+    useAppStore.getState().setPositions([position(94, { closeCommandState: 'awaiting-confirmation', closeClientOrderId: 'original' })]);
+    useAppStore.getState().setPositions([position(94, { closeCommandState: undefined, closeClientOrderId: undefined })]);
+    expect(useAppStore.getState().positions[0].closeCommandState).toBeUndefined();
+    useAppStore.getState().setPositions([position(94, { closeCommandState: 'awaiting-confirmation', closeClientOrderId: 'original' })]);
+    useAppStore.setState({ accountId: 'different-account' });
+    useAppStore.getState().setPositions([position(94)]);
+    expect(useAppStore.getState().positions[0].closeCommandState).toBeUndefined();
+    expect(useAppStore.getState().positions[0].closeClientOrderId).toBeUndefined();
+  });
+
+  it('retains close ownership and tombstones across same-account token refresh, but invalidates logout', () => {
+    useAppStore.getState().setAuthenticated(true, '200001', 'first-token');
+    useAppStore.getState().setPositions([position(95, { closeCommandState: 'awaiting-confirmation', closeClientOrderId: 'original' }), position(96)]);
+    useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: [96] });
+    const scope = getPositionCloseScope();
+    useAppStore.getState().setAuthTokens('refreshed-token');
+    expect(getPositionCloseScope()).toBe(scope);
+    useAppStore.getState().setAuthToken('refreshed-again');
+    expect(getPositionCloseScope()).toBe(scope);
+    useAppStore.getState().setPositions([position(95), position(96)]);
+    expect(useAppStore.getState().positions).toHaveLength(1);
+    expect(useAppStore.getState().positions[0]).toMatchObject({ id: 95, closeCommandState: 'awaiting-confirmation', closeClientOrderId: 'original' });
+    useAppStore.getState().clearAuth();
+    expect(getPositionCloseScope()).not.toBe(scope);
+    useAppStore.getState().setPositions([position(95)]);
+    expect(useAppStore.getState().positions[0].closeCommandState).toBeUndefined();
+  });
+
   it('preserves immediate chart metadata across full and partial server updates', () => {
     useAppStore.getState().setPositions([position(1, {
       chartEntryPrice: 80_001.25,

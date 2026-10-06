@@ -285,7 +285,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     }
     // Disabled HTML buttons never run placeOrder, so capture decision transitions
     // independently of submitted-order telemetry. Do not include account identity.
-    const diagnosticBlockReason = !hasTradingSession ? 'login-required' : !tradeAllowed ? 'symbol-not-eligible'
+    const diagnosticBlockReason = !hasTradingSession ? 'login-required' : waitingForQuote ? 'waiting-for-quote' : !tradeAllowed ? 'symbol-not-eligible'
         : !quoteLive ? quoteFreshness.reason : !marketOpenForTrading ? 'market-not-open'
             : !isVolumeValid ? 'invalid-volume' : !hasExecutablePrice ? 'no-executable-price' : 'ready';
     const captureQuoteDiagnostics = quoteDiagnosticsEnabled();
@@ -309,6 +309,10 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 : !hasExecutablePrice
                     ? 'Waiting for a valid bid/ask price'
                     : undefined;
+    // A disabled button cannot open the click-time error dialog. Show the
+    // actual guard instead of leaving a live-looking price with no explanation.
+    const quoteGuardMessage = hasTradingSession && !waitingForQuote && (!tradeAllowed || !quoteLive)
+        ? orderBlockedReason : undefined;
 
     // Refresh data only: a blocked click never retains an executable order intent.
     const beginStaleQuoteRefresh = useCallback(() => {
@@ -794,7 +798,15 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 </div>
             )}
             {waitingForQuote && <div role="status">{tr('Waiting for a fresh quote')}</div>}
-            {quoteAdvisory && !waitingForQuote && !error && !blockedMessage && (
+            {quoteGuardMessage && !error && !blockedMessage && (
+                <div role="status" aria-live="polite" style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', padding: '3px 8px' }}>
+                    {tr(quoteGuardMessage)}
+                    {quoteFreshness.reason === 'stale' && Number.isFinite(quoteFreshness.ageMinMs) && (
+                        <span>{` · ${tr('Quote age')}: ≥ ${Math.max(0, quoteFreshness.ageMinMs! / 1000).toFixed(1)} s`}</span>
+                    )}
+                </div>
+            )}
+            {quoteAdvisory && !quoteGuardMessage && !waitingForQuote && !error && !blockedMessage && (
                 <div role="status" style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', padding: '3px 8px' }}>
                     {tr(quoteAdvisory)}
                 </div>

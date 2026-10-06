@@ -214,6 +214,7 @@ describe('durable closePosition intent', () => {
         client_order_id: SUPPLIED_CLOSE_ID,
         closeRecoveryAttempts: 3,
         closeRecoveryIntervalMs: 0,
+        closeBackgroundReconciliationMs: 0,
       })
       .then(
         () => null,

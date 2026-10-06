@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => {
   return {
     storeState,
     getSessionTradeSnapshotRequests: vi.fn(),
+    sessionListeners: new Set<(reason: string) => void>(),
+    authGeneration: 1,
+    committedScope: { accountId: '200001', brokerId: 'test', serverUrl: 'https://test.example.com', authenticated: true },
   };
 });
 
@@ -29,7 +32,7 @@ vi.mock('../store/useAppStore', () => {
       getState: () => mocks.storeState,
     },
   );
-  return { useAppStore, isConfirmedClosedPosition: () => false };
+  return { useAppStore, isConfirmedClosedPosition: () => false, getPositionCloseScope: () => mocks.authGeneration };
 });
 
 vi.mock('../api/tradeGateway', () => ({
@@ -51,15 +54,15 @@ vi.mock('../api/tradeGateway', () => ({
 }));
 
 vi.mock('../services/brokerSession', () => ({
+  onCommittedBrokerAccountSessionScopeChange: () => () => {},
+  onSessionChange: (callback: (reason: string) => void) => {
+    mocks.sessionListeners.add(callback);
+    return () => mocks.sessionListeners.delete(callback);
+  },
   buildBrokerWsV2Uri: () => 'ws://test.example.com/ws/v2',
   getAccessToken: () => 'access-token',
-  getCommittedBrokerAccountSessionScope: () => ({
-    authenticated: true,
-    accountId: '200001',
-    brokerId: 'test',
-    serverUrl: 'https://test.example.com',
-  }),
-  getCommittedBrokerAccountSessionScopeKey: () => 'authenticated|200001|test|https://test.example.com',
+  getCommittedBrokerAccountSessionScope: () => mocks.committedScope,
+  getCommittedBrokerAccountSessionScopeKey: () => `${mocks.committedScope.authenticated ? 'authenticated' : 'anonymous'}|${mocks.committedScope.accountId}|${mocks.committedScope.brokerId}|${mocks.committedScope.serverUrl}`,
   getServerUrl: () => 'https://test.example.com',
 }));
 
@@ -101,6 +104,9 @@ class IdleWebSocket {
 
 describe('useToolboxTradeData display lifecycle', () => {
   beforeEach(() => {
+    mocks.committedScope = { accountId: '200001', brokerId: 'test', serverUrl: 'https://test.example.com', authenticated: true };
+    mocks.sessionListeners.clear();
+    mocks.authGeneration = 1;
     mocks.storeState.isAuthenticated = true;
     mocks.storeState.accountId = '200001';
     mocks.storeState.authToken = 'access-token';
@@ -219,6 +225,54 @@ describe('useToolboxTradeData display lifecycle', () => {
     dispatchPlacement('pending');
     expect(result.current.pendingPositions).toEqual([]);
     expect(result.current.positions[0].id).toBe(17);
+    unmount();
+  });
+
+  it('keeps an unknown original UUID across token refresh and replaces it with the late fill', () => {
+    vi.useFakeTimers();
+    const { result, rerender, unmount } = renderHook(() => useToolboxTradeData());
+    dispatchPlacement('pending');
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(result.current.pendingPositions[0].placementErrorCode).toBe('ORDER_OUTCOME_UNKNOWN');
+    act(() => { mocks.storeState.authToken = 'refreshed-token'; mocks.sessionListeners.forEach(callback => callback('token_rotation')); });
+    rerender();
+    expect(result.current.pendingPositions).toHaveLength(1);
+    expect(result.current.pendingPositions[0].placementErrorMessage).toContain('order-one');
+    mocks.storeState.positions = [{ ...rawPosition, client_order_id: 'order-one' }];
+    rerender();
+    expect(result.current.pendingPositions).toEqual([]);
+    expect(result.current.positions).toHaveLength(1);
+    expect(result.current.positions[0].id).toBe(17);
+    unmount();
+  });
+
+  it.each(['login', 'logout', 'account_change', 'broker_url_change'])('clears previous intent UI on real %s session changes', reason => {
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    dispatchPlacement('pending');
+    expect(result.current.pendingPositions).toHaveLength(1);
+    act(() => mocks.sessionListeners.forEach(callback => callback(reason)));
+    expect(result.current.pendingPositions).toEqual([]);
+    unmount();
+  });
+
+  it('clears original UUIDs when the committed account changes during a credential update', () => {
+    const { result, rerender, unmount } = renderHook(() => useToolboxTradeData());
+    dispatchPlacement('pending');
+    mocks.committedScope = { ...mocks.committedScope, accountId: '200002' };
+    mocks.storeState.accountId = '200002';
+    mocks.storeState.authToken = 'another-account-token';
+    rerender();
+    expect(result.current.pendingPositions).toEqual([]);
+    unmount();
+  });
+
+  it('clears original UUIDs on an arbitrary authentication replacement in the same account', () => {
+    const { result, rerender, unmount } = renderHook(() => useToolboxTradeData());
+    dispatchPlacement('pending');
+    mocks.authGeneration++;
+    mocks.storeState.authToken = 'replacement-auth-identity';
+    rerender();
+    expect(result.current.pendingPositions).toEqual([]);
     unmount();
   });
 

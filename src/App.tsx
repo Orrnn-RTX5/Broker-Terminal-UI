@@ -994,6 +994,25 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           .catch(() => api.positions.getPositions(accId) as any))),
         closePosition: (ticketId, candidate) => api.positions.closePosition(String(ticketId), {
           account_login: accId,
+          onCloseCommandStatus: ({ status, clientOrderId }) => {
+            if (getCurrentCloseSessionKey() !== closeSessionScope) return;
+            if (status === 'awaiting-confirmation') {
+              clearOptimisticClosedTickets([ticketId], closeMarkerScope);
+              const store = useAppStore.getState();
+              const current = store.positions.find(position => position.id === ticketId) ?? candidate;
+              store.setPositions([...store.positions.filter(position => position.id !== ticketId), {
+                ...current, closeCommandState: 'awaiting-confirmation', closeClientOrderId: clientOrderId,
+              }]);
+              publishOrderFeedback(
+                [feedbackLabel('Close position'), feedbackValue(` #${ticketId}: `), feedbackLabel('Awaiting confirmation'), feedbackValue(` (${clientOrderId})`)],
+                'warning',
+              );
+            } else if (status === 'rejected' || status === 'expired') {
+              const store = useAppStore.getState();
+              store.setPositions(store.positions.map(position => position.id === ticketId
+                ? { ...position, closeCommandState: undefined, closeClientOrderId: undefined } : position));
+            }
+          },
           executionContext: {
             ticketId,
             symbol: candidate.symbol,
@@ -1002,6 +1021,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         }),
         tryClaimTicket: (ticketId) => {
           const ticketKey = createSessionScopedTicketKey(closeSessionScope, ticketId);
+          if (useAppStore.getState().positions.some(position => position.id === ticketId && position.closeCommandState === 'awaiting-confirmation')) return false;
           if (closingTicketsRef.current.has(ticketKey)) return false;
           closingTicketsRef.current.add(ticketKey);
           claimedBulkTicketIds.push(ticketId);
@@ -1054,7 +1074,17 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         return;
       }
 
-      const { confirmedTicketIds, failedTicketIds, failedReasons } = closeResult;
+      const { confirmedTicketIds } = closeResult;
+      const unresolvedIndexes = new Set(closeResult.failedReasons.flatMap((error, index) =>
+        error && typeof error === 'object' && 'data' in error && error.data && typeof error.data === 'object'
+          && 'code' in error.data && error.data.code === 'ORDER_OUTCOME_UNKNOWN' ? [index] : []));
+      const failedTicketIds = closeResult.failedTicketIds.filter((_, index) => !unresolvedIndexes.has(index));
+      const failedReasons = closeResult.failedReasons.filter((_, index) => !unresolvedIndexes.has(index));
+      if (unresolvedIndexes.size > 0) {
+        publishOrderFeedback(
+          [feedbackLabel('Close positions'), feedbackValue(`: ${unresolvedIndexes.size} `), feedbackLabel('Awaiting confirmation')], 'warning',
+        );
+      }
 
       if (failedTicketIds.length > 0) {
         const failureMessage = formatOrderError(failedReasons[0]);

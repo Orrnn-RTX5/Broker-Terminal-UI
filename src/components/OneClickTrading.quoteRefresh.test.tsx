@@ -107,12 +107,29 @@ describe('OneClickTrading stale-quote refresh', () => {
     freshnessMocks.enabled = true; freshnessMocks.live = false; freshnessMocks.reason = 'time-unverified';
     renderPanel(false);
     expect(getTradeButton('BUY')).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('server will validate');
+    expect(screen.getByRole('status')).toHaveTextContent('Trading is not available for BTCUSD');
+    expect(screen.getByRole('status')).not.toHaveTextContent('server will validate');
     fireEvent.click(getTradeButton('BUY'));
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
     expect(getQuoteDiagnosticDump().controls.at(-1)).toMatchObject({ kind: 'trade-control', phase: 'rendered-state',
       symbol: 'BTCUSD', disabled: true, reason: 'symbol-not-eligible', quotePermitsOrder: true, tradeAllowed: false });
     expect(JSON.stringify(getQuoteDiagnosticDump())).not.toContain('quote-refresh-test-token');
+  });
+
+  it('explains a disabled quote guard and clears it when the same displayed prices become executable', () => {
+    freshnessMocks.enabled = true; freshnessMocks.live = false; freshnessMocks.reason = 'stale';
+    const panel = renderPanel(true);
+    expect(getTradeButton('BUY')).toBeDisabled();
+    expect(getTradeButton('SELL')).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Waiting for a fresh quote');
+    fireEvent.click(getTradeButton('BUY'));
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+    freshnessMocks.live = true; freshnessMocks.reason = 'live';
+    panel.rerender(<OneClickTrading symbol="BTCUSD" timeframe="M1" visible tradeAllowed
+      marketStatus={normalizeMarketStatus({ symbol: 'BTCUSD', status: 'open' })} />);
+    expect(getTradeButton('BUY')).not.toBeDisabled();
+    expect(getTradeButton('SELL')).not.toBeDisabled();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('preserves the actual backend error and only refreshes data after a stale rejection', async () => {

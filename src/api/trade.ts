@@ -1,7 +1,10 @@
 import { assertTerminalMarketOrderQuote, assertTerminalQuoteFresh } from '../services/terminalQuoteFreshness';
 import { assertStoredExecutionQuoteFresh, assertStoredPositionCloseQuote } from '../services/terminalExecutionQuoteGuard';
 import { API_V2_BASE_URL, isLocalViteDevServer } from '../config/api';
-import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
+import { ApiError, apiClient, getDynamicUrl, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
+import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
+import { ORDER_COMMAND_BACKGROUND_RECONCILIATION_MS, ORDER_COMMAND_FALLBACK_DEADLINE_MS, parseOrderCommandEpochMs } from '../services/orderCommandLifecycle';
+import { scheduleOrderStatusRead } from '../services/orderStatusReadScheduler';
 import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
 import { getRuntimeBrokerConfiguration, isDesktopBackendTarget } from '../config/backendTarget.js';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
@@ -470,9 +473,9 @@ export const accountV2Api = {
 };
 export type { ClosePositionRequestOptions, ClosePositionSecondArg } from './positionClose';
 
-const CLOSE_RECOVERY_DEFAULT_ATTEMPTS = 8;
-const CLOSE_RECOVERY_DEFAULT_INTERVAL_MS = 500;
-const CLOSE_RECOVERY_MAX_ATTEMPTS = 20;
+const CLOSE_RECOVERY_DEFAULT_ATTEMPTS = 30;
+const CLOSE_RECOVERY_DEFAULT_INTERVAL_MS = 1_000;
+const CLOSE_RECOVERY_MAX_ATTEMPTS = 60;
 
 const toPositiveAccountLogin = (value: unknown): number | undefined => {
   if (typeof value === 'number') {
@@ -721,39 +724,84 @@ const pollCloseCommandForTerminal = async (
   requestOptions: ApiRequestOptions,
   attempts: number,
   intervalMs: number,
+  startedAtMono: number,
+  initialResponse: unknown,
+  initialReceivedAtMono: number,
+  isCurrent: () => boolean,
+  backgroundMs: number,
+  notify: (status: 'awaiting-confirmation' | 'filled' | 'rejected' | 'expired') => void,
 ): Promise<Deal> => {
-  const deadline = performance.now() + 30_000;
-  let lastAccepted: unknown = null;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const signal = requestOptions.signal;
-    if (signal?.aborted) throw signal.reason ?? new ApiError(0, `Close ${clientOrderId} aborted`);
-    if (attempt > 0) await delayWithAbort(intervalMs, signal);
-    if (signal?.aborted) throw signal.reason ?? new ApiError(0, `Close ${clientOrderId} aborted`);
-    const remainingMs = deadline - performance.now();
-    if (remainingMs <= 0) break;
-    let snapshot: unknown;
-    try {
-      snapshot = await apiClient.get<Record<string, unknown>>(
-        `/order-commands/${encodeURIComponent(clientOrderId)}`,
-        buildCloseStatusOptions({ ...requestOptions, timeoutMs: Math.min(requestOptions.timeoutMs ?? 5_000, remainingMs) }, accountLogin),
-      );
-    } catch (error) {
-      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) throw error;
-      if (error instanceof ApiError && error.status === 404) {
-        throw new ApiError(
-          404,
-          `Close outcome unknown for client_order_id ${clientOrderId}: order command not found; verify before acting (never resubmitted, not confirmed)`,
-          { client_order_id: clientOrderId },
-        );
-      }
-      if (attempt >= attempts - 1) break;
-      continue;
+  let foregroundDeadline = startedAtMono + ORDER_COMMAND_FALLBACK_DEADLINE_MS;
+  const hardDeadline = foregroundDeadline + backgroundMs;
+  let executeBeforeMs: number | undefined;
+  let lastAccepted: unknown = initialResponse;
+  let awaiting = false;
+  const observeDeadline = (payload: unknown, receivedAtMono: number) => {
+    if (!isCorrelatedCloseRejection(payload, clientOrderId, accountLogin)) return;
+    const [record, nested] = readCommandLevels(payload);
+    if (!record) return;
+    const before = parseOrderCommandEpochMs(record.execute_before ?? record.executeBefore ?? nested?.execute_before ?? nested?.executeBefore);
+    if (before === undefined) return;
+    executeBeforeMs = executeBeforeMs === undefined ? before : Math.min(executeBeforeMs, before);
+    const server = parseOrderCommandEpochMs(record.server_time_ms ?? record.server_time ?? nested?.server_time_ms ?? nested?.server_time);
+    const accepted = parseOrderCommandEpochMs(record.accepted_at ?? record.acceptedAt ?? nested?.accepted_at ?? nested?.acceptedAt);
+    const reference = server ?? accepted;
+    if (reference !== undefined) {
+      foregroundDeadline = Math.min(foregroundDeadline, (server === undefined ? startedAtMono : receivedAtMono) + Math.max(0, executeBeforeMs - reference));
     }
+  };
+  observeDeadline(initialResponse, initialReceivedAtMono);
+  for (let attempt = 0; ; attempt += 1) {
+    const signal = requestOptions.signal;
+    if (signal?.aborted) break;
+    if (!isCurrent()) break;
+    if (!awaiting && (attempt >= attempts || performance.now() >= foregroundDeadline)) {
+      awaiting = true;
+      notify('awaiting-confirmation');
+    }
+    if (awaiting && (backgroundMs === 0 || performance.now() >= hardDeadline)) break;
+    if (attempt > 0) {
+      try {
+        await delayWithAbort(Math.min(awaiting ? Math.max(5_000, intervalMs) : intervalMs, Math.max(0, hardDeadline - performance.now())), signal);
+      } catch {
+        break;
+      }
+    }
+    if (signal?.aborted) break;
+    const remainingMs = hardDeadline - performance.now();
+    if (remainingMs <= 0 || !isCurrent()) break;
+    let snapshot: unknown;
+    const readController = new AbortController();
+    const abortRead = () => readController.abort();
+    signal?.addEventListener('abort', abortRead, { once: true });
+    const readTimeoutMs = Math.max(1, Math.min(requestOptions.timeoutMs ?? 5_000, remainingMs));
+    const timeout = setTimeout(abortRead, readTimeoutMs);
+    try {
+      snapshot = await scheduleOrderStatusRead(() => {
+        if (!isCurrent()) throw new ApiError(0, 'Close reconciliation session changed');
+        return apiClient.get<Record<string, unknown>>(
+          `/order-commands/${encodeURIComponent(clientOrderId)}`,
+          buildCloseStatusOptions({ ...requestOptions, signal: readController.signal, timeoutMs: readTimeoutMs }, accountLogin),
+        );
+      }, readController.signal);
+    } catch (error) {
+      // Losing read permission cannot establish the outcome of the already
+      // submitted close. Stop polling and retain uncertainty, never reject it.
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) break;
+      continue;
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', abortRead);
+      readController.abort();
+    }
+    if (!isCurrent()) break;
+    observeDeadline(snapshot, performance.now());
     const status = readCommandStatus(snapshot);
     if (CLOSE_SUCCESS_STATUS[status]) {
       // A filled-type snapshot for another intent (or one that never names
       // this position) is unrelated/malformed: keep polling, never confirm.
       if (isCorrelatedCloseSuccess(snapshot, clientOrderId, expectedTicket, accountLogin)) {
+        notify('filled');
         return extractCloseTerminalDeal(snapshot);
       }
       lastAccepted = snapshot;
@@ -761,6 +809,7 @@ const pollCloseCommandForTerminal = async (
     }
     if (CLOSE_FAILURE_STATUS[status]) {
       if (isCorrelatedCloseRejection(snapshot, clientOrderId, accountLogin)) {
+        notify(status === 'expired' ? 'expired' : 'rejected');
         throw closeRejectionError(snapshot, clientOrderId);
       }
       lastAccepted = snapshot;
@@ -768,10 +817,11 @@ const pollCloseCommandForTerminal = async (
     }
     lastAccepted = snapshot;
   }
+  if (!awaiting) notify('awaiting-confirmation');
   throw new ApiError(
     0,
-    `Close confirmation timed out for client_order_id ${clientOrderId}; outcome unknown — verify GET /order-commands/${clientOrderId} before acting (never resubmitted, not confirmed)`,
-    { client_order_id: clientOrderId, lastStatus: lastAccepted },
+    `Awaiting confirmation for close client_order_id ${clientOrderId}; outcome unknown — verify GET /order-commands/${clientOrderId} before acting (never resubmitted, not confirmed)`,
+    { code: 'ORDER_OUTCOME_UNKNOWN', client_order_id: clientOrderId, execute_before_ms: executeBeforeMs, lastStatus: lastAccepted },
   );
 };
 
@@ -880,6 +930,19 @@ export const tradingV2Api = {
     const accountLogin = explicitAccount ?? paramAccount;
     const attempts = normalizeRecoveryAttempts(opts.closeRecoveryAttempts);
     const intervalMs = normalizeRecoveryIntervalMs(opts.closeRecoveryIntervalMs);
+    const requestedBackground = opts.closeBackgroundReconciliationMs;
+    const backgroundMs = requestedBackground !== undefined && Number.isFinite(requestedBackground)
+      ? Math.max(0, Math.min(ORDER_COMMAND_BACKGROUND_RECONCILIATION_MS, requestedBackground))
+      : ORDER_COMMAND_BACKGROUND_RECONCILIATION_MS;
+    const originalScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+    const baseUrl = opts.skipDynamicUrl ? (opts.baseUrl || API_V2_BASE_URL) : getDynamicUrl(opts.baseUrl || API_V2_BASE_URL);
+    const isCurrent = () => originalScope === getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())
+      && opts.executionContext?.isCurrent() !== false
+      && (opts.skipDynamicUrl || getDynamicUrl(opts.baseUrl || API_V2_BASE_URL) === baseUrl);
+    const notify = (status: 'awaiting-confirmation' | 'filled' | 'rejected' | 'expired') => {
+      if (!isCurrent()) return;
+      try { opts.onCloseCommandStatus?.({ status, clientOrderId, ticket }); } catch { /* UI observers cannot change execution outcomes. */ }
+    };
     const restRequest: ClosePositionRequestOptions = { ...opts };
     delete restRequest.executionContext;
     const rawParams = restRequest.params;
@@ -890,6 +953,8 @@ export const tradingV2Api = {
     delete restRequest.accountLogin;
     delete restRequest.closeRecoveryAttempts;
     delete restRequest.closeRecoveryIntervalMs;
+    delete restRequest.closeBackgroundReconciliationMs;
+    delete restRequest.onCloseCommandStatus;
     delete restRequest.params;
     const postParams: Record<string, unknown> = rawParams && typeof rawParams === 'object' ? { ...rawParams } : {};
     delete postParams.account_login;
@@ -897,34 +962,44 @@ export const tradingV2Api = {
     delete postParams.login;
     const postOptions = v2Options({
       ...restRequest,
+      baseUrl,
+      skipDynamicUrl: true,
       ...(Object.keys(postParams).length > 0 ? { params: postParams } : {}),
     });
-    const statusRequestOptions: ApiRequestOptions = { ...restRequest, ...(rawParams && typeof rawParams === 'object' ? { params: { ...rawParams } } : {}) };
+    const statusRequestOptions: ApiRequestOptions = { ...restRequest, baseUrl, skipDynamicUrl: true, ...(rawParams && typeof rawParams === 'object' ? { params: { ...rawParams } } : {}) };
     assertStoredPositionCloseQuote(ticket, opts.executionContext);
     const endpoint = `/positions/${ticket}/close`;
     const body = { client_order_id: clientOrderId, volume };
     return (async (): Promise<Deal> => {
+      const startedAtMono = performance.now();
       let posted: unknown;
+      const reconcile = () => pollCloseCommandForTerminal(clientOrderId, ticket, accountLogin, statusRequestOptions, attempts, intervalMs,
+        startedAtMono, posted, performance.now(), isCurrent, backgroundMs, notify);
       try {
         posted = await apiClient.post<unknown>(endpoint, body, postOptions);
       } catch (error) {
-        const ambiguous = error instanceof ApiError && (error.status === 0 || error.status === 503);
+        const ambiguous = error instanceof ApiError && (error.status === 0 || error.status >= 500);
         if (!ambiguous) throw error;
-        return pollCloseCommandForTerminal(clientOrderId, ticket, accountLogin, statusRequestOptions, attempts, intervalMs);
+        notify('awaiting-confirmation');
+        return reconcile();
       }
       const status = readCommandStatus(posted);
-      if (CLOSE_FAILURE_STATUS[status]) throw closeRejectionError(posted, clientOrderId);
+      if (CLOSE_FAILURE_STATUS[status] && isCorrelatedCloseRejection(posted, clientOrderId, accountLogin)) {
+        notify(status === 'expired' ? 'expired' : 'rejected');
+        throw closeRejectionError(posted, clientOrderId);
+      }
       if (CLOSE_SUCCESS_STATUS[status]) {
         // A direct success names this intent (original ID + position ticket)
         // or it is not a confirm: fall through to the bounded same-ID poll.
         if (isCorrelatedCloseSuccess(posted, clientOrderId, ticket, accountLogin)) {
+          notify('filled');
           return extractCloseTerminalDeal(posted);
         }
       } else if (isCloseAcceptedPayload(posted)) {
-        return pollCloseCommandForTerminal(clientOrderId, ticket, accountLogin, statusRequestOptions, attempts, intervalMs);
+        return reconcile();
       }
       // Uncorrelated responses require bounded same-ID reconciliation, never resubmission.
-      return pollCloseCommandForTerminal(clientOrderId, ticket, accountLogin, statusRequestOptions, attempts, intervalMs);
+      return reconcile();
     })();
   },
 

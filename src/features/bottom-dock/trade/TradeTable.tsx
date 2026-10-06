@@ -221,11 +221,13 @@ export function TradeTable({
             const isPendingPlacement = Boolean(
               placementState && !['filled', 'confirmed'].includes(placementState),
             );
+            const isAwaitingClose = position.closeCommandState === 'awaiting-confirmation';
+            const actionsDisabled = isPendingPlacement || isAwaitingClose;
             const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
             const isOutcomeUnknown = position.placementErrorCode === 'ORDER_OUTCOME_UNKNOWN';
             const placementLabel = isTerminalPlacementFailure
               ? tr(placementState === 'rejected' ? 'Rejected' : 'Expired')
-              : isOutcomeUnknown ? tr('Outcome unknown') : '…';
+              : isOutcomeUnknown ? tr('Awaiting confirmation') : '…';
             const profitValue = resolveTradeProfit(position).value;
             const pointsValue = getTradePointsValue(position);
             const profitIsPositive = profitMode === 'points'
@@ -305,12 +307,12 @@ export function TradeTable({
                   if (!isPendingPlacement) setSelectedPositionKey(positionKey);
                 }}
                 onDoubleClick={() => {
-                  if (isPendingPlacement) return;
+                  if (actionsDisabled) return;
                   setSelectedPositionKey(positionKey);
                   openModifyPosition(position);
                 }}
                 onContextMenu={(event) => {
-                  if (isPendingPlacement) return;
+                  if (actionsDisabled) return;
                   handleTradeContextMenu(event, position);
                 }}
               >
@@ -361,13 +363,13 @@ export function TradeTable({
                     title={`${tr('Stop Loss: {{value0}}', { value0: stopLossLabel })} · ${tr('Modify Position')}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (actionsDisabled) return;
                       setSelectedPositionKey(positionKey);
                       if (event.detail === 0) openModifyPosition(position);
                     }}
                     onDoubleClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (actionsDisabled) return;
                       setSelectedPositionKey(positionKey);
                       openModifyPosition(position);
                     }}
@@ -375,7 +377,7 @@ export function TradeTable({
                     <button
                       type="button"
                       className={`rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_sl ?? position.sl) > 0 ? 'text-[#ff7676]' : 'text-zinc-100'}`}
-                      disabled={isPendingPlacement}
+                      disabled={actionsDisabled}
                       aria-label={`${tr('Modify Position')} · ${tr('Stop Loss:')} #${position.id}`}
                     >
                       {stopLossLabel}
@@ -390,13 +392,13 @@ export function TradeTable({
                     title={`${tr('Take Profit: {{value0}}', { value0: takeProfitLabel })} · ${tr('Modify Position')}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (actionsDisabled) return;
                       setSelectedPositionKey(positionKey);
                       if (event.detail === 0) openModifyPosition(position);
                     }}
                     onDoubleClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (actionsDisabled) return;
                       setSelectedPositionKey(positionKey);
                       openModifyPosition(position);
                     }}
@@ -404,7 +406,7 @@ export function TradeTable({
                     <button
                       type="button"
                       className={`rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_tp ?? position.tp) > 0 ? 'text-[#34dca0]' : 'text-zinc-100'}`}
-                      disabled={isPendingPlacement}
+                      disabled={actionsDisabled}
                       aria-label={`${tr('Modify Position')} · ${tr('Take Profit:')} #${position.id}`}
                     >
                       {takeProfitLabel}
@@ -458,10 +460,10 @@ export function TradeTable({
                     type="button"
                     aria-label={isPendingPlacement ? (isTerminalPlacementFailure || isOutcomeUnknown ? placementLabel : tr('Order in progress')) : tr('Close position {{value0}}', { value0: position.ticket ?? position.id })}
                     title={isPendingPlacement ? rowComment : tr('Close position {{value0}}', { value0: ticketLabel })}
-                    disabled={isPendingPlacement}
+                    disabled={actionsDisabled}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (actionsDisabled) return;
                       onClosePosition(position.id);
                     }}
                     className="rtx-trade-close-button mx-auto flex h-[17px] w-[17px] cursor-default items-center justify-center rounded-sm border border-transparent text-[12px] font-normal leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:cursor-default disabled:text-zinc-600 disabled:hover:border-transparent disabled:hover:bg-transparent"
@@ -470,6 +472,15 @@ export function TradeTable({
                   </button>
                 </td>
               </PositionDiagnosticRow>
+              {isAwaitingClose && (
+                <tr>
+                  <td colSpan={visibleOptionalColumnCount + 2} className="px-2 py-1 text-left text-xs text-amber-300 whitespace-normal break-words">
+                    <div role="status" aria-live="polite" aria-atomic="true">
+                      {`${rowSummary}: ${tr('Awaiting confirmation')} (${position.closeClientOrderId ?? ticketLabel})`}
+                    </div>
+                  </td>
+                </tr>
+              )}
               {(isTerminalPlacementFailure || isOutcomeUnknown) && (
                 <tr>
                   <td colSpan={visibleOptionalColumnCount + 2} className="px-2 py-1 text-left text-xs text-red-300 whitespace-normal break-words">

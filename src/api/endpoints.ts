@@ -1,6 +1,6 @@
 import { assertTerminalMarketOrderQuote, assertTerminalQuoteFresh, getTerminalQuoteSession, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
 import { assertStoredExecutionQuoteFresh } from '../services/terminalExecutionQuoteGuard';
-import { apiClient } from './client';
+import { apiClient, type ApiRequestOptions } from './client';
 import { loadSharedAuthenticatedInstruments } from '../services/authenticatedInstruments';
 import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
 import { API_V2_BASE_URL, isLocalViteDevServer, normalizeBrokerServerUrl } from '../config/api';
@@ -551,7 +551,7 @@ export const tradingApi = {
 
   getOrderCommand: (
     clientOrderId: string,
-    options?: { account_login?: number | string; accountLogin?: number | string },
+    options?: ApiRequestOptions & { account_login?: number | string; accountLogin?: number | string },
   ): Promise<OrderCommandResponse> =>
     tradingV2Api.getOrderCommand(clientOrderId, { baseUrl: API_V2_BASE_URL, ...options }),
 
