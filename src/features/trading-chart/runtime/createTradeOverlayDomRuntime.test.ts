@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTradeOverlayDomRuntime } from './createTradeOverlayDomRuntime';
 import type { ActiveTradeSnapshot, TradeLevelOverride } from './tradeRuntimeContracts';
 import { tradeMarkerTooltipLayouts } from '../presentation/tradeOverlayPresentation';
+import { createActiveTradeOverlayGroups, createActiveTradeOverlayRenderPlans } from './createActiveTradeOverlayGroups';
 
 const modifyPosition = vi.hoisted(() => vi.fn());
 vi.mock('../../../services/api', () => ({ default: { positions: { modifyPosition } } }));
@@ -82,6 +83,96 @@ describe('SL/TP chart remove controls', () => {
       role === 'SL' ? { sl: 0, tp: levels.tp } : { sl: levels.sl, tp: 0 },
     );
     await Promise.resolve();
+  });
+});
+
+describe('incremental active groups with actual trade controls', () => {
+  beforeEach(() => { modifyPosition.mockReset().mockResolvedValue(undefined); });
+  afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
+
+  function groupedRuntime() {
+    const f = createRuntime({ seriesRef: { current: { priceFormatter: () => ({ format: (price: number) => price.toFixed(2) }) } } } as Partial<RuntimeOptions>);
+    const groups = createActiveTradeOverlayGroups({ nodes: f.options.activeOverlayNodesRef,
+      data: f.options.activeOverlayNodeDataRef, updaters: f.options.tradeControlLiveUpdatersRef });
+    const levelMap = new Map<string, TradeLevelOverride>();
+    const render = (trades: ActiveTradeSnapshot[]) => {
+      f.options.activeTradeSnapshotsRef.current = new Map(trades.map(item => [item.key, item]));
+      const descriptors = createActiveTradeOverlayRenderPlans({ sortedTrades: trades,
+        liveKeys: f.options.activeTradeSnapshotsRef.current, retainedKeys: new Set(), presentationSignature: 'test-context',
+        resolveLevels: item => levelMap.get(item.key) ?? { sl: 0, tp: 0 }, nextOffset: () => 0 });
+      groups.reconcile(descriptors.map(({ trade: item, levels, signature }) => ({ key: item.key, signature, create: () => {
+        f.runtime.createTradeMarker(item.side, item.entryPrice, item.entryTime, item.key, 'active');
+        f.runtime.createPriceLevel(item.key, item.entryPrice, '#999999', { tradeKey: item.key, role: 'ENTRY', labelVariant: 'none' });
+        f.runtime.createEntryControlsForTrade(item, levels);
+        for (const role of ['SL', 'TP'] as const) {
+          const price = role === 'SL' ? levels.sl : levels.tp;
+          if (!(price > 0)) continue;
+          f.runtime.createPriceLevel(role, price, '#999999', { tradeKey: item.key, role, labelVariant: 'none' });
+          f.runtime.createLevelControlsForTrade(item, role, levels);
+        }
+      } })));
+    };
+    return { ...f, groups, levelMap, render };
+  }
+
+  it('retains actual markers and controls over 50 fills, removal and re-add with one updater per trade', () => {
+    const f = groupedRuntime();
+    const trades = Array.from({ length: 50 }, (_, index) => ({ ...trade, key: `trade:${9302300 + index}` }));
+    f.render(trades.slice(0, 1));
+    const firstNodes = [...f.options.activeOverlayNodesRef.current];
+    const marker = f.host.querySelector('.rtx-trade-marker');
+    const creator = vi.spyOn(f.runtime, 'createEntryControlsForTrade');
+    for (let count = 2; count <= 50; count++) f.render(trades.slice(0, count));
+    expect(creator).toHaveBeenCalledTimes(49);
+    expect(f.options.activeOverlayNodesRef.current.slice(0, firstNodes.length)).toEqual(firstNodes);
+    expect(f.host.querySelector('.rtx-trade-marker')).toBe(marker);
+    expect(f.options.tradeControlLiveUpdatersRef.current).toHaveLength(50);
+    expect(f.host.querySelectorAll('.rtx-trade-axis-price-badge')).toHaveLength(50);
+    expect(f.options.activeOverlayNodeDataRef.current).toHaveLength(f.options.activeOverlayNodesRef.current.length);
+    f.render(trades.slice(1));
+    expect(firstNodes.every(node => !node.isConnected)).toBe(true);
+    expect(f.options.tradeControlLiveUpdatersRef.current).toHaveLength(49);
+    f.render(trades);
+    expect(creator).toHaveBeenCalledTimes(50);
+    expect(f.options.tradeControlLiveUpdatersRef.current).toHaveLength(50);
+    const entryBars = [...f.host.querySelectorAll<HTMLElement>('.rtx-trade-controls')]
+      .filter(node => node.dataset.role === 'ENTRY');
+    expect(entryBars.map(node => node.dataset.tradeKey)).toEqual(trades.map(item => item.key));
+    f.groups.dispose();
+    expect(f.host.querySelectorAll('.rtx-trade-marker,.rtx-trade-controls,.rtx-trade-axis-price-badge')).toHaveLength(0);
+  });
+
+  it('replaces changed level captures while retained controls update their latest valuation', async () => {
+    const f = groupedRuntime();
+    const other = { ...trade, key: 'trade:9302301' };
+    f.levelMap.set(trade.key, { sl: 87000, tp: 85000 });
+    f.render([trade]);
+    const findSlButton = () => f.host.querySelector<HTMLButtonElement>(
+      `[data-trade-key="${trade.key}"][data-role="SL"].rtx-trade-controls--level .rtx-trade-control-btn--remove`)!;
+    const oldButton = findSlButton();
+    f.render([trade, other]);
+    expect(findSlButton()).toBe(oldButton);
+    const entry = f.host.querySelector<HTMLElement>(`[data-trade-key="${trade.key}"][data-role="ENTRY"].rtx-trade-controls`)!;
+    const money = entry.querySelector<HTMLElement>('.rtx-trade-chip--money .rtx-trade-chip-value')!;
+    const previousMoney = money.textContent;
+    f.render([{ ...trade, currentPrice: 84000, currentTime: 10 }, other]);
+    f.options.tradeControlLiveUpdatersRef.current[0]();
+    expect(entry.isConnected).toBe(true);
+    expect(findSlButton()).toBe(oldButton);
+    expect(money.textContent).not.toBe(previousMoney);
+    expect(Number(money.textContent)).toBeCloseTo(19.40, 2);
+    const otherNodes = f.options.activeOverlayNodesRef.current.filter(node => node.dataset.tradeKey === other.key);
+    f.levelMap.set(trade.key, { sl: 87500, tp: 84500 });
+    f.render([{ ...trade, currentPrice: 84000, currentTime: 10 }, other]);
+    const newButton = findSlButton();
+    expect(newButton).not.toBe(oldButton);
+    expect(oldButton.isConnected).toBe(false);
+    expect(otherNodes.every(node => node.isConnected)).toBe(true);
+    newButton.click();
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(9302300, { price_sl: 0 });
+    expect(f.options.tradeLevelOverridesRef.current.get(trade.key)).toEqual({ sl: 0, tp: 84500 });
+    await Promise.resolve();
+    expect(f.options.tradeControlLiveUpdatersRef.current).toHaveLength(2);
   });
 });
 

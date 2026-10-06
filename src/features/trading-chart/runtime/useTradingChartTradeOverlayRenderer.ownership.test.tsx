@@ -15,6 +15,7 @@ function fixture() {
   const options = { visibleRuntime: { overlay: true }, isDisposedRef: { current: false },
     chartRef: { current: {} }, seriesRef: { current: {} }, symbol: 'BTCUSD', timeframe: 'M1', resolvedPriceDigits: 2,
     overlayRef: { current: {} }, drawingRuntimeContextRef: { current: { contextId: 'original' } },postInteractionTradeOverlayLayoutRef: { current: null },
+    activeOverlayNodesRef:{current:[]},activeOverlayNodeDataRef:{current:[]},tradeControlLiveUpdatersRef:{current:[]},
     hydrateTradeLevelOverrides: vi.fn() } as unknown as Options;
   const hook = renderHook(() => {
     const brokerAccountSessionScope = useBrokerAccountSessionScope();

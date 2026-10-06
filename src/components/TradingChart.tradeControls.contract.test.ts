@@ -16,6 +16,7 @@ const chartSource = [
   'src/features/trading-chart/runtime/useTradingChartTradeRuntime.ts',
   'src/features/trading-chart/runtime/createTradeOverlayModelRuntime.ts',
   'src/features/trading-chart/runtime/createTradeOverlayDomRuntime.ts',
+  'src/features/trading-chart/runtime/createActiveTradeOverlayGroups.ts',
   'src/features/trading-chart/runtime/useTradingChartTradeOverlayRenderer.ts',
   'src/features/trading-chart/runtime/bindTradeOverlayRuntimeSubscriptions.ts',
   'src/features/trading-chart/runtime/useTradingChartTradeLevelDrag.ts',
@@ -219,11 +220,11 @@ describe('cTrader-style position controls contract', () => {
   });
 
   it('renders the shared trade annotation from the URL payload', () => {
-    expect(chartSource).toContain('const sharedTrade = getSharedChartTrade();');
-    expect(chartSource).toContain("!activeTradeKeys.has(`trade:${sharedTrade.ticket}`)");
+    expect(chartSource).toContain('const sharedTradeForSignature = getSharedChartTrade();');
+    expect(chartSource).toContain("!activeTradeKeys.has(`trade:${sharedTradeForSignature.ticket}`)");
     expect(chartSource).toContain('const sharedLabel = `Shared ${sharedTrade.side} ');
     // Annotation participates in the redraw signature so it paints on first render.
-    expect(chartSource).toContain('const sharedTradeSignature = sharedTradeForSignature');
+    expect(chartSource).toContain('const sharedTradeSignature = JSON.stringify([presentationSignature, sharedTrade, sharedOffsets]);');
     expect(chartSource).toContain('sharedTradeSignature,\n        activeSignature,');
   });
 
