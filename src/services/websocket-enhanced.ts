@@ -13,21 +13,14 @@ import { enqueueLiveTick } from './liveTickDispatcher';
 import { buildBrokerWsV2Uri, getAccessToken, onSessionChange } from './brokerSession';
 import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
 import { isDesktopBackendTarget } from '../config/backendTarget.js';
-import {
-  composeDailyChangeQuoteContext,
-  readDailyChangeLastPrice,
-  readDailyChangePercent, readDailyChangeInput,
-  readDailyChangePreviousClose,
-  resolveDailyChangePercent,
-} from '../utils/dailyChange';
-import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
+import { processIncomingQuotePayload } from './quotePayloadNormalizer';
+import { terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
+import { quoteDiagnosticsEnabled, readQuoteWireEvidence } from './quoteDiagnostics';
 import {
   isEnhancedStoreHandledTickFrame,
   isExactAccountStreamChannel,
   type WebSocketMessage,
 } from './enhancedWebSocketMessage';
-import { readFirstFiniteNumber, readFirstNonEmptyString } from '../utils/recordFields';
-import { readQuoteSessionRange } from '../utils/quoteSessionRange';
 import {
   asUnknownRecord,
   normalizeBrokerTimestampMs,
@@ -48,12 +41,6 @@ export type ConnectionStateCallback = (state: ConnectionState) => void;
 export type MetricsCallback = (metrics: ConnectionMetrics) => void;
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error' | 'offline';
-
-const resolveTickSourceTimestampMs = (...values: unknown[]): number | undefined => {
-  // FIX: Normalize every supported broker alias and seconds/ms/us/ns/ISO form
-  // before freshness ordering; receipt time remains a distinct fallback.
-  return readBrokerTimestampMs(values.map(asUnknownRecord));
-};
 
 export interface ConnectionMetrics {
   messagesSent: number;
@@ -700,21 +687,10 @@ export class EnhancedWebSocketService {
     // Broadcast to subscribers
     if (type === 'channel_message' || typeof data.channel === 'string') {
       try {
-        const payload = data.data as any;
         // App owns account/position state. Transport-side async store writes
         // could overwrite its sparse merges and financial availability flags.
-        if (isEnhancedStoreHandledTickFrame(data) && data.channel?.startsWith('ticks.') && payload) {
-          const channelSymbol = data.channel.slice('ticks.'.length).trim().toUpperCase();
-          const sourceTimestamp = resolveTickSourceTimestampMs(payload, data);
-          this.handleFixTick({
-            ...payload,
-            // The subscribed channel is the exact broker instrument identity;
-            // payload.symbol may be an unsuffixed alias (for example EURUSD
-            // inside ticks.EURUSD.pro). Preserve the channel identity now that
-            // App intentionally no longer writes this same tick a second time.
-            symbol: channelSymbol || payload.symbol,
-            sourceTimestamp,
-          }, data);
+        if (isEnhancedStoreHandledTickFrame(data) && data.channel?.startsWith('ticks.')) {
+          this.handleFixTick(data);
         }
       } catch (err) {
         console.error('[WS] Failed to map channel_message to store:', err);
@@ -727,83 +703,20 @@ export class EnhancedWebSocketService {
    * Handle tick message from fixapibackend
    * Format: {type: 'tick', symbol, bid, ask, spread, timestamp, high24h, low24h, dailyChange, lp}
    */
-  private handleFixTick(data: WebSocketMessage, envelope?: WebSocketMessage): void {
-    const sourceTimestamp = resolveTickSourceTimestampMs(data);
-    const ts = sourceTimestamp ?? Date.now();
-    const dailyChangeContext = composeDailyChangeQuoteContext(data, envelope);
-    const last = readDailyChangeLastPrice(dailyChangeContext);
-    const priceMode = resolveDailyChangePriceMode(data, data.symbol, envelope);
-    const bid = Number(data.bid) || 0;
-    const ask = Number(data.ask) || bid;
-    const previousClose = readDailyChangePreviousClose(dailyChangeContext);
-    const dailyOpen = readFirstFiniteNumber(data, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']);
-    const close = readFirstFiniteNumber(data, ['close', 'close_price', 'closePrice']) ?? previousClose;
-    const volume = readFirstFiniteNumber(data, [
-      'volume',
-      'volume_24h',
-      'volume24h',
-      'tick_volume',
-      'tickVolume',
-      'real_volume',
-      'realVolume',
-    ]);
-    const lp = readFirstNonEmptyString(data, [
-      'lp',
-      'provider',
-      'liquidity_provider',
-      'liquidityProvider',
-      'lp_name',
-      'lpName',
-    ]);
-    const session = ((data as any).session ?? {}) as Record<string, unknown>;
-    const high = readFirstFiniteNumber(data, ['high']);
-    const low = readFirstFiniteNumber(data, ['low']);
-    const sessionHigh = Math.max(
-      Number(session.high_bid) || 0,
-      Number(session.high_ask) || 0,
-      high || 0
-    );
-    const sessionLowValues = [
-      Number(session.low_bid) || 0,
-      Number(session.low_ask) || 0,
-      low || 0,
-    ].filter((value) => value > 0);
-    const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
-    const high24h = readFirstFiniteNumber(data, ['high24h', 'high_24h']) ?? (sessionHigh || undefined);
-    const low24h = readFirstFiniteNumber(data, ['low24h', 'low_24h']) ?? sessionLow;
-    const dailyChange = resolveDailyChangePercent(
-      readDailyChangePercent(dailyChangeContext),
-      bid,
-      previousClose,
-      dailyChangeContext,
-      priceMode,
-    );
-    if (WS_DEBUG) {
-      console.log(`[WS TICK] ${data.symbol} bid=${data.bid} ask=${data.ask} spread=${data.spread} ts=${ts} daily=${data.dailyChange}`);
+  private handleFixTick(data: WebSocketMessage): void {
+    const diagnostic = quoteDiagnosticsEnabled();
+    const receiptMonoMs = diagnostic ? performance.now() : undefined;
+    // Normalize the original frame before display-time fallbacks: execution
+    // must retain provider provenance and every nested/envelope veto.
+    for (const tick of processIncomingQuotePayload(data)) {
+      // This account stream supplements current display/execution evidence.
+      // QuoteSocketManager still owns the complete ordered candle event stream.
+      if (terminalQuoteFreshnessEnabled()) tick.quoteDeliveryKind = 'snapshot';
+      if (diagnostic) enqueueLiveTick(tick.symbol, tick, {
+        ...readQuoteWireEvidence(tick), transport: 'v2', receiptMonoMs,
+      });
+      else enqueueLiveTick(tick.symbol, tick);
     }
-
-    enqueueLiveTick(data.symbol!, {
-      symbol: data.symbol!,
-      bid,
-      ask,
-      spread: Number(data.spread) || (ask - bid),
-      timestamp: ts,
-      // Consumers can order genuine broker events by sourceTimestamp without treating receipt time
-      // as proof that the execution quote cache is fresh.
-      sourceTimestamp,
-      lp,
-      volume,
-      last,
-      dailyChange,
-      dailyChangeInput: readDailyChangeInput({ ...dailyChangeContext, bid: data.bid }, priceMode),
-      high24h,
-      low24h,
-      high,
-      low,
-      ...readQuoteSessionRange(data),
-      open: dailyOpen,
-      close,
-    });
   }
 
   /**
