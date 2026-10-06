@@ -8,6 +8,7 @@ import { refreshChartUiTranslations } from '../../../utils/chartTradeControls';
 import { setTradeOverlayStyle } from '../../../utils/tradeOverlayStyle';
 import { getTradeHistoryMarkerPrice } from '../../../utils/chartTradeHistoryPresentation';
 import {
+  createTradeOverlayCandleLookup,
   resolveNearestTradeOverlayCandleTime,
   resolveTradeOverlaySegmentGeometry,
 } from '../../../services/tradeOverlayHistory';
@@ -430,6 +431,7 @@ export const useTradingChartTradeRuntime = ({
 
   const updateLabelPositions = useCallback((refreshMetrics = true) => {
     if (!seriesRef.current || !chartRef.current) return;
+    const candleLookup = createTradeOverlayCandleLookup(candlesRef.current, currentCandleRef.current);
 
     const series = seriesRef.current;
     const chart = chartRef.current;
@@ -462,7 +464,7 @@ export const useTradingChartTradeRuntime = ({
 
       const activeTf = prevTimeframeRef.current || timeframe;
       const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
-      const nearest = getNearestCandleByTime(
+      const nearest = candleLookup(
         numericTime,
         Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
       );
@@ -488,7 +490,7 @@ export const useTradingChartTradeRuntime = ({
       if (!tradeMarkerCandles.has(markerTime)) {
         const activeTf = prevTimeframeRef.current || timeframe;
         const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
-        const fallbackTime = getNearestCandleByTime(
+        const fallbackTime = candleLookup(
           markerTime,
           Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
         )?.time;

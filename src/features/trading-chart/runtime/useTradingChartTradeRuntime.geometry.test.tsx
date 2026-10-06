@@ -68,4 +68,31 @@ describe('trade overlay geometry presentation', () => {
     f.move(180); f.repaint(); expect(replacement.style.top).toBe('180px');
     f.hook.unmount(); f.move(190); f.repaint(); expect(replacement.style.top).toBe('180px');
   });
+  it('shares one candle index across marker fallbacks and rebuilds it on the next layout pass', () => {
+    const f = fixture();
+    let reads = 0;
+    const validTimes = new Set<number>();
+    f.options.candlesRef.current = Array.from({ length: 200 }, (_, index) => {
+      const time = 1000 + index * 60;
+      validTimes.add(time);
+      return { get time() { reads++; return time; }, open: 100, high: 101, low: 99, close: 100, volume: 1 };
+    });
+    f.options.chartRef.current!.timeScale = (() => ({
+      height: () => 30,
+      timeToCoordinate: (time: number) => validTimes.has(time) ? 50 : null,
+    })) as typeof f.options.chartRef.current.timeScale;
+    f.renderer.activeOverlayNodesRef.current = Array.from({ length: 40 }, () => document.createElement('div'));
+    f.renderer.activeOverlayNodeDataRef.current = Array.from({ length: 40 }, (_, index) => ({
+      kind: 'marker' as const, price: 100, time: 1001 + index * 60,
+    }));
+    f.repaint();
+    // One 200-candle build plus bounded result reads; never 40 full scans.
+    expect(reads).toBeGreaterThanOrEqual(200);
+    expect(reads).toBeLessThanOrEqual(200 + 40 * 3);
+    const firstPassReads = reads;
+    f.repaint();
+    expect(reads - firstPassReads).toBeGreaterThanOrEqual(200);
+    expect(reads - firstPassReads).toBeLessThanOrEqual(200 + 40 * 3);
+    f.hook.unmount();
+  });
 });

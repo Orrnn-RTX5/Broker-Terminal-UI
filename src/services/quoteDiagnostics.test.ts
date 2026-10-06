@@ -55,7 +55,53 @@ describe('opt-in quote evidence', () => {
     for (let i = 0; i < d.QUOTE_CONTROL_DIAGNOSTIC_CAPACITY + 2; i++) d.recordQuoteDiagnostic({ kind: 'clock', rttMs: i });
     expect(d.getQuoteDiagnosticDump().controls).toHaveLength(d.QUOTE_CONTROL_DIAGNOSTIC_CAPACITY);
     expect(d.getQuoteDiagnosticDump().overwrittenControls).toBe(3);
-    expect(Object.keys(window.__RTX_QUOTE_DIAGNOSTICS__!)).toEqual(['dump']);
+    expect(Object.keys(window.__RTX_QUOTE_DIAGNOSTICS__!)).toEqual(['dump', 'latestAcceptedQuote']);
+  });
+
+  it('returns only detached latest accepted evidence without cloning the diagnostic rings', async () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    const d = await import('./quoteDiagnostics');
+    d.recordQuoteDiagnostic({ kind: 'quote', symbol: 'BTCUSD', accepted: true, providerTimestamp: epoch, receiptMonoMs: 1000, token: 'secret' } as never);
+    d.recordQuoteDiagnostic({ kind: 'quote', symbol: 'BTCUSD', accepted: false, providerTimestamp: epoch - 1 });
+    const copy = d.getLatestAcceptedQuoteDiagnostic(' btcusd ')!;
+    expect(copy).toMatchObject({ accepted: true, providerTimestamp: epoch, receiptMonoMs: 1000 });
+    expect(copy).not.toHaveProperty('token');
+    (copy as Record<string, unknown>).providerTimestamp = 0;
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')!.providerTimestamp).toBe(epoch);
+    expect(d.getLatestAcceptedQuoteDiagnostic('EURUSD')).toBeUndefined();
+    const slice = vi.spyOn(Array.prototype, 'slice').mockImplementation(() => { throw Error('ring clone'); });
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')!.providerTimestamp).toBe(epoch);
+    slice.mockRestore();
+  });
+
+  it('invalidates lookup on disabled capture, symbol selection changes, ring eviction and explicit clear', async () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    const d = await import('./quoteDiagnostics');
+    const write = () => d.recordQuoteDiagnostic({ kind: 'quote', symbol: 'BTCUSD', accepted: true });
+    write(); window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = false;
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')).toBeUndefined();
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')).toBeUndefined();
+    write(); window.__RTX_QUOTE_DIAGNOSTICS_SYMBOLS__ = ['EURUSD'];
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')).toBeUndefined();
+    window.__RTX_QUOTE_DIAGNOSTICS_SYMBOLS__ = ['BTCUSD'];
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')).toBeUndefined();
+    write(); d.clearLatestQuoteDiagnostics();
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')).toBeUndefined();
+    expect(d.getQuoteDiagnosticDump().quotes.length).toBeGreaterThan(0);
+    write();
+    for (let i = 0; i < d.QUOTE_DIAGNOSTIC_CAPACITY; i++) d.recordQuoteDiagnostic({ kind: 'quote', symbol: 'BTCUSD', accepted: false });
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')).toBeUndefined();
+  });
+
+  it('clears previous-session proof when terminal quote freshness resets', async () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    const d = await import('./quoteDiagnostics');
+    const freshness = await import('./terminalQuoteFreshness');
+    d.recordQuoteDiagnostic({ kind: 'quote', symbol: 'BTCUSD', accepted: true });
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')).toBeDefined();
+    freshness.resetTerminalQuoteFreshness();
+    expect(d.getLatestAcceptedQuoteDiagnostic('BTCUSD')).toBeUndefined();
   });
 
   it('filters only quote capture by exact symbol while retaining all control evidence', async () => {

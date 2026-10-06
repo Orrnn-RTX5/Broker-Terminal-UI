@@ -13,6 +13,7 @@ import { getTradeHistoryExecutionSide } from '../../../utils/chartTradeHistoryPr
 import { getSharedChartTrade } from '../../../utils/tradeShareLink';
 import {
   buildClosedTradeHistorySnapshots,
+  createTradeOverlayCandleLookup,
   filterActiveTradeKeysForHistory,
   forgetTradeOverlayOptimisticClosedSnapshot,
   getTradeOverlayOptimisticClosedSnapshots,
@@ -286,6 +287,8 @@ export const useTradingChartTradeOverlayRenderer = ({
 
     const renderTradeOverlay = (options: boolean | { forceActive?: boolean; forceHistory?: boolean } = false) => {
       if (isDisposedRef.current || !seriesRef.current || !overlayRef.current) return;
+      const candleLookup = createTradeOverlayCandleLookup(candlesRef.current, currentCandleRef.current);
+      const mapTradeTime = (value: unknown) => mapTradeTimestampToChartTime(value, candleLookup);
       const forceActive = typeof options === 'boolean' ? options : Boolean(options.forceActive);
       const forceHistory = typeof options === 'boolean' ? options : Boolean(options.forceHistory);
       const now = Date.now();
@@ -370,7 +373,7 @@ export const useTradingChartTradeOverlayRenderer = ({
       );
       const activeTradeKeys = filterActiveTradeKeysForHistory(rawActiveTradeKeys, closeSuppressedTradeKeys);
       const mapHistoryTimestamp = (value: unknown): number =>
-        mapTradeTimestampToChartTime(value) ?? normalizeUnixSeconds(value) ?? 0;
+        mapTradeTime(value) ?? normalizeUnixSeconds(value) ?? 0;
       const closedHistorySnapshots = buildClosedTradeHistorySnapshots({
         rows: appTrades as unknown as TradeOverlayHistoryRow[],
         symbol: normalizedChartSymbol,
@@ -441,7 +444,7 @@ export const useTradingChartTradeOverlayRenderer = ({
         const entryTime = resolveStableTradeEntryTime(
           storedEntryTime,
           rawEntryTime,
-          mapTradeTimestampToChartTime,
+          mapTradeTime,
           liveTrailTime,
         );
         if (storedEntryTime == null && entryTime > 0) {

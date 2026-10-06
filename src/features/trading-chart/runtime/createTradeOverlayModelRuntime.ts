@@ -126,7 +126,10 @@ export const createTradeOverlayModelRuntime = ({
       return null;
     };
 
-    const mapTradeTimestampToChartTime = (rawTimestamp: unknown): number | null => {
+    const mapTradeTimestampToChartTime = (
+      rawTimestamp: unknown,
+      lookup = getNearestCandleByTime,
+    ): number | null => {
       const normalizedTimestamp = normalizeUnixSeconds(rawTimestamp);
       if (normalizedTimestamp == null) return null;
 
@@ -154,7 +157,7 @@ export const createTradeOverlayModelRuntime = ({
       let bestDistance = Number.POSITIVE_INFINITY;
 
       for (const candidate of candidates) {
-        const nearest = getNearestCandleByTime(candidate, timeframeSeconds);
+        const nearest = lookup(candidate, timeframeSeconds);
         if (!nearest) continue;
         const distance = Math.abs(nearest.time - candidate);
         if (distance < bestDistance) {

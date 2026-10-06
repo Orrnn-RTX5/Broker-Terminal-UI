@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildOptimisticClosedTradeSnapshot,
   buildClosedTradeHistorySnapshots,
+  createTradeOverlayCandleLookup,
   clearTradeOverlayOptimisticClosedSnapshots,
   filterActiveTradeKeysForHistory,
   getTradeOverlayOptimisticClosedSnapshots,
@@ -285,6 +286,70 @@ describe('buildClosedTradeHistorySnapshots', () => {
         source: 'app-history',
       }),
     ]);
+  });
+});
+
+describe('trade overlay candle lookup per pass', () => {
+  type Row = { time?: unknown; id?: string };
+  const linear = (rows: Row[], current: Row | null, target: number, distance?: number) => {
+    const time = resolveNearestTradeOverlayCandleTime(target, rows, current, distance);
+    if (time == null) return null;
+    return current?.time === time ? current : rows.find(row => row.time === time) ?? null;
+  };
+
+  it('preserves unsorted, duplicate, current, equidistant and distance-limit selection', () => {
+    const rows: Row[] = [{time:300,id:'later'}, {time:100,id:'first'}, {time:100,id:'duplicate'},
+      {time:NaN}, {time:Infinity}, {time:-1}, {}, {time:'200',id:'numeric-string'}];
+    for (const current of [null, {time:100,id:'current'}, {time:250,id:'forming'}, {time:'300'}, {time:NaN}]) {
+      const lookup = createTradeOverlayCandleLookup(rows, current);
+      for (const target of [NaN, Infinity, -1, 0, 1, 100, 150, 200, 225, 250, 299, 400]) {
+        for (const distance of [undefined, -1, NaN, Infinity, 0, 1, 25, 50, 100]) {
+          expect(lookup(target, distance)).toBe(linear(rows, current, target, distance));
+        }
+      }
+    }
+    expect(createTradeOverlayCandleLookup([{time:100}, {time:300}])(200)?.time).toBe(300);
+    expect(createTradeOverlayCandleLookup([])(100)).toBeNull();
+  });
+
+  it('matches the existing linear selection across deterministic unsorted inputs', () => {
+    let seed = 76491;
+    const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed; };
+    for (let sample = 0; sample < 50; sample++) {
+      const rows = Array.from({length:100}, () => ({time:(random() % 150) * 60}));
+      const current = {time:(random() % 150) * 60};
+      const lookup = createTradeOverlayCandleLookup(rows, current);
+      for (let query = 0; query < 100; query++) {
+        const target = random() % 10000;
+        const distance = query % 2 ? 60 : undefined;
+        expect(lookup(target, distance)).toBe(linear(rows, current, target, distance));
+      }
+    }
+  });
+
+  it('reads each candle time once instead of rescanning the history for every lookup', () => {
+    let timeReads = 0;
+    const rows = Array.from({length:4096}, (_, index) => ({
+      get time() { timeReads++; return 1000 + (4096 - index) * 60; },
+    }));
+    const lookup = createTradeOverlayCandleLookup(rows);
+    expect(timeReads).toBe(0); // A pass with no lookup incurs no index build.
+    for (let query = 0; query < 500; query++) expect(lookup(1000 + (query + 1) * 60)).toBe(rows[4095 - query]);
+    expect(timeReads).toBe(rows.length);
+  });
+
+  it('rebuilds on the next pass after same-array interior mutation and current-candle replacement', () => {
+    const rows = [{time:100}, {time:200}, {time:300}];
+    const firstCurrent = {time:400};
+    const firstPass = createTradeOverlayCandleLookup(rows, firstCurrent);
+    expect(firstPass(200)).toBe(rows[1]);
+    expect(firstPass(400)).toBe(firstCurrent);
+    rows[1] = {time:250};
+    const nextCurrent = {time:500};
+    const nextPass = createTradeOverlayCandleLookup(rows, nextCurrent);
+    expect(nextPass(200, 0)).toBeNull();
+    expect(nextPass(250, 0)).toBe(rows[1]);
+    expect(nextPass(500, 0)).toBe(nextCurrent);
   });
 });
 

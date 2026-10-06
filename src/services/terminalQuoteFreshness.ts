@@ -1,4 +1,5 @@
-import { quoteDiagnosticsEnabled, recordQuoteDiagnostic, type QuoteDiagnosticContext } from './quoteDiagnostics';
+import { clearLatestQuoteDiagnostics, quoteDiagnosticsEnabled, recordQuoteDiagnostic, type QuoteDiagnosticContext } from './quoteDiagnostics';
+import { compareQuoteSourceRevision, knownQuoteSourceRevision } from '../utils/quoteSourceEpoch';
 
 /** Provider evidence is independent of local price rendering and symbol permissions. */
 export interface TerminalQuoteMetadata {
@@ -23,6 +24,8 @@ export interface TerminalQuoteFreshness {
 
 const quotes = new Map<string, TerminalQuoteEvidence>();
 const sequenceWatermarks = new Map<string, string | number>();
+// Keep the last known epoch even when an otherwise valid legacy frame omits it.
+const sourceRevisionWatermarks = new Map<string, number>();
 const verifiedProviderTimes = new Map<string, number>();
 const listeners = new Set<(changedSymbol?: string) => void>();
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -67,7 +70,7 @@ export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown,
   };
   const sequence = pick('sequence', 'seq');
   const source = pick('source');
-  const sourceRevision = Number(pick('source_revision'));
+  const sourceRevision = knownQuoteSourceRevision(pick('source_revision'));
   // Normalizers deliberately emit this own property even when upstream had no
   // provider timestamp. Never reinterpret their display sourceTimestamp alias
   // (which can come from event/server/receipt time) as provider evidence.
@@ -78,7 +81,7 @@ export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown,
     provider_timestamp: timestamp(providerTime),
     sequence: typeof sequence === 'string' || typeof sequence === 'number' ? sequence : undefined,
     source: typeof source === 'string' ? source : undefined,
-    ...(Number.isSafeInteger(sourceRevision) && sourceRevision > 0 ? { source_revision: sourceRevision } : {}),
+    ...(sourceRevision !== undefined ? { source_revision: sourceRevision } : {}),
   };
   for (const flag of ['source_mismatch', 'stale', 'tradable'] as const) {
     const value = pick(flag);
@@ -129,16 +132,21 @@ export function getNewerLiveTerminalQuoteEvidence(symbol: string, previous: Term
     || quote.source_mismatch !== false || quote.provider_timestamp === undefined || previous.provider_timestamp === undefined
     || quote.provider_timestamp <= previous.provider_timestamp || quote.sequence === undefined || previous.sequence === undefined) return null;
   const freshness = getTerminalQuoteFreshness(symbol);
-  if (!freshness.live || freshness.clockStatus !== 'verified' || compareSequence(quote.sequence, previous.sequence) !== 1) return null;
-  return { provider_timestamp: quote.provider_timestamp, sequence: quote.sequence, source: quote.source };
+  const epoch = compareQuoteSourceRevision(quote.source_revision, previous.source_revision);
+  if (!freshness.live || freshness.clockStatus !== 'verified' || epoch === -1
+    || (epoch !== 1 && compareSequence(quote.sequence, previous.sequence) !== 1)) return null;
+  return { provider_timestamp: quote.provider_timestamp, sequence: quote.sequence, source: quote.source,
+    ...(quote.source_revision !== undefined ? { source_revision: quote.source_revision } : {}) };
 }
 
 export function resetTerminalQuoteFreshness(options?: { preserveClockForOwner?: TerminalQuoteClockOwner }): void {
   const preserved = options?.preserveClockForOwner && anchor?.owner === options.preserveClockForOwner
     && isTerminalQuoteClockVerified() ? anchor : undefined;
   session++;
+  clearLatestQuoteDiagnostics();
   quotes.clear();
   sequenceWatermarks.clear();
+  sourceRevisionWatermarks.clear();
   verifiedProviderTimes.clear();
   sourcePolicy = undefined;
   anchor = preserved;
@@ -168,8 +176,10 @@ export function calibrateTerminalQuoteClock(serverTime: unknown, startMono: numb
     // Render caches may already contain this impossible packet. A new
     // generation lets subsequent real ticks supersede their future timestamp.
     session++;
+    clearLatestQuoteDiagnostics();
     quotes.clear();
     sequenceWatermarks.clear();
+    sourceRevisionWatermarks.clear();
     verifiedProviderTimes.clear();
   }
   publish();
@@ -234,22 +244,26 @@ export function ingestTerminalQuote(symbol: string, data: TerminalQuoteEvidence,
   const previous = quotes.get(key(symbol));
   const failure = quoteEvidenceFailure(data, metadata);
   if (failure) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, failure);
+  const epoch = compareQuoteSourceRevision(metadata.source_revision, sourceRevisionWatermarks.get(key(symbol)));
+  if (epoch === -1) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, 'older-source-revision');
   if (previous) {
     const nextTime = metadata.provider_timestamp;
     const oldTime = previous.provider_timestamp;
     if (oldTime !== undefined && (nextTime === undefined || nextTime < oldTime)) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, 'older-provider-time');
-    const watermark = sequenceWatermarks.get(key(symbol));
+    const watermark = epoch === 1 ? undefined : sequenceWatermarks.get(key(symbol));
     if (metadata.sequence !== undefined && watermark !== undefined) {
       const order = compareSequence(metadata.sequence, watermark);
       if (order !== undefined && order < 0) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, false, 'older-sequence');
       if (order === 0) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, applyVeto(previous, metadata, symbol), 'duplicate-sequence');
-    } else if (oldTime !== undefined && nextTime === oldTime) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, applyVeto(previous, metadata, symbol), 'duplicate-provider-time');
+    } else if (epoch !== 1 && oldTime !== undefined && nextTime === oldTime) return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, applyVeto(previous, metadata, symbol), 'duplicate-provider-time');
   }
   quotes.set(key(symbol), { ...metadata, bid: data.bid, ask: data.ask });
   if (isTerminalQuoteClockVerified() && metadata.provider_timestamp !== undefined) {
     verifiedProviderTimes.set(key(symbol), metadata.provider_timestamp);
   }
+  if (epoch === 1) sequenceWatermarks.delete(key(symbol));
   if (metadata.sequence !== undefined) sequenceWatermarks.set(key(symbol), metadata.sequence);
+  if (metadata.source_revision !== undefined) sourceRevisionWatermarks.set(key(symbol), metadata.source_revision);
   publish(key(symbol));
   return recordIngestion(symbol, data, expectedSession, context, ingestMonoMs, true, 'accepted');
 }
@@ -261,6 +275,7 @@ export function refreshTerminalQuotePrices(symbol: string, data: TerminalQuoteEv
   const metadata = readQuoteFreshnessMetadata(data);
   if (!previous || metadata.provider_timestamp !== previous.provider_timestamp
     || metadata.source !== previous.source || String(metadata.sequence) !== String(previous.sequence)
+    || metadata.source_revision !== previous.source_revision
     || !Number.isFinite(data.bid) || !Number.isFinite(data.ask)
     || data.bid! <= 0 || data.ask! <= 0 || data.ask! < data.bid!) return false;
   if (data.bid !== previous.bid || data.ask !== previous.ask) {

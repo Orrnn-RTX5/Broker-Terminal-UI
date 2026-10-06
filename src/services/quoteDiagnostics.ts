@@ -86,6 +86,9 @@ type DiagnosticValue = string | number | boolean | null;
 export type QuoteDiagnosticRecord = Readonly<Record<string, DiagnosticValue>>;
 const quoteRing: QuoteDiagnosticRecord[] = [];
 const controlRing: QuoteDiagnosticRecord[] = [];
+const latestAcceptedQuotes = new Map<string, QuoteDiagnosticRecord>();
+/** Session reset invalidates live lookup only; historical evidence stays available. */
+export function clearLatestQuoteDiagnostics(): void { latestAcceptedQuotes.clear(); }
 let quoteWrites = 0;
 let controlWrites = 0;
 let sequence = 0;
@@ -98,6 +101,7 @@ let symbolFilter: Set<string> | undefined;
 function selectedSymbols(): Set<string> | undefined {
   const input = typeof window === 'undefined' ? undefined : window.__RTX_QUOTE_DIAGNOSTICS_SYMBOLS__;
   if (input !== symbolFilterInput) {
+    clearLatestQuoteDiagnostics();
     symbolFilterInput = input;
     symbolFilter = Array.isArray(input)
       ? new Set(input.filter(value => typeof value === 'string').map(value => value.trim().toUpperCase()).filter(safeIdentifier))
@@ -155,7 +159,7 @@ export function rememberQuoteWireEvidence(tick: object, payload: Record<string, 
 export const readQuoteWireEvidence = (tick: object): QuoteDiagnosticContext | undefined => wireEvidence.get(tick);
 
 export function recordQuoteDiagnostic(input: QuoteDiagnosticInput): void {
-  if (!quoteDiagnosticsEnabled()) return;
+  if (!quoteDiagnosticsEnabled()) { clearLatestQuoteDiagnostics(); return; }
   const filter = input.kind === 'quote' ? selectedSymbols() : undefined;
   if (filter && !filter.has(String(input.symbol ?? '').trim().toUpperCase())) { filteredQuotes++; return; }
   const record: Record<string, DiagnosticValue> = { kind: input.kind, sequence: ++sequence, atMonoMs: performance.now() };
@@ -174,8 +178,24 @@ export function recordQuoteDiagnostic(input: QuoteDiagnosticInput): void {
     if (value !== undefined) record[field] = value;
   }
   if (typeof input.traceId === 'string' && /^[A-Za-z0-9-]{1,48}$/.test(input.traceId)) record.traceId = input.traceId;
-  if (input.kind === 'quote') quoteRing[quoteWrites++ % QUOTE_DIAGNOSTIC_CAPACITY] = Object.freeze(record);
+  if (input.kind === 'quote') {
+    const slot = quoteWrites++ % QUOTE_DIAGNOSTIC_CAPACITY;
+    const previous = quoteRing[slot];
+    if (previous && latestAcceptedQuotes.get(String(previous.symbol)) === previous) latestAcceptedQuotes.delete(String(previous.symbol));
+    const frozen = Object.freeze(record);
+    quoteRing[slot] = frozen;
+    if (record.accepted === true && typeof record.symbol === 'string') latestAcceptedQuotes.set(record.symbol, frozen);
+  }
   else controlRing[controlWrites++ % QUOTE_CONTROL_DIAGNOSTIC_CAPACITY] = Object.freeze(record);
+}
+
+/** O(1) detached diagnostic evidence, not an authorization or current freshness decision. */
+export function getLatestAcceptedQuoteDiagnostic(symbol: string): QuoteDiagnosticRecord | undefined {
+  if (!quoteDiagnosticsEnabled()) { clearLatestQuoteDiagnostics(); return undefined; }
+  const normalized = symbol.trim().toUpperCase();
+  if (!quoteDiagnosticSymbolSelected(normalized)) return undefined;
+  const record = latestAcceptedQuotes.get(normalized);
+  return record ? { ...record } : undefined;
 }
 
 const ordered = (ring: QuoteDiagnosticRecord[], writes: number, capacity: number): QuoteDiagnosticRecord[] => {
@@ -207,8 +227,8 @@ declare global {
   interface Window {
     __RTX_QUOTE_DIAGNOSTICS_ENABLED__?: boolean;
     __RTX_QUOTE_DIAGNOSTICS_SYMBOLS__?: string[];
-    __RTX_QUOTE_DIAGNOSTICS__?: Readonly<{ dump: typeof getQuoteDiagnosticDump }>;
+    __RTX_QUOTE_DIAGNOSTICS__?: Readonly<{ dump: typeof getQuoteDiagnosticDump; latestAcceptedQuote: typeof getLatestAcceptedQuoteDiagnostic }>;
   }
 }
 
-if (typeof window !== 'undefined') window.__RTX_QUOTE_DIAGNOSTICS__ = Object.freeze({ dump: getQuoteDiagnosticDump });
+if (typeof window !== 'undefined') window.__RTX_QUOTE_DIAGNOSTICS__ = Object.freeze({ dump: getQuoteDiagnosticDump, latestAcceptedQuote: getLatestAcceptedQuoteDiagnostic });

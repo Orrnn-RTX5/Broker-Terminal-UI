@@ -7,6 +7,7 @@ export interface Tick extends QuoteTradingStatusFields {
   provider_timestamp?: number;
   sequence?: string | number;
   source?: string;
+  source_revision?: number;
   source_mismatch?: boolean;
   stale?: boolean;
   tradable?: boolean;

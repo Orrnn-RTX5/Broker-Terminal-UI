@@ -462,6 +462,7 @@ export const enqueueFinancialLiveTick = (symbol: string, tick: LiveTick): void =
   upsertFreshestLiveTick(pendingFinancialTicks, symbol, event);
   const cached = typeof window !== 'undefined' ? window.rtxTickCache?.get(symbol) : undefined;
   if (cached?.quoteDeliveryKind === 'snapshot' && cached.provider_timestamp === event.provider_timestamp
+    && cached.source_revision === event.source_revision
     && cached.source === event.source && String(cached.sequence) === String(event.sequence)
     && cached.bid === event.bid && cached.ask === event.ask) {
     // The actual stream event has caught its earlier snapshot. Reclassify only

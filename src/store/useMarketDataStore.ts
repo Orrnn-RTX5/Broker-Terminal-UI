@@ -13,6 +13,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { cancelPendingAggregations, getWorkerManager, type SymbolAggregationRequest, type SymbolAggregationResult } from '../services/aggregationWorkerManager';
 import type { CandleUpdateSource, OHLCV, Tick } from '../types/marketData';
 import { compareSequence } from '../services/terminalQuoteFreshness';
+import { compareQuoteSourceRevision } from '../utils/quoteSourceEpoch';
 import {
   isStructurallyValidPriceCandle,
   repairPriceCandle,
@@ -461,7 +462,8 @@ const applyMarketTick = (
   if (freshness < 0 && !displayAhead) return null;
   const lastEvent = data.tickBuffer.at(-1) ?? null;
   const eventFreshness = lastEvent ? compareCanonicalTickFreshness(lastEvent, tick) : 1;
-  const eventSequence = lastEvent?.sequence !== undefined && tick.sequence !== undefined
+  const eventSequence = compareQuoteSourceRevision(tick.source_revision, lastEvent?.source_revision) !== 1
+    && lastEvent?.sequence !== undefined && tick.sequence !== undefined
     ? compareSequence(tick.sequence, lastEvent.sequence) : undefined;
   if (!snapshot && (eventFreshness < 0 || (eventFreshness === 0 && eventSequence !== undefined && eventSequence < 0))) return null;
   if (snapshot && freshness === 0 && areMarketTicksIdentical(data.currentTick, tick)) return null;

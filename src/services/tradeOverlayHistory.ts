@@ -456,6 +456,59 @@ export const resolveNearestTradeOverlayCandleTime = (
   return bestTime;
 };
 
+/** Build one lazy lookup for a synchronous overlay pass. Do not retain it across
+ * passes: candle arrays can be changed in place during history hydration.
+ * Selection matches resolveNearestTradeOverlayCandleTime followed by the chart's
+ * exact-time lookup: current candle first, then the first historical candle.
+ */
+export const createTradeOverlayCandleLookup = <T extends TradeOverlayCandleTimeSource>(
+  historicalCandles: readonly T[],
+  currentCandle?: T | null,
+): ((targetTime: number, maxDistanceSeconds?: number) => T | null) => {
+  let times: number[] | undefined;
+  const historicalByTime = new Map<number, T>();
+  let currentExactTime: number | undefined;
+
+  const build = () => {
+    const uniqueTimes = new Set<number>();
+    for (const candle of historicalCandles) {
+      const rawTime = candle?.time;
+      const time = Number(rawTime);
+      if (!Number.isFinite(time) || time <= 0) continue;
+      uniqueTimes.add(time);
+      // The existing chart lookup uses strict equality after numeric selection.
+      if (rawTime === time && !historicalByTime.has(time)) historicalByTime.set(time, candle);
+    }
+    const rawTime = currentCandle?.time;
+    const time = Number(rawTime);
+    if (Number.isFinite(time) && time > 0) {
+      uniqueTimes.add(time);
+      if (rawTime === time) currentExactTime = time;
+    }
+    times = [...uniqueTimes].sort((a, b) => a - b);
+  };
+
+  return (targetTime, maxDistanceSeconds) => {
+    if (!Number.isFinite(targetTime) || targetTime <= 0) return null;
+    if (!times) build();
+    const sorted = times!;
+    if (sorted.length === 0) return null;
+    let lower = 0, upper = sorted.length;
+    while (lower < upper) {
+      const middle = lower + Math.floor((upper - lower) / 2);
+      if (sorted[middle] < targetTime) lower = middle + 1;
+      else upper = middle;
+    }
+    const left = sorted[lower - 1], right = sorted[lower];
+    // Equal-distance ties select the newer candle, independent of input order.
+    const nearest = left === undefined ? right : right === undefined ? left
+      : targetTime - left < right - targetTime ? left : right;
+    if (maxDistanceSeconds != null && Number.isFinite(maxDistanceSeconds) && maxDistanceSeconds >= 0
+      && Math.abs(nearest - targetTime) > maxDistanceSeconds) return null;
+    return currentExactTime === nearest ? currentCandle! : historicalByTime.get(nearest) ?? null;
+  };
+};
+
 export const resolveStableTradeEntryTime = (
   storedEntryTime: number | null | undefined,
   rawEntryTime: number | null | undefined,
