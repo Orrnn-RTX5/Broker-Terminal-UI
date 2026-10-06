@@ -12,7 +12,6 @@ import {
   registerDailyChangePriceModes,
   resetDailyChangePriceModeRegistryForTests,
 } from './dailyChangePriceModeRegistry';
-
 const setConnectionState = vi.fn();
 const enqueueLiveTick = vi.hoisted(() => vi.fn());
 const brokerSessionMock = vi.hoisted(() => ({
@@ -34,6 +33,7 @@ vi.mock('./brokerSession', () => ({
     `wss://broker.example/ws/v2${token ? `?token=${token}` : ''}`
   )),
   getAccessToken: vi.fn(() => brokerSessionMock.accessToken),
+  getRefreshToken: () => null, getServerUrl: () => brokerSessionMock.scope.serverUrl,
   getCommittedBrokerAccountSessionScope: vi.fn(() => brokerSessionMock.scope),
   getCommittedBrokerAccountSessionScopeKey: vi.fn((scope) => [
     scope.authenticated ? 'authenticated' : 'anonymous',

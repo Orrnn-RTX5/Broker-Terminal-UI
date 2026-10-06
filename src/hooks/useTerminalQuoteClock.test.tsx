@@ -6,6 +6,7 @@ import { getTerminalQuoteFreshness, ingestTerminalQuote, resetTerminalQuoteFresh
 const mocks = vi.hoisted(() => ({ get: vi.fn(), session: undefined as undefined | (() => void) }));
 vi.mock('../api/client', () => ({ apiClient: { get: mocks.get } }));
 vi.mock('../config/api', () => ({ API_V2_BASE_URL: 'https://broker.test/api/v2' }));
+vi.mock('../services/terminalQuoteClockOwnership', () => ({ getTerminalQuoteClockOwner: () => undefined }));
 vi.mock('../services/brokerSession', () => ({
   onSessionChange: (fn: () => void) => { mocks.session = fn; return () => { mocks.session = undefined; }; },
 }));

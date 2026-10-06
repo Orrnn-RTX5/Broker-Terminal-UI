@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { apiClient } from '../api/client';
 import { API_V2_BASE_URL } from '../config/api';
 import { onSessionChange } from '../services/brokerSession';
+import { getTerminalQuoteClockOwner } from '../services/terminalQuoteClockOwnership';
 import { quoteDiagnosticsEnabled, recordQuoteDiagnostic } from '../services/quoteDiagnostics';
 import {
   calibrateTerminalQuoteClock, getTerminalQuoteSession, isTerminalQuoteClockVerified,
@@ -17,9 +18,9 @@ export function useTerminalQuoteClock(): void {
     let controller: AbortController | undefined;
     let scheduled: ReturnType<typeof setTimeout> | undefined;
     let lastVerified = false;
-    // Bailing out must never end the loop. The anchor expires after 60 seconds,
-    // and an unverified clock refuses every position close before it is sent, so
-    // a poller that stops rescheduling silently makes closing impossible.
+    // Bailing out must never end the loop. The anchor expires after 60 seconds;
+    // prompt resampling restores verified local ages while execution remains
+    // responsible for quote safety whenever browser time is uncertain.
     const scheduleNext = (delayMs: number) => {
       if (disposed) return;
       clearTimeout(scheduled);
@@ -34,6 +35,7 @@ export function useTerminalQuoteClock(): void {
       clearTimeout(scheduled);
       const request = ++generation;
       const owner = getTerminalQuoteSession();
+      const clockOwner = getTerminalQuoteClockOwner();
       const active = new AbortController();
       controller = active;
       const startMono = performance.now();
@@ -41,11 +43,12 @@ export function useTerminalQuoteClock(): void {
       let accepted = false;
       try {
         const response = await apiClient.get<{ server_time_ms?: unknown }>('/time', {
-          baseUrl: API_V2_BASE_URL, skipAuth: true, signal: active.signal,
+          baseUrl: clockOwner?.apiBaseUrl ?? API_V2_BASE_URL, skipDynamicUrl: Boolean(clockOwner), skipAuth: true, signal: active.signal,
           cache: 'no-store', timeoutMs: 2000,
         });
-        if (disposed || active.signal.aborted || request !== generation || owner !== getTerminalQuoteSession()) return;
-        accepted = calibrateTerminalQuoteClock(response.server_time_ms, startMono, startWall, performance.now(), Date.now(), owner);
+        if (disposed || active.signal.aborted || request !== generation || owner !== getTerminalQuoteSession()
+          || clockOwner !== getTerminalQuoteClockOwner()) return;
+        accepted = calibrateTerminalQuoteClock(response.server_time_ms, startMono, startWall, performance.now(), Date.now(), owner, clockOwner);
       } catch {
         if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: false, reason: active.signal.aborted ? 'request-aborted' : 'request-failed',
           requestMonoMs: startMono, responseMonoMs: performance.now(), expectedBrowserGeneration: owner });

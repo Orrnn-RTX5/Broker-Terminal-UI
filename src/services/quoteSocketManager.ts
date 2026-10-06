@@ -21,7 +21,6 @@
  *  13. Quote rows render            → Fast live bid/ask UI
  *  14. Batched store path           → useTradingState.quotes
  */
-
 import {
   buildBrokerWsFeedUri,
   buildBrokerWsV2Uri,
@@ -32,6 +31,7 @@ import { enqueueFinancialLiveTick, enqueueLiveTick, isLiveMarketDataFrozen, type
 import { FinancialQuoteStream } from './financialQuoteStream';
 import { DeferredFinancialQuotes, FINANCIAL_QUOTE_GAP_EVENT, type FinancialQuoteOwner } from './financialQuoteRecovery';
 import { getTerminalQuoteSession, isTerminalQuoteClockVerified, resetTerminalQuoteFreshness, subscribeTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
+import { resetTerminalQuoteTransport } from './terminalQuoteClockOwnership';
 import { quoteDiagnosticsEnabled, readQuoteWireEvidence, recordQuoteDiagnostic, type QuoteDiagnosticContext } from './quoteDiagnostics';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import {
@@ -71,7 +71,6 @@ export {
 
 type QuoteTickCallback = (tick: NormalizedQuoteTick) => void;
 export type QuoteTransport = 'feed' | 'v2';
-
 // ─── QuoteSocketManager Singleton ────────────────────────────────────────────
 
 class QuoteSocketManager {
@@ -155,6 +154,7 @@ class QuoteSocketManager {
         || reason === 'login'
         || reason === 'account_change'
       ) {
+        if (terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
         this.resetFeedFailure();
         this.reconnect();
       }
@@ -341,7 +341,7 @@ class QuoteSocketManager {
         if (this.ws !== socket) return;
         this.financialStream.reset();
         if (terminalQuoteFreshnessEnabled()) {
-          resetTerminalQuoteFreshness();
+          resetTerminalQuoteTransport();
           window.dispatchEvent(new Event('rtx:quote-clock-refresh'));
         }
         opened = true;
@@ -389,7 +389,7 @@ class QuoteSocketManager {
       socket.onclose = (event) => {
         if (this.ws !== socket) return;
         if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'connection', reason: 'closed', transport: nextTransport, closeCode: event.code });
-        if (terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
+        if (terminalQuoteFreshnessEnabled()) resetTerminalQuoteTransport();
         this.clearOpenTimeout();
         this.clearStableOpenTimer();
         this.clearHeartbeat();
@@ -928,7 +928,7 @@ class QuoteSocketManager {
 
   private closeSocket(): void {
     this.deferredFinancial.clear();
-    if (this.ws && terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
+    if (this.ws && terminalQuoteFreshnessEnabled()) resetTerminalQuoteTransport();
     this.cancelIdleClose();
     this.clearOpenTimeout();
     this.clearStableOpenTimer();

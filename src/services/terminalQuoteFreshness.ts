@@ -25,7 +25,8 @@ const listeners = new Set<(changedSymbol?: string) => void>();
 let timer: ReturnType<typeof setInterval> | undefined;
 let revision = 0;
 let session = 0;
-let anchor: { lower: number; upper: number; mono: number; wall: number; requestMono: number } | undefined;
+export interface TerminalQuoteClockOwner { isCurrent: () => boolean }
+let anchor: { lower: number; upper: number; mono: number; wall: number; requestMono: number; owner?: TerminalQuoteClockOwner } | undefined;
 const monoNow = () => performance.now();
 const key = (symbol: string) => symbol.trim().toUpperCase();
 const publish = (changedSymbol?: string) => { revision++; listeners.forEach(listener => listener(changedSymbol)); };
@@ -99,26 +100,28 @@ export function getNewerLiveTerminalQuoteEvidence(symbol: string, previous: Term
   return { provider_timestamp: quote.provider_timestamp, sequence: quote.sequence, source: quote.source };
 }
 
-export function resetTerminalQuoteFreshness(): void {
+export function resetTerminalQuoteFreshness(options?: { preserveClockForOwner?: TerminalQuoteClockOwner }): void {
+  const preserved = options?.preserveClockForOwner && anchor?.owner === options.preserveClockForOwner
+    && isTerminalQuoteClockVerified() ? anchor : undefined;
   session++;
   quotes.clear();
   sequenceWatermarks.clear();
   verifiedProviderTimes.clear();
-  anchor = undefined;
+  anchor = preserved;
   publish();
 }
 
 /** Bound server time at receipt; network asymmetry never implies freshness. */
 export function calibrateTerminalQuoteClock(serverTime: unknown, startMono: number, startWall: number,
-  endMono = monoNow(), endWall = Date.now(), expectedSession = session): boolean {
+  endMono = monoNow(), endWall = Date.now(), expectedSession = session, owner?: TerminalQuoteClockOwner): boolean {
   const server = timestamp(serverTime);
   const rtt = endMono - startMono;
-  if (expectedSession !== session || server === undefined || !Number.isFinite(rtt) || rtt < 0 || rtt > 2000
+  if (expectedSession !== session || (owner && !owner.isCurrent()) || server === undefined || !Number.isFinite(rtt) || rtt < 0 || rtt > 2000
     || !Number.isFinite(startMono) || !Number.isFinite(endMono) || !Number.isFinite(startWall) || !Number.isFinite(endWall)
     || Math.abs((endWall - startWall) - rtt) > 250
     || (anchor && startMono < anchor.requestMono)) {
     if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: false,
-      reason: expectedSession !== session ? 'session-mismatch' : server === undefined ? 'invalid-server-time'
+      reason: expectedSession !== session || (owner && !owner.isCurrent()) ? 'session-mismatch' : server === undefined ? 'invalid-server-time'
         : !Number.isFinite(rtt) || rtt < 0 || rtt > 2000 ? 'invalid-rtt'
           : Math.abs((endWall - startWall) - rtt) > 250 ? 'wall-clock-discontinuity' : 'invalid-or-older-sample',
       serverTimeMs: server, requestMonoMs: startMono, responseMonoMs: endMono, rttMs: rtt,
@@ -126,7 +129,7 @@ export function calibrateTerminalQuoteClock(serverTime: unknown, startMono: numb
       wallElapsedMs: endWall - startWall, browserGeneration: session, expectedBrowserGeneration: expectedSession });
     return false;
   }
-  anchor = { lower: server - 1, upper: server + rtt + 1, mono: endMono, wall: endWall, requestMono: startMono };
+  anchor = { lower: server - 1, upper: server + rtt + 1, mono: endMono, wall: endWall, requestMono: startMono, owner };
   if (Array.from(quotes.values()).some(quote => quote.provider_timestamp !== undefined && quote.provider_timestamp > anchor!.upper + 250)) {
     // Render caches may already contain this impossible packet. A new
     // generation lets subsequent real ticks supersede their future timestamp.
@@ -183,7 +186,7 @@ export function quoteEvidenceFailure(data: TerminalQuoteEvidence, metadata = rea
     || BigInt(sequenceText) > 18446744073709551615n
     || (typeof metadata.sequence === 'number' && !Number.isSafeInteger(metadata.sequence)))) return 'invalid-sequence';
   const elapsed = anchor ? monoNow() - anchor.mono : NaN;
-  const validClock = anchor && elapsed >= 0 && elapsed < 60000 && Math.abs((Date.now() - anchor.wall) - elapsed) <= 250;
+  const validClock = isTerminalQuoteClockVerified();
   if (validClock && metadata.provider_timestamp !== undefined && metadata.provider_timestamp > anchor!.upper + elapsed + elapsed / 1000 + 250) return 'future-provider-time';
   return null;
 }
@@ -250,7 +253,7 @@ function applyVeto(previous: TerminalQuoteEvidence, next: TerminalQuoteMetadata,
 
 export function isTerminalQuoteClockVerified(): boolean {
   const elapsed = anchor ? monoNow() - anchor.mono : NaN;
-  return !!anchor && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 60000
+  return !!anchor && (!anchor.owner || anchor.owner.isCurrent()) && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 60000
     && Math.abs((Date.now() - anchor.wall) - elapsed) <= 250;
 }
 
