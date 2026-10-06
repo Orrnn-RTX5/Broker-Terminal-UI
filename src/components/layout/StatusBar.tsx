@@ -1,3 +1,4 @@
+import { useInvestorSession } from '../../hooks/useInvestorSession';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useState, useEffect } from 'react';
 import { ConnectionStatus } from '../ConnectionStatus';
@@ -22,6 +23,7 @@ interface StatusBarProps {
 
 export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketStatus }: StatusBarProps) {
     const tr = useUiTranslation();
+    const investorReadOnly = useInvestorSession();
     const visible = useTerminalBarsStore(state => state.statusBarVisible);
     const brokerInfo = useTerminalBrokerInfo();
     const [logoError, setLogoError] = useState(false);
@@ -66,6 +68,7 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                 </div>
             </div>
             <div className="flex shrink-0 items-center gap-4">
+                {investorReadOnly && <span role="status" className="text-amber-400">{tr('Investor - Read-only')}</span>}
                 {/* Connection Status Indicator (Live) */}
                 {wsRef && (
                     <ConnectionStatus wsRef={wsRef} reconnectCallback={reconnectCallback} />

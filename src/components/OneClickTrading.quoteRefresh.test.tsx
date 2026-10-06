@@ -110,6 +110,16 @@ describe('OneClickTrading stale-quote refresh', () => {
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });
 
+  it('keeps investor restrictions visible ahead of quote source diagnostics', () => {
+    useAppStore.getState().setAuthenticated(true, '10001', `header.${btoa(JSON.stringify({ investor: true }))}.signature`);
+    freshnessMocks.enabled = true; freshnessMocks.live = false; freshnessMocks.reason = 'stale'; freshnessMocks.sourcePolicyReason = 'source-off';
+    renderPanel(false);
+    expect(screen.getByRole('status')).toHaveTextContent('Read-only investor');
+    expect(getTradeButton('BUY')).toBeDisabled(); expect(getTradeButton('SELL')).toBeDisabled();
+    fireEvent.click(getTradeButton('BUY'));
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+  });
+
   it('records a disabled-before-send permission decision even while the quote advisory allows orders', () => {
     window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
     freshnessMocks.enabled = true; freshnessMocks.live = false; freshnessMocks.reason = 'time-unverified';

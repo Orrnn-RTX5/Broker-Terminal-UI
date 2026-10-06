@@ -1,3 +1,4 @@
+import { isInvestorSession } from '../../../services/investorSession';
 import { useEffect, type RefObject } from 'react';
 import type { Coordinate, IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { isTrendDrawingInputActive } from '../../../drawing-tools/drawingInteractionPriority';
@@ -380,7 +381,7 @@ export const useTradingChartTradeLevelDrag = ({
       if (e.target instanceof Element
         && !e.target.closest('.rtx-trade-controls, .rtx-trade-level-badge, .rtx-trade-level-hit-area, .rtx-trade-level-line')
         && !container.contains(e.target)) return;
-      if (!tradeAllowed) return;
+      if (!tradeAllowed || isInvestorSession()) return;
       if (chartSettingsRef.current.showTradeLevels === false) return;
 
       const y = getChartY(e);

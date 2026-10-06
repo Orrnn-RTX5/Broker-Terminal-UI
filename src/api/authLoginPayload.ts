@@ -1,4 +1,5 @@
 export interface BrokerAuthLoginInput {
+  login_type?: 'master' | 'investor';
   username?: string | number;
   login?: string | number;
   email?: string;
@@ -7,6 +8,7 @@ export interface BrokerAuthLoginInput {
 }
 
 export interface BrokerAuthLoginPayload {
+  login_type?: 'master' | 'investor';
   username?: string;
   login?: number;
   password: string;
@@ -38,6 +40,7 @@ export const normalizeBrokerAuthLoginPayload = (
         ? { username: String(identity).trim() }
         : {}),
     password: credentials.password,
+    ...(credentials.login_type ? { login_type: credentials.login_type } : {}),
     ...(credentials.broker_id ? { broker_id: credentials.broker_id } : {}),
   };
 };

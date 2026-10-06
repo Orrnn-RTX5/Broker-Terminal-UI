@@ -1,3 +1,4 @@
+import { isInvestorToken, isInvestorRestrictedRequest, INVESTOR_READ_ONLY_MESSAGE } from '../services/investorSession';
 import {
   API_V2_BASE_URL,
   BROKER_DISCOVERY_URL,
@@ -453,6 +454,9 @@ const handleResponse = async <T>(
         throw new ApiError(401, 'The broker session changed during token refresh.');
       }
       const retryRequest = withBearerToken(originalRequest, accessToken);
+      if (isInvestorToken(accessToken) && isInvestorRestrictedRequest(String(retryRequest.init.method || 'GET'), retryRequest.url)) {
+        throw new ApiError(403, INVESTOR_READ_ONLY_MESSAGE);
+      }
       const retryResponse = await fetch(retryRequest.url, retryRequest.init);
       throwIfAborted(signal);
       return handleResponse<T>(retryResponse, {
@@ -714,6 +718,9 @@ const executeRequest = async <T>(
   try {
     const requestConfig = buildRequestConfig(method, options, shouldSkipAuth, controller.signal, body);
     const bearer = getRequestBearerToken(requestConfig);
+    if (isInvestorToken(bearer) && isInvestorRestrictedRequest(method, url)) {
+      throw new ApiError(403, INVESTOR_READ_ONLY_MESSAGE);
+    }
     if (!isDesktopBackendTarget() && bearer && bearer !== getToken()) {
       throw new ApiError(401, 'Credentials do not belong to the active deployment broker session.');
     }

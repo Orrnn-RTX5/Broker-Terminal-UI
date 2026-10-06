@@ -162,6 +162,7 @@ const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): Mo
 // ====================
 
 export interface LoginCredentials {
+  login_type?: 'master' | 'investor';
   username?: string;
   email?: string;
   login?: number;
@@ -171,6 +172,8 @@ export interface LoginCredentials {
 }
 
 export interface LoginResponse {
+  investor?: boolean;
+  login_type?: 'master' | 'investor';
   token?: string;
   access_token?: string;
   refresh_token?: string;

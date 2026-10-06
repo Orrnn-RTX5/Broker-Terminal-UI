@@ -1,3 +1,5 @@
+import { useInvestorSession } from '../hooks/useInvestorSession';
+import { INVESTOR_READ_ONLY_MESSAGE } from '../services/investorSession';
 import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * MT5-style Modify Position Dialog (Dark Theme)
@@ -248,6 +250,7 @@ const getFocusableElements = (container: HTMLElement) => {
 
 export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, position, kind = 'position' }: ModifyPositionDialogProps) {
     const tr = useUiTranslation();
+    const investorReadOnly = useInvestorSession();
     const [sl, setSl] = useState('0.00');
     const [tp, setTp] = useState('0.00');
     const [volumeStr, setVolumeStr] = useState('0.01');
@@ -281,12 +284,13 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
     ), []);
 
     const getCurrentMutationContext = useCallback((): ModifyDialogSessionContext | null => {
+        if (investorReadOnly) { setError(INVESTOR_READ_ONLY_MESSAGE); return null; }
         const context = dialogSessionContextRef.current;
         if (isCurrentDialogSession(context)) return context;
         setSuccessMessage(null);
         setError(STALE_MODIFY_DIALOG_ERROR);
         return null;
-    }, [isCurrentDialogSession]);
+    }, [investorReadOnly, isCurrentDialogSession]);
 
     const scheduleClose = useCallback((
         context: ModifyDialogSessionContext,
@@ -1386,7 +1390,7 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
                             <button
                                 type="button"
                                 onClick={handleSubmit}
-                                disabled={isSubmitting}
+                                disabled={investorReadOnly || isSubmitting}
                                 className="rtx-modify-btn--submit"
                             >
                                 {isSubmitting ? tr("Processing...") : tr("Modify #{{value0}} {{value1}} {{value2}} {{value3}} {{value4}}", { value0: position.id, value1: position.side.toLowerCase(), value2: position.volume.toFixed(2), value3: position.symbol, value4: position.openPrice.toFixed(digits) })}
@@ -1398,7 +1402,7 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
                                         <button
                                             type="button"
                                             onClick={() => handleMarketOrder('SELL')}
-                                            disabled={isSubmitting || bid <= 0}
+                                            disabled={investorReadOnly || isSubmitting || bid <= 0}
                                             className="rtx-modify-btn--market rtx-modify-btn--sell"
                                         >
                                             {tr("Sell by Market")}
@@ -1406,7 +1410,7 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
                                         <button
                                             type="button"
                                             onClick={() => handleMarketOrder('BUY')}
-                                            disabled={isSubmitting || ask <= 0}
+                                            disabled={investorReadOnly || isSubmitting || ask <= 0}
                                             className="rtx-modify-btn--market rtx-modify-btn--buy"
                                         >
                                             {tr("Buy by Market")}
@@ -1415,7 +1419,7 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
                                     <button
                                         type="button"
                                         onClick={handleCloseByMarket}
-                                        disabled={isSubmitting}
+                                        disabled={investorReadOnly || isSubmitting}
                                         className="rtx-modify-btn--close"
                                     >
                                         {tr("Close #")}{position.id} {position.side.toLowerCase()} {actionVolume > 0 ? actionVolume.toFixed(2) : '0.00'} {position.symbol} {position.openPrice.toFixed(digits)} {tr(" by Market")}
