@@ -1,10 +1,8 @@
-/** Preserve immediate placement without adding a redundant successful pass. */
+import type { TradeOverlayRelayoutRequest } from './createTradeOverlayRelayoutQueue';
+
+/** New nodes stay hidden until one coalesced projection of the latest refs. */
 export function layoutRebuiltTradeOverlay(
-  interactionActive: boolean,
-  updateLabelPositions: () => boolean,
-  queueTradeOverlayRelayout: () => void,
+  queueTradeOverlayRelayout: (request?: TradeOverlayRelayoutRequest) => void,
 ): void {
-  if (interactionActive || updateLabelPositions()) queueTradeOverlayRelayout();
-  // Never cancel an existing request: quote/range events may also own it.
-  // The queued callback performs one pass, without scheduling itself again.
+  queueTradeOverlayRelayout({ retryOnce: true });
 }

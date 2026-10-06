@@ -11,6 +11,7 @@ import {
 import type { Candle, Timeframe, TradingViewChartTheme } from '../../../types/chart';
 import type { ChartPostInteractionCoordinator } from '../../../utils/chartPostInteractionCoordinator';
 import type { TradeSide } from '../presentation/tradeOverlayPresentation';
+import { createTradeOverlayRelayoutQueue } from './createTradeOverlayRelayoutQueue';
 import {
   getFrozenEntryTimeKey,
   TRADE_BUY_COLOR,
@@ -46,6 +47,7 @@ interface CreateTradeOverlayModelRuntimeOptions {
   tradeLevelOverridesRef: RefObject<Map<string, TradeLevelOverride>>;
   tradeOverlayRafRef: RefObject<number | null>;
   updateLabelPositions: (refreshMetrics?: boolean) => boolean;
+  isRuntimeCurrent: () => boolean;
 }
 
 export const createTradeOverlayModelRuntime = ({
@@ -71,19 +73,16 @@ export const createTradeOverlayModelRuntime = ({
   tradeLevelOverridesRef,
   tradeOverlayRafRef,
   updateLabelPositions,
+  isRuntimeCurrent,
 }: CreateTradeOverlayModelRuntimeOptions) => {
-    const queueTradeOverlayRelayout = () => {
-      if (isChartInteractionActiveRef.current) {
-        postInteractionCoordinatorRef.current?.request({ overlay: true });
-        return;
-      }
-
-      if (tradeOverlayRafRef.current !== null) return;
-      tradeOverlayRafRef.current = requestAnimationFrame(() => {
-        tradeOverlayRafRef.current = null;
-        updateLabelPositions();
-      });
-    };
+    const relayoutQueue = createTradeOverlayRelayoutQueue({
+      frameRef: tradeOverlayRafRef,
+      isCurrent: isRuntimeCurrent,
+      isInteracting: () => isChartInteractionActiveRef.current,
+      requestPostInteraction: () => postInteractionCoordinatorRef.current?.request({ overlay: true }),
+      project: () => updateLabelPositions(),
+    });
+    const queueTradeOverlayRelayout = relayoutQueue.queue;
 
     const normalizeUnixSeconds = (value: unknown): number | null => {
       if (value == null || value === '') return null;
@@ -460,6 +459,8 @@ export const createTradeOverlayModelRuntime = ({
 
   return {
     queueTradeOverlayRelayout,
+    disposeTradeOverlayRelayout: relayoutQueue.dispose,
+    flushPostInteractionTradeOverlay: relayoutQueue.flushPostInteraction,
     normalizeUnixSeconds,
     pickPositiveNumber,
     getTradeTicketLabel,

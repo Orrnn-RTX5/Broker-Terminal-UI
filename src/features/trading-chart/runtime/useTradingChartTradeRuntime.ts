@@ -195,6 +195,7 @@ export const useTradingChartTradeRuntime = ({
 
 
   const tradeOverlayRafRef = useRef<number | null>(null);
+  const postInteractionTradeOverlayLayoutRef = useRef<(() => void) | null>(null);
 
 
 
@@ -774,7 +775,8 @@ export const useTradingChartTradeRuntime = ({
       );
       drawingManager.renderAll();
     }
-    updateLabelPositions();
+    if (postInteractionTradeOverlayLayoutRef.current) postInteractionTradeOverlayLayoutRef.current();
+    else updateLabelPositions();
   }, [
     activeChartSourceId,
     chartRef,
@@ -806,6 +808,7 @@ export const useTradingChartTradeRuntime = ({
 
 
   useTradingChartTradeOverlayRenderer({
+    postInteractionTradeOverlayLayoutRef,
     activeOverlayNodeDataRef,
     activeOverlayNodesRef,
     activeTradeSnapshotsRef,

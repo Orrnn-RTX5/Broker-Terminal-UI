@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindTradeOverlayRuntimeSubscriptions } from './bindTradeOverlayRuntimeSubscriptions';
 import type { ActiveTradeSnapshot } from './tradeRuntimeContracts';
+import { getTradeOverlayRedrawDecision } from '../../../services/tradeOverlayHistory';
 
 const store = vi.hoisted(() => ({ state: {} as any, listener: undefined as any, scope: 1, closed: new Set<unknown>() }));
 vi.mock('../../../store/useAppStore', () => ({ getPositionCloseScope: () => store.scope,
@@ -91,10 +92,54 @@ describe('bounded overlay presentation scheduling', () => {
     emit({ positions: [position({ ...patch, currentPrice: 200 })] });
     expect(f.options.activeTradeSnapshotsRef.current.get('trade:1')?.currentPrice).toBe(101);
   });
-  it.each(['rtx:new-trade-placed', 'rtx:flush-trade-overlay', 'rtx:refresh-trade-overlay'])('flushes the latest valuation for %s without a later duplicate frame', name => {
+  it.each(['rtx:flush-trade-overlay', 'rtx:refresh-trade-overlay'])('flushes the latest valuation for %s without a later duplicate frame', name => {
     const f = fixture(); emit({ positions: [position({ currentPrice: 110 })] });
     event(name); expect(f.render).toHaveBeenCalledTimes(1); expect(frames.size).toBe(0);
     flush(); expect(f.render).toHaveBeenCalledTimes(1);
+  });
+  it('renders a structural fill immediately without forcing a second rebuild for its subsequent notification', () => {
+    const f = fixture();
+    emit({ positions: [position(), position({ id: 2 })] });
+    expect(f.render).toHaveBeenCalledTimes(1); expect(frames.size).toBe(0);
+    event('rtx:new-trade-placed');
+    expect(f.render).toHaveBeenCalledTimes(1); expect(frames.size).toBe(1);
+    flush(); expect(f.render).toHaveBeenCalledTimes(2);
+    const options = f.render.mock.calls[1][0];
+    // The real renderer's decision must retain already rendered markers when
+    // the structural signature is unchanged after the synchronous store pass.
+    expect(getTradeOverlayRedrawDecision({ lastActiveSignature: 'trade:1|trade:2', nextActiveSignature: 'trade:1|trade:2',
+      lastHistorySignature: 'history', nextHistorySignature: 'history',
+      forceActive: typeof options === 'boolean' ? options : options?.forceActive,
+      forceHistory: typeof options === 'boolean' ? options : options?.forceHistory,
+    })).toEqual({ activeChanged: false, historyChanged: false });
+  });
+  it('coalesces notification-only refreshes into one normal model pass and shares the valuation frame', () => {
+    const f = fixture();
+    for (let i = 0; i < 25; i++) event('rtx:new-trade-placed');
+    expect(f.render).not.toHaveBeenCalled(); expect(frames.size).toBe(1);
+    flush(); expect(f.render).toHaveBeenCalledExactlyOnceWith();
+    emit({ positions: [position({ currentPrice: 110 })] }); event('rtx:new-trade-placed');
+    expect(f.options.activeTradeSnapshotsRef.current.get('trade:1')?.currentPrice).toBe(110);
+    expect(frames.size).toBe(1); flush(); expect(f.render).toHaveBeenCalledTimes(2);
+  });
+  it('preempts a queued new-trade refresh with immediate close suppression and preserves its snapshot', () => {
+    const f = fixture(); event('rtx:new-trade-placed');
+    event('rtx:trade-overlay-close-state', { status: 'pending', ticketIds: [1] });
+    expect(f.options.closeSuppressedTradeKeysRef.current.has('trade:1')).toBe(true);
+    expect(f.options.pendingClosedTradeSnapshotsRef.current.get('trade:1')).toMatchObject({ currentPrice: 101 });
+    expect(f.render).toHaveBeenLastCalledWith({ forceActive: true, forceHistory: true });
+    expect(frames.size).toBe(0); const calls = f.render.mock.calls.length;
+    flush(); expect(f.render).toHaveBeenCalledTimes(calls);
+  });
+  it.each(['account', 'logout', 'chart', 'context', 'dispose'])('does not run or requeue a new-trade notification after %s', reason => {
+    const f = fixture(); event('rtx:new-trade-placed'); expect(frames.size).toBe(1);
+    if (reason === 'account') store.state.accountId = '2';
+    else if (reason === 'logout') store.scope++;
+    else if (reason === 'chart') f.options.chartRef.current = null;
+    else if (reason === 'context') f.options.drawingRuntimeContextRef.current.contextId = 'chart-two';
+    else { dispose?.(); dispose = undefined; }
+    flush(); event('rtx:new-trade-placed'); expect(frames.size).toBe(0);
+    expect(f.render).not.toHaveBeenCalled();
   });
   it('captures the latest valuation for close even if flushing removes its active overlay', () => {
     const f = fixture(); emit({ positions: [position({ currentPrice: 110 })] });

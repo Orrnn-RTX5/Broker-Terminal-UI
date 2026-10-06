@@ -91,6 +91,7 @@ interface UseTradingChartTradeOverlayRendererOptions {
   pendingTradeLevelModifyRequestsRef: RefObject<Map<string, TradeLevelModifyRequestId>>;
   persistTradeLevelOverrides: () => void;
   postInteractionCoordinatorRef: RefObject<ChartPostInteractionCoordinator | null>;
+  postInteractionTradeOverlayLayoutRef: RefObject<(() => void) | null>;
   prevTimeframeRef: RefObject<Timeframe>;
   resolvedPriceDigits: number;
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
@@ -149,6 +150,7 @@ export const useTradingChartTradeOverlayRenderer = ({
   pendingTradeLevelModifyRequestsRef,
   persistTradeLevelOverrides,
   postInteractionCoordinatorRef,
+  postInteractionTradeOverlayLayoutRef,
   prevTimeframeRef,
   resolvedPriceDigits,
   seriesRef,
@@ -177,12 +179,23 @@ export const useTradingChartTradeOverlayRenderer = ({
 
     hydrateTradeLevelOverrides();
 
+    let runtimeDisposed = false;
+    const ownerChart = chartRef.current, ownerSeries = seriesRef.current, ownerOverlay = overlayRef.current;
+    const ownerScope = getPositionCloseScope(), ownerAccount = useAppStore.getState().accountId;
+    const ownerContext = drawingRuntimeContextRef.current.contextId;
+    const isRuntimeCurrent = () => !runtimeDisposed && !isDisposedRef.current
+      && chartRef.current === ownerChart && seriesRef.current === ownerSeries && overlayRef.current === ownerOverlay
+      && getPositionCloseScope() === ownerScope && useAppStore.getState().accountId === ownerAccount
+      && drawingRuntimeContextRef.current.contextId === ownerContext;
+
     // FIX: Trade overlays use the same opaque identity as orders and quotes.
     const normalizedChartSymbol = symbol.trim().toUpperCase();
     const digits = resolvedPriceDigits;
 
     const {
       queueTradeOverlayRelayout,
+      disposeTradeOverlayRelayout,
+      flushPostInteractionTradeOverlay,
       normalizeUnixSeconds,
       pickPositiveNumber,
       getTradeTicketLabel,
@@ -230,7 +243,9 @@ export const useTradingChartTradeOverlayRenderer = ({
       tradeLevelOverridesRef,
       tradeOverlayRafRef,
       updateLabelPositions,
+      isRuntimeCurrent,
     });
+    postInteractionTradeOverlayLayoutRef.current = flushPostInteractionTradeOverlay;
 
     const {
       createCollisionOffsetFactory,
@@ -878,13 +893,12 @@ export const useTradingChartTradeOverlayRenderer = ({
         }
       }
 
-      // New nodes start hidden. Place them synchronously while idle and retry
-      // once only when the chart cannot yet project their coordinates. Chart
-      // paint/range/resize events still own later transform invalidations.
-      layoutRebuiltTradeOverlay(isChartInteractionActiveRef.current, updateLabelPositions, queueTradeOverlayRelayout);
+      // Clearing and model snapshots remain synchronous; geometry reads/writes
+      // coalesce at the next paint with one bounded unresolved-coordinate retry.
+      layoutRebuiltTradeOverlay(queueTradeOverlayRelayout);
     };
 
-    return bindTradeOverlayRuntimeSubscriptions({
+    const unbindSubscriptions = bindTradeOverlayRuntimeSubscriptions({
       activeTradeSnapshotsRef,
       buildClosedTradeFromEventSnapshot,
       buildImmediateClosedTrade,
@@ -915,5 +929,11 @@ export const useTradingChartTradeOverlayRenderer = ({
       tradeLevelCrossCloseCandidatesRef,
       tradeLevelCrossRefreshPendingRef,
     });
+    return () => {
+      runtimeDisposed = true;
+      disposeTradeOverlayRelayout();
+      if (postInteractionTradeOverlayLayoutRef.current === flushPostInteractionTradeOverlay) postInteractionTradeOverlayLayoutRef.current = null;
+      unbindSubscriptions();
+    };
   }, [brokerAccountSessionScope, positionCloseScope, brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, TRADE_HISTORY_PRESENTATION_VERSION, updateLabelPositions]);
 };

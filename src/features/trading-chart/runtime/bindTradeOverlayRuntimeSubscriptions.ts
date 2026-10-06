@@ -274,7 +274,15 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
       clearTradeOverlayLayer('active');
       renderImmediately({ forceActive: true, forceHistory: status !== 'failed' });
     };
-    const handleNewTradePlaced = () => renderImmediately({ forceActive: true });
+    const handleNewTradePlaced = () => {
+      if (!ownsRuntime()) return;
+      // services/api publishes the filled placement before this notification;
+      // useToolboxTradeData commits it to the store synchronously. Its structural
+      // subscription already rendered the fill. Dialog/pending-order producers
+      // also only request a refresh: let signatures preserve existing markers.
+      // Share the owned presentation frame with valuations; closes still flush.
+      queueValuationRender();
+    };
     window.addEventListener('rtx:force-refresh-positions', handleForceRefresh);
     window.addEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
     window.addEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);

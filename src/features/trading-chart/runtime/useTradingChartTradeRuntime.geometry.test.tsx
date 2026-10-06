@@ -56,45 +56,43 @@ describe('trade overlay geometry presentation', () => {
     expect(tooltip.style.transform).toBe('none');
     f.hook.unmount();
   });
-  it('places a rebuilt node immediately without requesting another successful pass', () => {
+  it('queues rebuilt geometry without synchronous projection, then places current nodes at paint', () => {
     const f = fixture(), queue = vi.fn();
-    layoutRebuiltTradeOverlay(false, f.renderer.updateLabelPositions, queue);
+    layoutRebuiltTradeOverlay(queue);
+    expect(f.coordinate).not.toHaveBeenCalled();expect(queue).toHaveBeenCalledExactlyOnceWith({ retryOnce: true });
+    f.repaint();
     expect(f.node.style.top).toBe('100px');
-    expect(f.coordinate).toHaveBeenCalledTimes(1); expect(queue).not.toHaveBeenCalled();
+    expect(f.coordinate).toHaveBeenCalledTimes(1);
     // A later committed chart transform still projects through the existing hook.
     f.move(175); f.repaint(); expect(f.node.style.top).toBe('175px');
     f.hook.unmount();
   });
-  it('requests one bounded retry for unresolved new nodes and preserves placed nodes across gaps', () => {
-    const f = fixture(); let retry: (() => boolean) | undefined;
-    const queue = vi.fn(() => { retry = f.renderer.updateLabelPositions; });
+  it('reports unresolved new nodes for the bounded queue retry and preserves placed nodes across gaps', () => {
+    const f = fixture();
     f.move(null);
-    layoutRebuiltTradeOverlay(false, f.renderer.updateLabelPositions, queue);
-    expect(f.node.style.display).toBe('none'); expect(queue).toHaveBeenCalledTimes(1);
-    expect(retry!()).toBe(true); expect(queue).toHaveBeenCalledTimes(1);
+    expect(f.renderer.updateLabelPositions()).toBe(true);
+    expect(f.node.style.display).toBe('none');
     f.move(160); f.repaint(); expect(f.node.style.top).toBe('160px');
     f.move(null); expect(f.renderer.updateLabelPositions()).toBe(true);
     expect(f.node.style.top).toBe('160px'); expect(f.node.style.display).toBe('block');
     f.hook.unmount();
   });
-  it('does not retry intentional offscreen geometry and gives zero-size containers one retry', () => {
-    const f = fixture(), queue = vi.fn();
-    f.move(-200); layoutRebuiltTradeOverlay(false, f.renderer.updateLabelPositions, queue);
-    expect(f.node.style.display).toBe('none'); expect(queue).not.toHaveBeenCalled();
-    f.resize(0, 0, 60); layoutRebuiltTradeOverlay(false, f.renderer.updateLabelPositions, queue);
-    expect(queue).toHaveBeenCalledTimes(1);
-    expect(f.renderer.updateLabelPositions()).toBe(true); expect(queue).toHaveBeenCalledTimes(1);
+  it('distinguishes intentional offscreen geometry from unresolved zero-size containers', () => {
+    const f = fixture();
+    f.move(-200); expect(f.renderer.updateLabelPositions()).toBe(false);
+    expect(f.node.style.display).toBe('none');
+    f.resize(0, 0, 60);expect(f.renderer.updateLabelPositions()).toBe(true);
     f.resize(600, 400, 60); f.move(120); f.repaint(); expect(f.node.style.top).toBe('120px');
     f.hook.unmount();
   });
-  it('leaves independent queued work intact and defers layout during interaction', () => {
+  it('leaves an independent queued geometry pass intact after structural scheduling', () => {
     const f = fixture(); let pending: (() => boolean) | undefined = f.renderer.updateLabelPositions;
     const queue = vi.fn(() => { pending ??= f.renderer.updateLabelPositions; });
-    layoutRebuiltTradeOverlay(false, f.renderer.updateLabelPositions, queue);
+    layoutRebuiltTradeOverlay(queue);
     expect(pending).toBe(f.renderer.updateLabelPositions);
     f.move(180); pending!(); expect(f.node.style.top).toBe('180px');
-    f.coordinate.mockClear(); layoutRebuiltTradeOverlay(true, f.renderer.updateLabelPositions, queue);
-    expect(f.coordinate).not.toHaveBeenCalled(); expect(queue).toHaveBeenCalledTimes(1);
+    f.coordinate.mockClear();layoutRebuiltTradeOverlay(queue);
+    expect(f.coordinate).not.toHaveBeenCalled();expect(queue).toHaveBeenCalledTimes(2);
     f.hook.unmount();
   });
   it('retries unavailable marker time coordinates but not invalid times or clipped segments', () => {
