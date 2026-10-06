@@ -1,3 +1,5 @@
+import { useInvestorSession } from '../hooks/useInvestorSession';
+import { INVESTOR_READ_ONLY_MESSAGE } from '../services/investorSession';
 import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * MT5-Style One-Click Trading Panel
@@ -115,6 +117,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     volumeStep,
 }) => {
     const tr = useUiTranslation();
+    const investorReadOnly = useInvestorSession();
     const volumeConstraints = useMemo(() => resolveTradeVolumeConstraints({
         minVolume,
         maxVolume,
@@ -274,7 +277,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const staleQuoteMessage = tr('Cannot place this trade because the quote for {{symbol}} is stale. Please wait for a fresh quote and try again.', { symbol });
     const quoteLive = !strictFreshness || canSubmitTerminalMarketOrder(quoteFreshness);
     const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice && quoteLive;
-    const tradeControlDisabled = hasTradingSession && (!canSubmitOrder || waitingForQuote);
+    const tradeControlDisabled = investorReadOnly || (hasTradingSession && (!canSubmitOrder || waitingForQuote));
     // A changed draft, symbol or permission cancels a waiting click permanently,
     // even if the user changes it back before the next provider update.
     const preflightIdentity = JSON.stringify([symbol, visible, volumeDraft, volumeConstraints,
@@ -298,7 +301,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             freshnessReason: quoteFreshness.reason, clockStatus: quoteFreshness.clockStatus });
     }, [captureQuoteDiagnostics, visible, symbol, tradeControlDisabled, diagnosticBlockReason, hasTradingSession, tradeAllowed,
         marketOpenForTrading, isVolumeValid, hasExecutablePrice, quoteLive, quoteFreshness.reason, quoteFreshness.clockStatus]);
-    const orderBlockedReason = !tradeAllowed
+    const orderBlockedReason = investorReadOnly ? tr(INVESTOR_READ_ONLY_MESSAGE) : !tradeAllowed
         ? strictFreshness ? tr('Trading is not available for {{symbol}}.', { symbol }) : hasExecutablePrice ? staleQuoteMessage : tr('No live quote is available for {{symbol}}. Please wait for a fresh quote and try again.', { symbol })
         : !quoteLive
             ? terminalQuoteBlockMessage(quoteFreshness.reason, symbol)
@@ -595,7 +598,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 data-active={flashSide === side}
                 onClick={() => placeOrder(side)}
                 disabled={tradeControlDisabled}
-                title={hasTradingSession ? tr(orderBlockedReason) : tr('Login required to trade')}
+                title={investorReadOnly || hasTradingSession ? tr(orderBlockedReason) : tr('Login required to trade')}
                 aria-label={tr("{{value0}} {{value1}} at {{value2}}", { value0: tr(label), value1: symbol, value2: priceText })}
                 style={{
                     ...sharedButtonStyle,

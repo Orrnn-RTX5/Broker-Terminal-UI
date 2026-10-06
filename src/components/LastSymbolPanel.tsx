@@ -1,3 +1,5 @@
+import { useInvestorSession } from '../hooks/useInvestorSession';
+import { INVESTOR_READ_ONLY_MESSAGE } from '../services/investorSession';
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import i18n from '../i18n';
 /**
@@ -60,6 +62,7 @@ const clampPanelPosition = (position: { x: number; y: number }, panel: HTMLDivEl
 
 export function LastSymbolPanel({ symbol }: { symbol?: string } = {}) {
     const tr = useUiTranslation();
+    const investorReadOnly = useInvestorSession();
     const {
         lastSymbol: lastTradedSymbol,
         lastTradeSide: recordedTradeSide,
@@ -171,8 +174,8 @@ export function LastSymbolPanel({ symbol }: { symbol?: string } = {}) {
     const effectiveLot = useRiskSizing ? calculateRiskLot() : volume;
     const tradeBlockedMessage = getMarketStatusTradeBlockMessage(marketStatus, lastSymbol);
     const canPlaceTrade = Boolean(lastSymbol) && !shouldBlockSymbolTrading(marketStatus, lastSymbol);
-    const sellDisabled = hasTradingSession && (!canPlaceTrade || bid === 0);
-    const buyDisabled = hasTradingSession && (!canPlaceTrade || ask === 0);
+    const sellDisabled = investorReadOnly || (hasTradingSession && (!canPlaceTrade || bid === 0));
+    const buyDisabled = investorReadOnly || (hasTradingSession && (!canPlaceTrade || ask === 0));
     const hasLiveQuote = Boolean(lastSymbol && bid > 0 && ask > 0);
     const executionStatus = !lastSymbol
         ? { label: 'Idle', tone: 'idle' }
@@ -277,6 +280,7 @@ export function LastSymbolPanel({ symbol }: { symbol?: string } = {}) {
 
     // Close positions on last symbol via MT5 Sync API
     const closeLastPositions = useCallback(async () => {
+        if (investorReadOnly) { flash(tr(INVESTOR_READ_ONLY_MESSAGE), 'info'); return; }
         if (isClosing || !lastSymbol || lastSymbolPositions.length === 0) {
             if (lastSymbolPositions.length === 0) flash(`${tr('No open positions')} · ${lastSymbol}`, 'info');
             return;
@@ -305,7 +309,7 @@ export function LastSymbolPanel({ symbol }: { symbol?: string } = {}) {
         } finally {
             setIsClosing(false);
         }
-    }, [isClosing, lastSymbol, lastSymbolPositions, flash, tr]);
+    }, [investorReadOnly, isClosing, lastSymbol, lastSymbolPositions, flash, tr]);
 
     // Keyboard shortcuts
     useEffect(() => {
@@ -565,7 +569,7 @@ export function LastSymbolPanel({ symbol }: { symbol?: string } = {}) {
                     <button
                         type="button"
                         onClick={closeLastPositions}
-                        disabled={isClosing || lastSymbolPositions.length === 0}
+                        disabled={investorReadOnly || isClosing || lastSymbolPositions.length === 0}
                         className="last-symbol-close-button"
                         aria-label={tr("Close all {{value0}} positions", { value0: lastSymbol || tr('Last Symbol') })}
                         title={tr("Close positions (Shift+X)")}

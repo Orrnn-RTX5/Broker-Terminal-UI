@@ -469,7 +469,7 @@ export const accountV2Api = {
     apiClient.post<CloseAllPositionsResponse>(`/accounts/${login}/close-all`, {}, v2Options(options)),
 
   setInvestorPassword: (login: number | string, request: SetInvestorPasswordRequest, options?: ApiRequestOptions) =>
-    apiClient.post<PasswordChangeResponse>(`/accounts/${login}/investor-password`, request, v2Options(options)),
+    apiClient.post<PasswordChangeResponse>(`/accounts/${login}/investor-password`, { new_password: request.password }, v2Options(options)),
 };
 export type { ClosePositionRequestOptions, ClosePositionSecondArg } from './positionClose';
 

@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { useInvestorSession } from '../../../hooks/useInvestorSession';
 import type {
   Dispatch,
   MouseEvent as ReactMouseEvent,
@@ -119,6 +120,7 @@ export function TradeTable({
   visibleTradeTableWidth,
 }: TradeTableProps) {
   const tr = useUiTranslation();
+  const investorReadOnly = useInvestorSession();
 
   const renderColumnResizeHandle = (key: TradeColumnWidthKey) => (
     <button
@@ -222,7 +224,7 @@ export function TradeTable({
               placementState && !['filled', 'confirmed'].includes(placementState),
             );
             const isAwaitingClose = position.closeCommandState === 'awaiting-confirmation';
-            const actionsDisabled = isPendingPlacement || isAwaitingClose;
+            const actionsDisabled = investorReadOnly || isPendingPlacement || isAwaitingClose;
             const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
             const isOutcomeUnknown = position.placementErrorCode === 'ORDER_OUTCOME_UNKNOWN';
             const placementLabel = isTerminalPlacementFailure
