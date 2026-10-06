@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createHistoryTradeOverlayGroups, createHistoryTradeOverlayRenderPlans } from './createHistoryTradeOverlayGroups';
+import { createHistoryTradeOverlayContextKey, createHistoryTradeOverlayGroups, createHistoryTradeOverlayRenderPlans } from './createHistoryTradeOverlayGroups';
 import type { ClosedTradeSnapshot, OverlayNodeData } from './tradeRuntimeContracts';
 
 const trade: ClosedTradeSnapshot = { key: 'trade:1', symbol: 'BTCUSD', side: 'BUY', volume: 0.01,
@@ -11,6 +11,36 @@ const descriptors = (trades = [trade], overrides: Partial<typeof presentation> =
   createHistoryTradeOverlayRenderPlans({ trades, ...presentation, ...overrides });
 
 afterEach(() => document.body.replaceChildren());
+
+describe('history owner context keys', () => {
+  it('compares the full context exactly and advances on A to B to A', () => {
+    const key = createHistoryTradeOverlayContextKey();
+    const a = JSON.stringify({ theme: 'x'.repeat(4000), scope: 'account:1' });
+    const b = JSON.stringify({ theme: 'x'.repeat(4000), scope: 'account:2' });
+    expect(key(a)).toBe('1'); expect(key(a.slice())).toBe('1');
+    expect(key(b)).toBe('2'); expect(key(a)).toBe('3'); expect(key(a)).toBe('3');
+    const replacementOwner = createHistoryTradeOverlayContextKey();
+    expect(replacementOwner(a)).toBe('1'); expect(key(a)).toBe('3');
+  });
+
+  it('keeps all 500 exact trade descriptors but removes repeated full presentation strings', () => {
+    const key = createHistoryTradeOverlayContextKey();
+    const context = JSON.stringify({ theme: Object.fromEntries(Array.from({ length: 24 }, (_, index) =>
+      [`field${index}`, `exact-value-${index}-${'x'.repeat(40)}`])), scope: 'broker/account/chart' });
+    const trades = Array.from({ length: 500 }, (_, index) => ({ ...trade, key: `trade:${index + 1}` }));
+    const original = descriptors(trades, { presentationSignature: context });
+    const compact = descriptors(trades, { presentationSignature: key(context) });
+    expect(JSON.stringify(compact.map(plan => plan.signature)).length)
+      .toBeLessThan(JSON.stringify(original.map(plan => plan.signature)).length / 4);
+    for (let index = 0; index < trades.length; index++) {
+      expect(JSON.parse(compact[index].signature).slice(1)).toEqual(JSON.parse(original[index].signature).slice(1));
+    }
+    const unchanged = descriptors(trades, { presentationSignature: key(context) });
+    expect(unchanged.map(plan => plan.signature)).toEqual(compact.map(plan => plan.signature));
+    const changed = descriptors(trades, { presentationSignature: key(`${context} `) });
+    expect(changed.every((plan, index) => plan.signature !== compact[index].signature)).toBe(true);
+  });
+});
 
 describe('closed history capture fingerprints', () => {
   it.each([
@@ -82,6 +112,18 @@ describe('closed history DOM ownership', () => {
     f.render([trade], true); expect(f.create).toHaveBeenCalledTimes(2); expect(original.isConnected).toBe(false);
     f.nodes.current.forEach(node => node.remove()); f.nodes.current = []; f.data.current = [];
     f.render([trade]); expect(f.create).toHaveBeenCalledTimes(3); expect(f.nodes.current).toHaveLength(5);
+  });
+
+  it('rebuilds every owned group on context changes, including returning to an earlier context', () => {
+    const f = fixture(), key = createHistoryTradeOverlayContextKey();
+    const trades = [trade, { ...trade, key: 'trade:2' }];
+    const renderContext = (context: string, force = false) => f.render(trades, force, { presentationSignature: key(context) });
+    renderContext('A'); const initial = [...f.nodes.current];
+    renderContext('A'); expect(f.create).toHaveBeenCalledTimes(2); expect(f.nodes.current).toEqual(initial);
+    renderContext('B'); expect(f.create).toHaveBeenCalledTimes(4); expect(initial.every(node => !node.isConnected)).toBe(true);
+    const second = [...f.nodes.current];
+    renderContext('A'); expect(f.create).toHaveBeenCalledTimes(6); expect(second.every(node => !node.isConnected)).toBe(true);
+    renderContext('A', true); expect(f.create).toHaveBeenCalledTimes(8);
   });
 
   it('removes settings-hidden groups and rejects stale disposal/reconciliation after replacement ownership', () => {

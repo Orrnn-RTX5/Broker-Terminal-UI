@@ -5,7 +5,7 @@ import type { TradingChartVisibleRuntime } from '../../../hooks/useTradingChartV
 import { getPositionCloseScope, isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
 import { layoutRebuiltTradeOverlay } from './layoutRebuiltTradeOverlay';
 import { createActiveTradeOverlayGroups, createActiveTradeOverlayRenderPlans, type ActiveTradeOverlayGroupPlan } from './createActiveTradeOverlayGroups';
-import { createHistoryTradeOverlayGroups, createHistoryTradeOverlayRenderPlans } from './createHistoryTradeOverlayGroups';
+import { createHistoryTradeOverlayContextKey, createHistoryTradeOverlayGroups, createHistoryTradeOverlayRenderPlans } from './createHistoryTradeOverlayGroups';
 import { isInvestorSession } from '../../../services/investorSession';
 import {
   clampChartOpacityPercent,
@@ -290,6 +290,7 @@ export const useTradingChartTradeOverlayRenderer = ({
 
     const activeGroups = createActiveTradeOverlayGroups({ nodes: activeOverlayNodesRef, data: activeOverlayNodeDataRef, updaters: tradeControlLiveUpdatersRef });
     const historyGroups = createHistoryTradeOverlayGroups({ nodes: historyOverlayNodesRef, data: historyOverlayNodeDataRef });
+    const getHistoryContextKey = createHistoryTradeOverlayContextKey();
 
     const pruneCloseSuppressedTradeKeys = (now = Date.now()) => {
       closeSuppressedTradeKeysRef.current.forEach((expiresAt, key) => {
@@ -689,10 +690,10 @@ export const useTradingChartTradeOverlayRenderer = ({
       const activeSignature = JSON.stringify(activeRenderPlans.map(plan => plan.signature));
       const historyRenderPlans = createHistoryTradeOverlayRenderPlans({
         trades: Array.from(closedTrades.values()),
-        presentationSignature: JSON.stringify([
+        presentationSignature: getHistoryContextKey(JSON.stringify([
           presentationSignature, TRADE_HISTORY_PRESENTATION_VERSION,
           brokerAccountSessionScope, positionCloseScope, brokerTimeOffsetSec,
-        ]),
+        ])),
         showLines: showTradeHistoryLine,
         showArrows: showTradeHistoryArrows,
         lineOpacity: tradeHistoryLineOpacity,

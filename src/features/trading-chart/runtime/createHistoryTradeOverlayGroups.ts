@@ -3,6 +3,21 @@ import { getTradeHistoryExecutionSide } from '../../../utils/chartTradeHistoryPr
 import { createActiveTradeOverlayGroups, type ActiveTradeOverlayGroupPlan } from './createActiveTradeOverlayGroups';
 import type { ClosedTradeSnapshot, OverlayNodeData } from './tradeRuntimeContracts';
 
+/** Compare the full context once per render, without copying it into every trade. */
+export function createHistoryTradeOverlayContextKey() {
+  let previous: string | undefined;
+  let revision = 0n;
+  let key = '';
+  return (context: string): string => {
+    if (context !== previous) {
+      previous = context;
+      revision++;
+      key = revision.toString();
+    }
+    return key;
+  };
+}
+
 export function createHistoryTradeOverlayRenderPlans(options: {
   trades: readonly ClosedTradeSnapshot[];
   presentationSignature: string;
