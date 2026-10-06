@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./aggregationWorkerManager', () => ({ cancelPendingAggregations: vi.fn(), getWorkerManager: () => ({ aggregateSymbols: vi.fn(async () => []) }) }));
-import { EnhancedWebSocketService, type WebSocketMessage } from './websocket-enhanced';
+import { EnhancedWebSocketService, isEnhancedStoreHandledTickFrame, type WebSocketMessage } from './websocket-enhanced';
 import { QuoteSocketManager } from './quoteSocketManager';
 import { commitBrokerAccountSessionScope } from './brokerSession';
 import { flushLiveTicks, resetLiveTickDispatcherForTests } from './liveTickDispatcher';
@@ -52,6 +52,63 @@ describe('enhanced quote transport preserves executable evidence through the rea
       source: 'cserver', sequence: '9007199254740994', stale: false, tradable: true, source_mismatch: false,
       quoteDeliveryKind: 'snapshot' });
     expect(useMarketDataStore.getState().symbolData.BTCUSD.tickBuffer).toHaveLength(0);
+  });
+
+  it('routes the gateway envelope without type once before the App wildcard subscriber', () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    const observed: boolean[] = [];
+    const unsubscribe = service.subscribe('*', frame => {
+      // This is the shared predicate used by App to skip its legacy fallback.
+      observed.push(isEnhancedStoreHandledTickFrame(frame));
+    });
+    deliver({ channel: 'ticks.BTCUSD', data: quote(6000, '22706005') });
+    expect(getTerminalQuoteFreshness('BTCUSD').reason).toBe('stale');
+    deliver({ channel: 'ticks.BTCUSD', data: { ...quote(10000, '22706006'),
+      timestamp_ms: epoch + 10000, upstream_source_sequence: '33956028',
+      upstream_receive_timestamp: epoch + 10000, upstream_publish_timestamp: epoch + 10000,
+      hub_ingest_timestamp: epoch + 10000, hub_publish_timestamp: epoch + 10000 } });
+    flushLiveTicks(); unsubscribe();
+    expect(observed).toEqual([true, true]);
+    expect(getTerminalQuoteFreshness('BTCUSD').live).toBe(true);
+    expect(window.rtxTickCache.get('BTCUSD')).toMatchObject({ source: 'cserver', sequence: '22706006',
+      provider_timestamp: epoch + 10000, quoteDeliveryKind: 'snapshot' });
+    expect(getQuoteDiagnosticDump().quotes.filter(row => row.transport === 'v2' && row.hubSequence === '22706006')).toHaveLength(1);
+    expect(useMarketDataStore.getState().symbolData.BTCUSD.tickBuffer).toHaveLength(0);
+  });
+
+  it('accepts the captured gateway quote frame without adding a synthetic message type', () => {
+    // Exact sanitized quote frame captured from /ws/v2 on 2026-10-06.
+    const frame = { channel: 'ticks.BTCUSD', data: {
+      upstream_source_sequence: '34022327', upstream_receive_timestamp: 1791269162071,
+      upstream_publish_timestamp: 1791269162072, symbol: 'BTCUSD', bid: 85321.04, ask: 85336.04,
+      time_ms: 1791269162008, timestamp_ms: 1791269162008, provider_timestamp: 1791269162008,
+      hub_ingest_timestamp: 1791269162104, hub_publish_timestamp: 1791269162116,
+      tick_id: 'rtx-dlwuro1l4usm-22772197', sequence: '22772197', expected_source: 'cserver',
+      source_mismatch: false, stale: false, tradable: true, source: 'cserver',
+    } };
+    vi.setSystemTime(1791269162200);
+    const mono = performance.now();
+    calibrateTerminalQuoteClock(Date.now(), mono, Date.now(), mono, Date.now());
+    expect(isEnhancedStoreHandledTickFrame(frame)).toBe(true);
+    deliver(frame);
+    expect(getTerminalQuoteFreshness('BTCUSD')).toMatchObject({ live: true, clockStatus: 'verified' });
+    expect(window.rtxTickCache.get('BTCUSD')).toMatchObject({ provider_timestamp: 1791269162008,
+      source: 'cserver', sequence: '22772197', quoteDeliveryKind: 'snapshot' });
+  });
+
+  it.each(['subscribed', 'unsubscribed', 'error', 'pong', 'update'])('does not claim an explicit %s control envelope as a gateway tick', type => {
+    const frame = { type, channel: 'ticks.BTCUSD', data: quote() };
+    expect(isEnhancedStoreHandledTickFrame(frame)).toBe(false);
+    deliver(frame);
+    expect(getTerminalQuoteFreshness('BTCUSD').reason).toBe('unavailable');
+  });
+
+  it('keeps unsupported and differently cased channels out of transport ownership', () => {
+    for (const channel of ['TICKS.BTCUSD', 'quotes.BTCUSD', 'prices', 'ticks.']) {
+      expect(isEnhancedStoreHandledTickFrame({ channel, data: quote() })).toBe(false);
+    }
+    expect(isEnhancedStoreHandledTickFrame({ channel: 'ticks.BTCUSD', data: { quote: quote() } })).toBe(false);
+    expect(isEnhancedStoreHandledTickFrame({ channel: 'ticks.BTCUSD', data: { ...quote(), ask: undefined } })).toBe(false);
   });
 
   it('uses exact channel identity and envelope provider metadata without inventing an unsuffixed quote', () => {

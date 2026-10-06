@@ -53,10 +53,12 @@ export const isEnhancedStoreHandledTickFrame = (message: WebSocketMessage): bool
     return Boolean(String(message.symbol ?? '').trim())
       && hasHandledTickPrice(message, message.symbol);
   }
-  const channelSymbol = typeof message.channel === 'string' && message.channel.toLowerCase().startsWith('ticks.')
+  const channelSymbol = typeof message.channel === 'string' && message.channel.startsWith('ticks.')
     ? message.channel.slice('ticks.'.length)
     : '';
-  return message.type === 'channel_message'
+  // Gateway fan-out uses { channel, data } without a type. Explicit control
+  // envelopes must still bypass quote ownership, even if they contain sides.
+  return (message.type === undefined || message.type === 'channel_message')
     && Boolean(channelSymbol)
     && hasHandledTickPrice(message.data, channelSymbol, message);
 };
