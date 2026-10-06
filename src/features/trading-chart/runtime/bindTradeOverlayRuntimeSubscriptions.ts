@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
 import type { IChartApi } from 'lightweight-charts';
-import { useAppStore } from '../../../store/useAppStore';
+import { getPositionCloseScope, isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
 import { useChartSettingsStore } from '../../../store/useChartSettingsStore';
 import { getChartObjectState, useChartObjectStateStore } from '../../../store/useChartObjectStateStore';
 import {
@@ -17,7 +17,9 @@ import type {
   ActiveTradeSnapshot,
   ClosedTradeSnapshot,
   TradeOverlayLayer,
+  TradePositionRecord,
 } from './tradeRuntimeContracts';
+import { isTradeOverlayValuationUpdate } from './tradeOverlayValuationUpdate';
 
 type TradeOverlayModelRuntime = ReturnType<typeof createTradeOverlayModelRuntime>;
 type RenderTradeOverlay = (options?: boolean | { forceActive?: boolean; forceHistory?: boolean }) => void;
@@ -50,6 +52,9 @@ type BindTradeOverlayRuntimeSubscriptionsOptions = {
   | 'queueTradeOverlayRelayout'
   | 'resolveSymbolTick'
   | 'scheduleHistoryRefresh'
+  | 'getLiveTrailPrice'
+  | 'getLiveTrailTime'
+  | 'pickPositiveNumber'
 >;
 
 export const bindTradeOverlayRuntimeSubscriptions = ({
@@ -76,21 +81,77 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
   renderTradeOverlay,
   resolveSymbolTick,
   scheduleHistoryRefresh,
+  getLiveTrailPrice,
+  getLiveTrailTime,
+  pickPositiveNumber,
   symbol,
   tradeLevelCrossCloseCandidatesRef,
   tradeLevelCrossRefreshPendingRef,
 }: BindTradeOverlayRuntimeSubscriptionsOptions): (() => void) => {
+    let disposed = false;
+    let valuationFrame: number | null = null;
+    let refreshTimer: number | null = null;
+    const ownerScope = getPositionCloseScope();
+    const ownerAccount = useAppStore.getState().accountId;
+    const ownerChart = chartRef.current;
+    const ownerContext = drawingRuntimeContextRef.current.contextId;
+    const ownsRuntime = () => !disposed && getPositionCloseScope() === ownerScope
+      && useAppStore.getState().accountId === ownerAccount && chartRef.current === ownerChart
+      && drawingRuntimeContextRef.current.contextId === ownerContext;
+    const cancelValuationFrame = () => {
+      if (valuationFrame !== null) { cancelAnimationFrame(valuationFrame); valuationFrame = null; }
+    };
+    const renderImmediately: RenderTradeOverlay = options => {
+      cancelValuationFrame();
+      if (ownsRuntime()) renderTradeOverlay(options);
+    };
+    const flushValuationFrame = () => {
+      if (valuationFrame !== null) renderImmediately();
+    };
+    const queueValuationRender = () => {
+      if (valuationFrame !== null) return;
+      valuationFrame = requestAnimationFrame(() => {
+        valuationFrame = null;
+        if (ownsRuntime()) renderTradeOverlay();
+      });
+    };
+    const refreshValuationSnapshots = (positions: readonly TradePositionRecord[]) => {
+      const liveTime = getLiveTrailTime();
+      const chartSymbol = symbol.trim().toUpperCase();
+      for (const position of positions) {
+        const id = position.id ?? position.ticket ?? position.positionId ?? position.position_id;
+        const key = `trade:${String(id ?? '').trim()}`;
+        const trade = activeTradeSnapshotsRef.current.get(key);
+        const positionSymbol = String(position.symbol ?? position.instrument ?? position.name ?? '').trim().toUpperCase();
+        const volume = Number(position.volume ?? position.quantity ?? position.volume_lots ?? position.lots ?? 0);
+        // A retained overlay may outlive a corrected/suppressed position row.
+        // Match the full model's exact contract and executable membership first.
+        if (!trade || trade.symbol !== chartSymbol || positionSymbol !== chartSymbol
+          || !(volume > 0) || isPositionMarkedClosed(id)) continue;
+        const price = pickPositiveNumber(position.currentPrice, position.current_price,
+          position.price_current, position.priceCurrent, position.price);
+        activeTradeSnapshotsRef.current.set(key, { ...trade,
+          currentPrice: getLiveTrailPrice(trade.side, price || trade.entryPrice) ?? trade.entryPrice,
+          currentTime: liveTime ?? trade.entryTime });
+      }
+    };
     renderTradeOverlay();
 
     const timeScaleHandler = () => queueTradeOverlayRelayout();
     chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(timeScaleHandler);
 
     const unsubscribeAppStore = useAppStore.subscribe((state, previousState) => {
+      if (!ownsRuntime()) { cancelValuationFrame(); return; }
       const currentTick = resolveSymbolTick(state.ticks);
       const previousTick = resolveSymbolTick(previousState.ticks);
 
       if (state.positions !== previousState.positions || state.trades !== previousState.trades) {
-        renderTradeOverlay();
+        if (state.trades === previousState.trades && isTradeOverlayValuationUpdate(state.positions, previousState.positions)) {
+          // Capture each accepted valuation before yielding. A removal/close
+          // arriving before rAF must retain the latest price/time snapshot.
+          refreshValuationSnapshots(state.positions);
+          queueValuationRender();
+        } else renderImmediately();
         return;
       }
 
@@ -113,7 +174,7 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
         || currentProperties.showTradeHistoryArrows !== previousProperties.showTradeHistoryArrows
         || currentProperties.tradeHistoryLineOpacity !== previousProperties.tradeHistoryLineOpacity
       ) {
-        renderTradeOverlay(true);
+        renderImmediately(true);
       }
     });
 
@@ -123,22 +184,30 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
         getChartObjectState(state.byContext, contextId).tradesHidden
         !== getChartObjectState(previousState.byContext, contextId).tradesHidden
       ) {
-        renderTradeOverlay(true);
+        renderImmediately(true);
       }
     });
 
     const handleForceRefresh = () => {
-      window.setTimeout(() => {
-        renderTradeOverlay();
+      if (!ownsRuntime()) return;
+      flushValuationFrame();
+      if (refreshTimer !== null) return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        renderImmediately();
       }, 500);
     };
-    const handleRefreshTradeOverlay = () => renderTradeOverlay();
-    const handleFlushTradeOverlay = () => renderTradeOverlay(true);
+    const handleRefreshTradeOverlay = () => renderImmediately();
+    const handleFlushTradeOverlay = () => renderImmediately(true);
     const handleTradeOverlayCloseState = (event: Event) => {
       const detail = (event as CustomEvent<unknown>).detail;
       const status = getTradeOverlayCloseState(detail);
       const tradeKeys = getTradeOverlayCloseTicketKeys(detail);
-      if (!status || tradeKeys.length === 0) return;
+      if (!status || tradeKeys.length === 0 || !ownsRuntime()) return;
+      // A broker may already have removed/marked the ticket before its event.
+      // Preserve the synchronous valuation capture while flushing presentation.
+      const preFlushSnapshots = new Map(activeTradeSnapshotsRef.current);
+      flushValuationFrame();
       const closeSnapshotsByKey = new Map(
         getTradeOverlayCloseSnapshots(detail).map((snapshot) => [snapshot.key, snapshot]),
       );
@@ -158,6 +227,7 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
         let didClearTradeLevels = false;
         tradeKeys.forEach((key) => {
           const capturedTrade = activeTradeSnapshotsRef.current.get(key)
+            ?? preFlushSnapshots.get(key)
             ?? pendingMissingActiveTradesRef.current.get(key)?.trade
             ?? pendingClosedTradeSnapshotsRef.current.get(key);
           if (capturedTrade) {
@@ -202,9 +272,9 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
       }
 
       clearTradeOverlayLayer('active');
-      renderTradeOverlay({ forceActive: true, forceHistory: status !== 'failed' });
+      renderImmediately({ forceActive: true, forceHistory: status !== 'failed' });
     };
-    const handleNewTradePlaced = () => renderTradeOverlay({ forceActive: true });
+    const handleNewTradePlaced = () => renderImmediately({ forceActive: true });
     window.addEventListener('rtx:force-refresh-positions', handleForceRefresh);
     window.addEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
     window.addEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
@@ -212,6 +282,9 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
     window.addEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
 
     return () => {
+      disposed = true;
+      cancelValuationFrame();
+      if (refreshTimer !== null) { window.clearTimeout(refreshTimer); refreshTimer = null; }
       unsubscribeAppStore();
       unsubscribeChartSettings();
       unsubscribeChartObjectState();

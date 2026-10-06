@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { useActiveChartRuntimeEffect } from '../../../hooks/useActiveChartRuntimeEffect';
 import type { TradingChartVisibleRuntime } from '../../../hooks/useTradingChartVisibleRuntime';
-import { isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
+import { getPositionCloseScope, isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
 import {
   clampChartOpacityPercent,
   defaultChartProperties,
@@ -168,6 +168,9 @@ export const useTradingChartTradeOverlayRenderer = ({
   updateLabelPositions,
   visibleRuntime,
 }: UseTradingChartTradeOverlayRendererOptions): void => {
+  // Raw credential replacement/logout may advance ownership without changing
+  // the committed account key. Explicit token refresh preserves this generation.
+  const positionCloseScope = useAppStore(() => getPositionCloseScope());
   useActiveChartRuntimeEffect(visibleRuntime.overlay, () => {
     if (isDisposedRef.current || !seriesRef.current || !chartRef.current || !symbol) return;
 
@@ -910,9 +913,12 @@ export const useTradingChartTradeOverlayRenderer = ({
       renderTradeOverlay,
       resolveSymbolTick,
       scheduleHistoryRefresh,
+      getLiveTrailPrice,
+      getLiveTrailTime,
+      pickPositiveNumber,
       symbol,
       tradeLevelCrossCloseCandidatesRef,
       tradeLevelCrossRefreshPendingRef,
     });
-  }, [brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, TRADE_HISTORY_PRESENTATION_VERSION, updateLabelPositions]);
+  }, [brokerAccountSessionScope, positionCloseScope, brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, TRADE_HISTORY_PRESENTATION_VERSION, updateLabelPositions]);
 };
