@@ -272,7 +272,10 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
       }
 
       clearTradeOverlayLayer('active');
-      renderImmediately({ forceActive: true, forceHistory: status !== 'failed' });
+      // Always re-evaluate the model, but exact history fingerprints preserve
+      // unrelated closed trades through pending/confirmed/failed transitions.
+      // Explicit flush/settings refreshes retain their full-force semantics.
+      renderImmediately({ forceActive: true });
     };
     const handleNewTradePlaced = () => {
       if (!ownsRuntime()) return;

@@ -5,6 +5,7 @@ import type { TradingChartVisibleRuntime } from '../../../hooks/useTradingChartV
 import { getPositionCloseScope, isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
 import { layoutRebuiltTradeOverlay } from './layoutRebuiltTradeOverlay';
 import { createActiveTradeOverlayGroups, createActiveTradeOverlayRenderPlans, type ActiveTradeOverlayGroupPlan } from './createActiveTradeOverlayGroups';
+import { createHistoryTradeOverlayGroups, createHistoryTradeOverlayRenderPlans } from './createHistoryTradeOverlayGroups';
 import { isInvestorSession } from '../../../services/investorSession';
 import {
   clampChartOpacityPercent,
@@ -12,7 +13,6 @@ import {
   useChartSettingsStore,
 } from '../../../store/useChartSettingsStore';
 import { getChartObjectState, useChartObjectStateStore } from '../../../store/useChartObjectStateStore';
-import { getTradeHistoryExecutionSide } from '../../../utils/chartTradeHistoryPresentation';
 import { getSharedChartTrade } from '../../../utils/tradeShareLink';
 import {
   createClosedTradeHistorySnapshotCache,
@@ -220,7 +220,6 @@ export const useTradingChartTradeOverlayRenderer = ({
       clearTradeLevelRuntimeState,
       clearTradeLevelRuntimeStateByKey,
       resolveTradeLevels,
-      formatSignaturePrice,
       priceTolerance,
     } = createTradeOverlayModelRuntime({
       brokerTimeOffsetSec,
@@ -290,6 +289,7 @@ export const useTradingChartTradeOverlayRenderer = ({
     });
 
     const activeGroups = createActiveTradeOverlayGroups({ nodes: activeOverlayNodesRef, data: activeOverlayNodeDataRef, updaters: tradeControlLiveUpdatersRef });
+    const historyGroups = createHistoryTradeOverlayGroups({ nodes: historyOverlayNodesRef, data: historyOverlayNodeDataRef });
 
     const pruneCloseSuppressedTradeKeys = (now = Date.now()) => {
       closeSuppressedTradeKeysRef.current.forEach((expiresAt, key) => {
@@ -687,22 +687,18 @@ export const useTradingChartTradeOverlayRenderer = ({
         nextOffset: nextLevelOffset,
       }) : [];
       const activeSignature = JSON.stringify(activeRenderPlans.map(plan => plan.signature));
-      const closedSignature = showAnyTradeHistoryOverlay
-        ? Array.from(closedTrades.values())
-          .sort((a, b) => a.key.localeCompare(b.key))
-          .map((trade) => [
-            trade.key,
-            trade.side,
-            trade.volume,
-            trade.entryTime,
-            trade.exitTime,
-            trade.entryExecutionTime,
-            trade.exitExecutionTime,
-            formatSignaturePrice(trade.entryPrice),
-            formatSignaturePrice(trade.exitPrice),
-            trade.source,
-          ].join(':')).join('|')
-        : '';
+      const historyRenderPlans = createHistoryTradeOverlayRenderPlans({
+        trades: Array.from(closedTrades.values()),
+        presentationSignature: JSON.stringify([
+          presentationSignature, TRADE_HISTORY_PRESENTATION_VERSION,
+          brokerAccountSessionScope, positionCloseScope, brokerTimeOffsetSec,
+        ]),
+        showLines: showTradeHistoryLine,
+        showArrows: showTradeHistoryArrows,
+        lineOpacity: tradeHistoryLineOpacity,
+        resolveLineColor: getClosedTradeLineColor,
+      });
+      const closedSignature = JSON.stringify(historyRenderPlans.map(plan => plan.signature));
       const sharedOffsets = sharedTrade ? {
         entry: nextLevelOffset('ENTRY', sharedTrade.entryPrice),
         sl: sharedTrade.sl > 0 ? nextLevelOffset('SL', sharedTrade.sl) : 0,
@@ -872,19 +868,17 @@ export const useTradingChartTradeOverlayRenderer = ({
       }
 
       if (historyChanged) {
-        clearTradeOverlayLayer('history');
-        lastHistoryTradeOverlaySignatureRef.current = nextHistorySignature;
-
-        if (showAnyTradeHistoryOverlay) {
-          closedTrades.forEach((trade) => {
-            const exitSide = getTradeHistoryExecutionSide(trade.side, 'CLOSE');
+        historyGroups.reconcile(historyRenderPlans.map(({ trade, exitSide, lineColor, signature }) => ({
+          key: trade.key,
+          signature,
+          create: () => {
             if (showTradeHistoryLine) {
               createTradeHistoryLine(
                 trade.entryPrice,
                 trade.entryTime,
                 trade.exitPrice,
                 trade.exitTime,
-                getClosedTradeLineColor(trade),
+                lineColor,
                 tradeHistoryLineOpacity,
                 // Join the arrow tips when arrows are drawn; otherwise the raw fill prices.
                 showTradeHistoryArrows ? { start: trade.side, end: exitSide } : undefined,
@@ -896,8 +890,9 @@ export const useTradingChartTradeOverlayRenderer = ({
               const closePriceLabel = formatTradeLevelBadgePrice(trade.exitPrice);
               createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime);
             }
-          });
-        }
+          },
+        })), forceHistory);
+        lastHistoryTradeOverlaySignatureRef.current = nextHistorySignature;
       }
 
       // Clearing and model snapshots remain synchronous; geometry reads/writes
@@ -940,6 +935,7 @@ export const useTradingChartTradeOverlayRenderer = ({
       runtimeDisposed = true;
       disposeTradeOverlayRelayout();
       activeGroups.dispose();
+      historyGroups.dispose();
       if (postInteractionTradeOverlayLayoutRef.current === flushPostInteractionTradeOverlay) postInteractionTradeOverlayLayoutRef.current = null;
       unbindSubscriptions();
     };

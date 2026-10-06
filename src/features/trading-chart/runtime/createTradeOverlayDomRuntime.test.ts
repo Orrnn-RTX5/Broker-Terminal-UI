@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTradeOverlayDomRuntime } from './createTradeOverlayDomRuntime';
-import type { ActiveTradeSnapshot, TradeLevelOverride } from './tradeRuntimeContracts';
+import type { ActiveTradeSnapshot, ClosedTradeSnapshot, TradeLevelOverride } from './tradeRuntimeContracts';
 import { tradeMarkerTooltipLayouts } from '../presentation/tradeOverlayPresentation';
 import { createActiveTradeOverlayGroups, createActiveTradeOverlayRenderPlans } from './createActiveTradeOverlayGroups';
+import { createHistoryTradeOverlayGroups, createHistoryTradeOverlayRenderPlans } from './createHistoryTradeOverlayGroups';
 
 const modifyPosition = vi.hoisted(() => vi.fn());
 vi.mock('../../../services/api', () => ({ default: { positions: { modifyPosition } } }));
@@ -173,6 +174,95 @@ describe('incremental active groups with actual trade controls', () => {
     expect(f.options.tradeLevelOverridesRef.current.get(trade.key)).toEqual({ sl: 0, tp: 84500 });
     await Promise.resolve();
     expect(f.options.tradeControlLiveUpdatersRef.current).toHaveLength(2);
+  });
+});
+
+describe('incremental history groups with actual markers and tooltips', () => {
+  afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
+
+  function historyRuntime() {
+    const f = createRuntime();
+    const groups = createHistoryTradeOverlayGroups({ nodes: f.options.historyOverlayNodesRef, data: f.options.historyOverlayNodeDataRef });
+    const settings = { showLines: true, showArrows: true, lineOpacity: 0.5 };
+    const render = (trades: ClosedTradeSnapshot[], force = false) => {
+      const plans = createHistoryTradeOverlayRenderPlans({ trades, ...settings, presentationSignature: 'actual-history-fixture',
+        resolveLineColor: item => (item.profit ?? 0) >= 0 ? '#00ff00' : '#ff0000' });
+      groups.reconcile(plans.map(({ trade: item, signature, exitSide, lineColor }) => ({ key: item.key, signature, create: () => {
+        if (settings.showLines) f.runtime.createTradeHistoryLine(item.entryPrice, item.entryTime, item.exitPrice, item.exitTime,
+          lineColor, settings.lineOpacity, settings.showArrows ? { start: item.side, end: exitSide } : undefined);
+        if (settings.showArrows) {
+          f.runtime.createTradeMarker(item.side, item.entryPrice, item.entryTime, item.entryPrice.toFixed(2), 'history', 1,
+            undefined, 'open', item.side, item.entryExecutionTime);
+          f.runtime.createTradeMarker(exitSide, item.exitPrice, item.exitTime, item.exitPrice.toFixed(2), 'history', 1,
+            undefined, 'close', item.side, item.exitExecutionTime);
+        }
+      } })), force);
+    };
+    return { ...f, groups, settings, render };
+  }
+  const closed: ClosedTradeSnapshot = { ...trade, exitPrice: 85800, exitTime: 60, exitExecutionTime: 61,
+    profit: 1, source: 'app-history' };
+
+  it('keeps 500 closed groups and focused tooltip identity when another close is added and corrected', () => {
+    const f = historyRuntime();
+    const history = Array.from({ length: 500 }, (_, index) => ({ ...closed, key: `trade:${9302300 + index}` }));
+    const markers = vi.spyOn(f.runtime, 'createTradeMarker'), lines = vi.spyOn(f.runtime, 'createTradeHistoryLine');
+    f.render(history);
+    const originalNodes = [...f.options.historyOverlayNodesRef.current];
+    const target = f.host.querySelector<HTMLElement>('.rtx-trade-marker-hover-target')!;
+    target.focus();
+    const tooltip = target.querySelector('.rtx-trade-marker__price-tooltip');
+    expect(tooltip).not.toBeNull();
+    const pending = { ...closed, key: 'trade:9400000' };
+    f.render([...history, pending]);
+    expect(markers).toHaveBeenCalledTimes(1002); expect(lines).toHaveBeenCalledTimes(501);
+    expect(f.options.historyOverlayNodesRef.current.slice(0, 2500)).toEqual(originalNodes);
+    const pendingNodes = f.options.historyOverlayNodesRef.current.slice(2500);
+    f.render([...history, { ...pending, exitPrice: 85700, exitExecutionTime: 65, source: 'mt5-history' }]);
+    expect(markers).toHaveBeenCalledTimes(1004); expect(lines).toHaveBeenCalledTimes(502);
+    expect(f.options.historyOverlayNodesRef.current.slice(0, 2500)).toEqual(originalNodes);
+    expect(pendingNodes.every(node => !node.isConnected)).toBe(true);
+    const correctedTarget = f.options.historyOverlayNodesRef.current.slice(2500).find(node =>
+      node.classList.contains('rtx-trade-marker-hover-target') && node.dataset.tradeLifecycle === 'close')!;
+    expect(correctedTarget.dataset.hoverPrice).toBe('85700.00');
+    expect(correctedTarget.dataset.hoverTime).toContain('00:01:05 GMT');
+    correctedTarget.dispatchEvent(new Event('pointerenter'));
+    const correctedTooltip = correctedTarget.querySelector('.rtx-trade-marker__price-tooltip')!;
+    expect(correctedTooltip.textContent).toContain('85700.00');
+    expect(correctedTooltip.textContent).toContain('00:01:05 GMT');
+    correctedTarget.dispatchEvent(new Event('pointerleave'));
+    expect(document.activeElement).toBe(target);
+    expect(target.querySelector('.rtx-trade-marker__price-tooltip')).toBe(tooltip);
+    target.blur(); expect(target.querySelector('.rtx-trade-marker__price-tooltip')).toBeNull();
+    f.render(history);
+    expect(f.options.historyOverlayNodesRef.current).toEqual(originalNodes);
+    expect(f.options.tradeControlLiveUpdatersRef.current).toHaveLength(0);
+  });
+
+  it('rebuilds changed settings and explicit refresh, including line-to-arrow alignment and focus cleanup', () => {
+    const cssText = vi.spyOn(CSSStyleDeclaration.prototype, 'cssText', 'set');
+    const declarationsFor = (node: HTMLElement) => cssText.mock.calls.flatMap(([value], index) =>
+      cssText.mock.contexts[index] === node.style ? [value] : []);
+    const f = historyRuntime(); f.render([closed]);
+    const target = f.host.querySelector<HTMLElement>('.rtx-trade-marker-hover-target')!; target.focus();
+    f.render([closed], true);
+    expect(target.isConnected).toBe(false);
+    const originalLine = f.host.querySelector<HTMLElement>('.rtx-trade-history-line')!;
+    expect(declarationsFor(originalLine)).toEqual([expect.stringContaining(';opacity:0.5;')]);
+    expect(f.options.historyOverlayNodeDataRef.current[0]).toMatchObject({ startMarkerSide: 'SELL', endMarkerSide: 'BUY' });
+    f.settings.showArrows = false; f.settings.lineOpacity = 0.8; f.render([closed]);
+    expect(originalLine.isConnected).toBe(false);
+    expect(f.host.querySelectorAll('.rtx-trade-marker,.rtx-trade-marker-hover-target')).toHaveLength(0);
+    expect(f.options.historyOverlayNodeDataRef.current[0].startMarkerSide).toBeUndefined();
+    // jsdom 27 drops this complete, existing CSS block although its individual
+    // declarations parse. Assert the actual replacement node's setter input.
+    const replacementLine = f.host.querySelector<HTMLElement>('.rtx-trade-history-line')!;
+    expect(declarationsFor(replacementLine)).toEqual([expect.stringContaining(';opacity:0.8;')]);
+    f.settings.showArrows = true; f.settings.showLines = false; f.render([closed]);
+    expect(f.host.querySelectorAll('.rtx-trade-history-line')).toHaveLength(0);
+    expect(f.host.querySelectorAll('.rtx-trade-marker-hover-target[tabindex="0"]')).toHaveLength(2);
+    f.settings.showArrows = false; f.render([closed]);
+    expect(f.options.historyOverlayNodesRef.current).toHaveLength(0);
   });
 });
 

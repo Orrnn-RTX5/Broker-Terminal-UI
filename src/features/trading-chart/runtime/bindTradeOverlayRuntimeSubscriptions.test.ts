@@ -127,7 +127,7 @@ describe('bounded overlay presentation scheduling', () => {
     event('rtx:trade-overlay-close-state', { status: 'pending', ticketIds: [1] });
     expect(f.options.closeSuppressedTradeKeysRef.current.has('trade:1')).toBe(true);
     expect(f.options.pendingClosedTradeSnapshotsRef.current.get('trade:1')).toMatchObject({ currentPrice: 101 });
-    expect(f.render).toHaveBeenLastCalledWith({ forceActive: true, forceHistory: true });
+    expect(f.render).toHaveBeenLastCalledWith({ forceActive: true });
     expect(frames.size).toBe(0); const calls = f.render.mock.calls.length;
     flush(); expect(f.render).toHaveBeenCalledTimes(calls);
   });
@@ -148,7 +148,7 @@ describe('bounded overlay presentation scheduling', () => {
     expect(f.buildClosed).toHaveBeenCalledWith(expect.objectContaining({ currentPrice: 110, currentTime: 1120 }), undefined);
     expect(f.options.pendingClosedTradeSnapshotsRef.current.get('trade:1')?.currentPrice).toBe(110);
     expect(f.options.closeSuppressedTradeKeysRef.current.has('trade:1')).toBe(true);
-    expect(frames.size).toBe(0); expect(f.render).toHaveBeenLastCalledWith({ forceActive: true, forceHistory: true });
+    expect(frames.size).toBe(0); expect(f.render).toHaveBeenLastCalledWith({ forceActive: true });
   });
   it('keeps failed and confirmed close events synchronous', () => {
     const f = fixture(); event('rtx:trade-overlay-close-state', { status: 'pending', ticketIds: [1] });
@@ -156,7 +156,19 @@ describe('bounded overlay presentation scheduling', () => {
     expect(f.options.closeSuppressedTradeKeysRef.current.has('trade:1')).toBe(false);
     event('rtx:trade-overlay-close-state', { status: 'confirmed', ticketIds: [1] });
     expect(f.options.clearFrozenEntryTime).toHaveBeenCalledWith('trade:1');
-    expect(f.render).toHaveBeenLastCalledWith({ forceActive: true, forceHistory: true });
+    expect(f.render).toHaveBeenLastCalledWith({ forceActive: true });
+  });
+  it('reconciles history for close transitions but preserves explicit full overlay refresh', () => {
+    const f = fixture();
+    for (const status of ['pending', 'confirmed', 'failed']) {
+      event('rtx:trade-overlay-close-state', { status, ticketIds: [1] });
+      expect(f.render).toHaveBeenLastCalledWith({ forceActive: true });
+    }
+    event('rtx:flush-trade-overlay');
+    expect(f.render).toHaveBeenLastCalledWith(true);
+    expect(getTradeOverlayRedrawDecision({ lastActiveSignature: 'active', nextActiveSignature: 'active',
+      lastHistorySignature: 'history', nextHistorySignature: 'history', forceActive: true, forceHistory: true,
+    })).toEqual({ activeChanged: true, historyChanged: true });
   });
   it('bounds burst refresh requests to one 500ms timer without postponing it and cancels on disposal', () => {
     const f = fixture();
