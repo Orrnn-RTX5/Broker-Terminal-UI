@@ -84,7 +84,7 @@ describe('cTrader-style position controls contract', () => {
     expect(chartSource).toContain("appendActiveInteractionNode(levelBar, { kind: 'price-badge', price: levelPrice });");
     // Relayout must restore each node's own display mode — forcing 'block'
     // onto the flex control bars drops their buttons onto the text baseline.
-    expect(chartSource).toContain("el.style.display = el.dataset.display || 'block';");
+    expect(chartSource).toContain('setTradeOverlayStyle(el, "display", el.dataset.display || \'block\');');
   });
 
   it('keeps outlined trade prices on exact axis coordinates on web and desktop', () => {
@@ -96,7 +96,7 @@ describe('cTrader-style position controls contract', () => {
     expect(axisBadge).toContain('badge.textContent = seriesRef.current.priceFormatter().format(price);');
     expect(axisBadge).toContain('isChartSurfaceLight()');
     expect(chartSource).toContain("if (node.kind === 'axis-price-badge')");
-    expect(chartSource).toContain('el.style.width = `${priceScaleWidth}px`;');
+    expect(chartSource).toContain('setTradeOverlayStyle(el, "width", `${priceScaleWidth}px`);');
     expect(chartSource).toContain('snappedY + 10 > plotHeight');
     expect(chartSource).toContain('pointer-events:none;z-index:8;');
     expect(chartSource).toContain('addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side));');

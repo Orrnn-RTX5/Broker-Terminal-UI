@@ -12,7 +12,7 @@ import { getChartObjectState, useChartObjectStateStore } from '../../../store/us
 import { getTradeHistoryExecutionSide } from '../../../utils/chartTradeHistoryPresentation';
 import { getSharedChartTrade } from '../../../utils/tradeShareLink';
 import {
-  buildClosedTradeHistorySnapshots,
+  createClosedTradeHistorySnapshotCache,
   createTradeOverlayCandleLookup,
   filterActiveTradeKeysForHistory,
   forgetTradeOverlayOptimisticClosedSnapshot,
@@ -285,6 +285,9 @@ export const useTradingChartTradeOverlayRenderer = ({
       });
     };
 
+    const readClosedHistorySnapshots = createClosedTradeHistorySnapshotCache();
+    const emptyHistoryMappingRevision = {};
+
     const renderTradeOverlay = (options: boolean | { forceActive?: boolean; forceHistory?: boolean } = false) => {
       if (isDisposedRef.current || !seriesRef.current || !overlayRef.current) return;
       const candleLookup = createTradeOverlayCandleLookup(candlesRef.current, currentCandleRef.current);
@@ -374,12 +377,12 @@ export const useTradingChartTradeOverlayRenderer = ({
       const activeTradeKeys = filterActiveTradeKeysForHistory(rawActiveTradeKeys, closeSuppressedTradeKeys);
       const mapHistoryTimestamp = (value: unknown): number =>
         mapTradeTime(value) ?? normalizeUnixSeconds(value) ?? 0;
-      const closedHistorySnapshots = buildClosedTradeHistorySnapshots({
+      const closedHistorySnapshots = readClosedHistorySnapshots({
         rows: appTrades as unknown as TradeOverlayHistoryRow[],
         symbol: normalizedChartSymbol,
         mapTimestamp: mapHistoryTimestamp,
         activeTradeKeys,
-      });
+      }, appTrades.length ? candleLookup.mappingRevision() : emptyHistoryMappingRevision, prevTimeframeRef.current || timeframe);
       const realClosedTradeKeys = new Set(closedHistorySnapshots.map((trade) => trade.key));
       let didClearClosedHistoryTradeLevels = false;
       realClosedTradeKeys.forEach((key) => {

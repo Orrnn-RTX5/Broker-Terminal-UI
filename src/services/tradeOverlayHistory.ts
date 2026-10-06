@@ -456,42 +456,71 @@ export const resolveNearestTradeOverlayCandleTime = (
   return bestTime;
 };
 
-/** Build one lazy lookup for a synchronous overlay pass. Do not retain it across
- * passes: candle arrays can be changed in place during history hydration.
- * Selection matches resolveNearestTradeOverlayCandleTime followed by the chart's
- * exact-time lookup: current candle first, then the first historical candle.
+interface TradeOverlayCandleIndex {
+  rawTimes: unknown[];
+  currentRawTime: unknown;
+  times: number[];
+  historicalIndexByTime: Map<number, number>;
+  currentExactTime?: number;
+}
+const tradeOverlayCandleIndexes = new WeakMap<readonly TradeOverlayCandleTimeSource[], TradeOverlayCandleIndex>();
+
+export type TradeOverlayCandleLookup<T> = ((targetTime: number, maxDistanceSeconds?: number) => T | null) & {
+  /** Stable only while every candle timestamp/order and current timestamp match. */
+  mappingRevision: () => object;
+};
+
+/** One lazy, validated lookup per synchronous pass. Index storage is reused only
+ * after checking every timestamp, including interior in-place hydration changes.
+ * Candle objects are read from the current array, so price-only replacement never
+ * returns a stale candle. Weak keys release indexes with their chart history.
  */
 export const createTradeOverlayCandleLookup = <T extends TradeOverlayCandleTimeSource>(
   historicalCandles: readonly T[],
   currentCandle?: T | null,
-): ((targetTime: number, maxDistanceSeconds?: number) => T | null) => {
-  let times: number[] | undefined;
-  const historicalByTime = new Map<number, T>();
-  let currentExactTime: number | undefined;
+): TradeOverlayCandleLookup<T> => {
+  let index: TradeOverlayCandleIndex | undefined;
 
-  const build = () => {
+  const resolveIndex = (): TradeOverlayCandleIndex => {
+    if (index) return index;
+    const previous = tradeOverlayCandleIndexes.get(historicalCandles);
+    const currentRawTime = currentCandle?.time;
+    let unchanged = Boolean(previous && previous.rawTimes.length === historicalCandles.length
+      && Object.is(previous.currentRawTime, currentRawTime));
+    if (unchanged) for (let i = 0; i < historicalCandles.length; i++) {
+      if (!Object.is(historicalCandles[i]?.time, previous!.rawTimes[i])) { unchanged = false; break; }
+    }
+    if (previous && unchanged) {
+      index = previous;
+      return index;
+    }
     const uniqueTimes = new Set<number>();
-    for (const candle of historicalCandles) {
-      const rawTime = candle?.time;
+    const historicalIndexByTime = new Map<number, number>();
+    const rawTimes: unknown[] = [];
+    for (let i = 0; i < historicalCandles.length; i++) {
+      const rawTime = historicalCandles[i]?.time;
+      rawTimes.push(rawTime);
       const time = Number(rawTime);
       if (!Number.isFinite(time) || time <= 0) continue;
       uniqueTimes.add(time);
       // The existing chart lookup uses strict equality after numeric selection.
-      if (rawTime === time && !historicalByTime.has(time)) historicalByTime.set(time, candle);
+      if (rawTime === time && !historicalIndexByTime.has(time)) historicalIndexByTime.set(time, i);
     }
-    const rawTime = currentCandle?.time;
-    const time = Number(rawTime);
+    let currentExactTime: number | undefined;
+    const time = Number(currentRawTime);
     if (Number.isFinite(time) && time > 0) {
       uniqueTimes.add(time);
-      if (rawTime === time) currentExactTime = time;
+      if (currentRawTime === time) currentExactTime = time;
     }
-    times = [...uniqueTimes].sort((a, b) => a - b);
+    index = { rawTimes, currentRawTime, times: [...uniqueTimes].sort((a, b) => a - b), historicalIndexByTime, currentExactTime };
+    tradeOverlayCandleIndexes.set(historicalCandles, index);
+    return index;
   };
 
-  return (targetTime, maxDistanceSeconds) => {
+  const lookup = (targetTime: number, maxDistanceSeconds?: number): T | null => {
     if (!Number.isFinite(targetTime) || targetTime <= 0) return null;
-    if (!times) build();
-    const sorted = times!;
+    const state = resolveIndex();
+    const sorted = state.times;
     if (sorted.length === 0) return null;
     let lower = 0, upper = sorted.length;
     while (lower < upper) {
@@ -505,8 +534,11 @@ export const createTradeOverlayCandleLookup = <T extends TradeOverlayCandleTimeS
       : targetTime - left < right - targetTime ? left : right;
     if (maxDistanceSeconds != null && Number.isFinite(maxDistanceSeconds) && maxDistanceSeconds >= 0
       && Math.abs(nearest - targetTime) > maxDistanceSeconds) return null;
-    return currentExactTime === nearest ? currentCandle! : historicalByTime.get(nearest) ?? null;
+    const historicalIndex = state.historicalIndexByTime.get(nearest);
+    return state.currentExactTime === nearest ? currentCandle!
+      : historicalIndex === undefined ? null : historicalCandles[historicalIndex] ?? null;
   };
+  return Object.assign(lookup, { mappingRevision: resolveIndex });
 };
 
 export const resolveStableTradeEntryTime = (
@@ -849,4 +881,28 @@ export const buildClosedTradeHistorySnapshots = ({
   });
 
   return Array.from(snapshots.values());
+};
+
+/** Chart-runtime-local presentation cache. The store replaces history arrays on
+ * corrections; candle mapping has its own exactly validated revision. Active
+ * exclusions stay outside the cache so opens/closes still reconcile every pass.
+ */
+export const createClosedTradeHistorySnapshotCache = () => {
+  let previousRows: TradeOverlayHistoryRow[] | undefined;
+  let previousSymbol: string | undefined;
+  let previousMappingRevision: object | undefined;
+  let previousMappingContext: string | undefined;
+  let snapshots: ClosedTradeOverlaySnapshot[] = [];
+  return ({ rows, symbol, mapTimestamp, activeTradeKeys }: BuildClosedTradeHistorySnapshotsOptions,
+    mappingRevision: object, mappingContext = ''): ClosedTradeOverlaySnapshot[] => {
+    if (rows !== previousRows || symbol !== previousSymbol || mappingRevision !== previousMappingRevision
+      || mappingContext !== previousMappingContext) {
+      snapshots = buildClosedTradeHistorySnapshots({ rows, symbol, mapTimestamp });
+      previousRows = rows;
+      previousSymbol = symbol;
+      previousMappingRevision = mappingRevision;
+      previousMappingContext = mappingContext;
+    }
+    return activeTradeKeys?.size ? snapshots.filter(snapshot => !activeTradeKeys.has(snapshot.key)) : snapshots;
+  };
 };
