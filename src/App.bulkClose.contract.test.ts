@@ -122,23 +122,26 @@ describe('Close All source contract', () => {
 });
 
 describe('single position close source contract', () => {
-  it('removes the row before waiting for confirmation and restores a rejection', () => {
+  it('starts the close before presentation, hides the row before waiting, and restores a rejection', () => {
     expect(singleStart).toBeGreaterThan(-1);
     expect(singleEnd).toBeGreaterThan(singleStart);
-    const closeRequest = singleHandler.indexOf('await api.positions.closePosition(String(id), {');
+    const closeRequest = singleHandler.indexOf('const closePromise = api.positions.closePosition(String(id), {');
+    const closeWait = singleHandler.indexOf('await closePromise;');
     expect(closeRequest).toBeGreaterThan(-1);
+    expect(closeWait).toBeGreaterThan(closeRequest);
     for (const pendingStep of [
-      'markLocalTradeMutation([id]);',
+      'markLocalTradeMutation([id])',
       "dispatchTradeOverlayCloseState([id], 'pending'",
       'useAppStore.getState().setPositions(',
       '{ removedTickets: [id] }',
     ]) {
       expect(singleHandler.indexOf(pendingStep)).toBeGreaterThan(-1);
-      expect(singleHandler.indexOf(pendingStep)).toBeLessThan(closeRequest);
+      expect(singleHandler.indexOf(pendingStep)).toBeGreaterThan(closeRequest);
+      expect(singleHandler.indexOf(pendingStep)).toBeLessThan(closeWait);
     }
-    expect(singleHandler.indexOf("dispatchTradeOverlayCloseState([id], 'confirmed'")).toBeGreaterThan(closeRequest);
+    expect(singleHandler.indexOf("dispatchTradeOverlayCloseState([id], 'confirmed'")).toBeGreaterThan(closeWait);
     expect(singleHandler).toContain('clearOptimisticClosedTickets([id], closeMarkerScope);');
-    expect(singleHandler).toContain("dispatchTradeOverlayCloseState([id], 'failed');");
+    expect(singleHandler).toContain("presentClose(() => dispatchTradeOverlayCloseState([id], 'failed'));");
     expect(singleHandler).toContain('store.setPositions([...store.positions, ...restoredPositions]);');
   });
 

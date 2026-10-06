@@ -174,8 +174,6 @@ export const createTradeOverlayDomRuntime = ({
 
       if (layer !== 'history') return;
 
-      const lightSurface = isChartSurfaceLight();
-      const palette = getTradeOverlayCardPalette(side, lightSurface);
       const lifecycleLabel = lifecycle === 'open' ? 'OPEN' : 'CLOSE';
       const timeLabel = formatTradeHistoryGmtTime(executionTime, { includeSeconds: true });
       const accessibleLabel = buildTradeHistoryBadgeText({
@@ -201,48 +199,66 @@ export const createTradeOverlayDomRuntime = ({
       hoverTarget.tabIndex = 0;
       hoverTarget.style.cssText = 'position:absolute;display:none;width:32px;height:36px;z-index:22;pointer-events:auto;cursor:help;background:transparent;';
 
-      const tooltip = document.createElement('span');
-      tooltip.className = 'rtx-trade-marker__price-tooltip';
-      const verticalPosition = side === 'BUY'
-        ? 'bottom:calc(100% + 7px);'
-        : 'top:calc(100% + 7px);';
-      const tooltipBackground = lightSurface ? '#ffffff' : '#111827';
-      const tooltipText = lightSurface ? '#111827' : '#f8fafc';
-      tooltip.style.cssText = `position:absolute;left:50%;${verticalPosition}display:block;min-width:148px;padding:0;border:1px solid ${palette.border};border-radius:6px;background:${tooltipBackground};color:${tooltipText};font-size:var(--rtx-ui-font-size, 14px);font-family:${CHART_AXIS_FONT_FAMILY};font-variant-numeric:tabular-nums;line-height:16px;white-space:nowrap;pointer-events:none;opacity:0;visibility:hidden;transform:translateX(-50%);transition:opacity 90ms ease;box-shadow:0 6px 18px rgba(0,0,0,0.38);overflow:hidden;`;
+      const createPriceTooltip = () => {
+        const lightSurface = isChartSurfaceLight();
+        const palette = getTradeOverlayCardPalette(side, lightSurface);
+        const tooltip = document.createElement('span');
+        tooltip.className = 'rtx-trade-marker__price-tooltip';
+        const verticalPosition = side === 'BUY'
+          ? 'bottom:calc(100% + 7px);'
+          : 'top:calc(100% + 7px);';
+        const tooltipBackground = lightSurface ? '#ffffff' : '#111827';
+        const tooltipText = lightSurface ? '#111827' : '#f8fafc';
+        tooltip.style.cssText = `position:absolute;left:50%;${verticalPosition}display:block;min-width:148px;padding:0;border:1px solid ${palette.border};border-radius:6px;background:${tooltipBackground};color:${tooltipText};font-size:var(--rtx-ui-font-size, 14px);font-family:${CHART_AXIS_FONT_FAMILY};font-variant-numeric:tabular-nums;line-height:16px;white-space:nowrap;pointer-events:none;opacity:0;visibility:hidden;transform:translateX(-50%);transition:opacity 90ms ease;box-shadow:0 6px 18px rgba(0,0,0,0.38);overflow:hidden;`;
 
-      const tooltipHeader = document.createElement('span');
-      tooltipHeader.className = 'rtx-trade-marker__tooltip-header';
-      tooltipHeader.textContent = `${tr(historyPositionSide)} ${tr(lifecycle === 'open' ? 'Open' : 'Close')}`;
-      tooltipHeader.style.cssText = `display:block;padding:3px 8px;border-bottom:1px solid ${colorWithAlpha(palette.border, 0.5, palette.border)};background:${palette.background};color:${palette.text};font-size:var(--rtx-ui-font-size, 14px);font-weight:var(--rtx-font-weight-heading, 500);letter-spacing:0.075em;`;
+        const tooltipHeader = document.createElement('span');
+        tooltipHeader.className = 'rtx-trade-marker__tooltip-header';
+        tooltipHeader.textContent = `${tr(historyPositionSide)} ${tr(lifecycle === 'open' ? 'Open' : 'Close')}`;
+        tooltipHeader.style.cssText = `display:block;padding:3px 8px;border-bottom:1px solid ${colorWithAlpha(palette.border, 0.5, palette.border)};background:${palette.background};color:${palette.text};font-size:var(--rtx-ui-font-size, 14px);font-weight:var(--rtx-font-weight-heading, 500);letter-spacing:0.075em;`;
 
-      const tooltipDetails = document.createElement('span');
-      tooltipDetails.className = 'rtx-trade-marker__tooltip-details';
-      tooltipDetails.style.cssText = 'display:grid;grid-template-columns:auto 1fr;column-gap:10px;row-gap:1px;padding:4px 8px 5px;';
-      const detailLabelColor = lightSurface ? '#5f6b7a' : '#98a2b3';
-      const appendTooltipDetail = (labelText: string, valueText: string) => {
-        const label = document.createElement('span');
-        label.dataset.chartUiLabel = labelText;
-        label.textContent = tr(labelText);
-        label.style.cssText = `color:${detailLabelColor};font-weight:var(--rtx-font-weight-control, 400);`;
-        const value = document.createElement('span');
-        value.textContent = valueText;
-        value.style.cssText = `color:${tooltipText};font-weight:var(--rtx-font-weight-body, 400);text-align:right;`;
-        tooltipDetails.append(label, value);
+        const tooltipDetails = document.createElement('span');
+        tooltipDetails.className = 'rtx-trade-marker__tooltip-details';
+        tooltipDetails.style.cssText = 'display:grid;grid-template-columns:auto 1fr;column-gap:10px;row-gap:1px;padding:4px 8px 5px;';
+        const detailLabelColor = lightSurface ? '#5f6b7a' : '#98a2b3';
+        const appendTooltipDetail = (labelText: string, valueText: string) => {
+          const label = document.createElement('span');
+          label.dataset.chartUiLabel = labelText;
+          label.textContent = tr(labelText);
+          label.style.cssText = `color:${detailLabelColor};font-weight:var(--rtx-font-weight-control, 400);`;
+          const value = document.createElement('span');
+          value.textContent = valueText;
+          value.style.cssText = `color:${tooltipText};font-weight:var(--rtx-font-weight-body, 400);text-align:right;`;
+          tooltipDetails.append(label, value);
+        };
+        appendTooltipDetail('Price', title);
+        appendTooltipDetail('Time', timeLabel);
+        tooltip.append(tooltipHeader, tooltipDetails);
+        return tooltip;
       };
-      appendTooltipDetail('Price', title);
-      appendTooltipDetail('Time', timeLabel);
-      tooltip.append(tooltipHeader, tooltipDetails);
 
-      const setPriceTooltipVisible = (visible: boolean) => {
-        if (visible) placeTradeMarkerTooltip(hoverTarget, tooltip);
-        tooltip.style.opacity = visible ? '1' : '0';
-        tooltip.style.visibility = visible ? 'visible' : 'hidden';
+      // Keep the accessible target, but allocate its seven detail elements only
+      // while the user is inspecting it. Focus and pointer ownership coexist.
+      let tooltip: HTMLSpanElement | null = null;
+      let hovered = false;
+      let focused = false;
+      const updatePriceTooltip = () => {
+        if ((!hovered && !focused) || !hoverTarget.isConnected) {
+          tooltip?.remove();
+          tooltip = null;
+          return;
+        }
+        if (!tooltip) {
+          tooltip = createPriceTooltip();
+          hoverTarget.appendChild(tooltip);
+        }
+        placeTradeMarkerTooltip(hoverTarget, tooltip);
+        tooltip.style.opacity = '1';
+        tooltip.style.visibility = 'visible';
       };
-      hoverTarget.addEventListener('pointerenter', () => setPriceTooltipVisible(true));
-      hoverTarget.addEventListener('pointerleave', () => setPriceTooltipVisible(false));
-      hoverTarget.addEventListener('focus', () => setPriceTooltipVisible(true));
-      hoverTarget.addEventListener('blur', () => setPriceTooltipVisible(false));
-      hoverTarget.appendChild(tooltip);
+      hoverTarget.addEventListener('pointerenter', () => { hovered = true; updatePriceTooltip(); });
+      hoverTarget.addEventListener('pointerleave', () => { hovered = false; updatePriceTooltip(); });
+      hoverTarget.addEventListener('focus', () => { focused = true; updatePriceTooltip(); });
+      hoverTarget.addEventListener('blur', () => { focused = false; updatePriceTooltip(); });
       appendHistoryInteractionNode(
         hoverTarget,
         { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? 3 : -3 },

@@ -673,7 +673,7 @@ export const useTradingChartTradeRuntime = ({
               : 'translate(-50%, -100%)');
 
             const tooltip = el.querySelector<HTMLElement>('.rtx-trade-marker__price-tooltip');
-            if (tooltip) {
+            if (el.classList.contains('rtx-trade-marker-hover-target')) {
               tradeMarkerTooltipLayouts.set(el, {
                 x,
                 markerY,
@@ -682,7 +682,7 @@ export const useTradingChartTradeRuntime = ({
                 plotHeight,
               });
               // Hidden tooltips are placed when shown (hover/focus).
-              if (tooltip.style.visibility === 'visible') placeTradeMarkerTooltip(el, tooltip);
+              if (tooltip?.style.visibility === 'visible') placeTradeMarkerTooltip(el, tooltip);
             }
             continue;
           }

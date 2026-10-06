@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useTradingChartTradeRuntime } from './useTradingChartTradeRuntime';
 import { useTradingChartTradeOverlayRenderer } from './useTradingChartTradeOverlayRenderer';
 import { layoutRebuiltTradeOverlay } from './layoutRebuiltTradeOverlay';
+import { tradeMarkerTooltipLayouts } from '../presentation/tradeOverlayPresentation';
 
 vi.mock('../../../services/drawingManager', () => ({ drawingManager: {} }));
 vi.mock('./useTradingChartTradeOverlayRenderer', () => ({ useTradingChartTradeOverlayRenderer: vi.fn() }));
@@ -42,6 +43,19 @@ function fixture() {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
 describe('trade overlay geometry presentation', () => {
+  it('publishes hover geometry without a tooltip and reflows a lazily added visible tooltip', () => {
+    const f = fixture();
+    f.node.className = 'rtx-trade-marker-hover-target';
+    f.renderer.activeOverlayNodeDataRef.current = [{ kind: 'marker', price: 100, time: 1000, markerSide: 'BUY' }];
+    f.repaint();
+    expect(tradeMarkerTooltipLayouts.get(f.node)).toMatchObject({ x: 50, markerY: 100, plotWidth: 540, plotHeight: 370 });
+    const tooltip = document.createElement('span'); tooltip.className = 'rtx-trade-marker__price-tooltip';
+    tooltip.style.visibility = 'visible'; f.node.appendChild(tooltip);
+    f.resize(800, 500, 80); f.move(180); f.repaint();
+    expect(tradeMarkerTooltipLayouts.get(f.node)).toMatchObject({ markerY: 180, plotWidth: 720, plotHeight: 470 });
+    expect(tooltip.style.transform).toBe('none');
+    f.hook.unmount();
+  });
   it('places a rebuilt node immediately without requesting another successful pass', () => {
     const f = fixture(), queue = vi.fn();
     layoutRebuiltTradeOverlay(false, f.renderer.updateLabelPositions, queue);
