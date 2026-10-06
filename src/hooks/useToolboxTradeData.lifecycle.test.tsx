@@ -193,6 +193,24 @@ describe('useToolboxTradeData display lifecycle', () => {
     expect(result.current.positions[0]).toMatchObject({ sl: 1.05, tp: 1.2, profit: 22 });
     unmount();
   });
+  it('commits a refreshed position to the shared store without dispatching a duplicate overlay refresh', async () => {
+    mocks.getSessionTradeSnapshotRequests.mockReturnValue({
+      positionsResultPromise: Promise.resolve({ status: 'fulfilled', value: [rawPosition] }),
+      accountResultPromise: Promise.resolve({ status: 'fulfilled', value: {} }),
+    });
+    const refreshOverlay = vi.fn();
+    window.addEventListener('rtx:refresh-trade-overlay', refreshOverlay);
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    try {
+      await act(async () => { await result.current.refresh(); });
+      expect(mocks.storeState.setPositions).toHaveBeenCalled();
+      expect(mocks.storeState.positions).toEqual([expect.objectContaining({ id: 17, symbol: 'EURUSD' })]);
+      expect(result.current.positions[0].id).toBe(17);
+      expect(refreshOverlay).not.toHaveBeenCalled();
+    } finally {
+      unmount(); window.removeEventListener('rtx:refresh-trade-overlay', refreshOverlay);
+    }
+  });
 
   const dispatchPlacement = (status: string, clientOrderId = 'order-one') => act(() => {
     window.dispatchEvent(new CustomEvent('rtx:market-order-placement-state', {

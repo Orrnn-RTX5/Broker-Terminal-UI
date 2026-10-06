@@ -481,9 +481,9 @@ export function useToolboxTradeData() {
       });
       positions = useAppStore.getState().positions as ToolboxTradePosition[];
       nextSig = positionsSignature(positions);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
-      }
+      // Chart subscribers already process this store transition. An immediate
+      // refresh here would duplicate structural renders and cancel valuation
+      // coalescing. Explicit visibility/history refresh events remain separate.
     }
     positionsRef.current = positions;
     if (previousSig === nextSig) return;

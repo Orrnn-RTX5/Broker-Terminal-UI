@@ -17,6 +17,12 @@ describe('exact valuation-only overlay classification', () => {
     'chartEntryTime', 'closeCommandState', 'closeClientOrderId', 'protection_version', 'unknownNewField'])('keeps %s changes synchronous', key => {
     expect(isTradeOverlayValuationUpdate([position({ [key]: 'changed' })], [position()])).toBe(false);
   });
+  it('allows scalar display margin changes but keeps structural and nested margin updates synchronous', () => {
+    const previous = [position({ margin: 100 })];
+    expect(isTradeOverlayValuationUpdate([position({ margin: 101 })], previous)).toBe(true);
+    expect(isTradeOverlayValuationUpdate([position({ margin: 101, volume: 0.02 })], previous)).toBe(false);
+    expect(isTradeOverlayValuationUpdate([position({ margin: { amount: 101 } })], previous)).toBe(false);
+  });
   it('keeps removals, additions, reorder, unknown field deletion and nested valuations synchronous', () => {
     expect(isTradeOverlayValuationUpdate([], [position()])).toBe(false);
     expect(isTradeOverlayValuationUpdate([position(), position({ id: 2 })], [position()])).toBe(false);

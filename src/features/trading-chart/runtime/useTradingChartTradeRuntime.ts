@@ -430,7 +430,8 @@ export const useTradingChartTradeRuntime = ({
 
 
   const updateLabelPositions = useCallback((refreshMetrics = true) => {
-    if (!seriesRef.current || !chartRef.current) return;
+    if (!seriesRef.current || !chartRef.current) return true;
+    let needsCoordinateRetry = false;
     const candleLookup = createTradeOverlayCandleLookup(candlesRef.current, currentCandleRef.current);
 
     const series = seriesRef.current;
@@ -443,7 +444,7 @@ export const useTradingChartTradeRuntime = ({
     const chartHeight = containerRef.current?.offsetHeight || 0;
     // A collapsed/zero-size container has no valid geometry; leave nodes as
     // they are rather than culling the entire overlay against height 0.
-    if (chartWidth <= 0 || chartHeight <= 0) return;
+    if (chartWidth <= 0 || chartHeight <= 0) return true;
     const priceScaleWidth = series.priceScale().width();
     const timeScaleHeight = chart.timeScale().height();
     const plotHeight = Math.max(0, chartHeight - (Number.isFinite(timeScaleHeight) ? timeScaleHeight : 0));
@@ -455,6 +456,7 @@ export const useTradingChartTradeRuntime = ({
       setTradeOverlayStyle(clipLayer, "bottom", `${Math.max(0, chartHeight - plotHeight)}px`);
     }
     const snapCssPixel = (value: number): number => Math.round(value);
+    const isProjectableTime = (time: unknown): boolean => Number.isFinite(Number(time)) && Number(time) > 0;
     const resolveTimeCoordinate = (time: unknown): number | null => {
       const numericTime = Number(time);
       if (!Number.isFinite(numericTime) || numericTime <= 0) return null;
@@ -511,6 +513,7 @@ export const useTradingChartTradeRuntime = ({
           if (node.kind === 'axis-price-badge') {
             const y = node.price == null ? null : series.priceToCoordinate(node.price);
             if (y == null) {
+              if (Number.isFinite(node.price)) needsCoordinateRetry = true;
               if (!el.style.top) setTradeOverlayStyle(el, "display", 'none');
               continue;
             }
@@ -538,6 +541,7 @@ export const useTradingChartTradeRuntime = ({
 
             const y = series.priceToCoordinate(node.price);
             if (y == null) {
+              if (Number.isFinite(node.price)) needsCoordinateRetry = true;
               // The scale reports no coordinates while candles reload (feed
               // reconnects, empty snapshots from a flaky backend). Freeze
               // already-placed nodes instead of blinking the overlay off.
@@ -598,6 +602,10 @@ export const useTradingChartTradeRuntime = ({
             const y1 = resolveSegmentEndY(node.price, node.time, node.startMarkerSide);
             const x2 = resolveTimeCoordinate(endTime);
             const y2 = resolveSegmentEndY(endPrice, endTime, node.endMarkerSide);
+            if ((x1 == null && isProjectableTime(node.time)) || (y1 == null && Number.isFinite(node.price))
+              || (x2 == null && isProjectableTime(endTime)) || (y2 == null && Number.isFinite(endPrice))) {
+              needsCoordinateRetry = true;
+            }
             const geometry = resolveTradeOverlaySegmentGeometry({
               x1,
               y1,
@@ -629,9 +637,12 @@ export const useTradingChartTradeRuntime = ({
             continue;
           }
 
-          let x = resolveTimeCoordinate(node.time);
+          let coordinateTime = node.time;
+          let x = resolveTimeCoordinate(coordinateTime);
           if (x == null && node.resolveTime) {
-            const fallbackX = resolveTimeCoordinate(node.resolveTime());
+            const fallbackTime = node.resolveTime();
+            const fallbackX = resolveTimeCoordinate(fallbackTime);
+            if (isProjectableTime(fallbackTime)) coordinateTime = fallbackTime;
             if (fallbackX != null) {
               x = fallbackX;
             }
@@ -639,6 +650,9 @@ export const useTradingChartTradeRuntime = ({
           const anchoredPrice = node.kind === 'marker' ? resolveTradeMarkerAnchorPrice(node) : node.price;
           const y = series.priceToCoordinate(anchoredPrice);
           if (x == null || y == null) {
+            if ((x == null && isProjectableTime(coordinateTime)) || (y == null && Number.isFinite(anchoredPrice))) {
+              needsCoordinateRetry = true;
+            }
             // Keep last placement through transient coordinate gaps.
             if (!el.style.top) setTradeOverlayStyle(el, "display", 'none');
             continue;
@@ -673,6 +687,7 @@ export const useTradingChartTradeRuntime = ({
             continue;
           }
         } catch {
+          needsCoordinateRetry = true;
           setTradeOverlayStyle(el, "display", 'none');
         }
       }
@@ -707,6 +722,7 @@ export const useTradingChartTradeRuntime = ({
     } else if (!chartSettingsRef.current.showBidPriceLine) {
       hideLivePriceOverlay(false);
     }
+    return needsCoordinateRetry;
   }, [
     applyLivePriceHorizontalGeometry,
     candlesRef,

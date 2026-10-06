@@ -3,6 +3,7 @@ import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { useActiveChartRuntimeEffect } from '../../../hooks/useActiveChartRuntimeEffect';
 import type { TradingChartVisibleRuntime } from '../../../hooks/useTradingChartVisibleRuntime';
 import { getPositionCloseScope, isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
+import { layoutRebuiltTradeOverlay } from './layoutRebuiltTradeOverlay';
 import {
   clampChartOpacityPercent,
   defaultChartProperties,
@@ -107,7 +108,7 @@ interface UseTradingChartTradeOverlayRendererOptions {
   tradeLevelOverridesRef: RefObject<Map<string, TradeLevelOverride>>;
   tradeMissingGraceTimerRef: RefObject<number | null>;
   tradeOverlayRafRef: RefObject<number | null>;
-  updateLabelPositions: (refreshMetrics?: boolean) => void;
+  updateLabelPositions: (refreshMetrics?: boolean) => boolean;
   visibleRuntime: TradingChartVisibleRuntime;
 }
 
@@ -877,16 +878,10 @@ export const useTradingChartTradeOverlayRenderer = ({
         }
       }
 
-      // Rebuilt nodes are created hidden; place them in this same frame when
-      // the chart is idle so a rebuild never paints an empty overlay. Always
-      // queue a follow-up layout too: the first pass can run before the series
-      // has coordinates after a fill, which would otherwise leave open trades hidden.
-      if (isChartInteractionActiveRef.current) {
-        queueTradeOverlayRelayout();
-      } else {
-        updateLabelPositions();
-        queueTradeOverlayRelayout();
-      }
+      // New nodes start hidden. Place them synchronously while idle and retry
+      // once only when the chart cannot yet project their coordinates. Chart
+      // paint/range/resize events still own later transform invalidations.
+      layoutRebuiltTradeOverlay(isChartInteractionActiveRef.current, updateLabelPositions, queueTradeOverlayRelayout);
     };
 
     return bindTradeOverlayRuntimeSubscriptions({

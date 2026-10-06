@@ -68,6 +68,21 @@ describe('bounded overlay presentation scheduling', () => {
     expect(f.options.activeTradeSnapshotsRef.current.get('trade:1')?.currentPrice).toBe(105);
     flush(); expect(f.render).toHaveBeenCalledTimes(1);
   });
+  it('coalesces margin valuations while keeping structural store changes immediate without a refresh event', () => {
+    const f = fixture();
+    for (let margin = 100; margin < 125; margin++) emit({ positions: [position({ margin })] });
+    expect(store.state.positions[0].margin).toBe(124);
+    expect(f.render).not.toHaveBeenCalled(); expect(frames.size).toBe(1);
+    flush(); expect(f.render).toHaveBeenCalledTimes(1);
+    emit({ positions: [position({ margin: 124, sl: 95 })] });
+    expect(f.render).toHaveBeenCalledTimes(2); expect(frames.size).toBe(0);
+  });
+  it('honors an explicit refresh with unchanged store state and no pending valuation frame', () => {
+    const f = fixture(), previous = store.state;
+    event('rtx:refresh-trade-overlay');
+    expect(store.state).toBe(previous); expect(f.render).toHaveBeenCalledTimes(1);
+    expect(frames.size).toBe(0);
+  });
   it.each(['other-symbol', 'zero-volume', 'marked-closed'])('does not overwrite retained valuation evidence from a %s row with the same ticket', reason => {
     const f = fixture();
     const patch = reason === 'other-symbol' ? { symbol: 'BTCUSD.r' } : reason === 'zero-volume' ? { volume: 0 } : {};

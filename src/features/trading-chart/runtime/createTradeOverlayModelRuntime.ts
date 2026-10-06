@@ -45,7 +45,7 @@ interface CreateTradeOverlayModelRuntimeOptions {
   tradeLevelOptimisticGraceUntilRef: RefObject<Map<string, number>>;
   tradeLevelOverridesRef: RefObject<Map<string, TradeLevelOverride>>;
   tradeOverlayRafRef: RefObject<number | null>;
-  updateLabelPositions: (refreshMetrics?: boolean) => void;
+  updateLabelPositions: (refreshMetrics?: boolean) => boolean;
 }
 
 export const createTradeOverlayModelRuntime = ({

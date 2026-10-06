@@ -4,7 +4,7 @@ import type { Position } from '../../../store/useAppStore';
 // other changed/added/removed field takes the synchronous lifecycle path.
 const valuationKeys = new Set([
   'currentPrice', 'current_price', 'price_current', 'priceCurrent', 'price',
-  'unrealizedPnL', 'unrealized_pl', 'profit', 'swap', 'commission',
+  'unrealizedPnL', 'unrealized_pl', 'profit', 'swap', 'commission', 'margin',
   'hasBackendProfit', 'hasBackendCurrentPrice', 'pnl_available',
   'state_version', 'state_version_text', 'price_time_msc', 'time_update',
 ]);
