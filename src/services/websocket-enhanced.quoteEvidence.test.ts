@@ -59,7 +59,7 @@ describe('enhanced quote transport preserves executable evidence through the rea
     const observed: boolean[] = [];
     const unsubscribe = service.subscribe('*', frame => {
       // This is the shared predicate used by App to skip its legacy fallback.
-      observed.push(isEnhancedStoreHandledTickFrame(frame));
+      observed.push(isEnhancedStoreHandledTickFrame(frame as WebSocketMessage));
     });
     deliver({ channel: 'ticks.BTCUSD', data: quote(6000, '22706005') });
     expect(getTerminalQuoteFreshness('BTCUSD').reason).toBe('stale');
