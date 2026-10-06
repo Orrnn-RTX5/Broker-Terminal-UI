@@ -20,6 +20,7 @@ import { createPreloadableFeature } from '../startup/createPreloadableFeature';
 import { getCurrentBrokerAccountSessionScopeKey } from '../features/bottom-dock/sessionScope';
 import { ToolboxTab } from '../features/bottom-dock/toolbox/ToolboxTab';
 import { TradeTab } from '../features/bottom-dock/trade/TradeTab';
+import { JournalTab } from './layout/JournalTab';
 import { useBottomDockStoreBridge } from '../features/bottom-dock/useBottomDockStoreBridge';
 import { resolveTradeAccountMetrics } from './BottomDock.trade';
 
@@ -32,7 +33,6 @@ const CalendarTab = lazy(() => import('./layout/CalendarTab').then(module => ({ 
 const CodeBaseTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.CodeBaseTab })));
 const ArticlesTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.ArticlesTab })));
 const ExpertsTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.ExpertsTab })));
-const JournalTab = lazy(() => import('./layout/JournalTab').then(module => ({ default: module.JournalTab })));
 const historyFeature = createPreloadableFeature(() => import('../features/bottom-dock/history/HistoryTab').then(module => ({ default: module.HistoryTab })));
 
 const MemoToolboxTab = memo(ToolboxTab);
@@ -333,7 +333,7 @@ export function BottomDock({
                     hidden={activeTab !== 'Journal'}
                     aria-hidden={activeTab !== 'Journal'}
                 >
-                    {activeTab === 'Journal' && <Suspense fallback={null}><MemoJournalTab /></Suspense>}
+                    {activeTab === 'Journal' && <MemoJournalTab />}
                 </div>
                 {activeTab === 'Historical Data' && (
                     <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-zinc-500">{tr("Opening historical data…")}</div>}>
