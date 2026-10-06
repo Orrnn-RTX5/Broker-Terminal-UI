@@ -38,8 +38,8 @@ import './OneClickTrading.css';
 import { hasAuthenticatedTradingSession, requireTradingAuth } from '../services/tradingAuthGate';
 import { requestMarketSymbolsRefresh } from '../hooks/useLiveMarketData';
 import { useTerminalQuoteFreshness } from '../hooks/useTerminalQuoteFreshness';
-import { assertTerminalQuoteFresh, canSubmitTerminalMarketOrder, getTerminalQuoteSession, terminalMarketQuoteAdvisory, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
-import { prepareTerminalMarketQuote, TERMINAL_MARKET_QUOTE_WAIT_MS } from '../services/terminalMarketQuotePreflight';
+import { assertTerminalQuoteFresh, canSubmitTerminalMarketOrder, getTerminalQuoteFreshness, getTerminalQuoteSession, terminalMarketQuoteAdvisory, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
+import { prepareTerminalMarketQuote, TERMINAL_MARKET_QUOTE_RECOVERY_MAX_AGE_MS, TERMINAL_MARKET_QUOTE_WAIT_MS } from '../services/terminalMarketQuotePreflight';
 
 interface OneClickTradingProps {
     symbol: string;
@@ -403,6 +403,10 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                         throw Object.assign(new Error('Quote check expired. Please place the trade again.'), { code: 'QUOTE_STALE', symbol });
                     }
                     assertTerminalQuoteFresh(symbol);
+                    const recoveredAge = getTerminalQuoteFreshness(symbol).ageMaxMs;
+                    if (recoveredAge === null || recoveredAge > TERMINAL_MARKET_QUOTE_RECOVERY_MAX_AGE_MS) {
+                        throw Object.assign(new Error('Waiting for a fresh quote'), { code: 'QUOTE_STALE', symbol });
+                    }
                 }
             }
             orderSubmitted = true;

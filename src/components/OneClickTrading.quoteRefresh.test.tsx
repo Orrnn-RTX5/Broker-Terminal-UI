@@ -4,10 +4,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const freshnessMocks = vi.hoisted(() => ({ enabled: false, live: true, reason: 'live', assert: vi.fn() }));
+const freshnessMocks = vi.hoisted(() => ({ enabled: false, live: true, reason: 'live', ageMaxMs: 0 as number | null, assert: vi.fn() }));
 const preflightMocks = vi.hoisted(() => ({ prepare: vi.fn() }));
-vi.mock('../services/terminalMarketQuotePreflight', () => ({ prepareTerminalMarketQuote: preflightMocks.prepare, TERMINAL_MARKET_QUOTE_WAIT_MS: 1500 }));
-vi.mock('../services/terminalQuoteFreshness', () => ({ getTerminalQuoteSession: () => 1, canSubmitTerminalMarketOrder: (state: {live:boolean;reason:string}) => state.live || state.reason === 'time-unverified', terminalMarketQuoteAdvisory: (state: {reason:string}) => state.reason === 'time-unverified' ? 'Quote age uncertain; server will validate' : null, assertTerminalMarketOrderQuote: freshnessMocks.assert, terminalQuoteBlockMessage: (reason: string, symbol: string) => reason === 'time-unverified' ? 'Syncing time for ' + symbol : 'Waiting for a fresh quote', terminalQuoteFreshnessEnabled: () => freshnessMocks.enabled, assertTerminalQuoteFresh: freshnessMocks.assert }));
+vi.mock('../services/terminalMarketQuotePreflight', () => ({ prepareTerminalMarketQuote: preflightMocks.prepare, TERMINAL_MARKET_QUOTE_WAIT_MS: 1500, TERMINAL_MARKET_QUOTE_RECOVERY_MAX_AGE_MS: 1000 }));
+vi.mock('../services/terminalQuoteFreshness', () => ({ getTerminalQuoteFreshness: () => ({ ageMaxMs: freshnessMocks.ageMaxMs }), getTerminalQuoteSession: () => 1, canSubmitTerminalMarketOrder: (state: {live:boolean;reason:string}) => state.live || state.reason === 'time-unverified', terminalMarketQuoteAdvisory: (state: {reason:string}) => state.reason === 'time-unverified' ? 'Quote age uncertain; server will validate' : null, assertTerminalMarketOrderQuote: freshnessMocks.assert, terminalQuoteBlockMessage: (reason: string, symbol: string) => reason === 'time-unverified' ? 'Syncing time for ' + symbol : 'Waiting for a fresh quote', terminalQuoteFreshnessEnabled: () => freshnessMocks.enabled, assertTerminalQuoteFresh: freshnessMocks.assert }));
 vi.mock('../hooks/useTerminalQuoteFreshness', () => ({ useTerminalQuoteFreshness: () => ({ live: freshnessMocks.live, ageMs: 0, reason: freshnessMocks.reason, clockStatus: freshnessMocks.reason === 'time-unverified' ? 'unverified' : 'verified' }) }));
 
 const orderMocks = vi.hoisted(() => ({
@@ -52,7 +52,7 @@ const neverSettlingRefresh = () => new Promise<void>(() => {});
 
 describe('OneClickTrading stale-quote refresh', () => {
   beforeEach(() => {
-    freshnessMocks.enabled = false; freshnessMocks.live = true; freshnessMocks.reason = 'live'; freshnessMocks.assert.mockReset();
+    freshnessMocks.enabled = false; freshnessMocks.live = true; freshnessMocks.reason = 'live'; freshnessMocks.ageMaxMs = 0; freshnessMocks.assert.mockReset();
     preflightMocks.prepare.mockReset().mockImplementation(() => { freshnessMocks.assert(); });
     useAppStore.getState().reset();
     useAppStore.setState({
@@ -172,6 +172,17 @@ describe('OneClickTrading stale-quote refresh', () => {
     await act(async () => ready());
     expect(orderMocks.placeMarketOrder).toHaveBeenCalledOnce();
     expect(preflightMocks.prepare).toHaveBeenCalledOnce();
+  });
+
+  it.each([1001, null])('rejects recovery that lost execution headroom before submission: %s', async age => {
+    freshnessMocks.enabled = true;
+    let ready!: () => void;
+    preflightMocks.prepare.mockImplementation(() => new Promise<void>(resolve => { ready = resolve; }));
+    renderPanel(true); fireEvent.click(getTradeButton('BUY'));
+    freshnessMocks.ageMaxMs = age;
+    await act(async () => ready());
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('QUOTE_STALE');
   });
 
   it.each(['symbol', 'permission', 'hidden', 'unmount', 'volume', 'changed-back'] as const)('cancels the unsent waiting click after %s changes', async change => {

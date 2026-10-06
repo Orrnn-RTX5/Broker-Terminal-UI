@@ -17,7 +17,7 @@ vi.mock('./brokerSession', async importOriginal => ({
   onSessionChange: (callback: () => void) => { mocks.session.add(callback); return () => mocks.session.delete(callback); },
 }));
 
-import { prepareTerminalMarketQuote } from './terminalMarketQuotePreflight';
+import { prepareTerminalMarketQuote, TERMINAL_MARKET_QUOTE_RECOVERY_MAX_AGE_MS } from './terminalMarketQuotePreflight';
 import { commitBrokerAccountSessionScope } from './brokerSession';
 import { useAppStore } from '../store/useAppStore';
 import { calibrateTerminalQuoteClock, getTerminalQuoteFreshness, ingestTerminalQuote,
@@ -73,6 +73,51 @@ describe('bounded market quote preflight', () => {
     ingestTerminalQuote('BTCUSD', quote());
     expect(await result).toEqual({ passed: true, error: undefined });
     expectClean();
+  });
+
+  it('preserves the ordinary synchronous path for an initial live quote near three seconds old', () => {
+    ingestTerminalQuote('BTCUSD', quote({ provider_timestamp: epoch - 2989 }));
+    expect(getTerminalQuoteFreshness('BTCUSD')).toMatchObject({ live: true, clockStatus: 'verified', ageMaxMs: 2990 });
+    expect(prepareTerminalMarketQuote('BTCUSD', () => true)).toBeUndefined();
+    expectClean();
+  });
+
+  it('does not wake a stale intent on a queued near-expiry tick, but wakes on a recent verified tick', async () => {
+    stale();
+    let settled = false;
+    const result = observe(prepareTerminalMarketQuote('BTCUSD', () => true));
+    void result.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(300);
+    ingestTerminalQuote('BTCUSD', quote({ provider_timestamp: Date.now() - 2988 }));
+    const queued = getTerminalQuoteFreshness('BTCUSD');
+    expect(queued).toMatchObject({ live: true, clockStatus: 'verified' });
+    expect(queued.ageMaxMs).toBeGreaterThan(TERMINAL_MARKET_QUOTE_RECOVERY_MAX_AGE_MS);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(settled).toBe(false);
+    ingestTerminalQuote('BTCUSD', quote({ provider_timestamp: Date.now() - 900, sequence: '3' }));
+    expect(getTerminalQuoteFreshness('BTCUSD').ageMaxMs).toBeLessThanOrEqual(TERMINAL_MARKET_QUOTE_RECOVERY_MAX_AGE_MS);
+    expect(await result).toEqual({ passed: true, error: undefined });
+    expectClean();
+  });
+
+  it('keeps the original deadline when only near-expiry live replacements arrive', async () => {
+    stale();
+    let settled = false;
+    const result = observe(prepareTerminalMarketQuote('BTCUSD', () => true));
+    void result.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(300);
+    ingestTerminalQuote('BTCUSD', quote({ provider_timestamp: Date.now() - 2500 }));
+    expect(getTerminalQuoteFreshness('BTCUSD').live).toBe(true);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(settled).toBe(false);
+    ingestTerminalQuote('BTCUSD', quote({ provider_timestamp: Date.now() - 2500, sequence: '3' }));
+    expect(getTerminalQuoteFreshness('BTCUSD').live).toBe(true);
+    await vi.advanceTimersByTimeAsync(600);
+    const outcome = await result;
+    expect(outcome).toMatchObject({ passed: false, error: { code: 'QUOTE_STALE', symbol: 'BTCUSD' } });
+    expectClean();
+    ingestTerminalQuote('BTCUSD', quote({ sequence: '4' }));
+    expect(await result).toBe(outcome);
   });
 
   it('expires with the original stale error and never resumes on a later live quote', async () => {

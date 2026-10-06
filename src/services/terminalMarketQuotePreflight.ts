@@ -7,6 +7,9 @@ import { assertTerminalMarketOrderQuote, getTerminalQuoteFreshness, getTerminalQ
   subscribeTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
 
 export const TERMINAL_MARKET_QUOTE_WAIT_MS = 1500;
+// Recovery needs headroom for transport and backend validation. A buffered tick
+// just inside the ordinary three-second limit must not wake a waiting intent.
+export const TERMINAL_MARKET_QUOTE_RECOVERY_MAX_AGE_MS = 1000;
 
 function ownerKey(): string | null {
   const state = useAppStore.getState();
@@ -58,7 +61,11 @@ export function prepareTerminalMarketQuote(symbol: string, isCurrent: () => bool
       // A delayed event-loop callback must not extend the user's preparation window.
       if (performance.now() >= deadline) { finish(originalError); return; }
       const state = getTerminalQuoteFreshness(symbol);
-      if (state.live) { finish(); return; }
+      if (state.live) {
+        if (state.clockStatus === 'verified' && state.ageMaxMs !== null
+          && state.ageMaxMs <= TERMINAL_MARKET_QUOTE_RECOVERY_MAX_AGE_MS) finish();
+        return;
+      }
       // Time becoming uncertain while waiting is not fresh recovery evidence.
       if (state.reason === 'stale' || state.reason === 'time-unverified') return;
       try { assertTerminalMarketOrderQuote(symbol); } catch (error) { finish(error); }
