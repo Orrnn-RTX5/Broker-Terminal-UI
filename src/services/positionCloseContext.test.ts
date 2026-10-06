@@ -8,6 +8,7 @@ import {
   calibrateTerminalQuoteClock,
   ingestTerminalQuote,
   resetTerminalQuoteFreshness,
+  getTerminalQuoteFreshness,
 } from './terminalQuoteFreshness';
 
 const demands = vi.hoisted(() => new Map<string, string[]>());
@@ -80,6 +81,84 @@ describe('position close context through optimistic removal', () => {
       executionContext: { ticketId: 15730289, symbol: 'BTCUSD', isCurrent: () => true },
     })).rejects.toMatchObject({ code: 'QUOTE_STALE', symbol: 'BTCUSD' });
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it('submits once without a time request when a quote exists but browser time is unverified', async () => {
+    const get = vi.spyOn(apiClient, 'get');
+    expect(ingestTerminalQuote('BTCUSD', {
+      bid: 83001, ask: 83002, provider_timestamp: Date.now(), source: 'test', sequence: '1',
+    })).toBe(true);
+    expect(getTerminalQuoteFreshness('BTCUSD').reason).toBe('time-unverified');
+    useAppStore.setState({ positions: [] });
+    const post = acceptClose();
+    await positionsApi.closePosition('15730289', {
+      account_login: 200001,
+      executionContext: { ticketId: 15730289, symbol: 'BTCUSD', isCurrent: () => true },
+    });
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(get).not.toHaveBeenCalled();
+    expect(getTerminalQuoteFreshness('BTCUSD').reason).toBe('time-unverified');
+  });
+
+  it.each([
+    [{ stale: true }, 'QUOTE_STALE'],
+    [{ source_mismatch: true }, 'QUOTE_SOURCE_MISMATCH'],
+    [{ tradable: false }, 'QUOTE_NOT_TRADABLE'],
+  ])('retains an explicit quote veto without browser calibration (%s)', async (metadata, code) => {
+    expect(ingestTerminalQuote('BTCUSD', {
+      bid: 83001, ask: 83002, provider_timestamp: Date.now(), source: 'test', ...metadata,
+    })).toBe(true);
+    const post = acceptClose();
+    await expect(positionsApi.closePosition('15730289')).rejects.toMatchObject({ code });
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('blocks a missing quote even while browser time is unverified', async () => {
+    const post = acceptClose();
+    await expect(positionsApi.closePosition('15730289')).rejects.toMatchObject({ code: 'QUOTE_UNAVAILABLE' });
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('does not loosen position modifications while closing uses server quote validation', async () => {
+    expect(ingestTerminalQuote('BTCUSD', {
+      bid: 83001, ask: 83002, provider_timestamp: Date.now(), source: 'test',
+    })).toBe(true);
+    const put = vi.spyOn(apiClient, 'put');
+    await expect(positionsApi.modifyPosition('15730289', { price_sl: 80000 }))
+      .rejects.toThrow('Syncing time');
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('preserves a backend stale-quote rejection without resubmitting an uncertain close', async () => {
+    expect(ingestTerminalQuote('BTCUSD', {
+      bid: 83001, ask: 83002, provider_timestamp: Date.now() - 30_000, source: 'test',
+    })).toBe(true);
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({
+      status: 'rejected', error: { code: 'STALE_QUOTE', message: 'Provider quote is stale' },
+    });
+    await expect(positionsApi.closePosition('15730289')).rejects.toThrow('Provider quote is stale');
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(getTerminalQuoteFreshness('BTCUSD').reason).toBe('time-unverified');
+  });
+
+  it('closes each bulk ticket once while browser time is unverified', async () => {
+    const candidates = [position(15730289), position(15730290)];
+    expect(ingestTerminalQuote('BTCUSD', {
+      bid: 83001, ask: 83002, provider_timestamp: Date.now(), source: 'test',
+    })).toBe(true);
+    const post = acceptClose();
+    const result = await closePositionsLocalFirst({
+      sessionKey: 'Nexa:200001', getCurrentSessionKey: () => 'Nexa:200001',
+      localCandidates: candidates, loadAuthoritativeCandidates: async () => [],
+      onCandidatesStarted: () => useAppStore.setState({ positions: [] }),
+      closePosition: (ticketId, candidate) => positionsApi.closePosition(String(ticketId), {
+        account_login: 200001,
+        executionContext: { ticketId, symbol: candidate.symbol, isCurrent: () => true },
+      }),
+    });
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(result.confirmedTicketIds).toEqual(candidates.map(row => row.id));
+    expect(result.failedTicketIds).toEqual([]);
   });
 
   it.each([true, false])('refuses an old session with quote checks enabled=%s', async enabled => {

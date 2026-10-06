@@ -1,5 +1,5 @@
 import { assertTerminalMarketOrderQuote, assertTerminalQuoteFresh } from '../services/terminalQuoteFreshness';
-import { assertStoredExecutionQuoteFresh } from '../services/terminalExecutionQuoteGuard';
+import { assertStoredExecutionQuoteFresh, assertStoredPositionCloseQuote } from '../services/terminalExecutionQuoteGuard';
 import { API_V2_BASE_URL, isLocalViteDevServer } from '../config/api';
 import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
 import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
@@ -900,7 +900,7 @@ export const tradingV2Api = {
       ...(Object.keys(postParams).length > 0 ? { params: postParams } : {}),
     });
     const statusRequestOptions: ApiRequestOptions = { ...restRequest, ...(rawParams && typeof rawParams === 'object' ? { params: { ...rawParams } } : {}) };
-    assertStoredExecutionQuoteFresh('positions', ticket, opts.executionContext);
+    assertStoredPositionCloseQuote(ticket, opts.executionContext);
     const endpoint = `/positions/${ticket}/close`;
     const body = { client_order_id: clientOrderId, volume };
     return (async (): Promise<Deal> => {

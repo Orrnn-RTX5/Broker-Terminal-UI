@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ positions: [{ id: 12, symbol: 'XAUUSD' }], orders: [{ id: '13', symbol: 'EURUSD' }] }));
 const guard = vi.hoisted(() => vi.fn());
 const session = vi.hoisted(() => ({ value: 1 }));
-vi.mock('../services/terminalQuoteFreshness', () => ({ assertTerminalMarketOrderQuote: guard, assertTerminalQuoteFresh: guard, terminalQuoteFreshnessEnabled: () => true, getTerminalQuoteSession: () => session.value }));
+vi.mock('../services/terminalQuoteFreshness', () => ({ assertTerminalCloseQuote: guard, assertTerminalMarketOrderQuote: guard, assertTerminalQuoteFresh: guard, terminalQuoteFreshnessEnabled: () => true, getTerminalQuoteSession: () => session.value }));
 vi.mock('../store/useAppStore', () => ({ useAppStore: { getState: () => state } }));
 import { apiClient } from './client';
 import { prepareOrderSubmission, tradingApi } from './endpoints';
