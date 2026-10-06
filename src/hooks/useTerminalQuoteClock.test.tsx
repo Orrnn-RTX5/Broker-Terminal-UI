@@ -2,6 +2,7 @@ import { act, renderHook, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTerminalQuoteClock } from './useTerminalQuoteClock';
 import { getTerminalQuoteFreshness, ingestTerminalQuote, resetTerminalQuoteFreshness } from '../services/terminalQuoteFreshness';
+import { getQuoteDiagnosticDump } from '../services/quoteDiagnostics';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), session: undefined as undefined | (() => void) }));
 vi.mock('../api/client', () => ({ apiClient: { get: mocks.get } }));
@@ -24,6 +25,7 @@ describe('terminal clock lifecycle', () => {
   afterEach(() => {
     cleanup(); vi.restoreAllMocks(); vi.useRealTimers();
     delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
+    delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__;
   });
   it('calibrates immediately and refreshes every five seconds with one owner', async () => {
     const view = renderHook(() => useTerminalQuoteClock());
@@ -86,6 +88,30 @@ describe('terminal clock lifecycle', () => {
       vi.advanceTimersByTime(1000);
     });
     expect(mocks.get).toHaveBeenCalledTimes(1);
+  });
+  it('diagnoses and retries a timeout without exposing the error message', async () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    mocks.get.mockRejectedValueOnce(new Error('Request timed out after 2 seconds'));
+    renderHook(() => useTerminalQuoteClock());
+    await act(async () => {});
+    const diagnostic = getQuoteDiagnosticDump().controls.at(-1);
+    expect(diagnostic).toMatchObject({ kind: 'clock', accepted: false, reason: 'request-timeout' });
+    expect(JSON.stringify(diagnostic)).not.toContain('Request timed out');
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(mocks.get).toHaveBeenCalledTimes(2);
+  });
+  it('rejects an unbound response after quote generation changes and records the discard', async () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    let complete!: (value: unknown) => void;
+    mocks.get.mockReturnValueOnce(new Promise(resolve => { complete = resolve; }));
+    renderHook(() => useTerminalQuoteClock());
+    act(() => { resetTerminalQuoteFreshness(); });
+    await act(async () => { complete({ server_time_ms: epoch }); });
+    expect(getQuoteDiagnosticDump().controls.at(-1)).toMatchObject({ kind: 'clock', accepted: false, reason: 'unbound-session-changed' });
+    ingestTerminalQuote('XAUUSD', quote());
+    expect(getTerminalQuoteFreshness('XAUUSD').reason).toBe('time-unverified');
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(getTerminalQuoteFreshness('XAUUSD').live).toBe(true);
   });
   it('refreshes after a wall clock jump detected by the shared timer', async () => {
     renderHook(() => useTerminalQuoteClock());

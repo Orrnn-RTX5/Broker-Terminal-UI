@@ -113,8 +113,8 @@ describe('Trade rendering latency', () => {
     trade.pendingPositions = [{ ...makePosition(-1), clientOrderId: 'order-one', placementState }];
     render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(screen.getByText(placementState === 'rejected' ? 'Rejected' : 'Expired')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Order in progress' })).toHaveTextContent('!');
-    expect(screen.getByRole('button', { name: 'Order in progress' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: placementState === 'rejected' ? 'Rejected' : 'Expired' })).toHaveTextContent('!');
+    expect(screen.getByRole('button', { name: placementState === 'rejected' ? 'Rejected' : 'Expired' })).toBeDisabled();
   });
 
   it('shows an unresolved outcome and keeps all trade actions disabled', () => {
@@ -125,7 +125,25 @@ describe('Trade rendering latency', () => {
     }];
     render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(screen.getByText('Outcome unknown')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Order in progress' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Order in progress' })).toHaveAttribute('title', expect.stringContaining('order-one'));
+    expect(screen.getByRole('button', { name: 'Outcome unknown' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Outcome unknown' })).toHaveAttribute('title', expect.stringContaining('order-one'));
+    expect(screen.getByRole('status')).toHaveTextContent('Check command order-one before placing another order.');
+  });
+
+  it('keeps the server rejection visible without a comment column or hover, including after quote refresh', () => {
+    const props = { height: 300, onClosePosition: vi.fn(), onModifyPosition: vi.fn() };
+    trade.pendingPositions = [{ ...makePosition(-1), clientOrderId: 'order-one', placementState: 'rejected',
+      placementErrorCode: 'RISK_DATA_UNAVAILABLE',
+      placementErrorMessage: 'risk evidence expired before commit: Quote is stale for BTCUSD',
+    }];
+    const { rerender } = render(<BottomDock {...props} />);
+    expect(screen.getByRole('status')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('RISK_DATA_UNAVAILABLE: risk evidence expired before commit: Quote is stale for BTCUSD');
+    trade.positions = [{ ...makePosition(71), currentPrice: 82000 }];
+    rerender(<BottomDock {...props} />);
+    expect(screen.getByRole('status')).toHaveTextContent('RISK_DATA_UNAVAILABLE');
+    expect(screen.getByRole('button', { name: 'Rejected' })).toBeDisabled();
+    expect(props.onClosePosition).not.toHaveBeenCalled();
+    expect(props.onModifyPosition).not.toHaveBeenCalled();
   });
 });

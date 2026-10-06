@@ -46,12 +46,31 @@ export function useTerminalQuoteClock(): void {
           baseUrl: clockOwner?.apiBaseUrl ?? API_V2_BASE_URL, skipDynamicUrl: Boolean(clockOwner), skipAuth: true, signal: active.signal,
           cache: 'no-store', timeoutMs: 2000,
         });
-        if (disposed || active.signal.aborted || request !== generation || owner !== getTerminalQuoteSession()
-          || clockOwner !== getTerminalQuoteClockOwner()) return;
-        accepted = calibrateTerminalQuoteClock(response.server_time_ms, startMono, startWall, performance.now(), Date.now(), owner, clockOwner);
-      } catch {
-        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: false, reason: active.signal.aborted ? 'request-aborted' : 'request-failed',
-          requestMonoMs: startMono, responseMonoMs: performance.now(), expectedBrowserGeneration: owner });
+        const currentSession = getTerminalQuoteSession();
+        const discardReason = disposed ? 'hook-disposed'
+          : active.signal.aborted ? 'request-aborted'
+            : request !== generation ? 'request-superseded'
+              : clockOwner !== getTerminalQuoteClockOwner() ? 'clock-owner-changed'
+                : !clockOwner && owner !== currentSession ? 'unbound-session-changed' : undefined;
+        if (discardReason) {
+          if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: false, reason: discardReason,
+            requestMonoMs: startMono, responseMonoMs: performance.now(),
+            browserGeneration: currentSession, expectedBrowserGeneration: owner });
+          return;
+        }
+        // A quote transport reconnect advances quote generations, not the owner
+        // of this pinned HTTP request. Accept its fresh clock sample only while
+        // that exact broker/account/credential owner and hook request remain current.
+        // Unbound requests still require the original quote generation.
+        accepted = calibrateTerminalQuoteClock(response.server_time_ms, startMono, startWall, performance.now(), Date.now(),
+          clockOwner ? currentSession : owner, clockOwner);
+      } catch (error) {
+        const timedOut = error instanceof Error && (error.name === 'TimeoutError' || /^Request timed out after /.test(error.message));
+        const responseMono = performance.now();
+        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: false,
+          reason: active.signal.aborted ? 'request-aborted' : timedOut ? 'request-timeout' : 'request-failed',
+          requestMonoMs: startMono, responseMonoMs: responseMono, rttMs: responseMono - startMono,
+          browserGeneration: getTerminalQuoteSession(), expectedBrowserGeneration: owner });
         // A failed refresh cannot discard the bounded 60-second holdover.
       } finally {
         if (controller === active) controller = undefined;

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type {
   Dispatch,
   MouseEvent as ReactMouseEvent,
@@ -291,8 +292,8 @@ export function TradeTable({
               : `${rowSummary}\n${tr('Ticket: {{value0}}', { value0: ticketLabel })}\n${tr('Modify Position')} · ${tr('Context menu')}`;
 
             return (
+              <Fragment key={position.id ?? index}>
               <PositionDiagnosticRow
-                key={position.id ?? index}
                 position={position}
                 displayedPriceText={!isPendingPlacement && isColumnVisible('priceCurrent') ? currentPriceLabel : undefined}
                 displayedProfitText={!isPendingPlacement && isColumnVisible('profit') ? profitLabel : undefined}
@@ -455,7 +456,7 @@ export function TradeTable({
                 <td className="px-0.5 py-[2px] text-center">
                   <button
                     type="button"
-                    aria-label={isPendingPlacement ? tr('Order in progress') : tr('Close position {{value0}}', { value0: position.ticket ?? position.id })}
+                    aria-label={isPendingPlacement ? (isTerminalPlacementFailure || isOutcomeUnknown ? placementLabel : tr('Order in progress')) : tr('Close position {{value0}}', { value0: position.ticket ?? position.id })}
                     title={isPendingPlacement ? rowComment : tr('Close position {{value0}}', { value0: ticketLabel })}
                     disabled={isPendingPlacement}
                     onClick={(event) => {
@@ -469,6 +470,16 @@ export function TradeTable({
                   </button>
                 </td>
               </PositionDiagnosticRow>
+              {(isTerminalPlacementFailure || isOutcomeUnknown) && (
+                <tr>
+                  <td colSpan={visibleOptionalColumnCount + 2} className="px-2 py-1 text-left text-xs text-red-300 whitespace-normal break-words">
+                    <div role="status" aria-live="polite" aria-atomic="true">
+                      {`${rowSummary}: ${placementLabel} — ${placementError || tr('Order failed')}`}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
         </tbody>

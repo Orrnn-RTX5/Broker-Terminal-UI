@@ -19,6 +19,7 @@ import { getTerminalQuoteClockOwner, resetTerminalQuoteTransport } from './termi
 import { calibrateTerminalQuoteClock, getTerminalQuoteClockNowMs, getTerminalQuoteFreshness,
   getTerminalQuoteSession, ingestTerminalQuote, isTerminalQuoteClockVerified, resetTerminalQuoteFreshness } from './terminalQuoteFreshness';
 import { useTerminalQuoteClock } from '../hooks/useTerminalQuoteClock';
+import { getQuoteDiagnosticDump } from './quoteDiagnostics';
 
 const epoch = 1_800_000_000_000;
 let mono: number;
@@ -113,7 +114,7 @@ describe('independent broker clock ownership across quote transport resets', () 
     expect(isTerminalQuoteClockVerified()).toBe(false);
   });
 
-  it('pins HTTP sampling to its broker and ignores a response from the prior quote generation', async () => {
+  it('pins HTTP sampling to its broker and recovers across repeated quote transport resets', async () => {
     renderHook(() => useTerminalQuoteClock());
     await act(async () => {});
     expect(mocks.get).toHaveBeenCalledWith('/time', expect.objectContaining({
@@ -123,10 +124,36 @@ describe('independent broker clock ownership across quote transport resets', () 
     let complete!: (value: unknown) => void;
     mocks.get.mockReturnValueOnce(new Promise(resolve => { complete = resolve; }));
     act(() => { window.dispatchEvent(new Event('rtx:quote-clock-refresh')); });
-    act(() => { resetTerminalQuoteTransport(); });
+    act(() => { resetTerminalQuoteTransport(); resetTerminalQuoteTransport(); });
     expect(isTerminalQuoteClockVerified()).toBe(true);
-    await act(async () => { complete({ server_time_ms: epoch + 30_000 }); });
-    expect(getTerminalQuoteClockNowMs()).toBe(epoch);
+    mono = 100; wall = epoch + mono;
+    await act(async () => { complete({ server_time_ms: epoch + 100 }); });
+    expect(getTerminalQuoteClockNowMs()).toBe(epoch + 150);
+    // The new sample survives beyond the original sample's expiry, but never
+    // extends the lifetime of any old quote or accepts old-generation packets.
+    mono = 60_000; wall = epoch + mono;
+    expect(isTerminalQuoteClockVerified()).toBe(true);
+    expect(getTerminalQuoteFreshness('BTCUSD').reason).toBe('unavailable');
+  });
+
+  it.each(['broker', 'account', 'access', 'refresh'])('discards a pending response with diagnostics after a %s change', async change => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    try {
+      let complete!: (value: unknown) => void;
+      mocks.get.mockReturnValueOnce(new Promise(resolve => { complete = resolve; }));
+      renderHook(() => useTerminalQuoteClock());
+      if (change === 'broker') { mocks.server = 'https://broker.two'; mocks.scope.serverUrl = mocks.server; }
+      if (change === 'account') mocks.scope.accountId = '200002';
+      if (change === 'access') mocks.access = 'access-b';
+      if (change === 'refresh') mocks.refresh = 'refresh-b';
+      await act(async () => { complete({ server_time_ms: epoch }); });
+      expect(isTerminalQuoteClockVerified()).toBe(false);
+      expect(getQuoteDiagnosticDump().controls.at(-1)).toMatchObject({ kind: 'clock', accepted: false, reason: 'clock-owner-changed' });
+      await act(async () => { vi.advanceTimersByTime(1000); });
+      expect(isTerminalQuoteClockVerified()).toBe(true);
+    } finally {
+      delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__;
+    }
   });
 
   it.each(['session', 'offline', 'pageshow'])('fully invalidates the retained anchor on %s', async change => {
