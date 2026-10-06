@@ -15,7 +15,8 @@ const bindResourceStore = () => {
     resourceStore?.off('added', clearLabelCache);
     resourceStore?.off('removed', clearLabelCache);
     resourceStore = i18n.store;
-    resourceStore?.on('added removed', clearLabelCache);
+    resourceStore?.on('added', clearLabelCache);
+    resourceStore?.on('removed', clearLabelCache);
     clearLabelCache();
 };
 const invalidateLabels = () => {
@@ -79,11 +80,15 @@ export function translateUi<T>(source: T, values?: Record<string, unknown>): T {
     return (source.slice(0, start) + label + source.slice(start + key.length)) as T;
 }
 
+// react-i18next supports bindI18nStore at runtime, although the installed
+// UseTranslationOptions declaration omits that resource-event option.
+const translationBindings = {
+    bindI18n: 'languageChanged initialized loaded',
+    bindI18nStore: 'added removed',
+};
+
 export function useUiTranslation() {
-    const { i18n: instance, t } = useTranslation(['translation', 'ui'], {
-        bindI18n: 'languageChanged initialized loaded',
-        bindI18nStore: 'added removed',
-    });
+    const { i18n: instance, t } = useTranslation(['translation', 'ui'], translationBindings);
     // A new translator also invalidates memoized presentation labels. It does
     // not remount components or change their persistent IDs/state.
     return useCallback(
