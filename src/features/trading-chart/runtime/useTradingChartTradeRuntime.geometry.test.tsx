@@ -17,13 +17,17 @@ function fixture() {
   let y: number | null = 100;
   const widthRead = vi.fn(() => width), heightRead = vi.fn(() => height);
   Object.defineProperties(container, { offsetWidth: { get: widthRead }, offsetHeight: { get: heightRead } });
-  const coordinate = vi.fn(() => y);
+  const coordinate = vi.fn((_price: number) => y);
   const options = {
     symbol: 'BTCUSD', timeframe: 'M1', candlesLoadedRev: 0,
     containerRef: ref(container), overlayRef: ref(overlay),
     seriesRef: ref({ priceScale: () => ({ width: () => scale }), priceToCoordinate: coordinate }),
     chartRef: ref({ timeScale: () => ({ height: () => 30, timeToCoordinate: () => 50 }) }),
     chartSettingsRef: ref({ showBidPriceLine: false }),
+    livePriceRef: ref(100), livePriceLineRef: ref(document.createElement('div')),
+    livePriceBadgeRef: ref(document.createElement('div')),
+    livePriceOverlayColorsRef: ref({ lineColor: 'red', badgeBackground: 'black', badgeTextColor: 'white' }),
+    applyLivePriceHorizontalGeometry: vi.fn(),
     candlesRef: ref([]), currentCandleRef: ref(null), prevTimeframeRef: ref('M1'),
     repaintTradeOverlayGeometryRef: ref(() => {}), postInteractionCallbacksRef: ref({}),
     activeTradeSnapshotsRef: ref(new Map()), tradeLevelCrossCloseCandidatesRef: ref(new Map()),
@@ -43,6 +47,86 @@ function fixture() {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
 describe('trade overlay geometry presentation', () => {
+  it('projects the live price again after metric callbacks can change the scale', () => {
+    const f = fixture();
+    f.options.chartSettingsRef.current.showBidPriceLine = true;
+    f.renderer.tradeControlLiveUpdatersRef.current = [() => f.move(180)];
+    f.renderer.updateLabelPositions();
+    expect(f.node.style.top).toBe('100px');
+    expect(f.options.livePriceLineRef.current?.style.top).toBe('180px');
+    expect(f.options.livePriceBadgeRef.current?.style.top).toBe('180px');
+    expect(f.coordinate).toHaveBeenCalledTimes(2);
+    f.hook.unmount();
+  });
+  it('memoizes repeated exact endpoint coordinates only within each geometry pass', () => {
+    const f = fixture();
+    let factor = 1;
+    const timeToCoordinate = vi.fn((time: number) => (time - 1000) * factor + 50);
+    f.coordinate.mockImplementation(price => Math.log(price) * 20 * factor);
+    f.options.chartRef.current!.timeScale = (() => ({ height: () => 30, timeToCoordinate })) as typeof f.options.chartRef.current.timeScale;
+    const resolveEndPrice = vi.fn(() => 101), resolveEndTime = vi.fn(() => 1060);
+    f.renderer.activeOverlayNodesRef.current = Array.from({ length: 50 }, () => document.createElement('div'));
+    f.renderer.activeOverlayNodeDataRef.current = Array.from({ length: 50 }, () => ({
+      kind: 'segment', price: 100, time: 1000, resolveEndPrice, resolveEndTime,
+    }));
+    f.repaint();
+    expect(f.coordinate.mock.calls).toEqual([[100], [101]]);
+    expect(timeToCoordinate.mock.calls).toEqual([[1000], [1060]]);
+    expect(resolveEndPrice).toHaveBeenCalledTimes(50); expect(resolveEndTime).toHaveBeenCalledTimes(50);
+    const firstTop = f.renderer.activeOverlayNodesRef.current[0].style.top;
+    factor = 2; f.repaint();
+    expect(f.coordinate).toHaveBeenCalledTimes(4); expect(timeToCoordinate).toHaveBeenCalledTimes(4);
+    expect(resolveEndPrice).toHaveBeenCalledTimes(100); expect(resolveEndTime).toHaveBeenCalledTimes(100);
+    expect(f.renderer.activeOverlayNodesRef.current[0].style.top).not.toBe(firstTop);
+    f.hook.unmount();
+  });
+
+  it('shares null results without losing retry and refreshes candle anchors on the next pass', () => {
+    const f = fixture();
+    const candle = { time: 1000, open: 100, high: 110, low: 90, close: 100, volume: 1 };
+    f.options.currentCandleRef.current = candle;
+    f.renderer.activeOverlayNodesRef.current = [document.createElement('div'), document.createElement('div')];
+    f.renderer.activeOverlayNodeDataRef.current = Array.from({ length: 2 }, () => ({
+      kind: 'marker', price: 100, time: 1000, markerSide: 'BUY', markerAnchor: 'candle',
+    }));
+    f.move(null);
+    expect(f.renderer.updateLabelPositions()).toBe(true);
+    expect(f.coordinate.mock.calls).toEqual([[90]]);
+    candle.low = 80; f.coordinate.mockImplementation(price => price);
+    expect(f.renderer.updateLabelPositions()).toBe(false);
+    expect(f.coordinate.mock.calls).toEqual([[90], [80]]);
+    expect(f.renderer.activeOverlayNodesRef.current.every(node => node.style.top === '80px')).toBe(true);
+    f.hook.unmount();
+  });
+
+  it('validates an unchanged node style once per pass and repairs a full external style replacement', () => {
+    const f = fixture(); f.repaint();
+    const getters = ['display', 'top', 'left', 'right'].map(property => vi.spyOn(f.node.style, property as 'top', 'get'));
+    const attribute = vi.spyOn(f.node, 'getAttribute');
+    f.repaint();
+    expect(getters.reduce((sum, spy) => sum + spy.mock.calls.length, 0)).toBe(0);
+    expect(attribute).toHaveBeenCalledExactlyOnceWith('style');
+    f.node.style.cssText = 'top:25px;left:200px;display:none'; f.repaint();
+    expect(f.node.style.top).toBe('100px'); expect(f.node.style.left).toBe('0px'); expect(f.node.style.display).toBe('block');
+    f.hook.unmount();
+  });
+
+  it('shares direct null time and nearest-candle projection without caching either across passes', () => {
+    const f = fixture();
+    f.options.candlesRef.current = [{ time: 1000, open: 100, high: 101, low: 99, close: 100, volume: 1 }];
+    const timeToCoordinate = vi.fn((time: number): number | null => time === 1000 ? 50 : null);
+    f.options.chartRef.current!.timeScale = (() => ({ height: () => 30, timeToCoordinate })) as typeof f.options.chartRef.current.timeScale;
+    f.renderer.activeOverlayNodesRef.current = Array.from({ length: 20 }, () => document.createElement('div'));
+    f.renderer.activeOverlayNodeDataRef.current = Array.from({ length: 20 }, () => ({ kind: 'marker', price: 100, time: 1001 }));
+    expect(f.renderer.updateLabelPositions()).toBe(false);
+    expect(timeToCoordinate.mock.calls).toEqual([[1001], [1000]]);
+    timeToCoordinate.mockImplementation(time => time === 1001 ? 75 : null);
+    expect(f.renderer.updateLabelPositions()).toBe(false);
+    expect(timeToCoordinate.mock.calls).toEqual([[1001], [1000], [1001]]);
+    expect(f.renderer.activeOverlayNodesRef.current.every(node => node.style.left === '75px')).toBe(true);
+    f.hook.unmount();
+  });
+
   it('publishes hover geometry without a tooltip and reflows a lazily added visible tooltip', () => {
     const f = fixture();
     f.node.className = 'rtx-trade-marker-hover-target';
