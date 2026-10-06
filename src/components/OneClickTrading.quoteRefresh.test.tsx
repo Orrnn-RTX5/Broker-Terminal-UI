@@ -4,11 +4,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const freshnessMocks = vi.hoisted(() => ({ enabled: false, live: true, reason: 'live', ageMaxMs: 0 as number | null, assert: vi.fn() }));
+const freshnessMocks = vi.hoisted(() => ({ enabled: false, live: true, reason: 'live', sourcePolicyReason: undefined as string | undefined, ageMaxMs: 0 as number | null, assert: vi.fn() }));
 const preflightMocks = vi.hoisted(() => ({ prepare: vi.fn() }));
 vi.mock('../services/terminalMarketQuotePreflight', () => ({ prepareTerminalMarketQuote: preflightMocks.prepare, TERMINAL_MARKET_QUOTE_WAIT_MS: 1500, TERMINAL_MARKET_QUOTE_RECOVERY_MAX_AGE_MS: 1000 }));
 vi.mock('../services/terminalQuoteFreshness', () => ({ getTerminalQuoteFreshness: () => ({ ageMaxMs: freshnessMocks.ageMaxMs }), getTerminalQuoteSession: () => 1, canSubmitTerminalMarketOrder: (state: {live:boolean;reason:string}) => state.live || state.reason === 'time-unverified', terminalMarketQuoteAdvisory: (state: {reason:string}) => state.reason === 'time-unverified' ? 'Quote age uncertain; server will validate' : null, assertTerminalMarketOrderQuote: freshnessMocks.assert, terminalQuoteBlockMessage: (reason: string, symbol: string) => reason === 'time-unverified' ? 'Syncing time for ' + symbol : 'Waiting for a fresh quote', terminalQuoteFreshnessEnabled: () => freshnessMocks.enabled, assertTerminalQuoteFresh: freshnessMocks.assert }));
-vi.mock('../hooks/useTerminalQuoteFreshness', () => ({ useTerminalQuoteFreshness: () => ({ live: freshnessMocks.live, ageMs: 0, reason: freshnessMocks.reason, clockStatus: freshnessMocks.reason === 'time-unverified' ? 'unverified' : 'verified' }) }));
+vi.mock('../hooks/useTerminalQuoteFreshness', () => ({ useTerminalQuoteFreshness: () => ({ live: freshnessMocks.live, sourcePolicyReason: freshnessMocks.sourcePolicyReason, ageMs: 0, reason: freshnessMocks.reason, clockStatus: freshnessMocks.reason === 'time-unverified' ? 'unverified' : 'verified' }) }));
 
 const orderMocks = vi.hoisted(() => ({
   placeMarketOrder: vi.fn(),
@@ -52,6 +52,7 @@ const neverSettlingRefresh = () => new Promise<void>(() => {});
 
 describe('OneClickTrading stale-quote refresh', () => {
   beforeEach(() => {
+    freshnessMocks.sourcePolicyReason = undefined;
     freshnessMocks.enabled = false; freshnessMocks.live = true; freshnessMocks.reason = 'live'; freshnessMocks.ageMaxMs = 0; freshnessMocks.assert.mockReset();
     preflightMocks.prepare.mockReset().mockImplementation(() => { freshnessMocks.assert(); });
     useAppStore.getState().reset();
@@ -101,6 +102,13 @@ describe('OneClickTrading stale-quote refresh', () => {
       marketStatus={normalizeMarketStatus({ symbol: 'BTCUSD', status: 'open' })}
     />,
   );
+
+  it.each([['source-off', 'Price source is off'], ['source-switching', 'Price source is switching'], ['source-mismatch', 'Quote source mismatch']])('shows %s before the generic stale explanation and leaves orders blocked', (reason, message) => {
+    freshnessMocks.enabled = true; freshnessMocks.live = false; freshnessMocks.reason = 'stale'; freshnessMocks.sourcePolicyReason = reason;
+    renderPanel(false); expect(screen.getByRole('status')).toHaveTextContent(message);
+    expect(getTradeButton('BUY')).toBeDisabled(); fireEvent.click(getTradeButton('BUY'));
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+  });
 
   it('records a disabled-before-send permission decision even while the quote advisory allows orders', () => {
     window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;

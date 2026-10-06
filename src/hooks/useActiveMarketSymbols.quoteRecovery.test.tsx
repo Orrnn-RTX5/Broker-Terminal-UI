@@ -30,6 +30,14 @@ describe('new provider evidence supersedes an older stale-only feed status', () 
   });
   afterEach(() => { cleanup(); resetTerminalQuoteFreshness(); vi.useRealTimers(); vi.restoreAllMocks(); delete configWindow().__RTX_RUNTIME_CONFIG__; delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__; delete window.__RTX_QUOTE_DIAGNOSTICS_SYMBOLS__; });
 
+  it('records the current source policy only from an owned feed-status response', async () => {
+    apiGet.mockResolvedValue({ ...status({ has_data: false, silent: true }), server_time: epoch,
+      live_price_source: { revision: 37, active_mode: 'off', desired_mode: 'off', phase: 'active' } });
+    const { result } = renderHook(() => useActiveMarketSymbols()); await flush();
+    expect(result.current.symbols).toEqual([]);
+    expect(getTerminalQuoteFreshness('BTCUSD')).toMatchObject({ reason: 'unavailable', sourcePolicyReason: 'source-off' });
+  });
+
   it('restores authorized membership on a newer verified quote while the status refresh is still pending', async () => {
     apiGet.mockResolvedValueOnce(status()).mockImplementation(() => new Promise(() => {}));
     const { result } = renderHook(() => useActiveMarketSymbols()); await flush();

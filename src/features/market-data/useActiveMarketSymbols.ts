@@ -9,6 +9,7 @@ import { apiClient, ApiError } from '../../api/client';
 import { getAccessToken, getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey,
   getServerUrl, onCommittedBrokerAccountSessionScopeChange, onSessionChange } from '../../services/brokerSession';
 import { getTerminalQuoteSession, getNewerLiveTerminalQuoteEvidence, readQuoteFreshnessMetadata,
+  recordTerminalQuoteSourcePolicy,
   subscribeTerminalQuoteFreshness, terminalQuoteFreshnessEnabled, type TerminalQuoteMetadata } from '../../services/terminalQuoteFreshness';
 import { recordBrokerServerTime } from '../../services/brokerServerClock';
 import { quoteDiagnosticSymbolSelected, quoteDiagnosticsEnabled, recordQuoteDiagnostic } from '../../services/quoteDiagnostics';
@@ -415,6 +416,7 @@ export function useActiveMarketSymbols() {
       if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted
         || ownerGeneration !== recoveryOwnerGenerationRef.current || !ownsRecovery(owner)) return;
       recordBrokerServerTime(response.server_time, requestStartedAt);
+      recordTerminalQuoteSourcePolicy(response);
       const nextSymbols = extractActiveMarketSymbols(response);
       recordMarketSymbolStatusRows(response);
 

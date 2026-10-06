@@ -7,6 +7,7 @@ export interface TerminalQuoteMetadata {
   provider_timestamp?: number;
   sequence?: string | number;
   source?: string;
+  source_revision?: number;
   source_mismatch?: boolean;
   stale?: boolean;
   tradable?: boolean;
@@ -16,6 +17,8 @@ export type TerminalQuoteFreshnessReason = 'live' | 'unavailable' | 'time-unveri
 export interface TerminalQuoteFreshness {
   live: boolean; ageMs: number | null; ageMinMs: number | null; ageMaxMs: number | null;
   clockStatus: 'verified' | 'unverified'; reason: TerminalQuoteFreshnessReason;
+  /** Explanatory policy evidence only; never grants freshness or trading permission. */
+  sourcePolicyReason?: 'source-off' | 'source-switching' | 'source-unavailable' | 'source-mismatch';
 }
 
 const quotes = new Map<string, TerminalQuoteEvidence>();
@@ -25,6 +28,7 @@ const listeners = new Set<(changedSymbol?: string) => void>();
 let timer: ReturnType<typeof setInterval> | undefined;
 let revision = 0;
 let session = 0;
+let sourcePolicy: { revision: number; serverTime: number; active: string; desired: string; phase: string } | undefined;
 export interface TerminalQuoteClockOwner { isCurrent: () => boolean }
 let anchor: { lower: number; upper: number; mono: number; wall: number; requestMono: number; owner?: TerminalQuoteClockOwner } | undefined;
 const monoNow = () => performance.now();
@@ -63,6 +67,7 @@ export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown,
   };
   const sequence = pick('sequence', 'seq');
   const source = pick('source');
+  const sourceRevision = Number(pick('source_revision'));
   // Normalizers deliberately emit this own property even when upstream had no
   // provider timestamp. Never reinterpret their display sourceTimestamp alias
   // (which can come from event/server/receipt time) as provider evidence.
@@ -73,6 +78,7 @@ export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown,
     provider_timestamp: timestamp(providerTime),
     sequence: typeof sequence === 'string' || typeof sequence === 'number' ? sequence : undefined,
     source: typeof source === 'string' ? source : undefined,
+    ...(Number.isSafeInteger(sourceRevision) && sourceRevision > 0 ? { source_revision: sourceRevision } : {}),
   };
   for (const flag of ['source_mismatch', 'stale', 'tradable'] as const) {
     const value = pick(flag);
@@ -87,6 +93,33 @@ export function readQuoteFreshnessMetadata(payload: unknown, envelope?: unknown,
 export const getTerminalQuoteSession = () => session;
 export const getTerminalQuoteFreshnessRevision = () => revision;
 export const getVerifiedQuoteProviderTime = (symbol: string) => verifiedProviderTimes.get(key(symbol));
+
+/** Called only after feed-status request/session ownership is checked. */
+export function recordTerminalQuoteSourcePolicy(response: Record<string, unknown>): void {
+  const policy = response.live_price_source as Record<string, unknown> | undefined;
+  if (!policy || typeof policy !== 'object') return;
+  const nextRevision = Number(policy.revision), serverTime = timestamp(response.server_time);
+  const active = String(policy.active_mode), desired = String(policy.desired_mode), phase = String(policy.phase);
+  if (!Number.isSafeInteger(nextRevision) || nextRevision <= 0 || serverTime === undefined
+    || !['off', 'receiver', 'feed_token'].includes(active) || !['off', 'receiver', 'feed_token'].includes(desired)
+    || !['active', 'applying', 'failed'].includes(phase)) return;
+  if (sourcePolicy && (nextRevision < sourcePolicy.revision
+    || (nextRevision === sourcePolicy.revision && serverTime <= sourcePolicy.serverTime))) return;
+  sourcePolicy = { revision: nextRevision, serverTime, active, desired, phase };
+  publish();
+}
+
+function sourcePolicyReason(quote: TerminalQuoteEvidence | undefined, freshness: TerminalQuoteFreshnessReason): TerminalQuoteFreshness['sourcePolicyReason'] {
+  if (!sourcePolicy) return undefined;
+  // A late health snapshot must not obscure newer accepted provider evidence.
+  if (quote?.source_revision !== undefined && (quote.source_revision > sourcePolicy.revision
+    || (quote.source_revision === sourcePolicy.revision && freshness === 'live'))) return undefined;
+  if (sourcePolicy.phase === 'applying') return 'source-switching';
+  if (sourcePolicy.active === 'off' && sourcePolicy.desired === 'off') return 'source-off';
+  if (sourcePolicy.phase === 'failed') return 'source-unavailable';
+  if (quote?.source_revision !== undefined && quote.source_revision < sourcePolicy.revision) return 'source-mismatch';
+  return undefined;
+}
 
 /** A stale feed snapshot is superseded only by newer accepted evidence from its own source/session. */
 export function getNewerLiveTerminalQuoteEvidence(symbol: string, previous: TerminalQuoteMetadata, expectedSession: number): TerminalQuoteMetadata | null {
@@ -107,6 +140,7 @@ export function resetTerminalQuoteFreshness(options?: { preserveClockForOwner?: 
   quotes.clear();
   sequenceWatermarks.clear();
   verifiedProviderTimes.clear();
+  sourcePolicy = undefined;
   anchor = preserved;
   publish();
 }
@@ -272,6 +306,7 @@ export function getTerminalQuoteFreshness(symbol: string): TerminalQuoteFreshnes
   const result = (reason: TerminalQuoteFreshnessReason): TerminalQuoteFreshness => ({
     live: reason === 'live', ageMs: ageMaxMs === null ? null : Math.max(0, ageMaxMs), ageMinMs, ageMaxMs,
     clockStatus: verified ? 'verified' : 'unverified', reason,
+    sourcePolicyReason: sourcePolicyReason(quote, reason),
   });
   if (!quote?.provider_timestamp || !quote.source?.trim() || !Number.isFinite(quote.bid) || !Number.isFinite(quote.ask)
     || quote.bid! <= 0 || quote.ask! <= 0 || quote.ask! < quote.bid!) return result('unavailable');

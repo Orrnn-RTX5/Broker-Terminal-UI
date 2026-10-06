@@ -268,6 +268,12 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         ));
     };
     const hasExecutablePrice = bid > 0 && ask > 0;
+    const sourcePolicyMessage = strictFreshness && quoteFreshness.sourcePolicyReason
+        ? ({ 'source-off': 'Price source is off. Trading is unavailable.',
+            'source-switching': 'Price source is switching. Waiting for the active source.',
+            'source-unavailable': 'Price source is unavailable. Waiting for source recovery.',
+            'source-mismatch': 'Quote source mismatch. Waiting for the active source.' })[quoteFreshness.sourcePolicyReason]
+        : undefined;
     const effectiveMarketStatus = marketStatus ?? createUnavailableMarketStatus(symbol);
     const marketBlockedMessage = effectiveMarketStatus.label;
     const marketOpenForTrading = !shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
@@ -285,7 +291,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     }
     // Disabled HTML buttons never run placeOrder, so capture decision transitions
     // independently of submitted-order telemetry. Do not include account identity.
-    const diagnosticBlockReason = !hasTradingSession ? 'login-required' : waitingForQuote ? 'waiting-for-quote' : !tradeAllowed ? 'symbol-not-eligible'
+    const diagnosticBlockReason = !hasTradingSession ? 'login-required' : waitingForQuote ? 'waiting-for-quote'
+        : (!tradeAllowed || !quoteLive) && sourcePolicyMessage ? quoteFreshness.sourcePolicyReason : !tradeAllowed ? 'symbol-not-eligible'
         : !quoteLive ? quoteFreshness.reason : !marketOpenForTrading ? 'market-not-open'
             : !isVolumeValid ? 'invalid-volume' : !hasExecutablePrice ? 'no-executable-price' : 'ready';
     const captureQuoteDiagnostics = quoteDiagnosticsEnabled();
@@ -298,7 +305,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             freshnessReason: quoteFreshness.reason, clockStatus: quoteFreshness.clockStatus });
     }, [captureQuoteDiagnostics, visible, symbol, tradeControlDisabled, diagnosticBlockReason, hasTradingSession, tradeAllowed,
         marketOpenForTrading, isVolumeValid, hasExecutablePrice, quoteLive, quoteFreshness.reason, quoteFreshness.clockStatus]);
-    const orderBlockedReason = !tradeAllowed
+    const orderBlockedReason = (!tradeAllowed || !quoteLive) && sourcePolicyMessage ? sourcePolicyMessage : !tradeAllowed
         ? strictFreshness ? tr('Trading is not available for {{symbol}}.', { symbol }) : hasExecutablePrice ? staleQuoteMessage : tr('No live quote is available for {{symbol}}. Please wait for a fresh quote and try again.', { symbol })
         : !quoteLive
             ? terminalQuoteBlockMessage(quoteFreshness.reason, symbol)
@@ -798,10 +805,10 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 </div>
             )}
             {waitingForQuote && <div role="status">{tr('Waiting for a fresh quote')}</div>}
-            {quoteGuardMessage && !error && !blockedMessage && (
+            {quoteGuardMessage && (sourcePolicyMessage || (!error && !blockedMessage)) && (
                 <div role="status" aria-live="polite" style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', padding: '3px 8px' }}>
                     {tr(quoteGuardMessage)}
-                    {quoteFreshness.reason === 'stale' && Number.isFinite(quoteFreshness.ageMinMs) && (
+                    {!sourcePolicyMessage && quoteFreshness.reason === 'stale' && Number.isFinite(quoteFreshness.ageMinMs) && (
                         <span>{` · ${tr('Quote age')}: ≥ ${Math.max(0, quoteFreshness.ageMinMs! / 1000).toFixed(1)} s`}</span>
                     )}
                 </div>
