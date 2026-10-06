@@ -5,7 +5,9 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const freshnessMocks = vi.hoisted(() => ({ enabled: false, live: true, reason: 'live', assert: vi.fn() }));
-vi.mock('../services/terminalQuoteFreshness', () => ({ canSubmitTerminalMarketOrder: (state: {live:boolean;reason:string}) => state.live || state.reason === 'time-unverified', terminalMarketQuoteAdvisory: (state: {reason:string}) => state.reason === 'time-unverified' ? 'Quote age uncertain; server will validate' : null, assertTerminalMarketOrderQuote: freshnessMocks.assert, terminalQuoteBlockMessage: (reason: string, symbol: string) => reason === 'time-unverified' ? 'Syncing time for ' + symbol : 'Waiting for a fresh quote', terminalQuoteFreshnessEnabled: () => freshnessMocks.enabled, assertTerminalQuoteFresh: freshnessMocks.assert }));
+const preflightMocks = vi.hoisted(() => ({ prepare: vi.fn() }));
+vi.mock('../services/terminalMarketQuotePreflight', () => ({ prepareTerminalMarketQuote: preflightMocks.prepare, TERMINAL_MARKET_QUOTE_WAIT_MS: 1500 }));
+vi.mock('../services/terminalQuoteFreshness', () => ({ getTerminalQuoteSession: () => 1, canSubmitTerminalMarketOrder: (state: {live:boolean;reason:string}) => state.live || state.reason === 'time-unverified', terminalMarketQuoteAdvisory: (state: {reason:string}) => state.reason === 'time-unverified' ? 'Quote age uncertain; server will validate' : null, assertTerminalMarketOrderQuote: freshnessMocks.assert, terminalQuoteBlockMessage: (reason: string, symbol: string) => reason === 'time-unverified' ? 'Syncing time for ' + symbol : 'Waiting for a fresh quote', terminalQuoteFreshnessEnabled: () => freshnessMocks.enabled, assertTerminalQuoteFresh: freshnessMocks.assert }));
 vi.mock('../hooks/useTerminalQuoteFreshness', () => ({ useTerminalQuoteFreshness: () => ({ live: freshnessMocks.live, ageMs: 0, reason: freshnessMocks.reason, clockStatus: freshnessMocks.reason === 'time-unverified' ? 'unverified' : 'verified' }) }));
 
 const orderMocks = vi.hoisted(() => ({
@@ -51,6 +53,7 @@ const neverSettlingRefresh = () => new Promise<void>(() => {});
 describe('OneClickTrading stale-quote refresh', () => {
   beforeEach(() => {
     freshnessMocks.enabled = false; freshnessMocks.live = true; freshnessMocks.reason = 'live'; freshnessMocks.assert.mockReset();
+    preflightMocks.prepare.mockReset().mockImplementation(() => { freshnessMocks.assert(); });
     useAppStore.getState().reset();
     useAppStore.setState({
       isAuthenticated: true,
@@ -153,6 +156,52 @@ describe('OneClickTrading stale-quote refresh', () => {
     orderMocks.placeMarketOrder.mockResolvedValueOnce({ ticket: 555 });
     fireEvent.click(getTradeButton('BUY'));
     await waitFor(() => expect(orderMocks.placeMarketOrder).toHaveBeenCalledOnce());
+  });
+
+  it('waits before sending once when a click encounters a short provider gap', async () => {
+    freshnessMocks.enabled = true;
+    let ready!: () => void;
+    preflightMocks.prepare.mockImplementation(() => new Promise<void>(resolve => { ready = resolve; }));
+    orderMocks.placeMarketOrder.mockResolvedValueOnce({ ticket: 555 });
+    renderPanel(true);
+    fireEvent.click(getTradeButton('BUY'));
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent('Waiting for a fresh quote');
+    expect(getTradeButton('BUY')).toBeDisabled();
+    fireEvent.click(getTradeButton('BUY'));
+    await act(async () => ready());
+    expect(orderMocks.placeMarketOrder).toHaveBeenCalledOnce();
+    expect(preflightMocks.prepare).toHaveBeenCalledOnce();
+  });
+
+  it.each(['symbol', 'permission', 'hidden', 'unmount', 'volume', 'changed-back'] as const)('cancels the unsent waiting click after %s changes', async change => {
+    freshnessMocks.enabled = true;
+    let ready!: () => void;
+    preflightMocks.prepare.mockImplementation(() => new Promise<void>(resolve => { ready = resolve; }));
+    const view = renderPanel(true);
+    fireEvent.click(getTradeButton('BUY'));
+    if (change === 'unmount') view.unmount();
+    else if (change === 'volume' || change === 'changed-back') {
+      fireEvent.change(screen.getByLabelText('Lot size'), { target: { value: '0.02' } });
+      if (change === 'changed-back') fireEvent.change(screen.getByLabelText('Lot size'), { target: { value: '0.01' } });
+    }
+    else view.rerender(<OneClickTrading symbol={change === 'symbol' ? 'XAUUSD' : 'BTCUSD'} timeframe="M1"
+      visible={change !== 'hidden'} tradeAllowed={change !== 'permission'}
+      marketStatus={normalizeMarketStatus({ symbol: 'BTCUSD', status: 'open' })} />);
+    await act(async () => ready());
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+  });
+
+  it('requires a new click after preflight expiry and does not replay on later recovery', async () => {
+    freshnessMocks.enabled = true;
+    preflightMocks.prepare.mockRejectedValueOnce(staleOrderError());
+    renderPanel(true);
+    fireEvent.click(getTradeButton('BUY'));
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toBeTruthy());
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+    act(() => useAppStore.getState().setTicks({ BTCUSD: { ...useAppStore.getState().ticks.BTCUSD, timestamp: Date.now() + 1 } }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });
 
   it('does not bypass permissions when strict freshness is live', () => {

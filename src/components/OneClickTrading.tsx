@@ -33,12 +33,13 @@ import {
 } from '../utils/tradeVolume';
 import { formatPriceParts } from './ui/PriceDisplay';
 import { resolveExactBrokerSymbolValue } from '../utils/exactBrokerSymbol';
-import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
+import { getAccessToken, getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
 import './OneClickTrading.css';
 import { hasAuthenticatedTradingSession, requireTradingAuth } from '../services/tradingAuthGate';
 import { requestMarketSymbolsRefresh } from '../hooks/useLiveMarketData';
 import { useTerminalQuoteFreshness } from '../hooks/useTerminalQuoteFreshness';
-import { assertTerminalMarketOrderQuote, canSubmitTerminalMarketOrder, terminalMarketQuoteAdvisory, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
+import { assertTerminalQuoteFresh, canSubmitTerminalMarketOrder, getTerminalQuoteSession, terminalMarketQuoteAdvisory, terminalQuoteBlockMessage, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
+import { prepareTerminalMarketQuote, TERMINAL_MARKET_QUOTE_WAIT_MS } from '../services/terminalMarketQuotePreflight';
 
 interface OneClickTradingProps {
     symbol: string;
@@ -129,6 +130,13 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
     const [staleBlock, setStaleBlock] = useState<{ symbol: string; tick: unknown; clockOnly?: boolean } | null>(null);
+    const [waitingForQuote, setWaitingForQuote] = useState(false);
+    const quoteWaitRef = useRef(false);
+    const mountedRef = useRef(false);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
     const strictFreshness = terminalQuoteFreshnessEnabled();
     const quoteFreshness = useTerminalQuoteFreshness(symbol);
     const quoteAdvisory = strictFreshness ? terminalMarketQuoteAdvisory(quoteFreshness) : null;
@@ -266,7 +274,15 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const staleQuoteMessage = tr('Cannot place this trade because the quote for {{symbol}} is stale. Please wait for a fresh quote and try again.', { symbol });
     const quoteLive = !strictFreshness || canSubmitTerminalMarketOrder(quoteFreshness);
     const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice && quoteLive;
-    const tradeControlDisabled = hasTradingSession && !canSubmitOrder;
+    const tradeControlDisabled = hasTradingSession && (!canSubmitOrder || waitingForQuote);
+    // A changed draft, symbol or permission cancels a waiting click permanently,
+    // even if the user changes it back before the next provider update.
+    const preflightIdentity = JSON.stringify([symbol, visible, volumeDraft, volumeConstraints,
+        authIdentity, tradeAllowed, marketOpenForTrading, isVolumeValid, hasExecutablePrice]);
+    const preflightContextRef = useRef({ identity: preflightIdentity, revision: 0 });
+    if (preflightContextRef.current.identity !== preflightIdentity) {
+        preflightContextRef.current = { identity: preflightIdentity, revision: preflightContextRef.current.revision + 1 };
+    }
     // Disabled HTML buttons never run placeOrder, so capture decision transitions
     // independently of submitted-order telemetry. Do not include account identity.
     const diagnosticBlockReason = !hasTradingSession ? 'login-required' : !tradeAllowed ? 'symbol-not-eligible'
@@ -302,6 +318,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     }, [symbol, tr]);
 
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
+        if (quoteWaitRef.current) return;
         if (!requireTradingAuth({
             source: 'one-click-trading',
             side: side.toUpperCase() as 'BUY' | 'SELL',
@@ -352,13 +369,43 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             return;
         }
         const orderSessionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+        const preflightRevision = preflightContextRef.current.revision;
+        const preflightToken = getAccessToken();
+        const preflightStoreToken = useAppStore.getState().authToken;
+        const preflightQuoteSession = getTerminalQuoteSession();
         const ownsOrderSession = () => {
             const current = useAppStore.getState();
             return current.isAuthenticated && String(current.accountId) === String(login)
                 && getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()) === orderSessionScope;
         };
+        const ownsPreflight = () => mountedRef.current && ownsOrderSession()
+            && document.visibilityState !== 'hidden' && navigator.onLine !== false
+            && preflightContextRef.current.revision === preflightRevision
+            && getAccessToken() === preflightToken && useAppStore.getState().authToken === preflightStoreToken
+            && getTerminalQuoteSession() === preflightQuoteSession;
+        let orderSubmitted = false;
         try {
-            if (strictFreshness) assertTerminalMarketOrderQuote(symbol);
+            if (strictFreshness) {
+                // Fresh quotes preserve the synchronous send path. A provider
+                // gap may wait briefly before submission, never after rejection.
+                const preflightStartedAt = performance.now();
+                const pendingQuote = prepareTerminalMarketQuote(symbol, ownsPreflight);
+                if (pendingQuote) {
+                    quoteWaitRef.current = true;
+                    setWaitingForQuote(true);
+                    try { await pendingQuote; }
+                    finally {
+                        quoteWaitRef.current = false;
+                        if (mountedRef.current) setWaitingForQuote(false);
+                    }
+                    if (!ownsPreflight()) return;
+                    if (performance.now() - preflightStartedAt >= TERMINAL_MARKET_QUOTE_WAIT_MS) {
+                        throw Object.assign(new Error('Quote check expired. Please place the trade again.'), { code: 'QUOTE_STALE', symbol });
+                    }
+                    assertTerminalQuoteFresh(symbol);
+                }
+            }
+            orderSubmitted = true;
             const orderPromise = api.orders.placeMarketOrder({
                 side,
                 symbol,
@@ -397,7 +444,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             useLastSymbolStore.getState().setLastSymbol(symbol, side.toUpperCase() as 'BUY' | 'SELL');
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
         } catch (err: unknown) {
-            if (!ownsOrderSession()) return;
+            if (!mountedRef.current || !ownsOrderSession() || (!orderSubmitted && !ownsPreflight())) return;
             console.error('[OneClick] Trade failed:', err);
             setError(formatOrderError(err));
             const clockError = err && typeof err === 'object' && (err as LooseRecord).code === 'QUOTE_TIME_UNVERIFIED';
@@ -742,7 +789,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     {tr(marketBlockedMessage || effectiveMarketStatus.label)}
                 </div>
             )}
-            {quoteAdvisory && !error && !blockedMessage && (
+            {waitingForQuote && <div role="status">{tr('Waiting for a fresh quote')}</div>}
+            {quoteAdvisory && !waitingForQuote && !error && !blockedMessage && (
                 <div role="status" style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', padding: '3px 8px' }}>
                     {tr(quoteAdvisory)}
                 </div>
