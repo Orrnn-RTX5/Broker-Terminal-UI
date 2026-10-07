@@ -16,6 +16,7 @@ const chartSource = [
   'src/features/trading-chart/runtime/useTradingChartTradeRuntime.ts',
   'src/features/trading-chart/runtime/createTradeOverlayModelRuntime.ts',
   'src/features/trading-chart/runtime/createTradeOverlayDomRuntime.ts',
+  'src/features/trading-chart/runtime/createActiveTradeOverlayGroups.ts',
   'src/features/trading-chart/runtime/useTradingChartTradeOverlayRenderer.ts',
   'src/features/trading-chart/runtime/bindTradeOverlayRuntimeSubscriptions.ts',
   'src/features/trading-chart/runtime/useTradingChartTradeLevelDrag.ts',
@@ -84,7 +85,7 @@ describe('cTrader-style position controls contract', () => {
     expect(chartSource).toContain("appendActiveInteractionNode(levelBar, { kind: 'price-badge', price: levelPrice });");
     // Relayout must restore each node's own display mode — forcing 'block'
     // onto the flex control bars drops their buttons onto the text baseline.
-    expect(chartSource).toContain("el.style.display = el.dataset.display || 'block';");
+    expect(chartSource).toContain('setGeometryStyle(el, "display", el.dataset.display || \'block\');');
   });
 
   it('keeps outlined trade prices on exact axis coordinates on web and desktop', () => {
@@ -96,7 +97,7 @@ describe('cTrader-style position controls contract', () => {
     expect(axisBadge).toContain('badge.textContent = seriesRef.current.priceFormatter().format(price);');
     expect(axisBadge).toContain('isChartSurfaceLight()');
     expect(chartSource).toContain("if (node.kind === 'axis-price-badge')");
-    expect(chartSource).toContain('el.style.width = `${priceScaleWidth}px`;');
+    expect(chartSource).toContain('setGeometryStyle(el, "width", `${priceScaleWidth}px`);');
     expect(chartSource).toContain('snappedY + 10 > plotHeight');
     expect(chartSource).toContain('pointer-events:none;z-index:8;');
     expect(chartSource).toContain('addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side));');
@@ -219,11 +220,11 @@ describe('cTrader-style position controls contract', () => {
   });
 
   it('renders the shared trade annotation from the URL payload', () => {
-    expect(chartSource).toContain('const sharedTrade = getSharedChartTrade();');
-    expect(chartSource).toContain("!activeTradeKeys.has(`trade:${sharedTrade.ticket}`)");
+    expect(chartSource).toContain('const sharedTradeForSignature = getSharedChartTrade();');
+    expect(chartSource).toContain("!activeTradeKeys.has(`trade:${sharedTradeForSignature.ticket}`)");
     expect(chartSource).toContain('const sharedLabel = `Shared ${sharedTrade.side} ');
     // Annotation participates in the redraw signature so it paints on first render.
-    expect(chartSource).toContain('const sharedTradeSignature = sharedTradeForSignature');
+    expect(chartSource).toContain('const sharedTradeSignature = JSON.stringify([presentationSignature, sharedTrade, sharedOffsets]);');
     expect(chartSource).toContain('sharedTradeSignature,\n        activeSignature,');
   });
 

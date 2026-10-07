@@ -11,6 +11,7 @@ import {
 import type { Candle, Timeframe, TradingViewChartTheme } from '../../../types/chart';
 import type { ChartPostInteractionCoordinator } from '../../../utils/chartPostInteractionCoordinator';
 import type { TradeSide } from '../presentation/tradeOverlayPresentation';
+import { createTradeOverlayRelayoutQueue } from './createTradeOverlayRelayoutQueue';
 import {
   getFrozenEntryTimeKey,
   TRADE_BUY_COLOR,
@@ -45,7 +46,8 @@ interface CreateTradeOverlayModelRuntimeOptions {
   tradeLevelOptimisticGraceUntilRef: RefObject<Map<string, number>>;
   tradeLevelOverridesRef: RefObject<Map<string, TradeLevelOverride>>;
   tradeOverlayRafRef: RefObject<number | null>;
-  updateLabelPositions: (refreshMetrics?: boolean) => void;
+  updateLabelPositions: (refreshMetrics?: boolean) => boolean;
+  isRuntimeCurrent: () => boolean;
 }
 
 export const createTradeOverlayModelRuntime = ({
@@ -71,19 +73,16 @@ export const createTradeOverlayModelRuntime = ({
   tradeLevelOverridesRef,
   tradeOverlayRafRef,
   updateLabelPositions,
+  isRuntimeCurrent,
 }: CreateTradeOverlayModelRuntimeOptions) => {
-    const queueTradeOverlayRelayout = () => {
-      if (isChartInteractionActiveRef.current) {
-        postInteractionCoordinatorRef.current?.request({ overlay: true });
-        return;
-      }
-
-      if (tradeOverlayRafRef.current !== null) return;
-      tradeOverlayRafRef.current = requestAnimationFrame(() => {
-        tradeOverlayRafRef.current = null;
-        updateLabelPositions();
-      });
-    };
+    const relayoutQueue = createTradeOverlayRelayoutQueue({
+      frameRef: tradeOverlayRafRef,
+      isCurrent: isRuntimeCurrent,
+      isInteracting: () => isChartInteractionActiveRef.current,
+      requestPostInteraction: () => postInteractionCoordinatorRef.current?.request({ overlay: true }),
+      project: refreshMetrics => updateLabelPositions(refreshMetrics),
+    });
+    const queueTradeOverlayRelayout = relayoutQueue.queue;
 
     const normalizeUnixSeconds = (value: unknown): number | null => {
       if (value == null || value === '') return null;
@@ -126,7 +125,10 @@ export const createTradeOverlayModelRuntime = ({
       return null;
     };
 
-    const mapTradeTimestampToChartTime = (rawTimestamp: unknown): number | null => {
+    const mapTradeTimestampToChartTime = (
+      rawTimestamp: unknown,
+      lookup = getNearestCandleByTime,
+    ): number | null => {
       const normalizedTimestamp = normalizeUnixSeconds(rawTimestamp);
       if (normalizedTimestamp == null) return null;
 
@@ -154,7 +156,7 @@ export const createTradeOverlayModelRuntime = ({
       let bestDistance = Number.POSITIVE_INFINITY;
 
       for (const candidate of candidates) {
-        const nearest = getNearestCandleByTime(candidate, timeframeSeconds);
+        const nearest = lookup(candidate, timeframeSeconds);
         if (!nearest) continue;
         const distance = Math.abs(nearest.time - candidate);
         if (distance < bestDistance) {
@@ -457,6 +459,9 @@ export const createTradeOverlayModelRuntime = ({
 
   return {
     queueTradeOverlayRelayout,
+    projectCommittedTradeOverlayGeometry: relayoutQueue.projectCommittedGeometry,
+    disposeTradeOverlayRelayout: relayoutQueue.dispose,
+    flushPostInteractionTradeOverlay: relayoutQueue.flushPostInteraction,
     normalizeUnixSeconds,
     pickPositiveNumber,
     getTradeTicketLabel,

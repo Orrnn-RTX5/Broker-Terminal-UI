@@ -10,8 +10,11 @@ import {
   type Timeframe as AggTimeframe,
 } from '../../../services/candleAggregationService';
 import type { CandleCacheSource } from '../../../services/candleCache';
+import { financialQuoteEventIdentity } from '../../../services/financialQuoteStream';
+import { createDeferredQuoteOverlay } from '../../../services/deferredQuoteOverlay';
 import { chartDataService } from '../../../services/chartDataService';
 import { aggregateM1CandlesToTimeframe } from '../../../services/derivedTimeframeHistoryService';
+import { recordChartQuoteSelection } from '../../../services/chartQuoteDiagnostics';
 import {
   canDropPreloadedCandlesForLiveQuoteMismatch,
   createRenderedPriceReference,
@@ -79,6 +82,7 @@ import {
 
 interface UseTradingChartLiveCandleRuntimeOptions {
   discardRetainedPublicChartSurface: () => void;
+  diagnosticChartId: string;
   activeTradeSnapshotsRef: RefObject<Map<string, ActiveTradeSnapshot>>;
   applyAreaTrendColors: (latestClose?: number) => void;
   authToken: string | null;
@@ -157,6 +161,7 @@ interface UseTradingChartLiveCandleRuntimeOptions {
 }
 
 export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCandleRuntimeOptions): void => {
+  const { diagnosticChartId } = options;
   const {
     activeTradeSnapshotsRef, applyAreaTrendColors, authToken, autoScrollEnabledRef,
     brokerAccountSessionScope, brokerTimeOffsetSecRef, cancelQueuedChartRender, candlesRef,
@@ -196,6 +201,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     let pendingLiveChartRequiresFullRender = false;
     let pendingLiveShouldScrollToRealtime = false;
     let pendingSupplementalPriceLines: { ask: number; last: number; time: number } | null = null;
+    const deferredQuoteOverlay = createDeferredQuoteOverlay<Candle>();
     // FIX: Explicit backend finals seal only the matching displayed timeframe.
     // A single M1 timestamp must not freeze the containing M5/H1 candle after a
     // timeframe switch, while switching back to M1 still retains its seal.
@@ -223,12 +229,22 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       postInteractionCoordinatorRef.current?.request({ live: true });
     };
 
+    const resolveOverlayCandle = (c: Candle): Candle => {
+      const latest = window.rtxTickCache?.get(normalizedSymbol)
+        ?? useAppStore.getState().ticks[normalizedSymbol];
+      if (latest?.quoteDeliveryKind !== 'snapshot') return c;
+      const price = getChartPriceFromQuote(getRawQuoteSides(latest));
+      return price == null ? c : { ...c, close: price };
+    };
     const repaintLivePriceOverlayOrDefer = (c: Candle): void => {
+      const overlay = resolveOverlayCandle(c);
       if (!canPaintLiveChart()) {
+        deferredQuoteOverlay.defer(overlay);
         requestDeferredLivePaint();
         return;
       }
-      repaintLivePriceOverlayFromCurrentPrice(c);
+      deferredQuoteOverlay.clear();
+      repaintLivePriceOverlayFromCurrentPrice(overlay);
     };
 
     const refreshMarketGapSeriesForCandle = (c: Candle): boolean => {
@@ -373,7 +389,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
           getDisplayVolume(current, chartSettingsRef.current),
         );
       }
-      repaintLivePriceOverlayFromCurrentPrice(current);
+      repaintLivePriceOverlayFromCurrentPrice(resolveOverlayCandle(deferredQuoteOverlay.take(current)));
 
       if (
         shouldScroll
@@ -456,9 +472,10 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     // FIX: Feed every raw selected-symbol websocket frame into the candle model
     // before the quote/store render batching path coalesces it. Rendering may be
     // throttled, but High/Low/volume must retain short-lived ticks like MT/TV.
-    const unsubscribeRawQuoteAggregation = getQuoteSocketManager().onQuoteSnapshot(symbol, (tick) => {
+    const unsubscribeRawQuoteAggregation = getQuoteSocketManager().onFinancialQuote(symbol, (tick) => {
       if (liveEffectClosed || isDisposedRef.current || isRebuildingRef.current) return;
       candleAggregationService.processTick({
+        eventIdentity: financialQuoteEventIdentity(tick),
         symbol,
         bid: tick.bid,
         ask: tick.ask,
@@ -527,9 +544,27 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       // Reject only the exact quote already processed by the 50ms poll. Use the
       // raw timestamp (before second bucketing) plus both quote sides so a newer
       // same-price tick still advances candle time/volume and SL/TP semantics.
-      const tickKey = `${rawTickTimestamp}:${candleQuote.bid}:${candleQuote.ask ?? candleQuote.bid}:${price}`;
+      const tickKey = `${rawTickTimestamp}:${candleQuote.bid}:${candleQuote.ask ?? candleQuote.bid}:${price}:${tick.quoteDeliveryKind ?? ''}`;
       if (tickKey === lastTickKey) return;
       lastTickKey = tickKey;
+
+      if (tick.quoteDeliveryKind === 'snapshot') {
+        // A snapshot supplies current price and countdown evidence, not a new
+        // candle event. Preserve the common backend SL/TP refresh below.
+        const snapshotTime = rawTickTimestamp > 1_000_000_000_000
+          ? Math.floor(rawTickTimestamp / 1000) : rawTickTimestamp;
+        if ((!currentCandleRef.current || snapshotTime >= currentCandleRef.current.time)
+          && validateRenderedCandlesAgainstLivePrice(price, activeTf)
+          && isLivePriceSafeForCandles(price)) {
+          if (canPaintLiveChart(true)) {
+            pendingSupplementalPriceLines = null;
+            syncSupplementalPriceLines(Number(tick.ask ?? tick.bid), price);
+          } else {
+            pendingSupplementalPriceLines = { ask: Number(tick.ask ?? tick.bid), last: price, time: snapshotTime };
+          }
+        }
+        if (currentCandleRef.current) repaintLivePriceOverlayOrDefer({ ...currentCandleRef.current, close: price });
+      } else {
 
       const livePriceMatchesRenderedScale = validateRenderedCandlesAgainstLivePrice(price, activeTf);
       if (!livePriceMatchesRenderedScale || !isLivePriceSafeForCandles(price)) {
@@ -615,6 +650,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       }
 
       const aggregationUpdates = candleAggregationService.processTick({
+        eventIdentity: financialQuoteEventIdentity(tick),
         symbol,
         bid: candleQuote.bid,
         ask: candleQuote.ask ?? candleQuote.bid,
@@ -651,6 +687,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       // Record only a real accepted quote mutation. A history refresh can then
       // distinguish a newer forming candle from the stale cache row that was
       // already present when its REST request started.
+      recordChartQuoteSelection(diagnosticChartId, symbol, activeTf, tick, price);
       const liveMutationGeneration = liveCandleMutationGenerationRef.current + 1;
       liveCandleMutationGenerationRef.current = liveMutationGeneration;
       const liveMutationTime = Number(candleTime);
@@ -701,6 +738,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       // price scale before we ask LightweightCharts for a coordinate.
       if (currentCandleRef.current) {
         repaintLivePriceOverlayOrDefer(currentCandleRef.current);
+      }
       }
 
       // Backend/broker owns SL/TP execution. The frontend only refreshes server
@@ -871,6 +909,8 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     const resolveServerM1LiveClose = (candle: Candle): Candle => {
       const quote = window.rtxTickCache?.get(normalizedSymbol)
         ?? useAppStore.getState().ticks[normalizedSymbol];
+      // Recovery snapshots update the price overlay, never broker candle OHLC.
+      if (quote?.quoteDeliveryKind === 'snapshot') return candle;
       return resolveFormingCandleLiveClose(candle, quote, symbol, 'M1', brokerTimeOffsetSecRef.current);
     };
     const reconcileServerM1Candle = (candle: Candle): Candle => {
@@ -1056,6 +1096,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       postInteractionCoordinatorRef.current?.clear();
     };
   }, [
+    diagnosticChartId,
     symbol,
     authToken,
     applyAreaTrendColors,

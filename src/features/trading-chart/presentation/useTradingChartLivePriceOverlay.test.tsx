@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { IPriceLine, ISeriesApi, SeriesType } from 'lightweight-charts';
+import type { IPriceLine, ISeriesApi, PriceLineOptions, SeriesType } from 'lightweight-charts';
 import { useTradingChartLivePriceOverlay } from './useTradingChartLivePriceOverlay';
 import { defaultChartProperties, normalizeChartProperties } from '../../../store/useChartSettingsStore';
 
@@ -12,6 +12,7 @@ describe('forming candle and chart price line alignment', () => {
     const settings = normalizeChartProperties({ colorScheme: 'Green and White' });
     const candle = { time: 1, open: 100, high: 102, low: 98, close, volume: 1 };
     const { result } = renderHook(() => useTradingChartLivePriceOverlay({
+      diagnosticChartId: 'test-chart', symbol: 'BTCUSD', timeframe: 'M1',
       canPaintLivePrice: () => true,
       askPriceLineRef: { current: null }, lastPriceLineRef: { current: null },
       chartSettingsRef: { current: settings }, chartType: 'candlestick',
@@ -29,6 +30,7 @@ describe('forming candle and chart price line alignment', () => {
     const candle = { time: 1_790_860_020, open: close - 1, high: close + 1, low: close - 2, close, volume: 1 };
     const { result } = renderHook(() => useTradingChartLivePriceOverlay({
       canPaintLivePrice: () => true,
+      diagnosticChartId: 'test-chart', symbol: 'BTCUSD', timeframe: 'M1',
       askPriceLineRef: { current: null }, lastPriceLineRef: { current: null },
       chartSettingsRef: { current: defaultChartProperties }, chartType: 'candlestick',
       currentCandleRef: { current: candle }, isDisposedRef: { current: false },
@@ -55,13 +57,16 @@ describe('forming candle and chart price line alignment', () => {
 describe('price line ownership during login', () => {
   afterEach(() => vi.restoreAllMocks());
   const setup = (canPaintLivePrice = () => true) => {
-    const askApply = vi.fn();
-    const lastApply = vi.fn();
-    const ask = { current: { applyOptions: askApply } as unknown as IPriceLine };
-    const last = { current: { applyOptions: lastApply } as unknown as IPriceLine };
+    const askOptions: Partial<PriceLineOptions> = {};
+    const lastOptions: Partial<PriceLineOptions> = {};
+    const askApply = vi.fn((next: Partial<PriceLineOptions>) => { Object.assign(askOptions, next); });
+    const lastApply = vi.fn((next: Partial<PriceLineOptions>) => { Object.assign(lastOptions, next); });
+    const ask = { current: { applyOptions: askApply, options: () => askOptions } as unknown as IPriceLine };
+    const last = { current: { applyOptions: lastApply, options: () => lastOptions } as unknown as IPriceLine };
     const createPriceLine = vi.fn();
     const priceToCoordinate = vi.fn(() => 143);
     const view = renderHook(() => useTradingChartLivePriceOverlay({
+      diagnosticChartId: 'test-chart', symbol: 'BTCUSD', timeframe: 'M1',
       canPaintLivePrice,
       askPriceLineRef: ask, lastPriceLineRef: last,
       chartSettingsRef: { current: normalizeChartProperties({ showAskPriceLine: true, showLastPriceLine: true }) },

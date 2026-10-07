@@ -38,8 +38,8 @@ import { WS_ENDPOINTS } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useActiveMarketSymbols, useMarketInstruments } from './hooks/useLiveMarketData';
 import { useTerminalQuoteClock } from './hooks/useTerminalQuoteClock';
+import { useTerminalQuoteRecovery } from './hooks/useTerminalQuoteRecovery';
 import { useOpenPositionQuoteDemand } from './hooks/useOpenPositionQuoteDemand';
-import { notifyInstrumentCatalogueChanged } from './services/instrumentCatalogueEvents';
 import { getCachedSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useSymbolMarketStatus';
 import {
   getUniqueSymbolNames as getAllowedSymbolNames,
@@ -223,6 +223,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // Mount the SL/TP refresh supervisor; broker/backend owns actual stop execution.
   useAutoCloseMonitor(500);
   useTerminalQuoteClock();
+  useTerminalQuoteRecovery();
   useOpenPositionQuoteDemand();
 
   // Start closed and restore only after a validated token or active authenticated store session.
@@ -982,12 +983,17 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const closeSnapshotsByTicket = new Map<number, TradeOverlayCloseSnapshotPayload[]>();
     let closeQuoteDemand: ReturnType<typeof retainPositionCloseQuotes> | undefined;
     const closeCandidatesByTicket = new Map<number, Position>();
+    const getCurrentCloseSessionKey = () => {
+      if (!isAuthenticatedRef.current || getLiveTradingLogin() !== accId
+        || getPositionCloseScope() !== closeMarkerScope) return null;
+      return getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+    };
+    const presentBulkClose = (update: () => void) => {
+      if (getCurrentCloseSessionKey() !== closeSessionScope) return;
+      try { update(); }
+      catch (error) { console.warn('[Trade] Bulk close presentation update failed:', error); }
+    };
     try {
-      const getCurrentCloseSessionKey = () => {
-        if (!isAuthenticatedRef.current || getLiveTradingLogin() !== accId
-          || getPositionCloseScope() !== closeMarkerScope) return null;
-        return getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
-      };
       const selectMatchingCandidates = (openPositions: readonly Position[]) => openPositions.filter((position) => {
         if (!(position.id > 0)) return false;
         if (symbol && position.symbol !== symbol) return false;
@@ -1013,6 +1019,29 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           .catch(() => api.positions.getPositions(accId) as any))),
         closePosition: (ticketId, candidate) => api.positions.closePosition(String(ticketId), {
           account_login: accId,
+          onCloseCommandStatus: ({ status, clientOrderId }) => {
+            if (getCurrentCloseSessionKey() !== closeSessionScope) return;
+            if (status === 'awaiting-confirmation') {
+              presentBulkClose(() => clearOptimisticClosedTickets([ticketId], closeMarkerScope));
+              presentBulkClose(() => {
+                const store = useAppStore.getState();
+                const current = store.positions.find(position => position.id === ticketId) ?? candidate;
+                store.setPositions([...store.positions.filter(position => position.id !== ticketId), {
+                  ...current, closeCommandState: 'awaiting-confirmation', closeClientOrderId: clientOrderId,
+                }]);
+              });
+              presentBulkClose(() => publishOrderFeedback(
+                [feedbackLabel('Close position'), feedbackValue(` #${ticketId}: `), feedbackLabel('Awaiting confirmation'), feedbackValue(` (${clientOrderId})`)],
+                'warning',
+              ));
+            } else if (status === 'rejected' || status === 'expired') {
+              presentBulkClose(() => {
+                const store = useAppStore.getState();
+                store.setPositions(store.positions.map(position => position.id === ticketId
+                  ? { ...position, closeCommandState: undefined, closeClientOrderId: undefined } : position));
+              });
+            }
+          },
           executionContext: {
             ticketId,
             symbol: candidate.symbol,
@@ -1021,39 +1050,44 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         }),
         tryClaimTicket: (ticketId) => {
           const ticketKey = createSessionScopedTicketKey(closeSessionScope, ticketId);
+          if (useAppStore.getState().positions.some(position => position.id === ticketId && position.closeCommandState === 'awaiting-confirmation')) return false;
           if (closingTicketsRef.current.has(ticketKey)) return false;
           closingTicketsRef.current.add(ticketKey);
           claimedBulkTicketIds.push(ticketId);
           return true;
         },
-        // Remove every claimed row immediately. The close coordinator still
-        // waits for correlated backend confirmation and restores rejections.
-        onCandidatesStarted: (candidates) => {
+        // Retain source quotes and immutable snapshots before either queue
+        // starts; this phase must not trigger chart/store presentation work.
+        onCandidatesPrepared: (candidates) => {
           if (getCurrentCloseSessionKey() !== closeSessionScope) return;
           closeQuoteDemand?.addSymbols(candidates.map((position) => position.symbol));
-          const ticketIds = candidates.map((position) => position.id);
+          if (getCurrentCloseSessionKey() !== closeSessionScope) return;
           candidates.forEach((position) => {
             closeCandidatesByTicket.set(position.id, position);
             closeSnapshotsByTicket.set(position.id, buildTradeOverlayCloseSnapshots([position]));
           });
-          markLocalTradeMutation(ticketIds);
-          dispatchTradeOverlayCloseState(ticketIds, 'pending', {
-            snapshots: buildTradeOverlayCloseSnapshots(candidates),
-          });
+        },
+        // Initial bounded slots already started with their scope/quote guard;
+        // queued tickets validate on dispatch. Presentation cannot abandon them.
+        onCandidatesStarted: (candidates) => {
+          const ticketIds = candidates.map((position) => position.id);
+          presentBulkClose(() => markLocalTradeMutation(ticketIds));
+          presentBulkClose(() => dispatchTradeOverlayCloseState(ticketIds, 'pending', {
+            snapshots: candidates.flatMap((position) => closeSnapshotsByTicket.get(position.id) ?? []),
+          }));
           const ticketSet = new Set(ticketIds);
-          useAppStore.getState().setPositions(
+          presentBulkClose(() => useAppStore.getState().setPositions(
             useAppStore.getState().positions.filter((position) => !ticketSet.has(position.id)),
             { removedTickets: ticketIds },
-          );
+          ));
         },
         // Convert each pending row into a durable closed-ticket tombstone as
         // soon as that ticket receives correlated terminal confirmation.
         onTicketConfirmed: (ticketId) => {
-          if (getCurrentCloseSessionKey() !== closeSessionScope) return;
-          useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: [ticketId] });
-          dispatchTradeOverlayCloseState([ticketId], 'confirmed', {
+          presentBulkClose(() => useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: [ticketId] }));
+          presentBulkClose(() => dispatchTradeOverlayCloseState([ticketId], 'confirmed', {
             snapshots: closeSnapshotsByTicket.get(ticketId),
-          });
+          }));
         },
       });
 
@@ -1064,42 +1098,54 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
       if (closeResult.attemptedTicketIds.length === 0) {
         if (closeResult.authoritativeSnapshotError) throw closeResult.authoritativeSnapshotError;
-        publishOrderFeedback(
+        presentBulkClose(() => publishOrderFeedback(
           closeResult.skippedTicketIds.length > 0
             ? [feedbackLabel('Close positions'), feedbackValue(': '), feedbackLabel('Closing positions')]
             : [feedbackLabel('Close positions'), feedbackValue(': '), feedbackLabel('No matches found')],
-        );
-        refreshPositions(accId, { allowWsCommit: true });
+        ));
+        presentBulkClose(() => { refreshPositions(accId, { allowWsCommit: true }).catch(error => console.error('[Trade] Failed to refresh positions after bulk close:', error)); });
         return;
       }
 
-      const { confirmedTicketIds, failedTicketIds, failedReasons } = closeResult;
+      const { confirmedTicketIds } = closeResult;
+      const unresolvedIndexes = new Set(closeResult.failedReasons.flatMap((error, index) =>
+        error && typeof error === 'object' && 'data' in error && error.data && typeof error.data === 'object'
+          && 'code' in error.data && error.data.code === 'ORDER_OUTCOME_UNKNOWN' ? [index] : []));
+      const failedTicketIds = closeResult.failedTicketIds.filter((_, index) => !unresolvedIndexes.has(index));
+      const failedReasons = closeResult.failedReasons.filter((_, index) => !unresolvedIndexes.has(index));
+      if (unresolvedIndexes.size > 0) {
+        presentBulkClose(() => publishOrderFeedback(
+          [feedbackLabel('Close positions'), feedbackValue(`: ${unresolvedIndexes.size} `), feedbackLabel('Awaiting confirmation')], 'warning',
+        ));
+      }
 
       if (failedTicketIds.length > 0) {
         const failureMessage = formatOrderError(failedReasons[0]);
-        clearOptimisticClosedTickets(failedTicketIds, closeMarkerScope);
-        dispatchTradeOverlayCloseState(failedTicketIds, 'failed');
-        const store = useAppStore.getState();
-        const existingTickets = new Set(store.positions.map((position) => position.id));
-        const restoredPositions = failedTicketIds
-          .map((ticketId) => closeCandidatesByTicket.get(ticketId))
-          .filter((position): position is Position => position !== undefined && !existingTickets.has(position.id));
-        if (restoredPositions.length > 0) store.setPositions([...store.positions, ...restoredPositions]);
+        presentBulkClose(() => clearOptimisticClosedTickets(failedTicketIds, closeMarkerScope));
+        presentBulkClose(() => dispatchTradeOverlayCloseState(failedTicketIds, 'failed'));
+        presentBulkClose(() => {
+          const store = useAppStore.getState();
+          const existingTickets = new Set(store.positions.map((position) => position.id));
+          const restoredPositions = failedTicketIds
+            .map((ticketId) => closeCandidatesByTicket.get(ticketId))
+            .filter((position): position is Position => position !== undefined && !existingTickets.has(position.id));
+          if (restoredPositions.length > 0) store.setPositions([...store.positions, ...restoredPositions]);
+        });
         console.error(`Bulk close failed for ${failedTicketIds.length} position(s):`, failedReasons[0]);
-        publishOrderFeedback(
+        presentBulkClose(() => publishOrderFeedback(
           [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length} · `), feedbackLabel('Failed'), feedbackValue(`: ${failedTicketIds.length} — ${failureMessage}`)],
           'error',
-        );
+        ));
       }
       if (closeResult.authoritativeSnapshotError) {
         console.warn('[Trade] Closed visible positions, but authoritative discovery failed:', closeResult.authoritativeSnapshotError);
       }
-      refreshPositions(accId, { allowWsCommit: true });
-      refreshOrdersAndHistory(accId).catch(err => console.error('[Trade] Failed to refresh orders/history after bulk close:', err));
+      presentBulkClose(() => { refreshPositions(accId, { allowWsCommit: true }).catch(error => console.error('[Trade] Failed to refresh positions after bulk close:', error)); });
+      presentBulkClose(() => { refreshOrdersAndHistory(accId).catch(err => console.error('[Trade] Failed to refresh orders/history after bulk close:', err)); });
     } catch (err) {
       console.error('Bulk close failed:', err);
-      publishOrderFeedback(formatOrderError(err));
-      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
+      presentBulkClose(() => publishOrderFeedback(formatOrderError(err)));
+      presentBulkClose(() => { refreshPositions(accId, { allowWsCommit: true }).catch(error => console.error('[Trade] Failed to refresh positions after bulk close:', error)); });
     } finally {
       closeQuoteDemand?.release();
       claimedBulkTicketIds.forEach((ticket) => closingTicketsRef.current.delete(
@@ -1130,8 +1176,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const previousState = previousTradeConnectionStateRef.current;
     previousTradeConnectionStateRef.current = connectionState;
     if (previousState !== 'connected' && connectionState === 'connected') {
-      window.dispatchEvent(new Event('rtx:trade-stream-recovered'));
-      notifyInstrumentCatalogueChanged();
+      window.dispatchEvent(new CustomEvent('rtx:trade-stream-recovered', {
+        detail: { reason: 'transport-reconnect' },
+      }));
     }
   }, [connectionState]);
 
@@ -1492,10 +1539,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   useEffect(() => {
     if (chartSymbolPicker && !hasArrangedChartWindows(dockLayout)) setChartSymbolPicker(null);
   }, [chartSymbolPicker, dockLayout]);
+  const chartPickerInstrumentIndex = useMemo(() => {
+    const index = new Map<string, (typeof allSymbols)[number]>();
+    for (const instrument of allSymbols) {
+      const symbol = normalizeSymbolName(typeof instrument === 'object' && instrument ? (instrument as any).symbol ?? (instrument as any).name : instrument);
+      // Preserve Array.find's first match when catalogue names normalize alike.
+      if (!index.has(symbol)) index.set(symbol, instrument);
+    }
+    return index;
+  }, [allSymbols]);
   const chartPickerInstruments = useMemo(() => chartEligibleSymbolNames.map(symbol => (
-    allSymbols.find(instrument => normalizeSymbolName(typeof instrument === 'object' && instrument ? (instrument as any).symbol ?? (instrument as any).name : instrument) === symbol)
-      ?? { symbol }
-  )), [allSymbols, chartEligibleSymbolNames]);
+    chartPickerInstrumentIndex.get(symbol) ?? { symbol }
+  )), [chartPickerInstrumentIndex, chartEligibleSymbolNames]);
   useEffect(() => { setChartSymbolPicker(null); }, [isAuthenticated, accountId]);
   // One feedback toast at a time. Each message gets a fresh id so the toast
   // remounts and restarts its full lifetime; the toast owns its own timer so

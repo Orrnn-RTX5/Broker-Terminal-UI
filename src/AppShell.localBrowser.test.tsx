@@ -15,10 +15,10 @@ vi.mock('./App', () => ({
 vi.mock('./components/WelcomeTerminal', () => ({
   WelcomeTerminal: () => <div data-testid="old-login" />,
 }));
-vi.mock('./i18n', () => ({
-  i18nReady: Promise.resolve(),
-  default: { t: (key: string) => key },
-}));
+vi.mock('./i18n', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./i18n')>();
+  return { ...actual, i18nReady: Promise.resolve() };
+});
 vi.mock('./authenticatedStyles', () => ({}));
 vi.mock('./startup/tradingChartRuntime', () => ({
   preloadTradingChartRuntime: vi.fn(async () => undefined),

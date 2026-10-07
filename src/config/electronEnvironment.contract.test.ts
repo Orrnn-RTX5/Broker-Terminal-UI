@@ -49,7 +49,7 @@ describe('Electron broker directory environment', () => {
       vi.stubEnv(key, '');
     }
     expect(isDesktopBackendTarget()).toBe(true);
-    expect(getRuntimeDiscoveryBaseUrl('https://legacy-directory.example')).toBe('');
+    expect(getRuntimeDiscoveryBaseUrl()).toBe('');
     expect(getRuntimeBrokerConfiguration().extraDiscoveryUrls).toEqual([]);
   });
 });

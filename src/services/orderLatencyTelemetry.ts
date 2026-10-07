@@ -6,6 +6,8 @@
  * fill/rejection RTT so the UI never reports an enqueue as a completed trade.
  */
 
+import { quoteDiagnosticsEnabled, recordQuoteDiagnostic } from './quoteDiagnostics';
+
 export const TRADE_ORDER_LATENCY_EVENT = 'rtx:trade-order-latency';
 
 export type TradeOrderLatencyTransport = 'websocket' | 'rest';
@@ -154,6 +156,9 @@ export const recordTradeOrderLatency = (
   });
 
   samples.push(sample);
+  if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'order', phase: input.phase,
+    traceId: input.traceId, symbol: input.symbol, terminalStatus: input.terminalStatus,
+    errorCode: input.errorCode, totalMs: input.totalMs });
   if (samples.length > MAX_RETAINED_SAMPLES) {
     samples.splice(0, samples.length - MAX_RETAINED_SAMPLES);
   }

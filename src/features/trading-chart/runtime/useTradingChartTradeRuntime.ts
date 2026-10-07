@@ -5,8 +5,11 @@ import { drawingManager } from '../../../services/drawingManager';
 import { getTimeframeSeconds, type Timeframe as AggTimeframe } from '../../../services/candleAggregationService';
 import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import { refreshChartUiTranslations } from '../../../utils/chartTradeControls';
+import { setTradeOverlayStyle } from '../../../utils/tradeOverlayStyle';
+import { createTradeOverlayStyleBatchCache, memoizeTradeOverlayCoordinate } from './createTradeOverlayStyleBatch';
 import { getTradeHistoryMarkerPrice } from '../../../utils/chartTradeHistoryPresentation';
 import {
+  createTradeOverlayCandleLookup,
   resolveNearestTradeOverlayCandleTime,
   resolveTradeOverlaySegmentGeometry,
 } from '../../../services/tradeOverlayHistory';
@@ -80,7 +83,7 @@ interface UseTradingChartTradeRuntimeOptions {
   postInteractionCoordinatorRef: RefObject<ChartPostInteractionCoordinator | null>;
   prevSymbolRef: RefObject<string>;
   prevTimeframeRef: RefObject<Timeframe>;
-  repaintTradeOverlayGeometryRef: RefObject<() => void>;
+  repaintTradeOverlayGeometryRef: RefObject<(committedDraw?: boolean) => void>;
   resolvedPriceDigits: number;
   resolvedPriceDigitsRef: RefObject<number>;
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
@@ -195,6 +198,8 @@ export const useTradingChartTradeRuntime = ({
 
 
   const tradeOverlayRafRef = useRef<number | null>(null);
+  const postInteractionTradeOverlayLayoutRef = useRef<(() => void) | null>(null);
+  const committedTradeOverlayLayoutRef = useRef<(() => void) | null>(null);
 
 
 
@@ -429,8 +434,14 @@ export const useTradingChartTradeRuntime = ({
 
 
 
+  const geometryStyleCacheRef = useRef<ReturnType<typeof createTradeOverlayStyleBatchCache> | null>(null);
+  if (!geometryStyleCacheRef.current) geometryStyleCacheRef.current = createTradeOverlayStyleBatchCache();
+  useEffect(() => () => geometryStyleCacheRef.current?.clear(), []);
+
   const updateLabelPositions = useCallback((refreshMetrics = true) => {
-    if (!seriesRef.current || !chartRef.current) return;
+    if (!seriesRef.current || !chartRef.current) return true;
+    let needsCoordinateRetry = false;
+    const candleLookup = createTradeOverlayCandleLookup(candlesRef.current, currentCandleRef.current);
 
     const series = seriesRef.current;
     const chart = chartRef.current;
@@ -442,239 +453,264 @@ export const useTradingChartTradeRuntime = ({
     const chartHeight = containerRef.current?.offsetHeight || 0;
     // A collapsed/zero-size container has no valid geometry; leave nodes as
     // they are rather than culling the entire overlay against height 0.
-    if (chartWidth <= 0 || chartHeight <= 0) return;
+    if (chartWidth <= 0 || chartHeight <= 0) return true;
     const priceScaleWidth = series.priceScale().width();
     const timeScaleHeight = chart.timeScale().height();
     const plotHeight = Math.max(0, chartHeight - (Number.isFinite(timeScaleHeight) ? timeScaleHeight : 0));
-    const overlayHost = overlayRef.current;
-    for (const host of [overlayHost, overlayHost?.parentElement]) {
-      if (!host) continue;
-      const clipLayer = getTradePlotClipLayer(host);
-      clipLayer.style.right = `${Math.max(0, priceScaleWidth)}px`;
-      clipLayer.style.bottom = `${Math.max(0, chartHeight - plotHeight)}px`;
-    }
-    const snapCssPixel = (value: number): number => Math.round(value);
-    const resolveTimeCoordinate = (time: unknown): number | null => {
-      const numericTime = Number(time);
-      if (!Number.isFinite(numericTime) || numericTime <= 0) return null;
-
-      const directCoordinate = chart.timeScale().timeToCoordinate(numericTime as Time);
-      if (directCoordinate != null) return directCoordinate;
-
-      const activeTf = prevTimeframeRef.current || timeframe;
-      const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
-      const nearest = getNearestCandleByTime(
-        numericTime,
-        Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
-      );
-      if (!nearest?.time) return null;
-
-      return chart.timeScale().timeToCoordinate(nearest.time as Time);
-    };
-    // Candle lookup for execution arrows: hydrated once per layout pass, only
-    // when a candle-anchored marker actually needs it.
-    const tradeMarkerCandles = new Map<number, Candle>();
-    let tradeMarkerCandlesHydrated = false;
-    const resolveTradeMarkerAnchorPrice = (node: OverlayNodeData): number => {
-      if (node.markerAnchor !== 'candle' || !node.markerSide || node.price == null) {
-        return node.price ?? 0;
+    const projectPrice = memoizeTradeOverlayCoordinate(price => series.priceToCoordinate(price));
+    const projectTime = memoizeTradeOverlayCoordinate(time => chart.timeScale().timeToCoordinate(time as Time));
+    const styleBatch = geometryStyleCacheRef.current!.begin();
+    const setGeometryStyle = styleBatch.set;
+    try {
+      const overlayHost = overlayRef.current;
+      for (const host of [overlayHost, overlayHost?.parentElement]) {
+        if (!host) continue;
+        const clipLayer = getTradePlotClipLayer(host);
+        setGeometryStyle(clipLayer, "right", `${Math.max(0, priceScaleWidth)}px`);
+        setGeometryStyle(clipLayer, "bottom", `${Math.max(0, chartHeight - plotHeight)}px`);
       }
-      if (!tradeMarkerCandlesHydrated) {
-        tradeMarkerCandlesHydrated = true;
-        for (const candle of candlesRef.current) tradeMarkerCandles.set(candle.time, candle);
-        const liveCandle = currentCandleRef.current;
-        if (liveCandle) tradeMarkerCandles.set(liveCandle.time, liveCandle);
-      }
-      let markerTime = Number(node.time);
-      if (!tradeMarkerCandles.has(markerTime)) {
+      const snapCssPixel = (value: number): number => Math.round(value);
+      const isProjectableTime = (time: unknown): boolean => Number.isFinite(Number(time)) && Number(time) > 0;
+      const resolveValidTimeCoordinate = memoizeTradeOverlayCoordinate((numericTime: number): number | null => {
+        const directCoordinate = projectTime(numericTime);
+        if (directCoordinate != null) return directCoordinate;
+
         const activeTf = prevTimeframeRef.current || timeframe;
         const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
-        const fallbackTime = getNearestCandleByTime(
-          markerTime,
+        const nearest = candleLookup(
+          numericTime,
           Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
-        )?.time;
-        if (fallbackTime != null) {
-          markerTime = fallbackTime;
+        );
+        if (!nearest?.time) return null;
+
+        return projectTime(nearest.time);
+      });
+      const resolveTimeCoordinate = (time: unknown): number | null => {
+        const numericTime = Number(time);
+        if (!Number.isFinite(numericTime) || numericTime <= 0) return null;
+        return resolveValidTimeCoordinate(numericTime);
+      };
+      // Candle lookup for execution arrows: hydrated once per layout pass, only
+      // when a candle-anchored marker actually needs it.
+      const tradeMarkerCandles = new Map<number, Candle>();
+      let tradeMarkerCandlesHydrated = false;
+      const resolveTradeMarkerAnchorPrice = (node: OverlayNodeData): number => {
+        if (node.markerAnchor !== 'candle' || !node.markerSide || node.price == null) {
+          return node.price ?? 0;
         }
-      }
-      return getTradeHistoryMarkerPrice(node.markerSide, node.price, tradeMarkerCandles.get(markerTime));
-    };
-
-    for (const { nodes, data } of overlayLayers) {
-      for (let i = 0; i < nodes.length; i++) {
-        const el = nodes[i];
-        const node = data[i];
-        if (!el || !node) continue;
-
-        try {
-          if (node.kind === 'axis-price-badge') {
-            const y = node.price == null ? null : series.priceToCoordinate(node.price);
-            if (y == null) {
-              if (!el.style.top) el.style.display = 'none';
-              continue;
-            }
-            const snappedY = snapCssPixel(y);
-            // Outlined prices belong entirely to the scale, never the time axis.
-            if (priceScaleWidth <= 0 || snappedY < 10 || snappedY + 10 > plotHeight) {
-              el.style.display = 'none';
-              continue;
-            }
-            el.style.display = 'flex';
-            el.style.top = `${snappedY}px`;
-            el.style.right = '0px';
-            el.style.width = `${priceScaleWidth}px`;
-            continue;
+        if (!tradeMarkerCandlesHydrated) {
+          tradeMarkerCandlesHydrated = true;
+          for (const candle of candlesRef.current) tradeMarkerCandles.set(candle.time, candle);
+          const liveCandle = currentCandleRef.current;
+          if (liveCandle) tradeMarkerCandles.set(liveCandle.time, liveCandle);
+        }
+        let markerTime = Number(node.time);
+        if (!tradeMarkerCandles.has(markerTime)) {
+          const activeTf = prevTimeframeRef.current || timeframe;
+          const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
+          const fallbackTime = candleLookup(
+            markerTime,
+            Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
+          )?.time;
+          if (fallbackTime != null) {
+            markerTime = fallbackTime;
           }
-          if (
-            node.kind === 'horizontal-line'
-            || node.kind === 'price-badge'
-            || node.kind === 'price-hit-area'
-          ) {
-            if (node.price == null) {
-              el.style.display = 'none';
+        }
+        return getTradeHistoryMarkerPrice(node.markerSide, node.price, tradeMarkerCandles.get(markerTime));
+      };
+
+      for (const { nodes, data } of overlayLayers) {
+        for (let i = 0; i < nodes.length; i++) {
+          const el = nodes[i];
+          const node = data[i];
+          if (!el || !node) continue;
+
+          try {
+            if (node.kind === 'axis-price-badge') {
+              const y = node.price == null ? null : projectPrice(node.price);
+              if (y == null) {
+                if (Number.isFinite(node.price)) needsCoordinateRetry = true;
+                if (!el.style.top) setGeometryStyle(el, "display", 'none');
+                continue;
+              }
+              const snappedY = snapCssPixel(y);
+              // Outlined prices belong entirely to the scale, never the time axis.
+              if (priceScaleWidth <= 0 || snappedY < 10 || snappedY + 10 > plotHeight) {
+                setGeometryStyle(el, "display", 'none');
+                continue;
+              }
+              setGeometryStyle(el, "display", 'flex');
+              setGeometryStyle(el, "top", `${snappedY}px`);
+              setGeometryStyle(el, "right", '0px');
+              setGeometryStyle(el, "width", `${priceScaleWidth}px`);
+              continue;
+            }
+            if (
+              node.kind === 'horizontal-line'
+              || node.kind === 'price-badge'
+              || node.kind === 'price-hit-area'
+            ) {
+              if (node.price == null) {
+                setGeometryStyle(el, "display", 'none');
+                continue;
+              }
+
+              const y = projectPrice(node.price);
+              if (y == null) {
+                if (Number.isFinite(node.price)) needsCoordinateRetry = true;
+                // The scale reports no coordinates while candles reload (feed
+                // reconnects, empty snapshots from a flaky backend). Freeze
+                // already-placed nodes instead of blinking the overlay off.
+                if (!el.style.top) setGeometryStyle(el, "display", 'none');
+                continue;
+              }
+              if (y < -20 || y > chartHeight + 20) {
+                setGeometryStyle(el, "display", 'none');
+                continue;
+              }
+
+              const snappedY = snapCssPixel(y);
+              // Restore the node's own display mode: flex control bars must not
+              // be flattened to block or their buttons fall onto the text baseline.
+              setGeometryStyle(el, "display", el.dataset.display || 'block');
+              setGeometryStyle(el, "top", node.kind === 'price-badge' && el.classList.contains('rtx-trade-level-badge--line-text')
+                ? `${snappedY - 14}px`
+                : `${snappedY + (node.pixelOffsetY ?? 0)}px`);
+
+              if (node.kind === 'horizontal-line' || node.kind === 'price-hit-area') {
+                setGeometryStyle(el, "left", '0px');
+                setGeometryStyle(el, "right", `${priceScaleWidth}px`);
+              } else {
+                const leftInset = Number.parseFloat(el.dataset.leftInset ?? '') || 0;
+                setGeometryStyle(el, "width", 'max-content');
+                setGeometryStyle(el, "maxWidth", `${Math.max(96, chartWidth - priceScaleWidth - leftInset - 12)}px`);
+                if (el.dataset.align === 'right') {
+                  setGeometryStyle(el, "left", 'auto');
+                  setGeometryStyle(el, "right", `${priceScaleWidth + 16}px`);
+                }
+              }
+
               continue;
             }
 
-            const y = series.priceToCoordinate(node.price);
-            if (y == null) {
-              // The scale reports no coordinates while candles reload (feed
-              // reconnects, empty snapshots from a flaky backend). Freeze
-              // already-placed nodes instead of blinking the overlay off.
-              if (!el.style.top) el.style.display = 'none';
-              continue;
-            }
-            if (y < -20 || y > chartHeight + 20) {
-              el.style.display = 'none';
+            if (node.kind === 'segment') {
+              if (node.price == null || node.time == null) {
+                setGeometryStyle(el, "display", 'none');
+                continue;
+              }
+
+              const endPrice = node.resolveEndPrice?.() ?? node.endPrice ?? null;
+              const endTime = node.resolveEndTime?.() ?? node.endTime ?? null;
+              if (endPrice == null || endTime == null) {
+                setGeometryStyle(el, "display", 'none');
+                continue;
+              }
+
+              const resolveSegmentEndY = (price: number, time: number, markerSide?: TradeSide) => {
+                if (!markerSide) return projectPrice(price);
+                const y = projectPrice(
+                  resolveTradeMarkerAnchorPrice({ kind: 'marker', price, time, markerSide, markerAnchor: 'candle' }),
+                );
+                if (y == null) return null;
+                return y + (markerSide === 'BUY' ? TRADE_MARKER_TIP_OFFSET_PX : -TRADE_MARKER_TIP_OFFSET_PX);
+              };
+              const x1 = resolveTimeCoordinate(node.time);
+              const y1 = resolveSegmentEndY(node.price, node.time, node.startMarkerSide);
+              const x2 = resolveTimeCoordinate(endTime);
+              const y2 = resolveSegmentEndY(endPrice, endTime, node.endMarkerSide);
+              if ((x1 == null && isProjectableTime(node.time)) || (y1 == null && Number.isFinite(node.price))
+                || (x2 == null && isProjectableTime(endTime)) || (y2 == null && Number.isFinite(endPrice))) {
+                needsCoordinateRetry = true;
+              }
+              const geometry = resolveTradeOverlaySegmentGeometry({
+                x1,
+                y1,
+                x2,
+                y2,
+                minLengthPx: el.classList.contains('rtx-trade-history-line') ? 24 : 0,
+              });
+              if (!geometry) {
+                // Coordinate gaps during candle reloads freeze placed segments.
+                if (!el.style.top) setGeometryStyle(el, "display", 'none');
+                continue;
+              }
+
+              setGeometryStyle(el, "display", 'block');
+              setGeometryStyle(el, "left", `${geometry.left}px`);
+              const isHistoryLine = el.classList.contains('rtx-trade-history-line');
+              // History lines have a fixed inline height; reading offsetHeight here
+              // forced one synchronous layout per trade segment on every pass.
+              const segmentHeight = isHistoryLine ? (Number.parseFloat(el.style.height) || 1) : 0;
+              setGeometryStyle(el, "top", `${geometry.top - segmentHeight / 2}px`);
+              setGeometryStyle(el, "width", `${geometry.width}px`);
+              setGeometryStyle(el, "transform", `rotate(${geometry.angleDeg}deg)`);
+              setGeometryStyle(el, "transformOrigin", isHistoryLine ? '0 50%' : '0 0');
               continue;
             }
 
-            const snappedY = snapCssPixel(y);
-            // Restore the node's own display mode: flex control bars must not
-            // be flattened to block or their buttons fall onto the text baseline.
-            el.style.display = el.dataset.display || 'block';
-            el.style.top = node.kind === 'price-badge' && el.classList.contains('rtx-trade-level-badge--line-text')
-              ? `${snappedY - 14}px`
-              : `${snappedY + (node.pixelOffsetY ?? 0)}px`;
+            if (node.price == null || node.time == null) {
+              setGeometryStyle(el, "display", 'none');
+              continue;
+            }
 
-            if (node.kind === 'horizontal-line' || node.kind === 'price-hit-area') {
-              el.style.left = '0px';
-              el.style.right = `${priceScaleWidth}px`;
-            } else {
-              const leftInset = Number.parseFloat(el.dataset.leftInset ?? '') || 0;
-              el.style.width = 'max-content';
-              el.style.maxWidth = `${Math.max(96, chartWidth - priceScaleWidth - leftInset - 12)}px`;
-              if (el.dataset.align === 'right') {
-                el.style.left = 'auto';
-                el.style.right = `${priceScaleWidth + 16}px`;
+            let coordinateTime = node.time;
+            let x = resolveTimeCoordinate(coordinateTime);
+            if (x == null && node.resolveTime) {
+              const fallbackTime = node.resolveTime();
+              const fallbackX = resolveTimeCoordinate(fallbackTime);
+              if (isProjectableTime(fallbackTime)) coordinateTime = fallbackTime;
+              if (fallbackX != null) {
+                x = fallbackX;
               }
             }
-
-            continue;
-          }
-
-          if (node.kind === 'segment') {
-            if (node.price == null || node.time == null) {
-              el.style.display = 'none';
+            const anchoredPrice = node.kind === 'marker' ? resolveTradeMarkerAnchorPrice(node) : node.price;
+            const y = projectPrice(anchoredPrice);
+            if (x == null || y == null) {
+              if ((x == null && isProjectableTime(coordinateTime)) || (y == null && Number.isFinite(anchoredPrice))) {
+                needsCoordinateRetry = true;
+              }
+              // Keep last placement through transient coordinate gaps.
+              if (!el.style.top) setGeometryStyle(el, "display", 'none');
+              continue;
+            }
+            if (x < -24 || x > chartWidth + 24 || y < -24 || y > chartHeight + 24) {
+              setGeometryStyle(el, "display", 'none');
               continue;
             }
 
-            const endPrice = node.resolveEndPrice?.() ?? node.endPrice ?? null;
-            const endTime = node.resolveEndTime?.() ?? node.endTime ?? null;
-            if (endPrice == null || endTime == null) {
-              el.style.display = 'none';
+            setGeometryStyle(el, "display", 'block');
+
+            if (node.kind === 'marker') {
+              const markerY = y + (node.pixelOffsetY ?? 0);
+              setGeometryStyle(el, "left", `${x}px`);
+              setGeometryStyle(el, "top", `${markerY}px`);
+              setGeometryStyle(el, "transform", node.markerSide === 'BUY'
+                ? 'translate(-50%, 0)'
+                : 'translate(-50%, -100%)');
+
+              const tooltip = el.querySelector<HTMLElement>('.rtx-trade-marker__price-tooltip');
+              if (el.classList.contains('rtx-trade-marker-hover-target')) {
+                tradeMarkerTooltipLayouts.set(el, {
+                  x,
+                  markerY,
+                  markerSide: node.markerSide,
+                  plotWidth: Math.max(0, chartWidth - priceScaleWidth),
+                  plotHeight,
+                });
+                // Hidden tooltips are placed when shown (hover/focus).
+                if (tooltip?.style.visibility === 'visible') placeTradeMarkerTooltip(el, tooltip);
+              }
               continue;
             }
-
-            const resolveSegmentEndY = (price: number, time: number, markerSide?: TradeSide) => {
-              if (!markerSide) return series.priceToCoordinate(price);
-              const y = series.priceToCoordinate(
-                resolveTradeMarkerAnchorPrice({ kind: 'marker', price, time, markerSide, markerAnchor: 'candle' }),
-              );
-              if (y == null) return null;
-              return y + (markerSide === 'BUY' ? TRADE_MARKER_TIP_OFFSET_PX : -TRADE_MARKER_TIP_OFFSET_PX);
-            };
-            const x1 = resolveTimeCoordinate(node.time);
-            const y1 = resolveSegmentEndY(node.price, node.time, node.startMarkerSide);
-            const x2 = resolveTimeCoordinate(endTime);
-            const y2 = resolveSegmentEndY(endPrice, endTime, node.endMarkerSide);
-            const geometry = resolveTradeOverlaySegmentGeometry({
-              x1,
-              y1,
-              x2,
-              y2,
-              minLengthPx: el.classList.contains('rtx-trade-history-line') ? 24 : 0,
-            });
-            if (!geometry) {
-              // Coordinate gaps during candle reloads freeze placed segments.
-              if (!el.style.top) el.style.display = 'none';
-              continue;
-            }
-
-            el.style.display = 'block';
-            el.style.left = `${geometry.left}px`;
-            const isHistoryLine = el.classList.contains('rtx-trade-history-line');
-            // History lines have a fixed inline height; reading offsetHeight here
-            // forced one synchronous layout per trade segment on every pass.
-            const segmentHeight = isHistoryLine ? (Number.parseFloat(el.style.height) || 1) : 0;
-            el.style.top = `${geometry.top - segmentHeight / 2}px`;
-            el.style.width = `${geometry.width}px`;
-            el.style.transform = `rotate(${geometry.angleDeg}deg)`;
-            el.style.transformOrigin = isHistoryLine ? '0 50%' : '0 0';
-            continue;
+          } catch {
+            needsCoordinateRetry = true;
+            setGeometryStyle(el, "display", 'none');
           }
-
-          if (node.price == null || node.time == null) {
-            el.style.display = 'none';
-            continue;
-          }
-
-          let x = resolveTimeCoordinate(node.time);
-          if (x == null && node.resolveTime) {
-            const fallbackX = resolveTimeCoordinate(node.resolveTime());
-            if (fallbackX != null) {
-              x = fallbackX;
-            }
-          }
-          const anchoredPrice = node.kind === 'marker' ? resolveTradeMarkerAnchorPrice(node) : node.price;
-          const y = series.priceToCoordinate(anchoredPrice);
-          if (x == null || y == null) {
-            // Keep last placement through transient coordinate gaps.
-            if (!el.style.top) el.style.display = 'none';
-            continue;
-          }
-          if (x < -24 || x > chartWidth + 24 || y < -24 || y > chartHeight + 24) {
-            el.style.display = 'none';
-            continue;
-          }
-
-          el.style.display = 'block';
-
-          if (node.kind === 'marker') {
-            const markerY = y + (node.pixelOffsetY ?? 0);
-            el.style.left = `${x}px`;
-            el.style.top = `${markerY}px`;
-            el.style.transform = node.markerSide === 'BUY'
-              ? 'translate(-50%, 0)'
-              : 'translate(-50%, -100%)';
-
-            const tooltip = el.querySelector<HTMLElement>('.rtx-trade-marker__price-tooltip');
-            if (tooltip) {
-              tradeMarkerTooltipLayouts.set(el, {
-                x,
-                markerY,
-                markerSide: node.markerSide,
-                plotWidth: Math.max(0, chartWidth - priceScaleWidth),
-                plotHeight,
-              });
-              // Hidden tooltips are placed when shown (hover/focus).
-              if (tooltip.style.visibility === 'visible') placeTradeMarkerTooltip(el, tooltip);
-            }
-            continue;
-          }
-        } catch {
-          el.style.display = 'none';
         }
       }
+
+    } finally {
+      styleBatch.finish();
     }
 
     // Refresh the live Pips/USD text on position control bars. Relayout is
@@ -695,17 +731,18 @@ export const useTradingChartTradeRuntime = ({
       if (y !== null && y !== undefined && y > 0) {
         const overlayColors = livePriceOverlayColorsRef.current;
         applyLivePriceHorizontalGeometry(priceScaleWidth);
-        livePriceLineRef.current.style.display = 'block';
-        livePriceLineRef.current.style.top = `${y}px`;
-        livePriceLineRef.current.style.borderTopColor = overlayColors.lineColor;
-        livePriceBadgeRef.current.style.display = 'block';
-        livePriceBadgeRef.current.style.top = `${y}px`;
-        livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;
-        livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;
+        setTradeOverlayStyle(livePriceLineRef.current, "display", 'block');
+        setTradeOverlayStyle(livePriceLineRef.current, "top", `${y}px`);
+        setTradeOverlayStyle(livePriceLineRef.current, "borderTopColor", overlayColors.lineColor);
+        setTradeOverlayStyle(livePriceBadgeRef.current, "display", 'block');
+        setTradeOverlayStyle(livePriceBadgeRef.current, "top", `${y}px`);
+        setTradeOverlayStyle(livePriceBadgeRef.current, "background", overlayColors.badgeBackground);
+        setTradeOverlayStyle(livePriceBadgeRef.current, "color", overlayColors.badgeTextColor);
       }
     } else if (!chartSettingsRef.current.showBidPriceLine) {
       hideLivePriceOverlay(false);
     }
+    return needsCoordinateRetry;
   }, [
     applyLivePriceHorizontalGeometry,
     candlesRef,
@@ -728,7 +765,10 @@ export const useTradingChartTradeRuntime = ({
 
 
   useEffect(() => {
-    const repaintTradeOverlayGeometry = () => updateLabelPositions(false);
+    const repaintTradeOverlayGeometry = (committedDraw = false) => {
+      if (committedDraw && committedTradeOverlayLayoutRef.current) committedTradeOverlayLayoutRef.current();
+      else updateLabelPositions(false);
+    };
     repaintTradeOverlayGeometryRef.current = repaintTradeOverlayGeometry;
     return () => {
       if (repaintTradeOverlayGeometryRef.current === repaintTradeOverlayGeometry) {
@@ -757,7 +797,8 @@ export const useTradingChartTradeRuntime = ({
       );
       drawingManager.renderAll();
     }
-    updateLabelPositions();
+    if (postInteractionTradeOverlayLayoutRef.current) postInteractionTradeOverlayLayoutRef.current();
+    else updateLabelPositions();
   }, [
     activeChartSourceId,
     chartRef,
@@ -789,6 +830,8 @@ export const useTradingChartTradeRuntime = ({
 
 
   useTradingChartTradeOverlayRenderer({
+    postInteractionTradeOverlayLayoutRef,
+    committedTradeOverlayLayoutRef,
     activeOverlayNodeDataRef,
     activeOverlayNodesRef,
     activeTradeSnapshotsRef,

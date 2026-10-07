@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { assertTerminalCloseQuote, calibrateTerminalQuoteClock, getTerminalQuoteFreshness, ingestTerminalQuote, resetTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
 import {
   closePositionsLocalFirst,
   createLocalFirstCloseCoordinator,
@@ -71,9 +72,9 @@ describe('local-first close coordinator', () => {
       'close:102',
       'pending:101,102',
       'load-snapshot',
-      'pending:103,104',
       'close:103',
       'close:104',
+      'pending:103,104',
     ]);
 
     closeByTicket.get(103)!.resolve(undefined);
@@ -218,5 +219,90 @@ describe('local-first close coordinator', () => {
       sessionCurrent: false,
     });
     expect(startedTicketIds).toEqual([401]);
+  });
+});
+
+describe('bulk close dispatch before presentation', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); resetTerminalQuoteFreshness(); });
+
+  it('guards both local and snapshot-only requests while fresh before pending presentation ages their quotes', async () => {
+    let mono = 1000, sequence = 0;
+    const epoch = 1_800_000_000_000, events: string[] = [], pendingReasons: string[] = [];
+    vi.spyOn(performance, 'now').mockImplementation(() => mono);
+    vi.spyOn(Date, 'now').mockImplementation(() => epoch + mono);
+    vi.stubGlobal('window', { RUNTIME_CONFIG: { TERMINAL_QUOTE_FRESHNESS: true } });
+    expect(terminalQuoteFreshnessEnabled()).toBe(true);
+    resetTerminalQuoteFreshness();
+    expect(calibrateTerminalQuoteClock(epoch + mono, mono, epoch + mono, mono, epoch + mono)).toBe(true);
+    const result = await closePositionsLocalFirst({
+      sessionKey: 'original', getCurrentSessionKey: () => 'original',
+      localCandidates: [{ id: 1 }], loadAuthoritativeCandidates: async () => [{ id: 1 }, { id: 2 }],
+      onCandidatesPrepared: candidates => {
+        events.push(`prepare:${candidates[0].id}`);
+        expect(ingestTerminalQuote('BTCUSD', { bid: 100, ask: 101, provider_timestamp: epoch + mono,
+          source: 'test', sequence: String(++sequence) })).toBe(true);
+        mono += 2000;
+      },
+      closePosition: async id => { assertTerminalCloseQuote('BTCUSD'); events.push(`send:${id}`); },
+      onCandidatesStarted: candidates => {
+        mono += 2000; events.push(`pending:${candidates[0].id}`);
+        pendingReasons.push(getTerminalQuoteFreshness('BTCUSD').reason);
+      },
+    });
+    expect(result.confirmedTicketIds).toEqual([1, 2]); expect(result.failedTicketIds).toEqual([]);
+    expect(pendingReasons).toEqual(['stale', 'stale']);
+    expect(events).toEqual(['prepare:1', 'send:1', 'pending:1', 'prepare:2', 'send:2', 'pending:2']);
+  });
+
+  it('does not bypass a stale guard at dispatch or manufacture another attempt', async () => {
+    let mono = 1000;
+    const epoch = 1_800_000_000_000, sent = vi.fn();
+    vi.spyOn(performance, 'now').mockImplementation(() => mono);
+    vi.spyOn(Date, 'now').mockImplementation(() => epoch + mono);
+    vi.stubGlobal('window', { RUNTIME_CONFIG: { TERMINAL_QUOTE_FRESHNESS: true } });resetTerminalQuoteFreshness();
+    expect(terminalQuoteFreshnessEnabled()).toBe(true);
+    expect(calibrateTerminalQuoteClock(epoch + mono, mono, epoch + mono, mono, epoch + mono)).toBe(true);
+    expect(ingestTerminalQuote('BTCUSD', { bid: 100, ask: 101, provider_timestamp: epoch + mono, source: 'test', sequence: '1' })).toBe(true);
+    mono += 4000;
+    expect(() => assertTerminalCloseQuote('BTCUSD')).toThrow();
+    const dispatch = vi.fn(async () => { assertTerminalCloseQuote('BTCUSD'); sent(); });
+    const result = await closePositionsLocalFirst({sessionKey:'original',getCurrentSessionKey:()=> 'original',
+      localCandidates:[{id:1}],loadAuthoritativeCandidates:async()=>[{id:1}],closePosition:dispatch});
+    expect(result.failedTicketIds).toEqual([1]);expect(dispatch).toHaveBeenCalledTimes(1);expect(sent).not.toHaveBeenCalled();
+  });
+
+  it('keeps both original queues and claims in flight when pending and confirmed presentation throw', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const coordinator = createLocalFirstCloseCoordinator(), first = createDeferred<void>(), second = createDeferred<void>();
+    const close = vi.fn((id: number) => id === 1 ? first.promise : second.promise);
+    const started = vi.fn(() => { throw Error('pending render failed'); });
+    const confirmed = vi.fn(() => { throw Error('confirmed render failed'); });
+    const options = {sessionKey:'original',getCurrentSessionKey:()=> 'original',localCandidates:[{id:1}],
+      loadAuthoritativeCandidates:async()=>[{id:1},{id:2}],closePosition:close,onCandidatesStarted:started,onTicketConfirmed:confirmed};
+    const operation = coordinator.run(options);let settled = false;void operation.then(()=>{settled=true;});
+    expect(coordinator.run(options)).toBe(operation);await flushPromises();expect(settled).toBe(false);expect(coordinator.hasInFlight('original')).toBe(true);
+    first.resolve();await flushPromises();expect(close.mock.calls.map(([id])=>id)).toEqual([1,2]);expect(settled).toBe(false);expect(coordinator.hasInFlight('original')).toBe(true);
+    second.resolve();await expect(operation).resolves.toMatchObject({confirmedTicketIds:[1,2],failedTicketIds:[]});
+    expect(started).toHaveBeenCalledTimes(2);expect(confirmed).toHaveBeenCalledTimes(2);expect(coordinator.hasInFlight('original')).toBe(false);
+  });
+
+  it('blocks every queued dispatch and confirmation callback after a pending listener changes account', async () => {
+    let scope = 'original';const pending = [createDeferred<void>(),createDeferred<void>(),createDeferred<void>()], confirmed = vi.fn();
+    const close = vi.fn((id:number)=>pending[id-1].promise), load = vi.fn(async()=>[{id:5}]);
+    const operation = closePositionsLocalFirst({sessionKey:'original',getCurrentSessionKey:()=>scope,
+      localCandidates:[{id:1},{id:2},{id:3},{id:4}],loadAuthoritativeCandidates:load,closePosition:close,
+      onCandidatesStarted:()=>{scope='other';},onTicketConfirmed:confirmed});
+    expect(close).toHaveBeenCalledTimes(3);pending.forEach(item=>item.resolve());
+    await expect(operation).resolves.toMatchObject({confirmedTicketIds:[1,2,3],failedTicketIds:[4],sessionCurrent:false});
+    expect(close).toHaveBeenCalledTimes(3);expect(confirmed).not.toHaveBeenCalled();expect(load).not.toHaveBeenCalled();
+  });
+
+  it('does not send or present if preparation changes the account, or submit after failed preparation', async () => {
+    let scope='original';const close=vi.fn(async()=>{}),present=vi.fn();
+    const options={sessionKey:'original',getCurrentSessionKey:()=>scope,localCandidates:[{id:1}],loadAuthoritativeCandidates:async()=>[],closePosition:close,onCandidatesStarted:present};
+    await expect(closePositionsLocalFirst({...options,onCandidatesPrepared:()=>{scope='other';}})).resolves.toMatchObject({failedTicketIds:[1],sessionCurrent:false});
+    expect(close).not.toHaveBeenCalled();expect(present).not.toHaveBeenCalled();scope='original';
+    await expect(closePositionsLocalFirst({...options,onCandidatesPrepared:()=>{throw Error('Preparation failed');}})).rejects.toThrow('Preparation failed');
+    expect(close).not.toHaveBeenCalled();expect(present).not.toHaveBeenCalled();
   });
 });

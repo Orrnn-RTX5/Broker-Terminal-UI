@@ -21,15 +21,18 @@
  *  13. Quote rows render            → Fast live bid/ask UI
  *  14. Batched store path           → useTradingState.quotes
  */
-
 import {
   buildBrokerWsFeedUri,
   buildBrokerWsV2Uri,
   getAccessToken,
   onSessionChange,
 } from './brokerSession';
-import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
-import { resetTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
+import { enqueueFinancialLiveTick, enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
+import { FinancialQuoteStream } from './financialQuoteStream';
+import { DeferredFinancialQuotes, FINANCIAL_QUOTE_GAP_EVENT, type FinancialQuoteOwner } from './financialQuoteRecovery';
+import { getTerminalQuoteSession, isTerminalQuoteClockVerified, resetTerminalQuoteFreshness, subscribeTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
+import { resetTerminalQuoteTransport } from './terminalQuoteClockOwnership';
+import { quoteDiagnosticsEnabled, readQuoteWireEvidence, recordQuoteDiagnostic, type QuoteDiagnosticContext } from './quoteDiagnostics';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import {
   processIncomingQuotePayload,
@@ -68,11 +71,22 @@ export {
 
 type QuoteTickCallback = (tick: NormalizedQuoteTick) => void;
 export type QuoteTransport = 'feed' | 'v2';
-
 // ─── QuoteSocketManager Singleton ────────────────────────────────────────────
 
 class QuoteSocketManager {
+  private financialStream = new FinancialQuoteStream();
+  private financialListeners = new Map<string, Set<QuoteTickCallback>>();
   private ws: WebSocket | null = null;
+  private deferredFinancial = new DeferredFinancialQuotes(
+    () => ({ session: getTerminalQuoteSession(), socket: this.ws }),
+    detail => {
+      recordQuoteDiagnostic({ kind: 'financial-gap', symbol: detail.symbol, browserGeneration: detail.quoteSession,
+        gapFromProviderTimeMs: detail.fromProviderTimeMs, gapToProviderTimeMs: detail.toProviderTimeMs,
+        rawCoverageComplete: false, terminalStatus: 'detected', phase: 'queue', reason: detail.reason });
+      window.dispatchEvent(new CustomEvent(FINANCIAL_QUOTE_GAP_EVENT, { detail }));
+    },
+  );
+  private unsubFinancialClock: (() => void) | null = null;
   private wsUrl: string = '';
   // Server-confirmed subscriptions (reconciled from `type:'subscribed'`/`'unsubscribed'`).
   private subscribedSymbols: Set<string> = new Set();
@@ -122,6 +136,12 @@ class QuoteSocketManager {
   private unsubSessionChange: (() => void) | null = null;
 
   constructor() {
+    this.unsubFinancialClock = subscribeTerminalQuoteFreshness(() => {
+      this.deferredFinancial.reconcileOwner();
+      if (!this.disposed && isTerminalQuoteClockVerified()) {
+        this.deferredFinancial.drain((tick, owner) => this.deliverFinancial(tick, false, owner));
+      }
+    });
     // Listen for session changes (token rotation, logout, broker change).
     // The anonymous feed has no account credential to renew. Keep a healthy,
     // unchanged feed through login; private v2 sockets still reauthenticate.
@@ -133,6 +153,7 @@ class QuoteSocketManager {
         || reason === 'login'
         || reason === 'account_change'
       ) {
+        if (terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
         if (reason !== 'broker_url_change'
           && this.activeTransport === 'feed'
           && this.ws?.readyState === WebSocket.OPEN
@@ -178,6 +199,9 @@ class QuoteSocketManager {
 
     const oldSymbols = this.activeSymbols;
     this.activeSymbols = merged;
+    for (const symbol of oldSymbols) if (!merged.has(symbol)) {
+      this.financialStream.forget(symbol); this.deferredFinancial.forget(symbol);
+    }
 
     // Step 6: Any symbols? No → close. Yes → connect.
     if (merged.size === 0) {
@@ -320,11 +344,13 @@ class QuoteSocketManager {
 
       socket.onopen = () => {
         if (this.ws !== socket) return;
+        this.financialStream.reset();
         if (terminalQuoteFreshnessEnabled()) {
-          resetTerminalQuoteFreshness();
+          resetTerminalQuoteTransport();
           window.dispatchEvent(new Event('rtx:quote-clock-refresh'));
         }
         opened = true;
+        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'connection', reason: 'opened', transport: nextTransport });
         this.clearOpenTimeout();
         // FIX: Use transport ping/pong for liveness so a quiet market does not
         // leave an OPEN-but-dead quote socket displaying stale prices.
@@ -347,11 +373,13 @@ class QuoteSocketManager {
 
       socket.onmessage = (event) => {
         if (this.ws !== socket) return;
+        const diagnosticContext: QuoteDiagnosticContext | undefined = quoteDiagnosticsEnabled()
+          ? { receiptMonoMs: performance.now(), transport: nextTransport } : undefined;
         this.recordTransportActivity();
 
         try {
           const data = JSON.parse(event.data);
-          this.handleMessage(data);
+          this.handleMessage(data, diagnosticContext);
         } catch (err) {
           console.error('[QuoteSocket] Failed to parse message:', err);
         }
@@ -365,7 +393,8 @@ class QuoteSocketManager {
 
       socket.onclose = (event) => {
         if (this.ws !== socket) return;
-        if (terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
+        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'connection', reason: 'closed', transport: nextTransport, closeCode: event.code });
+        if (terminalQuoteFreshnessEnabled()) resetTerminalQuoteTransport();
         this.clearOpenTimeout();
         this.clearStableOpenTimer();
         this.clearHeartbeat();
@@ -476,7 +505,7 @@ class QuoteSocketManager {
 
   // ─── Step 9-13: Handle incoming tick payloads ────────────────────────────
 
-  private handleMessage(data: unknown): void {
+  private handleMessage(data: unknown, diagnosticContext?: QuoteDiagnosticContext): void {
     if (!isRecord(data)) return;
 
     // Handle pong
@@ -532,11 +561,28 @@ class QuoteSocketManager {
     });
     this.scheduleSubscriptionAckTimeout();
 
+    const expectedSession = getTerminalQuoteSession();
+    const expectedSocket = this.ws;
+    const stillOwned = () => expectedSession === getTerminalQuoteSession() && expectedSocket === this.ws;
     ticks.forEach((tick) => {
-      if (isLiveMarketDataFrozen(tick.symbol)) return;
+      if (!stillOwned() || isLiveMarketDataFrozen(tick.symbol)) return;
+      if (terminalQuoteFreshnessEnabled()) tick.quoteDeliveryKind = 'event';
 
       // Step 14: Batched store path — enqueue for rAF-batched Zustand update
-      if (!enqueueLiveTick(tick.symbol, tick as LiveTick)) return;
+      const enqueued = diagnosticContext
+        ? enqueueLiveTick(tick.symbol, tick as LiveTick, { ...diagnosticContext, ...readQuoteWireEvidence(tick) })
+        : enqueueLiveTick(tick.symbol, tick as LiveTick);
+      if (!stillOwned()) return;
+      if (terminalQuoteFreshnessEnabled()) {
+        this.deliverFinancial(tick, enqueued, { session: expectedSession, socket: expectedSocket });
+      } else if (enqueued && tick.bid > 0 && tick.ask > 0) {
+        this.financialListeners.get(tick.symbol)?.forEach(callback => {
+          if (!stillOwned()) return;
+          try { callback(tick); } catch (error) { console.error('[QuoteSocket] financial listener error:', error); }
+        });
+      }
+      if (!stillOwned()) return;
+      if (!enqueued) return;
 
       // Last-only display metadata is intentionally isolated from raw quote
       // listeners: the selected-chart listener treats every callback as an
@@ -547,14 +593,32 @@ class QuoteSocketManager {
       const callbacks = this.symbolListeners.get(tick.symbol);
       if (callbacks) {
         callbacks.forEach((cb) => {
+          if (!stillOwned()) return;
           try { cb(tick); } catch (e) { console.error('[QuoteSocket] listener error:', e); }
         });
       }
 
       // Global listeners
       this.globalListeners.forEach((cb) => {
+        if (!stillOwned()) return;
         try { cb(tick); } catch (e) { console.error('[QuoteSocket] global listener error:', e); }
       });
+    });
+  }
+
+  private deliverFinancial(tick: NormalizedQuoteTick, executionAccepted: boolean, owner: FinancialQuoteOwner): void {
+    const owned = () => !this.disposed && owner.session === getTerminalQuoteSession() && owner.socket === this.ws;
+    if (!owned() || isLiveMarketDataFrozen(tick.symbol)) return;
+    // Preserve FIFO for this symbol once any event is waiting for calibration.
+    if (this.deferredFinancial.has(tick.symbol)) { this.deferredFinancial.append(tick); return; }
+    const decision = this.financialStream.decide(tick.symbol, tick, executionAccepted);
+    if (decision === 'defer') { this.deferredFinancial.append(tick); return; }
+    if (decision !== 'accepted') return;
+    const financialTick = { ...tick, timestamp: tick.provider_timestamp!, sourceTimestamp: tick.provider_timestamp! };
+    enqueueFinancialLiveTick(tick.symbol, financialTick as LiveTick);
+    this.financialListeners.get(tick.symbol)?.forEach(callback => {
+      if (!owned()) return;
+      try { callback(financialTick); } catch (error) { console.error('[QuoteSocket] financial listener error:', error); }
     });
   }
 
@@ -648,6 +712,18 @@ class QuoteSocketManager {
   }
 
   /** Subscribe to real-time ticks for a specific symbol. Returns unsubscribe fn. */
+  onFinancialQuote(symbol: string, callback: QuoteTickCallback): () => void {
+    const key = normalizeSymbol(symbol);
+    const listeners = this.financialListeners.get(key) ?? new Set<QuoteTickCallback>();
+    listeners.add(callback);
+    this.financialListeners.set(key, listeners);
+    return () => {
+      listeners.delete(callback);
+      if (listeners.size === 0) this.financialListeners.delete(key);
+    };
+  }
+
+  /** Latest executable/display quote; may omit older financial stream events. */
   onQuoteSnapshot(symbol: string, cb: QuoteTickCallback): () => void {
     const key = normalizeSymbol(symbol);
     if (!this.symbolListeners.has(key)) {
@@ -856,7 +932,8 @@ class QuoteSocketManager {
   // ─── Cleanup ─────────────────────────────────────────────────────────────
 
   private closeSocket(): void {
-    if (this.ws && terminalQuoteFreshnessEnabled()) resetTerminalQuoteFreshness();
+    this.deferredFinancial.clear();
+    if (this.ws && terminalQuoteFreshnessEnabled()) resetTerminalQuoteTransport();
     this.cancelIdleClose();
     this.clearOpenTimeout();
     this.clearStableOpenTimer();
@@ -888,10 +965,13 @@ class QuoteSocketManager {
 
   destroy(): void {
     this.disposed = true;
+    this.unsubFinancialClock?.(); this.unsubFinancialClock = null;
     this.close();
     this.demandSources.clear();
     this.activeSymbols.clear();
     this.symbolListeners.clear();
+    this.financialListeners.clear();
+    this.financialStream.reset();
     this.globalListeners.clear();
     if (this.unsubSessionChange) {
       this.unsubSessionChange();

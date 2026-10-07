@@ -13,13 +13,14 @@ import type { ContextMenuItemConfig } from './context-menu.types';
 export type { ContextMenuItemConfig } from './context-menu.types';
 
 interface ContextMenuProps {
-  items: ContextMenuItemConfig[];
+  items: ContextMenuItemConfig[] | (() => ContextMenuItemConfig[]);
   onClose?: () => void;
   position?: { x: number; y: number };
   triggerSymbol?: string;
   variant?: ContextMenuVariant;
   density?: ContextMenuDensity;
   ignoredElements?: readonly (HTMLElement | null)[];
+  onOpenChange?: (open: boolean) => void;
   children?: React.ReactNode;
 }
 
@@ -777,6 +778,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   variant = 'dark',
   density = 'compact',
   ignoredElements = [],
+  onOpenChange,
   children
 }) => {
   const [internalVisible, setInternalVisible] = useState(false);
@@ -787,6 +789,12 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const visible = isControlled ? true : internalVisible;
   const position = isControlled ? externalPosition : internalPosition;
   const onClose = isControlled ? externalOnClose : () => setInternalVisible(false);
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  useEffect(() => {
+    onOpenChangeRef.current?.(visible);
+    return () => { if (visible) onOpenChangeRef.current?.(false); };
+  }, [visible]);
 
   // Keep track of the latest onClose to avoid re-running the effect on every render
   const onCloseRef = useRef(onClose);
@@ -858,7 +866,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           </div>
         </div>
       )}
-      <Menu items={items} position={position} onClose={onClose} zIndex={9999} variant={variant} density={density} />
+      <Menu items={typeof items === 'function' ? items() : items} position={position} onClose={onClose} zIndex={9999} variant={variant} density={density} />
     </div>,
     document.body
   ) : null;

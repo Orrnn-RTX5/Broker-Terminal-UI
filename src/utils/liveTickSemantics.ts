@@ -1,3 +1,5 @@
+import { compareQuoteSourceRevision } from './quoteSourceEpoch';
+
 const DERIVED_APP_TICK_KEYS = new Set([
   'prevBid',
   'prevAsk',
@@ -64,7 +66,7 @@ export const areCanonicalUpstreamTicksEqual = (left: unknown, right: unknown): b
     ));
 };
 
-/** Positive means incoming is fresher; zero is the same broker event time. */
+/** Positive means incoming is fresher; zero shares broker time and known epoch. */
 export const compareCanonicalTickFreshness = (current: unknown, incoming: unknown): number => {
   // Event-time ordering is scoped to one transport generation. Retained display
   // prices from a disconnected session must not reject its first new quote.
@@ -75,12 +77,14 @@ export const compareCanonicalTickFreshness = (current: unknown, incoming: unknow
     if (currentSession === null) return 1;
     return incomingSession > currentSession ? 1 : -1;
   }
+  const epoch = compareQuoteSourceRevision(asRecord(incoming)?.source_revision, asRecord(current)?.source_revision);
+  if (epoch === -1) return -1;
   const currentTimestamp = getCanonicalTickTimestamp(current);
   const incomingTimestamp = getCanonicalTickTimestamp(incoming);
   if (incomingTimestamp === null) return currentTimestamp === null ? 0 : -1;
   if (currentTimestamp === null) return 1;
   return incomingTimestamp === currentTimestamp
-    ? 0
+    ? epoch === 1 ? 1 : 0
     : incomingTimestamp > currentTimestamp ? 1 : -1;
 };
 

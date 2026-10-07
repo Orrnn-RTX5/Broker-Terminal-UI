@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BottomDock } from './BottomDock';
 import { useLiveAccountMetrics } from '../hooks/useLiveAccountMetrics';
@@ -113,8 +113,8 @@ describe('Trade rendering latency', () => {
     trade.pendingPositions = [{ ...makePosition(-1), clientOrderId: 'order-one', placementState }];
     render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(screen.getByText(placementState === 'rejected' ? 'Rejected' : 'Expired')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Order in progress' })).toHaveTextContent('!');
-    expect(screen.getByRole('button', { name: 'Order in progress' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: placementState === 'rejected' ? 'Rejected' : 'Expired' })).toHaveTextContent('!');
+    expect(screen.getByRole('button', { name: placementState === 'rejected' ? 'Rejected' : 'Expired' })).toBeDisabled();
   });
 
   it('shows an unresolved outcome and keeps all trade actions disabled', () => {
@@ -124,8 +124,49 @@ describe('Trade rendering latency', () => {
       placementErrorMessage: 'Order outcome unknown. Check command order-one before placing another order.',
     }];
     render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
-    expect(screen.getByText('Outcome unknown')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Order in progress' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Order in progress' })).toHaveAttribute('title', expect.stringContaining('order-one'));
+    expect(screen.getByText('Awaiting confirmation')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Awaiting confirmation' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Awaiting confirmation' })).toHaveAttribute('title', expect.stringContaining('order-one'));
+    expect(screen.getByRole('status')).toHaveTextContent('Check command order-one before placing another order.');
+  });
+
+  it('preserves a real position while its close awaits confirmation and prevents conflicting actions', () => {
+    const props = { height: 300, onClosePosition: vi.fn(), onModifyPosition: vi.fn() };
+    trade.positions = [{ ...makePosition(71), closeCommandState: 'awaiting-confirmation', closeClientOrderId: 'original-close-uuid' }];
+    const { rerender } = render(<BottomDock {...props} />);
+    expect(screen.getByText('71')).toBeVisible();
+    expect(screen.getByText('80000.00')).toBeVisible();
+    expect(screen.getByText('81000.00')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Awaiting confirmation (original-close-uuid)');
+    expect(screen.queryByText('Expired')).not.toBeInTheDocument();
+    const close = screen.getByRole('button', { name: 'Close position 71' });
+    expect(close).toBeDisabled();
+    screen.getAllByRole('button', { name: /Modify Position/ }).forEach(button => expect(button).toBeDisabled());
+    fireEvent.click(close);
+    fireEvent.doubleClick(screen.getByText('71'));
+    fireEvent.contextMenu(screen.getByText('71'));
+    expect(props.onClosePosition).not.toHaveBeenCalled();
+    expect(props.onModifyPosition).not.toHaveBeenCalled();
+    trade.positions = [makePosition(71)];
+    rerender(<BottomDock {...props} />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close position 71' })).toBeEnabled();
+  });
+
+  it('keeps the server rejection visible without a comment column or hover, including after quote refresh', () => {
+    const props = { height: 300, onClosePosition: vi.fn(), onModifyPosition: vi.fn() };
+    trade.pendingPositions = [{ ...makePosition(-1), clientOrderId: 'order-one', placementState: 'rejected',
+      placementErrorCode: 'RISK_DATA_UNAVAILABLE',
+      placementErrorMessage: 'risk evidence expired before commit: Quote is stale for BTCUSD',
+    }];
+    const { rerender } = render(<BottomDock {...props} />);
+    expect(screen.getByRole('status')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('RISK_DATA_UNAVAILABLE: risk evidence expired before commit: Quote is stale for BTCUSD');
+    trade.positions = [{ ...makePosition(71), currentPrice: 82000 }];
+    rerender(<BottomDock {...props} />);
+    expect(screen.getByRole('status')).toHaveTextContent('RISK_DATA_UNAVAILABLE');
+    expect(screen.getByRole('button', { name: 'Rejected' })).toBeDisabled();
+    expect(props.onClosePosition).not.toHaveBeenCalled();
+    expect(props.onModifyPosition).not.toHaveBeenCalled();
   });
 });

@@ -204,13 +204,14 @@ describe('order command terminal pushes during reconciliation', () => {
       initialResponse: processing,
       readStatus,
       startedAtMs,
+      startedAtMonoMs: performance.now() - 20_000,
       pollImmediately: true,
       subscribeTerminal: source.subscribeTerminal,
     });
 
     await vi.advanceTimersByTimeAsync(10_000);
     await expect(resultPromise).resolves.toMatchObject({
-      status: 'expired', synthetic: true, executeBeforeMs: startedAtMs + 30_000,
+      status: 'outcome-unknown', terminal: false, synthetic: true,
     });
     expect(readStatus).toHaveBeenCalledTimes(11);
     expect(source.unsubscribe).toHaveBeenCalledOnce();
@@ -236,15 +237,17 @@ describe('order command terminal pushes during reconciliation', () => {
     expect(readStatus).not.toHaveBeenCalled();
   });
 
-  it('unsubscribes when a malformed HTTP status result rejects polling', async () => {
+  it('keeps malformed HTTP status reads uncertain until the bounded wait ends', async () => {
     const source = createPushSource();
-    await expect(pollOrderCommandUntilTerminal({
+    const result = pollOrderCommandUntilTerminal({
       clientOrderId: CLIENT_ORDER_ID,
       initialResponse: processing,
       readStatus: async () => ({ client_order_id: CLIENT_ORDER_ID }),
       pollImmediately: true,
       subscribeTerminal: source.subscribeTerminal,
-    })).rejects.toThrow('recognized status');
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(result).resolves.toMatchObject({ status: 'outcome-unknown', terminal: false });
     expect(source.unsubscribe).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -290,7 +293,7 @@ describe('pollOrderCommandUntilTerminal', () => {
     expect(sleep).toHaveBeenNthCalledWith(1, 1_000);
     expect(sleep).toHaveBeenNthCalledWith(2, 1_000);
     expect(readStatus).toHaveBeenCalledTimes(2);
-    expect(readStatus).toHaveBeenCalledWith(CLIENT_ORDER_ID);
+    expect(readStatus).toHaveBeenCalledWith(CLIENT_ORDER_ID, expect.any(AbortSignal));
     expect(statuses).toEqual(['accepted', 'processing', 'filled']);
     expect(result).toMatchObject({
       status: 'filled',
@@ -323,13 +326,12 @@ describe('pollOrderCommandUntilTerminal', () => {
     expect(readStatus).toHaveBeenCalledTimes(30);
     expect(readTimes.at(-1)).toBe(130_000);
     expect(result).toMatchObject({
-      status: 'expired',
-      terminal: true,
-      executeBeforeMs: 130_000,
+      status: 'outcome-unknown',
+      terminal: false,
       synthetic: true,
       error: {
-        code: 'ORDER_COMMAND_EXPIRED',
-        message: 'No terminal order result arrived before execute_before.',
+        code: 'ORDER_OUTCOME_UNKNOWN',
+        message: `Awaiting confirmation. Check command ${CLIENT_ORDER_ID} before placing another order.`,
       },
     });
   });
@@ -358,7 +360,7 @@ describe('pollOrderCommandUntilTerminal', () => {
     expect(readTimes[1]).toBe(startedAtMs + 21_000);
     expect(readTimes.at(-1)).toBe(startedAtMs + 30_000);
     expect(sleep.mock.calls.every(([delay]) => delay === 1_000)).toBe(true);
-    expect(result).toMatchObject({ status: 'expired', executeBeforeMs: startedAtMs + 30_000 });
+    expect(result).toMatchObject({ status: 'outcome-unknown', terminal: false });
   });
 
   it('returns an already-filled recovery read without waiting for a timer', async () => {
@@ -412,7 +414,7 @@ describe('pollOrderCommandUntilTerminal', () => {
       initialResponse: {
         status: 'accepted',
         client_order_id: CLIENT_ORDER_ID,
-        execute_before: executeBefore,
+        execute_before: executeBefore, server_time_ms: currentTime,
       },
       readStatus,
       now: () => currentTime,
@@ -455,7 +457,7 @@ describe('pollOrderCommandUntilTerminal', () => {
       initialResponse: {
         status: 'accepted',
         client_order_id: CLIENT_ORDER_ID,
-        execute_before: 51,
+        execute_before: 51, server_time: 50,
       },
       readStatus,
       now: () => currentTime,
@@ -465,10 +467,10 @@ describe('pollOrderCommandUntilTerminal', () => {
 
     expect(readStatus).toHaveBeenCalledOnce();
     expect(onPollError).toHaveBeenCalledWith(pollError);
-    expect(result.status).toBe('expired');
+    expect(result.status).toBe('outcome-unknown');
   });
 
-  it('rejects a status response correlated to another client_order_id', async () => {
+  it('does not adopt a terminal response correlated to another client_order_id', async () => {
     let currentTime = 1_800_000_000_000;
 
     await expect(pollOrderCommandUntilTerminal({
@@ -480,6 +482,6 @@ describe('pollOrderCommandUntilTerminal', () => {
       }),
       now: () => currentTime,
       sleep: async (delayMs) => { currentTime += delayMs; },
-    })).rejects.toThrow('client_order_id does not match');
+    })).resolves.toMatchObject({ status: 'outcome-unknown', terminal: false, clientOrderId: CLIENT_ORDER_ID });
   });
 });

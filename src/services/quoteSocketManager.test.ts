@@ -12,7 +12,13 @@ import {
   registerDailyChangePriceModes,
   resetDailyChangePriceModeRegistryForTests,
 } from './dailyChangePriceModeRegistry';
-
+import {
+  calibrateTerminalQuoteClock,
+  getTerminalQuoteFreshness,
+  getTerminalQuoteSession,
+  ingestTerminalQuote,
+  resetTerminalQuoteFreshness,
+} from './terminalQuoteFreshness';
 const setConnectionState = vi.fn();
 const enqueueLiveTick = vi.hoisted(() => vi.fn());
 const brokerSessionMock = vi.hoisted(() => ({
@@ -34,6 +40,7 @@ vi.mock('./brokerSession', () => ({
     `wss://broker.example/ws/v2${token ? `?token=${token}` : ''}`
   )),
   getAccessToken: vi.fn(() => brokerSessionMock.accessToken),
+  getRefreshToken: () => null, getServerUrl: () => brokerSessionMock.scope.serverUrl,
   getCommittedBrokerAccountSessionScope: vi.fn(() => brokerSessionMock.scope),
   getCommittedBrokerAccountSessionScopeKey: vi.fn((scope) => [
     scope.authenticated ? 'authenticated' : 'anonymous',
@@ -137,6 +144,9 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
   });
 
   afterEach(() => {
+    delete window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__;
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
+    resetTerminalQuoteFreshness();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -197,6 +207,25 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
       bid: 76000, ask: 76001,
     }));
     expect(internals(manager).subscribedSymbols.has('BTCUSD')).toBe(true);
+    manager.destroy();
+  });
+
+  it('passes one frame receipt timestamp through every quote without adding diagnostic fields to ticks', () => {
+    window.__RTX_QUOTE_DIAGNOSTICS_ENABLED__ = true;
+    vi.spyOn(performance, 'now').mockReturnValue(1234);
+    brokerSessionMock.feedUri = 'wss://broker.example/ws/feed';
+    const manager = new QuoteSocketManager();
+    manager.setDemand('watchlist', ['BTCUSD', 'EURUSD']);
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.onmessage?.({ data: JSON.stringify({ type: 'ticks', ticks: [
+      { symbol: 'BTCUSD', bid: 76000, ask: 76001, provider_timestamp: 1_800_000_000_000, source: 'cserver', sequence: '18446744073709551614' },
+      { symbol: 'EURUSD', bid: 1.1, ask: 1.2, provider_timestamp: 1_800_000_000_000, source: 'cserver', sequence: '18446744073709551615' },
+    ] }) });
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(2);
+    expect(enqueueLiveTick).toHaveBeenNthCalledWith(1, 'BTCUSD', expect.objectContaining({ sequence: '18446744073709551614' }), expect.objectContaining({ receiptMonoMs: 1234, transport: 'feed' }));
+    expect(enqueueLiveTick).toHaveBeenNthCalledWith(2, 'EURUSD', expect.objectContaining({ sequence: '18446744073709551615' }), expect.objectContaining({ receiptMonoMs: 1234, transport: 'feed' }));
+    expect(enqueueLiveTick.mock.calls[0][1]).not.toHaveProperty('receiptMonoMs');
     manager.destroy();
   });
 
@@ -466,14 +495,24 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
 
   it.each(['login', 'account_change', 'token_rotation', 'logout'] as const)(
     'keeps an unchanged open anonymous feed through %s and delivers new ticks', (reason) => {
+      (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = { TERMINAL_QUOTE_FRESHNESS: true };
       brokerSessionMock.feedUri = 'wss://broker.example/ws/feed?broker_id=test-broker';
       const manager = new QuoteSocketManager();
       manager.setDemand('chart', ['BTCUSD']);
       const socket = FakeWebSocket.instances[0];
       socket.open();
+      const oldSession = getTerminalQuoteSession();
+      const now = Date.now();
+      const mono = performance.now();
+      const quote = { bid: 76000, ask: 76001, provider_timestamp: now, sequence: 1, source: 'lp' };
+      expect(calibrateTerminalQuoteClock(now, mono, now, mono, now, oldSession)).toBe(true);
+      expect(ingestTerminalQuote('BTCUSD', quote, oldSession)).toBe(true);
       brokerSessionMock.sessionListener?.(reason);
       expect(FakeWebSocket.instances).toHaveLength(1);
       expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+      expect(getTerminalQuoteSession()).toBeGreaterThan(oldSession);
+      expect(getTerminalQuoteFreshness('BTCUSD').reason).toBe('unavailable');
+      expect(ingestTerminalQuote('BTCUSD', quote, oldSession)).toBe(false);
       socket.onmessage?.({ data: JSON.stringify({
         type: 'tick', symbol: 'BTCUSD', bid: 76000, ask: 76001, time: 1_788_250_045,
       }) });

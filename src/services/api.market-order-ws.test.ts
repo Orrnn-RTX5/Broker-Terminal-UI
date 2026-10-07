@@ -27,7 +27,10 @@ vi.mock('../api/endpoints', async (importOriginal) => {
   };
 });
 
+vi.mock('./orderStatusReadScheduler', () => ({ scheduleOrderStatusRead: (read: () => Promise<unknown>) => read() }));
+
 import { api } from './api';
+import { ApiError } from '../api/client';
 import { TradeWebSocketClient } from '../api/tradeSocket';
 import {
   clearTradeOrderLatencySamples,
@@ -423,7 +426,7 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
       expect(extractWsClientOrderId()).toBe(CLIENT_ORDER_ID);
       expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
       expect(mocks.restGetOrderCommand).toHaveBeenCalledTimes(2);
-      expect(mocks.restGetOrderCommand).toHaveBeenCalledWith(CLIENT_ORDER_ID);
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledWith(CLIENT_ORDER_ID, expect.objectContaining({ account_login: 200002, timeoutMs: 8000 }));
       expect(onNewTrade).toHaveBeenCalledOnce();
       expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
         'pending',
@@ -469,7 +472,7 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
       expect(extractWsClientOrderId()).toBe(CLIENT_ORDER_ID);
       expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
       expect(mocks.restGetOrderCommand).toHaveBeenCalledOnce();
-      expect(mocks.restGetOrderCommand).toHaveBeenCalledWith(CLIENT_ORDER_ID);
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledWith(CLIENT_ORDER_ID, expect.objectContaining({ account_login: 200002, timeoutMs: 8000 }));
       expect(onNewTrade).not.toHaveBeenCalled();
       expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
         'pending',
@@ -485,75 +488,29 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     }
   });
 
-  it('expires sent WebSocket reconciliation at the original 30-second deadline', async () => {
+  it('shows awaiting confirmation at the local deadline and resolves the original UUID on a late fill', async () => {
     vi.useFakeTimers();
-    const uncertainError = Object.assign(new Error(
-      'The order was sent, but its final status could not be confirmed.',
-    ), {
-      name: 'TradeSocketTransportError',
-      code: 'ORDER_STATUS_TIMEOUT',
-      retryable: false,
-      orderWasSent: true,
-      clientOrderId: CLIENT_ORDER_ID,
+    const uncertainError = Object.assign(new Error('Status unavailable'), {
+      name: 'TradeSocketTransportError', code: 'ORDER_STATUS_TIMEOUT', retryable: false,
+      orderWasSent: true, clientOrderId: CLIENT_ORDER_ID,
     });
-    mocks.wsPlaceOrder.mockImplementation(() => new Promise((_, reject) => {
-      setTimeout(() => reject(uncertainError), 20_000);
-    }));
-    mocks.restGetOrderCommand.mockResolvedValue({
-      status: 'processing',
-      client_order_id: CLIENT_ORDER_ID,
-    });
-
+    mocks.wsPlaceOrder.mockImplementation(() => new Promise((_, reject) => { setTimeout(() => reject(uncertainError), 20_000); }));
+    mocks.restGetOrderCommand.mockResolvedValue({ status: 'processing', client_order_id: CLIENT_ORDER_ID });
     try {
       let settled = false;
-      const placement = api.orders.placeMarketOrder(inputOrder);
-      const terminal = placement.then(
-        () => ({ resolved: true as const }),
-        (error: unknown) => ({ resolved: false as const, error }),
-      ).finally(() => {
-        settled = true;
-      });
-
-      await vi.advanceTimersByTimeAsync(29_999);
+      const placement = api.orders.placeMarketOrder(inputOrder).finally(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(30_000);
       expect(settled).toBe(false);
+      expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual(['pending', 'processing']);
+      expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail).toMatchObject({ errorCode: 'ORDER_OUTCOME_UNKNOWN', errorMessage: expect.stringContaining('Awaiting confirmation') });
+      expect(getTradeOrderLatencySamples().some(x => x.phase === 'placement_terminal')).toBe(false);
+      mocks.restGetOrderCommand.mockResolvedValue({ status: 'filled', client_order_id: CLIENT_ORDER_ID, data: filledData });
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(placement).resolves.toMatchObject({ symbol: 'BTCUSD' });
+      expect(mocks.wsPlaceOrder).toHaveBeenCalledOnce();
       expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
-
-      await vi.advanceTimersByTimeAsync(1);
-      await expect(terminal).resolves.toMatchObject({
-        resolved: false,
-        error: {
-          status: 'expired',
-          code: 'ORDER_COMMAND_EXPIRED',
-          backendMessage: 'No terminal order result arrived before execute_before.',
-        },
-      });
-
-      expect(extractWsClientOrderId()).toBe(CLIENT_ORDER_ID);
-      expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
-      expect(mocks.restGetOrderCommand).toHaveBeenCalledTimes(11);
-      expect(mocks.restGetOrderCommand).toHaveBeenCalledWith(CLIENT_ORDER_ID);
-      expect(onNewTrade).not.toHaveBeenCalled();
-      expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
-        'pending',
-        'processing',
-        'expired',
-      ]);
-      expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail).toMatchObject({
-        errorCode: 'ORDER_COMMAND_EXPIRED',
-        errorMessage: 'No terminal order result arrived before execute_before.',
-      });
-      expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
-        phase: 'placement_terminal',
-        transport: 'websocket',
-        clientOrderId: CLIENT_ORDER_ID,
-        terminalStatus: 'expired',
-        errorCode: 'ORDER_COMMAND_EXPIRED',
-        errorMessage: 'No terminal order result arrived before execute_before.',
-        totalMs: expect.any(Number),
-      }));
-    } finally {
-      vi.useRealTimers();
-    }
+      expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail).toMatchObject({ clientOrderId: CLIENT_ORDER_ID, status: 'filled' });
+    } finally { vi.useRealTimers(); }
   });
 
   it('uses REST immediately when the trade socket is closed', async () => {
@@ -759,7 +716,7 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
       // No advance to the old 10-second timers, or to a one-second GET delay.
       await vi.advanceTimersByTimeAsync(0);
       await expect(placement).resolves.toMatchObject({ ticket: 990002 });
-      expect(mocks.restGetOrderCommand).toHaveBeenCalledExactlyOnceWith(CLIENT_ORDER_ID);
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledExactlyOnceWith(CLIENT_ORDER_ID, expect.objectContaining({ account_login: 200002, timeoutMs: 8000 }));
       expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
       expect(socket.sent.filter((frame) => frame.action === 'place_order')).toHaveLength(1);
       expect(onNewTrade).toHaveBeenCalledOnce();
@@ -869,6 +826,31 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
       vi.unstubAllGlobals();
       vi.useRealTimers();
     }
+  });
+
+  it('reconciles a lost REST submission response without repeating the POST', async () => {
+    vi.useFakeTimers();
+    tradeSocket.connectionState = 'closed';
+    tradeSocket.readyState = 3;
+    mocks.restPlaceOrder.mockRejectedValue(new ApiError(0, 'Request timed out'));
+    mocks.restGetOrderCommand.mockResolvedValue({ status: 'processing', client_order_id: CLIENT_ORDER_ID });
+    try {
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.restPlaceOrder).toHaveBeenCalledOnce();
+      expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail).toMatchObject({
+        clientOrderId: CLIENT_ORDER_ID, status: 'processing', errorCode: 'ORDER_OUTCOME_UNKNOWN',
+        errorMessage: expect.stringContaining('Awaiting confirmation'),
+      });
+      expect(onNewTrade).not.toHaveBeenCalled();
+      mocks.restGetOrderCommand.mockResolvedValue({ status: 'filled', client_order_id: CLIENT_ORDER_ID, position: restPosition });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(placement).resolves.toMatchObject({ ticket: 990002 });
+      expect(mocks.restPlaceOrder).toHaveBeenCalledOnce();
+      expect(mocks.wsPlaceOrder).not.toHaveBeenCalled();
+      expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail).toMatchObject({ clientOrderId: CLIENT_ORDER_ID, status: 'filled' });
+      expect(onNewTrade).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
   });
 
   it('keeps the backend rejection code and message on the terminal lifecycle event', async () => {

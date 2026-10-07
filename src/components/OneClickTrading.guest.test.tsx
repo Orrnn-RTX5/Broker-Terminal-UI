@@ -133,6 +133,7 @@ describe('OneClickTrading guest authentication gate', () => {
     expect(button('BUY')).toBeDisabled();
     expect(button('SELL')).toBeDisabled();
     expect(button('BUY').title).toContain('Read-only investor');
+    expect(screen.getByRole('status')).toHaveTextContent('Read-only investor');
     fireEvent.click(button('BUY'));
     expect(intents).toHaveLength(0);
     expect(mocks.placeMarketOrder).not.toHaveBeenCalled();

@@ -1,5 +1,6 @@
 // Deployment routing is authoritative and complete: no broker-specific fallback.
 import { selectBrokerRuntimeConfig, validateBrokerRuntimeConfig } from './brokerRuntimeConfig';
+import { createBrokerRuntimeValidationCache } from './brokerRuntimeValidationCache';
 
 const URL_SCHEME_RE = /^[a-z][a-z\d+.-]*:\/\//i;
 export const trimTrailingSlash = (value) => String(value || '').trim().replace(/\/+$/, '');
@@ -64,10 +65,12 @@ const isDesktopRuntime = () => {
 };
 export const isDesktopBackendTarget = () => isDesktopRuntime();
 export const isBrokerDeploymentPinned = () => !isDesktopBackendTarget();
-export const getRuntimeBrokerConfiguration = () => validateBrokerRuntimeConfig(
-  runtimeConfig() || (import.meta.env.DEV || isElectronRuntime() ? buildTimeEnvValues() : undefined),
-  { allowLocal: Boolean(import.meta.env.DEV && isLocalPage()) || isDesktopBackendTarget(), desktop: isDesktopBackendTarget() }
-);
+const cachedRuntimeValidation = createBrokerRuntimeValidationCache(validateBrokerRuntimeConfig);
+export const getRuntimeBrokerConfiguration = () => {
+  const config = runtimeConfig() || (import.meta.env.DEV || isElectronRuntime() ? buildTimeEnvValues() : undefined);
+  const desktop = isDesktopBackendTarget();
+  return cachedRuntimeValidation(config, { allowLocal: Boolean(import.meta.env.DEV && isLocalPage()) || desktop, desktop });
+};
 export const getBrokerConfigurationErrors = () => isDesktopBackendTarget() ? [] : getRuntimeBrokerConfiguration().errors;
 export const getBrokerConfigurationError = () => getBrokerConfigurationErrors().join(' ');
 export const getPublicBackendTarget = () => {

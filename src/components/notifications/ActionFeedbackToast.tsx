@@ -12,7 +12,7 @@ import {
 } from './positionCloseReport';
 
 export type ActionFeedbackTone = 'success' | 'warning' | 'error' | 'loss';
-export type ActionFeedbackType = 'success' | 'error';
+export type ActionFeedbackType = 'success' | 'error' | 'warning';
 
 export interface ActionFeedbackNotice {
   /** Short action or workspace name, used as the notice heading. */

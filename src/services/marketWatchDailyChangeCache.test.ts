@@ -295,6 +295,122 @@ describe('marketWatchDailyChangeCache', () => {
       GBPUSD: -0.5,
     });
   });
+
+  it('does not sort the entire cache for each individual quote in a 561-symbol watchlist', () => {
+    // Count actual full-cache sort calls instead of relying on machine timing.
+    // This includes steady updates and one-entry overflow after the 500 bound.
+    const sort = Array.prototype.sort;
+    let fullCacheSorts = 0;
+    const spy = vi.spyOn(Array.prototype, 'sort').mockImplementation(function (this: unknown[], compare) {
+      if (this.length >= MAX_MARKET_WATCH_DAILY_CHANGE_CACHE_ENTRIES
+        && this[0] && typeof this[0] === 'object' && 'scopeKey' in this[0]) fullCacheSorts += 1;
+      return sort.call(this, compare);
+    });
+    try {
+      for (let pass = 0; pass < 2; pass += 1) {
+        for (let index = 0; index < 561; index += 1) {
+          vi.setSystemTime(NOW + pass * 561 + index);
+          rememberMarketWatchDailyChange(scopeA, `SYMBOL${index}`, index + pass, NOW + pass, 'quote');
+        }
+      }
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fullCacheSorts).toBe(0);
+  });
+
+  it('matches original retention ordering across batch load, updates, expiry and clock rollback', () => {
+    type Row = { scopeKey: string; symbol: string; value: number; asOf: number; savedAt: number; source: 'quote' | 'history'; completedAt?: number };
+    const model = new Map<string, Map<string, Row>>();
+    const rows = () => [...model.values()].flatMap(scope => [...scope.values()]);
+    const orderingTime = (entry: Row) => entry.completedAt ?? entry.asOf;
+    const compare = (left: Row, right: Row) => orderingTime(left) - orderingTime(right)
+      || Number(left.source === 'quote') - Number(right.source === 'quote') || left.asOf - right.asOf;
+    const remove = (row: Row) => {
+      const scope = model.get(row.scopeKey)!;
+      scope.delete(row.symbol);
+      if (!scope.size) model.delete(row.scopeKey);
+    };
+    const prune = () => {
+      rows().filter(row => row.savedAt <= Date.now() - MARKET_WATCH_DAILY_CHANGE_CACHE_TTL_MS).forEach(remove);
+      rows().sort((left, right) => right.savedAt - left.savedAt || compare(right, left)
+        || right.scopeKey.localeCompare(left.scopeKey) || right.symbol.localeCompare(left.symbol))
+        .slice(MAX_MARKET_WATCH_DAILY_CHANGE_CACHE_ENTRIES).forEach(remove);
+    };
+    const apply = (row: Row) => {
+      const scope = model.get(row.scopeKey) ?? new Map<string, Row>();
+      const current = scope.get(row.symbol);
+      if (current && (compare(row, current) < 0 || (compare(row, current) === 0
+        && current.source === row.source && current.asOf === row.asOf
+        && current.completedAt === row.completedAt && current.value === row.value))) return;
+      scope.set(row.symbol, row);
+      model.set(row.scopeKey, scope);
+    };
+    const verify = () => {
+      flushMarketWatchDailyChangeCache();
+      const actual = JSON.parse(localStorage.getItem(MARKET_WATCH_DAILY_CHANGE_CACHE_STORAGE_KEY) || '{}').entries;
+      expect(actual).toEqual(rows());
+      expect(actual.length).toBeLessThanOrEqual(500);
+    };
+    // A batch over capacity follows the original stable sort, including locale ties.
+    const symbols = Array.from({ length: 557 }, (_, i) => `SYMBOL${i}`)
+      .concat(['É', 'E\u0301', 'Å', 'A\u030a']);
+    const initial = symbols.map((symbol, i): Row => ({
+      scopeKey: scopeA, symbol, value: i, asOf: NOW - (i % 3), savedAt: NOW,
+      source: i % 2 ? 'quote' : 'history',
+    }));
+    rememberMarketWatchDailyChanges(scopeA, initial);
+    initial.forEach(apply); prune(); verify();
+    for (let pass = 0; pass < 3; pass += 1) {
+      for (let i = 0; i < symbols.length; i += 1) {
+        const row: Row = { scopeKey: i % 7 ? scopeA : scopeB, symbol: symbols[i], value: pass + i,
+          asOf: NOW + pass + 1, savedAt: NOW + (pass === 1 ? -10 : pass), source: i % 2 ? 'quote' : 'history' };
+        vi.setSystemTime(row.savedAt);
+        rememberMarketWatchDailyChange(row.scopeKey, row.symbol, row.value, row.asOf, row.source);
+        apply(row); prune();
+      }
+      verify();
+    }
+    vi.setSystemTime(NOW + MARKET_WATCH_DAILY_CHANGE_CACHE_TTL_MS + 1);
+    const final: Row = { scopeKey: scopeB, symbol: 'BTCUSD', value: 1, asOf: Date.now(), savedAt: Date.now(), source: 'quote' };
+    rememberMarketWatchDailyChange(final.scopeKey, final.symbol, final.value, final.asOf, final.source);
+    apply(final); prune(); verify();
+    resetMarketWatchDailyChangeCacheForTests({ clearStorage: false });
+    expect(readMarketWatchDailyChange(scopeB, 'BTCUSD')).toBe(1);
+  });
+
+  it('preserves stable retention ties on a one-entry overflow', () => {
+    rememberMarketWatchDailyChanges(scopeA, Array.from({ length: 499 }, (_, i) => ({
+      symbol: `SYMBOL${i}`, value: i, asOf: NOW + 1, source: 'quote' as const,
+    })));
+    const first = 'É';
+    const second = 'E\u0301';
+    expect(first.localeCompare(second)).toBe(0);
+    rememberMarketWatchDailyChange(scopeA, first, 1, NOW, 'quote');
+    rememberMarketWatchDailyChange(scopeA, second, 2, NOW, 'quote');
+    expect(readMarketWatchDailyChange(scopeA, first)).toBe(1);
+    expect(readMarketWatchDailyChange(scopeA, second)).toBeNull();
+  });
+
+  it('counts loaded duplicates and read-time expirations without changing the 500-entry bound', () => {
+    const stored = Array.from({ length: 561 }, (_, i) => ({
+      scopeKey: scopeA, symbol: `SYMBOL${i}`, value: i, asOf: NOW + i,
+      savedAt: NOW - 1, source: 'quote',
+    }));
+    stored.push({ ...stored[560], value: 999, asOf: NOW + 1000 });
+    localStorage.setItem(MARKET_WATCH_DAILY_CHANGE_CACHE_STORAGE_KEY, JSON.stringify({ version: 1, entries: stored }));
+    resetMarketWatchDailyChangeCacheForTests({ clearStorage: false });
+    expect(readMarketWatchDailyChange(scopeA, 'SYMBOL560')).toBe(999);
+    flushMarketWatchDailyChangeCache();
+    expect(JSON.parse(localStorage.getItem(MARKET_WATCH_DAILY_CHANGE_CACHE_STORAGE_KEY)!).entries).toHaveLength(500);
+    vi.setSystemTime(NOW + MARKET_WATCH_DAILY_CHANGE_CACHE_TTL_MS - 1);
+    expect(readMarketWatchDailyChange(scopeA, 'SYMBOL560')).toBeNull();
+    rememberMarketWatchDailyChange(scopeB, 'BTCUSD', 1, Date.now(), 'quote');
+    flushMarketWatchDailyChangeCache();
+    expect(JSON.parse(localStorage.getItem(MARKET_WATCH_DAILY_CHANGE_CACHE_STORAGE_KEY)!).entries).toEqual([{
+      scopeKey: scopeB, symbol: 'BTCUSD', value: 1, asOf: Date.now(), savedAt: Date.now(), source: 'quote',
+    }]);
+  });
 });
 
 describe('resolveCompletedDailyChange', () => {

@@ -12,6 +12,8 @@ import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { cancelPendingAggregations, getWorkerManager, type SymbolAggregationRequest, type SymbolAggregationResult } from '../services/aggregationWorkerManager';
 import type { CandleUpdateSource, OHLCV, Tick } from '../types/marketData';
+import { compareSequence } from '../services/terminalQuoteFreshness';
+import { compareQuoteSourceRevision } from '../utils/quoteSourceEpoch';
 import {
   isStructurallyValidPriceCandle,
   repairPriceCandle,
@@ -76,6 +78,8 @@ export interface CandleUpdate {
 
 export interface UpdateTickOptions {
   syncAppStore?: boolean;
+  /** Dispatcher has a separate ordered financial delivery for these quotes. */
+  displayOnly?: boolean;
 }
 
 export type MarketTickEntry = readonly [symbol: string, tick: Tick];
@@ -317,22 +321,6 @@ const findLastStrictlyOlderTick = (ticks: readonly Tick[], timestamp: number | n
   return null;
 };
 
-function calculateVWAP(ticks: Tick[]): number {
-  if (ticks.length === 0) return 0;
-
-  let totalVolume = 0;
-  let totalValue = 0;
-
-  ticks.forEach((tick) => {
-    const price = (tick.bid + tick.ask) / 2;
-    const volume = tick.volume || 1;
-    totalValue += price * volume;
-    totalVolume += volume;
-  });
-
-  return totalVolume > 0 ? totalValue / totalVolume : 0;
-}
-
 function calculateSMA(prices: number[], period: number): number {
   if (prices.length < period) return prices[prices.length - 1] || 0;
 
@@ -404,28 +392,40 @@ function calculateStats(
   const now = Date.now();
   const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
 
-  // Get ticks from last 24 hours
-  const ticks24h = tickBuffer.filter((t) => t.timestamp >= twentyFourHoursAgo);
-
-  // Calculate high/low
+  // Scan the retained window once, without a filtered copy. Keep each sum in
+  // original tick order: incremental subtraction would change rounding after
+  // capacity eviction or an equal-time correction.
   let high24h = currentTick.bid;
   let low24h = currentTick.ask;
   let volume24h = 0;
+  let totalVolume = 0;
+  let totalValue = 0;
+  let firstTick: Tick | undefined;
 
-  ticks24h.forEach((tick) => {
-    high24h = Math.max(high24h, tick.bid, tick.ask);
-    low24h = Math.min(low24h, tick.bid, tick.ask);
+  for (let index = 0; index < tickBuffer.length; index += 1) {
+    const tick = tickBuffer[index];
+    // Preserve the inclusive raw timestamp filter, including NaN exclusion.
+    if (!(tick.timestamp >= twentyFourHoursAgo)) continue;
+    if (firstTick === undefined) firstTick = tick;
+    const bid = tick.bid;
+    const ask = tick.ask;
+    high24h = Math.max(high24h, bid, ask);
+    low24h = Math.min(low24h, bid, ask);
     volume24h += tick.volume || 0;
-  });
+    const price = (bid + ask) / 2;
+    const volume = tick.volume || 1;
+    totalValue += price * volume;
+    totalVolume += volume;
+  }
 
   // Calculate change
   const currentPrice = (currentTick.bid + currentTick.ask) / 2;
-  const price24hAgo = ticks24h.length > 0 ? (ticks24h[0].bid + ticks24h[0].ask) / 2 : currentPrice;
+  const price24hAgo = firstTick ? (firstTick.bid + firstTick.ask) / 2 : currentPrice;
   const change24h = currentPrice - price24hAgo;
   const changePercent24h = price24hAgo > 0 ? (change24h / price24hAgo) * 100 : 0;
 
   // Calculate VWAP
-  const vwap = calculateVWAP(ticks24h);
+  const vwap = totalVolume > 0 ? totalValue / totalVolume : 0;
 
   // Calculate moving averages from OHLCV data
   const closePrices = ohlcv1h.map((candle) => candle.close);
@@ -452,32 +452,43 @@ const applyMarketTick = (
   tick: Tick,
   data: SymbolData,
   now: number,
+  displayOnly = false,
 ): { data: SymbolData; aggregation: SymbolAggregationRequest | null; isCorrection: boolean } | null => {
   const freshness = data.currentTick
     ? compareCanonicalTickFreshness(data.currentTick, tick)
     : 1;
-  if (freshness < 0) return null;
-  if (freshness === 0 && areMarketTicksIdentical(data.currentTick, tick)) return null;
+  const snapshot = displayOnly || tick.quoteDeliveryKind === 'snapshot';
+  const displayAhead = freshness < 0 && tick.quoteDeliveryKind === 'event' && !snapshot;
+  if (freshness < 0 && !displayAhead) return null;
+  const lastEvent = data.tickBuffer.at(-1) ?? null;
+  const eventFreshness = lastEvent ? compareCanonicalTickFreshness(lastEvent, tick) : 1;
+  const eventSequence = compareQuoteSourceRevision(tick.source_revision, lastEvent?.source_revision) !== 1
+    && lastEvent?.sequence !== undefined && tick.sequence !== undefined
+    ? compareSequence(tick.sequence, lastEvent.sequence) : undefined;
+  if (!snapshot && (eventFreshness < 0 || (eventFreshness === 0 && eventSequence !== undefined && eventSequence < 0))) return null;
+  if (snapshot && freshness === 0 && areMarketTicksIdentical(data.currentTick, tick)) return null;
+  if (!snapshot && eventFreshness === 0 && areMarketTicksIdentical(lastEvent, tick)) return null;
 
-  const isCorrection = freshness === 0;
+  const isCorrection = !snapshot && eventFreshness === 0 && (eventSequence === undefined || eventSequence === 0);
   const tickTimestamp = getCanonicalTickTimestamp(tick);
-  const previousTick = isCorrection
+  const previousTick = displayAhead ? data.previousTick : freshness === 0
     ? findLastStrictlyOlderTick(data.tickBuffer, tickTimestamp) ?? data.previousTick
     : data.currentTick;
-  const tickBuffer = isCorrection
+  const currentTick = displayAhead ? data.currentTick! : tick;
+  const tickBuffer = snapshot ? data.tickBuffer : isCorrection
     ? replaceSameTimestampTick(data.tickBuffer, tick)
     : appendBoundedTick(data.tickBuffer, tick);
-  const shouldAggregate = isCorrection || now - data.lastAggregation > 60_000;
+  const shouldAggregate = !snapshot && (isCorrection || now - data.lastAggregation > 60_000);
   const shouldUpdateStats = isCorrection || !data.stats || now - data.stats.lastUpdate > 1_000;
-  const stats = shouldUpdateStats
-    ? calculateStats(symbol, tick, previousTick, tickBuffer, data.ohlcv1h)
-    : data.stats;
+  const stats = snapshot
+    ? data.stats ? { ...data.stats, currentPrice: (currentTick.bid + currentTick.ask) / 2 } : null
+    : shouldUpdateStats ? calculateStats(symbol, currentTick, previousTick, tickBuffer, data.ohlcv1h) : data.stats;
 
   return {
     isCorrection,
     data: {
       ...data,
-      currentTick: tick,
+      currentTick,
       previousTick,
       stats,
       tickBuffer,
@@ -556,7 +567,7 @@ export const useMarketDataStore = create<MarketDataState>()(
             latestTicks.forEach(([symbol, tick]) => {
               try {
                 const currentData = nextSymbolData[symbol] || createEmptySymbolData();
-                const transition = applyMarketTick(symbol, tick, currentData, now);
+                const transition = applyMarketTick(symbol, tick, currentData, now, options.displayOnly);
                 if (!transition) return;
 
                 if (!changed) nextSymbolData = { ...state.symbolData };

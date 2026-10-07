@@ -31,9 +31,10 @@ describe('Toolbox provisional market-order source contract', () => {
     expect(dockSource).toContain('toolboxTrade.pendingPositions');
     expect(dockSource).toContain('() => [...pendingPositions, ...sortedLivePositions]');
     expect(dockSource).toContain('const isPendingPlacement = Boolean(');
-    expect(dockSource).toContain('disabled={isPendingPlacement}');
+    expect(dockSource).toContain('const actionsDisabled = investorReadOnly || isPendingPlacement || isAwaitingClose;');
+    expect(dockSource).toContain('disabled={actionsDisabled}');
     expect(dockSource).toContain('openModifyPosition(position);');
     expect(dockSource).toContain('sessionScope: getCurrentBrokerAccountSessionScopeKey()');
-    expect(dockSource).toContain('if (isPendingPlacement) return;');
+    expect(dockSource).toContain('if (actionsDisabled) return;');
   });
 });

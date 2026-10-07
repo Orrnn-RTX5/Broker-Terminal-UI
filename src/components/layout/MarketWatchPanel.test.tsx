@@ -655,6 +655,10 @@ describe('MarketWatchPanel symbol visibility', () => {
       expect(bidPrice).toHaveStyle({ color: 'var(--color-quote-up)' });
       expect(askPrice).toHaveClass('rtx-market-watch__price--down');
       expect(askPrice).toHaveStyle({ color: '#ff5858' });
+      // Quotes may change faster than a color transition can finish. Preserve
+      // directional colors without continuously animating every subscribed row.
+      expect(bidPrice).toHaveStyle({ transition: 'none' });
+      expect(askPrice).toHaveStyle({ transition: 'none' });
       expect(row.querySelector('.rtx-market-watch__direction--up')).toBeInTheDocument();
       expect(row.style.borderBottomStyle).toBe('none');
     } finally {

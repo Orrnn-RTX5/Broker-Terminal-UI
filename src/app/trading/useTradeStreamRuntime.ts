@@ -15,6 +15,8 @@ import { useAlertStore } from '../../store/useAlertStore';
 import { useMarketDataStore, type CandleUpdate } from '../../store/useMarketDataStore';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { normalizeRealtimeTick, parseTickPayloadContexts, toNumber, WS_DEBUG } from '../../features/trading/runtime/marketTickNormalization';
+import { quoteDiagnosticsEnabled } from '../../services/quoteDiagnostics';
+import { beginPositionDiagnostics } from './positionDiagnostics';
 import {
   extractAccountMetrics,
   getPositionEventName,
@@ -83,6 +85,7 @@ export const useTradeStreamRuntime = ({
     });
 
     const unsubscribe = subscribe('*', (message: unknown) => {
+      const positionReceiptMonoMs = quoteDiagnosticsEnabled() ? performance.now() : undefined;
       try {
         const data = (asRecord(message) ?? {}) as WebSocketMessage;
         const isTickLikeUpdate = data.type === 'update' && (
@@ -141,6 +144,7 @@ export const useTradeStreamRuntime = ({
           if (decoded.rows.some((row) => isOtherBrokerId(row.broker_id, brokerId))) return;
           if (!isSessionActive() || getLiveTradingLogin() !== acceptedLogin) return;
 
+          const recordAppliedPositionDiagnostics = beginPositionDiagnostics(decoded.rows, useAppStore.getState().positions, positionReceiptMonoMs);
           markTradeWsMessage();
           incrementPositionsStreamVersion();
           try {
@@ -186,6 +190,7 @@ export const useTradeStreamRuntime = ({
               if (result.needsRevalidation || eventName === 'position_partial_close') requestPositionSnapshotRevalidation();
             }
 
+            recordAppliedPositionDiagnostics?.(useAppStore.getState().positions);
             const openTickets = new Set((useAppStore.getState().positions as Position[]).map((position) => position.id));
             const confirmedClosedTickets = decoded.closedTickets.filter((closedTicket) => (
               !hasServerClosedTicket(closedTicket) && !openTickets.has(closedTicket)
@@ -197,6 +202,8 @@ export const useTradeStreamRuntime = ({
             }
           } catch (error) {
             console.error('[WS POSITIONS ERROR]', error);
+          } finally {
+            recordAppliedPositionDiagnostics?.dispose();
           }
           return;
         }

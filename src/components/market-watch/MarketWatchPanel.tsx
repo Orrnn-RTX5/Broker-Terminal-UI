@@ -207,6 +207,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+    const scrollToSymbolRef = useRef<((symbol: string) => void) | null>(null);
     const searchListboxId = useId();
 
     useEffect(() => {
@@ -329,7 +330,8 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     const explorerOptionCount = showingSymbolGroups ? symbolGroups.length : filteredSymbols.length;
     const scrollSymbolIntoView = useCallback((symbol: string) => {
       window.requestAnimationFrame(() => {
-        rowRefs.current.get(symbol)?.scrollIntoView({ block: 'center' });
+        if (scrollToSymbolRef.current) scrollToSymbolRef.current(symbol);
+        else rowRefs.current.get(symbol)?.scrollIntoView({ block: 'center' });
       });
     }, [rowRefs]);
 
@@ -799,6 +801,8 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
 
           {(showSymbolsPanel || marketWatchView === 'symbols') && (
             <MarketWatchGrid
+              key={brokerAccountScopeKey}
+              scrollToSymbolRef={scrollToSymbolRef}
               showRows={!showSymbolsPanel}
               footer={
                 <MarketWatchSymbolExplorer

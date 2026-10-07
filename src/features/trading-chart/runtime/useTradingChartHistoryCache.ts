@@ -146,7 +146,7 @@ export function useTradingChartHistoryCache({
   ) => {
     if (!symbol || candles.length === 0) return;
     const { key, metadata } = buildHistoryCacheTarget(activeTf);
-    candleCache.mergeLatest(key, candles, { ...metadata, brokerOffsetSeconds, source });
+    candleCache.mergeLatestWithoutSnapshot(key, candles, { ...metadata, brokerOffsetSeconds, source });
   }, [brokerTimeOffsetSecRef, buildHistoryCacheTarget, symbol]);
 
   const hydrateHistoryFromCache = useCallback((activeTf: Timeframe, reason: string): boolean => {

@@ -46,6 +46,7 @@ describe('BottomDock trade type presentation', () => {
     it('centers every trade header and row value without offsetting sortable labels', () => {
         const headerHelpers = tradeTableSource.match(/const renderSortableHeader[\s\S]*?return \(/)?.[0] ?? '';
         const tradeTable = tradeTableSource.match(/<table\s+className="rtx-trade-table[\s\S]*?<\/table>/)?.[0] ?? '';
+        const positionRow = tradeTableSource.match(/<PositionDiagnosticRow\b[\s\S]*?<\/PositionDiagnosticRow>/)?.[0] ?? '';
 
         expect(headerHelpers).toContain('text-center border-r');
         expect(headerHelpers).toContain('items-center justify-center px-2 text-center');
@@ -53,8 +54,12 @@ describe('BottomDock trade type presentation', () => {
         expect(tradeTable).toContain('flex items-center justify-center');
         expect(tradeTable).toContain('rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center');
         expect(tradeTable).toContain('rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center');
-        expect(tradeTable).not.toContain('text-right');
-        expect(tradeTable).not.toContain('text-left');
+        // Full-width status messages wrap below the centered position values.
+        expect(positionRow).not.toBe('');
+        for (const values of [headerHelpers, positionRow]) {
+            expect(values).not.toContain('text-right');
+            expect(values).not.toContain('text-left');
+        }
     });
 
     it('pins Close In-Profit, Close In-Loss, and Close All to the bottom tab strip', () => {

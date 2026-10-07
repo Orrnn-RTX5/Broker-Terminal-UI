@@ -6,8 +6,13 @@ import {
   useState,
 } from 'react';
 import { apiClient, ApiError } from '../../api/client';
-import { getServerUrl } from '../../services/brokerSession';
+import { getAccessToken, getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey,
+  getServerUrl, onCommittedBrokerAccountSessionScopeChange, onSessionChange } from '../../services/brokerSession';
+import { getTerminalQuoteSession, getNewerLiveTerminalQuoteEvidence, readQuoteFreshnessMetadata,
+  recordTerminalQuoteSourcePolicy,
+  subscribeTerminalQuoteFreshness, terminalQuoteFreshnessEnabled, type TerminalQuoteMetadata } from '../../services/terminalQuoteFreshness';
 import { recordBrokerServerTime } from '../../services/brokerServerClock';
+import { quoteDiagnosticSymbolSelected, quoteDiagnosticsEnabled, recordQuoteDiagnostic } from '../../services/quoteDiagnostics';
 import { INSTRUMENT_CATALOGUE_REFRESHED_EVENT } from '../../services/instrumentCatalogueEvents';
 import {
   getApiRootBaseUrl,
@@ -272,6 +277,35 @@ const writeCachedActiveMarketSymbols = (cache: ActiveMarketSymbolsCache, scope?:
 export const LIVE_QUOTES_REST_BATCH_SIZE = 50;
 export const ACTIVE_MARKET_SYMBOLS_REFRESH_INTERVAL_MS = 30000;
 
+const MAX_STALE_STATUS_RECOVERY_SYMBOLS = 4096;
+const recoveryOwner = () => ({ token: getAccessToken(), server: getServerUrl(), storage: getActiveMarketSymbolsStorageScope(),
+  account: getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()) });
+const ownsRecovery = (owner: ReturnType<typeof recoveryOwner>) => {
+  const current = recoveryOwner();
+  return owner.token === current.token && owner.server === current.server && owner.storage === current.storage && owner.account === current.account;
+};
+const staleStatusRecoveryCandidates = (response: unknown): Map<string, TerminalQuoteMetadata> => {
+  const candidates = new Map<string, TerminalQuoteMetadata>();
+  const rows = asRecord(response).symbol_status;
+  if (!terminalQuoteFreshnessEnabled() || !Array.isArray(rows)) return candidates;
+  // Match the Bridge's stale-only state explicitly. Unknown, silent, missing,
+  // wrong-source, and fresh-but-not-tradable rows cannot grant membership.
+  for (const entry of rows) {
+    const row = asRecord(entry); const symbol = normalizeSymbol(row.symbol);
+    if (!symbol) continue;
+    candidates.delete(symbol);
+    if (row.has_data !== true || row.fresh !== false || row.stale !== true || row.silent !== false
+      || row.source_mismatch !== false || row.tradable !== false) continue;
+    const metadata = readQuoteFreshnessMetadata(row);
+    if (!metadata.source || metadata.source.trim() !== metadata.source || metadata.provider_timestamp === undefined
+      || (row.expected_source !== undefined && row.expected_source !== '' && row.expected_source !== metadata.source)
+      || typeof metadata.sequence !== 'string' || !/^\d{1,20}$/.test(metadata.sequence)
+      || BigInt(metadata.sequence) > 18446744073709551615n) continue;
+    if (candidates.size < MAX_STALE_STATUS_RECOVERY_SYMBOLS) candidates.set(symbol, metadata);
+  }
+  return candidates;
+};
+
 export const getLiveQuoteRestBatches = (
   symbols: string[],
   batchSize = LIVE_QUOTES_REST_BATCH_SIZE
@@ -297,6 +331,57 @@ export function useActiveMarketSymbols() {
   const [error, setError] = useState<string | null>(null);
   const requestGenerationRef = useRef(0);
   const requestAbortRef = useRef<AbortController | null>(null);
+  const recoveryOwnerGenerationRef = useRef(0);
+  const recoveryRef = useRef<{ owner: ReturnType<typeof recoveryOwner>; quoteSession: number;
+    baseSymbols: string[]; candidates: Map<string, TerminalQuoteMetadata>; restored: Set<string> } | null>(null);
+  const unsubscribeRecoveryRef = useRef<(() => void) | null>(null);
+  const clearRecovery = useCallback((restoreBase = false) => {
+    const previous = recoveryRef.current;
+    recoveryRef.current = null;
+    unsubscribeRecoveryRef.current?.(); unsubscribeRecoveryRef.current = null;
+    if (restoreBase && previous?.restored.size) setSymbols(previous.baseSymbols);
+  }, []);
+  const reconcileRecovery = useCallback((changedSymbol?: string) => {
+    const snapshot = recoveryRef.current;
+    if (!snapshot) return;
+    if (changedSymbol && !snapshot.candidates.has(changedSymbol)) return;
+    if (snapshot.quoteSession !== getTerminalQuoteSession() || !ownsRecovery(snapshot.owner)) { clearRecovery(true); return; }
+    let changed = false;
+    const candidates = changedSymbol ? [[changedSymbol, snapshot.candidates.get(changedSymbol)!] as const] : snapshot.candidates;
+    for (const [symbol, metadata] of candidates) {
+      const live = getNewerLiveTerminalQuoteEvidence(symbol, metadata, snapshot.quoteSession);
+      if (live && !snapshot.restored.has(symbol)) {
+        snapshot.restored.add(symbol); changed = true;
+        if (quoteDiagnosticsEnabled() && quoteDiagnosticSymbolSelected(symbol)) {
+          // Adjacent records identify the exact old status and accepted quote;
+          // neither exports account ownership or changes quote ingestion.
+          for (const [phase, evidence] of [['status', metadata], ['quote', live]] as const) {
+            recordQuoteDiagnostic({ kind: 'feed-status', reason: 'stale-status-superseded', phase, symbol,
+              source: evidence.source, providerTimestamp: evidence.provider_timestamp,
+              hubSequence: evidence.sequence, browserGeneration: snapshot.quoteSession });
+          }
+        }
+      }
+      else if (!live && snapshot.restored.delete(symbol)) changed = true;
+    }
+    if (changed) setSymbols(uniqueSymbols([...snapshot.baseSymbols, ...snapshot.restored]));
+  }, [clearRecovery]);
+  const installRecovery = useCallback((response: unknown, baseSymbols: string[], owner: ReturnType<typeof recoveryOwner>, quoteSession: number) => {
+    if (!ownsRecovery(owner)) return;
+    clearRecovery(); setSymbols(baseSymbols);
+    if (quoteSession !== getTerminalQuoteSession()) return;
+    const candidates = staleStatusRecoveryCandidates(response);
+    if (!candidates.size) return;
+    recoveryRef.current = { owner, quoteSession, baseSymbols, candidates, restored: new Set() };
+    unsubscribeRecoveryRef.current = subscribeTerminalQuoteFreshness(reconcileRecovery);
+    reconcileRecovery();
+  }, [clearRecovery, reconcileRecovery]);
+  useEffect(() => {
+    const revoke = () => { recoveryOwnerGenerationRef.current++; clearRecovery(true); };
+    const unsubscribeSession = onSessionChange(revoke);
+    const unsubscribeAccount = onCommittedBrokerAccountSessionScopeChange(revoke);
+    return () => { unsubscribeSession(); unsubscribeAccount(); clearRecovery(); };
+  }, [clearRecovery]);
   const sessionRevision = useBrokerSessionRevision();
   // FIX: Capture routing/cache ownership per broker session so an old request
   // cannot commit into a newly selected broker after dynamic URLs change.
@@ -310,6 +395,9 @@ export function useActiveMarketSymbols() {
   }, [sessionRevision]);
 
   const reload = useCallback(async () => {
+    const owner = recoveryOwner();
+    const ownerGeneration = recoveryOwnerGenerationRef.current;
+    const quoteSession = getTerminalQuoteSession();
     const requestGeneration = ++requestGenerationRef.current;
     requestAbortRef.current?.abort();
     const controller = new AbortController();
@@ -325,8 +413,10 @@ export function useActiveMarketSymbols() {
         skipDynamicUrl: true,
         signal: controller.signal,
       });
+      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted
+        || ownerGeneration !== recoveryOwnerGenerationRef.current || !ownsRecovery(owner)) return;
       recordBrokerServerTime(response.server_time, requestStartedAt);
-      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
+      recordTerminalQuoteSourcePolicy(response);
       const nextSymbols = extractActiveMarketSymbols(response);
       recordMarketSymbolStatusRows(response);
 
@@ -341,30 +431,40 @@ export function useActiveMarketSymbols() {
             ? response.silent_symbols.length
             : undefined,
         }, storageScope);
-        setSymbols(nextSymbols);
+        installRecovery(response, nextSymbols, owner, quoteSession);
+        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'feed-status', reason: 'authoritative-status',
+          feedCurrent: true, activeSymbolCount: nextSymbols.length });
         setCurrent(true);
         return;
       }
 
       const cached = readCachedActiveMarketSymbols(storageScope);
+      clearRecovery();
       setSymbols(cached.symbols);
+      if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'feed-status', reason: 'non-authoritative-status',
+        feedCurrent: false, activeSymbolCount: 0 });
       setCurrent(false);
       setError('No active feed symbols returned');
     } catch (err) {
-      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
+      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted
+        || ownerGeneration !== recoveryOwnerGenerationRef.current || !ownsRecovery(owner)) return;
       const cached = readCachedActiveMarketSymbols(storageScope);
+      clearRecovery();
       setSymbols(cached.symbols);
+      if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'feed-status', reason: 'status-request-failed',
+        feedCurrent: false, activeSymbolCount: 0, httpStatus: err instanceof ApiError ? err.status : undefined });
       setCurrent(false);
       setError(err instanceof ApiError ? err.message : 'Failed to load active feed symbols');
     } finally {
-      if (requestGeneration === requestGenerationRef.current && !controller.signal.aborted) {
+      if (requestGeneration === requestGenerationRef.current && !controller.signal.aborted
+        && ownerGeneration === recoveryOwnerGenerationRef.current && ownsRecovery(owner)) {
         requestAbortRef.current = null;
         setSettled(true);
         setLoading(false);
         notifyMarketSymbolsRefreshed();
       }
     }
-  }, [apiRootBaseUrl, storageScope]);
+  }, [apiRootBaseUrl, storageScope, clearRecovery, installRecovery]);
 
   useEffect(() => {
     const handleRefreshRequested = () => { void reload(); };
@@ -383,6 +483,7 @@ export function useActiveMarketSymbols() {
       const staleSymbols = uniqueSymbols(detail?.symbols ?? []);
 
       if (staleSymbols.length > 0) {
+        clearRecovery(true);
         const staleSet = new Set(staleSymbols);
         setSymbols((current) => current.filter((symbol) => !staleSet.has(symbol)));
         const cached = readCachedActiveMarketSymbols(storageScope);
@@ -414,7 +515,7 @@ export function useActiveMarketSymbols() {
       window.removeEventListener(MARKET_SYMBOLS_STALE_EVENT, handleStaleSymbols);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [reload, storageScope]);
+  }, [reload, storageScope, clearRecovery]);
 
   return useMemo(() => ({ symbols, loading, settled, current, error, reload }),
     [symbols, loading, settled, current, error, reload]);

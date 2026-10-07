@@ -1,9 +1,11 @@
 export const ORDER_COMMAND_POLL_INTERVAL_MS = 1_000;
 export const ORDER_COMMAND_FALLBACK_DEADLINE_MS = 30_000;
+export const ORDER_COMMAND_BACKGROUND_RECONCILIATION_MS = 300_000;
 
 export type OrderCommandStatus =
   | 'accepted'
   | 'processing'
+  | 'outcome-unknown'
   | 'filled'
   | 'rejected'
   | 'expired';
@@ -19,6 +21,7 @@ export type NormalizedOrderCommand = {
   clientOrderId?: string;
   executeBeforeMs?: number;
   acceptedAtMs?: number;
+  serverTimeMs?: number;
   error?: OrderCommandError;
   position?: Record<string, unknown>;
   synthetic?: boolean;
@@ -33,6 +36,7 @@ export class OrderCommandTerminalError extends Error {
   readonly preserveBackendOrderError = true;
 
   constructor(command: NormalizedOrderCommand, clientOrderId: string) {
+    if (!command.terminal || command.synthetic) throw new Error('Only authoritative terminal commands may be rejected');
     const code = command.error?.code;
     const backendMessage = command.error?.message;
     super(
@@ -48,13 +52,27 @@ export class OrderCommandTerminalError extends Error {
   }
 }
 
+export class OrderCommandOutcomeUnknownError extends Error {
+  readonly code = 'ORDER_OUTCOME_UNKNOWN';
+  readonly orderWasSent = true;
+  constructor(readonly clientOrderId: string) {
+    super(`Awaiting confirmation. Check command ${clientOrderId} before placing another order.`);
+    this.name = 'OrderCommandOutcomeUnknownError';
+  }
+}
+
 export type PollOrderCommandOptions = {
   clientOrderId: string;
   initialResponse: unknown;
-  readStatus: (clientOrderId: string) => Promise<unknown>;
+  readStatus: (clientOrderId: string, signal?: AbortSignal) => Promise<unknown>;
   onStatus?: (command: NormalizedOrderCommand) => void;
   onPollError?: (error: unknown) => void;
   startedAtMs?: number;
+  startedAtMonoMs?: number;
+  initialResponseReceivedAtMonoMs?: number;
+  /** Continue read-only reconciliation after the foreground wait ends. */
+  backgroundReconciliationMs?: number;
+  isCurrent?: () => boolean;
   pollIntervalMs?: number;
   /** Reconcile an already-sent uncertain order without an extra first-poll delay. */
   pollImmediately?: boolean;
@@ -224,6 +242,7 @@ export const normalizeOrderCommand = (
   const acceptedAtMs = parseOrderCommandEpochMs(
     record.accepted_at ?? record.acceptedAt ?? data?.accepted_at ?? data?.acceptedAt,
   );
+  const serverTimeMs = parseOrderCommandEpochMs(record.server_time_ms ?? record.server_time ?? data?.server_time_ms ?? data?.server_time);
 
   return {
     status,
@@ -231,6 +250,7 @@ export const normalizeOrderCommand = (
     clientOrderId,
     executeBeforeMs,
     acceptedAtMs,
+    serverTimeMs,
     error: readError(record, data),
     position: readFilledPosition(status, record, data),
     raw: response,
@@ -255,19 +275,19 @@ const validateCorrelation = (
   }
 };
 
-const createExpiredCommand = (
+const createUnknownCommand = (
   previous: NormalizedOrderCommand,
   clientOrderId: string,
-  executeBeforeMs: number,
+  executeBeforeMs?: number,
 ): NormalizedOrderCommand => ({
   ...previous,
-  status: 'expired',
-  terminal: true,
+  status: 'outcome-unknown',
+  terminal: false,
   clientOrderId,
   executeBeforeMs,
-  error: previous.error ?? {
-    code: 'ORDER_COMMAND_EXPIRED',
-    message: 'No terminal order result arrived before execute_before.',
+  error: {
+    code: 'ORDER_OUTCOME_UNKNOWN',
+    message: `Awaiting confirmation. Check command ${clientOrderId} before placing another order.`,
   },
   synthetic: true,
 });
@@ -278,28 +298,37 @@ export const pollOrderCommandUntilTerminal = async (
   const clientOrderId = String(options.clientOrderId ?? '').trim();
   if (!clientOrderId) throw new Error('client_order_id is required to poll order status');
 
-  const now = options.now ?? Date.now;
+  // Waiting budgets use monotonic time. Never compare a server deadline with the PC clock.
+  const now = options.now ?? (() => performance.now());
   const sleep = options.sleep ?? defaultSleep;
   const initialNow = now();
-  const requestedStart = Number(options.startedAtMs);
-  const startedAtMs = Number.isFinite(requestedStart) && requestedStart <= initialNow
-    ? requestedStart
-    : initialNow;
-  const pollIntervalMs = Math.max(
-    ORDER_COMMAND_POLL_INTERVAL_MS,
-    toPositiveDuration(options.pollIntervalMs, ORDER_COMMAND_POLL_INTERVAL_MS),
-  );
-  const fallbackDeadlineMs = toPositiveDuration(
-    options.fallbackDeadlineMs,
-    ORDER_COMMAND_FALLBACK_DEADLINE_MS,
-  );
-
+  const requestedStart = options.startedAtMonoMs ?? (options.now ? options.startedAtMs : undefined);
+  const startedAtMono = typeof requestedStart === 'number' && Number.isFinite(requestedStart) && requestedStart <= initialNow ? requestedStart : initialNow;
+  const pollIntervalMs = Math.max(ORDER_COMMAND_POLL_INTERVAL_MS, toPositiveDuration(options.pollIntervalMs, ORDER_COMMAND_POLL_INTERVAL_MS));
+  const foregroundBudget = toPositiveDuration(options.fallbackDeadlineMs, ORDER_COMMAND_FALLBACK_DEADLINE_MS);
+  const backgroundBudget = Math.min(ORDER_COMMAND_BACKGROUND_RECONCILIATION_MS, Math.max(0, options.backgroundReconciliationMs ?? 0));
+  const hardDeadline = Math.max(initialNow, startedAtMono + foregroundBudget) + backgroundBudget;
   let command = normalizeOrderCommand(options.initialResponse, clientOrderId);
   validateCorrelation(command, clientOrderId);
   options.onStatus?.(command);
   if (command.terminal) return command;
-
-  let executeBeforeMs = command.executeBeforeMs ?? (startedAtMs + fallbackDeadlineMs);
+  let executeBeforeMs = command.executeBeforeMs;
+  let foregroundDeadline = startedAtMono + foregroundBudget;
+  const observeDeadline = (next: NormalizedOrderCommand, receivedAtMono: number) => {
+    if (next.executeBeforeMs === undefined) return;
+    executeBeforeMs = next.executeBeforeMs;
+    const serverReference = next.serverTimeMs ?? next.acceptedAtMs;
+    if (serverReference === undefined) return;
+    const base = next.serverTimeMs === undefined ? startedAtMono : receivedAtMono;
+    foregroundDeadline = Math.min(foregroundDeadline, base + Math.max(0, next.executeBeforeMs - serverReference));
+  };
+  observeDeadline(command, options.initialResponseReceivedAtMonoMs ?? initialNow);
+  let uncertain = false;
+  const publishUnknown = () => {
+    const unknown = createUnknownCommand(command, clientOrderId, executeBeforeMs);
+    if (!uncertain) { uncertain = true; options.onStatus?.(unknown); }
+    return unknown;
+  };
   let readImmediately = options.pollImmediately === true;
   const push = { command: undefined as NormalizedOrderCommand | undefined, closed: false };
   let wakeForTerminal: (() => void) | undefined;
@@ -332,9 +361,11 @@ export const pollOrderCommandUntilTerminal = async (
 
     while (true) {
       if (push.command) return finishPush();
+      if (options.isCurrent?.() === false) return publishUnknown();
+      if (now() >= hardDeadline && uncertain) return publishUnknown();
       const delayMs = readImmediately
         ? 0
-        : Math.max(0, Math.min(pollIntervalMs, executeBeforeMs - now()));
+        : Math.max(0, Math.min(uncertain ? Math.max(5000, pollIntervalMs) : pollIntervalMs, (uncertain ? hardDeadline : foregroundDeadline) - now()));
       readImmediately = false;
       if (delayMs > 0) {
         if (terminalSignal) {
@@ -354,37 +385,49 @@ export const pollOrderCommandUntilTerminal = async (
       }
 
       let response: unknown;
+      const readController = new AbortController();
+      let readTimer: ReturnType<typeof setTimeout> | undefined;
       try {
-        const statusRead = options.readStatus(clientOrderId);
+        const statusRead = options.readStatus(clientOrderId, readController.signal);
+        const readTimeout = new Promise<never>((_, reject) => {
+          readTimer = setTimeout(() => { readController.abort(); reject(new Error('Order status read timed out')); }, Math.max(1, Math.min(8000, hardDeadline - now())));
+        });
         // Promise.race observes both outcomes of an in-flight read even when
         // the terminal push wins, so a later GET failure cannot go unhandled.
         response = terminalSignal
-          ? await Promise.race([statusRead, terminalSignal])
-          : await statusRead;
+          ? await Promise.race([statusRead, terminalSignal, readTimeout])
+          : await Promise.race([statusRead, readTimeout]);
       } catch (error) {
         if (push.command) return finishPush();
         options.onPollError?.(error);
-        if (now() >= executeBeforeMs) {
-          const expired = createExpiredCommand(command, clientOrderId, executeBeforeMs);
-          options.onStatus?.(expired);
-          return expired;
-        }
+        if (now() >= foregroundDeadline) publishUnknown();
+        if (now() >= hardDeadline || (uncertain && backgroundBudget === 0)) return publishUnknown();
         continue;
+      } finally {
+        if (readTimer !== undefined) clearTimeout(readTimer);
+        readController.abort();
       }
       if (push.command) return finishPush();
 
-      const next = normalizeOrderCommand(response, clientOrderId);
-      validateCorrelation(next, clientOrderId);
+      let next: NormalizedOrderCommand;
+      try {
+        next = normalizeOrderCommand(response, clientOrderId);
+        validateCorrelation(next, clientOrderId);
+      } catch (error) {
+        // A bad status read is not evidence that the submitted order failed.
+        // Keep reconciling the original UUID and allow its terminal push to win.
+        options.onPollError?.(error);
+        if (now() >= foregroundDeadline) publishUnknown();
+        if (now() >= hardDeadline || (uncertain && backgroundBudget === 0)) return publishUnknown();
+        continue;
+      }
       command = next;
-      if (next.executeBeforeMs !== undefined) executeBeforeMs = next.executeBeforeMs;
-      options.onStatus?.(command);
+      observeDeadline(next, now());
+      if (!uncertain || command.terminal) options.onStatus?.(command);
 
       if (command.terminal) return command;
-      if (now() >= executeBeforeMs) {
-        const expired = createExpiredCommand(command, clientOrderId, executeBeforeMs);
-        options.onStatus?.(expired);
-        return expired;
-      }
+      if (now() >= foregroundDeadline) publishUnknown();
+      if (now() >= hardDeadline || (uncertain && backgroundBudget === 0)) return publishUnknown();
     }
   } finally {
     push.closed = true;

@@ -144,10 +144,13 @@ import {
 } from './marketOrderPlacementEvents';
 import {
   OrderCommandTerminalError,
+  OrderCommandOutcomeUnknownError,
+  ORDER_COMMAND_BACKGROUND_RECONCILIATION_MS,
   pollOrderCommandUntilTerminal,
   type NormalizedOrderCommand,
   type PollOrderCommandOptions,
 } from './orderCommandLifecycle';
+import { scheduleOrderStatusRead } from './orderStatusReadScheduler';
 import { getStoredBrokerServer, resolveLoginBrokerTarget } from './brokerServers';
 import {
   getCommittedBrokerAccountSessionScope,
@@ -737,17 +740,41 @@ export const ordersApi = {
       submittedAtMs: number,
       pollImmediately = false,
       subscribeTerminal?: PollOrderCommandOptions['subscribeTerminal'],
+      submittedAtMonoMs = apiStartedAtMs,
+      initialResponseReceivedAtMonoMs?: number,
     ): Promise<endpoints.Position> => {
       let lastVisibleStatus: string | null = null;
+      let awaitingConfirmation = pollImmediately;
+      if (awaitingConfirmation) {
+        const unknown = new OrderCommandOutcomeUnknownError(clientOrderId);
+        dispatchPlacementState('processing', undefined, { code: unknown.code, message: unknown.message });
+      }
       const command = await pollOrderCommandUntilTerminal({
         clientOrderId,
         initialResponse,
-        readStatus: (id) => endpoints.tradingApi.getOrderCommand(id),
+        readStatus: (id, signal) => scheduleOrderStatusRead(() => {
+          if (sessionScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) {
+            throw new OrderCommandOutcomeUnknownError(clientOrderId);
+          }
+          return endpoints.tradingApi.getOrderCommand(id, { account_login: accountLogin, signal, timeoutMs: 8000 });
+        }, signal),
         startedAtMs: submittedAtMs,
+        startedAtMonoMs: submittedAtMonoMs,
+        initialResponseReceivedAtMonoMs,
+        backgroundReconciliationMs: ORDER_COMMAND_BACKGROUND_RECONCILIATION_MS,
+        isCurrent: () => sessionScope === getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()),
         pollImmediately,
         subscribeTerminal,
         onStatus: (next) => {
+          if (next.status === 'outcome-unknown') {
+            lastVisibleStatus = next.status;
+            if (!awaitingConfirmation) dispatchPlacementState('processing', undefined, next.error);
+            awaitingConfirmation = true;
+            return;
+          }
           if (
+            !awaitingConfirmation
+            &&
             (next.status === 'accepted' || next.status === 'processing')
             && next.status !== lastVisibleStatus
           ) {
@@ -756,9 +783,10 @@ export const ordersApi = {
           }
         },
         onPollError: (pollError) => {
-          console.warn('[Trade] Order command status read failed; retrying until execute_before:', pollError);
+          console.warn('[Trade] Order command status read failed; continuing bounded reconciliation:', pollError);
         },
       });
+      if (!command.terminal) throw new OrderCommandOutcomeUnknownError(clientOrderId);
       if (command.status !== 'filled') {
         throw new OrderCommandTerminalError(command, clientOrderId);
       }
@@ -802,9 +830,11 @@ export const ordersApi = {
         reason,
         totalMs: restStartedAtMs - apiStartedAtMs,
       });
+      const submittedAtMs = Date.now();
+      let postResponded = false;
       try {
-        const submittedAtMs = Date.now();
         const response = await endpoints.tradingApi.placeOrder(restOrder);
+        postResponded = true;
         // Separate the HTTP response from any subsequent command polling.
         // Otherwise a slow status-recovery path looks like a slow POST.
         const restRespondedAtMs = tradeOrderNow();
@@ -823,7 +853,7 @@ export const ordersApi = {
         if (legacyPosition) {
           terminalPosition = legacyPosition;
         } else {
-          terminalPosition = await settleOrderCommand(response, submittedAtMs);
+          terminalPosition = await settleOrderCommand(response, submittedAtMs, false, undefined, restStartedAtMs, restRespondedAtMs);
         }
         const restCompletedAtMs = tradeOrderNow();
         recordTradeOrderLatency({
@@ -849,6 +879,12 @@ export const ordersApi = {
           restRttMs: restFailedAtMs - restStartedAtMs,
           totalMs: restFailedAtMs - apiStartedAtMs,
         });
+        if (!postResponded && error instanceof ApiError && (error.status === 0 || error.status >= 500)) {
+          // A lost POST response does not establish that execution failed.
+          // Reconcile this UUID with GET only; never issue another create.
+          return settleOrderCommand({ status: 'processing', client_order_id: clientOrderId },
+            submittedAtMs, true, undefined, restStartedAtMs);
+        }
         throw error;
       }
     };
@@ -894,6 +930,8 @@ export const ordersApi = {
                 status?: unknown;
                 requestId?: unknown;
                 orderWasSent?: unknown;
+                orderCommandResponse?: unknown;
+                orderCommandReceivedAtMonoMs?: number;
               }
             : undefined;
           if (
@@ -927,10 +965,10 @@ export const ordersApi = {
                     if (isTerminalTradeOrderMessage(message)) listener(frame);
                   })
                 : undefined;
-            return settleOrderCommand({
+            return settleOrderCommand(socketError.orderCommandResponse ?? {
               status: 'processing',
               client_order_id: clientOrderId,
-            }, wsSubmittedAtMs, true, subscribeTerminal);
+            }, wsSubmittedAtMs, true, subscribeTerminal, apiStartedAtMs, socketError.orderCommandReceivedAtMonoMs);
           }
           if (!isRetryableTradeSocketFailure(error)) throw error;
           const fallbackCode = error && typeof error === 'object' && 'code' in error
@@ -951,6 +989,10 @@ export const ordersApi = {
     try {
       result = await executionPromise;
     } catch (error) {
+      if (error instanceof OrderCommandOutcomeUnknownError) {
+        dispatchPlacementState('processing', undefined, { code: error.code, message: error.message });
+        throw error;
+      }
       const errorRecord = error && typeof error === 'object'
         ? error as { code?: unknown; message?: unknown }
         : undefined;

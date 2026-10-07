@@ -2,18 +2,22 @@ import type { RefObject } from 'react';
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { useActiveChartRuntimeEffect } from '../../../hooks/useActiveChartRuntimeEffect';
 import type { TradingChartVisibleRuntime } from '../../../hooks/useTradingChartVisibleRuntime';
-import { isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
+import { getPositionCloseScope, isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
+import { layoutRebuiltTradeOverlay } from './layoutRebuiltTradeOverlay';
+import { createActiveTradeOverlayGroups, createActiveTradeOverlayRenderPlans, type ActiveTradeOverlayGroupPlan } from './createActiveTradeOverlayGroups';
+import { createHistoryTradeOverlayContextKey, createHistoryTradeOverlayGroups, createHistoryTradeOverlayRenderPlans } from './createHistoryTradeOverlayGroups';
+import { isInvestorSession } from '../../../services/investorSession';
 import {
   clampChartOpacityPercent,
   defaultChartProperties,
   useChartSettingsStore,
 } from '../../../store/useChartSettingsStore';
 import { getChartObjectState, useChartObjectStateStore } from '../../../store/useChartObjectStateStore';
-import { getTradeHistoryExecutionSide } from '../../../utils/chartTradeHistoryPresentation';
 import { getSharedChartTrade } from '../../../utils/tradeShareLink';
 import { getTradeHistoryTimeRange, isTradeHistoryInTimeRange } from '../../../utils/tradeHistoryViewport';
 import {
-  buildClosedTradeHistorySnapshots,
+  createClosedTradeHistorySnapshotCache,
+  createTradeOverlayCandleLookup,
   filterActiveTradeKeysForHistory,
   forgetTradeOverlayOptimisticClosedSnapshot,
   getTradeOverlayOptimisticClosedSnapshots,
@@ -91,6 +95,8 @@ interface UseTradingChartTradeOverlayRendererOptions {
   pendingTradeLevelModifyRequestsRef: RefObject<Map<string, TradeLevelModifyRequestId>>;
   persistTradeLevelOverrides: () => void;
   postInteractionCoordinatorRef: RefObject<ChartPostInteractionCoordinator | null>;
+  postInteractionTradeOverlayLayoutRef: RefObject<(() => void) | null>;
+  committedTradeOverlayLayoutRef: RefObject<(() => void) | null>;
   prevTimeframeRef: RefObject<Timeframe>;
   resolvedPriceDigits: number;
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
@@ -108,7 +114,7 @@ interface UseTradingChartTradeOverlayRendererOptions {
   tradeLevelOverridesRef: RefObject<Map<string, TradeLevelOverride>>;
   tradeMissingGraceTimerRef: RefObject<number | null>;
   tradeOverlayRafRef: RefObject<number | null>;
-  updateLabelPositions: (refreshMetrics?: boolean) => void;
+  updateLabelPositions: (refreshMetrics?: boolean) => boolean;
   visibleRuntime: TradingChartVisibleRuntime;
 }
 
@@ -150,6 +156,8 @@ export const useTradingChartTradeOverlayRenderer = ({
   pendingTradeLevelModifyRequestsRef,
   persistTradeLevelOverrides,
   postInteractionCoordinatorRef,
+  postInteractionTradeOverlayLayoutRef,
+  committedTradeOverlayLayoutRef,
   prevTimeframeRef,
   resolvedPriceDigits,
   seriesRef,
@@ -170,10 +178,22 @@ export const useTradingChartTradeOverlayRenderer = ({
   updateLabelPositions,
   visibleRuntime,
 }: UseTradingChartTradeOverlayRendererOptions): void => {
+  // Raw credential replacement/logout may advance ownership without changing
+  // the committed account key. Explicit token refresh preserves this generation.
+  const positionCloseScope = useAppStore(() => getPositionCloseScope());
   useActiveChartRuntimeEffect(visibleRuntime.overlay, () => {
     if (isDisposedRef.current || !seriesRef.current || !chartRef.current || !symbol) return;
 
     hydrateTradeLevelOverrides();
+
+    let runtimeDisposed = false;
+    const ownerChart = chartRef.current, ownerSeries = seriesRef.current, ownerOverlay = overlayRef.current;
+    const ownerScope = getPositionCloseScope(), ownerAccount = useAppStore.getState().accountId;
+    const ownerContext = drawingRuntimeContextRef.current.contextId;
+    const isRuntimeCurrent = () => !runtimeDisposed && !isDisposedRef.current
+      && chartRef.current === ownerChart && seriesRef.current === ownerSeries && overlayRef.current === ownerOverlay
+      && getPositionCloseScope() === ownerScope && useAppStore.getState().accountId === ownerAccount
+      && drawingRuntimeContextRef.current.contextId === ownerContext;
 
     // FIX: Trade overlays use the same opaque identity as orders and quotes.
     const normalizedChartSymbol = symbol.trim().toUpperCase();
@@ -181,6 +201,9 @@ export const useTradingChartTradeOverlayRenderer = ({
 
     const {
       queueTradeOverlayRelayout,
+      projectCommittedTradeOverlayGeometry,
+      disposeTradeOverlayRelayout,
+      flushPostInteractionTradeOverlay,
       normalizeUnixSeconds,
       pickPositiveNumber,
       getTradeTicketLabel,
@@ -203,7 +226,6 @@ export const useTradingChartTradeOverlayRenderer = ({
       clearTradeLevelRuntimeState,
       clearTradeLevelRuntimeStateByKey,
       resolveTradeLevels,
-      formatSignaturePrice,
       priceTolerance,
     } = createTradeOverlayModelRuntime({
       brokerTimeOffsetSec,
@@ -228,7 +250,10 @@ export const useTradingChartTradeOverlayRenderer = ({
       tradeLevelOverridesRef,
       tradeOverlayRafRef,
       updateLabelPositions,
+      isRuntimeCurrent,
     });
+    postInteractionTradeOverlayLayoutRef.current = flushPostInteractionTradeOverlay;
+    committedTradeOverlayLayoutRef.current = projectCommittedTradeOverlayGeometry;
 
     const {
       createCollisionOffsetFactory,
@@ -270,6 +295,10 @@ export const useTradingChartTradeOverlayRenderer = ({
       tradeLevelOverridesRef,
     });
 
+    const activeGroups = createActiveTradeOverlayGroups({ nodes: activeOverlayNodesRef, data: activeOverlayNodeDataRef, updaters: tradeControlLiveUpdatersRef });
+    const historyGroups = createHistoryTradeOverlayGroups({ nodes: historyOverlayNodesRef, data: historyOverlayNodeDataRef });
+    const getHistoryContextKey = createHistoryTradeOverlayContextKey();
+
     const pruneCloseSuppressedTradeKeys = (now = Date.now()) => {
       closeSuppressedTradeKeysRef.current.forEach((expiresAt, key) => {
         if (expiresAt <= now) {
@@ -287,11 +316,13 @@ export const useTradingChartTradeOverlayRenderer = ({
       });
     };
 
-    let historyCache: {
-      rows: unknown[]; activeKeys: string; candleWindow: string; snapshots: ClosedTradeSnapshot[];
-    } | undefined;
+    const readClosedHistorySnapshots = createClosedTradeHistorySnapshotCache();
+    const emptyHistoryMappingRevision = {};
+
     const renderTradeOverlay = (options: boolean | { forceActive?: boolean; forceHistory?: boolean } = false) => {
-      if (isDisposedRef.current || !seriesRef.current || !overlayRef.current) return;
+      if (!isRuntimeCurrent() || !seriesRef.current || !overlayRef.current) return;
+      const candleLookup = createTradeOverlayCandleLookup(candlesRef.current, currentCandleRef.current);
+      const mapTradeTime = (value: unknown) => mapTradeTimestampToChartTime(value, candleLookup);
       const forceActive = typeof options === 'boolean' ? options : Boolean(options.forceActive);
       const forceHistory = typeof options === 'boolean' ? options : Boolean(options.forceHistory);
       const now = Date.now();
@@ -376,19 +407,13 @@ export const useTradingChartTradeOverlayRenderer = ({
       );
       const activeTradeKeys = filterActiveTradeKeysForHistory(rawActiveTradeKeys, closeSuppressedTradeKeys);
       const mapHistoryTimestamp = (value: unknown): number =>
-        mapTradeTimestampToChartTime(value) ?? normalizeUnixSeconds(value) ?? 0;
-      const activeKeys = Array.from(activeTradeKeys).sort().join('|');
-      const candleWindow = `${candlesRef.current.length}:${candlesRef.current[0]?.time}:${candlesRef.current.at(-1)?.time}`;
-      if (!historyCache || historyCache.rows !== appTrades
-        || historyCache.activeKeys !== activeKeys || historyCache.candleWindow !== candleWindow) {
-        historyCache = { rows: appTrades, activeKeys, candleWindow, snapshots: buildClosedTradeHistorySnapshots({
-          rows: appTrades as unknown as TradeOverlayHistoryRow[],
-          symbol: normalizedChartSymbol,
-          mapTimestamp: mapHistoryTimestamp,
-          activeTradeKeys,
-        }) };
-      }
-      const closedHistorySnapshots = historyCache.snapshots;
+        mapTradeTime(value) ?? normalizeUnixSeconds(value) ?? 0;
+      const closedHistorySnapshots = readClosedHistorySnapshots({
+        rows: appTrades as unknown as TradeOverlayHistoryRow[],
+        symbol: normalizedChartSymbol,
+        mapTimestamp: mapHistoryTimestamp,
+        activeTradeKeys,
+      }, appTrades.length ? candleLookup.mappingRevision() : emptyHistoryMappingRevision, prevTimeframeRef.current || timeframe);
       const realClosedTradeKeys = new Set(closedHistorySnapshots.map((trade) => trade.key));
       let didClearClosedHistoryTradeLevels = false;
       realClosedTradeKeys.forEach((key) => {
@@ -453,7 +478,7 @@ export const useTradingChartTradeOverlayRenderer = ({
         const entryTime = resolveStableTradeEntryTime(
           storedEntryTime,
           rawEntryTime,
-          mapTradeTimestampToChartTime,
+          mapTradeTime,
           liveTrailTime,
         );
         if (storedEntryTime == null && entryTime > 0) {
@@ -654,42 +679,47 @@ export const useTradingChartTradeOverlayRenderer = ({
         .filter(trade => isTradeHistoryInTimeRange(trade, historyTimeRange));
       const sortedActiveSnapshots = Array.from(renderActiveSnapshots.values())
         .sort((a, b) => a.key.localeCompare(b.key));
-      const activeSignature = showTradeLevels
-        ? sortedActiveSnapshots.map((trade) => {
-          const levels = nextActiveSnapshots.has(trade.key) || visuallyRetainedActiveTradeKeys.has(trade.key)
-            ? resolveTradeLevels(trade)
-            : { sl: 0, tp: 0 };
-          return [
-            trade.key,
-            trade.side,
-            trade.volume,
-            trade.entryTime,
-            formatSignaturePrice(trade.entryPrice),
-            formatSignaturePrice(levels.sl),
-            formatSignaturePrice(levels.tp),
-          ].join(':');
-        }).join('|')
-        : '';
-      const closedSignature = showAnyTradeHistoryOverlay
-        ? visibleClosedTrades
-          .sort((a, b) => a.key.localeCompare(b.key))
-          .map((trade) => [
-            trade.key,
-            trade.side,
-            trade.volume,
-            trade.entryTime,
-            trade.exitTime,
-            trade.entryExecutionTime,
-            trade.exitExecutionTime,
-            formatSignaturePrice(trade.entryPrice),
-            formatSignaturePrice(trade.exitPrice),
-            trade.source,
-          ].join(':')).join('|')
-        : '';
       const sharedTradeForSignature = getSharedChartTrade();
-      const sharedTradeSignature = sharedTradeForSignature && sharedTradeForSignature.symbol === normalizedChartSymbol
-        ? `shared:${sharedTradeForSignature.ticket}:${activeTradeKeys.has(`trade:${sharedTradeForSignature.ticket}`) ? 'live' : 'annotated'}`
-        : 'shared:none';
+      const sharedTrade = showTradeLevels && sharedTradeForSignature?.symbol === normalizedChartSymbol
+        && !activeTradeKeys.has(`trade:${sharedTradeForSignature.ticket}`) ? sharedTradeForSignature : null;
+      const presentationSignature = JSON.stringify([
+        normalizedChartSymbol, timeframe, digits, chartThemeRef.current, isChartSurfaceLight(),
+        useAppStore.getState().account?.currency || 'USD', isInvestorSession(),
+      ]);
+      const needsCollisionOffsets = Boolean(sharedTrade) || sortedActiveSnapshots.some(trade =>
+        !nextActiveSnapshots.has(trade.key) && !visuallyRetainedActiveTradeKeys.has(trade.key));
+      // Real control bars intentionally overlap at zero offset. Avoid chart
+      // coordinate reads during valuation when no annotation consumes buckets.
+      const nextLevelOffset = needsCollisionOffsets ? createCollisionOffsetFactory() : () => 0;
+      // Allocate collisions for all sorted trades, even retained DOM groups:
+      // annotation labels share buckets across ENTRY/SL/TP and across tickets.
+      const activeRenderPlans = showTradeLevels ? createActiveTradeOverlayRenderPlans({
+        sortedTrades: sortedActiveSnapshots,
+        liveKeys: nextActiveSnapshots,
+        retainedKeys: visuallyRetainedActiveTradeKeys,
+        presentationSignature,
+        resolveLevels: resolveTradeLevels,
+        nextOffset: nextLevelOffset,
+      }) : [];
+      const activeSignature = JSON.stringify(activeRenderPlans.map(plan => plan.signature));
+      const historyRenderPlans = createHistoryTradeOverlayRenderPlans({
+        trades: visibleClosedTrades,
+        presentationSignature: getHistoryContextKey(JSON.stringify([
+          presentationSignature, TRADE_HISTORY_PRESENTATION_VERSION,
+          brokerAccountSessionScope, positionCloseScope, brokerTimeOffsetSec,
+        ])),
+        showLines: showTradeHistoryLine,
+        showArrows: showTradeHistoryArrows,
+        lineOpacity: tradeHistoryLineOpacity,
+        resolveLineColor: getClosedTradeLineColor,
+      });
+      const closedSignature = JSON.stringify(historyRenderPlans.map(plan => plan.signature));
+      const sharedOffsets = sharedTrade ? {
+        entry: nextLevelOffset('ENTRY', sharedTrade.entryPrice),
+        sl: sharedTrade.sl > 0 ? nextLevelOffset('SL', sharedTrade.sl) : 0,
+        tp: sharedTrade.tp > 0 ? nextLevelOffset('TP', sharedTrade.tp) : 0,
+      } : null;
+      const sharedTradeSignature = JSON.stringify([presentationSignature, sharedTrade, sharedOffsets]);
       const nextActiveSignature = [
         normalizedChartSymbol,
         timeframe,
@@ -722,156 +752,148 @@ export const useTradingChartTradeOverlayRenderer = ({
       }
 
       if (activeChanged) {
-        clearTradeOverlayLayer('active');
-        lastActiveTradeOverlaySignatureRef.current = nextActiveSignature;
+        const groupPlans: ActiveTradeOverlayGroupPlan[] = [];
 
         if (showTradeLevels) {
-          const nextLevelOffset = createCollisionOffsetFactory();
-          sortedActiveSnapshots.forEach((trade) => {
-            const isLiveActiveTrade = nextActiveSnapshots.has(trade.key);
-            const isVisuallyRetainedTrade = visuallyRetainedActiveTradeKeys.has(trade.key);
-            const entryColor = getEntryColor(trade.side);
-            const ticketLabel = getTradeTicketLabel(trade.key);
-            const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
-            const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${entryPriceLabel}`.trim();
-            const activeMarkerTimeKey = getActiveMarkerTimeKey(trade.key);
-            let stableActiveMarkerTime = stableActiveMarkerTimesRef.current.get(activeMarkerTimeKey) ?? null;
-            if (!(stableActiveMarkerTime != null && stableActiveMarkerTime > 0) && trade.currentTime > 0) {
-              stableActiveMarkerTime = trade.currentTime;
-              stableActiveMarkerTimesRef.current.set(activeMarkerTimeKey, stableActiveMarkerTime);
-            }
-            createTradeMarker(
-              trade.side,
-              trade.entryPrice,
-              trade.entryTime,
-              markerTitle,
-              'active',
-              1,
-              () => stableActiveMarkerTimesRef.current.get(activeMarkerTimeKey) ?? stableActiveMarkerTime,
-            );
-
-            // Keep the control bars rendered while a position momentarily
-            // drops out of the store (REST refresh / WS reconnect gaps). A
-            // live<->retained flap must not blink the on-chart controls; only
-            // the settings toggle or a real close removes them.
-            const showTradeControls = isLiveActiveTrade || isVisuallyRetainedTrade;
-            const entryStackIndex = nextLevelOffset('ENTRY', trade.entryPrice);
-            createPriceLevel(
-              `${trade.side} ${ticketLabel} ${trade.volume} at ${entryPriceLabel}`.trim(),
-              trade.entryPrice,
-              entryColor,
-              {
-                tradeKey: isLiveActiveTrade ? trade.key : undefined,
-                role: isLiveActiveTrade ? 'ENTRY' : undefined,
-                badgeOffsetIndex: showTradeControls ? 0 : entryStackIndex,
-                title: isLiveActiveTrade ? `${markerTitle}. Drag above/below to create TP or SL.` : markerTitle,
-                getTitle: () => getLocalizedTradeTitle(trade),
-                getLabel: () => `${tr(trade.side)} ${ticketLabel} ${tr('{{value0}} lots', { value0: trade.volume })} @ ${entryPriceLabel}`,
-                // The control bar replaces the plain text label.
-                labelVariant: showTradeControls ? 'none' : 'lineText',
-                lineColor: getEntryLineColor(trade.side),
-              },
-            );
-
-            const levels = isLiveActiveTrade || isVisuallyRetainedTrade ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
-
-            if (showTradeControls) {
-              createEntryControlsForTrade(trade, levels);
-            }
-
-            if (levels.sl && levels.sl > 0) {
-              const stopLossPriceLabel = formatTradeLevelBadgePrice(levels.sl);
-              const slStackIndex = nextLevelOffset('SL', levels.sl);
-              createPriceLevel(`SL ${ticketLabel} ${stopLossPriceLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
-                tradeKey: isLiveActiveTrade ? trade.key : undefined,
-                role: isLiveActiveTrade ? 'SL' : undefined,
-                badgeOffsetIndex: showTradeControls ? 0 : slStackIndex,
-                title: isVisuallyRetainedTrade
-                  ? `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}. Waiting for position refresh.`
-                  : `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}`,
-                getTitle: () => `${getLocalizedTradeTitle(trade, 'SL', levels.sl)}${isVisuallyRetainedTrade ? ` · ${tr('Loading open positions...')}` : ''}`,
-                getLabel: () => `${tr('SL')} ${ticketLabel} ${stopLossPriceLabel}`,
-                labelVariant: showTradeControls ? 'none' : 'lineText',
-              });
-              if (showTradeControls) {
-                createLevelControlsForTrade(trade, 'SL', levels);
+          activeRenderPlans.forEach(({
+            trade, levels, isLiveActiveTrade, isVisuallyRetainedTrade, showTradeControls,
+            entryStackIndex, slStackIndex, tpStackIndex, signature,
+          }) => {
+            groupPlans.push({ key: trade.key, signature, create: () => {
+              const entryColor = getEntryColor(trade.side);
+              const ticketLabel = getTradeTicketLabel(trade.key);
+              const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
+              const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${entryPriceLabel}`.trim();
+              const activeMarkerTimeKey = getActiveMarkerTimeKey(trade.key);
+              let stableActiveMarkerTime = stableActiveMarkerTimesRef.current.get(activeMarkerTimeKey) ?? null;
+              if (!(stableActiveMarkerTime != null && stableActiveMarkerTime > 0) && trade.currentTime > 0) {
+                stableActiveMarkerTime = trade.currentTime;
+                stableActiveMarkerTimesRef.current.set(activeMarkerTimeKey, stableActiveMarkerTime);
               }
-            }
-            if (levels.tp && levels.tp > 0) {
-              const takeProfitPriceLabel = formatTradeLevelBadgePrice(levels.tp);
-              const tpStackIndex = nextLevelOffset('TP', levels.tp);
-              createPriceLevel(`TP ${ticketLabel} ${takeProfitPriceLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
-                tradeKey: isLiveActiveTrade ? trade.key : undefined,
-                role: isLiveActiveTrade ? 'TP' : undefined,
-                badgeOffsetIndex: showTradeControls ? 0 : tpStackIndex,
-                title: isVisuallyRetainedTrade
-                  ? `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}. Waiting for position refresh.`
-                  : `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}`,
-                getTitle: () => `${getLocalizedTradeTitle(trade, 'TP', levels.tp)}${isVisuallyRetainedTrade ? ` · ${tr('Loading open positions...')}` : ''}`,
-                getLabel: () => `${tr('TP')} ${ticketLabel} ${takeProfitPriceLabel}`,
-                labelVariant: showTradeControls ? 'none' : 'lineText',
-              });
+              createTradeMarker(
+                trade.side,
+                trade.entryPrice,
+                trade.entryTime,
+                markerTitle,
+                'active',
+                1,
+                () => stableActiveMarkerTimesRef.current.get(activeMarkerTimeKey) ?? stableActiveMarkerTime,
+              );
+
+              // Keep the control bars rendered while a position momentarily
+              // drops out of the store (REST refresh / WS reconnect gaps). A
+              // live<->retained flap must not blink the on-chart controls; only
+              // the settings toggle or a real close removes them.
+              createPriceLevel(
+                `${trade.side} ${ticketLabel} ${trade.volume} at ${entryPriceLabel}`.trim(),
+                trade.entryPrice,
+                entryColor,
+                {
+                  tradeKey: isLiveActiveTrade ? trade.key : undefined,
+                  role: isLiveActiveTrade ? 'ENTRY' : undefined,
+                  badgeOffsetIndex: showTradeControls ? 0 : entryStackIndex,
+                  title: isLiveActiveTrade ? `${markerTitle}. Drag above/below to create TP or SL.` : markerTitle,
+                  getTitle: () => getLocalizedTradeTitle(trade),
+                  getLabel: () => `${tr(trade.side)} ${ticketLabel} ${tr('{{value0}} lots', { value0: trade.volume })} @ ${entryPriceLabel}`,
+                  // The control bar replaces the plain text label.
+                  labelVariant: showTradeControls ? 'none' : 'lineText',
+                  lineColor: getEntryLineColor(trade.side),
+                },
+              );
+
               if (showTradeControls) {
-                createLevelControlsForTrade(trade, 'TP', levels);
+                createEntryControlsForTrade(trade, levels);
               }
-            }
+
+              if (levels.sl && levels.sl > 0) {
+                const stopLossPriceLabel = formatTradeLevelBadgePrice(levels.sl);
+                createPriceLevel(`SL ${ticketLabel} ${stopLossPriceLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
+                  tradeKey: isLiveActiveTrade ? trade.key : undefined,
+                  role: isLiveActiveTrade ? 'SL' : undefined,
+                  badgeOffsetIndex: showTradeControls ? 0 : slStackIndex,
+                  title: isVisuallyRetainedTrade
+                    ? `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}. Waiting for position refresh.`
+                    : `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}`,
+                  getTitle: () => `${getLocalizedTradeTitle(trade, 'SL', levels.sl)}${isVisuallyRetainedTrade ? ` · ${tr('Loading open positions...')}` : ''}`,
+                  getLabel: () => `${tr('SL')} ${ticketLabel} ${stopLossPriceLabel}`,
+                  labelVariant: showTradeControls ? 'none' : 'lineText',
+                });
+                if (showTradeControls) {
+                  createLevelControlsForTrade(trade, 'SL', levels);
+                }
+              }
+              if (levels.tp && levels.tp > 0) {
+                const takeProfitPriceLabel = formatTradeLevelBadgePrice(levels.tp);
+                createPriceLevel(`TP ${ticketLabel} ${takeProfitPriceLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
+                  tradeKey: isLiveActiveTrade ? trade.key : undefined,
+                  role: isLiveActiveTrade ? 'TP' : undefined,
+                  badgeOffsetIndex: showTradeControls ? 0 : tpStackIndex,
+                  title: isVisuallyRetainedTrade
+                    ? `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}. Waiting for position refresh.`
+                    : `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}`,
+                  getTitle: () => `${getLocalizedTradeTitle(trade, 'TP', levels.tp)}${isVisuallyRetainedTrade ? ` · ${tr('Loading open positions...')}` : ''}`,
+                  getLabel: () => `${tr('TP')} ${ticketLabel} ${takeProfitPriceLabel}`,
+                  labelVariant: showTradeControls ? 'none' : 'lineText',
+                });
+                if (showTradeControls) {
+                  createLevelControlsForTrade(trade, 'TP', levels);
+                }
+              }
+            } });
           });
 
           // A trade opened from a share link renders as an annotation drawn
           // purely from the URL payload, so the shared view keeps showing the
           // trade even after the position closes. Suppressed while the same
           // ticket is still live (the live control bar already shows it).
-          const sharedTrade = getSharedChartTrade();
-          if (
-            sharedTrade
-            && sharedTrade.symbol === normalizedChartSymbol
-            && !activeTradeKeys.has(`trade:${sharedTrade.ticket}`)
-          ) {
-            const sharedColor = getEntryLineColor(sharedTrade.side);
-            const sharedTicketLabel = sharedTrade.ticket > 0 ? `#${sharedTrade.ticket} ` : '';
-            const sharedLabel = `Shared ${sharedTrade.side} ${sharedTicketLabel}${sharedTrade.volume} at ${formatTradeLevelBadgePrice(sharedTrade.entryPrice)}`.trim();
-            createPriceLevel(sharedLabel, sharedTrade.entryPrice, sharedColor, {
-              badgeOffsetIndex: nextLevelOffset('ENTRY', sharedTrade.entryPrice),
-              title: `${sharedLabel} (from share link)`,
-              labelVariant: 'lineText',
-              lineColor: sharedColor,
-            });
-            addTradeAxisPriceLine(`shared:${sharedTrade.ticket}:entry`, sharedTrade.entryPrice, sharedColor);
-            if (sharedTrade.entryTime > 0) {
-              createTradeMarker(sharedTrade.side, sharedTrade.entryPrice, sharedTrade.entryTime, sharedLabel, 'active', 0.9);
-            }
-            if (sharedTrade.sl > 0) {
-              createPriceLevel(`SL ${formatTradeLevelBadgePrice(sharedTrade.sl)}`, sharedTrade.sl, TRADE_SELL_COLOR, {
-                badgeOffsetIndex: nextLevelOffset('SL', sharedTrade.sl),
-                title: `Shared Stop Loss @ ${formatTradeLevelBadgePrice(sharedTrade.sl)}`,
+          if (sharedTrade && sharedOffsets) {
+            groupPlans.push({ key: `shared:${sharedTrade.ticket}`, signature: sharedTradeSignature, create: () => {
+              const sharedColor = getEntryLineColor(sharedTrade.side);
+              const sharedTicketLabel = sharedTrade.ticket > 0 ? `#${sharedTrade.ticket} ` : '';
+              const sharedLabel = `Shared ${sharedTrade.side} ${sharedTicketLabel}${sharedTrade.volume} at ${formatTradeLevelBadgePrice(sharedTrade.entryPrice)}`.trim();
+              createPriceLevel(sharedLabel, sharedTrade.entryPrice, sharedColor, {
+                badgeOffsetIndex: sharedOffsets.entry,
+                title: `${sharedLabel} (from share link)`,
                 labelVariant: 'lineText',
+                lineColor: sharedColor,
               });
-            }
-            if (sharedTrade.tp > 0) {
-              createPriceLevel(`TP ${formatTradeLevelBadgePrice(sharedTrade.tp)}`, sharedTrade.tp, TRADE_BUY_COLOR, {
-                badgeOffsetIndex: nextLevelOffset('TP', sharedTrade.tp),
-                title: `Shared Take Profit @ ${formatTradeLevelBadgePrice(sharedTrade.tp)}`,
-                labelVariant: 'lineText',
-              });
-            }
+              addTradeAxisPriceLine(`shared:${sharedTrade.ticket}:entry`, sharedTrade.entryPrice, sharedColor);
+              if (sharedTrade.entryTime > 0) {
+                createTradeMarker(sharedTrade.side, sharedTrade.entryPrice, sharedTrade.entryTime, sharedLabel, 'active', 0.9);
+              }
+              if (sharedTrade.sl > 0) {
+                createPriceLevel(`SL ${formatTradeLevelBadgePrice(sharedTrade.sl)}`, sharedTrade.sl, TRADE_SELL_COLOR, {
+                  badgeOffsetIndex: sharedOffsets.sl,
+                  title: `Shared Stop Loss @ ${formatTradeLevelBadgePrice(sharedTrade.sl)}`,
+                  labelVariant: 'lineText',
+                });
+              }
+              if (sharedTrade.tp > 0) {
+                createPriceLevel(`TP ${formatTradeLevelBadgePrice(sharedTrade.tp)}`, sharedTrade.tp, TRADE_BUY_COLOR, {
+                  badgeOffsetIndex: sharedOffsets.tp,
+                  title: `Shared Take Profit @ ${formatTradeLevelBadgePrice(sharedTrade.tp)}`,
+                  labelVariant: 'lineText',
+                });
+              }
+            } });
           }
         }
+        activeGroups.reconcile(groupPlans, forceActive);
+        lastActiveTradeOverlaySignatureRef.current = nextActiveSignature;
       }
 
       if (historyChanged) {
-        clearTradeOverlayLayer('history');
-        lastHistoryTradeOverlaySignatureRef.current = nextHistorySignature;
-
-        if (showAnyTradeHistoryOverlay) {
-          visibleClosedTrades.forEach((trade) => {
-            const exitSide = getTradeHistoryExecutionSide(trade.side, 'CLOSE');
+        historyGroups.reconcile(historyRenderPlans.map(({ trade, exitSide, lineColor, signature }) => ({
+          key: trade.key,
+          signature,
+          create: () => {
             if (showTradeHistoryLine) {
               createTradeHistoryLine(
                 trade.entryPrice,
                 trade.entryTime,
                 trade.exitPrice,
                 trade.exitTime,
-                getClosedTradeLineColor(trade),
+                lineColor,
                 tradeHistoryLineOpacity,
                 // Join the arrow tips when arrows are drawn; otherwise the raw fill prices.
                 showTradeHistoryArrows ? { start: trade.side, end: exitSide } : undefined,
@@ -883,23 +905,17 @@ export const useTradingChartTradeOverlayRenderer = ({
               const closePriceLabel = formatTradeLevelBadgePrice(trade.exitPrice);
               createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime);
             }
-          });
-        }
+          },
+        })), forceHistory);
+        lastHistoryTradeOverlaySignatureRef.current = nextHistorySignature;
       }
 
-      // Rebuilt nodes are created hidden; place them in this same frame when
-      // the chart is idle so a rebuild never paints an empty overlay. Always
-      // queue a follow-up layout too: the first pass can run before the series
-      // has coordinates after a fill, which would otherwise leave open trades hidden.
-      if (isChartInteractionActiveRef.current) {
-        queueTradeOverlayRelayout();
-      } else {
-        updateLabelPositions();
-        queueTradeOverlayRelayout();
-      }
+      // Clearing and model snapshots remain synchronous; geometry reads/writes
+      // coalesce at the next paint with one bounded unresolved-coordinate retry.
+      layoutRebuiltTradeOverlay(queueTradeOverlayRelayout);
     };
 
-    return bindTradeOverlayRuntimeSubscriptions({
+    const unbindSubscriptions = bindTradeOverlayRuntimeSubscriptions({
       activeTradeSnapshotsRef,
       buildClosedTradeFromEventSnapshot,
       buildImmediateClosedTrade,
@@ -923,9 +939,21 @@ export const useTradingChartTradeOverlayRenderer = ({
       renderTradeOverlay,
       resolveSymbolTick,
       scheduleHistoryRefresh,
+      getLiveTrailPrice,
+      getLiveTrailTime,
+      pickPositiveNumber,
       symbol,
       tradeLevelCrossCloseCandidatesRef,
       tradeLevelCrossRefreshPendingRef,
     });
-  }, [brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, TRADE_HISTORY_PRESENTATION_VERSION, updateLabelPositions]);
+    return () => {
+      runtimeDisposed = true;
+      disposeTradeOverlayRelayout();
+      activeGroups.dispose();
+      historyGroups.dispose();
+      if (postInteractionTradeOverlayLayoutRef.current === flushPostInteractionTradeOverlay) postInteractionTradeOverlayLayoutRef.current = null;
+      if (committedTradeOverlayLayoutRef.current === projectCommittedTradeOverlayGeometry) committedTradeOverlayLayoutRef.current = null;
+      unbindSubscriptions();
+    };
+  }, [brokerAccountSessionScope, positionCloseScope, brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, TRADE_HISTORY_PRESENTATION_VERSION, updateLabelPositions]);
 };

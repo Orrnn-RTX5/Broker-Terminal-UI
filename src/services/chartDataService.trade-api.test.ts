@@ -14,6 +14,8 @@ import {
 } from './brokerSession';
 import { API_V2_BASE_URL } from '../config/api';
 import { TradeWebSocketClient } from '../api/tradeSocket';
+import { FINANCIAL_QUOTE_GAP_EVENT } from './financialQuoteRecovery';
+import { getTerminalQuoteSession, resetTerminalQuoteFreshness } from './terminalQuoteFreshness';
 
 class FakeWebSocket {
   static CONNECTING = 0;
@@ -155,6 +157,129 @@ describe('trade candle normalization and websocket cleanup', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('coalesces financial gaps and reports only snapshot coverage for unflagged M1 candles despite wall-clock skew', () => {
+    vi.useFakeTimers();
+    const start = Date.UTC(2026, 9, 5, 10);
+    vi.setSystemTime(start + 86_400_000);
+    const onSnapshot = vi.fn(); const onFinancialGapStatus = vi.fn();
+    const subscription = new ChartDataService().subscribeCandles({
+      symbol: 'BTCUSD', timeframe: 'M1', onSnapshot, onFinancialGapStatus,
+    } as Parameters<ChartDataService['subscribeCandles']>[0]);
+    const gap = (from: number, to: number) => window.dispatchEvent(new CustomEvent(FINANCIAL_QUOTE_GAP_EVENT, { detail: {
+      symbol: 'BTCUSD', quoteSession: getTerminalQuoteSession(), fromProviderTimeMs: start + from,
+      toProviderTimeMs: start + to, reason: 'capacity',
+    } }));
+    try {
+      FakeWebSocket.instances[0].open(); gap(1000, 59_000); gap(59_000, 61_000);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      const socket = FakeWebSocket.instances[1]; socket.open();
+      socket.emit({ type: 'subscribed', channel: 'candles.BTCUSD.M1' });
+      expect(onFinancialGapStatus.mock.calls.map(([status]) => status.status)).toEqual(['pending', 'pending']);
+      socket.emit({ channel: 'candles.BTCUSD.M1', candles: [
+        { time: start / 1000, open: 100, high: 130, low: 80, close: 102, volume: 40 },
+        { time: start / 1000 + 60, open: 102, high: 105, low: 101, close: 103, volume: 5 },
+      ] });
+      expect(onSnapshot).toHaveBeenCalledOnce();
+      expect(onSnapshot.mock.calls[0][0].every((row: { closed?: boolean }) => row.closed === undefined)).toBe(true);
+      expect(onFinancialGapStatus.mock.calls.at(-1)?.[0]).toMatchObject({ status: 'snapshot-covered' });
+      expect(onFinancialGapStatus.mock.invocationCallOrder.at(-1)).toBeGreaterThan(onSnapshot.mock.invocationCallOrder[0]);
+    } finally { subscription.close(); }
+  });
+
+  it('keeps missing-volume or missing-bucket gap snapshots incomplete and bounds the wait', () => {
+    vi.useFakeTimers(); const start = Date.UTC(2026, 9, 5, 10);
+    const onFinancialGapStatus = vi.fn();
+    const subscription = new ChartDataService().subscribeCandles({ symbol: 'BTCUSD', timeframe: 'M1', onFinancialGapStatus } as Parameters<ChartDataService['subscribeCandles']>[0]);
+    try {
+      window.dispatchEvent(new CustomEvent(FINANCIAL_QUOTE_GAP_EVENT, { detail: {
+        symbol: 'BTCUSD', quoteSession: getTerminalQuoteSession(), fromProviderTimeMs: start + 1000,
+        toProviderTimeMs: start + 61_000, reason: 'expired',
+      } }));
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      const socket = FakeWebSocket.instances[1]; socket.open();
+      socket.emit({ channel: 'candles.BTCUSD.M1', candles: [{ time: start / 1000, open: 100, high: 110, low: 90, close: 101, volume: 4 }] });
+      expect(onFinancialGapStatus.mock.calls.at(-1)?.[0]).toMatchObject({ status: 'incomplete', reason: 'snapshot-range-missing' });
+      socket.emit({ channel: 'candles.BTCUSD.M1', candles: [
+        { time: start / 1000, open: 100, high: 110, low: 90, close: 101, volume: 4 },
+        { time: start / 1000 + 60, open: 101, high: 110, low: 90, close: 102 },
+      ] });
+      expect(onFinancialGapStatus.mock.calls.at(-1)?.[0].status).toBe('incomplete');
+      for (const invalidVolume of [false, []]) {
+        socket.emit({ channel: 'candles.BTCUSD.M1', candles: [
+          { time: start / 1000, open: 100, high: 110, low: 90, close: 101, volume: 4 },
+          { time: start / 1000 + 60, open: 101, high: 110, low: 90, close: 102, volume: invalidVolume },
+        ] });
+        expect(onFinancialGapStatus.mock.calls.at(-1)?.[0].status).toBe('incomplete');
+      }
+      socket.emit({ channel: 'candles.BTCUSD.M1', candles: [
+        { time: start / 1000, open: 100, high: 110, low: 90, close: 101, volume: 4 },
+        { time: start / 1000 + 60, open: 101, high: 110, low: 90, close: 102, volume: 2 },
+        { time: start / 1000 + 60, open: 101, high: 110, low: 90, close: 102, volume: -1 },
+      ] });
+      expect(onFinancialGapStatus.mock.calls.at(-1)?.[0].status).toBe('incomplete');
+      socket.emit({ channel: 'candles.BTCUSD.M1', candles: [
+        { time: start / 1000, open: 100, high: 110, low: 90, close: 101, volume: 4 },
+        { time: start / 1000 + 60, open: 101, high: 95, low: 105, close: 102, volume: 2 },
+      ] });
+      expect(onFinancialGapStatus.mock.calls.at(-1)?.[0].status).toBe('incomplete');
+      vi.advanceTimersByTime(10_000);
+      expect(onFinancialGapStatus.mock.calls.at(-1)?.[0]).toMatchObject({ status: 'incomplete', reason: 'timeout' });
+    } finally { subscription.close(); }
+  });
+
+  it('rejects foreign gaps and suppresses coverage after a reentrant session change or subscription close', () => {
+    vi.useFakeTimers(); const start = Date.UTC(2026, 9, 5, 10);
+    const session = getTerminalQuoteSession(); const onFinancialGapStatus = vi.fn();
+    const subscription = new ChartDataService().subscribeCandles({ symbol: 'BTCUSD', timeframe: 'M1', onFinancialGapStatus,
+      onSnapshot: () => resetTerminalQuoteFreshness(),
+    } as Parameters<ChartDataService['subscribeCandles']>[0]);
+    const dispatch = (symbol: string, quoteSession: number) => window.dispatchEvent(new CustomEvent(FINANCIAL_QUOTE_GAP_EVENT, { detail: {
+      symbol, quoteSession, fromProviderTimeMs: start + 1000, toProviderTimeMs: start + 2000, reason: 'capacity',
+    } }));
+    dispatch('EURUSD', session); dispatch('BTCUSD', session + 1);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    dispatch('BTCUSD', session);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const socket = FakeWebSocket.instances[1]; socket.open();
+    socket.emit({ channel: 'candles.BTCUSD.M1', candles: [{ time: start / 1000, open: 100, high: 110, low: 90, close: 101, volume: 4 }] });
+    expect(onFinancialGapStatus.mock.calls.map(([status]) => status.status)).toEqual(['pending']);
+    subscription.close(); dispatch('BTCUSD', getTerminalQuoteSession()); vi.advanceTimersByTime(10_000);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(onFinancialGapStatus).toHaveBeenCalledOnce();
+  });
+
+  it('accepts the current quote generation after reconnect without remounting the owned candle subscription', () => {
+    vi.useFakeTimers(); const start = Date.UTC(2026, 9, 5, 10); const previous = getTerminalQuoteSession();
+    const onFinancialGapStatus = vi.fn();
+    const subscription = new ChartDataService().subscribeCandles({ symbol: 'BTCUSD', timeframe: 'M1', onFinancialGapStatus });
+    const dispatch = (quoteSession: number) => window.dispatchEvent(new CustomEvent(FINANCIAL_QUOTE_GAP_EVENT, { detail: {
+      symbol: 'BTCUSD', quoteSession, fromProviderTimeMs: start + 1000, toProviderTimeMs: start + 2000, reason: 'capacity',
+    } }));
+    try {
+      dispatch(previous); expect(FakeWebSocket.instances).toHaveLength(2);
+      resetTerminalQuoteFreshness(); dispatch(previous);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      dispatch(getTerminalQuoteSession()); expect(FakeWebSocket.instances).toHaveLength(3);
+      expect(onFinancialGapStatus.mock.calls.at(-1)?.[0].gap.quoteSession).toBe(getTerminalQuoteSession());
+    } finally { subscription.close(); }
+  });
+
+  it('does not deliver a gap snapshot after onConnected changes its quote owner', () => {
+    const start = Date.UTC(2026, 9, 5, 10); const onSnapshot = vi.fn(); const onFinancialGapStatus = vi.fn();
+    const subscription = new ChartDataService().subscribeCandles({ symbol: 'BTCUSD', timeframe: 'M1', onSnapshot,
+      onFinancialGapStatus, onConnected: () => resetTerminalQuoteFreshness() });
+    try {
+      window.dispatchEvent(new CustomEvent(FINANCIAL_QUOTE_GAP_EVENT, { detail: {
+        symbol: 'BTCUSD', quoteSession: getTerminalQuoteSession(), fromProviderTimeMs: start + 1000,
+        toProviderTimeMs: start + 2000, reason: 'expired',
+      } }));
+      const socket = FakeWebSocket.instances[1]; socket.open();
+      socket.emit({ channel: 'candles.BTCUSD.M1', candles: [{ time: start / 1000, open: 100, high: 110, low: 90, close: 101, volume: 4 }] });
+      expect(onSnapshot).not.toHaveBeenCalled();
+      expect(onFinancialGapStatus.mock.calls.map(([status]) => status.status)).toEqual(['pending']);
+    } finally { subscription.close(); }
   });
 
   it('normalizes candle arrays from contract response wrappers, de-dupes by bucket, and sorts', () => {

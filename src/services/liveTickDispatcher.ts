@@ -13,6 +13,7 @@ import {
 import { onSessionChange } from './brokerSession';
 import { applyAccountSpreadMarkup, onAccountSpreadMarkupChange } from './accountSpreadMarkup';
 import type { SpreadMarkupQuoteTag } from '../utils/spreadMarkup';
+import type { QuoteDiagnosticContext } from './quoteDiagnostics';
 import { readDailyChangeInput } from '../utils/dailyChange';
 import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
 import {
@@ -55,6 +56,7 @@ if (typeof window !== 'undefined') {
 }
 
 const pendingTicks = new Map<string, LiveTick>();
+const pendingFinancialTicks = new Map<string, LiveTick>();
 const frozenMarketDataSources = new Map<string, Map<string, string>>();
 let rafId: number | null = null;
 let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -85,10 +87,12 @@ const createTargetRetryState = (): TargetRetryState => ({
 });
 
 const marketRetry = createTargetRetryState();
+const financialRetry = createTargetRetryState();
 const appRetry = createTargetRetryState();
 
 const clearDispatcherRuntime = (): void => {
   pendingTicks.clear();
+  pendingFinancialTicks.clear();
   frozenMarketDataSources.clear();
   if (typeof window !== 'undefined' && rafId !== null && typeof window.cancelAnimationFrame === 'function') {
     window.cancelAnimationFrame(rafId);
@@ -97,6 +101,7 @@ const clearDispatcherRuntime = (): void => {
   rafId = null;
   timeoutId = null;
   resetRetry(marketRetry);
+  resetRetry(financialRetry);
   resetRetry(appRetry);
 };
 
@@ -170,7 +175,7 @@ const scheduleFlush = () => {
 };
 
 const hasRetryTicks = (): boolean => (
-  marketRetry.ticks.size > 0 || appRetry.ticks.size > 0
+  marketRetry.ticks.size > 0 || appRetry.ticks.size > 0 || financialRetry.ticks.size > 0
 );
 
 const scheduleRetry = (retry: TargetRetryState) => {
@@ -284,7 +289,7 @@ const retainFailedBatch = (
   scheduleRetry(retry);
 };
 
-const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boolean => {
+const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false, diagnosticContext?: QuoteDiagnosticContext): boolean => {
   if (!symbol) return false;
   if (isLiveMarketDataFrozen(symbol)) return false;
   // Every quote transport (quote socket, REST seed, catalogue seed, legacy WS,
@@ -295,6 +300,7 @@ const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boo
   const fullTick = applyAccountSpreadMarkup(symbol, {
     ...tick,
     symbol,
+    quoteDeliveryKind: diagnosticContext?.transport === 'rest' ? 'snapshot' : tick.quoteDeliveryKind,
     ...(freshnessEnabled && !refreshMarkup ? { terminalQuoteSession: getTerminalQuoteSession() } : {}),
   }) as LiveTick;
   const hasQuoteSide = hasAnyQuoteSide(fullTick);
@@ -360,8 +366,8 @@ const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boo
   if (freshnessEnabled) {
     const accepted = refreshMarkup
       ? refreshTerminalQuotePrices(symbol, fullTick, fullTick.terminalQuoteSession)
-      : ingestTerminalQuote(symbol, fullTick);
-    if (!accepted) return false;
+      : diagnosticContext ? ingestTerminalQuote(symbol, fullTick, undefined, diagnosticContext) : ingestTerminalQuote(symbol, fullTick);
+    if (!accepted || fullTick.terminalQuoteSession !== getTerminalQuoteSession()) return false;
     if (fullTick.provider_timestamp !== undefined) {
       fullTick.sourceTimestamp = fullTick.provider_timestamp;
       fullTick.timestamp = fullTick.provider_timestamp;
@@ -446,21 +452,44 @@ const enqueueTick = (symbol: string, tick: LiveTick, refreshMarkup = false): boo
   return true;
 };
 
-export const enqueueLiveTick = (symbol: string, tick: LiveTick): boolean => enqueueTick(symbol, tick);
+export const enqueueLiveTick = (symbol: string, tick: LiveTick, diagnosticContext?: QuoteDiagnosticContext): boolean => enqueueTick(symbol, tick, false, diagnosticContext);
+
+/** Only the validated ordered websocket owner may call this financial path. */
+export const enqueueFinancialLiveTick = (symbol: string, tick: LiveTick): void => {
+  if (!symbol || isLiveMarketDataFrozen(symbol)) return;
+  const event = applyAccountSpreadMarkup(symbol, { ...tick, symbol, quoteDeliveryKind: 'event',
+    terminalQuoteSession: getTerminalQuoteSession() }) as LiveTick;
+  upsertFreshestLiveTick(pendingFinancialTicks, symbol, event);
+  const cached = typeof window !== 'undefined' ? window.rtxTickCache?.get(symbol) : undefined;
+  if (cached?.quoteDeliveryKind === 'snapshot' && cached.provider_timestamp === event.provider_timestamp
+    && cached.source_revision === event.source_revision
+    && cached.source === event.source && String(cached.sequence) === String(event.sequence)
+    && cached.bid === event.bid && cached.ask === event.ask) {
+    // The actual stream event has caught its earlier snapshot. Reclassify only
+    // identical evidence so polling can paint the completed financial model.
+    const caughtUp = { ...cached, quoteDeliveryKind: 'event' as const };
+    window.rtxTickCache.set(symbol, caughtUp);
+    window.rtxTickCache.set(symbol.toUpperCase(), caughtUp);
+    upsertFreshestLiveTick(pendingTicks, symbol, caughtUp);
+  }
+  scheduleFlush();
+};
 
 export const flushLiveTicks = (): void => {
   flushMarketWatchDisplayMetadata();
-  if (pendingTicks.size === 0 && !hasRetryTicks()) return;
+  if (pendingTicks.size === 0 && pendingFinancialTicks.size === 0 && !hasRetryTicks()) return;
 
   const ticks = Array.from(pendingTicks.entries()) as Array<readonly [string, LiveTick]>;
   pendingTicks.clear();
+  const financialTicks = Array.from(pendingFinancialTicks.entries());
+  pendingFinancialTicks.clear();
 
   const marketStore = useMarketDataStore.getState();
   const appStore = useAppStore.getState();
 
   const ownsCurrentSession = ([, tick]: readonly [string, LiveTick]) => !terminalQuoteFreshnessEnabled()
     || tick.terminalQuoteSession === getTerminalQuoteSession();
-  for (const retry of [marketRetry, appRetry]) {
+  for (const retry of [marketRetry, appRetry, financialRetry]) {
     for (const entry of retry.ticks) {
       if (!ownsCurrentSession(entry)) retry.ticks.delete(entry[0]);
     }
@@ -476,7 +505,10 @@ export const flushLiveTicks = (): void => {
 
   if (marketBatch.ticks.length > 0) {
     try {
-      marketStore.updateTicksBatch(marketBatch.ticks, { syncAppStore: false });
+      const managed = marketBatch.ticks.filter(([, tick]) => tick.quoteDeliveryKind === 'event');
+      const other = marketBatch.ticks.filter(([, tick]) => tick.quoteDeliveryKind !== 'event');
+      if (managed.length) marketStore.updateTicksBatch(managed, { syncAppStore: false, displayOnly: true });
+      if (other.length) marketStore.updateTicksBatch(other, { syncAppStore: false });
       if (marketBatch.isRetry) resetRetry(marketRetry);
     } catch (error) {
       console.error('[LiveTickDispatcher] Market store batch failed; retaining it for retry:', error);
@@ -485,6 +517,18 @@ export const flushLiveTicks = (): void => {
   } else if (marketBatch.isRetry) {
     resetRetry(marketRetry);
   }
+
+  // Apply current snapshots first, then the independently ordered financial
+  // events. The store retains newer display quotes while filling its buffer.
+  const financialBatch = takeDeliveryBatch(financialRetry, financialTicks.filter(ownsCurrentSession));
+  if (financialBatch.ticks.length > 0) {
+    try {
+      marketStore.updateTicksBatch(financialBatch.ticks, { syncAppStore: false });
+      if (financialBatch.isRetry) resetRetry(financialRetry);
+    } catch {
+      retainFailedBatch(financialRetry, financialBatch.ticks);
+    }
+  } else if (financialBatch.isRetry) resetRetry(financialRetry);
 
   if (appBatch.ticks.length > 0) {
     try {
@@ -501,6 +545,7 @@ export const flushLiveTicks = (): void => {
   }
 
   scheduleRetry(marketRetry);
+  scheduleRetry(financialRetry);
   scheduleRetry(appRetry);
 };
 

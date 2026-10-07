@@ -94,6 +94,246 @@ describe('on-demand feed status refresh', () => {
 });
 
 describe('live instrument catalogue updates', () => {
+  const recoverTransport = () => window.dispatchEvent(new CustomEvent('rtx:trade-stream-recovered', {
+    detail: { reason: 'transport-reconnect' },
+  }));
+
+  it('recovery fast path checks an unchanged revision without reloading verified same-scope permissions', async () => {
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    const before = apiGet.mock.calls.length;
+    act(recoverTransport);
+    await flushPromises();
+    try {
+      expect(apiGet.mock.calls.slice(before).map(([endpoint]) => endpoint)).toEqual(['/instruments/revision']);
+      expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+      expect(result.current.authorizationSettled).toBe(true);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('ignores ordinary state flushes and coalesces recovery with a pending revision check', async () => {
+    const original = apiGet.getMockImplementation()!;
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    const before = apiGet.mock.calls.length;
+    act(() => window.dispatchEvent(new Event('rtx:trade-stream-recovered')));
+    act(() => window.dispatchEvent(new CustomEvent('rtx:trade-stream-recovered', { detail: { reason: 'state-update' } })));
+    expect(apiGet.mock.calls).toHaveLength(before);
+    let resolveRevision!: (value: unknown) => void;
+    apiGet.mockImplementation((endpoint: string, ...args: unknown[]) => endpoint === '/instruments/revision'
+      ? new Promise(resolve => { resolveRevision = resolve; }) : original(endpoint, ...args));
+    act(recoverTransport);
+    act(recoverTransport);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(apiGet.mock.calls.slice(before).map(([endpoint]) => endpoint)).toEqual(['/instruments/revision']);
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    await act(async () => { resolveRevision({ revision }); });
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    unmount();
+  });
+
+  it('recovery and polling do not abort or restart the pending initial catalogue', async () => {
+    const original = apiGet.getMockImplementation()!;
+    let resolveCatalogue!: (value: unknown) => void;
+    let signal!: AbortSignal;
+    apiGet.mockImplementation((endpoint: string, options: { signal?: AbortSignal }, ...args: unknown[]) => endpoint === '/instruments'
+      ? new Promise(resolve => { resolveCatalogue = resolve; signal = options.signal!; })
+      : original(endpoint, options, ...args));
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    act(recoverTransport);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(apiGet.mock.calls.map(([endpoint]) => endpoint)).toEqual(['/api/v1/market/symbols', '/instruments']);
+    expect(signal.aborted).toBe(false);
+    expect(result.current.authorizedSymbols).toEqual([]);
+    expect(result.current.authorizationSettled).toBe(false);
+    await act(async () => { resolveCatalogue({ revision, instruments: [...instruments] }); });
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    expect(result.current.authorizationSettled).toBe(true);
+    expect(apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments')).toHaveLength(1);
+    unmount();
+  });
+
+  it('still checks and revokes authorization while public enrichment remains pending', async () => {
+    const original = apiGet.getMockImplementation()!;
+    let resolvePublic!: (value: unknown) => void;
+    let publicSignal!: AbortSignal;
+    let publicReads = 0;
+    apiGet.mockImplementation((endpoint: string, options: { signal?: AbortSignal }, ...args: unknown[]) => {
+      if (endpoint === '/api/v1/market/symbols' && ++publicReads === 1) {
+        return new Promise(resolve => { resolvePublic = resolve; publicSignal = options.signal!; });
+      }
+      return original(endpoint, options, ...args);
+    });
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    expect(result.current.authorizationSettled).toBe(true);
+    expect(publicSignal.aborted).toBe(false);
+    revision = '2';
+    instruments = [{ symbol: 'BTCUSD', trading_enabled: false }];
+    let resolveRevoked!: (value: unknown) => void;
+    apiGet.mockImplementation((endpoint: string, ...args: unknown[]) => endpoint === '/instruments'
+      ? new Promise(resolve => { resolveRevoked = resolve; }) : original(endpoint, ...args));
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments/revision')).toHaveLength(1);
+    expect(publicSignal.aborted).toBe(true);
+    expect(result.current.authorizedSymbols).toEqual([]);
+    await act(async () => { resolveRevoked({ revision, instruments: [...instruments] }); });
+    expect(result.current.authorizedSymbols).toEqual([]);
+    expect(result.current.disabledSymbols).toEqual(['BTCUSD']);
+    await act(async () => { resolvePublic({ symbols: [{ symbol: 'BTCUSD' }] }); });
+    expect(result.current.authorizedSymbols).toEqual([]);
+    unmount();
+  });
+
+  it('checks a second revision while public enrichment from the first revision reload is pending', async () => {
+    const original = apiGet.getMockImplementation()!;
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    let resolvePublic!: (value: unknown) => void;
+    let publicSignal!: AbortSignal;
+    apiGet.mockImplementation((endpoint: string, options: { signal?: AbortSignal }, ...args: unknown[]) => endpoint === '/api/v1/market/symbols'
+      ? new Promise(resolve => { resolvePublic = resolve; publicSignal = options.signal!; })
+      : original(endpoint, options, ...args));
+    revision = '2';
+    act(recoverTransport);
+    await flushPromises();
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    expect(publicSignal.aborted).toBe(false);
+    const firstPublicSignal = publicSignal;
+    const finishFirstPublic = resolvePublic;
+    revision = '3';
+    instruments = [{ symbol: 'BTCUSD', trading_enabled: false }];
+    apiGet.mockImplementation(original);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments/revision')).toHaveLength(2);
+    expect(firstPublicSignal.aborted).toBe(true);
+    expect(result.current.authorizedSymbols).toEqual([]);
+    expect(result.current.disabledSymbols).toEqual(['BTCUSD']);
+    await act(async () => { finishFirstPublic({ symbols: [{ symbol: 'BTCUSD' }] }); });
+    expect(result.current.authorizedSymbols).toEqual([]);
+    unmount();
+  });
+
+  it('an obsolete authenticated request cannot release the newer session pending guard', async () => {
+    const original = apiGet.getMockImplementation()!;
+    const pending: Array<(value: unknown) => void> = [];
+    apiGet.mockImplementation((endpoint: string, ...args: unknown[]) => endpoint === '/instruments'
+      ? new Promise(resolve => { pending.push(resolve); }) : original(endpoint, ...args));
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    act(() => useAppStore.setState({ accountId: '200002' }));
+    await flushPromises();
+    expect(pending).toHaveLength(2);
+    await act(async () => { pending[0]({ revision: '1', instruments: [{ symbol: 'BTCUSD', trading_enabled: true }] }); });
+    act(recoverTransport);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments/revision')).toHaveLength(0);
+    expect(pending).toHaveLength(2);
+    expect(result.current.authorizedSymbols).toEqual([]);
+    await act(async () => { pending[1]({ revision: '2', instruments: [{ symbol: 'XAUUSD', trading_enabled: true }] }); });
+    expect(result.current.authorizedSymbols).toEqual(['XAUUSD']);
+    unmount();
+  });
+
+  it('clears on changed recovery revision and preserves the server revoked permission', async () => {
+    const original = apiGet.getMockImplementation()!;
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    revision = '2';
+    let resolveCatalogue!: (value: unknown) => void;
+    apiGet.mockImplementation((endpoint: string, ...args: unknown[]) => endpoint === '/instruments'
+      ? new Promise(resolve => { resolveCatalogue = resolve; }) : original(endpoint, ...args));
+    act(recoverTransport);
+    await flushPromises();
+    expect(result.current.authorizedSymbols).toEqual([]);
+    expect(result.current.authorizationSettled).toBe(false);
+    const pendingReads = apiGet.mock.calls.length;
+    act(recoverTransport);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(apiGet.mock.calls).toHaveLength(pendingReads);
+    await act(async () => { resolveCatalogue({ revision, instruments: [{ symbol: 'BTCUSD', trading_enabled: false }] }); });
+    expect(result.current.authorizedSymbols).toEqual([]);
+    expect(result.current.disabledSymbols).toEqual(['BTCUSD']);
+    unmount();
+  });
+
+  it('real catalogue notification clears immediately and ignores an older failed revision check', async () => {
+    const original = apiGet.getMockImplementation()!;
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    let rejectRevision!: (error: Error) => void;
+    apiGet.mockImplementation((endpoint: string, ...args: unknown[]) => endpoint === '/instruments/revision'
+      ? new Promise((_resolve, reject) => { rejectRevision = reject; }) : original(endpoint, ...args));
+    act(recoverTransport);
+    revision = '2';
+    act(() => window.dispatchEvent(new CustomEvent('rtx:instrument-catalogue-changed', { detail: { revision } })));
+    expect(result.current.authorizedSymbols).toEqual([]);
+    await flushPromises();
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    await act(async () => { rejectRevision(new Error('obsolete request failed')); });
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
+  it('recovery revision failure clears permissions and later success fully reloads them', async () => {
+    const original = apiGet.getMockImplementation()!;
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    apiGet.mockImplementation((endpoint: string, ...args: unknown[]) => endpoint === '/instruments/revision'
+      ? Promise.reject(new Error('unavailable')) : original(endpoint, ...args));
+    act(recoverTransport);
+    await flushPromises();
+    expect(result.current.authorizedSymbols).toEqual([]);
+    const reads = apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments').length;
+    apiGet.mockImplementation(original);
+    act(recoverTransport);
+    await flushPromises();
+    expect(apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments')).toHaveLength(reads + 1);
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    unmount();
+  });
+
+  it.each([undefined, '', '   '])('cannot reuse an empty or missing loaded revision on recovery (%j)', async (loadedRevision) => {
+    const original = apiGet.getMockImplementation()!;
+    apiGet.mockImplementation((endpoint: string, ...args: unknown[]) => endpoint === '/instruments'
+      ? Promise.resolve({ revision: loadedRevision, instruments: [...instruments] }) : original(endpoint, ...args));
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    expect(result.current.authorizedSymbols).toEqual(['BTCUSD']);
+    const reads = apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments').length;
+    act(recoverTransport);
+    await flushPromises();
+    expect(apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments')).toHaveLength(reads + 1);
+    unmount();
+  });
+
+  it('ignores a pending prior-session revision after account change', async () => {
+    const original = apiGet.getMockImplementation()!;
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    let resolveRevision!: (value: unknown) => void;
+    apiGet.mockImplementation((endpoint: string, ...args: unknown[]) => endpoint === '/instruments/revision'
+      ? new Promise(resolve => { resolveRevision = resolve; }) : original(endpoint, ...args));
+    act(recoverTransport);
+    revision = '2';
+    instruments = [{ symbol: 'XAUUSD', trading_enabled: true }];
+    act(() => useAppStore.setState({ accountId: '200002' }));
+    expect(result.current.authorizedSymbols).toEqual([]);
+    await flushPromises();
+    expect(result.current.authorizedSymbols).toEqual(['XAUUSD']);
+    const reads = apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments').length;
+    await act(async () => { resolveRevision({ revision: '1' }); });
+    expect(result.current.authorizedSymbols).toEqual(['XAUUSD']);
+    expect(apiGet.mock.calls.filter(([endpoint]) => endpoint === '/instruments')).toHaveLength(reads);
+    unmount();
+  });
+
   let revision: string;
   let instruments: Array<Record<string, unknown>>;
   beforeEach(() => {

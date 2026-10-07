@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type MutableRefObject } from 'react';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import type { ContextMenuItemConfig } from '../ui/ContextMenu';
 import type {
@@ -7,6 +7,7 @@ import type {
   MarketWatchSortMode,
 } from '../../utils/marketWatchView';
 import { MarketWatchRow } from './MarketWatchRow';
+import { useMarketWatchRowWindow } from './useMarketWatchRowWindow';
 
 type Translate = (source: string, values?: Record<string, unknown>) => string;
 
@@ -33,6 +34,7 @@ interface MarketWatchGridProps {
   sortMode: MarketWatchSortMode;
   showRows?: boolean;
   translate: Translate;
+  scrollToSymbolRef?: MutableRefObject<((symbol: string) => void) | null>;
 }
 
 /** Responsive Market Watch grid, including row visibility binding and theme state. */
@@ -59,10 +61,31 @@ export const MarketWatchGrid = ({
   sortMode,
   showRows = true,
   translate,
+  scrollToSymbolRef,
 }: MarketWatchGridProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLTableSectionElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(999);
   const [isLightSkin, setIsLightSkin] = useState(false);
+  const [fontRevision, setFontRevision] = useState(0);
+  const windowedRows = useMarketWatchRowWindow({ rows, selectedSymbol: marketWatchSelectionSymbol, viewportRef, headerRef,
+    rowRefs: marketWatchRowRefCallbacks,
+    measurementScope: `${panelWidth}:${fontRevision}:${columns.join(',')}` });
+  const { scrollToSymbol, setMenuSymbol } = windowedRows;
+  const previousSelection = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (previousSelection.current === marketWatchSelectionSymbol) return;
+    previousSelection.current = marketWatchSelectionSymbol;
+    if (windowedRows.enabled) scrollToSymbol(marketWatchSelectionSymbol);
+  }, [marketWatchSelectionSymbol, scrollToSymbol, windowedRows.enabled]);
+  useLayoutEffect(() => {
+    if (!scrollToSymbolRef) return;
+    scrollToSymbolRef.current = scrollToSymbol;
+    return () => { if (scrollToSymbolRef.current === scrollToSymbol) scrollToSymbolRef.current = null; };
+  }, [scrollToSymbol, scrollToSymbolRef]);
+  const onMenuOpenChange = useCallback((symbol: string, open: boolean) => {
+    setMenuSymbol(current => open ? symbol : current === symbol ? null : current);
+  }, [setMenuSymbol]);
 
   const bindViewport = useCallback((node: HTMLDivElement | null) => {
     viewportRef.current = node;
@@ -89,11 +112,15 @@ export const MarketWatchGrid = ({
 
   useEffect(() => {
     const root = document.documentElement;
-    const update = () => setIsLightSkin(root.classList.contains('rtx-skin-untitled-light'));
+    const update = () => {
+      setIsLightSkin(root.classList.contains('rtx-skin-untitled-light'));
+      setFontRevision(value => value + 1);
+    };
     update();
     const observer = new MutationObserver(update);
-    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
+    observer.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
+    document.fonts?.addEventListener('loadingdone', update);
+    return () => { observer.disconnect(); document.fonts?.removeEventListener('loadingdone', update); };
   }, []);
 
   useEffect(() => {
@@ -142,11 +169,23 @@ export const MarketWatchGrid = ({
   return (
     <div
       ref={bindViewport}
+      onScroll={windowedRows.readViewport}
+      onFocusCapture={event => windowedRows.setFocusedSymbol((event.target as HTMLElement).closest<HTMLTableRowElement>('tr[data-symbol]')?.dataset.symbol ?? null)}
+      onBlurCapture={event => {
+        if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) windowedRows.setFocusedSymbol(null);
+      }}
+      onDragStartCapture={event => {
+        const row = (event.target as HTMLElement).closest<HTMLTableRowElement>('tr[data-symbol]');
+        if (row?.draggable) windowedRows.setDraggedSymbol(row.dataset.symbol ?? null);
+      }}
+      onDragEndCapture={() => windowedRows.setDraggedSymbol(null)}
       style={{
         flex: 1,
         overflowY: 'auto',
         overflowX: marketWatchOptions.autoArrange ? 'hidden' : 'auto',
         minWidth: 0,
+        minHeight: 0,
+        overflowAnchor: windowedRows.enabled ? 'none' : undefined,
         display: showRows ? 'block' : 'flex',
         flexDirection: 'column',
       }}
@@ -191,6 +230,8 @@ export const MarketWatchGrid = ({
         </div>
       ) : (
         <table
+          aria-rowcount={rows.length + 1}
+          data-logical-row-count={rows.length}
           className={`rtx-market-watch__grid${marketWatchOptions.showGrid ? ' rtx-market-watch__grid--lines' : ''}`}
           style={{
             width: marketWatchOptions.autoArrange ? '100%' : Math.max(panelWidth, tableMinimumWidth),
@@ -204,8 +245,8 @@ export const MarketWatchGrid = ({
               <col key={column} style={column === 'symbol' ? undefined : { width: columnWidths[column] ?? 82 }} />
             ))}
           </colgroup>
-          <thead>
-            <tr style={{ borderBottom: 'none' }}>
+          <thead ref={headerRef}>
+            <tr aria-rowindex={1} style={{ borderBottom: 'none' }}>
               {columns.map((column) => {
                 const sortableMode: MarketWatchSortMode = column === 'symbol'
                   ? 'symbol'
@@ -264,7 +305,12 @@ export const MarketWatchGrid = ({
             </tr>
           </thead>
           <tbody>
-            {rows.map((symbol) => (
+            {windowedRows.visibleIndices.map((logicalIndex, renderedIndex) => {
+              const symbol = rows[logicalIndex];
+              const previousIndex = windowedRows.visibleIndices[renderedIndex - 1] ?? -1;
+              const gap = windowedRows.offsets[logicalIndex] - windowedRows.offsets[previousIndex + 1];
+              return <Fragment key={symbol}>
+              {gap > 0 && <tr aria-hidden="true" className="rtx-market-watch__spacer" style={{ height: gap }}><td colSpan={columns.length} style={{ height: gap, padding: 0, border: 0, lineHeight: 0, fontSize: 0 }} /></tr>}
               <MarketWatchRow
                 key={symbol}
                 symbol={symbol}
@@ -278,16 +324,20 @@ export const MarketWatchGrid = ({
                     window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol } }));
                   }
                 }}
-                contextMenuItems={getContextMenuItems(symbol)}
+                getContextMenuItems={getContextMenuItems}
                 columns={columns}
                 showMilliseconds={marketWatchOptions.showMilliseconds}
                 isLightSkin={isLightSkin}
                 closedDailyChange={closedDailyChanges.get(symbol)}
                 lastPrice={lastPrices.get(symbol)}
                 symbolUniverse={quoteEligibleSymbols}
-                rowRef={marketWatchRowRefCallbacks.get(symbol)}
+                rowRef={windowedRows.callbacks.get(symbol)}
+                rowIndex={logicalIndex + 2}
+                onMenuOpenChange={onMenuOpenChange}
               />
-            ))}
+              </Fragment>;
+            })}
+            {windowedRows.enabled && (windowedRows.visibleIndices.at(-1) ?? -1) < rows.length - 1 && <tr aria-hidden="true" className="rtx-market-watch__spacer" style={{ height: windowedRows.offsets[rows.length] - windowedRows.offsets[(windowedRows.visibleIndices.at(-1) ?? -1) + 1] }}><td colSpan={columns.length} style={{ height: 'inherit', padding: 0, border: 0, lineHeight: 0, fontSize: 0 }} /></tr>}
           </tbody>
         </table>
       ))}

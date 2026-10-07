@@ -1,5 +1,13 @@
 import type { BackendCandleTimeframe } from './candleApi';
 import { getRemainingTimeframeSeconds } from './timeframeBoundary';
+import { getTerminalQuoteClockNowMs, terminalQuoteFreshnessEnabled } from '../services/terminalQuoteFreshness';
+
+// Quotes and cached status timestamps describe past events, not current time.
+// Hide the strict-mode countdown until this session's independent clock is
+// calibrated. Legacy deployments without that clock retain their source clock.
+export const getChartCandleCountdownNowMs = (sourceNowMs: () => number): number => (
+  terminalQuoteFreshnessEnabled() ? getTerminalQuoteClockNowMs() ?? Number.NaN : sourceNowMs()
+);
 
 export const formatChartCandleCountdown = (remainingSeconds: number): string => {
   const totalSeconds = Math.max(0, Math.floor(remainingSeconds));

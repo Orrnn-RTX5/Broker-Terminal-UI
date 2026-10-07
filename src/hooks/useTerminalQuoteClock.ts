@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { apiClient } from '../api/client';
 import { API_V2_BASE_URL } from '../config/api';
 import { onSessionChange } from '../services/brokerSession';
+import { getTerminalQuoteClockOwner } from '../services/terminalQuoteClockOwnership';
+import { quoteDiagnosticsEnabled, recordQuoteDiagnostic } from '../services/quoteDiagnostics';
 import {
   calibrateTerminalQuoteClock, getTerminalQuoteSession, isTerminalQuoteClockVerified,
   resetTerminalQuoteFreshness, terminalQuoteFreshnessEnabled, subscribeTerminalQuoteFreshness,
@@ -16,9 +18,9 @@ export function useTerminalQuoteClock(): void {
     let controller: AbortController | undefined;
     let scheduled: ReturnType<typeof setTimeout> | undefined;
     let lastVerified = false;
-    // Bailing out must never end the loop. The anchor expires after 60 seconds,
-    // and an unverified clock refuses every position close before it is sent, so
-    // a poller that stops rescheduling silently makes closing impossible.
+    // Bailing out must never end the loop. The anchor expires after 60 seconds;
+    // prompt resampling restores verified local ages while execution remains
+    // responsible for quote safety whenever browser time is uncertain.
     const scheduleNext = (delayMs: number) => {
       if (disposed) return;
       clearTimeout(scheduled);
@@ -33,6 +35,7 @@ export function useTerminalQuoteClock(): void {
       clearTimeout(scheduled);
       const request = ++generation;
       const owner = getTerminalQuoteSession();
+      const clockOwner = getTerminalQuoteClockOwner();
       const active = new AbortController();
       controller = active;
       const startMono = performance.now();
@@ -40,12 +43,34 @@ export function useTerminalQuoteClock(): void {
       let accepted = false;
       try {
         const response = await apiClient.get<{ server_time_ms?: unknown }>('/time', {
-          baseUrl: API_V2_BASE_URL, skipAuth: true, signal: active.signal,
+          baseUrl: clockOwner?.apiBaseUrl ?? API_V2_BASE_URL, skipDynamicUrl: Boolean(clockOwner), skipAuth: true, signal: active.signal,
           cache: 'no-store', timeoutMs: 2000,
         });
-        if (disposed || active.signal.aborted || request !== generation || owner !== getTerminalQuoteSession()) return;
-        accepted = calibrateTerminalQuoteClock(response.server_time_ms, startMono, startWall, performance.now(), Date.now(), owner);
-      } catch {
+        const currentSession = getTerminalQuoteSession();
+        const discardReason = disposed ? 'hook-disposed'
+          : active.signal.aborted ? 'request-aborted'
+            : request !== generation ? 'request-superseded'
+              : clockOwner !== getTerminalQuoteClockOwner() ? 'clock-owner-changed'
+                : !clockOwner && owner !== currentSession ? 'unbound-session-changed' : undefined;
+        if (discardReason) {
+          if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: false, reason: discardReason,
+            requestMonoMs: startMono, responseMonoMs: performance.now(),
+            browserGeneration: currentSession, expectedBrowserGeneration: owner });
+          return;
+        }
+        // A quote transport reconnect advances quote generations, not the owner
+        // of this pinned HTTP request. Accept its fresh clock sample only while
+        // that exact broker/account/credential owner and hook request remain current.
+        // Unbound requests still require the original quote generation.
+        accepted = calibrateTerminalQuoteClock(response.server_time_ms, startMono, startWall, performance.now(), Date.now(),
+          clockOwner ? currentSession : owner, clockOwner);
+      } catch (error) {
+        const timedOut = error instanceof Error && (error.name === 'TimeoutError' || /^Request timed out after /.test(error.message));
+        const responseMono = performance.now();
+        if (quoteDiagnosticsEnabled()) recordQuoteDiagnostic({ kind: 'clock', accepted: false,
+          reason: active.signal.aborted ? 'request-aborted' : timedOut ? 'request-timeout' : 'request-failed',
+          requestMonoMs: startMono, responseMonoMs: responseMono, rttMs: responseMono - startMono,
+          browserGeneration: getTerminalQuoteSession(), expectedBrowserGeneration: owner });
         // A failed refresh cannot discard the bounded 60-second holdover.
       } finally {
         if (controller === active) controller = undefined;

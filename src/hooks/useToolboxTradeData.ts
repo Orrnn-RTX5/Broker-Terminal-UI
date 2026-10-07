@@ -7,8 +7,9 @@ import {
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
   getServerUrl,
+  onSessionChange,
 } from '../services/brokerSession';
-import { isConfirmedClosedPosition, useAppStore } from '../store/useAppStore';
+import { getPositionCloseScope, isConfirmedClosedPosition, useAppStore } from '../store/useAppStore';
 import { TRADE_OVERLAY_CLOSE_STATE_EVENT } from '../services/tradeOverlayHistory';
 import {
   requestPositionSnapshotRevalidation,
@@ -232,7 +233,7 @@ const reconcilePendingMarketOrders = (
         position: {
           ...entry.position,
           placementErrorCode: 'ORDER_OUTCOME_UNKNOWN',
-          placementErrorMessage: `Order outcome unknown. Check command ${clientOrderId} before placing another order.`,
+          placementErrorMessage: `Awaiting confirmation. Check command ${clientOrderId} before placing another order.`,
         },
       });
       changed = true;
@@ -437,6 +438,7 @@ export function useToolboxTradeData() {
   const placementSessionScopeRef = useRef(getCommittedBrokerAccountSessionScopeKey(
     getCommittedBrokerAccountSessionScope(),
   ));
+  const placementAuthGenerationRef = useRef(getPositionCloseScope());
   const refreshSeqRef = useRef(0);
   const activeRefreshControllerRef = useRef<AbortController | null>(null);
 
@@ -479,9 +481,9 @@ export function useToolboxTradeData() {
       });
       positions = useAppStore.getState().positions as ToolboxTradePosition[];
       nextSig = positionsSignature(positions);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
-      }
+      // Chart subscribers already process this store transition. An immediate
+      // refresh here would duplicate structural renders and cancel valuation
+      // coalescing. Explicit visibility/history refresh events remain separate.
     }
     positionsRef.current = positions;
     if (previousSig === nextSig) return;
@@ -645,12 +647,24 @@ export function useToolboxTradeData() {
   }, [commitPositions]);
 
   useEffect(() => {
+    const nextPlacementScope = getCommittedBrokerAccountSessionScopeKey(
+      getCommittedBrokerAccountSessionScope(),
+    );
+    const placementScopeChanged = placementSessionScopeRef.current !== nextPlacementScope
+      || placementAuthGenerationRef.current !== getPositionCloseScope();
     const sessionChanged = stateSessionKeyRef.current !== sessionKey;
     if (sessionChanged) {
       stateSessionKeyRef.current = sessionKey;
+    }
+    // Credential rotation restarts transport reads, not the original trade
+    // intents. Only a broker/account/authentication change discards their rows.
+    const authenticationLost = !storeAuthToken || !useAppStore.getState().isAuthenticated;
+    if (placementScopeChanged || (sessionChanged && authenticationLost)) {
       accountRef.current = null;
       positionsRef.current = [];
       pendingMarketOrdersRef.current.clear();
+      retainedImmediatePositionsRef.current.clear();
+      optimisticallyClosedPositionsRef.current.clear();
       setState({
         ...INITIAL_STATE,
         login: readLogin(),
@@ -658,13 +672,9 @@ export function useToolboxTradeData() {
         loading: Boolean(readLogin()),
       });
     }
-    retainedImmediatePositionsRef.current.clear();
-    optimisticallyClosedPositionsRef.current.clear();
-    const nextPlacementScope = getCommittedBrokerAccountSessionScopeKey(
-      getCommittedBrokerAccountSessionScope(),
-    );
-    if (placementSessionScopeRef.current !== nextPlacementScope) {
+    if (placementScopeChanged) {
       placementSessionScopeRef.current = nextPlacementScope;
+      placementAuthGenerationRef.current = getPositionCloseScope();
       pendingMarketOrdersRef.current.clear();
       setState((prev) => ({ ...prev, pendingPositions: [] }));
     }
@@ -672,6 +682,18 @@ export function useToolboxTradeData() {
       activeRefreshControllerRef.current?.abort();
     };
   }, [sessionKey]);
+
+  useEffect(() => onSessionChange(reason => {
+    if (reason === 'token_rotation') return;
+    // A new login may target the same account. It still must not retain UI
+    // state from the previous authenticated session.
+    pendingMarketOrdersRef.current.clear();
+    retainedImmediatePositionsRef.current.clear();
+    optimisticallyClosedPositionsRef.current.clear();
+    accountRef.current = null;
+    positionsRef.current = [];
+    setState({ ...INITIAL_STATE, login: readLogin(), restBaseUrl: getBrokerRestBaseUrl(), loading: Boolean(readLogin()) });
+  }), []);
 
   useEffect(() => {
     const login = readLogin();
@@ -879,7 +901,10 @@ export function useToolboxTradeData() {
     return () => window.removeEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleCloseState);
   }, [commitPositions]);
 
-  const visibleState = stateSessionKeyRef.current === sessionKey
+  const sameAuthenticatedTradeIdentity = Boolean(storeAuthToken && useAppStore.getState().isAuthenticated)
+    && placementAuthGenerationRef.current === getPositionCloseScope()
+    && placementSessionScopeRef.current === getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+  const visibleState = stateSessionKeyRef.current === sessionKey || sameAuthenticatedTradeIdentity
     ? state
     : {
       ...INITIAL_STATE,

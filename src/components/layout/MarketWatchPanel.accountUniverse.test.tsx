@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -49,6 +49,23 @@ describe('MarketWatchPanel logged-in account symbol universe', () => {
 
   const demandedSymbols = (): string[] => marketHooks.useLiveQuotes.mock.calls
     .flatMap(([symbols]) => symbols as string[]);
+
+  it('mounts a bounded viewport while retaining all 561 logical quote subscriptions', () => {
+    const symbols = Array.from({ length: 561 }, (_, index) => `SYMBOL${index}`);
+    marketHooks.accountCatalogStatus = 'loaded';
+    marketHooks.activeSymbols = symbols;
+    setMarketCatalog(symbols);
+    watchlistState.activeWatchlistId = 'large';
+    watchlistState.watchlists = [{ id: 'large', symbols, isDefault: false }];
+    const { container } = render(<MarketWatchPanel allSymbols={symbols} selectedSymbol={symbols[0]} onSymbolSelect={vi.fn()} />);
+    expect(container.querySelectorAll('.rtx-market-watch__row').length).toBeLessThan(60);
+    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(symbols);
+    expect(container.querySelector('table')).toHaveAttribute('aria-rowcount', '562');
+    const viewport = container.querySelector('.rtx-market-watch__table')!;
+    fireEvent.scroll(viewport, { target: { scrollTop: 20 * 561 } });
+    expect(container.querySelector('[data-symbol="SYMBOL560"]')).toBeInTheDocument();
+    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(symbols);
+  }, 30_000);
 
   it('shows a small account catalogue in full, in the backend order, by default', () => {
     marketHooks.accountCatalogStatus = 'loaded';

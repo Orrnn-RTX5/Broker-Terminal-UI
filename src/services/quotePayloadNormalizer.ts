@@ -16,7 +16,8 @@ import {
   readFirstNonEmptyString as readRecordNonEmptyString,
 } from '../utils/recordFields';
 import { resolveDailyChangePriceMode } from './dailyChangePriceModeRegistry';
-import { readQuoteFreshnessMetadata, type TerminalQuoteMetadata } from './terminalQuoteFreshness';
+import { hasExplicitQuoteSides, readQuoteFreshnessMetadata, type TerminalQuoteMetadata } from './terminalQuoteFreshness';
+import { quoteDiagnosticsEnabled, rememberQuoteWireEvidence } from './quoteDiagnostics';
 
 import { readQuoteTradingStatus, type QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
 
@@ -269,12 +270,10 @@ const normalizeQuotePayload = (
     'lpName',
   ]);
   const sourceTimestamp = readSourceTimestamp(payload, ...envelopes);
-  const freshnessMetadata = envelopes.reduce<TerminalQuoteMetadata>(
-    (metadata, envelope) => readQuoteFreshnessMetadata(metadata, envelope),
-    readQuoteFreshnessMetadata(payload),
-  );
+  const freshnessMetadata = readQuoteFreshnessMetadata(payload, envelopes[0], envelopes.slice(1));
+  if (!hasExplicitQuoteSides(payload)) freshnessMetadata.provider_timestamp = undefined;
 
-  return {
+  const normalized: NormalizedQuoteTick = {
     symbol,
     bid,
     ask,
@@ -303,6 +302,8 @@ const normalizeQuotePayload = (
     open: dailyOpen,
     close,
   };
+  if (quoteDiagnosticsEnabled()) rememberQuoteWireEvidence(normalized, payload, envelopes, bid, ask);
+  return normalized;
 };
 
 /** Convert a raw broker frame into validated, normalized quote ticks. */

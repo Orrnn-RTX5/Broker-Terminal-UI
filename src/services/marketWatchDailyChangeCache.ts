@@ -63,6 +63,10 @@ const STORAGE_VERSION = 1 as const;
 const FLUSH_DELAY_MS = 250;
 
 const entriesByScope = new Map<string, Map<string, MarketWatchDailyChangeCacheEntry>>();
+let entryCount = 0;
+// Conservative lower bound: replacing/removing the oldest entry can leave an
+// earlier value here, which only causes an extra expiry scan, never missed TTL.
+let earliestSavedAt = Infinity;
 let loadedFromStorage = false;
 let dirty = false;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -171,6 +175,7 @@ const shouldReplaceLoadedEntry = (
 const deleteEntry = (scopeKey: string, symbol: string): boolean => {
   const scopedEntries = entriesByScope.get(scopeKey);
   if (!scopedEntries?.delete(symbol)) return false;
+  entryCount -= 1;
   if (scopedEntries.size === 0) entriesByScope.delete(scopeKey);
   return true;
 };
@@ -189,11 +194,44 @@ const pruneEntries = (now = Date.now()): boolean => {
   let changed = false;
   const cutoff = now - MARKET_WATCH_DAILY_CHANGE_CACHE_TTL_MS;
 
-  collectEntries().forEach((entry) => {
-    if (entry.savedAt <= cutoff) {
-      changed = deleteEntry(entry.scopeKey, entry.symbol) || changed;
+  if (earliestSavedAt <= cutoff) {
+    earliestSavedAt = Infinity;
+    for (const [scopeKey, scopedEntries] of entriesByScope) {
+      for (const [symbol, entry] of scopedEntries) {
+        if (entry.savedAt <= cutoff) {
+          changed = deleteEntry(scopeKey, symbol) || changed;
+        } else {
+          earliestSavedAt = Math.min(earliestSavedAt, entry.savedAt);
+        }
+      }
     }
-  });
+  }
+
+  if (entryCount <= MAX_MARKET_WATCH_DAILY_CHANGE_CACHE_ENTRIES) return changed;
+
+  // Individual quote writes can overflow by only one. Find the same final row
+  // of the retention sort without cloning/sorting every cached symbol per tick.
+  if (entryCount === MAX_MARKET_WATCH_DAILY_CHANGE_CACHE_ENTRIES + 1) {
+    let oldest: MarketWatchDailyChangeCacheEntry | undefined;
+    let oldestScope = '';
+    let oldestSymbol = '';
+    for (const [scopeKey, scopedEntries] of entriesByScope) {
+      for (const [symbol, entry] of scopedEntries) {
+        const order = oldest ? (entry.savedAt - oldest.savedAt
+          || compareEntryOrder(entry, oldest)
+          || scopeKey.localeCompare(oldestScope)
+          || symbol.localeCompare(oldestSymbol)) : -1;
+        // A complete comparator tie evicts the last map entry, matching the
+        // stable sort used for persisted loads and multi-entry batch overflow.
+        if (order <= 0) {
+          oldest = entry;
+          oldestScope = scopeKey;
+          oldestSymbol = symbol;
+        }
+      }
+    }
+    return deleteEntry(oldestScope, oldestSymbol) || changed;
+  }
 
   const retained = collectEntries().sort((left, right) => (
     right.savedAt - left.savedAt
@@ -249,8 +287,10 @@ const ensureLoaded = (): void => {
       ...(change !== undefined ? { change } : {}),
     };
     if (shouldReplaceLoadedEntry(scopedEntries.get(symbol), candidate)) {
+      if (!scopedEntries.has(symbol)) entryCount += 1;
       scopedEntries.set(symbol, candidate);
       entriesByScope.set(scopeKey, scopedEntries);
+      earliestSavedAt = Math.min(earliestSavedAt, candidate.savedAt);
     }
   });
 
@@ -386,8 +426,10 @@ const rememberEntry = (
     ) return false;
   }
 
+  if (!current) entryCount += 1;
   scopedEntries.set(normalizedSymbol, candidate);
   entriesByScope.set(normalizedScopeKey, scopedEntries);
+  earliestSavedAt = Math.min(earliestSavedAt, savedAt);
   return true;
 };
 
@@ -484,6 +526,8 @@ export const resetMarketWatchDailyChangeCacheForTests = (
   if (flushTimer !== null) clearTimeout(flushTimer);
   flushTimer = null;
   entriesByScope.clear();
+  entryCount = 0;
+  earliestSavedAt = Infinity;
   loadedFromStorage = false;
   dirty = false;
 

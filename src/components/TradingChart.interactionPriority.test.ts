@@ -321,7 +321,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(countdownEnd).toBeGreaterThan(countdownStart);
     expect(countdownEffect.match(/useActiveChartRuntimeEffect\(visibleRuntime\.interval/g)).toHaveLength(1);
     expect(countdownEffect).toContain('getChartCandleCountdownText(');
-    expect(countdownEffect).toContain('getSynchronizedChartMarketNowMs()');
+    expect(countdownEffect).toContain('getChartCandleCountdownNowMs(getSynchronizedChartMarketNowMs)');
     expect(countdownEffect).toContain('brokerTimeOffsetSecRef.current');
     expect(countdownEffect).toContain("livePriceBadgeRef.current?.style.display === 'block'");
     expect(countdownEffect).toContain('window.setInterval(updateLivePriceCountdown, 1000)');
@@ -329,7 +329,8 @@ describe('TradingChart interaction-priority contract', () => {
     expect(countdownEffect).toContain("document.addEventListener('visibilitychange', handleCountdownVisibilityChange)");
     expect(countdownEffect).toContain("document.removeEventListener('visibilitychange', handleCountdownVisibilityChange)");
     expect(countdownEffect).toContain('}, [activeTimeframe, getSynchronizedChartMarketNowMs, symbol]);');
-    expect(source).toContain('synchronizedMarketClockRef.current = null;\n  }, [symbol]);');
+    expect(source).toContain('synchronizedMarketClockRef.current = null;\n  }, [symbol, brokerAccountSessionScope]);');
+    expect(source).toContain('marketStatus.serverTimeMs && marketStatus.sessionScope === brokerAccountSessionScope');
   });
 
   it('owns loading and trade-overlay subscriptions only while active', () => {
@@ -337,7 +338,7 @@ describe('TradingChart interaction-priority contract', () => {
     const loadingEnd = loadingPresentationSource.indexOf('return {', loadingStart);
     const loadingEffects = loadingPresentationSource.slice(loadingStart, loadingEnd);
     const overlayStart = source.indexOf('useActiveChartRuntimeEffect(visibleRuntime.overlay, () => {', source.indexOf('// ─── Trade Annotations on Chart'));
-    const overlayEnd = source.indexOf('}, [brokerTimeOffsetSec,', overlayStart);
+    const overlayEnd = source.indexOf('}, [brokerAccountSessionScope, positionCloseScope, brokerTimeOffsetSec,', overlayStart);
     const overlayEffect = source.slice(overlayStart, overlayEnd);
 
     expect(loadingEffects.match(/useActiveChartRuntimeEffect\(intervalEnabled/g)).toHaveLength(2);
@@ -345,7 +346,9 @@ describe('TradingChart interaction-priority contract', () => {
     expect(loadingEffects).toContain('window.clearInterval(interval)');
     expect(overlayStart).toBeGreaterThan(-1);
     expect(overlayEnd).toBeGreaterThan(overlayStart);
-    expect(overlayEffect).toContain('return bindTradeOverlayRuntimeSubscriptions({');
+    expect(overlayEffect).toContain('const unbindSubscriptions = bindTradeOverlayRuntimeSubscriptions({');
+    expect(overlayEffect).toContain('disposeTradeOverlayRelayout();');
+    expect(overlayEffect).toContain('unbindSubscriptions();');
     expect(tradeSubscriptionsSource).toContain('subscribeVisibleLogicalRangeChange(timeScaleHandler)');
     expect(tradeSubscriptionsSource).toContain('useAppStore.subscribe(');
     expect(tradeSubscriptionsSource).toContain('useChartSettingsStore.subscribe(');
@@ -475,7 +478,8 @@ describe('TradingChart interaction-priority contract', () => {
     expect(helperEnd).toBeGreaterThan(helperStart);
     expect(helper).toContain('if (!canPaintLiveChart())');
     expect(helper).toContain('requestDeferredLivePaint()');
-    expect(helper).toContain('repaintLivePriceOverlayFromCurrentPrice(c)');
+    expect(helper).toContain('const overlay = resolveOverlayCandle(c);');
+    expect(helper).toContain('repaintLivePriceOverlayFromCurrentPrice(overlay)');
     expect(serverCandleStart).toBeGreaterThan(-1);
     expect(serverCandleEnd).toBeGreaterThan(serverCandleStart);
     expect(serverCandle.match(/repaintLivePriceOverlayOrDefer\(/g)).toHaveLength(4);
@@ -639,7 +643,9 @@ describe('TradingChart interaction-priority contract', () => {
     expect(drag).not.toContain('renderTradeOverlay');
     expect(drag).not.toContain('repaintLivePriceOverlayFromCurrentPrice');
     expect(drag).not.toContain('flushPostInteractionWork');
-    expect(tradeRuntimeSource).toContain('const repaintTradeOverlayGeometry = () => updateLabelPositions(false);');
+    expect(tradeRuntimeSource).toContain('const repaintTradeOverlayGeometry = (committedDraw = false) => {');
+    expect(tradeRuntimeSource).toContain('if (committedDraw && committedTradeOverlayLayoutRef.current) committedTradeOverlayLayoutRef.current();');
+    expect(tradeRuntimeSource).toContain('else updateLabelPositions(false);');
     expect(tradeRuntimeSource).toContain('repaintTradeOverlayGeometryRef.current = repaintTradeOverlayGeometry;');
     expect(source).toContain('if (refreshMetrics) {');
 
@@ -870,7 +876,7 @@ describe('TradingChart interaction-priority contract', () => {
     const tickLoop = source.slice(tickLoopStart, tickLoopEnd);
     const timestampIndex = tickLoop.indexOf('const rawTickTimestamp = Number(tick.sourceTimestamp ?? tick.timestamp);');
     // The key uses the raw feed sides (not the spread-markup widened quote).
-    const keyIndex = tickLoop.indexOf('const tickKey = `${rawTickTimestamp}:${candleQuote.bid}:${candleQuote.ask ?? candleQuote.bid}:${price}`;');
+    const keyIndex = tickLoop.indexOf("const tickKey = `${rawTickTimestamp}:${candleQuote.bid}:${candleQuote.ask ?? candleQuote.bid}:${price}:${tick.quoteDeliveryKind ?? ''}`;");
     const reconciliationIndex = tickLoop.indexOf('validateRenderedCandlesAgainstLivePrice(price, activeTf)');
 
     expect(timestampIndex).toBeGreaterThan(-1);

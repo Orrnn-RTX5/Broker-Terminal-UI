@@ -1645,6 +1645,16 @@ export class DrawingManager {
 
   private renderContextContents(container: HTMLElement, context: ChartContext): void {
     this.renderSeriesDataCache = null;
+    // Live candle synchronization also requests renderAll for charts without
+    // drawings. Clear a removed/hidden drawing once, then leave the empty SVG
+    // untouched: rebuilding its defs and reading layout serves no content.
+    const ownsConstruction = !this.hiddenDrawingContexts.has(context.contextId)
+      && this.contextOwnsActiveDrawing(context) && this.activeDrawing !== null;
+    if (!this.hasRenderableContent(container) && !ownsConstruction) {
+      const existing = context.svgOverlay;
+      if (existing?.firstChild) existing.replaceChildren();
+      return;
+    }
     this.ensureSvgOverlayForContainer(container, context);
     const svg = context.svgOverlay;
     if (!svg) return;

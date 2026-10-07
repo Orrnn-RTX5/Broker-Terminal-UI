@@ -28,6 +28,8 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface Tick {
+  /** Exact stream identity when supplied; raw/poll replays share this identity. */
+  eventIdentity?: string;
   symbol: string;
   bid: number;
   ask: number;
@@ -276,7 +278,7 @@ export class SymbolCandleBuilder {
     // FIX: Keep a bounded replay ledger, not only the immediately previous key.
     // Reconnect snapshots and multiple chart listeners can replay a tick after
     // intervening frames; accepting it twice inflates OHLC tick volume.
-    const tickKey = `${tsMs}:${tick.bid}:${tick.ask}:${volume}`;
+    const tickKey = tick.eventIdentity ?? `${tsMs}:${tick.bid}:${tick.ask}:${volume}`;
     if (this.recentTickKeys.has(tickKey)) return updates;
     this.recentTickKeys.set(tickKey, true);
     while (this.recentTickKeys.size > 512) {
@@ -339,6 +341,9 @@ export class SymbolCandleBuilder {
       }
 
     } else {
+      // Do not reopen a completed bucket while waiting for its next real minute.
+      const latestCompleted = this.m1Completed.at(-1);
+      if (latestCompleted && m1TimeSeconds <= latestCompleted.time) return updates;
       // ── No forming candle yet — open first M1 ────────────────────────────
       this.m1Forming = sealCandleOHLC({
         time:   m1TimeSeconds,

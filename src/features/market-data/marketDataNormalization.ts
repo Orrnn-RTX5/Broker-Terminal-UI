@@ -1,4 +1,5 @@
 import { enqueueLiveTick } from '../../services/liveTickDispatcher';
+import { hasExplicitQuoteSides, readQuoteFreshnessMetadata } from '../../services/terminalQuoteFreshness';
 import {
   composeDailyChangeQuoteContext,
   readDailyChangeLastPrice,
@@ -343,6 +344,10 @@ export const normalizeTick = (raw: unknown, fallbackSymbol?: string): (Tick & Pa
   ].filter((value) => value > 0);
   const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
   const sourceTimestamp = getSourceTickTimestamp(raw);
+  // REST snapshots need the same provider evidence as WebSocket ticks. Keep
+  // an explicit undefined provider_timestamp when only display time exists.
+  const freshnessMetadata = readQuoteFreshnessMetadata(payload, envelopes[0], envelopes.slice(1));
+  if (!hasExplicitQuoteSides(payload)) freshnessMetadata.provider_timestamp = undefined;
 
   return {
     symbol,
@@ -351,6 +356,7 @@ export const normalizeTick = (raw: unknown, fallbackSymbol?: string): (Tick & Pa
     spread,
     timestamp: sourceTimestamp ?? timestampToMs(undefined),
     sourceTimestamp,
+    ...freshnessMetadata,
     lp,
     volume,
     last,
@@ -414,7 +420,7 @@ export const normalizeOrderBook = (raw: unknown, fallbackSymbol?: string): LiveO
 };
 
 export const upsertTick = (tick: Tick & Partial<AppTick>): void => {
-  enqueueLiveTick(tick.symbol, tick);
+  enqueueLiveTick(tick.symbol, { ...tick, quoteDeliveryKind: 'snapshot' });
 };
 
 const hasUsablePrice = (value: unknown): value is number =>

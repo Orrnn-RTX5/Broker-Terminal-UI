@@ -77,6 +77,7 @@ interface PendingOrderRequest {
   apiStartedAtMs: number;
   sendCompletedAtMs: number;
   acceptedAtMs: number | null;
+  orderCommandResponse?: Record<string, unknown>;
   statusRecoverySentAtMs: number | null;
   serializationMs: number;
   sendCallMs: number;
@@ -117,6 +118,8 @@ export class TradeSocketOrderRejectedError extends Error {
 }
 
 export class TradeSocketTransportError extends Error {
+  orderCommandResponse?: Record<string, unknown>;
+  orderCommandReceivedAtMonoMs?: number;
   readonly code?: string;
   readonly requestId?: string;
   readonly clientOrderId?: string;
@@ -847,6 +850,14 @@ export class TradeWebSocketClient {
       // absolute terminal deadline. At that deadline we reconcile status once.
       if (pending.acceptedAtMs !== null) return;
       pending.acceptedAtMs = tradeOrderNow();
+      const data = record.data && typeof record.data === 'object' ? record.data as Record<string, unknown> : {};
+      pending.orderCommandResponse = {
+        status: 'accepted', client_order_id: clientOrderId,
+        execute_before: record.execute_before ?? data.execute_before,
+        accepted_at: record.accepted_at ?? data.accepted_at,
+        server_time_ms: record.server_time_ms ?? data.server_time_ms,
+        server_time: record.server_time ?? data.server_time,
+      };
       this.recordPendingOrderLatency(pending, 'order_accepted');
       return;
     }
@@ -911,6 +922,10 @@ export class TradeWebSocketClient {
   private rejectPendingOrder(requestId: string, error: Error): void {
     const pending = this.pendingOrders.get(requestId);
     if (!pending) return;
+    if (error instanceof TradeSocketTransportError && pending.orderCommandResponse) {
+      error.orderCommandResponse = pending.orderCommandResponse;
+      error.orderCommandReceivedAtMonoMs = pending.acceptedAtMs ?? undefined;
+    }
     this.pendingOrders.delete(requestId);
     this.clearPendingOrderTimer(pending);
     pending.reject(error);

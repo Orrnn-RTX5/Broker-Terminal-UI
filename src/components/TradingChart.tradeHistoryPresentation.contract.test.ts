@@ -11,6 +11,7 @@ const chartSource = [
   'src/features/trading-chart/runtime/useTradingChartTradeRuntime.ts',
   'src/features/trading-chart/runtime/createTradeOverlayModelRuntime.ts',
   'src/features/trading-chart/runtime/createTradeOverlayDomRuntime.ts',
+  'src/features/trading-chart/runtime/createHistoryTradeOverlayGroups.ts',
   'src/features/trading-chart/runtime/useTradingChartTradeOverlayRenderer.ts',
   'src/features/trading-chart/runtime/bindTradeOverlayRuntimeSubscriptions.ts',
   'src/features/trading-chart/runtime/tradeOverlayRuntimeConstants.ts',

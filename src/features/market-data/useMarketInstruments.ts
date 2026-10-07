@@ -79,6 +79,7 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
   const sessionRevision = useBrokerSessionRevision();
   const requestGenerationRef = useRef(0);
   const requestAbortRef = useRef<AbortController | null>(null);
+  const authenticatedRequestGenerationRef = useRef<number | null>(null);
   const catalogueRevisionRef = useRef<string | null>(null);
   const sessionDescriptor = useMemo(
     () => {
@@ -133,6 +134,7 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
       setSymbols([]);
     }
     const loadsAccountCatalog = isAuthenticated && Boolean(requestSession);
+    authenticatedRequestGenerationRef.current = loadsAccountCatalog ? requestGeneration : null;
     setLoading(retainedCatalog.length === 0);
     setError(null);
     // A logged-in account's symbol universe is its own catalogue. Until it is
@@ -145,6 +147,7 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
     );
     // Never retain trade authorization from the previous request/session while
     // the current authenticated catalog is still being verified.
+    catalogueRevisionRef.current = null;
     setAuthorizedSymbols([]);
     setDisabledSymbols([]);
     setAuthorizedInstruments([]);
@@ -274,6 +277,9 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
         setDisabledSymbols([]);
         setAuthorizedInstruments([]);
       } finally {
+        if (authenticatedRequestGenerationRef.current === requestGeneration) {
+          authenticatedRequestGenerationRef.current = null;
+        }
         if (isCurrentRequest()) {
           setAuthorizationSettled(true);
         }
@@ -345,16 +351,23 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
     let checking = false;
     const refresh = () => { void reload(); };
     const checkRevision = async () => {
-      if (disposed || checking || !requestSession || document.visibilityState === 'hidden') return;
+      if (disposed || checking || authenticatedRequestGenerationRef.current !== null || !requestSession
+        || document.visibilityState === 'hidden') return;
       checking = true;
+      const requestGeneration = requestGenerationRef.current;
       try {
         const response = await apiClient.get<{ revision?: unknown }>('/instruments/revision',
           getCapturedRequestOptions(requestSession, requestSession.v2BaseUrl));
-        if (disposed) return;
+        if (disposed || requestGeneration !== requestGenerationRef.current) return;
         const revision = response?.revision;
-        if (typeof revision !== 'string' || revision !== catalogueRevisionRef.current) await reload();
+        if (!catalogueRevisionRef.current?.trim() || typeof revision !== 'string' || !revision.trim()
+          || revision !== catalogueRevisionRef.current) {
+          // Authenticated loading coalesces further checks. Public enrichment
+          // must not hold the revision checker after authorization has settled.
+          void reload();
+        }
       } catch {
-        if (!disposed) {
+        if (!disposed && requestGeneration === requestGenerationRef.current) {
           catalogueRevisionRef.current = null;
           setAuthorizedSymbols([]);
           setCompletedCatalogScope(null);
@@ -364,15 +377,26 @@ export function useMarketInstruments(enabled = true): MarketInstrumentsSnapshot 
         checking = false;
       }
     };
+    // Transport recovery does not itself revoke an authenticated catalogue.
+    // Use the same revision check as polling; actual changes still clear/reload.
+    // State invalidation also emits this event without detail and must not poll.
+    const handleTransportRecovery = (event: Event) => {
+      if ((event as CustomEvent<{ reason?: unknown }>).detail?.reason === 'transport-reconnect') {
+        void checkRevision();
+      }
+    };
     window.addEventListener(INSTRUMENT_CATALOGUE_CHANGED_EVENT, refresh);
+    window.addEventListener('rtx:trade-stream-recovered', handleTransportRecovery);
     const timer = window.setInterval(() => { void checkRevision(); }, 5000);
     return () => {
       disposed = true;
       requestGenerationRef.current += 1;
+      authenticatedRequestGenerationRef.current = null;
       requestAbortRef.current?.abort();
       requestAbortRef.current = null;
       window.clearInterval(timer);
       window.removeEventListener(INSTRUMENT_CATALOGUE_CHANGED_EVENT, refresh);
+      window.removeEventListener('rtx:trade-stream-recovered', handleTransportRecovery);
     };
   }, [enabled, reload, requestSession]);
 

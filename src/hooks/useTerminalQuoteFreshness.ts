@@ -10,7 +10,7 @@ export function useTerminalQuoteFreshness(symbol: string) {
   const snapshot = useCallback(() => {
     if (!enabled) return 'disabled';
     const state = getTerminalQuoteFreshness(symbol);
-    return `${state.live}:${state.reason}:${state.clockStatus}:${state.ageMs === null ? -1 : Math.floor(state.ageMs / 100)}`;
+    return `${state.live}:${state.reason}:${state.sourcePolicyReason ?? ''}:${state.clockStatus}:${state.ageMs === null ? -1 : Math.floor(state.ageMs / 100)}`;
   }, [enabled, symbol]);
   useSyncExternalStore(enabled ? subscribeTerminalQuoteFreshness : noopSubscribe, snapshot, snapshot);
   return getTerminalQuoteFreshness(symbol);
