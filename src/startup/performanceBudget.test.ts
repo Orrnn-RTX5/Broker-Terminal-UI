@@ -18,6 +18,7 @@ afterEach(() => {
   document.documentElement.removeAttribute('data-rtx-perf-login-auth-ms');
   document.documentElement.removeAttribute('data-rtx-perf-login-feedback-ms');
   document.documentElement.removeAttribute('data-rtx-perf-auth-shell-ms');
+  document.documentElement.removeAttribute('data-rtx-perf-auth-data-ready-ms');
   document.documentElement.removeAttribute('data-rtx-perf-auth-store-commit-ms');
   document.body.replaceChildren();
 });
@@ -178,4 +179,68 @@ describe('100 ms startup performance budget', () => {
       cancelMeasurement();
     }
   });
+
+  it('measures an existing guest viewport becoming authenticated, then its real account data', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    beginLoginPerformanceMeasurement();
+    markAuthenticationRequestStarted();
+    markAuthenticationAccepted();
+    const boundary = document.createElement('div');
+    boundary.setAttribute('data-terminal-startup', 'ready');
+    boundary.setAttribute('data-terminal-startup-data-ready', 'false');
+    const terminal = document.createElement('div');
+    const viewport = document.createElement('div');
+    viewport.setAttribute('data-rtx-authenticated-viewport', 'true');
+    terminal.append(viewport);
+    boundary.append(terminal);
+    document.body.append(boundary);
+    const cancel = scheduleAuthenticatedShellPaintMeasurement();
+    try {
+      expect(frames).toHaveLength(0);
+      terminal.setAttribute('data-rtx-authenticated-shell', 'true');
+      await vi.waitFor(() => expect(frames).toHaveLength(1));
+      frames.shift()!(performance.now());
+      await vi.waitFor(() => expect(document.documentElement.hasAttribute('data-rtx-perf-auth-shell-ms')).toBe(true));
+      expect(document.documentElement.hasAttribute('data-rtx-perf-auth-data-ready-ms')).toBe(false);
+      boundary.setAttribute('data-terminal-startup-data-ready', 'true');
+      await vi.waitFor(() => expect(frames).toHaveLength(1));
+      frames.shift()!(performance.now());
+      await vi.waitFor(() => expect(document.documentElement.hasAttribute('data-rtx-perf-auth-data-ready-ms')).toBe(true));
+      expect(Number(document.documentElement.getAttribute('data-rtx-perf-auth-data-ready-ms')))
+        .toBeGreaterThanOrEqual(Number(document.documentElement.getAttribute('data-rtx-perf-auth-shell-ms')));
+    } finally {
+      cancel();
+    }
+  });
+
+  it('clears previous timings and cancels the prior paint measurement on a new login', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    beginLoginPerformanceMeasurement();
+    markAuthenticationRequestStarted();
+    markAuthenticationAccepted();
+    const terminal = document.createElement('div');
+    terminal.setAttribute('data-rtx-authenticated-shell', 'true');
+    const viewport = document.createElement('div');
+    viewport.setAttribute('data-rtx-authenticated-viewport', 'true');
+    terminal.append(viewport);
+    document.body.append(terminal);
+    const cancel = scheduleAuthenticatedShellPaintMeasurement();
+    try {
+      expect(frames).toHaveLength(1);
+      expect(document.documentElement.hasAttribute('data-rtx-perf-login-auth-ms')).toBe(true);
+      beginLoginPerformanceMeasurement();
+      expect(cancelFrame).toHaveBeenCalledOnce();
+      expect(document.documentElement.hasAttribute('data-rtx-perf-login-auth-ms')).toBe(false);
+      frames.shift()!(performance.now());
+      await new Promise(resolve => window.setTimeout(resolve, 0));
+      expect(document.documentElement.hasAttribute('data-rtx-perf-auth-shell-ms')).toBe(false);
+    } finally {
+      cancel();
+    }
+  });
+
 });

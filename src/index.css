@@ -21,10 +21,18 @@ html:root .rtx-bottom-dock .rtx-history-table .rtx-history-summary-row .text-pro
   text-shadow: none !important;
 }
 
-html:root .rtx-bottom-dock .rtx-history-table .rtx-history-tp-value.text-profit {
-  color: var(--color-profit) !important;
-  background-color: var(--color-profit-dimmer) !important;
+html:root .rtx-bottom-dock .rtx-history-table .rtx-history-tp-value.text-profit,
+html:root .rtx-bottom-dock .rtx-trade-table tr.rtx-trade-row .rtx-trade-tp-value.text-profit {
+  color: var(--color-quote-up) !important;
   text-shadow: none !important;
+}
+
+html:root .rtx-bottom-dock .rtx-history-table .rtx-history-tp-value.text-profit {
+  background-color: var(--color-profit-dimmer) !important;
+}
+
+html:root .rtx-bottom-dock .rtx-trade-table tr.rtx-trade-row .rtx-trade-tp-value.text-zinc-100 {
+  color: var(--text-primary) !important;
 }
 
 html:root .rtx-bottom-dock .rtx-trade-table tbody tr.rtx-trade-row:is(.rtx-trade-row, .rtx-trade-row--selected) td.text-loss,
@@ -97,6 +105,28 @@ html:not(.rtx-skin-untitled-light) :is(.rtx-bottom-dock, .rtx-bottom-dock__conte
 
 .rtx-chart-panel {
   border-radius: 0 !important;
+}
+
+/* A restrained blue edge identifies the chart receiving window commands. */
+.rtx-chart-window-focus {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  border: 1px solid rgba(59, 130, 246, 0.65);
+  box-shadow: inset 0 0 5px rgba(59, 130, 246, 0.16);
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.rtx-chart-window-focus[data-selected="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtx-chart-window-focus {
+    transition: none;
+  }
 }
 
 .rtx-panel-shell:has(.rtx-bottom-dock),

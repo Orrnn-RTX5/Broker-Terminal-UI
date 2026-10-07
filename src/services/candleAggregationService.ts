@@ -368,8 +368,8 @@ export class SymbolCandleBuilder {
   /**
    * Seed the builder from a REST API OHLCV response.
    *
-   * The last candle is treated as "forming" only if its time equals the current
-   * TF boundary (i.e. it is the period that is live right now).
+   * Explicit finality determines whether the last candle is forming. Legacy
+   * history without finality falls back to the current timeframe boundary.
    */
   loadHistoricalCandles(timeframe: Timeframe, candles: OHLCV[]): void {
     const validCandles = sanitizePriceCandles(candles.filter(candle => (
@@ -389,7 +389,9 @@ export class SymbolCandleBuilder {
       this.boundaryOffsetSeconds,
     )?.startTime ?? nowSec;
     const lastCandle      = sorted[sorted.length - 1];
-    const lastIsForming   = lastCandle.time >= currentBoundary;
+    const lastIsForming   = typeof lastCandle.isComplete === 'boolean'
+      ? !lastCandle.isComplete
+      : lastCandle.time >= currentBoundary;
 
     if (timeframe === 'M1') {
       // FIX: A new authoritative history seed starts a new replay/event-order

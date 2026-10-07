@@ -17,6 +17,44 @@ import {
 } from './useChartSettingsStore';
 
 describe('chart settings trade history overlay defaults', () => {
+  it('keeps the green outlines and white bears on black across themes and persisted symbol settings', () => {
+    const initial = useChartSettingsStore.getState();
+    const colors = getPresetSchemeColors('Green and White');
+    try {
+      useChartSettingsStore.setState({ globalProperties: { ...defaultChartProperties }, symbolProperties: {} });
+      useChartSettingsStore.getState().updateSymbolProperty('XAUUSD', 'gridType', 'mt5');
+      useChartSettingsStore.getState().applySymbolPresetScheme('XAUUSD', 'Green and White');
+      const saved = JSON.parse(JSON.stringify(useChartSettingsStore.getState()));
+      const restored = useChartSettingsStore.persist.getOptions().merge!(saved, initial);
+      const properties = restored.symbolProperties.XAUUSD;
+      expect(properties.colorScheme).toBe('Green and White');
+      expect(properties.gridType).toBe('mt5');
+      expect(properties.colors).toEqual(colors);
+      for (const isAdvancedUntitledLight of [true, false]) {
+        expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight })).toMatchObject({
+          background: '#000000', foreground: '#ffffff', bullCandle: '#000000', bearCandle: '#ffffff',
+          barUp: '#00ff00', barDown: '#00ff00',
+        });
+      }
+      expect(restored.globalProperties.colorScheme).toBe(defaultChartProperties.colorScheme);
+    } finally {
+      useChartSettingsStore.setState(initial);
+    }
+  });
+  it('corrects the mistaken saved white-background preset while retaining explicit color edits', () => {
+    const oldPreset = {
+      background: '#ffffff', foreground: '#000000', grid: '#f1ecf2',
+      barUp: '#26a69a', barDown: '#ef5350', bullCandle: '#26a69a', bearCandle: '#ef5350',
+      lineChart: '#56ba84', volumes: '#26a69a', bidPriceLine: '#26a69a', askPriceLine: '#ef5350',
+      lastPriceLine: '#9cbaf0', stopLevels: '#ef5350',
+    };
+    const corrected = normalizeChartProperties({ colorScheme: 'Green on White', colors: oldPreset, gridType: 'mt5' });
+    expect(corrected.colorScheme).toBe('Green and White');
+    expect(corrected.colors).toEqual(getPresetSchemeColors('Green and White'));
+    expect(corrected.gridType).toBe('mt5');
+    expect(normalizeChartProperties({ colorScheme: 'Green on White', colors: { ...oldPreset, lineChart: '#123456' } }).colors.lineChart).toBe('#123456');
+    expect(normalizeChartProperties({ colorScheme: 'Custom', colors: oldPreset }).colors).toEqual(oldPreset);
+  });
   it('hides chart volume bars by default', () => {
     expect(defaultChartProperties.showTickVolumes).toBe(false);
     expect(defaultChartProperties.showRealVolumes).toBe(false);
@@ -34,20 +72,93 @@ describe('chart settings trade history overlay defaults', () => {
     expect(defaultChartProperties.showPeriodSeparators).toBe(true);
   });
 
-  it('uses the reference candle hues while retaining separate price-level colors', () => {
+  it('defaults to a dashed grid and normalizes missing or invalid saved styles', () => {
+    expect(defaultChartProperties.gridLineStyle).toBe('dashed');
+    expect(normalizeChartProperties({ showGrid: false })).toMatchObject({
+      showGrid: false,
+      gridLineStyle: 'dashed',
+    });
+    expect(normalizeChartProperties(JSON.parse('{"gridLineStyle":"invalid"}')).gridLineStyle).toBe('dashed');
+    expect(normalizeChartProperties(JSON.parse('{"gridLineStyle":"dotted"}')).gridLineStyle).toBe('dashed');
+    expect(normalizeChartProperties({ gridLineStyle: 'solid' }).gridLineStyle).toBe('solid');
+    expect(normalizeChartProperties({ gridLineStyle: 'dashed' }).gridLineStyle).toBe('dashed');
+  });
+
+  it('keeps existing square grids and restores saved grid types independently of line style', () => {
+    expect(defaultChartProperties.gridType).toBe('square');
+    expect(normalizeChartProperties({ gridLineStyle: 'solid' })).toMatchObject({
+      gridType: 'square',
+      gridLineStyle: 'solid',
+    });
+    expect(normalizeChartProperties(JSON.parse('{"gridType":"invalid"}')).gridType).toBe('square');
+    expect(normalizeChartProperties({ gridType: 'scale', gridLineStyle: 'dashed' })).toMatchObject({
+      gridType: 'scale',
+      gridLineStyle: 'dashed',
+    });
+    expect(normalizeChartProperties({ gridType: 'mt5', gridLineStyle: 'solid' })).toMatchObject({
+      gridType: 'mt5',
+      gridLineStyle: 'solid',
+    });
+  });
+
+  it('hydrates legacy square grids and preserves global and symbol grid choices', () => {
+    const initial = useChartSettingsStore.getState();
+    const merge = useChartSettingsStore.persist.getOptions().merge!;
+    const legacy = merge({
+      globalProperties: { showGrid: true },
+      symbolProperties: { EURUSD: { showGrid: false } },
+    }, initial);
+    expect(legacy.globalProperties.gridLineStyle).toBe('dashed');
+    expect(legacy.globalProperties.gridType).toBe('square');
+    expect(legacy.symbolProperties.EURUSD).toMatchObject({ showGrid: false, gridType: 'square', gridLineStyle: 'dashed' });
+
+    try {
+      initial.updateGlobalProperty('gridLineStyle', 'solid');
+      initial.updateGlobalProperty('gridType', 'scale');
+      initial.updateSymbolProperty('EURUSD', 'gridLineStyle', 'dashed');
+      initial.updateSymbolProperty('EURUSD', 'gridType', 'square');
+      initial.updateSymbolProperty('XAUUSD', 'gridLineStyle', 'solid');
+      initial.updateSymbolProperty('USDCAD', 'gridType', 'mt5');
+      initial.updateSymbolProperty('USDCAD', 'gridLineStyle', 'solid');
+      const saved = JSON.parse(JSON.stringify(useChartSettingsStore.getState()));
+      const restored = merge(saved, initial);
+      expect(restored.globalProperties.gridLineStyle).toBe('solid');
+      expect(restored.globalProperties.gridType).toBe('scale');
+      expect(restored.symbolProperties.EURUSD.gridLineStyle).toBe('dashed');
+      expect(restored.symbolProperties.EURUSD.gridType).toBe('square');
+      expect(restored.symbolProperties.XAUUSD.gridLineStyle).toBe('solid');
+      expect(restored.symbolProperties.XAUUSD.gridType).toBe('scale');
+      expect(restored.symbolProperties.USDCAD).toMatchObject({ gridType: 'mt5', gridLineStyle: 'solid' });
+    } finally {
+      useChartSettingsStore.setState(initial);
+    }
+  });
+
+  it('opens and resets charts with the blue/red Bid/Ask palette', () => {
+    const initial = useChartSettingsStore.getState();
+    const hydrated = useChartSettingsStore.persist.getOptions().merge!({}, initial);
+    expect(hydrated.globalProperties.colorScheme).toBe('Blue on Black');
+    expect(defaultChartProperties.colorScheme).toBe('Blue on Black');
     expect(defaultChartProperties.colors).toMatchObject({
-      barUp: '#089981',
-      bullCandle: '#089981',
-      lineChart: CHART_PROFIT_COLOR,
-      lastPriceLine: CHART_PROFIT_COLOR,
-      barDown: '#F23645',
-      bearCandle: '#F23645',
-      askPriceLine: CHART_LOSS_COLOR,
-      stopLevels: CHART_LOSS_COLOR,
+      barUp: '#4597ff',
+      bullCandle: '#4597ff',
+      lineChart: '#4597ff',
+      lastPriceLine: '#4597ff',
+      barDown: '#ff5858',
+      bearCandle: '#ff5858',
+      askPriceLine: '#ff5858',
+      stopLevels: '#ff5858',
     });
     expect(defaultChartProperties.showBidPriceLine).toBe(true);
     expect(defaultChartProperties.showAskPriceLine).toBe(false);
     expect(defaultChartProperties.showLastPriceLine).toBe(false);
+    try {
+      initial.applyPresetScheme('Green on Black');
+      initial.resetToDefaults();
+      expect(useChartSettingsStore.getState().globalProperties).toEqual(defaultChartProperties);
+    } finally {
+      useChartSettingsStore.setState(initial);
+    }
   });
 
   it('upgrades only untouched legacy Green on Black colors', () => {
@@ -73,7 +184,7 @@ describe('chart settings trade history overlay defaults', () => {
       bullCandle: CHART_CANDLE_UP_COLOR,
       bearCandle: CHART_CANDLE_DOWN_COLOR,
       lineChart: CHART_PROFIT_COLOR,
-      volumes: defaultChartProperties.colors.volumes,
+      volumes: 'rgba(0, 200, 150, 0.32)',
       askPriceLine: CHART_LOSS_COLOR,
       lastPriceLine: CHART_PROFIT_COLOR,
       stopLevels: CHART_LOSS_COLOR,
@@ -88,8 +199,9 @@ describe('chart settings trade history overlay defaults', () => {
   it('migrates saved global and per-symbol defaults without changing customized palettes', () => {
     const previous = {
       ...defaultChartProperties,
+      colorScheme: 'Green on Black' as const,
       colors: {
-        ...defaultChartProperties.colors,
+        ...getPresetSchemeColors('Green on Black'),
         barUp: '#00c896', barDown: '#ff4d4f',
         bullCandle: '#00C896', bearCandle: '#FF4D4F',
       },
@@ -106,6 +218,7 @@ describe('chart settings trade history overlay defaults', () => {
       volumeBarsDefaultMigrationVersion: 1,
       periodSeparatorsDefaultMigrationVersion: 1,
       chartShiftDefaultMigrationVersion: 1,
+      blueRedDefaultMigrationVersion: 1,
     }, useChartSettingsStore.getState());
 
     for (const properties of [hydrated.globalProperties, hydrated.symbolProperties.XAUUSD]) {
@@ -122,6 +235,32 @@ describe('chart settings trade history overlay defaults', () => {
       barUp: '#089981', bearCandle: '#F23645',
     });
     expect(previous.colors.bullCandle).toBe('#00C896');
+  });
+
+  it('upgrades the former default once while keeping custom colors and other presets', () => {
+    const green = normalizeChartProperties({ colorScheme: 'Green on Black', chartShift: true });
+    const custom = { ...green, colorScheme: 'Custom' as const };
+    const customizedGreen = { ...green, colors: { ...green.colors, bullCandle: '#123456' } };
+    const yellow = normalizeChartProperties({ colorScheme: 'Yellow on Black' });
+    const merge = useChartSettingsStore.persist.getOptions().merge!;
+    const hydrated = merge({
+      globalProperties: green,
+      symbolProperties: { BTCUSD: green, EURUSD: custom, XAUUSD: customizedGreen, GBPUSD: yellow },
+      chartShiftDefaultMigrationVersion: 1,
+    }, useChartSettingsStore.getState());
+
+    expect(hydrated.globalProperties).toMatchObject({ colorScheme: 'Blue on Black', chartShift: true });
+    expect(hydrated.symbolProperties.BTCUSD.colors).toEqual(getPresetSchemeColors('Blue on Black'));
+    expect(hydrated.symbolProperties.EURUSD.colors).toEqual(custom.colors);
+    expect(hydrated.symbolProperties.XAUUSD.colors).toEqual(customizedGreen.colors);
+    expect(hydrated.symbolProperties.GBPUSD.colors).toEqual(yellow.colors);
+    expect(green.colorScheme).toBe('Green on Black');
+    expect(hydrated.blueRedDefaultMigrationVersion).toBe(1);
+
+    // A later explicit Green choice must survive subsequent reloads.
+    const reloaded = merge({ ...hydrated, globalProperties: green, symbolProperties: { BTCUSD: green } }, hydrated);
+    expect(reloaded.globalProperties.colors).toEqual(green.colors);
+    expect(reloaded.symbolProperties.BTCUSD.colorScheme).toBe('Green on Black');
   });
 
   it('hydrates old persisted chart settings with the new trade history overlay fields', () => {
@@ -142,7 +281,7 @@ describe('chart settings trade history overlay defaults', () => {
     expect(normalized.showTradeHistoryArrows).toBe(true);
     expect(normalized.tradeHistoryLineOpacity).toBe(70);
     expect(normalized.tradeHistoryBoxOpacity).toBe(40);
-    expect(normalized.colors.background).toBe('#000000');
+    expect(normalized.colors.background).toBe('#101010');
     expect(normalized.colors.foreground).toBe(defaultChartProperties.colors.foreground);
   });
 
@@ -304,8 +443,11 @@ describe('chart settings trade history overlay defaults', () => {
       barDown: '#ff5858', bearCandle: '#ff5858',
     });
     expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#f7f8fa', bullCandle: '#4597ff', bearCandle: '#ff5858',
+      background: '#f7f8fa', barUp: '#1d4ed8', bullCandle: '#1d4ed8',
+      barDown: '#b91c1c', bearCandle: '#b91c1c',
     });
+    expect(properties.colors.bullCandle).toBe('#4597ff');
+    expect(properties.colors.bearCandle).toBe('#ff5858');
   });
 
   it('updates saved original blue colors while preserving customized colors and other schemes', () => {

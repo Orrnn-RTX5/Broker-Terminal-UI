@@ -53,6 +53,96 @@ afterEach(() => {
 });
 
 describe('stable chart hosts through layout topology changes', () => {
+  const selectedWindows = () => [...document.querySelectorAll('[data-chart-window-focus][data-selected="true"]')]
+    .map(element => element.getAttribute('data-chart-window-focus'));
+
+  it('keeps a single visible chart unhighlighted even when other chart tabs are open', async () => {
+    mountShared();
+    fireEvent.mouseDown(screen.getByTestId('chart-a'));
+    expect(selectedWindows()).toEqual([]);
+    await act(async () => useDockLayoutStore.getState().setActiveTab('charts', 'b'));
+    expect(selectedWindows()).toEqual([]);
+    expect(getActiveChartSource()?.id).toBe('trading-chart:b');
+    await act(async () => useDockLayoutStore.getState().setActiveTab('charts', 'a'));
+    expect(selectedWindows()).toEqual([]);
+    expect(getActiveChartSource()?.id).toBe('trading-chart:a');
+  });
+
+  it.each(['left', 'right', 'top', 'bottom'] as const)(
+    'keeps the highlight through floating and redocking to the %s split', async direction => {
+      useDockLayoutStore.getState().arrangeCharts('grid');
+      mountShared();
+      const chart = screen.getByTestId('chart-a');
+      fireEvent.mouseDown(chart);
+      await act(async () => useDockLayoutStore.getState().floatPanel('a', { x: 40, y: 60 }));
+      expect(selectedWindows()).toEqual(['a']);
+      expect(chart.closest('[data-dock-floating-panel="true"]')).not.toBeNull();
+      await act(async () => useDockLayoutStore.getState().dockPanel('a', 'b', direction));
+      expect(selectedWindows()).toEqual(['a']);
+      expect(screen.getByTestId('chart-a')).toBe(chart);
+      expect(chart.closest('[data-dock-floating-panel="true"]')).toBeNull();
+      fireEvent.mouseDown(screen.getByTestId('chart-b'));
+      expect(selectedWindows()).toEqual(['b']);
+      expect(unmounted).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves the selected window while Arrange Windows progressively creates panes and after reset', async () => {
+    mountShared();
+    fireEvent.mouseDown(screen.getByTestId('chart-a'));
+    while (useDockLayoutStore.getState().canAddChart()) {
+      await act(async () => useDockLayoutStore.getState().stepTileWindows());
+      expect(selectedWindows()).toEqual(['a']);
+    }
+    expect(document.querySelectorAll('[data-chart-window-focus]')).toHaveLength(MAX_CHART_PANELS);
+    await act(async () => useDockLayoutStore.getState().resetWindows());
+    expect(selectedWindows()).toEqual([]);
+    expect(document.querySelectorAll('[data-chart-window-focus]')).toHaveLength(0);
+  });
+
+  it('removes the minimized window highlight and selects a surviving chart on close', async () => {
+    useDockLayoutStore.getState().arrangeCharts('vertical');
+    mountShared();
+    fireEvent.mouseDown(screen.getByTestId('chart-a'));
+    expect(selectedWindows()).toEqual(['a']);
+    await act(async () => useDockLayoutStore.getState().setPanelMinimized('a', true));
+    expect(document.querySelector('[data-chart-window-focus="a"]')).toBeNull();
+    expect(selectedWindows()).toEqual([]);
+    await act(async () => useDockLayoutStore.getState().setPanelMinimized('a', false));
+    fireEvent.mouseDown(screen.getByTestId('chart-a'));
+    expect(selectedWindows()).toEqual(['a']);
+    await act(async () => useDockLayoutStore.getState().removePanel('a'));
+    expect(selectedWindows()).toEqual([]);
+  });
+
+  it.each(['grid', 'vertical', 'horizontal', 'cascade'] as const)(
+    'highlights only the command target in %s windows, without changing it on hover', mode => {
+      useDockLayoutStore.getState().arrangeCharts(mode);
+      mountShared();
+      const selectedWindows = () => [...document.querySelectorAll('[data-chart-window-focus][data-selected="true"]')]
+        .map(element => element.getAttribute('data-chart-window-focus'));
+      const chartA = screen.getByTestId('chart-a');
+      const chartB = screen.getByTestId('chart-b');
+
+      fireEvent.mouseDown(chartA);
+      expect(getActiveChartSource()?.id).toBe('trading-chart:a');
+      expect(selectedWindows()).toEqual(['a']);
+      fireEvent.mouseEnter(chartB);
+      expect(selectedWindows()).toEqual(['a']);
+
+      fireEvent.mouseDown(chartB);
+      expect(getActiveChartSource()?.id).toBe('trading-chart:b');
+      expect(selectedWindows()).toEqual(['b']);
+      fireEvent.mouseLeave(chartB);
+      expect(selectedWindows()).toEqual(['b']);
+
+      fireEvent.focusIn(screen.getByLabelText('draft-a'));
+      expect(getActiveChartSource()?.id).toBe('trading-chart:a');
+      expect(selectedWindows()).toEqual(['a']);
+      expect(unmounted).not.toHaveBeenCalled();
+    },
+  );
+
   it('resets six panes to the exact active chart without remounting it or losing its draft', () => {
     const store = useDockLayoutStore.getState();
     store.updatePanelProps('b', { title: 'XAUUSD.raw,H4', props: { symbol: 'XAUUSD.raw', timeframe: 'H4' } });

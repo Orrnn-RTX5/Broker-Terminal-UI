@@ -317,6 +317,11 @@ export class DockManager {
     return JSON.parse(JSON.stringify(this.layout));
   }
 
+  /** A fresh shipped workspace without changing the current layout or history. */
+  getDefaultLayout(): DockLayout {
+    return this.createDefaultLayout();
+  }
+
   getChartCount(): number {
     return getChartPanelCount(this.layout);
   }

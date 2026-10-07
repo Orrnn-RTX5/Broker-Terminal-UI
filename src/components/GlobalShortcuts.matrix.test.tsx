@@ -73,8 +73,8 @@ const callbackCases: Record<string, string> = {
   'tools.new-order': 'onOpenOrderPanel', 'view.depth-of-market': 'onOpenDOM', 'trading.quick-sell': 'onQuickSell',
 };
 const layoutCases: Record<string, [string, string?]> = {
-  'window.tile': ['arrangeCharts', 'grid'], 'window.cascade': ['arrangeCharts', 'cascade'],
-  'window.tile-horizontal': ['arrangeCharts', 'horizontal'], 'window.tile-vertical': ['arrangeCharts', 'vertical'],
+  'window.tile': ['tileWindows', 'grid'], 'window.cascade': ['arrangeCharts', 'cascade'],
+  'window.tile-horizontal': ['tileWindows', 'horizontal'], 'window.tile-vertical': ['tileWindows', 'vertical'],
   'window.arrange-icons': ['arrangeIcons'], 'window.undo': ['undo'], 'window.redo': ['redo'], 'window.reset': ['resetWindows'],
 };
 const specialCases = new Set(['view.market-watch', 'view.navigator', 'view.terminal', 'trading.order-history', 'view.toolbox',

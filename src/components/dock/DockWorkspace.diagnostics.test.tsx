@@ -15,10 +15,16 @@ import { DockWorkspace } from './DockWorkspace';
 const chartMocks = vi.hoisted(() => ({
   render: vi.fn(),
   marketWatchRender: vi.fn(),
+  mount: vi.fn(),
+  unmount: vi.fn(),
 }));
 
 vi.mock('../TradingChart', () => ({
   TradingChart: (props: unknown) => {
+    React.useEffect(() => {
+      chartMocks.mount();
+      return () => chartMocks.unmount();
+    }, []);
     chartMocks.render(props);
     return null;
   },
@@ -157,6 +163,8 @@ describe('DockWorkspace chart diagnostic attributes', () => {
   beforeEach(() => {
     chartMocks.render.mockReset();
     chartMocks.marketWatchRender.mockReset();
+    chartMocks.mount.mockReset();
+    chartMocks.unmount.mockReset();
   });
 
   afterEach(() => {
@@ -252,6 +260,35 @@ describe('DockWorkspace chart diagnostic attributes', () => {
     await waitFor(() => expect(chartMocks.render).toHaveBeenCalled());
     expect(chartMocks.render.mock.calls.every(([props]) => props.symbol === 'XAUUSD.RAW')).toBe(true);
     expect(view.container.querySelector('[data-chart-rendered-symbol]')).toHaveAttribute('data-chart-rendered-symbol', 'XAUUSD.RAW');
+  });
+
+  it('keeps a guest chart mounted and disables trading while its first account catalogue is pending', async () => {
+    useDockLayoutStore.setState({ layout: chartLayout('gold-chart', 'XAUUSD.raw') });
+    const props = {
+      globalChartType: 'candlestick' as const, globalTimeframe: 'M5' as const,
+      selectedSymbol: 'XAUUSD.RAW', activeMarketSnapshot: createActiveMarketSnapshot(),
+      onSymbolSelect: vi.fn(), onClosePosition: vi.fn(), onModifyPosition: vi.fn(),
+      onCancelOrder: vi.fn(), onCloseBulk: vi.fn(),
+    };
+    const view = render(<DockWorkspace {...props} allSymbols={['XAUUSD.RAW']}
+      chartSymbols={['XAUUSD.RAW']} tradeSymbols={[]}
+      marketInstrumentsSnapshot={createMarketInstrumentsSnapshot({ accountCatalogStatus: 'none', chartCatalogCurrent: true })} />);
+    await waitFor(() => expect(chartMocks.mount).toHaveBeenCalledTimes(1));
+    view.rerender(<DockWorkspace {...props} allSymbols={[]} chartSymbols={[]}
+      tradeSymbols={['XAUUSD.RAW']}
+      retainedGuestCharts={{ 'gold-chart': { symbol: 'XAUUSD.RAW', timeframe: 'M5' } }}
+      marketInstrumentsSnapshot={createMarketInstrumentsSnapshot({ accountCatalogStatus: 'loading', chartCatalogCurrent: false, authorizationSettled: false })} />);
+    expect(chartMocks.mount).toHaveBeenCalledTimes(1);
+    expect(chartMocks.unmount).not.toHaveBeenCalled();
+    expect(chartMocks.render).toHaveBeenLastCalledWith(expect.objectContaining({ symbol: 'XAUUSD.RAW', tradeAllowed: false }));
+    expect(view.container.querySelector('[data-chart-rendered-symbol]')).toHaveAttribute('data-chart-rendered-symbol', 'XAUUSD.RAW');
+    // A rejected contract stops being rendered once this account's universe is known.
+    view.rerender(<DockWorkspace {...props} allSymbols={['EURUSD']} chartSymbols={['EURUSD']}
+      tradeSymbols={['EURUSD']}
+      retainedGuestCharts={{ 'gold-chart': { symbol: 'XAUUSD.RAW', timeframe: 'M5' } }}
+      marketInstrumentsSnapshot={createMarketInstrumentsSnapshot({ accountCatalogStatus: 'loaded', chartCatalogCurrent: true })} />);
+    expect(chartMocks.render).toHaveBeenLastCalledWith(expect.objectContaining({ symbol: 'EURUSD' }));
+    expect(view.container.querySelector('[data-chart-rendered-symbol]')).toHaveAttribute('data-chart-rendered-symbol', 'EURUSD');
   });
 
   it.each([

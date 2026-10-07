@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { normalizeBrokerServerUrl } from '../config/api';
 import {
   getBackendTarget,
@@ -100,6 +100,7 @@ interface BrokerLogoImageProps {
   className?: string;
   decoding?: 'async' | 'auto' | 'sync';
   fallback?: ReactNode;
+  appFallbackUrl?: string;
 }
 
 export function BrokerLogoImage({
@@ -108,14 +109,12 @@ export function BrokerLogoImage({
   className,
   decoding = 'async',
   fallback = null,
+  appFallbackUrl,
 }: BrokerLogoImageProps) {
-  const candidates = useMemo(() => buildBrokerLogoCandidates(broker), [broker]);
+  const candidates = useMemo(() => buildBrokerLogoCandidates(broker, undefined, appFallbackUrl), [broker, appFallbackUrl]);
   const candidateSignature = candidates.join('\n');
-  const [candidateIndex, setCandidateIndex] = useState(0);
-
-  useEffect(() => {
-    setCandidateIndex(0);
-  }, [candidateSignature]);
+  const [attempt, setAttempt] = useState({ signature: candidateSignature, index: 0 });
+  const candidateIndex = attempt.signature === candidateSignature ? attempt.index : 0;
 
   const src = candidates[candidateIndex];
   if (!src) return fallback;
@@ -127,7 +126,8 @@ export function BrokerLogoImage({
       alt={alt}
       className={className}
       decoding={decoding}
-      onError={() => setCandidateIndex(index => index + 1)}
+      draggable={false}
+      onError={() => setAttempt({ signature: candidateSignature, index: candidateIndex + 1 })}
     />
   );
 }

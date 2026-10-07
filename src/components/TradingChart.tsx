@@ -12,7 +12,7 @@ import i18n from '../i18n';
 
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
 import { createChartRuler, rulerMetrics } from '../drawing-tools/chartRuler';
-import { ColorType, LineStyle, TickMarkType, CandlestickSeries, LineSeries, BarSeries, AreaSeries, HistogramSeries } from 'lightweight-charts';
+import { ColorType, TickMarkType, MismatchDirection, CandlestickSeries, LineSeries, BarSeries, AreaSeries, HistogramSeries } from 'lightweight-charts';
 import type { IChartApi, IPriceLine, ISeriesApi, Logical, SeriesType, Time } from 'lightweight-charts';
 import { useCrosshair } from '../hooks/useCrosshair';
 import { installChartCursorInteractions } from '../drawing-tools/chartCursorInteractions';
@@ -27,7 +27,8 @@ import { useBrokerAccountSessionScope } from '../hooks/useBrokerAccountSessionSc
 import { useTradingChartVisibleRuntime } from '../hooks/useTradingChartVisibleRuntime';
 import { createChartInteractionOwnership } from '../utils/chartInteractionOwnership';
 import { createChartPostInteractionCoordinator } from '../utils/chartPostInteractionCoordinator';
-import { buildChartSelectionPresentationKey, createChartSelectionPresentationGate, releaseChartSelectionLivePaint, selectChartPresentation } from '../utils/chartSelectionPresentation';
+import { buildChartSelectionPresentationKey, createChartSelectionPresentationGate, isChartSelectionLivePaintAllowed, releaseChartSelectionLivePaint, selectChartPresentation } from '../utils/chartSelectionPresentation';
+import { canRetainPublicChartOnLogin, getChartMarketSourceIdentity } from '../utils/chartLoginTransition';
 import { RTX_ADVANCED_VIEW_CHANGE_EVENT } from '../utils/advancedViewRootClasses';
 import { scheduleChartThemeTransition } from '../utils/chartThemeTransition';
 import { refreshLightweightChartSurface } from '../utils/lightweightChartSurface';
@@ -40,7 +41,9 @@ import { useAppStore } from '../store/useAppStore';
 import { isDesktopBackendTarget } from '../config/backendTarget.js';
 import { commandBus } from '../services/commandBus';
 import { formatChartAxisPrice, getPricePointFromDigits, resolveSymbolPriceDigits } from '../utils/chartPriceScale';
-import { SQUARE_CHART_GRID_CELL_SIZE_PX, SquareChartGridPrimitive } from '../utils/squareChartGridPrimitive';
+import { SquareChartGridPrimitive } from '../utils/squareChartGridPrimitive';
+import { getChartGridRenderingOptions } from '../utils/chartGridOptions';
+import { createChartGridTimeProjection, type ChartGridTimeProjection } from '../utils/chartGridTimeProjection';
 import { getChartCandleCountdownText } from '../utils/chartCandleCountdown';
 import type { PeriodSeparator } from '../utils/periodSeparators';
 import { IndicatorManager, type IndicatorConfig } from '../services/indicatorManager';
@@ -59,12 +62,13 @@ import { activateActiveChartSource, bindActiveChartSourceInteractions, findLarge
 import { formatHistoryForOhlcv, getVisibleLogicalRangeForDataRender, upsertCandleIntoHistory, type LogicalRangeLike } from '../utils/candleHistory';
 import { formatChartSeriesData, getAreaTrendDirection, getAreaTrendSeriesOptions, getDisplayVolume, getLeftVisibleTimeFromLogicalRange, getLivePriceOverlayColors, getLivePriceSeriesColor, getRenderedPrependedBarCount, getSeparatorPriority, getVisibleLogicalRangeAnchoredToTime, isDenseMinuteSeparatorTimeframe, isPotentialMarketClosedPlaceholderCandle, shouldRestoreProtectedHistoryForFullRender, shouldApplyVisibleRangeResetForRender, TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS } from './TradingChart.helpers';
 import type { Candle, ChartType, Timeframe } from '../types/chart';
-import { getFixedChartPriceRange, resolveChartIndicatorType, type AddChartIndicatorRequest } from '../features/trading-chart/model/indicatorRequest';
-import { cancelBrowserIdleCallback, HISTORY_RENDER_IDLE_TIMEOUT_MS, HISTORY_VISIBLE_RANGE_SUPPRESSION_MS, mergeCandleCollections, requestBrowserIdleCallback, shouldBuildVolumeData } from '../features/trading-chart/runtime/chartRuntime';
+import { resolveChartIndicatorType, type AddChartIndicatorRequest } from '../features/trading-chart/model/indicatorRequest';
+import { cancelBrowserIdleCallback, HISTORY_RENDER_IDLE_TIMEOUT_MS, HISTORY_VISIBLE_RANGE_SUPPRESSION_MS, mergeCandleCollections, requestBrowserIdleCallback, shouldBuildVolumeData, shouldScrollToRealtime } from '../features/trading-chart/runtime/chartRuntime';
 import type { ChartDataRenderRequest } from '../features/trading-chart/runtime/chartRuntimeContracts';
 import { useTradingChartLiveCandleRuntime } from '../features/trading-chart/runtime/useTradingChartLiveCandleRuntime';
 import { useTradingChartInitialization } from '../features/trading-chart/runtime/useTradingChartInitialization';
 import { useTradingChartReconfiguration } from '../features/trading-chart/runtime/useTradingChartReconfiguration';
+import { useTradingChartPriceScaleSettings } from '../features/trading-chart/runtime/useTradingChartPriceScaleSettings';
 import { useTradingChartCommands } from '../features/trading-chart/runtime/useTradingChartCommands';
 import { useTradingChartDrawingCommands } from '../features/trading-chart/runtime/useTradingChartDrawingCommands';
 import { useTradingChartHistoryCache } from '../features/trading-chart/runtime/useTradingChartHistoryCache';
@@ -128,6 +132,20 @@ export const TradingChart = React.memo(function TradingChart({
   resolvedPricePointRef.current = resolvedPricePoint;
   const authToken = useAppStore((state) => state.authToken);
   const brokerAccountSessionScope = useBrokerAccountSessionScope();
+  const chartMarketSource = getChartMarketSourceIdentity();
+  const previousChartLoginPresentationRef = useRef({
+    sessionScope: brokerAccountSessionScope,
+    marketSource: chartMarketSource,
+    symbol,
+    timeframe,
+  });
+  const retainedPublicChartSurfaceRef = useRef(false);
+  const [retainedPublicChartSurface, setRetainedPublicChartSurface] = useState(false);
+  const discardRetainedPublicChartSurface = useCallback(() => {
+    if (!retainedPublicChartSurfaceRef.current) return;
+    retainedPublicChartSurfaceRef.current = false;
+    setRetainedPublicChartSurface(false);
+  }, []);
   const chartSelectionPresentationKey = useMemo(
     () => buildChartSelectionPresentationKey({
       sessionScope: brokerAccountSessionScope,
@@ -139,6 +157,9 @@ export const TradingChart = React.memo(function TradingChart({
   const chartSelectionPresentationRef = useRef(
     createChartSelectionPresentationGate(chartSelectionPresentationKey),
   );
+  const canPaintLivePrice = useCallback(() => isChartSelectionLivePaintAllowed(
+    chartSelectionPresentationRef.current, chartSelectionPresentationKey,
+  ), [chartSelectionPresentationKey]);
   const visibleRuntime = useTradingChartVisibleRuntime({
     active: isActive,
     hasSymbol: Boolean(symbol),
@@ -205,6 +226,7 @@ export const TradingChart = React.memo(function TradingChart({
   const volumeRef = useRef<ISeriesApi<SeriesType> | null>(null);
   const squareGridHostSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const squareGridPrimitiveRef = useRef<SquareChartGridPrimitive | null>(null);
+  const chartGridTimeProjectionRef = useRef<ChartGridTimeProjection | null>(null);
   const priceLineRef = useRef<IPriceLine | null>(null);
   const askPriceLineRef = useRef<IPriceLine | null>(null);
   const lastPriceLineRef = useRef<IPriceLine | null>(null);
@@ -680,6 +702,7 @@ export const TradingChart = React.memo(function TradingChart({
     useEnterpriseLightPricePaletteRef,
   } = useTradingChartLivePriceOverlay({
     askPriceLineRef,
+    canPaintLivePrice,
     chartSettingsRef,
     chartType,
     currentCandleRef,
@@ -749,6 +772,7 @@ export const TradingChart = React.memo(function TradingChart({
     rememberVisibleLogicalRange,
   } = useTradingChartViewportReset({
     chartRef,
+    chartSettingsRef,
     containerRef,
     contextId: drawingRuntimeContextRef.current.contextId,
     isDisposedRef,
@@ -902,19 +926,20 @@ export const TradingChart = React.memo(function TradingChart({
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
     [chartSettings, isAdvancedUntitledLight],
   );
-  const useEnterpriseLightChartPalette = isAdvancedUntitledLight && chartSettings.colorScheme !== 'Custom';
+  const useEnterpriseLightChartPalette = isAdvancedUntitledLight
+    && chartSettings.colorScheme !== 'Custom' && chartSettings.colorScheme !== 'Green and White';
   useEnterpriseLightPricePaletteRef.current = useEnterpriseLightChartPalette;
   const initialLivePriceOverlayColors = useMemo(
     () => getLivePriceOverlayColors(
       chartColors,
-      getLivePriceSeriesColor(chartColors, chartType, 'up'),
+      chartSettings.colorScheme === 'Green and White' ? chartColors.bidPriceLine : getLivePriceSeriesColor(chartColors, chartType, 'up'),
       useEnterpriseLightChartPalette,
     ),
-    [chartColors, chartType, useEnterpriseLightChartPalette],
+    [chartColors, chartSettings.colorScheme, chartType, useEnterpriseLightChartPalette],
   );
   const chartTheme = useMemo(
-    () => buildChartTheme(chartColors, chartSettings.showGrid, isAdvancedUntitledLight && chartSettings.colorScheme !== 'Custom'),
-    [chartColors, chartSettings.showGrid, chartSettings.colorScheme, isAdvancedUntitledLight],
+    () => buildChartTheme(chartColors, chartSettings.showGrid, useEnterpriseLightChartPalette, chartSettings.gridLineStyle, chartSettings.gridType, chartSettings.colorScheme),
+    [chartColors, chartSettings.showGrid, chartSettings.gridLineStyle, chartSettings.gridType, chartSettings.colorScheme, useEnterpriseLightChartPalette],
   );
   const chartThemeRef = useRef(chartTheme);
   const previousAdvancedUntitledLightRef = useRef(isAdvancedUntitledLight);
@@ -1437,6 +1462,10 @@ export const TradingChart = React.memo(function TradingChart({
 
     pendingChartRenderRef.current = null;
 
+    // Keep the public guest pixels until a usable baseline for the new account
+    // is ready. Fresh ticks still enter the new, cleared model.
+    if (retainedPublicChartSurfaceRef.current && !pending.finishLoadingAfterRender) return false;
+
     const activeType = pending.chartType || prevChartTypeRef.current || 'candlestick';
     const activeTimeframe = prevTimeframeRef.current || timeframe;
     const activeSymbol = prevSymbolRef.current || symbol;
@@ -1455,6 +1484,19 @@ export const TradingChart = React.memo(function TradingChart({
     const scrollPositionBeforeRender = shouldPreserveVisibleRange
       ? timeScale.scrollPosition()
       : null;
+    const liveRightOffset = getTradingChartShiftRightOffset(activeTimeframe, settings.chartShift);
+    // A delayed snapshot can append many bars at once. Decide whether to keep
+    // following before setData moves the live edge away from the old viewport.
+    const wasFollowingRealtimeBeforeRender = shouldPreserveVisibleRange
+      && pending.prependedBars === 0
+      && !pending.suppressGlobalVisibleRangeReset
+      && shouldScrollToRealtime(
+        chart,
+        autoScrollEnabledRef.current,
+        settings.chartAutoScroll,
+        liveRightOffset,
+      );
+    const previousLatestRenderedTime = lastRenderedCandlesRef.current[lastRenderedCandlesRef.current.length - 1]?.time ?? null;
     const previousFirstRenderedTime = pending.prependedBars > 0 && shouldPreserveVisibleRange
       ? firstRenderedCandleTimeRef.current
       : null;
@@ -1511,6 +1553,7 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }
       if (pending.finishLoadingAfterRender && seriesData.length > 0) {
+        discardRetainedPublicChartSurface();
         chartSelectionPresentationRef.current = releaseChartSelectionLivePaint(
           chartSelectionPresentationRef.current,
           pending.selectionKey,
@@ -1561,6 +1604,11 @@ export const TradingChart = React.memo(function TradingChart({
           sortedCandles,
           leftVisibleTimeBeforeRender,
           visibleRangeBeforeRender,
+          {
+            wasFollowing: wasFollowingRealtimeBeforeRender,
+            previousLatestTime: previousLatestRenderedTime,
+            rightOffset: liveRightOffset,
+          },
         );
         const nextVisibleRange = timeAnchoredRange ?? preservedRange;
         if (nextVisibleRange) {
@@ -1606,7 +1654,7 @@ export const TradingChart = React.memo(function TradingChart({
       console.warn(`[Chart] Error setting chart data for ${pending.reason}:`, e);
       return false;
     }
-  }, [applyAreaTrendColors, applyInitialVisibleLogicalRange, getCandlesForFullRender, getClosedMarketRenderCandles, markCandlesReady, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
+  }, [applyAreaTrendColors, applyInitialVisibleLogicalRange, discardRetainedPublicChartSurface, getCandlesForFullRender, getClosedMarketRenderCandles, markCandlesReady, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
 
   postInteractionCallbacksRef.current.paintModel = () => flushQueuedChartRender(true);
 
@@ -1678,12 +1726,23 @@ export const TradingChart = React.memo(function TradingChart({
     );
     if (nextGate === chartSelectionPresentationRef.current) return;
 
+    const chartLoginPresentation = {
+      sessionScope: brokerAccountSessionScope, marketSource: chartMarketSource, symbol, timeframe,
+    };
+    const retainPublicSurface = lastRenderedCandlesRef.current.length > 0
+      && canRetainPublicChartOnLogin(previousChartLoginPresentationRef.current, chartLoginPresentation);
+    previousChartLoginPresentationRef.current = chartLoginPresentation;
+    retainedPublicChartSurfaceRef.current = retainPublicSurface;
+    setRetainedPublicChartSurface(retainPublicSurface);
+
     // Close the previous selection before normal effects (including the live
-    // tick loop) run. The loading surface therefore covers the switch from the
-    // first committed frame, and an already queued old-symbol RAF cannot paint.
+    // tick loop) run. An already queued old-symbol RAF cannot paint; a same
+    // market guest login keeps only its public canvas behind the progress badge.
     chartSelectionPresentationRef.current = nextGate;
     initialHistoryLoadSequenceRef.current += 1;
     initialHistoryLoadPendingRef.current = true;
+    liveCandleMutationGenerationRef.current = 0;
+    liveCandleMutationGenerationByTimeRef.current.clear();
     historyRequestCoordinatorRef.current.abort();
     cancelQueuedChartRender();
     postInteractionCoordinatorRef.current?.clear();
@@ -1692,6 +1751,10 @@ export const TradingChart = React.memo(function TradingChart({
   }, [
     cancelQueuedChartRender,
     chartSelectionPresentationKey,
+    brokerAccountSessionScope,
+    chartMarketSource,
+    symbol,
+    timeframe,
     hideLivePriceOverlay,
     setLoadingPhase,
   ]);
@@ -1964,6 +2027,7 @@ useTradingChartInitialization({
     lastRenderedCandlesRef,
     lastStoreCandleSecRef,
     lastVisibleLogicalRangeRef,
+    liveCandleMutationGenerationByTimeRef,
     periodSeparatorsRef,
     prevPriceRef,
     protectedDisplayedHistoryRef,
@@ -1973,11 +2037,13 @@ useTradingChartInitialization({
     scheduleBoundaryTimerRef,
     setApiError,
     symbol,
+    timeframe,
     updateChartData,
     updateLegendDOM,
   });
 
   const { loadHistory, loadMoreHistory } = useTradingChartHistoryLoading({
+    discardRetainedPublicChartSurface,
     brokerTimeOffsetSec,
     brokerTimeOffsetSecRef,
     buildHistoryCacheTarget,
@@ -2119,6 +2185,10 @@ useTradingChartInitialization({
     rememberVisibleLogicalRange(visibleRange);
     isRebuildingRef.current = true;
 
+    // The retained guest pixels belong to the series being removed. Cover the
+    // replacement until its own account baseline is available.
+    discardRetainedPublicChartSurface();
+
     try { chart.removeSeries(seriesRef.current); } catch { /* chart may be rebuilding */ }
     seriesRef.current = null;
     askPriceLineRef.current = null;
@@ -2164,7 +2234,7 @@ useTradingChartInitialization({
       }
     }
     return true;
-  }, [activeChartSourceId, createPriceSeries, flushQueuedChartRender, getDrawingSeriesData, rememberVisibleLogicalRange, requestChartDataRender, symbol, timeframe]);
+  }, [activeChartSourceId, createPriceSeries, discardRetainedPublicChartSurface, flushQueuedChartRender, getDrawingSeriesData, rememberVisibleLogicalRange, requestChartDataRender, symbol, timeframe]);
 
   // Create series when chart type, symbol, or timeframe changes
   useTradingChartReconfiguration({
@@ -2222,6 +2292,40 @@ useTradingChartInitialization({
     updateChartData,
     volumeRef,
   });
+
+  // Future whitespace supplies native time-axis ticks and matching grid marks
+  // when panning beyond the last candle, without inventing price data.
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    const hostSeries = squareGridHostSeriesRef.current;
+    if (!chart || !series || !hostSeries) return;
+    const timeScale = chart.timeScale();
+    const projection = createChartGridTimeProjection({
+      timeScale,
+      hostSeries,
+      getLatestPoint: () => {
+        const latest = series.dataByIndex(Number.MAX_SAFE_INTEGER, MismatchDirection.NearestLeft);
+        if (!latest || typeof latest.time !== 'number' || !Number.isFinite(latest.time)) return null;
+        const index = timeScale.timeToIndex(latest.time, false);
+        return index === null ? null : { time: latest.time, index };
+      },
+      getTimeframe: () => timeframe,
+      getBoundaryOffsetSeconds: () => brokerTimeOffsetSecRef.current,
+      isEnabled: () => chartSettingsRef.current.showGrid && chartSettingsRef.current.gridType === 'scale',
+    });
+    chartGridTimeProjectionRef.current = projection;
+    series.subscribeDataChanged(projection.refresh);
+    return () => {
+      series.unsubscribeDataChanged(projection.refresh);
+      projection.dispose();
+      if (chartGridTimeProjectionRef.current === projection) chartGridTimeProjectionRef.current = null;
+    };
+  }, [brokerAccountSessionScope, symbol, timeframe, chartType, localChartType]);
+
+  useEffect(() => {
+    chartGridTimeProjectionRef.current?.refresh();
+  }, [chartSettings.showGrid, chartSettings.gridType, brokerTimeOffsetSec]);
 
 
  // The authorized instrument catalog can resolve after the chart mounts.
@@ -2334,11 +2438,14 @@ useTradingChartInitialization({
   }, [schedulePeriodSeparatorRender, syncLeftVisibleTime, timeframe, candlesLoadedRev]);
 
   // Watch chart settings and hot-apply to chart without unmounting
+  useTradingChartPriceScaleSettings({ chartRef, isDisposedRef, chartSettings, symbol, timeframe });
+
   useLayoutEffect(() => {
     if (!chartRef.current || isDisposedRef.current) return;
     const chart = chartRef.current;
 
     // Apply global layout and grid
+    const gridRenderingOptions = getChartGridRenderingOptions(chartSettings, chartTheme);
     chart.applyOptions({
       layout: {
         background: { type: ColorType.Solid, color: chartTheme.background },
@@ -2346,18 +2453,7 @@ useTradingChartInitialization({
         fontFamily: isAdvancedUntitledLight ? LIGHT_CHART_AXIS_FONT_FAMILY : CHART_AXIS_FONT_FAMILY,
         fontSize: chartAxisFontSize,
       },
-      grid: {
-        vertLines: {
-          color: chartTheme.gridVertical,
-          style: LineStyle.Solid,
-          visible: false,
-        },
-        horzLines: {
-          color: chartTheme.gridHorizontal,
-          style: LineStyle.Solid,
-          visible: false,
-        },
-      },
+      grid: gridRenderingOptions.nativeGrid,
       crosshair: {
         vertLine: { color: chartTheme.crosshair },
         horzLine: { color: chartTheme.crosshair },
@@ -2366,7 +2462,7 @@ useTradingChartInitialization({
       handleScale: TRADING_VIEW_HANDLE_SCALE,
       rightPriceScale: {
         borderColor: chartTheme.scaleBorder,
-        autoScale: !chartSettings.scaleFixOneToOne && getFixedChartPriceRange(chartSettings) === null,
+        textColor: chartSettings.showGrid && chartSettings.gridType === 'mt5' ? 'transparent' : chartTheme.axisText,
         alignLabels: false,
       },
       timeScale: {
@@ -2375,21 +2471,7 @@ useTradingChartInitialization({
       },
     });
 
-    squareGridPrimitiveRef.current?.applyOptions({
-      visible: chartSettings.showGrid,
-      cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,
-      verticalColor: chartTheme.gridVertical,
-      horizontalColor: chartTheme.gridHorizontal,
-    });
-
-    const fixedPriceRange = getFixedChartPriceRange(chartSettings);
-    if (fixedPriceRange) {
-      try {
-        chart.priceScale('right').setVisibleRange(fixedPriceRange);
-      } catch {
-        // The chart can be disposed during a rapid tab or symbol switch.
-      }
-    }
+    squareGridPrimitiveRef.current?.applyOptions(gridRenderingOptions.fixedGrid);
 
     // Update Series colors for the series currently on the chart (a chart-type
     // switch can swap it before the chartType prop catches up).
@@ -2428,10 +2510,13 @@ useTradingChartInitialization({
         color: chartTheme.volumeUp
       });
       if (volumeVisible) {
-        requestChartDataRender({
-          chartType: prevChartTypeRef.current || chartType,
-          reason: 'volume-settings',
-        });
+        // Volume menu changes need only the histogram, not an idle repaint of
+        // price history and every indicator.
+        volumeRef.current.setData(lastRenderedCandlesRef.current.map(candle => ({
+          time: candle.time as Time,
+          value: getDisplayVolume(candle, chartSettings),
+          color: candle.close >= candle.open ? chartTheme.volumeUp : chartTheme.volumeDown,
+        })));
       } else {
         volumeRef.current.setData([]);
         schedulePeriodSeparatorRender();
@@ -2485,8 +2570,10 @@ useTradingChartInitialization({
       legendRenderFrameRef.current = null;
     }
 
-    try { seriesRef.current?.setData([]); } catch { /* chart may be rebuilding */ }
-    try { volumeRef.current?.setData([]); } catch { /* chart may be rebuilding */ }
+    if (!retainedPublicChartSurfaceRef.current) {
+      try { seriesRef.current?.setData([]); } catch { /* chart may be rebuilding */ }
+      try { volumeRef.current?.setData([]); } catch { /* chart may be rebuilding */ }
+    }
     if (ohlcOpenRef.current) ohlcOpenRef.current.textContent = '';
     if (ohlcHighRef.current) ohlcHighRef.current.textContent = '';
     if (ohlcLowRef.current) ohlcLowRef.current.textContent = '';
@@ -2520,6 +2607,7 @@ useTradingChartInitialization({
 
   // ─── Live tick subscription + candle rollover ─────────────────────────────
 useTradingChartLiveCandleRuntime({
+    discardRetainedPublicChartSurface,
     activeTradeSnapshotsRef,
     applyAreaTrendColors,
     authToken,
@@ -2720,6 +2808,7 @@ useTradingChartLiveCandleRuntime({
 
   // All zoom buttons use the chart's live time scale, shared by candles and volume.
 useTradingChartCommands({
+    applyChartTypeInPlace,
     autoScrollEnabledRef,
     brokerTimeOffsetSecRef,
     cancelQueuedChartRender,
@@ -2929,6 +3018,7 @@ useTradingChartTradeRuntime({
     isDisposedRef,
     isLivePriceSafeForCandles,
     livePriceBadgeRef,
+    lastRenderedCandlesRef,
     livePriceLineRef,
     livePriceOverlayColorsRef,
     livePriceRef,
@@ -2958,6 +3048,8 @@ useTradingChartTradeRuntime({
     closeCtxMenu,
     handleContextMenu,
     handleCtxChartTypeChange,
+    handleCtxGridTypeChange,
+    handleCtxGridLineStyleChange,
     handleCtxDeleteIndicators,
     handleCtxOpenDOM,
     handleCtxOpenNewOrder,
@@ -2983,7 +3075,6 @@ useTradingChartTradeRuntime({
     addLocalIndicator,
     applyChartTypeInPlace,
     chartSettingsRef,
-    chartTheme,
     clearLocalIndicators,
     loadHistory,
     localIndicatorManager,
@@ -3000,7 +3091,6 @@ useTradingChartTradeRuntime({
     setLocalChartType,
     setTemplateDialogMode,
     setTemplateDialogOpen,
-    squareGridPrimitiveRef,
     symbol,
     timeframe,
   });
@@ -3027,6 +3117,8 @@ return (
       drawingRuntimeContextRef={drawingRuntimeContextRef}
       handleContextMenu={handleContextMenu}
       handleCtxChartTypeChange={handleCtxChartTypeChange}
+      handleCtxGridTypeChange={handleCtxGridTypeChange}
+      handleCtxGridLineStyleChange={handleCtxGridLineStyleChange}
       handleCtxDeleteIndicators={handleCtxDeleteIndicators}
       handleCtxOpenDOM={handleCtxOpenDOM}
       handleCtxOpenNewOrder={handleCtxOpenNewOrder}
@@ -3055,6 +3147,7 @@ return (
       livePriceValueRef={livePriceValueRef}
       loadingMessageIdx={loadingMessageIdx}
       loadingMessages={loadingMessages}
+      retainedPublicChartSurface={retainedPublicChartSurface}
       loadingPhase={loadingPhase}
       localChartType={localChartType}
       marketStatus={marketStatus}

@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DockManager, MAX_CHART_PANELS, type DockContainer, type DockPanelConfig } from '../services/dockManager';
 import { useDockLayoutStore } from './useDockLayoutStore';
+import { runTerminalShortcutAction } from '../services/shortcutCatalog';
 
 const originalLayout = useDockLayoutStore.getState().layout;
 const originalClosed = useDockLayoutStore.getState().recentlyClosedCharts;
@@ -38,6 +39,54 @@ const legacyLayout = () => {
 };
 
 describe('chart slot actions', () => {
+  it.each([
+    ['window.tile', 'horizontal'],
+    ['window.tile-horizontal', 'vertical'],
+    ['window.tile-vertical', 'horizontal'],
+  ] as const)('%s divides one chart without requiring Add chart', (action, direction) => {
+    const before = useDockLayoutStore.getState().layout;
+    const seed = collect(before.root).find(panel => panel.id === 'test-seed')!;
+    runTerminalShortcutAction(action);
+    const state = useDockLayoutStore.getState();
+    const tiledCharts = collect(state.layout.root).filter(panel => panel.component === 'Chart');
+    expect(tiledCharts).toHaveLength(2);
+    expect(tiledCharts.find(panel => panel.id === seed.id)).toMatchObject({
+      title: seed.title, props: seed.props,
+    });
+    expect(tiledCharts.every(panel => JSON.stringify(panel.props) === JSON.stringify(seed.props))).toBe(true);
+    const center = state.layout.root.children[1] as DockContainer;
+    expect(center.children[0]).toMatchObject({ direction, children: expect.any(Array), ratio: 0.75 });
+    expect((center.children[0] as DockContainer).children.map(child => child.ratio)).toEqual([0.5, 0.5]);
+    expect(state.layout.root.children[0]).toEqual(before.root.children[0]);
+    expect(center.children[1]).toEqual((before.root.children[1] as DockContainer).children[1]);
+
+    // Further layout selections arrange those panes instead of opening copies.
+    const ids = tiledCharts.map(panel => panel.id).sort();
+    for (const nextAction of ['window.tile', 'window.tile-horizontal', 'window.tile-vertical', action]) {
+      runTerminalShortcutAction(nextAction);
+      expect(collect(useDockLayoutStore.getState().layout.root)
+        .filter(panel => panel.component === 'Chart').map(panel => panel.id).sort()).toEqual(ids);
+    }
+  });
+
+  it.each(['window.tile', 'window.tile-horizontal', 'window.tile-vertical'])('%s retains all six existing chart windows', action => {
+    fillCharts();
+    const before = collect(useDockLayoutStore.getState().layout.root).filter(panel => panel.component === 'Chart');
+    runTerminalShortcutAction(action);
+    const after = collect(useDockLayoutStore.getState().layout.root).filter(panel => panel.component === 'Chart');
+    expect(after).toHaveLength(MAX_CHART_PANELS);
+    expect(after.map(panel => [panel.id, panel.props])).toEqual(before.map(panel => [panel.id, panel.props]));
+  });
+
+  it('opens tiled charts when the last chart has been closed', () => {
+    useDockLayoutStore.getState().removePanel('test-seed');
+    runTerminalShortcutAction('window.tile-horizontal');
+    expect(useDockLayoutStore.getState().getChartCount()).toBe(2);
+    const center = useDockLayoutStore.getState().layout.root.children[1] as DockContainer;
+    expect(center.children[0]).toMatchObject({ direction: 'vertical', children: expect.any(Array) });
+    expect(center.children[1]).toMatchObject({ id: 'toolbox', component: 'Terminal' });
+  });
+
   it('synchronizes imported layouts to six and preserves the two overflow charts for restoration', () => {
     useDockLayoutStore.getState().setLayout(legacyLayout());
     const state = useDockLayoutStore.getState();

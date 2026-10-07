@@ -622,7 +622,10 @@ const pickPersistedWsUrl = (
   return appendWsV2Path(httpToWss(currentMarketOrigin));
 };
 
-export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput): void {
+export function persistBrokerSessionDiscovery(
+  input: BrokerSessionDiscoveryInput,
+  options: { notifySessionChange?: boolean | 'routing-changes' } = {},
+): void {
   if (typeof window === 'undefined') return;
 
   if (!isDesktopBackendTarget()) {
@@ -638,6 +641,8 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   }
 
   const normalizedInput = normalizeBrokerInfoForTarget(input) as BrokerSessionDiscoveryInput;
+  const connectionInputKeys = ['broker_id', 'backend_url', 'server_url', 'ws_url', 'feed_url', 'feed_broker_id'];
+  const previousConnectionInputs = connectionInputKeys.map(key => getLocalStorageItem(key) || '');
   const token = String(normalizedInput.access_token || normalizedInput.token || '').trim();
   const brokerId = String(normalizedInput.broker_id || '').trim();
   const hasToken = Boolean(token);
@@ -676,6 +681,7 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
       'rtx_saved_username',
       'feed_broker_id',
       'broker_name',
+      'logo_url',
     ].forEach((key) => {
       removeLocalStorageItem(key);
       removeSessionStorageItem(key);
@@ -719,7 +725,18 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   // Transition listeners must never observe broker B's token at broker A's URL.
   if (token) setLocalStorageItem('auth_token', token);
   if (token || brokerChanged) emitAuthTokenUpdated();
-  emitSessionChange(token ? 'login' : 'broker_url_change');
+  // Login callers commit account identity and tokens together in the store.
+  // Let that commit publish the transition once, with the complete identity,
+  // instead of resetting market connections here and again at the store commit.
+  const routingChanged = brokerChanged || connectionInputKeys.some(
+    (key, index) => (getLocalStorageItem(key) || '') !== previousConnectionInputs[index],
+  );
+  // Preparing credentials for an unchanged broker does not change ownership
+  // or routing, and must not reconnect the public chart before sending Login.
+  if (options.notifySessionChange !== false
+    && (options.notifySessionChange !== 'routing-changes' || token || routingChanged)) {
+    emitSessionChange(token ? 'login' : 'broker_url_change');
+  }
 }
 
 // ─── Runtime Input Accessors ─────────────────────────────────────────────────

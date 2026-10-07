@@ -26,6 +26,7 @@ import {
     preloadTradingChartRuntime,
 } from '../../startup/tradingChartRuntime';
 import type { TradeVolumeMetadata } from '../../utils/tradeVolume';
+import type { RetainedGuestChart } from '../../hooks/useGuestChartLoginContinuity';
 
 /**
  * Warm the chart beside the authenticated shell without making the complete
@@ -97,6 +98,7 @@ interface DockWorkspaceProps {
     marketInstrumentsSnapshot: MarketInstrumentsSnapshot;
     selectedSymbol: string;
     chartRuntimeEnabled?: boolean;
+    retainedGuestCharts?: Record<string, RetainedGuestChart>;
     onSymbolSelect: (symbol: string) => void;
     onClosePosition: (id: string | number) => void;
     onModifyPosition: (id: number, sl: number, tp: number) => void;
@@ -114,6 +116,7 @@ export const DockWorkspace = React.memo(function DockWorkspace({
     marketInstrumentsSnapshot,
     selectedSymbol,
     chartRuntimeEnabled = true,
+    retainedGuestCharts,
     onSymbolSelect,
     onClosePosition,
     onModifyPosition,
@@ -173,9 +176,15 @@ export const DockWorkspace = React.memo(function DockWorkspace({
         const waitingForPanelSymbol = marketInstrumentsSnapshot.chartCatalogCurrent === false
             && Boolean(explicitPanelSymbol) && explicitPanelSymbol.toUpperCase() !== 'CHART'
             && !getAuthorizedChartDiagnosticSymbol(panelSymbol, authorizedChartSymbols);
-        if (waitingForPanelSymbol) return '';
+        if (waitingForPanelSymbol) {
+            const retained = retainedGuestCharts?.[panel.id];
+            return marketInstrumentsSnapshot.accountCatalogStatus === 'loading'
+                && retained?.timeframe === (panel.props?.timeframe || globalTimeframe)
+                ? retained.symbol : '';
+        }
         return resolveRenderedChartSymbol(panelSymbol, selectedSymbol, authorizedChartSymbols);
-    }, [authorizedChartSymbols, marketInstrumentsSnapshot.chartCatalogCurrent, selectedSymbol]);
+    }, [authorizedChartSymbols, globalTimeframe, marketInstrumentsSnapshot.accountCatalogStatus,
+        marketInstrumentsSnapshot.chartCatalogCurrent, retainedGuestCharts, selectedSymbol]);
 
     // While the broker catalog settles, a panel can render under a fallback
     // symbol (typically the selected one). Per-symbol Show-section choices
@@ -205,7 +214,9 @@ export const DockWorkspace = React.memo(function DockWorkspace({
             // header with another instrument's canvas or trading buttons.
             const chartSymbol = resolvePanelChartSymbol(panel);
             const diagnosticPanelId = getChartPanelDiagnosticId(panel.id);
-            const tradeAllowed = chartSymbol ? tradeSymbolSet.has(chartSymbol) : false;
+            const retainingGuestChart = marketInstrumentsSnapshot.accountCatalogStatus === 'loading'
+                && retainedGuestCharts?.[panel.id]?.symbol === chartSymbol;
+            const tradeAllowed = !retainingGuestChart && chartSymbol ? tradeSymbolSet.has(chartSymbol) : false;
             const volumeMetadata = volumeMetadataBySymbol.get(chartSymbol);
             return (
                 <div className="rtx-chart-panel flex-1 w-full h-full min-h-0 min-w-0 relative flex flex-col group/chartpanel"

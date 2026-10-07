@@ -15,6 +15,7 @@ const chartRuntimeSource = [
   readSource('src/features/trading-chart/runtime/createTradeOverlayDomRuntime.ts'),
   readSource('src/features/trading-chart/runtime/useTradingChartTradeLevelDrag.ts'),
   readSource('src/features/trading-chart/runtime/useTradingChartContextMenu.ts'),
+  readSource('src/features/trading-chart/runtime/useTradingChartPriceScaleSettings.ts'),
   readSource('src/features/trading-chart/presentation/useTradingChartLivePriceOverlay.ts'),
 ].join('\n');
 const shortcutSource = readSource('src/components/GlobalShortcuts.tsx');
@@ -49,8 +50,10 @@ describe('TradingChart Charts-menu runtime contract', () => {
     expect(chartRuntimeSource).toContain('{chartSettings.showOHLC && (');
     expect(chartRuntimeSource).toContain('setShowOneClick(chartSettings.showQuickTradingButtons);');
     expect(chartRuntimeSource).toContain('style={{ zIndex: chartSettings.chartOnForeground ? 11 : 0 }}');
-    expect(chartRuntimeSource).toContain('visible: chartSettings.showGrid,');
-    expect(chartRuntimeSource).toContain('autoScale: !chartSettings.scaleFixOneToOne');
+    expect(chartRuntimeSource).toContain('getChartGridRenderingOptions(chartSettings, chartTheme)');
+    expect(chartRuntimeSource).toContain('grid: gridRenderingOptions.nativeGrid,');
+    expect(chartRuntimeSource).toContain('squareGridPrimitiveRef.current?.applyOptions(gridRenderingOptions.fixedGrid)');
+    expect(chartRuntimeSource).toContain('autoScale: !scaleFixOneToOne && fixedPriceRange === null');
     expect(chartRuntimeSource).toContain('settings.showAskPriceLine,');
     expect(chartRuntimeSource).toContain('settings.showLastPriceLine,');
     expect(chartRuntimeSource).toContain('chartSettings.showBidPriceLine');

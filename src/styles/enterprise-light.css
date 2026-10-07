@@ -76,6 +76,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
   --color-info: var(--rtx-light-accent);
   --color-info-dim: rgba(67, 56, 202, 0.12);
   --color-profit: #1d4ed8;
+  --color-quote-up: var(--rtx-light-quote-up);
   --color-profit-dim: rgba(29, 78, 216, 0.16);
   --color-profit-dimmer: rgba(29, 78, 216, 0.08);
   --color-loss: #b91c1c;
@@ -1066,18 +1067,6 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-action--secondary :is(.
   color: var(--rtx-light-text-muted) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-dialog__footer--choice {
-  background: transparent !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-guest-link {
-  color: var(--rtx-light-text-secondary) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-guest-link:hover {
-  background: var(--rtx-light-hover) !important;
-  color: var(--rtx-light-text) !important;
-}
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-auth-field__label {
   color: var(--rtx-light-text-secondary) !important;

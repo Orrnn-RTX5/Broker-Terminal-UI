@@ -91,7 +91,6 @@ const getFocusChartTabId = (
 
 const getAdvancedFocusChartEnabled = (): boolean => (
   typeof document !== 'undefined' &&
-  document.documentElement.classList.contains('rtx-advanced-view') &&
   document.documentElement.classList.contains('rtx-advanced-focus-chart')
 );
 
@@ -103,7 +102,6 @@ const useAdvancedFocusChartEnabled = (): boolean => {
 
     const root = document.documentElement;
     const syncFocusState = () => setIsEnabled(
-      root.classList.contains('rtx-advanced-view') &&
       root.classList.contains('rtx-advanced-focus-chart')
     );
     const observer = new MutationObserver(syncFocusState);

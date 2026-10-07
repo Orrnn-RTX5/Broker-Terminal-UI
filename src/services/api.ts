@@ -30,6 +30,7 @@ export interface ApiResponse<T = unknown> {
 
 export interface BrokerConfig {
   brokerName: string;
+  logo_url?: string;
   priceFeedLP: string;
   executionMode: 'ABOOK' | 'BBOOK';
   defaultLeverage: number;

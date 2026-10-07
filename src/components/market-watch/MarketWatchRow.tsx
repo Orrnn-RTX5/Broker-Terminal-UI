@@ -24,7 +24,7 @@ import {
   readFiniteDailyChange,
 } from './marketWatchPanelModel';
 
-const MARKET_WATCH_QUOTE_UP_COLOR = '#4597ff';
+const MARKET_WATCH_QUOTE_UP_COLOR = 'var(--color-quote-up)';
 const MARKET_WATCH_QUOTE_DOWN_COLOR = '#ff5858';
 
 function usePriceFlash(value: number): 'up' | 'down' | null {
@@ -178,7 +178,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
         <td style={{ padding: '3px 8px', whiteSpace: 'nowrap', maxWidth: 0 }}>
           <div className="rtx-market-watch__symbol-content" style={{ display: 'flex', alignItems: 'center', columnGap: 5, minWidth: 0 }}>
             {hasData && bidDirection === 'up' && (
-              <svg className="rtx-market-watch__direction rtx-market-watch__direction--up" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: 'var(--color-profit)', opacity: quoteDataOpacity }}>
+              <svg className="rtx-market-watch__direction rtx-market-watch__direction--up" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: MARKET_WATCH_QUOTE_UP_COLOR, opacity: quoteDataOpacity }}>
                 <path d="M2 8L8 2M3.5 2H8V6.5" stroke="currentColor" strokeWidth="1" />
               </svg>
             )}

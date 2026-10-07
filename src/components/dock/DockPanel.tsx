@@ -14,6 +14,7 @@ import { twMerge } from 'tailwind-merge';
 import type { DockPanelConfig } from '../../services/dockManager';
 import { X, Minus } from 'lucide-react';
 import { ChartSymbolTabs } from './ChartSymbolTabs';
+import { ActiveChartWindowBorder } from './ActiveChartWindowBorder';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 
 function cn(...inputs: ClassValue[]) {
@@ -76,6 +77,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
       style={style}
       onMouseDown={onActivate}
     >
+      {isChart && isActive && !minimized && <ActiveChartWindowBorder panelId={panel.id} />}
       {/* ── MT5-style thin title bar ── */}
       {showHeader && (
         <div

@@ -1,4 +1,5 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
+import { getAuthenticatedAccountName } from '../../utils/accountDisplayName';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, ChevronRight, ArrowRight, Building2, Shield, Globe, CheckCircle2, Copy, Loader2, MousePointer2 } from 'lucide-react';
@@ -337,7 +338,7 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             feed_url: data.feed_url || submitBroker.feed_url || submitBroker.feed_ws_url,
             feed_ws_url: data.feed_ws_url || submitBroker.feed_ws_url,
             feed_status_url: data.feed_status_url || submitBroker.feed_status_url,
-            logo_url: submitBroker.logo_url,
+            logo_url: data.logo_url?.trim() || submitBroker.logo_url,
         });
         updateDynamicUrls();
 
@@ -346,7 +347,7 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         store.setAuthTokens(token, data.refresh_token, expiresAt);
         store.setAuthenticated(true, accountId, token, data.refresh_token, expiresAt, {
             login: loginNumber,
-            name: data.user?.username || data.username || '',
+            name: getAuthenticatedAccountName(data),
             server: submitBroker.broker_name || submitBroker.broker_id,
             isLive: true,
             lastUsed: Date.now(),

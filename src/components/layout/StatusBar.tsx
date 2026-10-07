@@ -1,5 +1,5 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import { useState, useEffect } from 'react';
+import { BrokerLogoImage } from '../BrokerLogoImage';
 import { ConnectionStatus } from '../ConnectionStatus';
 import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
@@ -24,15 +24,10 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
     const tr = useUiTranslation();
     const visible = useTerminalBarsStore(state => state.statusBarVisible);
     const brokerInfo = useTerminalBrokerInfo();
-    const [logoError, setLogoError] = useState(false);
-    useEffect(() => {
-        setLogoError(false); // Reset error state on server/logo change
-    }, [brokerInfo.logoUrl]);
-    // The fallback renders at 16x16; favicon.png is a fraction of the size of
-    // the desktop titlebar artwork and looks identical at this scale.
-    const brokerLogo = brokerInfo.logoUrl && !logoError
-        ? getLogoUrl(brokerInfo.logoUrl, brokerInfo.logoBaseCandidates)
-        : './favicon.png';
+    const brokerLogo = {
+        broker_id: localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '',
+        logo_url: getLogoUrl(brokerInfo.logoUrl, brokerInfo.logoBaseCandidates),
+    };
 
     const terminalTitle = symbol && timeframe
         ? formatTerminalTitle(brokerInfo, symbol, timeframe, marketStatus)
@@ -56,11 +51,11 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                 <div
                     className="rtx-status-bar__metric flex min-w-0 max-w-full items-center gap-2 overflow-hidden whitespace-nowrap font-normal text-zinc-400 [.rtx-advanced-view_&]:text-zinc-600"
                 >
-                    <img
-                        src={brokerLogo}
+                    <BrokerLogoImage
+                        broker={brokerLogo}
                         alt={`${brokerInfo.brokerName} Logo`}
                         className="h-4 w-4 shrink-0 rounded-sm object-contain"
-                        onError={() => setLogoError(true)}
+                        appFallbackUrl="./favicon.png"
                     />
                     <span className="rtx-status-bar__metric truncate whitespace-nowrap font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black">{tr(terminalTitle)}</span>
                 </div>

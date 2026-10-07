@@ -202,7 +202,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       const negativeChange = screen.getByText('-0.36%');
       expect(screen.queryByText('0.19%')).not.toBeInTheDocument();
       expect(positiveChange).toHaveClass('rtx-market-watch__daily--up');
-      expect(positiveChange).toHaveStyle({ color: '#4597ff' });
+      expect(positiveChange).toHaveStyle({ color: 'var(--color-quote-up)' });
       expect(negativeChange).toHaveClass('rtx-market-watch__daily--down');
       expect(negativeChange).toHaveStyle({ color: '#ff5858' });
 
@@ -652,7 +652,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       const bidPrice = row.querySelector('.rtx-market-watch__price--bid');
       const askPrice = row.querySelector('.rtx-market-watch__price--ask');
       expect(bidPrice).toHaveClass('rtx-market-watch__price--up');
-      expect(bidPrice).toHaveStyle({ color: '#4597ff' });
+      expect(bidPrice).toHaveStyle({ color: 'var(--color-quote-up)' });
       expect(askPrice).toHaveClass('rtx-market-watch__price--down');
       expect(askPrice).toHaveStyle({ color: '#ff5858' });
       expect(row.querySelector('.rtx-market-watch__direction--up')).toBeInTheDocument();

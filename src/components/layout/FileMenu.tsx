@@ -2,7 +2,7 @@ import { saveWorkspaceFeature, printSetupFeature, printPreviewFeature, exitConfi
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import './file-menu-desktop.css';
 import { Icon } from '../ui/Icon';
-import React, { Suspense, useState, useEffect, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { useAppStore } from '../../store/useAppStore';
@@ -12,6 +12,7 @@ import {
     type ResolvedActiveChartSource,
 } from '../../services/activeChartSource';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { useWorkspaceProfileSelectionStore } from '../../store/useWorkspaceProfileSelectionStore';
 import { getTerminalShortcutHint } from '../../services/shortcutCatalog';
 import {
     BUILTIN_WORKSPACE_PROFILE_NAMES,
@@ -38,6 +39,8 @@ type ElectronRuntime = NonNullable<Window['electron']> & {
 
 export interface FileMenuProps {
     shortcutsOnly?: boolean;
+    profileShortcutsEnabled?: boolean;
+    profileSymbols?: readonly string[];
     onSave?: (workspaceName?: string) => void;
     onSaveAsPicture?: () => void;
     onOpenDataFolder?: () => void;
@@ -58,6 +61,8 @@ export interface FileMenuProps {
 
 export const FileMenu: React.FC<FileMenuProps> = ({
     shortcutsOnly = false,
+    profileShortcutsEnabled = true,
+    profileSymbols,
     onSave,
     onSaveAsPicture,
     onOpenDataFolder,
@@ -86,20 +91,47 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const [showOpenAccountDialog, setShowOpenAccountDialog] = useState(false);
     const [profilesOpen, setProfilesOpen] = useState(false);
     const [deleteSubmenuOpen, setDeleteSubmenuOpen] = useState(false);
-    const [activeProfileName, setActiveProfileName] = useState(() => {
-        try {
-            return localStorage.getItem('rtx5_active_profile') || 'Default';
-        } catch {
-            return 'Default';
-        }
-    });
+    const profilesAnchor = useRef<HTMLDivElement>(null);
+    const deleteAnchor = useRef<HTMLDivElement>(null);
+    const [profilesAlignLeft, setProfilesAlignLeft] = useState(false);
+    const [deleteAlignLeft, setDeleteAlignLeft] = useState(false);
+    const effectiveAccount = accountId?.trim() || 'default';
+    const activeProfileName = useWorkspaceProfileSelectionStore(state => (
+        state.accountId === effectiveAccount ? state.profileName : 'Default'
+    ));
+    const setActiveProfileName = (name: string) => {
+        useWorkspaceProfileSelectionStore.getState().selectProfile(effectiveAccount, name);
+    };
     const [workspaceProfiles, setWorkspaceProfiles] = useState<WorkspaceProfileSummary[]>([]);
     const recentlyClosedCharts = useDockLayoutStore(state => state.recentlyClosedCharts);
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
 
+    useLayoutEffect(() => {
+        const alignSubmenus = () => {
+            if (profilesOpen && profilesAnchor.current) {
+                setProfilesAlignLeft(profilesAnchor.current.getBoundingClientRect().right + 200 > window.innerWidth);
+            }
+            if (deleteSubmenuOpen && deleteAnchor.current) {
+                setDeleteAlignLeft(deleteAnchor.current.getBoundingClientRect().right + 160 > window.innerWidth);
+            }
+        };
+        alignSubmenus();
+        window.addEventListener('resize', alignSubmenus);
+        return () => window.removeEventListener('resize', alignSubmenus);
+    }, [profilesOpen, deleteSubmenuOpen]);
+
+    useEffect(() => {
+        const selection = useWorkspaceProfileSelectionStore.getState();
+        if (shortcutsOnly || selection.accountId !== effectiveAccount) {
+            selection.selectProfile(effectiveAccount, 'Default');
+        }
+        setShowSaveDialog(false);
+        setProfilesOpen(false);
+        setDeleteSubmenuOpen(false);
+    }, [effectiveAccount, shortcutsOnly]);
+
     useEffect(() => {
         const refreshProfiles = () => {
-            const effectiveAccount = accountId?.trim() || 'default';
             try {
                 setWorkspaceProfiles(listWorkspaceProfiles(effectiveAccount));
             } catch (error) {
@@ -108,21 +140,24 @@ export const FileMenu: React.FC<FileMenuProps> = ({
             }
         };
 
-        const handleProfileRestored = (e: Event) => {
+        const handleProfileSelected = (e: Event) => {
             const detail = (e as CustomEvent).detail;
-            if (detail?.name) {
-                setActiveProfileName(detail.name);
+            if (detail?.accountId === effectiveAccount && detail?.name) {
+                useWorkspaceProfileSelectionStore.getState().selectProfile(effectiveAccount, detail.name);
+                refreshProfiles();
             }
         };
 
         refreshProfiles();
-        window.addEventListener('workspace:profile-saved', refreshProfiles);
-        window.addEventListener('workspace:profile-restored', handleProfileRestored);
+        window.addEventListener('workspace:profile-saved', handleProfileSelected);
+        window.addEventListener('workspace:profile-restored', handleProfileSelected);
+        window.addEventListener('workspace:profile-deleted', refreshProfiles);
         return () => {
-            window.removeEventListener('workspace:profile-saved', refreshProfiles);
-            window.removeEventListener('workspace:profile-restored', handleProfileRestored);
+            window.removeEventListener('workspace:profile-saved', handleProfileSelected);
+            window.removeEventListener('workspace:profile-restored', handleProfileSelected);
+            window.removeEventListener('workspace:profile-deleted', refreshProfiles);
         };
-    }, [accountId]);
+    }, [effectiveAccount]);
 
     useEffect(() => {
         onDialogOpenChange?.(
@@ -142,6 +177,10 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         showSaveDialog,
         showSavePictureDialog,
     ]);
+
+    // File actions can close the parent menu and unmount this dialog owner
+    // before the next effect reports its closed state.
+    useEffect(() => () => onDialogOpenChange?.(false), [onDialogOpenChange]);
 
     // Get current symbol and timeframe from store
     const selectedSymbol = useAppStore(state => state.selectedSymbol);
@@ -210,31 +249,25 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         }
     };
 
-    const allProfileNames = Array.from(
-        new Set([
-            ...BUILTIN_WORKSPACE_PROFILE_NAMES,
-            ...workspaceProfiles.map(p => p.name),
-        ])
-    );
+    const allProfileNames = [...BUILTIN_WORKSPACE_PROFILE_NAMES, ...workspaceProfiles.map(p => p.name)]
+        .filter((name, index, names) => names.findIndex(candidate => (
+            candidate.toLowerCase() === name.toLowerCase()
+        )) === index);
 
     const customProfiles = workspaceProfiles.filter(
         p => !BUILTIN_WORKSPACE_PROFILE_NAMES.some(b => b.toLowerCase() === p.name.toLowerCase())
     );
 
     const handleRestoreProfile = (profileName: string) => {
-        const effectiveAccount = accountId?.trim() || 'default';
         try {
             let result = restoreWorkspaceProfile({ accountId: effectiveAccount, profileName });
             if (result.status !== 'restored') {
-                result = restoreBuiltinWorkspaceProfile(effectiveAccount, profileName);
+                result = profileSymbols
+                    ? restoreBuiltinWorkspaceProfile(effectiveAccount, profileName, { symbols: profileSymbols })
+                    : restoreBuiltinWorkspaceProfile(effectiveAccount, profileName);
             }
             if (result.status === 'restored') {
                 setActiveProfileName(result.profile.name);
-                try {
-                    localStorage.setItem('rtx5_active_profile', result.profile.name);
-                } catch {
-                    // Profile restoration remains valid when persistent storage is unavailable.
-                }
                 onProfileRestored?.(result.profile.name);
                 setProfilesOpen(false);
             }
@@ -265,24 +298,30 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     };
 
     const handleDeleteProfile = (profileNameToDelete: string) => {
-        const effectiveAccount = accountId?.trim() || 'default';
-        const deleted = deleteWorkspaceProfile({ accountId: effectiveAccount, profileName: profileNameToDelete });
-        if (deleted) {
-            setWorkspaceProfiles(listWorkspaceProfiles(effectiveAccount));
-            if (activeProfileName.toLowerCase() === profileNameToDelete.toLowerCase()) {
-                setActiveProfileName('Default');
-                try {
-                    localStorage.setItem('rtx5_active_profile', 'Default');
-                } catch {
-                    // The in-memory profile selection is still authoritative for this session.
+        try {
+            const deleted = deleteWorkspaceProfile({ accountId: effectiveAccount, profileName: profileNameToDelete });
+            if (deleted) {
+                setWorkspaceProfiles(listWorkspaceProfiles(effectiveAccount));
+                if (activeProfileName.toLowerCase() === profileNameToDelete.toLowerCase()) {
+                    handleRestoreProfile('Default');
                 }
+                window.dispatchEvent(new CustomEvent('workspace:profile-deleted', {
+                    detail: { accountId: effectiveAccount, name: profileNameToDelete },
+                }));
             }
+        } catch (error) {
+            window.alert(tr(error instanceof Error ? error.message : 'The workspace profile could not be deleted.'));
         }
         setDeleteSubmenuOpen(false);
     };
 
     useEffect(() => {
+        if (!profileShortcutsEnabled) return;
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.defaultPrevented || showSaveDialog || showPrintSetupDialog || showPrintPreviewDialog
+                || showSavePictureDialog || showExitDialog || showOpenAccountDialog) return;
+            const target = e.target instanceof Element ? e.target : null;
+            if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
             if (e.key === 'F5' && !e.altKey && !e.metaKey) {
                 if (e.shiftKey && !e.ctrlKey) {
                     e.preventDefault();
@@ -295,7 +334,9 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [allProfileNames, activeProfileName, accountId]);
+    }, [allProfileNames, activeProfileName, effectiveAccount, profileSymbols, profileShortcutsEnabled,
+        showSaveDialog, showPrintSetupDialog, showPrintPreviewDialog, showSavePictureDialog,
+        showExitDialog, showOpenAccountDialog]);
 
     const handlePrintPreview = async () => {
         const request = ++printRequest.current;
@@ -434,6 +475,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Profiles submenu */}
                 <div
+                    ref={profilesAnchor}
                     className="relative group/profiles px-1"
                     onMouseEnter={() => setProfilesOpen(true)}
                     onMouseLeave={() => {
@@ -443,13 +485,14 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 >
                     <button
                         type="button"
-                        onClick={() => setProfilesOpen(o => !o)}
+                        onClick={() => setProfilesOpen(true)}
                         className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left cursor-default ${
                             profilesOpen
                                 ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827]'
                                 : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
                         }`}
                         title={tr("Load profile configurations")}
+                        aria-expanded={profilesOpen}
                     >
                         <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                             <Icon name="layout" size="sm" />
@@ -458,7 +501,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <Icon name="chevron-right" size="xs" className="rtx-menu-icon--neutral" />
                     </button>
                     <div
-                        className={`rtx-menu-surface submenu absolute left-full top-0 -ml-1 min-w-[200px] py-1 z-[101] ${
+                        className={`rtx-menu-surface submenu absolute top-0 min-w-[200px] py-1 z-[101] ${profilesAlignLeft ? 'right-full -mr-1' : 'left-full -ml-1'} ${
                             profilesOpen ? 'block' : 'hidden group-hover/profiles:block'
                         }`}
                     >
@@ -508,6 +551,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                         {/* Delete submenu */}
                         <div
+                            ref={deleteAnchor}
                             className="relative group/delete px-0"
                             onMouseEnter={() => customProfiles.length > 0 && setDeleteSubmenuOpen(true)}
                             onMouseLeave={() => setDeleteSubmenuOpen(false)}
@@ -515,7 +559,8 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                             <button
                                 type="button"
                                 disabled={customProfiles.length === 0}
-                                onClick={() => customProfiles.length > 0 && setDeleteSubmenuOpen(o => !o)}
+                                onClick={() => customProfiles.length > 0 && setDeleteSubmenuOpen(true)}
+                                aria-expanded={deleteSubmenuOpen}
                                 className={`w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left ${
                                     customProfiles.length > 0
                                         ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
@@ -530,7 +575,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                             {customProfiles.length > 0 && (
                                 <div
-                                    className={`rtx-menu-surface submenu absolute left-full top-0 -ml-1 min-w-[160px] py-1 z-[102] ${
+                                    className={`rtx-menu-surface submenu absolute top-0 min-w-[160px] py-1 z-[102] ${deleteAlignLeft ? 'right-full -mr-1' : 'left-full -ml-1'} ${
                                         deleteSubmenuOpen ? 'block' : 'hidden group-hover/delete:block'
                                     }`}
                                 >
@@ -560,6 +605,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                 <button
                                     key={profileName}
                                     type="button"
+                                    aria-pressed={isActive}
                                     onClick={() => handleRestoreProfile(profileName)}
                                     className={`w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left cursor-default transition-colors duration-75 ${
                                         isActive
@@ -767,11 +813,6 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         setShowSaveDialog(false);
                         if (workspaceName) {
                             setActiveProfileName(workspaceName);
-                            try {
-                                localStorage.setItem('rtx5_active_profile', workspaceName);
-                            } catch {
-                                // Saving the workspace can continue without persisting its active label.
-                            }
                         }
                         onSave?.(workspaceName);
                     }}

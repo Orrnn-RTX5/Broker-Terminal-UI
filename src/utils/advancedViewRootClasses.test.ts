@@ -6,6 +6,8 @@ import {
   RTX_EXIT_CHART_FOCUS_EVENT,
   initRootTheme,
   isSavedThemeLight,
+  readChartFocusPreference,
+  persistChartFocusPreference,
   type AdvancedViewRootOptions,
 } from './advancedViewRootClasses';
 
@@ -20,7 +22,9 @@ const baseOptions: AdvancedViewRootOptions = {
 describe('advanced view root classes', () => {
   afterEach(() => {
     document.documentElement.className = '';
+    sessionStorage.removeItem('rtx5-focus-chart');
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('reveals the workspace before measuring an explicit window arrangement and keeps the theme', () => {
@@ -62,21 +66,63 @@ describe('advanced view root classes', () => {
     );
   });
 
-  it('keeps font sizing global while removing Light-only and Focus Chart classes', () => {
+  it('keeps font sizing and chart focus while removing Light-only classes', () => {
     const root = document.documentElement;
     root.classList.add('theme-dark', 'sentinel');
     syncAdvancedViewRootClasses(root, true, { ...baseOptions, focusChart: true });
     syncAdvancedViewRootClasses(root, false, { ...baseOptions, fontSize: 'large', focusChart: true });
 
-    expect(root).toHaveClass('theme-dark', 'sentinel', 'rtx-advanced-font-large');
+    expect(root).toHaveClass('theme-dark', 'sentinel', 'rtx-advanced-font-large', 'rtx-advanced-focus-chart');
     expect(root).not.toHaveClass(
       'rtx-advanced-view',
       'rtx-skin-untitled-light',
-      'rtx-advanced-focus-chart',
       'rtx-advanced-density-comfortable',
       'rtx-advanced-accent-purple',
       'rtx-advanced-surface-white',
     );
+  });
+
+  it.each([false, true])('toggles focus without changing the theme when Light is %s', (isLight) => {
+    const root = document.documentElement;
+    syncAdvancedViewRootClasses(root, isLight, { ...baseOptions, focusChart: true });
+    expect(root).toHaveClass('rtx-advanced-focus-chart');
+    expect(root.classList.contains('rtx-advanced-view')).toBe(isLight);
+    syncAdvancedViewRootClasses(root, isLight, baseOptions);
+    expect(root).not.toHaveClass('rtx-advanced-focus-chart');
+    expect(root.classList.contains('rtx-advanced-view')).toBe(isLight);
+  });
+
+  it('keeps focus separate for tabs sharing the same saved appearance options', () => {
+    const sharedOptions = JSON.stringify({ ...baseOptions, focusChart: true });
+    localStorage.setItem('rtx5-advanced-view-options', sharedOptions);
+    const tabOne = new Map<string, string>();
+    const tabTwo = new Map<string, string>();
+    const useTab = (values: Map<string, string>) => vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    });
+    useTab(tabOne);
+    expect(readChartFocusPreference()).toBe(false);
+    persistChartFocusPreference(true);
+    expect(readChartFocusPreference()).toBe(true);
+    useTab(tabTwo);
+    expect(readChartFocusPreference()).toBe(false);
+    useTab(tabOne);
+    expect(readChartFocusPreference()).toBe(true);
+    expect(localStorage.getItem('rtx5-advanced-view-options')).toBe(sharedOptions);
+    localStorage.removeItem('rtx5-advanced-view-options');
+  });
+
+  it('restores this tab focus at startup in Dark theme without using a shared saved focus flag', () => {
+    localStorage.setItem('rtx5-advanced-view-enabled', 'false');
+    localStorage.removeItem('rtx5-theme');
+    persistChartFocusPreference(true);
+    initRootTheme();
+    expect(document.documentElement).toHaveClass('theme-dark', 'rtx-advanced-focus-chart');
+    persistChartFocusPreference(false);
+    initRootTheme();
+    expect(document.documentElement).not.toHaveClass('rtx-advanced-focus-chart');
   });
 
   it('never tears down the active theme while changing another option', async () => {

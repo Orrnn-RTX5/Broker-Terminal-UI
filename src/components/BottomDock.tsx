@@ -244,6 +244,24 @@ export function BottomDock({
                 />
             )}
 
+            {onClose && (
+                <div
+                    className="rtx-bottom-dock__header dock-panel__header flex h-6 shrink-0 items-center px-1.5 border-b"
+                    style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-primary)' }}
+                >
+                    <span className="dock-panel__title flex-1 min-w-0 truncate text-xs" style={{ color: 'var(--text-secondary)' }}>{tr("Toolbox")}</span>
+                    <button
+                        type="button"
+                        title={tr("Close")}
+                        aria-label={tr("Close Toolbox")}
+                        onClick={onClose}
+                        className="dock-panel__action dock-panel__action--close flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-zinc-400 transition-colors hover:bg-red-500/80 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-current"
+                    >
+                        <X className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                </div>
+            )}
+
             {/* Content Area */}
             <div className="rtx-bottom-dock__content flex-1 overflow-hidden relative bg-[#131316] tabular-nums flex flex-col">
                 <div
@@ -417,19 +435,6 @@ export function BottomDock({
                     </button>
                 </div>
                 </div>
-                {onClose && (
-                    <div className="rtx-bottom-dock__window-controls flex h-full shrink-0 items-center justify-center px-1" role="group" aria-label={tr("Toolbox window controls")}>
-                        <button
-                            type="button"
-                            title={tr("Close")}
-                            aria-label={tr("Close Toolbox")}
-                            onClick={onClose}
-                            className="dock-panel__action dock-panel__action--close flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-zinc-400 transition-colors hover:bg-red-500/80 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-current"
-                        >
-                            <X className="h-3 w-3" aria-hidden="true" />
-                        </button>
-                    </div>
-                )}
             </div>
         </div>
     );

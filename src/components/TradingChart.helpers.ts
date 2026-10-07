@@ -175,7 +175,7 @@ export const getAreaTrendSeriesOptions = (
     : { lineColor: theme.areaUpLine, topColor: theme.areaUpTop, bottomColor: theme.areaUpBottom }
 );
 
-const SESSION_GAP_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4']);
+const SESSION_GAP_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5', 'M15', 'M30', 'H1']);
 const DENSE_MINUTE_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5']);
 const MIN_SESSION_GAP_SEPARATOR_SECONDS = 12 * 60 * 60;
 const LIVE_PRICE_FALLBACK_DARK = '#000000';
@@ -352,10 +352,12 @@ export const isDenseMinuteSeparatorTimeframe = (timeframe: Timeframe | string): 
 export const getSeparatorPriority = (separator: PeriodSeparator): number => {
   switch (separator.type) {
     case 'session_gap':
-      return 4;
+      return 5;
     case 'year':
-      return 3;
+      return 4;
     case 'month':
+      return 3;
+    case 'week':
       return 2;
     case 'day':
       return 1;
@@ -378,6 +380,14 @@ export const shouldRecomputeMarketGapSeparatorsForCandle = (
   const sortedCandles = getValidSortedCandles(candles);
   const candleIndex = sortedCandles.findIndex(item => item.time === candle.time);
   if (candleIndex <= 0) return false;
+
+  // Normal period rollovers also need a full model render: series.update()
+  // appends the bar but does not rebuild the separator list.
+  if (getPeriodSeparators(
+    sortedCandles.slice(candleIndex - 1, candleIndex + 1),
+    marketGapOptions.timeframe,
+    marketGapOptions.brokerOffsetSeconds ?? 0,
+  ).length > 0) return true;
 
   const { gaps } = buildMarketClosedGapSeries(sortedCandles, marketGapOptions);
   return gaps.some(gap => gap.endTime === candle.time);
@@ -536,10 +546,33 @@ export const getVisibleLogicalRangeAnchoredToTime = (
   renderedCandles: readonly Pick<Candle, 'time'>[],
   leftVisibleTime: number | null,
   previousRange: LogicalRangeLike | null,
+  liveEdge?: {
+    wasFollowing: boolean;
+    previousLatestTime: number | null;
+    rightOffset: number;
+  },
 ): LogicalRangeLike | null => {
-  if (leftVisibleTime == null || !previousRange) return null;
+  if (!previousRange) return null;
   const span = previousRange.to - previousRange.from;
   if (!Number.isFinite(span) || span <= 0) return null;
+
+  const latestTime = renderedCandles[renderedCandles.length - 1]?.time;
+  if (
+    liveEdge?.wasFollowing
+    && liveEdge.previousLatestTime !== null
+    && Number.isFinite(liveEdge.previousLatestTime)
+    && Number.isFinite(liveEdge.rightOffset)
+    && typeof latestTime === 'number'
+    && Number.isFinite(latestTime)
+    // History can grow to the left of a single live startup candle without
+    // advancing its timestamp. It still needs to stay at the live edge.
+    && latestTime >= liveEdge.previousLatestTime
+  ) {
+    const to = renderedCandles.length - 1 + liveEdge.rightOffset;
+    return { from: to - span, to };
+  }
+
+  if (leftVisibleTime == null) return null;
 
   let low = 0;
   let high = renderedCandles.length;

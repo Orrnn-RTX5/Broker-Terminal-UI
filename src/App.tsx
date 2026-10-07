@@ -1,5 +1,8 @@
 import { isDesktopBackendTarget } from './config/backendTarget.js';
 import { useGuestMarketData } from './hooks/useGuestMarketData';
+import { useBrokerAccountSessionScope } from './hooks/useBrokerAccountSessionScope';
+import { useGuestChartLoginContinuity } from './hooks/useGuestChartLoginContinuity';
+import { getChartMarketSourceIdentity } from './utils/chartLoginTransition';
 import { getLogoUrl, useTerminalBrokerInfo } from './hooks/useTerminalTitle';
 import { brokerDisplayName } from './services/brokerDisplayName';
 import { applyBrokerChrome } from './services/brokerPresentation';
@@ -17,6 +20,7 @@ import {
 } from './services/tradingAuthGate';
 
 import { DockWorkspace } from './components/dock/DockWorkspace';
+import { TerminalViewport } from './components/layout/TerminalViewport';
 import { useDockLayoutStore } from './store/useDockLayoutStore';
 import { useDrawingSidebarStore } from './store/useDrawingSidebarStore';
 import type { ChartType, Timeframe } from './types/chart';
@@ -510,6 +514,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     activeFeedSymbols: activeMarketSymbols,
   }), [activeMarketSymbols, activeMarketSymbolsCurrent, allowedSymbolNames, isAuthenticated]);
   const chartEligibleSymbolsKey = chartEligibleSymbolNames.join(',');
+  const chartSessionScope = useBrokerAccountSessionScope();
+  const guestChartLoginContinuity = useGuestChartLoginContinuity({
+    enabled: guestMarketAccess,
+    sessionScope: chartSessionScope,
+    marketSource: getChartMarketSourceIdentity(),
+    guestReady: guestMode && (hasLoadedSymbols || marketCatalogSymbolNames.length > 0),
+    accountCatalogPending: marketInstrumentsSnapshot.accountCatalogStatus === 'loading',
+    layout: dockLayout,
+    chartSymbols: chartEligibleSymbolNames,
+    selectedSymbol,
+    timeframe,
+  });
   const chartEligibleSymbolSet = useMemo(() => new Set(chartEligibleSymbolNames), [chartEligibleSymbolNames]);
   const tradeEligibleSymbolSet = useMemo(() => new Set(tradeEligibleSymbolNames), [tradeEligibleSymbolNames]);
   // While an account catalogue loads, no public/feed symbol may seed chart
@@ -734,13 +750,17 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   }, []);
 
   // Every launch opens the shipped default arrangement on BTCUSD M1 in web
-  // and desktop builds. Reset the actual panes as well as selection so a
-  // previous session in this tab cannot carry its chart into the next login.
+  // and desktop builds. Account switches reset the panes and selection; a
+  // same-source guest login keeps the public chart already on the screen.
   // Saved per-account layouts are neither restored nor auto-saved at startup.
   useEffect(() => {
-    useDockLayoutStore.getState().resetToDefaultLayout();
-    setSelectedSymbol(DEFAULT_CHART_SYMBOL);
-    setTimeframe(DEFAULT_CHART_TIMEFRAME);
+    // A same-source guest login keeps its existing chart hosts and selection.
+    // A new launch, account switch or changed broker still opens the defaults.
+    if (!guestChartLoginContinuity.preserveGuestLayout) {
+      useDockLayoutStore.getState().resetToDefaultLayout();
+      setSelectedSymbol(DEFAULT_CHART_SYMBOL);
+      setTimeframe(DEFAULT_CHART_TIMEFRAME);
+    }
 
     if (!isAuthenticated || !accountId) {
       setRestoredLayoutAccountId('');
@@ -1455,13 +1475,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     ? selectedMarketStatus
     : getCachedSymbolMarketStatus(desktopToolbarSymbol);
   const chartSelectionDiagnosticAttributes = getChartSelectionDiagnosticAttributes(chartSelectionReadiness);
-  const chartRuntimeReady = guestMode ? hasLoadedChartSymbols : shouldMountChartRuntime({
+  const chartRuntimeReady = (guestMode ? hasLoadedChartSymbols : shouldMountChartRuntime({
     authenticated: isAuthenticated,
     accountId,
     restoredLayoutAccountId,
     catalogSettled: hasLoadedChartSymbols,
     feedPreferenceSettled: activeMarketSymbolsSettled && hasAppliedLiveChartPreference,
-  });
+  })) || guestChartLoginContinuity.preserveGuestLayout;
   useTerminalFeatureWarmup(chartRuntimeReady);
   // Stable actions let overlay opens skip the workspace render.
   const workspaceClosePosition = useCommittedCallback(handleClosePosition);
@@ -1761,7 +1781,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           isChartPropertiesOpen={showChartProperties}
           isOrderPanelOpen={orderPanelOpen}
         />
-        <div
+        <TerminalViewport
           className="rtx-app-shell flex flex-col h-screen w-full bg-[#131316] text-zinc-300 overflow-hidden font-sans"
           role="main"
           aria-label="Trading terminal"
@@ -1771,6 +1791,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         >
           {/* 1. Global Menu & Toolbar */}
           <TopToolbar
+            profileSymbols={chartEligibleSymbolNames}
             chartType={chartType}
             timeframe={timeframe}
             onChartTypeChange={setChartType}
@@ -1819,6 +1840,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                       marketInstrumentsSnapshot={marketInstrumentsSnapshot}
                       selectedSymbol={selectedSymbol}
                       chartRuntimeEnabled={chartRuntimeReady}
+                      retainedGuestCharts={guestChartLoginContinuity.retainedCharts}
                       onSymbolSelect={handleSymbolSelect}
                       onClosePosition={workspaceClosePosition}
                       onModifyPosition={workspaceModifyPosition}
@@ -2039,7 +2061,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
               />
             </Suspense>
           )}
-        </div>
+        </TerminalViewport>
       </KeyboardShortcutProvider>
 
     </CommandBusProvider>

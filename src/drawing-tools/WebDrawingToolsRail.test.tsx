@@ -210,14 +210,29 @@ describe('WebDrawingToolsRail', () => {
       .toEqual(CURSOR_TOOLS.map((tool) => tool.id));
     expect(within(menu).getByRole('menuitemradio', { name: 'Arrow' })).toHaveAttribute('aria-checked', 'true');
 
-    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Demonstration' }));
-    expect(useChartCursorStore.getState().mode).toBe('demonstration');
+    expect(within(menu).queryByRole('menuitemradio', { name: 'Demonstration' })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitemradio', { name: 'Eraser' })).not.toBeInTheDocument();
+    expect(within(menu).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['Cross', 'Dot', 'Arrow', 'Magic']);
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Dot' }));
+    expect(useChartCursorStore.getState().mode).toBe('dot');
     expect(commandBus.getHistory().at(-1)).toEqual({
       type: 'SELECT_TOOL',
       payload: { tool: 'cursor', targetContextId: 'chart-xauusd-m1' },
     });
-    expect(screen.getByRole('button', { name: 'Demonstration — Cursors' })).toHaveAttribute('data-active', 'true');
+    expect(screen.getByRole('button', { name: 'Dot — Cursors' })).toHaveAttribute('data-active', 'true');
     expect(screen.queryByRole('menu', { name: 'Cursors' })).not.toBeInTheDocument();
+  });
+
+  it.each(['eraser', 'demonstration'] as const)('replaces an existing %s selection with Arrow and saves the corrected mode', (mode) => {
+    useChartCursorStore.setState({ mode, valuesTooltipOnLongPress: false });
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    expect(useChartCursorStore.getState().mode).toBe('arrow');
+    expect(useChartCursorStore.getState().valuesTooltipOnLongPress).toBe(false);
+    expect(JSON.parse(localStorage.getItem('rtx-chart-cursor-mode')!).state.mode).toBe('arrow');
+    const menu = openRailMenu('Arrow — Cursors', 'Cursors');
+    expect(within(menu).getByRole('menuitemradio', { name: 'Arrow' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(menu).queryByRole('menuitemradio', { name: 'Eraser' })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitemradio', { name: 'Demonstration' })).not.toBeInTheDocument();
   });
 
   it('keeps the long-press values tooltip toggle in the cursors menu', () => {

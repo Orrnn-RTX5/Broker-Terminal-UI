@@ -51,6 +51,9 @@ export const runTransportRecovery = async (args) => {
       // fixture needs only Vite's TS transform for the actual frontend
       // services (all relative imports).
       configFile: false,
+      // The isolated gateway is addressed directly; the application dev proxy
+      // is intentionally absent from this service-only test server.
+      mode: 'test',
       root: process.cwd(),
       logLevel: 'silent',
       server: { host: '127.0.0.1', port: args.vitePort || 0, strictPort: false },

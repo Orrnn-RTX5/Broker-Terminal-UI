@@ -393,7 +393,7 @@ export function TradeTable({
                   >
                     <button
                       type="button"
-                      className={`rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_tp ?? position.tp) > 0 ? 'text-[#34dca0]' : 'text-zinc-100'}`}
+                      className={`rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_tp ?? position.tp) > 0 ? 'text-profit' : 'text-zinc-100'}`}
                       disabled={isPendingPlacement}
                       aria-label={`${tr('Modify Position')} · ${tr('Take Profit:')} #${position.id}`}
                     >

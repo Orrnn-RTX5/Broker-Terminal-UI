@@ -1,4 +1,5 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
+import { getAuthenticatedAccountName } from '../utils/accountDisplayName';
 /**
  * Account login dialog shared by the web and desktop terminals.
  */
@@ -30,6 +31,14 @@ import { pickDiscoveryBroker, type BrokerServerItem } from './WelcomeTerminal';
 import { User, X, ChevronDown, LockKeyhole, LoaderCircle, Server, AlertCircle } from 'lucide-react';
 import '../styles/login-dialog.css';
 import { useSavedLogin } from '../hooks/useSavedLogin';
+import {
+    beginLoginPerformanceMeasurement,
+    markAuthenticationAccepted,
+    markAuthenticationRequestStarted,
+    markPostAuthenticationPhase,
+    scheduleAuthenticatedShellPaintMeasurement,
+    waitForLoginFeedbackPaint,
+} from '../startup/performanceBudget';
 
 interface LoginDialogProps {
     isOpen: boolean;
@@ -360,8 +369,10 @@ export function LoginDialog({
         }
 
         submittingRef.current = true;
+        beginLoginPerformanceMeasurement();
         setLoading(true);
         setError(null);
+        void waitForLoginFeedbackPaint();
         const requestGeneration = ++loginRequestGenerationRef.current;
         const isCurrentRequest = () => (
             requestGeneration === loginRequestGenerationRef.current
@@ -380,9 +391,10 @@ export function LoginDialog({
                 backend_url: brokerServerUrl,
                 market_api_url: brokerExtApiUrl,
                 server_url: brokerServerUrl,
-            });
+            }, { notifySessionChange: 'routing-changes' });
             updateDynamicUrls();
 
+            markAuthenticationRequestStarted();
             const data = await authV2Api.login({
                 username: login.trim(),
                 password,
@@ -402,6 +414,7 @@ export function LoginDialog({
 
             const token = data.access_token || data.token;
             if (!token) throw new Error('No authentication token received');
+            markAuthenticationAccepted();
 
             persistBrokerSessionDiscovery({
                 ...data,
@@ -414,9 +427,9 @@ export function LoginDialog({
                 feed_url: data.feed_url || submitBroker.feed_url || submitBroker.feed_ws_url,
                 feed_ws_url: data.feed_ws_url || submitBroker.feed_ws_url,
                 feed_status_url: data.feed_status_url || submitBroker.feed_status_url,
-                logo_url: submitBroker.logo_url,
+                logo_url: data.logo_url?.trim() || submitBroker.logo_url,
                 theme_color: submitBroker.theme_color,
-            });
+            }, { notifySessionChange: false });
             updateDynamicUrls();
 
             const accountId = data.account_login ?? login.trim();
@@ -458,25 +471,30 @@ export function LoginDialog({
                 sessionStorage.removeItem('token_expires_at');
             }
 
-            useAppStore.getState().setAuthTokens(token, data.refresh_token, expiresAt);
-            useAppStore.getState().setAuthenticated(true, String(accountId), token, data.refresh_token, expiresAt);
-
+            markPostAuthenticationPhase('auth-session-persist');
             const loginNum = parseInt(String(accountId), 10);
-            if (!isNaN(loginNum)) {
-                useAppStore.getState().addSavedAccount({
+            useAppStore.getState().setAuthenticated(
+                true,
+                String(accountId),
+                token,
+                data.refresh_token,
+                expiresAt,
+                !isNaN(loginNum) ? {
                     login: loginNum,
-                    name: data.user?.username || data.username || '',
+                    name: getAuthenticatedAccountName(data),
                     server: submitBroker.broker_name || '',
                     isLive: true,
                     lastUsed: Date.now(),
-                });
-                useAppStore.getState().setActiveAccount(loginNum);
-            }
+                } : undefined,
+            );
+            markPostAuthenticationPhase('auth-store-commit');
 
             onClose();
             if (onLoginSuccess) {
                 onLoginSuccess(String(accountId));
             }
+            markPostAuthenticationPhase('auth-handoff');
+            scheduleAuthenticatedShellPaintMeasurement();
         } catch (err: unknown) {
             if (!isCurrentRequest()) return;
             console.error('[LoginDialog] Auth error:', err);
@@ -532,7 +550,8 @@ export function LoginDialog({
                     </button>
                 </header>
 
-                <form onSubmit={handleSubmit} className="rtx-login-form" aria-busy={loading}>
+                <form onSubmit={handleSubmit} className="rtx-login-form" aria-busy={loading}
+                    data-rtx-login-form data-login-submit-pending={loading ? 'true' : 'false'}>
                     {tradeLogin && <p id={`${dialogId}-description`} className="rtx-login-description rtx-login-trade-notice">{tr("Log in to your trading account to place an order. You can continue viewing charts and prices without logging in. No order has been placed.")}</p>}
 
                     {isDesktop && (
@@ -728,6 +747,8 @@ export function LoginDialog({
                         </button>
                         <button
                             type="submit"
+                            data-rtx-login-submit
+                            data-rtx-login-feedback={loading ? 'true' : undefined}
                             disabled={Boolean(deploymentError) || loading || restoring || !selectedBroker || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
                             className="rtx-login-button rtx-login-button--primary"
                         >

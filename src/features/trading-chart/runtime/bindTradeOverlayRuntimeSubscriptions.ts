@@ -82,7 +82,16 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
 }: BindTradeOverlayRuntimeSubscriptionsOptions): (() => void) => {
     renderTradeOverlay();
 
-    const timeScaleHandler = () => queueTradeOverlayRelayout();
+    // The viewport owns history DOM membership as well as node coordinates.
+    // Coalesce range notifications before selecting and placing visible trades.
+    let viewportFrame: number | null = null;
+    const timeScaleHandler = () => {
+      if (viewportFrame !== null) return;
+      viewportFrame = window.requestAnimationFrame(() => {
+        viewportFrame = null;
+        if (isActiveRef.current) renderTradeOverlay();
+      });
+    };
     chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(timeScaleHandler);
 
     const unsubscribeAppStore = useAppStore.subscribe((state, previousState) => {
@@ -212,6 +221,7 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
     window.addEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
 
     return () => {
+      if (viewportFrame !== null) window.cancelAnimationFrame(viewportFrame);
       unsubscribeAppStore();
       unsubscribeChartSettings();
       unsubscribeChartObjectState();

@@ -43,6 +43,7 @@ import {
   type RenderedPriceReference,
 } from '../../../services/chartPriceGuards';
 import type { ChartProperties } from '../../../store/useChartSettingsStore';
+import { useAppStore } from '../../../store/useAppStore';
 import {
   formatHistoryForOhlcv,
   mergeAuthoritativeCandleHistory,
@@ -55,6 +56,7 @@ import {
 import {
   getTradingChartDefaultVisibleBars,
 } from '../../../utils/chartTimeFormat';
+import { resolveFormingCandleLiveClose } from '../../../utils/liveCandleQuote';
 import {
   CANDLE_TIMEFRAMES,
   getTimeframePeriodSeconds,
@@ -68,6 +70,7 @@ import {
 import {
   applyBrokerTimeOffset,
   getInitialHistoryCount,
+  getStartupSnapshotCandleCount,
   isAbortError,
   mergeCandleCollections,
   waitForProgressiveHistoryIdleTurn,
@@ -78,6 +81,7 @@ import type { ChartHistoryPage } from './useTradingChartHistoryCache';
 type LoadingPhase = 'connecting' | 'receiving' | 'ready' | 'hidden';
 
 interface UseTradingChartHistoryLoadingOptions {
+  discardRetainedPublicChartSurface: () => void;
   brokerTimeOffsetSec: number;
   brokerTimeOffsetSecRef: RefObject<number>;
   buildHistoryCacheTarget: (activeTimeframe: Timeframe) => {
@@ -181,6 +185,7 @@ export function useTradingChartHistoryLoading({
   renderedPriceReferenceRef,
   requestChartDataRender,
   resetEmptyHistoryState,
+  discardRetainedPublicChartSurface,
   resetLiveQuotePriceGuard,
   resetVisibleRangeOnNextDataRef,
   restoreProtectedDisplayedHistory,
@@ -210,6 +215,22 @@ export function useTradingChartHistoryLoading({
     const activeTf = selectedTimeframe;
     console.log(`[Chart] Loading history for ${selectedSymbol}, timeframe: ${activeTf}`);
 
+    // A real quote can arrive before history starts (including startup prefetch
+    // hydration). Keep only its proven current bucket; a cached tail alone is
+    // not evidence that the broker traded after the returned history page.
+    const currentBeforeHydration = currentCandleRef.current;
+    const provenFormingBeforeHydration = (
+      selectedSymbol === symbol && activeTf === timeframe
+      && currentBeforeHydration && currentBeforeHydration.closed !== true
+      && (liveCandleMutationGenerationByTimeRef.current.get(currentBeforeHydration.time) ?? 0) > 0
+    ) ? { ...currentBeforeHydration } : null;
+    const m1BeforeHydration = provenFormingBeforeHydration
+      ? candleAggregationService.getCandles(selectedSymbol, 'M1', true, false).at(-1)
+      : undefined;
+    const provenM1BeforeHydration = m1BeforeHydration && m1BeforeHydration.isComplete !== true
+      && getTimeframePeriodSeconds(m1BeforeHydration.time, activeTf, brokerTimeOffsetSecRef.current)?.startTime === provenFormingBeforeHydration?.time
+      ? { ...m1BeforeHydration } : null;
+
     try {
       const deriveInitialHistoryFromM1 = isM1DerivedFallbackTimeframe(activeTf);
       let historySource: CandleCacheSource = deriveInitialHistoryFromM1 ? 'derived-m1' : 'backend';
@@ -220,6 +241,7 @@ export function useTradingChartHistoryLoading({
       // responsive even when a refresh request is comparatively slow.
       historyRequestCoordinatorRef.current.abort();
       const hydratedFromCache = hydrateHistoryFromCache(activeTf, 'cached-history');
+      const currentAfterHydration = currentCandleRef.current;
       if (!hydratedFromCache) {
         setLoadingPhase('receiving');
       }
@@ -291,6 +313,7 @@ export function useTradingChartHistoryLoading({
         }
 
         console.log(`[Chart] No historical candles for ${selectedSymbol} ${activeTf} — live-only mode`);
+        discardRetainedPublicChartSurface();
         resetEmptyHistoryState(activeTf);
         if (seriesRef.current) seriesRef.current.setData([]);
         if (volumeRef.current) volumeRef.current.setData([]);
@@ -323,6 +346,7 @@ export function useTradingChartHistoryLoading({
           return;
         }
 
+        discardRetainedPublicChartSurface();
         resetEmptyHistoryState(activeTf);
         if (seriesRef.current) seriesRef.current.setData([]);
         if (volumeRef.current) volumeRef.current.setData([]);
@@ -335,6 +359,21 @@ export function useTradingChartHistoryLoading({
       // shifted valid future/test sessions and made REST and stream buckets diverge.
       // A non-zero offset may only come from an explicit broker contract.
       const explicitBrokerOffsetSeconds = brokerTimeOffsetSecRef.current;
+      const normalizedSymbol = selectedSymbol.trim().toUpperCase();
+      const currentQuote = window.rtxTickCache?.get(selectedSymbol)
+        ?? window.rtxTickCache?.get(normalizedSymbol)
+        ?? useAppStore.getState().ticks[selectedSymbol]
+        ?? useAppStore.getState().ticks[normalizedSymbol];
+      const resolveLatestFormingHistoryQuote = (rows: Candle[], historyTimeframe: Timeframe): Candle[] => {
+        const last = rows[rows.length - 1];
+        if (!last) return rows;
+        const quoted = resolveFormingCandleLiveClose(
+          last, currentQuote, selectedSymbol, historyTimeframe, explicitBrokerOffsetSeconds,
+        );
+        if (quoted === last) return rows;
+        const [validated] = reconcileCandlesWithLiveQuote([quoted], 'forming history quote');
+        return validated ? [...rows.slice(0, -1), validated] : rows;
+      };
 
       const protectedHistory = protectedDisplayedHistoryRef.current;
       const shouldPreserveProtectedHistory = (
@@ -354,12 +393,36 @@ export function useTradingChartHistoryLoading({
         ), liveCandleMutationGenerationByTimeRef.current, liveCandleGenerationAtRequestStart)
         : [];
       const retainedHistory = shouldPreserveProtectedHistory ? protectedHistory : candlesRef.current;
-      candles = mergeAuthoritativeCandleHistory(retainedHistory, candles);
+      const latestBackendTime = candles[candles.length - 1].time;
+      const currentAtCommit = currentCandleRef.current;
+      const capturedBucketWasFinalized = provenFormingBeforeHydration && (
+        (currentAtCommit?.time === provenFormingBeforeHydration.time && currentAtCommit.closed === true)
+        || candlesRef.current.some(candle => candle.time === provenFormingBeforeHydration.time && candle.closed === true)
+      );
+      // A server partial may expand this same bucket without a new raw-tick
+      // generation. Prefer that current owner model over the captured copy;
+      // use the copy only when hydration still owns the unchanged working ref.
+      const latestCapturedForming = provenFormingBeforeHydration
+        && currentAtCommit?.time === provenFormingBeforeHydration.time
+        && currentAtCommit.closed !== true
+        && (!hydratedFromCache || currentAtCommit !== currentAfterHydration)
+        ? currentAtCommit : provenFormingBeforeHydration;
+      const provenLaterFormingCandle = provenFormingBeforeHydration
+        && provenFormingBeforeHydration.time > latestBackendTime
+        && !capturedBucketWasFinalized
+        ? reconcileCandlesWithLiveQuote([latestCapturedForming!], 'buffered live history')[0] ?? null : null;
+      candles = mergeAuthoritativeCandleHistory(retainedHistory, candles, {
+        formingLiveCandle: provenLaterFormingCandle,
+        hasNewerLiveMutation: Boolean(provenLaterFormingCandle),
+      });
       if (bufferedLiveCandles.length > 0) {
         // FIX: Replace the backend-covered range first, then overlay only ticks
         // mutated after the request began; explicit backend finals still win.
         candles = mergeHistoricalCandlesWithBufferedLive(candles, bufferedLiveCandles);
       }
+      // The exact timestamped broker Bid owns only its forming period's Close.
+      // Final rows and receipt-only/other-period quotes keep backend OHLC.
+      candles = resolveLatestFormingHistoryQuote(candles, activeTf);
 
       candlesRef.current = candles;
       renderedPriceReferenceRef.current = createRenderedPriceReference(candles);
@@ -373,15 +436,42 @@ export function useTradingChartHistoryLoading({
       // Seed the live builder with the same M1 rows that produced the displayed
       // higher timeframe. This keeps historical aggregation and live rollover
       // on one M1-based state machine instead of seeding it with native H1/D1 bars.
-      const derivedM1Seed = historySource === 'derived-m1' && derivedInitialHistory
+      let derivedM1Seed = historySource === 'derived-m1' && derivedInitialHistory
         ? derivedInitialHistory.m1Candles.map(candle => ({
           ...candle,
           time: candle.time - explicitBrokerOffsetSeconds,
         }))
         : [];
+      if (derivedM1Seed.length > 0) {
+        const displayedTail = candles[candles.length - 1];
+        const latestM1 = candleAggregationService.getCandles(selectedSymbol, 'M1', true, false).at(-1);
+        const provenDisplayedTail = displayedTail.closed !== true
+          && (liveCandleMutationGenerationByTimeRef.current.get(displayedTail.time) ?? 0) > 0;
+        const latestSourceM1Time = derivedM1Seed[derivedM1Seed.length - 1].time;
+        const retainedM1Tail = provenDisplayedTail
+          ? [provenM1BeforeHydration, latestM1]
+            .filter((candle): candle is OHLCV => Boolean(candle && candle.isComplete !== true
+              && candle.time > latestSourceM1Time
+              && getTimeframePeriodSeconds(candle.time, activeTf, explicitBrokerOffsetSeconds)?.startTime === displayedTail.time))
+            .sort((left, right) => left.time - right.time).at(-1)
+          : undefined;
+        if (retainedM1Tail) {
+          // Keep the actual forming minute that produced the retained higher
+          // bucket. Splitting higher-frame OHLC into a fake M1 row is unsafe.
+          const [validatedM1Tail] = reconcileCandlesWithLiveQuote([{
+            ...retainedM1Tail, tickVolume: retainedM1Tail.volume, closed: false,
+          }], 'buffered M1 history');
+          if (validatedM1Tail) {
+            derivedM1Seed = mergeHistoricalCandlesWithBufferedLive(derivedM1Seed, [validatedM1Tail]);
+          }
+        }
+        derivedM1Seed = resolveLatestFormingHistoryQuote(derivedM1Seed, 'M1');
+      }
       const aggregationSeedTimeframe = derivedM1Seed.length > 0 ? 'M1' : activeTf;
       const aggregationSeedCandles = derivedM1Seed.length > 0 ? derivedM1Seed : candles;
-      const ohlcvCandles: OHLCV[] = formatHistoryForOhlcv(aggregationSeedCandles);
+      const ohlcvCandles: OHLCV[] = formatHistoryForOhlcv(aggregationSeedCandles).map((candle, index) => ({
+        ...candle, isComplete: aggregationSeedCandles[index].closed,
+      }));
       candleAggregationService.loadHistoricalCandles(
         selectedSymbol,
         aggregationSeedTimeframe as AggTimeframe,
@@ -435,7 +525,10 @@ export function useTradingChartHistoryLoading({
       // refresh continues to preserve any user pan/zoom.
       const shouldResetVisibleRange = shouldResetInitialHistoryVisibleRange({
         resetVisibleRangeOnNextData: resetVisibleRangeOnNextDataRef.current,
-        hydratedFromCache,
+        hydratedFromCache: hydratedFromCache || (
+          hasDisplayedHistoryRef.current
+          && protectedDisplayedHistoryRef.current.length >= getStartupSnapshotCandleCount(activeTf)
+        ),
       });
       updateChartData(candles, undefined, {
         immediate: true,
@@ -607,6 +700,7 @@ export function useTradingChartHistoryLoading({
     renderedPriceReferenceRef,
     requestChartDataRender,
     resetEmptyHistoryState,
+    discardRetainedPublicChartSurface,
     resetLiveQuotePriceGuard,
     resetVisibleRangeOnNextDataRef,
     restoreProtectedDisplayedHistory,
@@ -615,6 +709,8 @@ export function useTradingChartHistoryLoading({
     setApiError,
     setHistoryCache,
     setLoadingPhase,
+    symbol,
+    timeframe,
     updateChartData,
     updateLegendDOM,
     volumeRef,

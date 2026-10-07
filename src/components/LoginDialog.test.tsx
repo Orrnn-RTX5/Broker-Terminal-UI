@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { authV2Api } from '../api/trade';
 import { useAppStore } from '../store/useAppStore';
+import { getCommittedBrokerAccountSessionScope, onSessionChange } from '../services/brokerSession';
 import { LoginDialog } from './LoginDialog';
 
 vi.mock('../api/trade', () => ({
@@ -29,6 +30,48 @@ describe('LoginDialog', () => {
         logo_url: '',
       }]),
     }));
+  });
+
+  it.each([
+    { name: 'Account Owner', expectedName: 'Account Owner' },
+    { name: undefined, expectedName: '' },
+  ])('never commits the email as a label when login returns name $name', async ({ name, expectedName }) => {
+    useAppStore.setState({ savedAccounts: [] });
+    vi.mocked(authV2Api.login).mockResolvedValue({
+      access_token: 'name-token', account_login: 200003, broker_id: 'runtime-broker',
+      user: { username: 'owner@example.test', name },
+    });
+    const labels: string[] = [];
+    const unsubscribe = useAppStore.subscribe(state => {
+      const account = state.savedAccounts.find(account => account.login === 200003);
+      if (account) labels.push(account.name);
+    });
+    try {
+      render(<LoginDialog isOpen onClose={vi.fn()} />);
+      fireEvent.change(screen.getByPlaceholderText('Account ID'), { target: { value: '200003' } });
+      fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'test-password' } });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+      await waitFor(() => expect(useAppStore.getState().authToken).toBe('name-token'));
+      expect(labels.length).toBeGreaterThan(0);
+      expect(labels.every(label => label === expectedName)).toBe(true);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('retains the authenticated broker logo when server discovery has no logo', async () => {
+    vi.mocked(authV2Api.login).mockResolvedValue({
+      access_token: 'logo-token', account_login: 200003, broker_id: 'runtime-broker',
+      logo_url: '/branding/active-broker.svg',
+    });
+    render(<LoginDialog isOpen onClose={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText('Account ID'), { target: { value: '200003' } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'test-password' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+    await waitFor(() => expect(useAppStore.getState().authToken).toBe('logo-token'));
+    expect(localStorage.getItem('logo_url')).toBe('/branding/active-broker.svg');
   });
 
   it('clears stale optional tokens omitted by a successful real login', async () => {
@@ -103,6 +146,44 @@ describe('LoginDialog', () => {
     expect(await screen.findByText('This terminal only accepts accounts for its configured broker.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Log in' })).toBeDisabled();
     expect(authV2Api.login).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { previousAccount: null, reason: 'login' },
+    { previousAccount: '123456', reason: 'token_rotation' },
+    { previousAccount: '654321', reason: 'account_change' },
+  ])('publishes one complete $reason transition after authentication', async ({ previousAccount, reason }) => {
+    if (previousAccount) useAppStore.getState().setAuthenticated(true, previousAccount, 'previous-token');
+    vi.mocked(authV2Api.login).mockResolvedValue({
+      access_token: 'fresh-token', account_login: 123456, broker_id: 'runtime-broker',
+      refresh_token: 'fresh-refresh', expires_at: 1_900_000_000,
+    });
+    const onClose = vi.fn();
+    render(<LoginDialog isOpen onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText('Account ID'), { target: { value: '123456' } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'Password1' } });
+
+    const transitions: unknown[] = [];
+    const unsubscribe = onSessionChange(change => {
+      if (change === 'broker_url_change') return;
+      const state = useAppStore.getState();
+      transitions.push({
+        reason: change, account: state.accountId, token: state.authToken,
+        scope: getCommittedBrokerAccountSessionScope().accountId,
+        savedAccount: state.savedAccounts.find(account => account.login === 123456)?.login,
+        persistedToken: localStorage.getItem('auth_token'),
+      });
+    });
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+      expect(transitions).toEqual([{
+        reason, account: '123456', token: 'fresh-token', scope: '123456',
+        savedAccount: 123456, persistedToken: 'fresh-token',
+      }]);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it.each(['close', 'unmount'] as const)(

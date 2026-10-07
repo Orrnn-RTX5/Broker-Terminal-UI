@@ -19,6 +19,8 @@ interface ChartTemplateDialogProps {
     chartType: ChartType;
     timeframe: Timeframe;
     showGrid: boolean;
+    gridType?: ChartTemplate['gridType'];
+    gridLineStyle?: ChartTemplate['gridLineStyle'];
     showVolumes: boolean;
     indicators: any[];
     drawingTools: any[];
@@ -76,6 +78,8 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
       chartType: currentConfig.chartType,
       timeframe: currentConfig.timeframe,
       showGrid: currentConfig.showGrid,
+      gridType: currentConfig.gridType ?? 'square',
+      gridLineStyle: currentConfig.gridLineStyle ?? 'dashed',
       showVolumes: currentConfig.showVolumes,
       indicators: currentConfig.indicators || [],
       drawingTools: currentConfig.drawingTools || [],

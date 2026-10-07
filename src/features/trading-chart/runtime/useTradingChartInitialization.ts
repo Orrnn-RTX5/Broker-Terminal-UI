@@ -3,7 +3,6 @@ import {
   ColorType,
   CrosshairMode,
   LineSeries,
-  LineStyle,
   createChartEx,
   type IChartApi,
   type IPriceLine,
@@ -31,9 +30,9 @@ import {
 } from '../../../utils/chartTimeFormat';
 import { TradingChartTimeScaleBehavior } from '../../../utils/chartTimeScaleBehavior';
 import {
-  SQUARE_CHART_GRID_CELL_SIZE_PX,
   SquareChartGridPrimitive,
 } from '../../../utils/squareChartGridPrimitive';
+import { getChartGridRenderingOptions } from '../../../utils/chartGridOptions';
 import type {
   Candle,
   Timeframe,
@@ -174,6 +173,7 @@ useEffect(() => {
       getTimeframe: () => timeScaleTimeframeRef.current,
       getDisplayOffsetSeconds: () => brokerTimeOffsetSecRef.current,
     });
+    const gridRenderingOptions = getChartGridRenderingOptions(chartSettings, chartTheme);
     const chart = createChartEx(containerRef.current, timeScaleBehavior, {
       autoSize: true,
       localization: { dateFormat: "dd MMM 'yy" },
@@ -184,21 +184,8 @@ useEffect(() => {
         fontSize: chartAxisFontSize,
         attributionLogo: false,
       },
-      // A bottom-layer series primitive draws the square grid. Native X/Y tick
-      // grids are disabled because their independently calculated spacing makes
-      // rectangular cells and would double-paint the custom lattice.
-      grid: {
-        vertLines: {
-          color: chartTheme.gridVertical,
-          style: LineStyle.Solid,
-          visible: false,
-        },
-        horzLines: {
-          color: chartTheme.gridHorizontal,
-          style: LineStyle.Solid,
-          visible: false,
-        },
-      },
+      // Both grid types paint below candles. Only the selected renderer is visible.
+      grid: gridRenderingOptions.nativeGrid,
       crosshair: {
         mode: CrosshairMode.Normal,
         // Native crosshair lines stay hidden. Explicit Crosshair mode uses the
@@ -214,6 +201,7 @@ useEffect(() => {
       },
       rightPriceScale: {
         borderColor: chartTheme.scaleBorder,
+        textColor: chartSettings.showGrid && chartSettings.gridType === 'mt5' ? 'transparent' : chartTheme.axisText,
         scaleMargins: { top: 0.05, bottom: 0.28 },
         autoScale: !chartSettings.scaleFixOneToOne && getFixedChartPriceRange(chartSettings) === null,
         // Trade price-line labels must stay on their real price coordinate.
@@ -231,25 +219,33 @@ useEffect(() => {
         rightOffset: getTradingChartShiftRightOffset(timeframe, ctxChartShift),
         fixLeftEdge: false,
         fixRightEdge: false,
+        // Future whitespace must participate in time-axis ticks and grid marks.
+        ignoreWhitespaceIndices: false,
       },
     }) as IChartApi;
 
     chartRef.current = chart;
-    // The host has no data and paints no line. It only gives the grid primitive
-    // a stable series lifecycle and the strict `bottom` layer below candles.
+    // This transparent host supplies only future whitespace in scale-grid mode
+    // and gives the Square and Fine grids a stable `bottom` layer below candles.
     const squareGridHostSeries = chart.addSeries(LineSeries, {
       visible: true,
       color: 'rgba(0, 0, 0, 0)',
-      priceScaleId: '',
+      priceScaleId: 'right',
       priceLineVisible: false,
       lastValueVisible: false,
       crosshairMarkerVisible: false,
     });
-    const squareGridPrimitive = new SquareChartGridPrimitive({
-      visible: chartSettings.showGrid,
-      cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,
-      verticalColor: chartTheme.gridVertical,
-      horizontalColor: chartTheme.gridHorizontal,
+    const squareGridPrimitive = new SquareChartGridPrimitive(gridRenderingOptions.fixedGrid, {
+      labelAt: (coordinate) => {
+        const series = seriesRef.current;
+        if (!series) return null;
+        const price = series.coordinateToPrice(coordinate);
+        return price === null || !Number.isFinite(price) ? null : series.priceFormatter().format(price);
+      },
+      appearance: () => {
+        const layout = chart.options().layout;
+        return { color: layout.textColor, fontSize: layout.fontSize, fontFamily: layout.fontFamily };
+      },
     });
     squareGridHostSeries.attachPrimitive(squareGridPrimitive);
     squareGridHostSeriesRef.current = squareGridHostSeries;
@@ -300,9 +296,17 @@ useEffect(() => {
           !isDisposedRef.current &&
           chartRef.current &&
           !isChartUserInteractingRef.current &&
-          shouldScrollToRealtime(chartRef.current, autoScrollEnabledRef.current, chartSettingsRef.current.chartAutoScroll)
+          shouldScrollToRealtime(
+            chartRef.current,
+            autoScrollEnabledRef.current,
+            chartSettingsRef.current.chartAutoScroll,
+            getTradingChartShiftRightOffset(timeframe, chartSettingsRef.current.chartShift),
+          )
         ) {
-          chartRef.current.timeScale().scrollToRealTime();
+          chartRef.current.timeScale().scrollToPosition(
+            getTradingChartShiftRightOffset(timeframe, chartSettingsRef.current.chartShift),
+            false,
+          );
         }
         autoScrollTimer = null;
       }, 3000); // 3 seconds after last interaction
@@ -628,12 +632,14 @@ useEffect(() => {
             data.close || data.value || 0,
             (volData && volData.value) ? volData.value : 0
           );
+          return;
         }
-      } else {
-        const c = currentCandleRef.current;
-        if (c) {
-          updateLegendDOM(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
-        }
+      }
+      // Projected future times have no price-series row. Restore the latest
+      // candle just as for a pointer outside the chart, rather than stale hover OHLC.
+      const c = currentCandleRef.current;
+      if (c) {
+        updateLegendDOM(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
       }
     };
     chart.subscribeCrosshairMove(crosshairHandler);

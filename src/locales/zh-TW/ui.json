@@ -2075,5 +2075,11 @@
   "Total commission": "Total commission",
   "Total swap": "Total swap",
   "Total fee": "Total fee",
-  "Total gross profit": "Total gross profit"
+  "Total gross profit": "Total gross profit",
+  "Chart context menu": "圖表右鍵選單",
+  "Fine grid": "細網格",
+  "Grid type": "網格類型",
+  "Square": "方形",
+  "Price/time aligned": "按價格/時間對齊",
+  "Grid line style": "網格線樣式"
 }

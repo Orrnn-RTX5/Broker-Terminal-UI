@@ -14,6 +14,20 @@ export interface AdvancedViewRootOptions {
 export const RTX_ADVANCED_VIEW_CHANGE_EVENT = 'rtx:advanced-view-change';
 export const RTX_EXIT_CHART_FOCUS_EVENT = 'rtx:exit-chart-focus';
 
+const CHART_FOCUS_STORAGE_KEY = 'rtx5-focus-chart';
+
+// Focus belongs to this browser tab, so inspecting another terminal tab does
+// not change the workspace shown by an existing one.
+export const readChartFocusPreference = (): boolean => {
+  try { return sessionStorage.getItem(CHART_FOCUS_STORAGE_KEY) === 'true'; }
+  catch { return false; }
+};
+
+export const persistChartFocusPreference = (enabled: boolean): void => {
+  try { sessionStorage.setItem(CHART_FOCUS_STORAGE_KEY, String(enabled)); }
+  catch { /* The toggle still works when browser storage is unavailable. */ }
+};
+
 /** Explicit window arrangements take precedence over the single-chart view. */
 export const runOutsideChartFocus = (action: () => void): void => {
   if (typeof document === 'undefined' || typeof window === 'undefined') { action(); return; }
@@ -42,7 +56,6 @@ const ADVANCED_VIEW_ONLY_CLASSES = [
   'rtx-advanced-surface-white',
   'rtx-advanced-surface-soft',
   'rtx-advanced-surface-paper',
-  'rtx-advanced-focus-chart',
 ] as const;
 
 const setExclusiveClass = (
@@ -81,7 +94,7 @@ export const syncAdvancedViewRootClasses = (
     ADVANCED_VIEW_ONLY_CLASSES.filter((className) => className.startsWith('rtx-advanced-surface-')),
     enabled ? `rtx-advanced-surface-${options.chartSurface}` : null,
   );
-  root.classList.toggle('rtx-advanced-focus-chart', enabled && options.focusChart);
+  root.classList.toggle('rtx-advanced-focus-chart', options.focusChart);
 };
 
 export const clearAdvancedViewRootClasses = (root: HTMLElement) => {
@@ -90,6 +103,7 @@ export const clearAdvancedViewRootClasses = (root: HTMLElement) => {
     'rtx-skin-untitled-light',
     ...ADVANCED_VIEW_FONT_CLASSES,
     ...ADVANCED_VIEW_ONLY_CLASSES,
+    'rtx-advanced-focus-chart',
   );
 };
 
@@ -112,6 +126,7 @@ export const initRootTheme = (root: HTMLElement = document.documentElement) => {
   root.classList.toggle('theme-light', isLight);
   root.classList.toggle('theme-dark', !isLight);
   root.setAttribute('data-theme', isLight ? 'light' : 'dark');
+  root.classList.toggle('rtx-advanced-focus-chart', readChartFocusPreference());
 
   try {
     const rawOptions = localStorage.getItem('rtx5-advanced-view-options');
@@ -122,11 +137,9 @@ export const initRootTheme = (root: HTMLElement = document.documentElement) => {
         if (opts.density) setExclusiveClass(root, ADVANCED_VIEW_ONLY_CLASSES.filter((c) => c.startsWith('rtx-advanced-density-')), `rtx-advanced-density-${opts.density}`);
         if (opts.accent) setExclusiveClass(root, ADVANCED_VIEW_ONLY_CLASSES.filter((c) => c.startsWith('rtx-advanced-accent-')), `rtx-advanced-accent-${opts.accent}`);
         if (opts.chartSurface) setExclusiveClass(root, ADVANCED_VIEW_ONLY_CLASSES.filter((c) => c.startsWith('rtx-advanced-surface-')), `rtx-advanced-surface-${opts.chartSurface}`);
-        if (opts.focusChart) root.classList.add('rtx-advanced-focus-chart');
       }
     }
   } catch {
     // Storage read errors shouldn't crash app startup
   }
 };
-

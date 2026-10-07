@@ -31,6 +31,27 @@ export interface BrokerChromeState {
 
 const ABSOLUTE_ASSET_URL = /^(?:https?:|data:|blob:)/i;
 const DEFAULT_LOGIN_TITLE = 'RTX Terminal';
+const originalFavicons = new WeakMap<HTMLLinkElement, { href: string; type: string | null }>();
+
+const updateBrokerFavicon = (logoUrl: string): void => {
+  let favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+  if (!favicon) {
+    favicon = document.createElement('link');
+    favicon.rel = 'icon';
+    favicon.setAttribute('href', './favicon.png');
+    favicon.type = 'image/png';
+    document.head.appendChild(favicon);
+  }
+  if (!originalFavicons.has(favicon)) {
+    originalFavicons.set(favicon, { href: favicon.getAttribute('href') || './favicon.png', type: favicon.getAttribute('type') });
+  }
+  const original = originalFavicons.get(favicon)!;
+  const nextHref = logoUrl || original.href;
+  if (favicon.getAttribute('href') !== nextHref) favicon.setAttribute('href', nextHref);
+  // Brokers can provide PNG, SVG or ICO; let the browser detect their format.
+  if (logoUrl || original.type === null) favicon.removeAttribute('type');
+  else favicon.setAttribute('type', original.type);
+};
 
 let currentChrome: BrokerChromeState = {
   brokerId: '',
@@ -168,6 +189,7 @@ export const applyBrokerChrome = (
   };
 
   if (typeof document === 'undefined') return currentChrome;
+  updateBrokerFavicon(currentChrome.logoUrl);
 
   const root = document.documentElement;
   if (currentChrome.brokerId) root.setAttribute('data-broker-id', currentChrome.brokerId);

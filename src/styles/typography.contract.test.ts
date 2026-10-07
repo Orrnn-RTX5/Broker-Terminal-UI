@@ -111,7 +111,7 @@ describe('enterprise typography contract', () => {
     expect(advancedCss).not.toContain('.h-\\\\[24px\\\\]');
     expect(topToolbarSource).toContain('syncAdvancedViewRootClasses(document.documentElement, advancedViewEnabled, advancedOptions);');
     expect(advancedViewRootClassesSource).toContain('setExclusiveClass(root, ADVANCED_VIEW_FONT_CLASSES, `rtx-advanced-font-${options.fontSize}`);');
-    expect(advancedViewRootClassesSource).toContain("root.classList.toggle('rtx-advanced-focus-chart', enabled && options.focusChart);");
+    expect(advancedViewRootClassesSource).toContain("root.classList.toggle('rtx-advanced-focus-chart', options.focusChart);");
     expect(topToolbarSource).toContain("const ADVANCED_FONT_SIZES: readonly AdvancedFontSize[] = ['small', 'normal', 'large'];");
     expect(topToolbarSource).toContain('fontSize: isStoredOption(parsed?.fontSize, ADVANCED_FONT_SIZES)');
     expect(menuBarSource).toContain("label: 'Theme'");

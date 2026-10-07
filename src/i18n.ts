@@ -57,7 +57,9 @@ export const i18nReady = i18n
 const applyDocumentLanguage = (language: string) => {
     if (typeof document === 'undefined') return;
     document.documentElement.lang = language;
-    document.documentElement.dir = i18n.dir(language);
+    // Language changes translate text without reversing trading controls,
+    // dock geometry or table columns. Arabic text keeps its native bidi order.
+    document.documentElement.dir = 'ltr';
 };
 i18n.on('languageChanged', applyDocumentLanguage);
 void i18nReady.then(() => applyDocumentLanguage(i18n.resolvedLanguage || i18n.language || 'en'));

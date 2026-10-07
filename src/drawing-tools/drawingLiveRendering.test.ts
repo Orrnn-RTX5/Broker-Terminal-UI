@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { expect, it, vi } from 'vitest';
 import { updateDrawingCandle } from './drawingCandleUpdates';
+import { getTradingChartShiftRightOffset } from '../utils/chartTimeFormat';
 
 function productionCallback(sourcePath: string, name: string, dependencies: Record<string, unknown>) {
   const source = ts.createSourceFile(
@@ -32,6 +33,7 @@ it('the production candle push refreshes drawing OHLCV and coalesces rapid ticks
   const push = productionCallback('src/features/trading-chart/runtime/useTradingChartLiveCandleRuntime.ts', 'push', {
     isDisposedRef: { current: false }, liveMarketDataFrozenRef: { current: false }, canPaintLiveChart: () => true,
     seriesRef: { current: { update } }, prevChartTypeRef: { current: 'candlestick' }, volumeRef: { current: null },
+    getTradingChartShiftRightOffset, prevTimeframeRef: { current: 'M1' }, timeframe: 'M1',
     updateDrawingCandle, lastRenderedCandlesRef: candles,
     drawingRuntimeContextRef: { current: { symbol: 'XAUUSD', timeframe: 'M1' } },
     drawingRenderFrameRef: pending, drawingRenderSettledFrameRef: { current: null }, scheduleDrawingRenderAfterChartData: schedule,

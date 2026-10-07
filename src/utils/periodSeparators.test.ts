@@ -25,7 +25,7 @@ describe('periodSeparators', () => {
     ]);
   });
 
-  it('adds day separators for H1 and H4', () => {
+  it('adds daily separators on H1 and weekly separators on H4', () => {
     const h1Candles = [
       candle(utcSeconds(2026, 6, 27, 23, 0)),
       candle(utcSeconds(2026, 6, 28, 0, 0)),
@@ -38,8 +38,20 @@ describe('periodSeparators', () => {
     expect(getPeriodSeparators(h1Candles, 'H1')).toEqual([
       { time: h1Candles[1].time, index: 1, type: 'day' },
     ]);
-    expect(getPeriodSeparators(h4Candles, 'H4')).toEqual([
-      { time: h4Candles[1].time, index: 1, type: 'day' },
+    expect(getPeriodSeparators(h4Candles, 'H4')).toEqual([]);
+    const monday = candle(utcSeconds(2026, 6, 29));
+    expect(getPeriodSeparators([...h4Candles, monday], 'H4')).toEqual([
+      { time: monday.time, index: 2, type: 'week' },
+    ]);
+  });
+
+  it('keeps H4 weeks continuous across a year change and uses broker Monday', () => {
+    const sameWeek = [candle(utcSeconds(2026, 12, 31, 20)), candle(utcSeconds(2027, 1, 1))];
+    expect(getPeriodSeparators(sameWeek, 'H4')).toEqual([]);
+    const candles = [candle(utcSeconds(2027, 1, 3, 18)), candle(utcSeconds(2027, 1, 3, 22))];
+    expect(getPeriodSeparators(candles, 'H4')).toEqual([]);
+    expect(getPeriodSeparators(candles, 'H4', 2 * 60 * 60)).toEqual([
+      { time: candles[1].time, index: 1, type: 'week' },
     ]);
   });
 
@@ -122,7 +134,7 @@ describe('periodSeparators', () => {
     expect(getPeriodSeparators(candles, 'D1')).toEqual([]);
   });
 
-  it('keeps the strict three-candle threshold for H4 session gaps', () => {
+  it('does not add H4 separators for gaps within the same broker week', () => {
     const exactThreeBarGap = [
       candle(utcSeconds(2026, 6, 27, 0, 0)),
       candle(utcSeconds(2026, 6, 27, 12, 0)),
@@ -133,9 +145,7 @@ describe('periodSeparators', () => {
     ];
 
     expect(getPeriodSeparators(exactThreeBarGap, 'H4')).toEqual([]);
-    expect(getPeriodSeparators(overThreeBarGap, 'H4')).toEqual([
-      { time: overThreeBarGap[1].time, index: 1, type: 'session_gap' },
-    ]);
+    expect(getPeriodSeparators(overThreeBarGap, 'H4')).toEqual([]);
   });
 
   it('does not add separators for normal consecutive candles inside the same period', () => {

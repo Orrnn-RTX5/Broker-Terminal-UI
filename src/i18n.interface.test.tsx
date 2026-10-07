@@ -32,6 +32,49 @@ beforeEach(async () => { await changeInterfaceLanguage('en'); });
 afterEach(async () => { cleanup(); vi.restoreAllMocks(); await changeInterfaceLanguage('en'); });
 
 describe('interface language changes', () => {
+    it.each(['web', 'desktop'])('keeps the %s layout LTR when Arabic is selected from the language menu', async (surface) => {
+        if (surface === 'desktop') {
+            Object.defineProperty(window, 'electron', { configurable: true, writable: true, value: { window: {} } });
+        }
+        try {
+            render(<><MenuBar /><DraftPanel /></>);
+            const input = screen.getByTestId('draft');
+            fireEvent.change(input, { target: { value: 'EURUSD 200004' } });
+            const openLanguages = () => {
+                if (surface === 'desktop') {
+                    fireEvent.click(screen.getByRole('menuitem', { name: translateUi('View') }));
+                    fireEvent.click(screen.getByRole('menuitem', { name: i18n.t('menu.view.languages') }));
+                } else {
+                    fireEvent.click(screen.getByRole('button', { name: translateUi('Open application menu') }));
+                    fireEvent.click(screen.getByRole('menuitem', { name: translateUi('Language') }));
+                }
+            };
+            openLanguages();
+            const arabicName = (await import('./config/supportedLanguages')).supportedLanguages.find(l => l.code === 'ar')!.name;
+            fireEvent.click(screen.getByRole('menuitemradio', { name: arabicName }));
+            await waitFor(() => expect(screen.getByRole('heading').textContent).toMatch(/[\u0600-\u06ff]/));
+            expect(document.documentElement).toHaveAttribute('lang', 'ar');
+            expect(document.documentElement).toHaveAttribute('dir', 'ltr');
+            expect(screen.getByTestId('draft')).toBe(input);
+            expect(input).toHaveValue('EURUSD 200004');
+            expect(screen.getByTestId('broker-value')).toHaveTextContent('XAUUSD · 200001 · 4,414.650');
+
+            openLanguages();
+            const selected = screen.getByRole('menuitemradio', { name: arabicName });
+            expect(selected).toHaveAttribute('aria-checked', 'true');
+            // Only the label determines its own text direction; the menu row,
+            // icons, checkmark and body portal inherit the fixed LTR layout.
+            expect(selected.querySelector('span[dir="auto"]')).toHaveTextContent(arabicName);
+            expect(selected.closest('[dir]')).toBe(document.documentElement);
+            fireEvent.click(screen.getByRole('menuitemradio', { name: 'English' }));
+            await waitFor(() => expect(document.documentElement).toHaveAttribute('lang', 'en'));
+            expect(document.documentElement).toHaveAttribute('dir', 'ltr');
+        } finally {
+            cleanup();
+            delete window.electron;
+        }
+    });
+
     it('refreshes memoized labels and imperative drawing effects on language changes', async () => {
         const effects = vi.fn();
         function CachedLabels() {
@@ -105,7 +148,8 @@ describe('interface language changes', () => {
         expect(input).toHaveValue('EURUSD');
         await act(async () => { await changeInterfaceLanguage('ar'); });
         expect(screen.getByRole('heading').textContent).toMatch(/[\u0600-\u06ff]/);
-        expect(document.documentElement.dir).toBe('rtl');
+        expect(document.documentElement.lang).toBe('ar');
+        expect(document.documentElement.dir).toBe('ltr');
         expect(screen.getByTestId('draft')).toBe(input);
     });
 

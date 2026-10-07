@@ -53,4 +53,11 @@ describe('BrokerLogoImage', () => {
       expect.stringContaining('/brand/rtx5-app-icon.png'),
     );
   });
+
+  it('shows a newly selected broker immediately after the previous logo failed', () => {
+    const { rerender } = render(<BrokerLogoImage broker={{ broker_id: 'broker-a', logo_url: 'https://broker-a.example/logo.png' }} alt="Active broker" />);
+    fireEvent.error(screen.getByRole('img', { name: 'Active broker' }));
+    rerender(<BrokerLogoImage broker={{ broker_id: 'broker-b', logo_url: 'https://broker-b.example/logo.svg' }} alt="Active broker" />);
+    expect(screen.getByRole('img', { name: 'Active broker' })).toHaveAttribute('src', 'https://broker-b.example/logo.svg');
+  });
 });

@@ -20,7 +20,7 @@ const dialogSource = readFileSync(
 ).replace(/\r\n/g, '\n');
 
 describe('TradingChart enterprise grid rendering contract', () => {
-  it('disables the rectangular native grid during creation and hot theme updates', () => {
+  it('uses the same grid type selection during creation and hot theme updates', () => {
     const creationStart = initializationSource.indexOf('const chart = createChartEx(containerRef.current, timeScaleBehavior, {');
     const creationEnd = initializationSource.indexOf('crosshair:', creationStart);
     const creationGrid = initializationSource.slice(creationStart, creationEnd);
@@ -29,21 +29,19 @@ describe('TradingChart enterprise grid rendering contract', () => {
     const hotApplyGrid = chartSource.slice(hotApplyStart, hotApplyEnd);
 
     for (const nativeGrid of [creationGrid, hotApplyGrid]) {
-      expect(nativeGrid).toContain('color: chartTheme.gridVertical');
-      expect(nativeGrid).toContain('color: chartTheme.gridHorizontal');
-      expect(nativeGrid.match(/style: LineStyle\.Solid/g)).toHaveLength(2);
-      expect(nativeGrid.match(/visible: false/g)).toHaveLength(2);
-      expect(nativeGrid).not.toContain('visible: chartSettings.showGrid');
+      expect(nativeGrid).toContain('grid: gridRenderingOptions.nativeGrid,');
     }
+    for (const source of [initializationSource, chartSource]) {
+      expect(source).toContain('const gridRenderingOptions = getChartGridRenderingOptions(chartSettings, chartTheme);');
+    }
+    expect(initializationSource).toContain('new SquareChartGridPrimitive(gridRenderingOptions.fixedGrid, {');
+    expect(chartSource).toContain('squareGridPrimitiveRef.current?.applyOptions(gridRenderingOptions.fixedGrid)');
   });
 
   it('attaches one bottom-layer square grid primitive to a stable transparent host', () => {
-    expect(initializationSource).toContain('SQUARE_CHART_GRID_CELL_SIZE_PX,');
     expect(chartSource).toContain("const squareGridHostSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);");
-    expect(initializationSource).toContain('const squareGridPrimitive = new SquareChartGridPrimitive({');
-    expect(initializationSource).toContain('cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,');
-    expect(initializationSource).toContain('verticalColor: chartTheme.gridVertical,');
-    expect(initializationSource).toContain('horizontalColor: chartTheme.gridHorizontal,');
+    expect(initializationSource).toContain('const squareGridPrimitive = new SquareChartGridPrimitive(gridRenderingOptions.fixedGrid, {');
+    expect(initializationSource).toContain('series.coordinateToPrice(coordinate)');
     expect(initializationSource).toContain('squareGridHostSeries.attachPrimitive(squareGridPrimitive);');
     expect(initializationSource).toContain('squareGridHostSeriesRef.current.detachPrimitive(squareGridPrimitiveRef.current);');
     expect(initializationSource).not.toContain('squareGridHostSeries.setData(');
@@ -59,14 +57,21 @@ describe('TradingChart enterprise grid rendering contract', () => {
     expect(renderedMarkup).not.toContain('TRADING_VIEW_GRID_OVERLAY_SIZE');
   });
 
-  it('keeps the Chart Properties preview square and consistent with live colors', () => {
+  it('previews all grid geometries using the selected line style and live colors', () => {
     expect(dialogSource).toContain("import { getChartGridLineColors } from '../../utils/chartGridStyle';");
-    expect(dialogSource).toContain("import { SQUARE_CHART_GRID_CELL_SIZE_PX } from '../../utils/squareChartGridPrimitive';");
+    expect(dialogSource).toContain('FINE_CHART_GRID_CELL_SIZE_PX');
+    expect(dialogSource).toContain('SQUARE_CHART_GRID_CELL_SIZE_PX');
     expect(dialogSource).toContain('grid: effectiveColors.grid');
     expect(dialogSource).toContain('showGrid: showState.showGrid');
-    expect(dialogSource).toContain('linear-gradient(to right, ${previewGridColors.vertical}');
-    expect(dialogSource).toContain('linear-gradient(to bottom, ${previewGridColors.horizontal}');
-    expect(dialogSource).toContain('`${SQUARE_CHART_GRID_CELL_SIZE_PX}px ${SQUARE_CHART_GRID_CELL_SIZE_PX}px`');
+    expect(dialogSource).toContain('lineStyle: showState.gridLineStyle,');
+    expect(dialogSource).toContain('getGridPreviewImage(previewGridColors, showState.gridLineStyle, previewGridCellSize, showState.gridType)');
+    expect(dialogSource).toContain('stroke-dasharray="8 4"');
+    expect(dialogSource).toContain('stroke-width="0.75"');
+    expect(dialogSource).toContain('stroke-dasharray="2 2"');
+    expect(dialogSource).toContain('stroke-dasharray="3 3"');
+    expect(dialogSource).toContain("showState.gridType === 'scale'");
+    expect(dialogSource).toContain('{ width: 128, height: 48 }');
+    expect(dialogSource).toContain('`${previewGridCellSize.width}px ${previewGridCellSize.height}px`');
     expect(dialogSource).not.toContain("backgroundSize: '48px 32px'");
     expect(dialogSource).not.toContain('rtx-cp-preview-grid');
   });

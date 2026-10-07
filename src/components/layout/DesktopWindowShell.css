@@ -137,7 +137,7 @@
 }
 
 /* Keep viewport-sized login/authenticated shells within the title-bar content. */
-.rtx-desktop-shell .rtx-app-shell,
+.rtx-desktop-shell .rtx-app-shell:not([data-terminal-fixed-resolution="true"]),
 .rtx-desktop-shell .rtx-instant-terminal {
   height: 100% !important;
   min-height: 0 !important;

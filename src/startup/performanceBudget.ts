@@ -10,7 +10,8 @@ export type StartupMetricName =
   | 'auth-store-commit'
   | 'auth-terminal-ready'
   | 'auth-handoff'
-  | 'auth-shell';
+  | 'auth-shell'
+  | 'auth-data-ready';
 
 export type PostAuthenticationPhase = Extract<
   StartupMetricName,
@@ -35,6 +36,7 @@ declare global {
 let loginStartedAt = 0;
 let authRequestStartedAt = 0;
 let authAcceptedAt = 0;
+let cancelShellMeasurement: (() => void) | null = null;
 
 const metricAttribute = (name: string): string => (
   `data-rtx-perf-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-ms`
@@ -49,6 +51,7 @@ export const publishStartupMetric = (name: StartupMetricName, durationMs: number
 
 export const beginLoginPerformanceMeasurement = (): void => {
   if (typeof performance === 'undefined') return;
+  cancelShellMeasurement?.();
   const now = performance.now();
   const capturedInteractionStart = window.__RTX_STARTUP_PERFORMANCE__?.beginInteraction?.('login');
   loginStartedAt = (
@@ -60,6 +63,11 @@ export const beginLoginPerformanceMeasurement = (): void => {
   ) ? capturedInteractionStart : now;
   authRequestStartedAt = 0;
   authAcceptedAt = 0;
+  for (const name of ['login-feedback', 'login-auth', 'auth-network', 'auth-session-persist',
+    'auth-store-runtime', 'auth-store-commit', 'auth-terminal-ready', 'auth-handoff',
+    'auth-shell', 'auth-data-ready'] as const) {
+    document.documentElement.removeAttribute(metricAttribute(name));
+  }
 };
 
 export const markAuthenticationRequestStarted = (): void => {
@@ -154,13 +162,20 @@ export const scheduleAuthenticatedShellPaintMeasurement = (): (() => void) => {
   }
 
   const selector = '[data-rtx-authenticated-shell="true"] [data-rtx-authenticated-viewport="true"]';
+  const acceptedAt = authAcceptedAt;
   let cancelled = false;
+  let shellMeasured = false;
+  let dataMeasured = false;
   let observer: MutationObserver | undefined;
   let frameId: number | undefined;
   let paintTaskId: number | undefined;
 
   const hasVisibleTerminal = (): boolean => Array.from(document.querySelectorAll(selector)).some(
     (viewport) => !viewport.closest('[data-terminal-startup="pending"]'),
+  );
+  const hasReadyData = (): boolean => Array.from(document.querySelectorAll(selector)).some(
+    (viewport) => !viewport.closest('[data-terminal-startup="pending"]')
+      && Boolean(viewport.closest('[data-terminal-startup-data-ready="true"]')),
   );
 
   const cleanup = () => {
@@ -169,14 +184,22 @@ export const scheduleAuthenticatedShellPaintMeasurement = (): (() => void) => {
   };
 
   const schedulePaintConfirmation = () => {
-    if (cancelled || frameId !== undefined || !hasVisibleTerminal()) return;
+    if (cancelled || frameId !== undefined || !hasVisibleTerminal()
+      || (shellMeasured && (dataMeasured || !hasReadyData()))) return;
     frameId = window.requestAnimationFrame(() => {
       paintTaskId = window.setTimeout(() => {
         frameId = undefined;
         paintTaskId = undefined;
         if (!cancelled && hasVisibleTerminal()) {
-          publishStartupMetric('auth-shell', performance.now() - authAcceptedAt);
-          cleanup();
+          if (!shellMeasured) {
+            shellMeasured = true;
+            publishStartupMetric('auth-shell', performance.now() - acceptedAt);
+          }
+          if (!dataMeasured && hasReadyData()) {
+            dataMeasured = true;
+            publishStartupMetric('auth-data-ready', performance.now() - acceptedAt);
+          }
+          if (dataMeasured) cleanup();
         }
       }, 0);
     });
@@ -188,18 +211,21 @@ export const scheduleAuthenticatedShellPaintMeasurement = (): (() => void) => {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-terminal-startup'],
+      attributeFilter: ['data-terminal-startup', 'data-terminal-startup-data-ready', 'data-rtx-authenticated-shell'],
     });
   }
-  const timeoutId = window.setTimeout(cleanup, 5_000);
+  const timeoutId = window.setTimeout(cleanup, 30_000);
   schedulePaintConfirmation();
 
-  return () => {
+  const cancel = () => {
     cancelled = true;
     cleanup();
     if (frameId !== undefined) window.cancelAnimationFrame(frameId);
     if (paintTaskId !== undefined) window.clearTimeout(paintTaskId);
+    if (cancelShellMeasurement === cancel) cancelShellMeasurement = null;
   };
+  cancelShellMeasurement = cancel;
+  return cancel;
 };
 
 export const nearestRankPercentile = (samples: readonly number[], percentile: number): number => {

@@ -120,15 +120,6 @@ export function BugReportDialog({ isOpen, onClose, context = {} }: BugReportDial
     const descriptionLength = form.description.trim().length;
     const hasAttachments = attachments.length > 0;
     const canSubmit = (hasAttachments || (titleLength >= MIN_TITLE_LENGTH && descriptionLength >= MIN_DESCRIPTION_LENGTH)) && !submitting;
-    // A disabled button with no reason is what stopped the first reports.
-    const submitHint = hasAttachments
-        ? tr('Ready to send with attachments')
-        : titleLength < MIN_TITLE_LENGTH
-            ? `Add a title (at least ${MIN_TITLE_LENGTH} characters) to send the report.`
-            : descriptionLength < MIN_DESCRIPTION_LENGTH
-                ? `Describe what happened (at least ${MIN_DESCRIPTION_LENGTH} characters) to send the report.`
-                : '';
-
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault();
         if (!canSubmit) return;
@@ -305,12 +296,10 @@ export function BugReportDialog({ isOpen, onClose, context = {} }: BugReportDial
                                 <input ref={fileInputRef} type="file" multiple hidden accept="image/png,image/jpeg,image/webp,text/plain,.log,.txt" onChange={(event) => { addFiles(event.target.files); event.target.value = ''; }} />
                                 <p className="rtx-bug-report-fine-print">{tr('Optional. Up to 5 files, 8 MB each.')}</p>
                                 {hasAttachments ? <p className="rtx-bug-report-fine-print">{tr('Title and description are optional when a file is attached.')}</p> : null}
-                                <p className="rtx-bug-report-fine-print">{tr('Screenshots include visible account details and are shared with your broker and the RTX5 team.')}</p>
                             </aside>
                         </div>
 
                         <div className="rtx-bug-report-footer">
-                            <p className="rtx-bug-report-submit-hint" aria-live="polite">{submitting ? tr('Sending…') : submitHint || tr('Ready to send')}</p>
                             <div className="rtx-bug-report-footer-actions">
                                 <button type="button" onClick={onClose} disabled={submitting} className="rtx-bug-report-control rtx-bug-report-button">
                                     {tr('Cancel')}

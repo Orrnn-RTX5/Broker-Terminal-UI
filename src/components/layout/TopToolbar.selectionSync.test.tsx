@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TopToolbar } from './TopToolbar';
@@ -9,6 +9,7 @@ import { useChartSettingsStore } from '../../store/useChartSettingsStore';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
 import type { DockLayout } from '../../services/dockManager';
+import { runOutsideChartFocus } from '../../utils/advancedViewRootClasses';
 import {
   activateActiveChartSource,
   bindActiveChartSourceInteractions,
@@ -95,6 +96,35 @@ afterEach(() => {
 });
 
 describe('toolbar selection synchronization', () => {
+  it.each([false, true])('toggles chart focus from the menu when Light is %s and clears it on arrangement', (light) => {
+    Object.defineProperty(window, 'electron', { configurable: true, writable: true, value: undefined });
+    localStorage.setItem('rtx5-advanced-view-enabled', String(light));
+    sessionStorage.removeItem('rtx5-focus-chart');
+    render(<TopToolbar {...toolbarProps()} />);
+    const openFocusMenu = () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+      const menu = screen.getByRole('menu', { name: 'Application menu' });
+      fireEvent.click(within(menu).getByRole('menuitem', { name: 'RTX5 Terminal' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
+      return screen.getByRole('menuitemcheckbox', { name: 'Focus Chart' });
+    };
+    fireEvent.click(openFocusMenu());
+    expect(document.documentElement).toHaveClass('rtx-advanced-focus-chart');
+    expect(document.documentElement.classList.contains('theme-light')).toBe(light);
+    expect(sessionStorage.getItem('rtx5-focus-chart')).toBe('true');
+    expect(JSON.parse(localStorage.getItem('rtx5-advanced-view-options')!)).not.toHaveProperty('focusChart');
+    fireEvent.click(openFocusMenu());
+    expect(document.documentElement).not.toHaveClass('rtx-advanced-focus-chart');
+    fireEvent.click(openFocusMenu());
+    act(() => runOutsideChartFocus(vi.fn()));
+    expect(document.documentElement).not.toHaveClass('rtx-advanced-focus-chart');
+    expect(sessionStorage.getItem('rtx5-focus-chart')).toBe('false');
+    expect(openFocusMenu()).toHaveAttribute('aria-checked', 'false');
+    cleanup();
+    sessionStorage.removeItem('rtx5-focus-chart');
+    localStorage.removeItem('rtx5-advanced-view-enabled');
+  });
+
   it.each(['web', 'desktop'])('keeps the %s bug-report button in the header outside the scrolling chart commands', (surface) => {
     if (surface === 'desktop') prepareDesktopCharts(desktopChartLayout());
     else Object.defineProperty(window, 'electron', { configurable: true, writable: true, value: undefined });

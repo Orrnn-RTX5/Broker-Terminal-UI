@@ -41,6 +41,8 @@ export interface ApiUser {
 }
 
 export interface AuthTokenResponse {
+  name?: string;
+  logo_url?: string | null;
   token?: string;
   access_token?: string;
   refresh_token?: string;

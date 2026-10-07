@@ -39,6 +39,7 @@ import type { ChartDataRenderRequest } from './chartRuntimeContracts';
 type LoadingPhase = 'connecting' | 'receiving' | 'ready' | 'hidden';
 
 interface UseTradingChartCommandsOptions {
+  applyChartTypeInPlace: (type: ChartType) => boolean;
   autoScrollEnabledRef: RefObject<boolean>;
   brokerTimeOffsetSecRef: RefObject<number>;
   cancelQueuedChartRender: () => void;
@@ -89,7 +90,7 @@ interface UseTradingChartCommandsOptions {
 
 export const useTradingChartCommands = (options: UseTradingChartCommandsOptions): void => {
   const {
-    autoScrollEnabledRef, brokerTimeOffsetSecRef, cancelQueuedChartRender, candlesRef,
+    applyChartTypeInPlace, autoScrollEnabledRef, brokerTimeOffsetSecRef, cancelQueuedChartRender, candlesRef,
     chartInteractionOwnershipRef, chartRef, clearLocalChartPointerStateRef,
     clearPeriodSeparators, ctxChartShiftRef, currentCandleRef, drawingRuntimeContextRef,
     firstRenderedCandleTimeRef, getCandlesForFullRender, hasDisplayedHistoryRef,
@@ -105,6 +106,15 @@ export const useTradingChartCommands = (options: UseTradingChartCommandsOptions)
   } = options;
 
 useEffect(() => {
+    // App owns persistence and dock props; paint the series in this command
+    // turn so visible feedback does not wait for its next React commit.
+    const unsubChartType = commandBus.subscribe('SET_CHART_TYPE', (payload) => {
+      if (!isChartCommandTarget(payload) || isDisposedRef.current) return;
+      const type = payload.chartType;
+      if (type === 'bar' || type === 'candlestick' || type === 'line' || type === 'area') {
+        applyChartTypeInPlace(type);
+      }
+    });
     const handleZoom = (payload: { targetContextId?: string; panelId?: string }, direction: 'in' | 'out') => {
       if (!isChartCommandTarget(payload)) return;
       if (isDisposedRef.current || !chartRef.current) return;
@@ -121,18 +131,12 @@ useEffect(() => {
     const unsub1 = commandBus.subscribe('ZOOM_IN', (payload) => handleZoom(payload, 'in'));
     const unsub2 = commandBus.subscribe('ZOOM_OUT', (payload) => handleZoom(payload, 'out'));
 
-    let resetChartViewport: (() => Promise<void>) | null = null;
-
     const handleScrollToRealtime = () => {
       if (isDisposedRef.current || !chartRef.current) return;
       try {
-        const totalBars = getCandlesForFullRender().length;
-        const activeTf = prevTimeframeRef.current || timeframe;
-        if (totalBars > 0 && totalBars <= getTradingChartDefaultVisibleBars(activeTf)) {
-          void resetChartViewport?.();
-          return;
-        }
-        chartRef.current.timeScale().scrollToRealTime();
+        // Scrolling acts on the loaded chart, including a sparse live baseline.
+        // Explicit RESET_CHART_VIEWPORT owns requests for additional history.
+        scrollToLatestCandleNow(chartRef.current);
       } catch { /* disposed */ }
     };
 
@@ -269,7 +273,6 @@ useEffect(() => {
       } catch { /* disposed */ }
     };
 
-    resetChartViewport = handleResetChartViewport;
 
     const unsubResetChartViewport = commandBus.subscribe('RESET_CHART_VIEWPORT', (payload) => {
       if (!isChartCommandTarget(payload)) return;
@@ -419,6 +422,7 @@ useEffect(() => {
     });
 
     return () => {
+      unsubChartType();
       unsub1();
       unsub2();
       unsubScrollToRealtime();
@@ -429,5 +433,5 @@ useEffect(() => {
       unsubTimeframe();
       window.removeEventListener('rtx:chartShift', handleChartShiftEvent);
     };
-  }, [isChartCommandTarget]);
+  }, [applyChartTypeInPlace, isChartCommandTarget, scrollToLatestCandleNow]);
 };

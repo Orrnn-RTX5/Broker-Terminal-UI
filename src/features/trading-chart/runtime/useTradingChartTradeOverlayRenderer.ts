@@ -11,6 +11,7 @@ import {
 import { getChartObjectState, useChartObjectStateStore } from '../../../store/useChartObjectStateStore';
 import { getTradeHistoryExecutionSide } from '../../../utils/chartTradeHistoryPresentation';
 import { getSharedChartTrade } from '../../../utils/tradeShareLink';
+import { getTradeHistoryTimeRange, isTradeHistoryInTimeRange } from '../../../utils/tradeHistoryViewport';
 import {
   buildClosedTradeHistorySnapshots,
   filterActiveTradeKeysForHistory,
@@ -80,6 +81,7 @@ interface UseTradingChartTradeOverlayRendererOptions {
   isChartSurfaceLight: () => boolean;
   isDisposedRef: RefObject<boolean>;
   isLivePriceSafeForCandles: (price: number) => boolean;
+  lastRenderedCandlesRef: RefObject<Candle[]>;
   lastActiveTradeOverlaySignatureRef: RefObject<string>;
   lastHistoryTradeOverlaySignatureRef: RefObject<string>;
   optimisticClosedTradeSnapshotsRef: RefObject<Map<string, ClosedTradeSnapshot>>;
@@ -138,6 +140,7 @@ export const useTradingChartTradeOverlayRenderer = ({
   isChartSurfaceLight,
   isDisposedRef,
   isLivePriceSafeForCandles,
+  lastRenderedCandlesRef,
   lastActiveTradeOverlaySignatureRef,
   lastHistoryTradeOverlaySignatureRef,
   optimisticClosedTradeSnapshotsRef,
@@ -284,6 +287,9 @@ export const useTradingChartTradeOverlayRenderer = ({
       });
     };
 
+    let historyCache: {
+      rows: unknown[]; activeKeys: string; candleWindow: string; snapshots: ClosedTradeSnapshot[];
+    } | undefined;
     const renderTradeOverlay = (options: boolean | { forceActive?: boolean; forceHistory?: boolean } = false) => {
       if (isDisposedRef.current || !seriesRef.current || !overlayRef.current) return;
       const forceActive = typeof options === 'boolean' ? options : Boolean(options.forceActive);
@@ -371,12 +377,18 @@ export const useTradingChartTradeOverlayRenderer = ({
       const activeTradeKeys = filterActiveTradeKeysForHistory(rawActiveTradeKeys, closeSuppressedTradeKeys);
       const mapHistoryTimestamp = (value: unknown): number =>
         mapTradeTimestampToChartTime(value) ?? normalizeUnixSeconds(value) ?? 0;
-      const closedHistorySnapshots = buildClosedTradeHistorySnapshots({
-        rows: appTrades as unknown as TradeOverlayHistoryRow[],
-        symbol: normalizedChartSymbol,
-        mapTimestamp: mapHistoryTimestamp,
-        activeTradeKeys,
-      });
+      const activeKeys = Array.from(activeTradeKeys).sort().join('|');
+      const candleWindow = `${candlesRef.current.length}:${candlesRef.current[0]?.time}:${candlesRef.current.at(-1)?.time}`;
+      if (!historyCache || historyCache.rows !== appTrades
+        || historyCache.activeKeys !== activeKeys || historyCache.candleWindow !== candleWindow) {
+        historyCache = { rows: appTrades, activeKeys, candleWindow, snapshots: buildClosedTradeHistorySnapshots({
+          rows: appTrades as unknown as TradeOverlayHistoryRow[],
+          symbol: normalizedChartSymbol,
+          mapTimestamp: mapHistoryTimestamp,
+          activeTradeKeys,
+        }) };
+      }
+      const closedHistorySnapshots = historyCache.snapshots;
       const realClosedTradeKeys = new Set(closedHistorySnapshots.map((trade) => trade.key));
       let didClearClosedHistoryTradeLevels = false;
       realClosedTradeKeys.forEach((key) => {
@@ -579,6 +591,9 @@ export const useTradingChartTradeOverlayRenderer = ({
       }
 
       const closedTrades = new Map<string, ClosedTradeSnapshot>();
+      const historyTimeRange = getTradeHistoryTimeRange(
+        lastRenderedCandlesRef.current, chartRef.current?.timeScale().getVisibleLogicalRange() ?? null,
+      );
       const registerClosedTrade = (trade: ClosedTradeSnapshot) => {
         if (trade.entryPrice > 0 && trade.exitPrice > 0 && trade.entryTime > 0 && trade.exitTime > 0) {
           closedTrades.set(trade.key, trade);
@@ -633,6 +648,10 @@ export const useTradingChartTradeOverlayRenderer = ({
         });
       }
 
+      // Reconcile the complete account history before selecting DOM membership.
+      // Panning never removes records or changes optimistic close reconciliation.
+      const visibleClosedTrades = Array.from(closedTrades.values())
+        .filter(trade => isTradeHistoryInTimeRange(trade, historyTimeRange));
       const sortedActiveSnapshots = Array.from(renderActiveSnapshots.values())
         .sort((a, b) => a.key.localeCompare(b.key));
       const activeSignature = showTradeLevels
@@ -652,7 +671,7 @@ export const useTradingChartTradeOverlayRenderer = ({
         }).join('|')
         : '';
       const closedSignature = showAnyTradeHistoryOverlay
-        ? Array.from(closedTrades.values())
+        ? visibleClosedTrades
           .sort((a, b) => a.key.localeCompare(b.key))
           .map((trade) => [
             trade.key,
@@ -844,7 +863,7 @@ export const useTradingChartTradeOverlayRenderer = ({
         lastHistoryTradeOverlaySignatureRef.current = nextHistorySignature;
 
         if (showAnyTradeHistoryOverlay) {
-          closedTrades.forEach((trade) => {
+          visibleClosedTrades.forEach((trade) => {
             const exitSide = getTradeHistoryExecutionSide(trade.side, 'CLOSE');
             if (showTradeHistoryLine) {
               createTradeHistoryLine(
