@@ -110,11 +110,15 @@ export const buildChartTheme = (
   colors: ChartColorPalette,
   showGrid: boolean,
   useReferenceLightSurface = false,
+  gridLineStyle: ChartProperties['gridLineStyle'] = 'dashed',
+  gridType: ChartProperties['gridType'] = 'square',
+  colorScheme?: ChartProperties['colorScheme'],
 ): TradingViewChartTheme => {
   const candleUp = colors.bullCandle || colors.barUp || '#089981';
   const candleDown = colors.bearCandle || colors.barDown || '#f23645';
   const barUp = colors.barUp || candleUp;
   const barDown = colors.barDown || candleDown;
+  const areaUp = colorScheme === 'Green and White' ? barUp : candleUp;
   const line = colors.lineChart || '#2962ff';
   const rawGrid = colors.grid || 'rgba(120, 144, 156, 0.28)';
   const backgroundLuminance = getColorLuminance(colors.background) ?? 0;
@@ -123,6 +127,9 @@ export const buildChartTheme = (
     background: colors.background || '#0e0e12',
     grid: rawGrid,
     showGrid,
+    lineStyle: gridLineStyle,
+    gridType,
+    colorScheme,
     preserveConfiguredColor: useReferenceLightSurface,
   });
 
@@ -149,16 +156,16 @@ export const buildChartTheme = (
     line,
     areaTop: colorWithAlpha(line, 0.22, 'rgba(41, 98, 255, 0.22)'),
     areaBottom: colorWithAlpha(line, 0, 'rgba(41, 98, 255, 0)'),
-    areaUpLine: candleUp,
-    areaUpTop: colorWithAlpha(candleUp, 0.28, 'rgba(8, 153, 129, 0.28)'),
-    areaUpBottom: colorWithAlpha(candleUp, 0, 'rgba(8, 153, 129, 0)'),
+    areaUpLine: areaUp,
+    areaUpTop: colorWithAlpha(areaUp, 0.28, 'rgba(8, 153, 129, 0.28)'),
+    areaUpBottom: colorWithAlpha(areaUp, 0, 'rgba(8, 153, 129, 0)'),
     areaDownLine: candleDown,
     areaDownTop: colorWithAlpha(candleDown, 0.28, 'rgba(242, 54, 69, 0.28)'),
     areaDownBottom: colorWithAlpha(candleDown, 0, 'rgba(242, 54, 69, 0)'),
-    volumeUp: useReferenceLightSurface
+    volumeUp: colorScheme === 'Green and White' ? colors.volumes : useReferenceLightSurface
       ? barUp
       : colorWithAlpha(barUp, 0.28, 'rgba(8, 153, 129, 0.28)'),
-    volumeDown: useReferenceLightSurface
+    volumeDown: colorScheme === 'Green and White' ? colors.volumes : useReferenceLightSurface
       ? barDown
       : colorWithAlpha(barDown, 0.28, 'rgba(242, 54, 69, 0.28)'),
   };

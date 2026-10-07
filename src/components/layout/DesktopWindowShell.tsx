@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { Copy, Minus, Square, X } from 'lucide-react';
 import { BROKER_CHROME_EVENT, getBrokerChrome, type BrokerChromeState } from '../../services/brokerPresentation';
 import './DesktopWindowShell.css';
+import { BrokerLogoImage } from '../BrokerLogoImage';
 
 interface DesktopWindowShellProps {
   children: ReactNode;
@@ -17,8 +18,6 @@ const readDesktopTitle = (): string => {
   const title = typeof document === 'undefined' ? '' : document.title.trim();
   return !title || title === 'RTX 5 Web Terminal' ? DEFAULT_DESKTOP_TITLE : title;
 };
-
-const readDesktopBrokerLogo = (): string => getBrokerChrome().logoUrl || DEFAULT_TITLEBAR_ICON;
 
 // Preserve the UTC clock previously displayed in the desktop status bar.
 function DesktopTitleClock() {
@@ -37,7 +36,7 @@ function ElectronDesktopWindowShell({
     const tr = useUiTranslation();
   const [isMaximized, setIsMaximized] = useState(false);
   const [title, setTitle] = useState(readDesktopTitle);
-  const [brokerLogo, setBrokerLogo] = useState(readDesktopBrokerLogo);
+  const [brokerChrome, setBrokerChrome] = useState(getBrokerChrome);
 
   useLayoutEffect(() => {
     document.documentElement.classList.add('rtx-desktop-shell-active');
@@ -68,7 +67,7 @@ function ElectronDesktopWindowShell({
   useEffect(() => {
     const refreshTitle = () => setTitle(readDesktopTitle());
     refreshTitle();
-    setBrokerLogo(readDesktopBrokerLogo());
+    setBrokerChrome(getBrokerChrome());
 
     const observer = new MutationObserver(refreshTitle);
     const titleElement = document.querySelector('title');
@@ -80,7 +79,7 @@ function ElectronDesktopWindowShell({
 
     const onBrokerChrome = (event: Event) => {
       const detail = (event as CustomEvent<BrokerChromeState>).detail;
-      setBrokerLogo(detail?.logoUrl || DEFAULT_TITLEBAR_ICON);
+      setBrokerChrome(detail || getBrokerChrome());
       refreshTitle();
     };
     window.addEventListener(BROKER_CHROME_EVENT, onBrokerChrome);
@@ -95,16 +94,11 @@ function ElectronDesktopWindowShell({
     <div className="rtx-desktop-shell" data-rtx-desktop-shell="true">
       <header className="rtx-desktop-titlebar" aria-label={tr("Application title bar")}>
         <div className="rtx-desktop-titlebar__drag-region">
-          <img
+          <BrokerLogoImage
             className="rtx-desktop-titlebar__icon"
-            src={brokerLogo}
+            broker={{ broker_id: brokerChrome.brokerId, logo_url: brokerChrome.logoUrl }}
+            appFallbackUrl={DEFAULT_TITLEBAR_ICON}
             alt=""
-            aria-hidden="true"
-            draggable={false}
-            onError={event => {
-              if (event.currentTarget.src.endsWith(DEFAULT_TITLEBAR_ICON.replace('./', ''))) return;
-              event.currentTarget.src = DEFAULT_TITLEBAR_ICON;
-            }}
           />
           <DesktopTitleClock />
           <span className="rtx-desktop-titlebar__title" title={tr(title)}>{tr(title)}</span>

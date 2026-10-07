@@ -2,8 +2,12 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
 export type ChartTypeEnum = "Bar" | "Candlesticks" | "Line" | "Area";
+export type ChartGridLineStyle = "dashed" | "solid";
+// The legacy persisted id "mt5" identifies the user-facing Fine grid.
+export type ChartGridType = "square" | "scale" | "mt5";
 export type ColorScheme =
   | "Green on Black"
+  | "Green and White"
   | "Blue on Black"
   | "Black on White"
   | "Yellow on Black"
@@ -41,6 +45,8 @@ export interface ChartProperties {
   showLastPriceLine: boolean;
   showPeriodSeparators: boolean;
   showGrid: boolean;
+  gridType: ChartGridType;
+  gridLineStyle: ChartGridLineStyle;
   showTickVolumes: boolean;
   showRealVolumes: boolean;
   showObjectDescriptions: boolean;
@@ -70,6 +76,70 @@ export interface ChartProperties {
   };
 }
 
+const greenSchemeColors: ChartProperties["colors"] = {
+  background: "#000000",
+  foreground: "#ffffff",
+  grid: "rgba(255,255,255,0.12)",
+  barUp: CHART_CANDLE_UP_COLOR,
+  barDown: CHART_CANDLE_DOWN_COLOR,
+  bullCandle: CHART_CANDLE_UP_COLOR,
+  bearCandle: CHART_CANDLE_DOWN_COLOR,
+  lineChart: CHART_PROFIT_COLOR,
+  volumes: "rgba(0, 200, 150, 0.32)",
+  bidPriceLine: "#778899",
+  askPriceLine: CHART_LOSS_COLOR,
+  lastPriceLine: CHART_PROFIT_COLOR,
+  stopLevels: CHART_LOSS_COLOR,
+};
+
+// Match the Market Watch Bid/Ask directional palette.
+const blueSchemeColors: ChartProperties["colors"] = {
+  ...greenSchemeColors,
+  barUp: CHART_BLUE_COLOR,
+  bullCandle: CHART_BLUE_COLOR,
+  lineChart: CHART_BLUE_COLOR,
+  volumes: "rgba(69, 151, 255, 0.32)",
+  barDown: BLUE_TEMPLATE_RED_COLOR,
+  bearCandle: BLUE_TEMPLATE_RED_COLOR,
+  askPriceLine: BLUE_TEMPLATE_RED_COLOR,
+  stopLevels: BLUE_TEMPLATE_RED_COLOR,
+  lastPriceLine: CHART_BLUE_COLOR,
+};
+
+// Used only to correct saved settings from the earlier misunderstood preset.
+const legacyGreenOnWhiteSchemeColors: ChartProperties["colors"] = {
+  background: "#ffffff",
+  foreground: "#000000",
+  grid: "#f1ecf2",
+  barUp: "#26a69a",
+  barDown: "#ef5350",
+  bullCandle: "#26a69a",
+  bearCandle: "#ef5350",
+  lineChart: "#56ba84",
+  volumes: "#26a69a",
+  bidPriceLine: "#26a69a",
+  askPriceLine: "#ef5350",
+  lastPriceLine: "#9cbaf0",
+  stopLevels: "#ef5350",
+};
+
+// The native reference has hollow black bulls, white bears, and lime outlines.
+const greenAndWhiteSchemeColors: ChartProperties["colors"] = {
+  background: "#000000",
+  foreground: "#ffffff",
+  grid: "#778899",
+  barUp: "#00ff00",
+  barDown: "#00ff00",
+  bullCandle: "#000000",
+  bearCandle: "#ffffff",
+  lineChart: "#00ff00",
+  volumes: "#32cd32",
+  bidPriceLine: "#778899",
+  askPriceLine: "#ff0000",
+  lastPriceLine: "#00c000",
+  stopLevels: "#ff0000",
+};
+
 export const defaultChartProperties: ChartProperties = {
   chartType: "Candlesticks",
   chartOnForeground: false,
@@ -88,6 +158,8 @@ export const defaultChartProperties: ChartProperties = {
   showLastPriceLine: false,
   showPeriodSeparators: true,
   showGrid: true,
+  gridType: "square",
+  gridLineStyle: "dashed",
   showTickVolumes: false,
   showRealVolumes: false,
   showObjectDescriptions: false,
@@ -98,28 +170,15 @@ export const defaultChartProperties: ChartProperties = {
   tradeHistoryLineOpacity: 70,
   tradeHistoryBoxOpacity: 40,
 
-  colorScheme: "Green on Black",
-  colors: {
-    background: "#000000",
-    foreground: "#ffffff",
-    grid: "rgba(255,255,255,0.12)",
-    barUp: CHART_CANDLE_UP_COLOR,
-    barDown: CHART_CANDLE_DOWN_COLOR,
-    bullCandle: CHART_CANDLE_UP_COLOR,
-    bearCandle: CHART_CANDLE_DOWN_COLOR,
-    lineChart: CHART_PROFIT_COLOR,
-    volumes: "rgba(0, 200, 150, 0.32)",
-    bidPriceLine: "#778899",
-    askPriceLine: CHART_LOSS_COLOR,
-    lastPriceLine: CHART_PROFIT_COLOR,
-    stopLevels: CHART_LOSS_COLOR,
-  },
+  colorScheme: "Blue on Black",
+  colors: { ...blueSchemeColors },
 };
 
 const VOLUME_BARS_DEFAULT_MIGRATION_VERSION = 1;
 const PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION = 1;
 const CHART_SHIFT_DEFAULT_MIGRATION_VERSION = 1;
 const OHLC_DEFAULT_MIGRATION_VERSION = 1;
+const BLUE_RED_DEFAULT_MIGRATION_VERSION = 1;
 
 export const clampChartOpacityPercent = (value: unknown, fallback: number): number => {
   const numeric = Number(value);
@@ -127,7 +186,8 @@ export const clampChartOpacityPercent = (value: unknown, fallback: number): numb
   return Math.max(0, Math.min(100, Math.round(numeric)));
 };
 
-type PersistedChartProperties = Partial<Omit<ChartProperties, "colors">> & {
+type PersistedChartProperties = Partial<Omit<ChartProperties, "colors" | "colorScheme">> & {
+  colorScheme?: ColorScheme | "Green on White";
   colors?: Partial<ChartProperties["colors"]>;
 };
 
@@ -178,7 +238,7 @@ const normalizeSchemeColors = (
       bearCandle: migrateCandleColor(colors.bearCandle, "down"),
       lineChart: migrateLegacyColor(colors.lineChart, LEGACY_CHART_PROFIT_COLOR, CHART_PROFIT_COLOR),
       volumes: colors.volumes === "rgba(34, 197, 94, 0.4)"
-        ? defaultChartProperties.colors.volumes
+        ? greenSchemeColors.volumes
         : colors.volumes,
       askPriceLine: migrateLegacyColor(colors.askPriceLine, LEGACY_CHART_LOSS_COLOR, CHART_LOSS_COLOR),
       lastPriceLine: colors.lastPriceLine.toUpperCase() === "#00C000"
@@ -192,9 +252,20 @@ const normalizeSchemeColors = (
 };
 
 export const normalizeChartProperties = (properties?: PersistedChartProperties | null): ChartProperties => {
+  const legacyWhitePreset = properties?.colorScheme === "Green on White";
+  const colorScheme: ColorScheme = properties?.colorScheme === "Green on White"
+    ? "Green and White" : properties?.colorScheme ?? defaultChartProperties.colorScheme;
+  const savedColors = legacyWhitePreset
+    ? Object.fromEntries(Object.entries(properties?.colors ?? {}).filter(([key, value]) => (
+      value?.toLowerCase() !== legacyGreenOnWhiteSchemeColors[key as keyof ChartProperties["colors"]]?.toLowerCase()
+    )))
+    : properties?.colors;
   const normalized: ChartProperties = {
     ...defaultChartProperties,
     ...(properties ?? {}),
+    colorScheme,
+    gridType: properties?.gridType === "scale" || properties?.gridType === "mt5" ? properties.gridType : "square",
+    gridLineStyle: properties?.gridLineStyle === "solid" ? "solid" : "dashed",
     showTradeHistoryBoxes: properties?.showTradeHistoryBoxes ?? defaultChartProperties.showTradeHistoryBoxes,
     showTradeHistoryArrows: properties?.showTradeHistoryArrows ?? defaultChartProperties.showTradeHistoryArrows,
     tradeHistoryLineOpacity: clampChartOpacityPercent(
@@ -206,8 +277,8 @@ export const normalizeChartProperties = (properties?: PersistedChartProperties |
       defaultChartProperties.tradeHistoryBoxOpacity,
     ),
     colors: {
-      ...defaultChartProperties.colors,
-      ...(properties?.colors ?? {}),
+      ...getPresetSchemeColors(colorScheme),
+      ...(savedColors ?? {}),
     },
   };
 
@@ -228,6 +299,17 @@ const normalizeSymbolProperties = (
       normalizeChartProperties(properties),
     ]),
   );
+};
+
+const migrateDefaultPalette = (properties: ChartProperties): ChartProperties => {
+  // Upgrade only the untouched former default. Customized palettes and other
+  // templates keep their saved colors; users can select Green again afterward.
+  const isPreviousDefault = properties.colorScheme === "Green on Black"
+    && (Object.keys(greenSchemeColors) as (keyof ChartProperties["colors"])[])
+      .every((key) => properties.colors[key].toLowerCase() === greenSchemeColors[key].toLowerCase());
+  return isPreviousDefault
+    ? { ...properties, colorScheme: "Blue on Black", colors: { ...blueSchemeColors } }
+    : properties;
 };
 
 const hideVolumeBars = (properties: ChartProperties): ChartProperties => ({
@@ -372,22 +454,15 @@ export const getPresetSchemeColors = (
   fallbackColors: ChartProperties["colors"] = defaultChartProperties.colors,
 ): ChartProperties["colors"] => {
   if (scheme === "Green on Black") {
-    return { ...defaultChartProperties.colors };
+    return { ...greenSchemeColors };
+  }
+
+  if (scheme === "Green and White") {
+    return { ...greenAndWhiteSchemeColors };
   }
 
   if (scheme === "Blue on Black") {
-    return {
-      ...defaultChartProperties.colors,
-      barUp: CHART_BLUE_COLOR,
-      bullCandle: CHART_BLUE_COLOR,
-      lineChart: CHART_BLUE_COLOR,
-      volumes: "rgba(69, 151, 255, 0.32)",
-      barDown: BLUE_TEMPLATE_RED_COLOR,
-      bearCandle: BLUE_TEMPLATE_RED_COLOR,
-      askPriceLine: BLUE_TEMPLATE_RED_COLOR,
-      stopLevels: BLUE_TEMPLATE_RED_COLOR,
-      lastPriceLine: CHART_BLUE_COLOR,
-    };
+    return { ...blueSchemeColors };
   }
 
   if (scheme === "Black on White") {
@@ -458,6 +533,16 @@ export const getEffectiveChartColors = (
       // line-chart and configured last-price colors need the light treatment.
       colors.lineChart = referenceColor(colors.lineChart);
       colors.lastPriceLine = referenceColor(colors.lastPriceLine);
+    } else {
+      // Use the same contrast-safe quote colors as Market Watch in light mode.
+      const quoteColor = (color: string): string => {
+        if (color.toLowerCase() === CHART_BLUE_COLOR) return "#1d4ed8";
+        if (color.toLowerCase() === BLUE_TEMPLATE_RED_COLOR) return "#b91c1c";
+        return color;
+      };
+      for (const key of ["barUp", "barDown", "bullCandle", "bearCandle", "lineChart", "askPriceLine", "lastPriceLine", "stopLevels"] as const) {
+        colors[key] = quoteColor(colors[key]);
+      }
     }
     return colors;
   }
@@ -500,6 +585,7 @@ interface ChartSettingsState {
   periodSeparatorsDefaultMigrationVersion: number;
   chartShiftDefaultMigrationVersion: number;
   ohlcDefaultMigrationVersion: number;
+  blueRedDefaultMigrationVersion: number;
 
   updateGlobalProperty: <K extends keyof ChartProperties>(
     key: K,
@@ -535,6 +621,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
       chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
       ohlcDefaultMigrationVersion: OHLC_DEFAULT_MIGRATION_VERSION,
+      blueRedDefaultMigrationVersion: BLUE_RED_DEFAULT_MIGRATION_VERSION,
 
       updateGlobalProperty: (key, value) => {
         set((state) => ({
@@ -643,6 +730,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
           chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
           ohlcDefaultMigrationVersion: OHLC_DEFAULT_MIGRATION_VERSION,
+          blueRedDefaultMigrationVersion: BLUE_RED_DEFAULT_MIGRATION_VERSION,
         });
       },
     }),
@@ -671,6 +759,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           periodMigrated.symbolProperties,
           persistedState?.ohlcDefaultMigrationVersion,
         );
+        const needsPaletteMigration = (persistedState?.blueRedDefaultMigrationVersion ?? 0) < BLUE_RED_DEFAULT_MIGRATION_VERSION;
 
         return {
           ...current,
@@ -680,6 +769,13 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           periodSeparatorsDefaultMigrationVersion: periodMigrated.periodSeparatorsDefaultMigrationVersion,
           ohlcDefaultMigrationVersion: ohlcMigrated.ohlcDefaultMigrationVersion,
           ...ohlcMigrated,
+          blueRedDefaultMigrationVersion: BLUE_RED_DEFAULT_MIGRATION_VERSION,
+          globalProperties: needsPaletteMigration
+            ? migrateDefaultPalette(ohlcMigrated.globalProperties)
+            : ohlcMigrated.globalProperties,
+          symbolProperties: needsPaletteMigration
+            ? Object.fromEntries(Object.entries(ohlcMigrated.symbolProperties).map(([symbol, properties]) => [symbol, migrateDefaultPalette(properties)]))
+            : ohlcMigrated.symbolProperties,
         };
       },
     },

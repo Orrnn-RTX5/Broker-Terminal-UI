@@ -21,7 +21,9 @@ interface ChartHostsContext {
 }
 
 const ChartHosts = createContext<ChartHostsContext | null>(null);
+const MultipleVisibleChartWindows = createContext(false);
 export const useHasStableChartHosts = (): boolean => useContext(ChartHosts) !== null;
+export const useHasMultipleVisibleChartWindows = (): boolean => useContext(MultipleVisibleChartWindows);
 
 /**
  * A chart's React parent and portal destination remain stable for its entire
@@ -87,7 +89,11 @@ export const StableChartHosts: React.FC<{
     }
   }, [layout, rootContainer]);
 
+  const multipleVisibleCharts = [...hosts.current.values()]
+    .filter(host => panels.has(host.id) && host.active && host.slot !== null).length > 1;
+
   return <ChartHosts.Provider value={context}>
+    <MultipleVisibleChartWindows.Provider value={multipleVisibleCharts}>
     {children}
     {/* Parked tabs stay connected but cannot own chart commands. */}
     <div ref={parking} hidden aria-hidden="true" data-stable-chart-parking="true" data-dock-minimized="true" />
@@ -95,6 +101,7 @@ export const StableChartHosts: React.FC<{
       const panel = panels.get(host.id);
       return panel ? createPortal(renderPanel?.(panel, host.active && !panel.minimized, host.floating), host.element, host.id) : null;
     })}
+    </MultipleVisibleChartWindows.Provider>
   </ChartHosts.Provider>;
 };
 

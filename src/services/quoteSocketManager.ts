@@ -123,9 +123,8 @@ class QuoteSocketManager {
 
   constructor() {
     // Listen for session changes (token rotation, logout, broker change).
-    // Every session transition retries the primary feed transport before any
-    // v2 fallback, because login/rotation may have supplied a fresh feed
-    // credential for the newly selected broker.
+    // The anonymous feed has no account credential to renew. Keep a healthy,
+    // unchanged feed through login; private v2 sockets still reauthenticate.
     this.unsubSessionChange = onSessionChange((reason) => {
       if (
         reason === 'logout'
@@ -134,6 +133,12 @@ class QuoteSocketManager {
         || reason === 'login'
         || reason === 'account_change'
       ) {
+        if (reason !== 'broker_url_change'
+          && this.activeTransport === 'feed'
+          && this.ws?.readyState === WebSocket.OPEN
+          && this.wsUrl === buildBrokerWsFeedUri()) {
+          return;
+        }
         this.resetFeedFailure();
         this.reconnect();
       }

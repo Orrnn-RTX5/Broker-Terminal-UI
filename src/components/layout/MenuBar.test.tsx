@@ -3,10 +3,15 @@
 import '@testing-library/jest-dom';
 import { useDrawingSidebarStore } from '../../store/useDrawingSidebarStore';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
+import { useTerminalResolutionStore } from '../../store/useTerminalResolutionStore';
+import { TerminalViewport } from './TerminalViewport';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DockLayout } from '../../services/dockManager';
 import { activateActiveChartSource, registerActiveChartSource } from '../../services/activeChartSource';
+
+// Repeated jsdom accessibility queries run more slowly on Windows.
+const menuInteractionTimeoutMs = process.platform === 'win32' ? 30000 : 10000;
 
 vi.mock('react-i18next', async (importOriginal) => ({
     ...await importOriginal<typeof import('react-i18next')>(),
@@ -40,6 +45,7 @@ const openWebTraderMock = vi.hoisted(() => vi.fn().mockResolvedValue({
 }));
 const closeActiveChartMock = vi.hoisted(() => vi.fn(() => true));
 const arrangeChartsMock = vi.hoisted(() => vi.fn());
+const tileWindowsMock = vi.hoisted(() => vi.fn());
 const dockStoreFixture = vi.hoisted(() => ({
     layout: {
         version: 'menu-test',
@@ -58,7 +64,7 @@ vi.mock('../../services/webTrader', () => ({
 }));
 
 vi.mock('../../store/useDockLayoutStore', () => {
-    const getState = () => ({ ...dockStoreFixture, closeActiveChart: closeActiveChartMock, arrangeCharts: arrangeChartsMock });
+    const getState = () => ({ ...dockStoreFixture, closeActiveChart: closeActiveChartMock, arrangeCharts: arrangeChartsMock, tileWindows: tileWindowsMock });
     const useDockLayoutStore = (selector: (state: ReturnType<typeof getState>) => unknown) => selector(getState());
     useDockLayoutStore.getState = getState;
     return { useDockLayoutStore };
@@ -129,6 +135,7 @@ vi.mock('../LoginDialog', () => ({
 
 import { MenuBar } from './MenuBar';
 import { commandBus } from '../../services/commandBus';
+import { chartPropertiesFeature, chartObjectsFeature, indicatorNavigatorFeature, depthOfMarketFeature } from '../../startup/terminalFeatures';
 import { drawingManager } from '../../services/drawingManager';
 import {
     defaultChartProperties,
@@ -164,6 +171,7 @@ afterEach(() => {
     dockStoreFixture.resetToDefaultLayout.mockClear();
     useDrawingSidebarStore.setState({ visible: true });
     useTerminalBarsStore.setState({ statusBarVisible: true, chartsBarVisible: true, timeframesVisible: true });
+    useTerminalResolutionStore.getState().setResolution('1920x1080');
     delete window.electron;
     delete (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__;
     useChartSettingsStore.setState({
@@ -174,6 +182,25 @@ afterEach(() => {
         symbolProperties: {},
     });
     vi.restoreAllMocks();
+});
+
+describe('chart controls intent preload', () => {
+    it.each(['web', 'desktop'])('warms chart dialogs when the %s chart menu opens', surface => {
+        if (surface === 'desktop') installElectronBridge();
+        const spies = [chartPropertiesFeature, chartObjectsFeature, indicatorNavigatorFeature, depthOfMarketFeature]
+            .map(feature => vi.spyOn(feature, 'preload').mockResolvedValue(undefined as never));
+        render(<MenuBar />);
+        spies.forEach(spy => expect(spy).not.toHaveBeenCalled());
+        if (surface === 'desktop') {
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Charts' }));
+        } else {
+            fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+            spies.forEach(spy => expect(spy).not.toHaveBeenCalled());
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Chart settings' }));
+        }
+        spies.forEach(spy => expect(spy).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
 });
 
 describe('unavailable terminal services', () => {
@@ -212,7 +239,7 @@ describe('unavailable terminal services', () => {
         expect(options).toBeEnabled();
         fireEvent.click(options);
         expect(await screen.findByRole('dialog', { name: 'Options' })).toBeInTheDocument();
-    });
+    }, menuInteractionTimeoutMs);
 
     it('also locks duplicate service entries under desktop View and Help', () => {
         installElectronBridge();
@@ -305,7 +332,7 @@ describe('MenuBar toolbar visibility', () => {
 
         openToolbars('web');
         expect(screen.getByRole('menuitemcheckbox', { name: 'Line Studies' })).toHaveAttribute('aria-checked', 'true');
-    });
+    }, menuInteractionTimeoutMs);
 });
 
 describe('MenuBar hamburger launcher', () => {
@@ -549,7 +576,7 @@ describe('MenuBar hamburger launcher', () => {
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
 
-    it('shows genuine chart color templates and applies the choice only to the active chart', () => {
+    it.each(['Yellow on Black', 'Green and White'] as const)('shows genuine chart color templates and applies %s only to the active chart', (scheme) => {
         useChartSettingsStore.setState({
             globalProperties: {
                 ...defaultChartProperties,
@@ -566,11 +593,12 @@ describe('MenuBar hamburger launcher', () => {
         const colorTemplatesMenu = screen.getByRole('menu', { name: 'Color Templates menu' });
         expect(within(colorTemplatesMenu).getAllByRole('menuitemradio').map(item => item.textContent)).toEqual([
             'Green on Black',
+            'Green and White',
             'Blue on Black',
             'Black on White',
             'Yellow on Black',
         ]);
-        expect(within(colorTemplatesMenu).getByRole('menuitemradio', { name: 'Green on Black' }))
+        expect(within(colorTemplatesMenu).getByRole('menuitemradio', { name: 'Blue on Black' }))
             .toHaveAttribute('aria-checked', 'true');
         for (const unrelatedItem of [
             'Font Size',
@@ -591,13 +619,13 @@ describe('MenuBar hamburger launcher', () => {
             expect(within(colorTemplatesMenu).queryByText(unrelatedItem)).not.toBeInTheDocument();
         }
 
-        fireEvent.click(within(colorTemplatesMenu).getByRole('menuitemradio', { name: 'Yellow on Black' }));
+        fireEvent.click(within(colorTemplatesMenu).getByRole('menuitemradio', { name: scheme }));
 
         const chartSettings = useChartSettingsStore.getState();
         expect(chartSettings.globalProperties).toBe(initialGlobalProperties);
         expect(chartSettings.symbolProperties.XAUUSD).toMatchObject({
-            colorScheme: 'Yellow on Black',
-            colors: getPresetSchemeColors('Yellow on Black'),
+            colorScheme: scheme,
+            colors: getPresetSchemeColors(scheme),
         });
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
@@ -993,7 +1021,7 @@ describe('MenuBar Electron desktop menubar', () => {
             const item = screen.getByRole('menuitem', { name: label });
             expect(item).toHaveTextContent(hint);
             fireEvent.click(item);
-            expect(arrangeChartsMock).toHaveBeenLastCalledWith(mode);
+            expect(mode === 'cascade' ? arrangeChartsMock : tileWindowsMock).toHaveBeenLastCalledWith(mode);
             expect(screen.queryByRole('menu', { name: 'Window menu' })).not.toBeInTheDocument();
         }
     });
@@ -1030,19 +1058,37 @@ describe('MenuBar Electron desktop menubar', () => {
         expect(dockStoreFixture.arrangeIcons).toHaveBeenCalledOnce();
     });
 
-    it('dispatches Reset Windows through the shared reset action and locks operating-system resolution', () => {
+    it('applies terminal resolution through the desktop menu and keeps Reset Windows working', () => {
         installElectronBridge();
-        render(<MenuBar />);
+        render(<TerminalViewport role="main"><MenuBar /></TerminalViewport>);
         fireEvent.click(screen.getByRole('menuitem', { name: 'Window' }));
         const resolution = screen.getByRole('menuitem', { name: 'menu.window.resolution' });
-        expect(resolution).toBeDisabled();
-        expect(resolution).toHaveAttribute('aria-description', 'Display resolution is controlled by your operating system');
-        expect(resolution).not.toHaveAttribute('aria-haspopup');
+        expect(resolution).toBeEnabled();
+        expect(resolution).toHaveAttribute('aria-haspopup', 'menu');
         fireEvent.click(resolution);
-        expect(screen.queryByText('2160p')).not.toBeInTheDocument();
+        expect(screen.getByRole('menuitemradio', { name: '1920 × 1080' })).toHaveAttribute('aria-checked', 'true');
+        fireEvent.click(screen.getByRole('menuitemradio', { name: '1280 × 720' }));
+        expect(screen.getByRole('main')).toHaveStyle({ width: '1280px', height: '720px' });
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Window' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'menu.window.resolution' }));
+        expect(screen.getByRole('menuitemradio', { name: '1280 × 720' })).toHaveAttribute('aria-checked', 'true');
+        fireEvent.click(screen.getByRole('menuitemradio', { name: 'Auto (fit window)' }));
+        expect(screen.getByRole('main')).toHaveStyle({ width: '100%', height: '100%' });
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Window' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Reset Windows' }));
         expect(dockStoreFixture.resetWindows).toHaveBeenCalledOnce();
         expect(dockStoreFixture.resetToDefaultLayout).not.toHaveBeenCalled();
+    });
+
+    it('applies terminal resolution through the web Window layout menu', () => {
+        render(<TerminalViewport role="main"><MenuBar /></TerminalViewport>);
+        fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Window layout' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'menu.window.resolution' }));
+        fireEvent.click(screen.getByRole('menuitemradio', { name: '1280 × 720' }));
+        expect(screen.getByRole('main')).toHaveStyle({ width: '1280px', height: '720px' });
+        expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
 
     it('allows opening Profiles and switching workspace profiles from the desktop File menu', () => {

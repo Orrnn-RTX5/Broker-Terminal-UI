@@ -4,7 +4,7 @@ import { useDrawingSidebarStore } from '../store/useDrawingSidebarStore';
 import { CHART_PATTERN_GROUPS, CHART_PATTERN_TOOLS } from './chartPatternToolCatalog';
 import { ChartPatternToolIcon } from './ChartPatternToolIcon';
 import { ChevronRight } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from '../components/ui/Icon';
 import { ToggleSwitch } from '../components/ui/ToggleSwitch';
@@ -197,7 +197,12 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     && activeTargetContextId !== currentChartSourceId
     ? null
     : activeTool;
-  const selectedCursor = getCursorTool(cursorMode) ?? CURSOR_TOOLS[0];
+  const selectedCursor = (getCursorTool(cursorMode) ?? getCursorTool('arrow'))!;
+  useEffect(() => {
+    if (cursorMode === 'eraser' || cursorMode === 'demonstration') {
+      useChartCursorStore.getState().setMode('arrow');
+    }
+  }, [cursorMode]);
   const selectedTool = getTrendLineTool(lastToolId) ?? TREND_LINE_TOOLS[0];
   const SelectedIcon = DRAWING_TOOL_ICONS[selectedTool.id];
   const activeTrendToolId = visibleActiveTool
@@ -703,21 +708,19 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
           {CURSOR_TOOLS.map((tool) => {
             const selected = cursorMode === tool.id;
             return (
-              <Fragment key={tool.id}>
-                {tool.id === 'eraser' ? <div className="web-drawing-tools-menu__separator" /> : null}
-                <button
-                  className="web-drawing-tools-menu__item"
-                  data-selected={selected ? 'true' : 'false'}
-                  data-tool-id={tool.id}
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  type="button"
-                  onClick={() => selectCursorMode(tool.id)}
-                >
-                  <CursorToolIcon id={tool.id} />
-                  <span className="web-drawing-tools-menu__label">{tr(tool.label)}</span>
-                </button>
-              </Fragment>
+              <button
+                key={tool.id}
+                className="web-drawing-tools-menu__item"
+                data-selected={selected ? 'true' : 'false'}
+                data-tool-id={tool.id}
+                role="menuitemradio"
+                aria-checked={selected}
+                type="button"
+                onClick={() => selectCursorMode(tool.id)}
+              >
+                <CursorToolIcon id={tool.id} />
+                <span className="web-drawing-tools-menu__label">{tr(tool.label)}</span>
+              </button>
             );
           })}
           <div className="web-drawing-tools-menu__separator" />

@@ -2080,5 +2080,11 @@
   "Total commission": "Total commission",
   "Total swap": "Total swap",
   "Total fee": "Total fee",
-  "Total gross profit": "Total gross profit"
+  "Total gross profit": "Total gross profit",
+  "Chart context menu": "Контекстное меню графика",
+  "Fine grid": "Мелкая сетка",
+  "Grid type": "Тип сетки",
+  "Square": "Квадратная",
+  "Price/time aligned": "По цене и времени",
+  "Grid line style": "Стиль линий сетки"
 }

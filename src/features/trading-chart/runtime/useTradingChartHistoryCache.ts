@@ -25,7 +25,7 @@ import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import {
   getTimeframePeriodSeconds,
 } from '../../../utils/timeframeBoundary';
-import type { LogicalRangeLike } from '../../../utils/candleHistory';
+import { mergeHistoricalCandlesWithBufferedLive, type LogicalRangeLike } from '../../../utils/candleHistory';
 import type { PeriodSeparator } from '../../../utils/periodSeparators';
 import type { Candle, ChartType, Timeframe } from '../../../types/chart';
 import {
@@ -60,6 +60,7 @@ interface UseTradingChartHistoryCacheOptions {
   lastRenderedCandlesRef: RefObject<Candle[]>;
   lastStoreCandleSecRef: RefObject<number>;
   lastVisibleLogicalRangeRef: RefObject<LogicalRangeLike | null>;
+  liveCandleMutationGenerationByTimeRef: RefObject<Map<number, number>>;
   periodSeparatorsRef: RefObject<PeriodSeparator[]>;
   prevPriceRef: RefObject<number | null>;
   protectedDisplayedHistoryRef: RefObject<Candle[]>;
@@ -73,6 +74,7 @@ interface UseTradingChartHistoryCacheOptions {
   scheduleBoundaryTimerRef: RefObject<(() => void) | null>;
   setApiError: Dispatch<SetStateAction<string | null>>;
   symbol: string;
+  timeframe: Timeframe;
   updateChartData: (
     candles: Candle[],
     chartType?: ChartType,
@@ -97,6 +99,7 @@ export function useTradingChartHistoryCache({
   lastRenderedCandlesRef,
   lastStoreCandleSecRef,
   lastVisibleLogicalRangeRef,
+  liveCandleMutationGenerationByTimeRef,
   periodSeparatorsRef,
   prevPriceRef,
   protectedDisplayedHistoryRef,
@@ -106,6 +109,7 @@ export function useTradingChartHistoryCache({
   scheduleBoundaryTimerRef,
   setApiError,
   symbol,
+  timeframe,
   updateChartData,
   updateLegendDOM,
 }: UseTradingChartHistoryCacheOptions) {
@@ -172,8 +176,23 @@ export function useTradingChartHistoryCache({
     }
     if (!cached || cached.candles.length === 0) return false;
 
-    const candles = getValidSortedCandles(cached.candles as Candle[]);
+    let candles = getValidSortedCandles(cached.candles as Candle[]);
     if (candles.length === 0) return false;
+
+    // A startup quote may already own the current bucket when an older cache
+    // baseline becomes available. Join that exact selection's proven live
+    // candle before the first setData instead of rewinding its model/close.
+    const forming = currentCandleRef.current;
+    if (
+      activeTf === timeframe
+      && forming
+      && forming.closed !== true
+      && (liveCandleMutationGenerationByTimeRef.current.get(forming.time) ?? 0) > 0
+      && forming.time >= candles[candles.length - 1].time
+      && isPriceCompatibleWithReference(forming.close, createRenderedPriceReference(candles))
+    ) {
+      candles = mergeHistoricalCandlesWithBufferedLive(candles, [forming]);
+    }
 
     cancelQueuedChartRender();
     currentCandleRef.current = null;
@@ -240,6 +259,7 @@ export function useTradingChartHistoryCache({
     lastRenderedCandlesRef,
     lastStoreCandleSecRef,
     lastVisibleLogicalRangeRef,
+    liveCandleMutationGenerationByTimeRef,
     periodSeparatorsRef,
     prevPriceRef,
     protectedDisplayedHistoryRef,
@@ -249,6 +269,7 @@ export function useTradingChartHistoryCache({
     scheduleBoundaryTimerRef,
     setApiError,
     symbol,
+    timeframe,
     updateChartData,
     updateLegendDOM,
   ]);

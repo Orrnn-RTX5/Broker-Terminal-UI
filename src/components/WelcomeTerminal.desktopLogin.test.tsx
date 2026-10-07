@@ -2,12 +2,14 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { webcrypto } from 'node:crypto';
 import { IDBFactory } from 'fake-indexeddb';
 import { loadSavedLogin, saveLogin } from '../services/savedLogins';
+import * as savedLogins from '../services/savedLogins';
+import { markAuthenticationAccepted } from '../startup/performanceBudget';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyBrokerChrome } from '../services/brokerPresentation';
 import { LAST_AUTHENTICATED_BROKER_ID_KEY, WelcomeTerminal, type BrokerServerItem } from './WelcomeTerminal';
 
 const runtime = vi.hoisted(() => ({
-  login: vi.fn(), persist: vi.fn(), setAuthenticated: vi.fn(),
+  login: vi.fn(), persist: vi.fn(), setAuthenticated: vi.fn(), loadStore: vi.fn(),
 }));
 const runtimeWindow = window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
 vi.mock('../hooks/useUiTranslation', () => ({ useUiTranslation: () => (text: string) => text }));
@@ -17,7 +19,7 @@ vi.mock('../config/api', async (importOriginal) => ({
 }));
 vi.mock('../startup/loginRuntime', () => ({
   preloadLoginTransportRuntime: async () => ({ authV2Api: { login: runtime.login }, persistBrokerSessionDiscovery: runtime.persist }),
-  loadAuthenticatedLoginStoreRuntime: async () => ({ useAppStore: { getState: () => ({ setAuthenticated: runtime.setAuthenticated }) } }),
+  loadAuthenticatedLoginStoreRuntime: () => runtime.loadStore(),
 }));
 vi.mock('../startup/performanceBudget', () => ({
   beginLoginPerformanceMeasurement: vi.fn(), markAuthenticationAccepted: vi.fn(),
@@ -74,9 +76,11 @@ beforeEach(() => {
   });
   vi.stubGlobal('fetch', fetchMock);
   runtime.login.mockReset().mockResolvedValue({ access_token: 'test-token', account_login: 12345 });
+  runtime.loadStore.mockReset().mockResolvedValue({ useAppStore: { getState: () => ({ setAuthenticated: runtime.setAuthenticated }) } });
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
@@ -85,6 +89,77 @@ afterEach(() => {
 });
 
 describe('desktop broker directory login', () => {
+  it('preserves the logo returned by authentication instead of the empty directory logo', async () => {
+    runtime.login.mockResolvedValue({
+      access_token: 'test-token', account_login: 200003, logo_url: '/branding/active-broker.svg',
+    });
+    const onLogin = vi.fn();
+    render(<WelcomeTerminal onLogin={onLogin} />);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    fillCredentials();
+    submit();
+    await waitFor(() => expect(onLogin).toHaveBeenCalledOnce());
+    expect(runtime.persist).toHaveBeenCalledWith(
+      expect.objectContaining({ logo_url: '/branding/active-broker.svg' }),
+      { notifySessionChange: false },
+    );
+  });
+
+  it.each([
+    { name: 'Account Owner', expectedName: 'Account Owner' },
+    { name: undefined, expectedName: '' },
+  ])('commits the owner name without the email for name $name', async ({ name, expectedName }) => {
+    runtime.login.mockResolvedValue({
+      access_token: 'test-token', account_login: 200003,
+      user: { username: 'owner@example.test', name },
+    });
+    const onLogin = vi.fn();
+    render(<WelcomeTerminal onLogin={onLogin} />);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    fillCredentials();
+    submit();
+    await waitFor(() => expect(onLogin).toHaveBeenCalledOnce());
+    expect(runtime.setAuthenticated).toHaveBeenCalledWith(
+      true, '200003', 'test-token', undefined, undefined,
+      expect.objectContaining({ login: 200003, name: expectedName }),
+    );
+  });
+
+  it('loads the accepted account store concurrently with secure password storage', async () => {
+    vi.stubGlobal('indexedDB', new IDBFactory());
+    vi.stubGlobal('crypto', webcrypto);
+    const authentication = pending<{ access_token: string; account_login: number }>();
+    const passwordPersistence = pending<void>();
+    const storeRuntime = pending<unknown>();
+    runtime.login.mockReturnValue(authentication.promise);
+    runtime.loadStore.mockReturnValue(storeRuntime.promise);
+    const save = vi.spyOn(savedLogins, 'saveLogin').mockReturnValue(passwordPersistence.promise);
+    const onLogin = vi.fn();
+    render(<WelcomeTerminal onLogin={onLogin} />);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    fillCredentials();
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Save password' }));
+    submit();
+    await waitFor(() => expect(runtime.login).toHaveBeenCalledOnce());
+    expect(runtime.loadStore).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+
+    await act(async () => authentication.resolve({ access_token: 'accepted-token', account_login: 12345 }));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(runtime.loadStore).toHaveBeenCalledOnce();
+    expect(markAuthenticationAccepted).toHaveBeenCalledOnce();
+    expect(runtime.persist).not.toHaveBeenCalled();
+    expect(onLogin).not.toHaveBeenCalled();
+
+    await act(async () => passwordPersistence.resolve(undefined));
+    expect(runtime.setAuthenticated).not.toHaveBeenCalled();
+    await act(async () => storeRuntime.resolve({ useAppStore: { getState: () => ({ setAuthenticated: runtime.setAuthenticated }) } }));
+    await waitFor(() => expect(onLogin).toHaveBeenCalledOnce());
+    expect(runtime.setAuthenticated).toHaveBeenCalledOnce();
+    expect(runtime.persist).toHaveBeenCalledWith(expect.objectContaining({ access_token: 'accepted-token' }), { notifySessionChange: false });
+  });
+
   it('restores a saved password on the welcome screen and forgets it when unchecked', async () => {
     vi.stubGlobal('indexedDB', new IDBFactory());
     vi.stubGlobal('crypto', webcrypto);
@@ -267,7 +342,7 @@ describe('desktop broker directory login', () => {
     expect(screen.getByRole('combobox')).toBeDisabled();
     expect(runtime.login).toHaveBeenCalledWith({ username: '12345', password: 'test-password', broker_id: gta.broker_id }, { baseUrl: `${gta.server_url}/api/v2`, skipDynamicUrl: true });
     await act(async () => login.resolve({ access_token: 'test-token', account_login: 12345, server_url: achiever.server_url }));
-    expect(runtime.persist).toHaveBeenCalledWith(expect.objectContaining({ broker_id: gta.broker_id, server_url: gta.server_url, backend_url: gta.server_url, market_api_url: gta.server_url, ws_url: `${gta.server_url!.replace('https:', 'wss:')}/ws/v2`, feed_url: `${gta.server_url!.replace('https:', 'wss:')}/ws/feed` }));
+    expect(runtime.persist).toHaveBeenCalledWith(expect.objectContaining({ broker_id: gta.broker_id, server_url: gta.server_url, backend_url: gta.server_url, market_api_url: gta.server_url, ws_url: `${gta.server_url!.replace('https:', 'wss:')}/ws/v2`, feed_url: `${gta.server_url!.replace('https:', 'wss:')}/ws/feed` }), { notifySessionChange: false });
     expect(onLogin).toHaveBeenCalledWith('12345', expect.objectContaining({ token: 'test-token' }));
   });
 

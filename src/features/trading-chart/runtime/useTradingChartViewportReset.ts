@@ -3,16 +3,19 @@ import type { MutableRefObject, RefObject } from 'react';
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 
 import type { Candle, Timeframe } from '../../../types/chart';
+import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import type { LogicalRangeLike } from '../../../utils/candleHistory';
 import {
   getTradingChartDefaultVisibleBars,
   getTradingChartInitialLogicalRange,
+  getTradingChartShiftRightOffset,
 } from '../../../utils/chartTimeFormat';
 import { useChartZoomStore } from '../../../store/useChartZoomStore';
 import { computeAdaptiveVisibleBars } from './chartRuntime';
 
 interface UseTradingChartViewportResetOptions {
   chartRef: MutableRefObject<IChartApi | null>;
+  chartSettingsRef: RefObject<ChartProperties>;
   containerRef: RefObject<HTMLDivElement | null>;
   contextId: string;
   isDisposedRef: MutableRefObject<boolean>;
@@ -24,6 +27,7 @@ interface UseTradingChartViewportResetOptions {
 
 export function useTradingChartViewportReset({
   chartRef,
+  chartSettingsRef,
   containerRef,
   contextId,
   isDisposedRef,
@@ -59,14 +63,18 @@ export function useTradingChartViewportReset({
     });
     if (!initialRange) return false;
 
+    // Logical indexes start at zero. Keep the last actual candle fully inside
+    // the plot, with extra space only when the user enables Chart Shift.
+    const rightOffset = getTradingChartShiftRightOffset(activeTimeframe, chartSettingsRef.current.chartShift);
+    const liveRange = { from: initialRange.from, to: totalBars - 1 + rightOffset };
     const timeScale = chart.timeScale();
-    timeScale.setVisibleLogicalRange(initialRange);
-    rememberVisibleLogicalRange(initialRange);
+    timeScale.setVisibleLogicalRange(liveRange);
+    rememberVisibleLogicalRange(liveRange);
 
     // Capture a fresh zoom baseline after the new range settles on the chart.
     useChartZoomStore.getState().clearContext(contextId);
     return true;
-  }, [containerRef, contextId, rememberVisibleLogicalRange]);
+  }, [chartSettingsRef, containerRef, contextId, rememberVisibleLogicalRange]);
 
   // Reset Layout restores the default candle zoom and scroll.
   useEffect(() => {

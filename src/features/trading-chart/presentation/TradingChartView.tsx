@@ -61,6 +61,8 @@ interface TradingChartViewProps {
   drawingRuntimeContextRef: RefObject<{ contextId: string; accountScope?: string; symbol: string; timeframe: Timeframe }>;
   handleContextMenu: (event: ReactMouseEvent) => void;
   handleCtxChartTypeChange: (type: ChartType) => void;
+  handleCtxGridTypeChange: (gridType: ChartProperties['gridType']) => void;
+  handleCtxGridLineStyleChange: (gridLineStyle: ChartProperties['gridLineStyle']) => void;
   handleCtxDeleteIndicators: () => void;
   handleCtxOpenDOM: () => void;
   handleCtxOpenNewOrder: () => void;
@@ -90,6 +92,7 @@ interface TradingChartViewProps {
   loadingMessageIdx: number;
   loadingMessages: string[];
   loadingPhase: LoadingPhase;
+  retainedPublicChartSurface: boolean;
   localChartType: ChartType;
   marketStatus: SymbolMarketStatusState;
   maxVolume?: number;
@@ -126,6 +129,7 @@ export const TradingChartView = (props: TradingChartViewProps) => {
     chartSettings, chartTheme, closeCtxMenu, containerRef, ctxAutoScroll, ctxChartShift,
     ctxMenu, ctxShowTradeHistory, ctxShowTradeHistoryLine, ctxShowTradeLevels,
     currentIndicators, drawingRuntimeContextRef, handleContextMenu, handleCtxChartTypeChange,
+    handleCtxGridTypeChange, handleCtxGridLineStyleChange,
     handleCtxDeleteIndicators, handleCtxOpenDOM, handleCtxOpenNewOrder, handleCtxOpenProperties,
     handleCtxRefresh, handleCtxSaveAsPicture, handleCtxTimeframeChange,
     handleCtxToggleAutoScroll, handleCtxToggleChartShift, handleCtxToggleGrid,
@@ -133,7 +137,7 @@ export const TradingChartView = (props: TradingChartViewProps) => {
     handleCtxToggleTradeLevels, handleCtxToggleVolumes, handleCtxZoomIn, handleCtxZoomOut,
     handleLoadTemplate, handleOpenTemplateDialog, horizLineRef, initialLivePriceOverlayColors,
     isAdvancedUntitledLight, livePriceBadgeRef, livePriceCountdownRef, livePriceLineRef,
-    livePriceValueRef, loadingMessageIdx, loadingMessages, loadingPhase, localChartType,
+    livePriceValueRef, loadingMessageIdx, loadingMessages, loadingPhase, retainedPublicChartSurface, localChartType,
     marketStatus, maxVolume, minVolume, ohlcCloseRef, ohlcHighRef, ohlcLowRef, ohlcOpenRef,
     overlayRef, panelId, priceLabelRef, setTemplateDialogOpen,
     setTextInputOverlay, setTextInputValue, showOneClick, symbol, templateDialogMode,
@@ -261,15 +265,18 @@ return (
       {/* API Error banner — suppressed, errors only logged to console */}
 
       {/* Loading — phased status: connecting → receiving → fades out on ready */}
-      {loadingPhase !== 'hidden' && (
+      {loadingPhase !== 'hidden' && !retainedPublicChartSurface && (
         <div
-          className={`absolute inset-0 flex flex-col items-center justify-center bg-[#0a0a0f]/95 z-20 pointer-events-none transition-opacity duration-150 ${loadingPhase === 'ready' ? 'opacity-0' : 'opacity-100'}`}
+          data-rtx-chart-loading={loadingPhase}
+          role="status"
+          style={{ backgroundColor: chartTheme.background, color: chartTheme.text }}
+          className={`absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none transition-opacity duration-150 ${loadingPhase === 'ready' ? 'opacity-0' : 'opacity-100'}`}
         >
           <div className="flex items-end gap-1 mb-5 opacity-30" aria-hidden="true">
             {Array.from({ length: 14 }).map((_, i) => (
               <div
                 key={i}
-                className="w-2 bg-white/40 rounded-sm animate-pulse"
+                className="w-2 bg-current rounded-sm animate-pulse"
                 style={{
                   height: `${22 + ((i * 17) % 56)}px`,
                   animationDelay: `${i * 80}ms`,
@@ -277,8 +284,8 @@ return (
               />
             ))}
           </div>
-          <div className="flex items-center gap-3 text-white/90">
-            <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
             <div
               key={loadingMessageIdx}
               className="text-sm tracking-wide transition-opacity duration-300"
@@ -286,6 +293,17 @@ return (
               {loadingPhase === 'ready' ? tr("Ready") : (loadingMessages[loadingMessageIdx] ?? loadingMessages[0])}
             </div>
           </div>
+        </div>
+      )}
+      {retainedPublicChartSurface && loadingPhase !== 'hidden' && (
+        <div
+          role="status"
+          data-rtx-chart-loading={loadingPhase}
+          className="absolute bottom-10 left-3 z-20 flex items-center gap-2 rounded px-2 py-1 text-xs pointer-events-none"
+          style={{ backgroundColor: chartTheme.background, color: chartTheme.text }}
+        >
+          <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+          {tr('Loading…')}
         </div>
       )}
 
@@ -345,8 +363,8 @@ return (
           {chartSettings.showOHLC && (
             <>
               <span>O: <span ref={ohlcOpenRef} style={{ color: chartTheme.text }}>0.00000</span></span>
-              <span>H: <span ref={ohlcHighRef} style={{ color: chartTheme.candleUp }}>0.00000</span></span>
-              <span>L: <span ref={ohlcLowRef} style={{ color: chartTheme.candleDown }}>0.00000</span></span>
+              <span>H: <span ref={ohlcHighRef} style={{ color: '#22c55e' }}>0.00000</span></span>
+              <span>L: <span ref={ohlcLowRef} style={{ color: '#ef4444' }}>0.00000</span></span>
               <span>C: <span ref={ohlcCloseRef} style={{ color: chartTheme.text }}>0.00000</span></span>
             </>
           )}
@@ -516,6 +534,8 @@ return (
         currentTimeframe={activeTimeframe}
         oneClickTrading={showOneClick}
         showGrid={chartSettings.showGrid}
+        gridType={chartSettings.gridType}
+        gridLineStyle={chartSettings.gridLineStyle}
         showVolumes={chartSettings.showTickVolumes || chartSettings.showRealVolumes}
         autoScroll={ctxAutoScroll}
         chartShift={ctxChartShift}
@@ -527,6 +547,8 @@ return (
         onChangeTimeframe={handleCtxTimeframeChange}
         onToggleOneClickTrading={toggleOneClickTrading}
         onToggleGrid={handleCtxToggleGrid}
+        onChangeGridType={handleCtxGridTypeChange}
+        onChangeGridLineStyle={handleCtxGridLineStyleChange}
         onToggleVolumes={handleCtxToggleVolumes}
         onToggleAutoScroll={handleCtxToggleAutoScroll}
         onToggleChartShift={handleCtxToggleChartShift}
@@ -562,6 +584,8 @@ return (
           chartType: localChartType,
           timeframe: timeframe,
           showGrid: chartSettings.showGrid,
+          gridType: chartSettings.gridType,
+          gridLineStyle: chartSettings.gridLineStyle,
           showVolumes: chartSettings.showTickVolumes || chartSettings.showRealVolumes,
           indicators: currentIndicators,
           drawingTools: [],

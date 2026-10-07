@@ -57,7 +57,7 @@ const TAB_LABELS = [
     'Journal',
 ];
 
-describe('Toolbox tab-bar close control', () => {
+describe('Toolbox header close control', () => {
     beforeEach(() => {
         localStorage.clear();
         toolboxMocks.refresh.mockClear();
@@ -110,11 +110,12 @@ describe('Toolbox tab-bar close control', () => {
             if ((tab as HTMLButtonElement).disabled) continue;
             await act(async () => { fireEvent.click(tab); });
 
-            const closeButton = tabStrip.getByRole('button', { name: 'Close Toolbox' });
-            expect(closeButton.closest('.rtx-bottom-dock__tabs')).not.toBeNull();
+            const closeButton = screen.getByRole('button', { name: 'Close Toolbox' });
+            expect(closeButton.closest('.rtx-bottom-dock__header')).not.toBeNull();
+            expect(tabStrip.queryByRole('button', { name: 'Close Toolbox' })).toBeNull();
             expect(tabStrip.queryByRole('button', { name: 'Minimize Toolbox' })).toBeNull();
             expect(tabStrip.queryByRole('button', { name: 'Restore Toolbox' })).toBeNull();
-            expect(container.querySelector('.dock-panel__header')).toBeNull();
+            expect(container.querySelectorAll('.dock-panel__header')).toHaveLength(1);
 
             fireEvent.click(closeButton);
             sectionsClosed += 1;

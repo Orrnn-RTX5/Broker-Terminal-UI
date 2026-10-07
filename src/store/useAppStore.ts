@@ -4,6 +4,7 @@
  */
 import type { TerminalQuoteMetadata } from '../services/terminalQuoteFreshness';
 import { create } from 'zustand';
+import { pickAccountDisplayName } from '../utils/accountDisplayName';
 import { devtools, persist } from 'zustand/middleware';
 import { useSystemJournalStore } from './useSystemJournalStore';
 import { hasTradeHistoryPositionLevelChanges, rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
@@ -423,7 +424,7 @@ const sanitizeSavedAccount = (account: SavedAccount | (SavedAccount & { password
   // Never copy credentials or arbitrary fields from a legacy saved account.
   return {
     login,
-    name: typeof account.name === 'string' ? account.name : String(login),
+    name: pickAccountDisplayName(account.name),
     server,
     isLive: account.isLive === true,
     ...(typeof account.isFavorite === 'boolean' ? { isFavorite: account.isFavorite } : {}),
@@ -728,7 +729,7 @@ export const useAppStore = create<AppState>()(
             useSystemJournalStore.getState().addLog('System', `Login to RTX5 as account ${accountId}`);
           }
 
-          let sessionChangeReason: 'login' | 'account_change' | null = null;
+          let sessionChangeReason: 'login' | 'account_change' | 'token_rotation' | null = null;
           set((state) => {
             const nextAccountId = accountId || null;
             const authenticatedSessionChanged = isAuth && (
@@ -739,6 +740,8 @@ export const useAppStore = create<AppState>()(
             // broker URL and authentication boolean do not change.
             if (authenticatedSessionChanged) {
               sessionChangeReason = state.isAuthenticated ? 'account_change' : 'login';
+            } else if (isAuth && state.authToken !== (authToken || null)) {
+              sessionChangeReason = 'token_rotation';
             }
 
             return {

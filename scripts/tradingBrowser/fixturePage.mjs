@@ -25,6 +25,17 @@ export const buildServiceFixtureHtml = ({ gatewayHttpUrl, wsUrl }) => `
   #confirm { margin-top: 16px; padding: 12px; border: 1px solid #2c3a55; min-height: 2em; }
   #log { white-space: pre-wrap; font-size: 12px; opacity: 0.85; }
 </style>
+<script>
+// Configure the isolated web deployment before importing the actual services.
+window.__RTX_RUNTIME_CONFIG__ = ${JSON.stringify({
+  BACKEND_TARGET: 'web',
+  API_HOST: new URL(gatewayHttpUrl).origin,
+  API_HOST_EXT: new URL(gatewayHttpUrl).origin,
+  WS_HOST: new URL(wsUrl).origin,
+  BROKER_ID: 'trading-browser-synthetic',
+  DEFAULT_MT5_SERVER: 'Synthetic Transport Gateway',
+})};
+</script>
 </head>
 <body>
 <div class="banner">TRADING-BROWSER FIXTURE — NOT FULL UI. Exercises actual frontend
@@ -40,6 +51,7 @@ services (tradeSocket TradeWebSocketClient, tradingV2Api) via Vite transform. No
 <script type="module">
 import { TradeWebSocketClient, createTradeOrderUuid } from '/src/api/tradeSocket.ts';
 import { tradingV2Api } from '/src/api/trade.ts';
+import { commitBrokerAccountSessionScope, persistBrokerSessionDiscovery } from '/src/services/brokerSession.ts';
 
 const GATEWAY_HTTP_URL = ${JSON.stringify(gatewayHttpUrl)};
 const WS_URL = ${JSON.stringify(wsUrl)};
@@ -237,7 +249,14 @@ window.__tradingBrowser = {
   lastResult: null,
   setIdentity: (identity) => {
     sessionStorage.setItem('tb_identity', JSON.stringify(identity));
-    try { localStorage.setItem('auth_token', identity.token); } catch { /* noop */ }
+    const brokerId = window.__RTX_RUNTIME_CONFIG__.BROKER_ID;
+    persistBrokerSessionDiscovery({
+      broker_id: brokerId, backend_url: GATEWAY_HTTP_URL, server_url: GATEWAY_HTTP_URL,
+      ws_url: WS_URL, access_token: identity.token,
+    });
+    commitBrokerAccountSessionScope({
+      authenticated: true, accountId: identity.account_login, brokerId, serverUrl: GATEWAY_HTTP_URL,
+    });
   },
   setParams: (params = {}) => {
     if (params.symbol) sessionStorage.setItem('tb_symbol', params.symbol);

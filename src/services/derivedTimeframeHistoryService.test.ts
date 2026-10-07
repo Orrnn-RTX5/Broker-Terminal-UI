@@ -28,6 +28,12 @@ const candle = (
 });
 
 describe('derived timeframe history from M1', () => {
+  it('uses the explicit broker boundary offset for a snapshot aggregate', () => {
+    const start = utcSeconds(2026, 5, 1, 0, 2);
+    const candles = [candle(start, 100), candle(start + 60, 101), candle(start + 300, 102)];
+    expect(aggregateM1CandlesToTimeframe(candles, 'M5', 120).map(item => item.time))
+      .toEqual([start - 240, start + 60]);
+  });
   it('aggregates five M1 candles into one M5 candle', () => {
     const start = utcSeconds(2026, 5, 1, 0, 0);
     const m1Candles = [

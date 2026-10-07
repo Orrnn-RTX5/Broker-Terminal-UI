@@ -17,6 +17,7 @@ import type { ChartColorPalette } from './chartTheme';
 
 interface UseTradingChartLivePriceOverlayOptions {
   askPriceLineRef: MutableRefObject<IPriceLine | null>;
+  canPaintLivePrice: () => boolean;
   chartSettingsRef: MutableRefObject<ChartProperties>;
   chartType: ChartType;
   currentCandleRef: MutableRefObject<Candle | null>;
@@ -28,6 +29,7 @@ interface UseTradingChartLivePriceOverlayOptions {
 
 export function useTradingChartLivePriceOverlay({
   askPriceLineRef,
+  canPaintLivePrice,
   chartSettingsRef,
   chartType,
   currentCandleRef,
@@ -55,6 +57,13 @@ export function useTradingChartLivePriceOverlay({
     if (clearPrice) {
       livePriceRef.current = null;
       livePriceScaleWidthRef.current = null;
+      // These canvas lines outlive setData([]). Hide the old quote before the
+      // broker/account selection clears its candles or paints a new scale.
+      for (const lineRef of [askPriceLineRef, lastPriceLineRef]) {
+        try {
+          lineRef.current?.applyOptions({ lineVisible: false, axisLabelVisible: false });
+        } catch { lineRef.current = null; }
+      }
     }
     if (livePriceRepaintFrameRef.current !== null && typeof window !== 'undefined') {
       window.cancelAnimationFrame(livePriceRepaintFrameRef.current);
@@ -73,9 +82,10 @@ export function useTradingChartLivePriceOverlay({
       livePriceCountdownRef.current.textContent = '';
       livePriceCountdownRef.current.style.display = 'none';
     }
-  }, []);
+  }, [askPriceLineRef, lastPriceLineRef]);
 
   const syncSupplementalPriceLines = useCallback((askPrice: number, lastPrice: number) => {
+    if (!canPaintLivePrice()) return;
     const series = seriesRef.current;
     if (!series) return;
 
@@ -131,13 +141,17 @@ export function useTradingChartLivePriceOverlay({
       settings.colors.lastPriceLine,
       'LAST',
     );
-  }, [askPriceLineRef, chartSettingsRef, lastPriceLineRef, seriesRef]);
+  }, [askPriceLineRef, canPaintLivePrice, chartSettingsRef, lastPriceLineRef, seriesRef]);
 
   const getLivePriceDirectionalColor = useCallback((
     activeCandleTime?: number,
     nextClose?: number,
   ): string => {
     const colors = livePriceColorPaletteRef.current;
+    if (chartSettingsRef.current.colorScheme === 'Green and White') {
+      // Hollow black bodies are not the price-line color in this preset.
+      return colors.bidPriceLine;
+    }
     if (chartType === 'area') {
       const color = getLivePriceSeriesColor(colors, chartType, areaTrendDirectionRef.current ?? 'up');
       lastLivePriceDirectionalColorRef.current = color;
@@ -158,7 +172,7 @@ export function useTradingChartLivePriceOverlay({
     );
     lastLivePriceDirectionalColorRef.current = color;
     return color;
-  }, [chartType, currentCandleRef]);
+  }, [chartSettingsRef, chartType, currentCandleRef]);
 
   const applyLivePriceHorizontalGeometry = useCallback((measuredScaleWidth: number) => {
     const resolvedWidth = resolveLivePriceScaleWidth(
@@ -208,6 +222,7 @@ export function useTradingChartLivePriceOverlay({
   }, [applyLivePriceHorizontalGeometry, getLivePriceDirectionalColor, resolvedPriceDigitsRef]);
 
   const repaintLivePriceOverlayFromCurrentPrice = useCallback((activeCandle: Candle) => {
+    if (!canPaintLivePrice()) return;
     if (!chartSettingsRef.current.showBidPriceLine) {
       hideLivePriceOverlay(false);
       return;
@@ -225,6 +240,7 @@ export function useTradingChartLivePriceOverlay({
     const paint = () => {
       if (
         isDisposedRef.current
+        || !canPaintLivePrice()
         || !livePriceLineRef.current
         || !livePriceBadgeRef.current
         || !seriesRef.current
@@ -253,6 +269,7 @@ export function useTradingChartLivePriceOverlay({
       });
     }
   }, [
+    canPaintLivePrice,
     chartSettingsRef,
     hideLivePriceOverlay,
     isDisposedRef,

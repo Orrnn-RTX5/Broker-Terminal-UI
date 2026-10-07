@@ -6,7 +6,6 @@ import type {
   SetStateAction,
 } from 'react';
 
-import { SQUARE_CHART_GRID_CELL_SIZE_PX, type SquareChartGridPrimitive } from '../../../utils/squareChartGridPrimitive';
 import { activateActiveChartSource } from '../../../services/activeChartSource';
 import { captureFullPage } from '../../../services/screenshotService';
 import { commandBus } from '../../../services/commandBus';
@@ -108,10 +107,6 @@ interface UseTradingChartContextMenuControllerOptions {
   addLocalIndicator: (request: AddChartIndicatorRequest) => boolean;
   applyChartTypeInPlace: (type: ChartType) => boolean;
   chartSettingsRef: MutableRefObject<ChartProperties>;
-  chartTheme: {
-    gridHorizontal: string;
-    gridVertical: string;
-  };
   clearLocalIndicators: () => void;
   loadHistory: (symbol: string, timeframe: Timeframe) => Promise<void>;
   localIndicatorManager: IndicatorManager;
@@ -128,7 +123,6 @@ interface UseTradingChartContextMenuControllerOptions {
   setLocalChartType: Dispatch<SetStateAction<ChartType>>;
   setTemplateDialogMode: Dispatch<SetStateAction<'save' | 'load'>>;
   setTemplateDialogOpen: Dispatch<SetStateAction<boolean>>;
-  squareGridPrimitiveRef: MutableRefObject<SquareChartGridPrimitive | null>;
   symbol: string;
   timeframe: Timeframe;
 }
@@ -139,7 +133,6 @@ export function useTradingChartContextMenuController({
   addLocalIndicator,
   applyChartTypeInPlace,
   chartSettingsRef,
-  chartTheme,
   clearLocalIndicators,
   loadHistory,
   localIndicatorManager,
@@ -156,7 +149,6 @@ export function useTradingChartContextMenuController({
   setLocalChartType,
   setTemplateDialogMode,
   setTemplateDialogOpen,
-  squareGridPrimitiveRef,
   symbol,
   timeframe,
 }: UseTradingChartContextMenuControllerOptions) {
@@ -203,6 +195,19 @@ export function useTradingChartContextMenuController({
     const next = !chartSettingsRef.current.showGrid;
     useChartSettingsStore.getState().updateSymbolProperty(symbol, 'showGrid', next);
   }, [chartSettingsRef, symbol]);
+
+  const handleCtxGridTypeChange = useCallback((gridType: ChartProperties['gridType']) => {
+    const store = useChartSettingsStore.getState();
+    store.updateSymbolProperty(symbol, 'gridType', gridType);
+    if (gridType === 'mt5') store.updateSymbolProperty(symbol, 'gridLineStyle', 'dashed');
+    store.updateSymbolProperty(symbol, 'showGrid', true);
+  }, [symbol]);
+
+  const handleCtxGridLineStyleChange = useCallback((gridLineStyle: ChartProperties['gridLineStyle']) => {
+    const store = useChartSettingsStore.getState();
+    store.updateSymbolProperty(symbol, 'gridLineStyle', gridLineStyle);
+    store.updateSymbolProperty(symbol, 'showGrid', true);
+  }, [symbol]);
 
   const handleCtxToggleVolumes = useCallback(() => {
     const store = useChartSettingsStore.getState();
@@ -296,6 +301,9 @@ export function useTradingChartContextMenuController({
 
     const settingsStore = useChartSettingsStore.getState();
     settingsStore.updateSymbolProperty(symbol, 'showGrid', template.showGrid);
+    settingsStore.updateSymbolProperty(symbol, 'gridType', template.gridType === 'scale' || template.gridType === 'mt5' ? template.gridType : 'square');
+    const gridLineStyle = template.gridLineStyle === 'solid' ? 'solid' : 'dashed';
+    settingsStore.updateSymbolProperty(symbol, 'gridLineStyle', gridLineStyle);
     settingsStore.updateSymbolProperty(symbol, 'showTickVolumes', template.showVolumes);
     settingsStore.updateSymbolProperty(symbol, 'showRealVolumes', false);
 
@@ -311,26 +319,18 @@ export function useTradingChartContextMenuController({
     refreshCurrentIndicators();
     persistCurrentIndicators();
 
-    squareGridPrimitiveRef.current?.applyOptions({
-      visible: template.showGrid,
-      cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,
-      verticalColor: chartTheme.gridVertical,
-      horizontalColor: chartTheme.gridHorizontal,
-    });
+    // The chart settings effect switches both grid renderers together.
     console.log('[TradingChart] Loading template:', template);
     setTemplateDialogOpen(false);
   }, [
     activeChartSourceId,
     addLocalIndicator,
-    chartTheme.gridHorizontal,
-    chartTheme.gridVertical,
     localIndicatorManager,
     panelId,
     persistCurrentIndicators,
     refreshCurrentIndicators,
     setLocalChartType,
     setTemplateDialogOpen,
-    squareGridPrimitiveRef,
     symbol,
   ]);
 
@@ -366,6 +366,8 @@ export function useTradingChartContextMenuController({
     closeCtxMenu,
     handleContextMenu,
     handleCtxChartTypeChange,
+    handleCtxGridTypeChange,
+    handleCtxGridLineStyleChange,
     handleCtxDeleteIndicators: clearLocalIndicators,
     handleCtxOpenDOM,
     handleCtxOpenNewOrder,

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { chartPrinter } from '../../services/chartPrinter';
 import { commandBus } from '../../services/commandBus';
-import { defaultChartProperties, useChartSettingsStore } from '../../store/useChartSettingsStore';
+import { defaultChartProperties, getPresetSchemeColors, useChartSettingsStore } from '../../store/useChartSettingsStore';
 import { ChartPropertiesDialog } from './ChartPropertiesDialog';
 import { ExitConfirmDialog } from './ExitConfirmDialog';
 import { PrintPreviewDialog } from './PrintPreviewDialog';
@@ -290,7 +290,7 @@ describe('dialog components', () => {
           ...defaultChartProperties,
           colorScheme: 'Green on Black',
           colors: {
-            ...defaultChartProperties.colors,
+            ...getPresetSchemeColors('Green on Black'),
             barUp: '#10B981',
             barDown: '#EF4444',
             bullCandle: '#10B981',
@@ -314,7 +314,8 @@ describe('dialog components', () => {
 
     const { globalProperties, symbolProperties } = useChartSettingsStore.getState();
 
-    expect(globalProperties.colorScheme).toBe('Green on Black');
+    expect(globalProperties.colorScheme).toBe('Blue on Black');
+    expect(globalProperties.colors).toEqual(getPresetSchemeColors('Blue on Black'));
     expect(symbolProperties.XAUUSD.colorScheme).toBe('Yellow on Black');
     expect(symbolProperties.XAUUSD.colors.barUp).toBe('#facc15');
     expect(symbolProperties.XAUUSD.colors.barDown).toBe('#facc15');

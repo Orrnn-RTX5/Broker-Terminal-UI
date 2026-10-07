@@ -423,43 +423,6 @@ html:root body .rtx-auth-dialog__title {
   padding: 14px 20px 16px;
 }
 
-.rtx-auth-dialog__footer--choice {
-  align-items: center;
-  background: transparent;
-  border-top: 1px solid var(--auth-border);
-  display: flex;
-  justify-content: center;
-  padding: 9px 20px 11px;
-}
-
-.rtx-auth-guest-link {
-  --rtx-type-size: 12px;
-  --rtx-type-weight: 500;
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: 5px;
-  color: var(--auth-muted);
-  cursor: pointer;
-  display: inline-flex;
-  font-family: inherit;
-  height: 30px;
-  justify-content: center;
-  letter-spacing: 0.005em;
-  padding: 0 10px;
-  transition: color 120ms ease, background-color 120ms ease;
-}
-
-html:root body .rtx-auth-dialog .rtx-auth-guest-link {
-  --rtx-type-size: 12px;
-  --rtx-type-weight: 500;
-}
-
-.rtx-auth-guest-link:hover {
-  background: var(--auth-hover);
-  color: var(--auth-text);
-}
-
 /* ── Broker Strip (Demo Form) ───────────────────────────────────────────── */
 
 .rtx-auth-broker {
@@ -750,8 +713,7 @@ html:root body .rtx-auth-dialog .rtx-auth-button {
     padding-right: 18px;
   }
 
-  .rtx-auth-dialog__footer,
-  .rtx-auth-dialog__footer--choice {
+  .rtx-auth-dialog__footer {
     padding-left: 18px;
     padding-right: 18px;
   }
@@ -760,9 +722,5 @@ html:root body .rtx-auth-dialog .rtx-auth-button {
 @media (max-width: 400px) {
   .rtx-auth-action {
     padding: 9px 10px;
-  }
-
-  .rtx-auth-dialog__footer--choice {
-    justify-content: center;
   }
 }

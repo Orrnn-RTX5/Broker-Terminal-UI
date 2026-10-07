@@ -21,6 +21,7 @@
 
   /* === Trading Colors (semantic — keep exactly) === */
   --color-profit:        #4597ff;
+  --color-quote-up:      #4597ff;
   --color-profit-dim:    #4597ff40;
   --color-profit-dimmer: #4597ff20;
   --color-loss:          #ff4d4f;
@@ -172,6 +173,7 @@
   --border-tertiary: #808088;
 
   --color-profit: #1d4ed8;
+  --color-quote-up: #1d4ed8;
   --color-profit-dim: #1d4ed830;
   --color-profit-dimmer: #1d4ed815;
   --color-loss: #dc2626;

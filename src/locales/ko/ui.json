@@ -2080,5 +2080,11 @@
   "Total commission": "Total commission",
   "Total swap": "Total swap",
   "Total fee": "Total fee",
-  "Total gross profit": "Total gross profit"
+  "Total gross profit": "Total gross profit",
+  "Chart context menu": "차트 컨텍스트 메뉴",
+  "Fine grid": "촘촘한 격자",
+  "Grid type": "격자 유형",
+  "Square": "정사각형",
+  "Price/time aligned": "가격/시간에 맞춤",
+  "Grid line style": "격자선 스타일"
 }

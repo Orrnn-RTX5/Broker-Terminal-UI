@@ -53,6 +53,18 @@ describe('useAppStore authenticated login commit', () => {
     ]);
   });
 
+  it('removes legacy email labels on reload and accepts the later owner name', async () => {
+    localStorage.setItem(SAVED_ACCOUNTS_STORAGE_KEY, JSON.stringify([
+      { login: 200003, name: 'owner@example.test', server: 'Broker A', isLive: true },
+    ]));
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().savedAccounts[0].name).toBe('');
+    useAppStore.getState().addSavedAccount({
+      login: 200003, name: 'Account Owner', server: 'Broker A', isLive: true,
+    });
+    expect(useAppStore.getState().savedAccounts[0].name).toBe('Account Owner');
+  });
+
   it('upserts the same login without duplicating the Navigator account', () => {
     const store = useAppStore.getState();
     store.addSavedAccount({ login: 200001, name: 'Old', server: 'TEST', isLive: true });
@@ -68,6 +80,25 @@ describe('useAppStore authenticated login commit', () => {
       login: 200001,
       name: 'Updated',
     });
+  });
+
+  it('rotates a changed token for the same account once without resetting account data', () => {
+    useAppStore.getState().setAuthenticated(true, '200001', 'old-token');
+    const positions = useAppStore.getState().positions;
+    const transitions: string[] = [];
+    const unsubscribe = onSessionChange(reason => {
+      transitions.push(reason);
+      expect(useAppStore.getState().authToken).toBe('new-token');
+      expect(getCommittedBrokerAccountSessionScope().accountId).toBe('200001');
+    });
+    try {
+      useAppStore.getState().setAuthenticated(true, '200001', 'new-token');
+      useAppStore.getState().setAuthenticated(true, '200001', 'new-token');
+      expect(transitions).toEqual(['token_rotation']);
+      expect(useAppStore.getState().positions).toBe(positions);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it('restores favorite accounts from storage after a fresh session without storing credentials', async () => {

@@ -6,10 +6,12 @@ import type { TradingChartVisibleRuntime } from '../../../hooks/useTradingChartV
 import {
   candleAggregationService,
   getTimeframeSeconds,
+  omitPartialLeadingM1Aggregate,
   type Timeframe as AggTimeframe,
 } from '../../../services/candleAggregationService';
 import type { CandleCacheSource } from '../../../services/candleCache';
 import { chartDataService } from '../../../services/chartDataService';
+import { aggregateM1CandlesToTimeframe } from '../../../services/derivedTimeframeHistoryService';
 import {
   canDropPreloadedCandlesForLiveQuoteMismatch,
   createRenderedPriceReference,
@@ -42,6 +44,7 @@ import type { PeriodSeparator } from '../../../utils/periodSeparators';
 import { getRawQuoteSides } from '../../../utils/spreadMarkup';
 import { resolveFormingCandleLiveClose } from '../../../utils/liveCandleQuote';
 import type { SynchronizedMarketClockAnchor } from '../../../utils/synchronizedMarketClock';
+import { getTradingChartShiftRightOffset } from '../../../utils/chartTimeFormat';
 import {
   alignTimeframeBoundarySeconds,
   getTimeframePeriodSeconds,
@@ -63,6 +66,7 @@ import {
 } from '../../../components/TradingChart.helpers';
 import {
   LIVE_CHART_UPDATE_INTERVAL_MS,
+  getStartupSnapshotCandleCount,
   shouldBuildVolumeData,
   shouldScrollToRealtime,
 } from './chartRuntime';
@@ -74,6 +78,7 @@ import {
 } from '../presentation/tradeOverlayPresentation';
 
 interface UseTradingChartLiveCandleRuntimeOptions {
+  discardRetainedPublicChartSurface: () => void;
   activeTradeSnapshotsRef: RefObject<Map<string, ActiveTradeSnapshot>>;
   applyAreaTrendColors: (latestClose?: number) => void;
   authToken: string | null;
@@ -156,7 +161,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     activeTradeSnapshotsRef, applyAreaTrendColors, authToken, autoScrollEnabledRef,
     brokerAccountSessionScope, brokerTimeOffsetSecRef, cancelQueuedChartRender, candlesRef,
     chartRef, chartSelectionPresentationKey, chartSelectionPresentationRef, chartSettingsRef,
-    chartThemeRef, clearPeriodSeparators, currentCandleRef, drawingRenderFrameRef,
+    chartThemeRef, clearPeriodSeparators, currentCandleRef, discardRetainedPublicChartSurface, drawingRenderFrameRef,
     drawingRenderSettledFrameRef, drawingRuntimeContextRef, firstRenderedCandleTimeRef,
     flushPostInteractionWork, getSynchronizedChartMarketNowMs, hasDisplayedHistoryRef,
     hideLivePriceOverlay, incompatibleQuoteCountRef, initialHistoryLoadPendingRef, isActive,
@@ -190,6 +195,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     let pendingLiveChartPaint = false;
     let pendingLiveChartRequiresFullRender = false;
     let pendingLiveShouldScrollToRealtime = false;
+    let pendingSupplementalPriceLines: { ask: number; last: number; time: number } | null = null;
     // FIX: Explicit backend finals seal only the matching displayed timeframe.
     // A single M1 timestamp must not freeze the containing M5/H1 candle after a
     // timeframe switch, while switching back to M1 still retains its seal.
@@ -284,6 +290,18 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
 
       const series = seriesRef.current;
       if (!series) return;
+      const rightOffset = getTradingChartShiftRightOffset(
+        prevTimeframeRef.current || timeframe,
+        chartSettingsRef.current.chartShift,
+      );
+      // Decide before appending: adding a bar changes the scroll position even
+      // when the user was following the last candle immediately beforehand.
+      const followRealtime = isNewCandle && shouldScrollToRealtime(
+        chartRef.current,
+        autoScrollEnabledRef.current,
+        chartSettingsRef.current.chartAutoScroll,
+        rightOffset,
+      );
       if (isNewCandle) {
         console.log(`[Push] 🆕 NEW candle → time=${new Date((c.time as number) * 1000).toISOString()}, O=${c.open} H=${c.high} L=${c.low} C=${c.close}`);
       }
@@ -314,13 +332,12 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
           refreshMarketGapSeriesForCandle(c);
         }
         if (
-          isNewCandle &&
+          followRealtime &&
           chartRef.current &&
-          !isDisposedRef.current &&
-          shouldScrollToRealtime(chartRef.current, autoScrollEnabledRef.current, chartSettingsRef.current.chartAutoScroll)
+          !isDisposedRef.current
         ) {
           try {
-            chartRef.current.timeScale().scrollToRealTime();
+            chartRef.current.timeScale().scrollToPosition(rightOffset, false);
           } catch { /* chart may be rebuilding */ }
         }
       } catch (e) {
@@ -365,10 +382,14 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
           chartRef.current,
           autoScrollEnabledRef.current,
           chartSettingsRef.current.chartAutoScroll,
+          getTradingChartShiftRightOffset(prevTimeframeRef.current || timeframe, chartSettingsRef.current.chartShift),
         )
       ) {
         try {
-          chartRef.current.timeScale().scrollToRealTime();
+          chartRef.current.timeScale().scrollToPosition(
+            getTradingChartShiftRightOffset(prevTimeframeRef.current || timeframe, chartSettingsRef.current.chartShift),
+            false,
+          );
         } catch { /* chart may be rebuilding */ }
       }
     };
@@ -452,6 +473,19 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       // Hidden tab instances release this entire runtime effect instead.
       if (liveEffectClosed || isDisposedRef.current || isRebuildingRef.current || liveMarketDataFrozenRef.current) return;
 
+      // A quote received during login cannot draw account price lines over the
+      // public guest canvas. Resume once its owned baseline commits, even if
+      // no newer quote has arrived; recheck against that new candle scale.
+      if (pendingSupplementalPriceLines && canPaintLiveChart(true)) {
+        const pending = pendingSupplementalPriceLines;
+        pendingSupplementalPriceLines = null;
+        if ((!currentCandleRef.current || pending.time >= currentCandleRef.current.time)
+          && validateRenderedCandlesAgainstLivePrice(pending.last, prevTimeframeRef.current || timeframe)
+          && isLivePriceSafeForCandles(pending.last)) {
+          syncSupplementalPriceLines(pending.ask, pending.last);
+        }
+      }
+
       if (pendingLiveChartPaint && currentCandleRef.current && canPaintLiveChart()) {
         flushPostInteractionWork();
       }
@@ -487,7 +521,6 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       const candleQuote = getRawQuoteSides(tick);
       const price = getChartPriceFromQuote(candleQuote);
       if (price == null || !tick || !candleQuote) return;
-      syncSupplementalPriceLines(Number(tick.ask ?? tick.bid), price);
       const rawTickTimestamp = Number(tick.sourceTimestamp ?? tick.timestamp);
       if (!Number.isFinite(rawTickTimestamp) || rawTickTimestamp <= 0) return;
 
@@ -543,6 +576,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
           leftVisibleTimeRef.current = null;
           lastVisibleLogicalRangeRef.current = null;
           lastStoreCandleSecRef.current = 0;
+          discardRetainedPublicChartSurface();
           try { seriesRef.current?.setData([]); } catch { /* chart may be rebuilding */ }
           try { volumeRef.current?.setData([]); } catch { /* chart may be rebuilding */ }
           hideLivePriceOverlay();
@@ -572,6 +606,12 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
         // FIX: Never retimestamp a stale broker event into the active bucket;
         // doing so mutates current OHLC with an old-session/late-stream value.
         return;
+      }
+      if (canPaintLiveChart(true)) {
+        pendingSupplementalPriceLines = null;
+        syncSupplementalPriceLines(Number(tick.ask ?? tick.bid), price);
+      } else {
+        pendingSupplementalPriceLines = { ask: Number(tick.ask ?? tick.bid), last: price, time: ts };
       }
 
       const aggregationUpdates = candleAggregationService.processTick({
@@ -876,37 +916,64 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
         const reconciledSnapshot = reconcileCandlesWithLiveQuote(rawSnapshot, 'stream snapshot');
         if (reconciledSnapshot.length === 0) return;
         const displayedStreamTimeframe = getDisplayedStreamTimeframe();
+        let displaySnapshot = reconciledSnapshot;
         if (displayedStreamTimeframe !== 'M1') {
-          // FIX: Respect explicit finality (or synchronized-period fallback)
-          // for every row. Blindly dropping the newest snapshot row omitted a
-          // valid final M1 and left derived M5/H1 values stale after reconnect.
-          reconciledSnapshot.forEach(reconcileServerM1Candle);
-          applyLatestM1DerivedServerCandle();
-          return;
+          const existingM1: Candle[] = candleAggregationService.getCandles(symbol, 'M1', true, false)
+            .map(candle => ({ ...candle, closed: candle.isComplete === true }));
+          const latestM1 = existingM1[existingM1.length - 1];
+          const m1Seed = mergeAuthoritativeCandleHistory(existingM1, reconciledSnapshot, {
+            formingLiveCandle: latestM1,
+            hasNewerLiveMutation: liveCandleMutationGenerationRef.current > 0,
+          });
+          // Rebuild once for the whole page, rather than rebuilding all higher
+          // timeframes for every M1 row. Explicit backend finality wins over the
+          // local clock when seeding the forming minute.
+          candleAggregationService.loadHistoricalCandles(
+            symbol, 'M1', m1Seed.map(candle => ({
+              ...candle, isComplete: candle.closed,
+            })), brokerTimeOffsetSecRef.current,
+          );
+          const derived = aggregateM1CandlesToTimeframe(
+            reconciledSnapshot, displayedStreamTimeframe, brokerTimeOffsetSecRef.current,
+          ).map(candle => ({ ...candle, volume: candle.volume ?? 0 }));
+          const activePeriodStart = getTimeframePeriodSeconds(
+            getSynchronizedChartMarketNowMs() / 1000,
+            displayedStreamTimeframe,
+            brokerTimeOffsetSecRef.current,
+          )?.startTime;
+          displaySnapshot = omitPartialLeadingM1Aggregate(
+            derived, reconciledSnapshot[0].time,
+            displayedStreamTimeframe, brokerTimeOffsetSecRef.current,
+          ).map(candle => resolveCandleFinalityFromActivePeriod(candle, activePeriodStart));
+          if (displaySnapshot.length === 0) return;
         }
         const activeFormingCandle = currentCandleRef.current;
         const protectedSnapshot = activeFormingCandle
-          ? reconciledSnapshot.map((snapshotCandle) => (
+          ? displaySnapshot.map((snapshotCandle) => (
             resolveCanonicalServerCandle(activeFormingCandle, snapshotCandle)
           ))
-          : reconciledSnapshot;
+          : displaySnapshot;
         // FIX: A snapshot may end on an explicitly final row. Seal it before
         // cached quote polling can mutate that timestamp again.
         protectedSnapshot.forEach((snapshotCandle) => {
           if (snapshotCandle.closed === true) {
-            markFinalizedCandleTime(finalizedCandleTimeByTimeframe, 'M1', snapshotCandle.time);
+            markFinalizedCandleTime(finalizedCandleTimeByTimeframe, displayedStreamTimeframe, snapshotCandle.time);
           }
         });
         // FIX: Seed the canonical M1 builder from the same protected snapshot
         // painted by the chart, so raw ticks and backend OHLC cannot diverge.
-        candleAggregationService.loadHistoricalCandles(
-          symbol,
-          'M1',
-          formatHistoryForOhlcv(protectedSnapshot),
-          brokerTimeOffsetSecRef.current,
-        );
-        const explicitFinal = [...protectedSnapshot].reverse().find(item => item.closed === true);
-        if (explicitFinal) reconcileServerM1Candle(explicitFinal);
+        if (displayedStreamTimeframe === 'M1') {
+          candleAggregationService.loadHistoricalCandles(
+            symbol,
+            'M1',
+            formatHistoryForOhlcv(protectedSnapshot).map((candle, index) => ({
+              ...candle, isComplete: protectedSnapshot[index].closed,
+            })),
+            brokerTimeOffsetSecRef.current,
+          );
+          const explicitFinal = [...protectedSnapshot].reverse().find(item => item.closed === true);
+          if (explicitFinal) reconcileServerM1Candle(explicitFinal);
+        }
         const latestClose = protectedSnapshot[protectedSnapshot.length - 1]?.close;
         if (latestClose && !validateRenderedCandlesAgainstLivePrice(latestClose, prevTimeframeRef.current || streamTimeframe)) return;
         // FIX: A stream snapshot is authoritative for its covered interval;
@@ -925,21 +992,22 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
           prevTimeframeRef.current || streamTimeframe,
           candlesRef.current,
           brokerTimeOffsetSecRef.current,
-          'backend',
+          displayedStreamTimeframe === 'M1' ? 'backend' : 'derived-m1',
         );
         updateChartData(candlesRef.current, undefined, {
           immediate: true,
           releaseLivePaintAfterRender: true,
-          finishLoadingAfterRender: !initialHistoryLoadPendingRef.current,
+          // A current-session first page can reveal the chart while REST
+          // fills older history. Keep sparse tick clusters behind the loader.
+          finishLoadingAfterRender: !initialHistoryLoadPendingRef.current
+            || protectedSnapshot.length >= getStartupSnapshotCandleCount(displayedStreamTimeframe),
           reason: 'stream-snapshot',
         });
         currentCandleRef.current = candlesRef.current[candlesRef.current.length - 1] ?? currentCandleRef.current;
         if (currentCandleRef.current) {
           repaintLivePriceOverlayOrDefer(currentCandleRef.current);
         }
-        // A snapshot can provide the fallback baseline, but it only dismisses
-        // the loader after the initial REST request has settled. Until then it
-        // remains painted behind the loading surface and history gets first reveal.
+        // Readiness is reported by the render owner after setData completes.
       },
       onCandle: (candle) => {
         if (liveEffectClosed) return;

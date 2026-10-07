@@ -464,6 +464,49 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
     manager.destroy();
   });
 
+  it.each(['login', 'account_change', 'token_rotation', 'logout'] as const)(
+    'keeps an unchanged open anonymous feed through %s and delivers new ticks', (reason) => {
+      brokerSessionMock.feedUri = 'wss://broker.example/ws/feed?broker_id=test-broker';
+      const manager = new QuoteSocketManager();
+      manager.setDemand('chart', ['BTCUSD']);
+      const socket = FakeWebSocket.instances[0];
+      socket.open();
+      brokerSessionMock.sessionListener?.(reason);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'tick', symbol: 'BTCUSD', bid: 76000, ask: 76001, time: 1_788_250_045,
+      }) });
+      expect(enqueueLiveTick).toHaveBeenCalledWith('BTCUSD', expect.objectContaining({ bid: 76000, ask: 76001 }));
+      manager.destroy();
+    },
+  );
+
+  it('replaces the feed when login changes its broker URL and ignores the old socket', () => {
+    brokerSessionMock.feedUri = 'wss://broker.example/ws/feed?broker_id=old-broker';
+    const manager = new QuoteSocketManager();
+    manager.setDemand('chart', ['BTCUSD']);
+    const oldSocket = FakeWebSocket.instances[0];
+    oldSocket.open();
+    brokerSessionMock.feedUri = 'wss://broker.example/ws/feed?broker_id=new-broker';
+    brokerSessionMock.sessionListener?.('login');
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(oldSocket.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(FakeWebSocket.instances[1].url).toBe(brokerSessionMock.feedUri);
+    oldSocket.onmessage?.({ data: JSON.stringify({ type: 'tick', symbol: 'BTCUSD', bid: 1, ask: 2 }) });
+    expect(enqueueLiveTick).not.toHaveBeenCalled();
+    manager.destroy();
+  });
+
+  it('retries a feed handshake still pending at login', () => {
+    brokerSessionMock.feedUri = 'wss://broker.example/ws/feed';
+    const manager = new QuoteSocketManager();
+    manager.setDemand('chart', ['BTCUSD']);
+    brokerSessionMock.sessionListener?.('login');
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    manager.destroy();
+  });
+
   it('ignores stale close events from a replaced socket', () => {
     vi.useFakeTimers();
     const manager = new QuoteSocketManager();

@@ -122,8 +122,14 @@ describe('desktop trading authentication', () => {
     );
     expect(mocks.persist).toHaveBeenLastCalledWith(expect.objectContaining({
       broker_id: 'achiever', server_url: 'https://achiever.test', access_token: 'desktop-test-token',
-    }));
-    expect(mocks.setAuthenticated).toHaveBeenCalledWith(true, '200001', 'desktop-test-token', undefined, undefined);
+    }), { notifySessionChange: false });
+    expect(mocks.setAuthenticated).toHaveBeenCalledExactlyOnceWith(
+      true, '200001', 'desktop-test-token', undefined, undefined,
+      expect.objectContaining({ login: 200001, server: 'Achiever Financials', isLive: true }),
+    );
+    expect(mocks.setAuthTokens).not.toHaveBeenCalled();
+    expect(mocks.addSavedAccount).not.toHaveBeenCalled();
+    expect(mocks.setActiveAccount).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledOnce();
     expect(mocks.webPolicy).not.toHaveBeenCalled();
   });

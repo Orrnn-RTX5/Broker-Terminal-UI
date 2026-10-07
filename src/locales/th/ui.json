@@ -2080,5 +2080,11 @@
   "Total commission": "Total commission",
   "Total swap": "Total swap",
   "Total fee": "Total fee",
-  "Total gross profit": "Total gross profit"
+  "Total gross profit": "Total gross profit",
+  "Chart context menu": "เมนูบริบทของกราฟ",
+  "Fine grid": "เส้นกริดละเอียด",
+  "Grid type": "ประเภทกริด",
+  "Square": "สี่เหลี่ยมจัตุรัส",
+  "Price/time aligned": "จัดแนวตามราคา/เวลา",
+  "Grid line style": "รูปแบบเส้นกริด"
 }

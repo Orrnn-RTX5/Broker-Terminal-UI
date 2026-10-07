@@ -194,15 +194,13 @@ html:root :is(
   --rtx-type-weight: var(--rtx-font-weight-heading);
 }
 
-/* Let the tab names scroll at narrow widths while keeping close actions in
-   the same visible row. The old dark strip prevented this group shrinking. */
+/* Let tab names and bulk actions shrink and scroll at narrow widths. */
 html:root .rtx-bottom-dock__tabs {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
 }
 
-/* Tab and bulk-action overflow stays in the first column. The close icon has
-   its own right-hand column, including when the Toolbox is docked narrowly. */
+/* The close icon lives in the top header, outside tab/action overflow. */
 html:root .rtx-bottom-dock__tab-content {
   min-width: 0;
 }

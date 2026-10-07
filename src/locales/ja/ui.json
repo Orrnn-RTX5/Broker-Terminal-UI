@@ -2080,5 +2080,11 @@
   "Total commission": "Total commission",
   "Total swap": "Total swap",
   "Total fee": "Total fee",
-  "Total gross profit": "Total gross profit"
+  "Total gross profit": "Total gross profit",
+  "Chart context menu": "チャートのコンテキストメニュー",
+  "Fine grid": "細かいグリッド",
+  "Grid type": "グリッドの種類",
+  "Square": "正方形",
+  "Price/time aligned": "価格・時間に合わせる",
+  "Grid line style": "グリッド線のスタイル"
 }

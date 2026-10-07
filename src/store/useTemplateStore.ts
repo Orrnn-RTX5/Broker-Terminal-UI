@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import type { ChartType, Timeframe } from '../types/chart';
+import type { ChartGridLineStyle, ChartGridType } from './useChartSettingsStore';
 
 // Template interface matching chart configuration
 export interface ChartTemplate {
@@ -15,6 +16,8 @@ export interface ChartTemplate {
   chartType: ChartType;
   timeframe: Timeframe;
   showGrid: boolean;
+  gridType?: ChartGridType;
+  gridLineStyle?: ChartGridLineStyle;
   showVolumes: boolean;
   indicators: Array<{
     id: string;

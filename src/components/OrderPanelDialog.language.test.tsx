@@ -73,7 +73,7 @@ describe('OrderPanelDialog interface language', () => {
       expect(buy).toBeEnabled();
       expect(sell).toBeEnabled();
       expect(document.documentElement).toHaveAttribute('lang', language);
-      expect(document.documentElement).toHaveAttribute('dir', language === 'ar' ? 'rtl' : 'ltr');
+      expect(document.documentElement).toHaveAttribute('dir', 'ltr');
       expect(onSubmitOrder).not.toHaveBeenCalled();
       expect(onClose).not.toHaveBeenCalled();
     }

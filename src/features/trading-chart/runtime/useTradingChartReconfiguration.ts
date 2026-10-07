@@ -143,11 +143,8 @@ useEffect(() => {
 
     if (seriesRef.current && !typeChanged) {
       if (!symbolChanged && !timeframeChanged) {
-        // Nothing changed
-        console.log(`[TradingChart] Series already exists for ${chartType}/${symbol}/${timeframe}, skipping`);
-        if (candlesRef.current.length > 0) {
-          updateChartData(candlesRef.current, chartType);
-        }
+        // The command handler may have already replaced and populated this
+        // series. Prop catch-up must not schedule another full history render.
         return;
       } else if (timeframeChanged && !symbolChanged) {
         // ONLY timeframe changed — clear old data and reload for new timeframe

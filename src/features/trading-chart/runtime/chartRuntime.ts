@@ -1,5 +1,7 @@
 import type { IChartApi } from 'lightweight-charts';
 import { getInitialHistoryCount as getChartInitialHistoryCount } from '../../../services/chartHistoryLoader';
+import { getDerivedM1InitialTargetCandleLimit } from '../../../services/derivedTimeframeHistoryService';
+import { getTradingChartDefaultVisibleBars } from '../../../utils/chartTimeFormat';
 import {
   applyBrokerTimeOffsetToCandles,
   mergeBackendCandlePage,
@@ -17,6 +19,11 @@ export const HISTORY_RENDER_INTERACTION_IDLE_MS = 180;
 export const HISTORY_VISIBLE_RANGE_SUPPRESSION_MS = 120;
 export const REALTIME_SCROLL_THRESHOLD_BARS = 2;
 export const LIVE_CHART_UPDATE_INTERVAL_MS = 50;
+
+/** Match the selected timeframe's first history page, including calendar frames. */
+export const getStartupSnapshotCandleCount = (timeframe: Timeframe): number => (
+  getDerivedM1InitialTargetCandleLimit(timeframe) || getTradingChartDefaultVisibleBars(timeframe)
+);
 
 interface BrowserIdleDeadline {
   didTimeout: boolean;
@@ -140,10 +147,11 @@ export const shouldScrollToRealtime = (
   chart: IChartApi | null,
   autoScrollEnabled: boolean,
   chartAutoScroll: boolean,
+  rightOffset = 0,
 ): boolean => {
   if (!chart || !autoScrollEnabled || !chartAutoScroll) return false;
   const scrollPosition = chart.timeScale().scrollPosition();
   return Number.isFinite(scrollPosition)
-    && scrollPosition >= 0
-    && scrollPosition <= REALTIME_SCROLL_THRESHOLD_BARS;
+    && Number.isFinite(rightOffset)
+    && Math.abs(scrollPosition - rightOffset) <= REALTIME_SCROLL_THRESHOLD_BARS;
 };

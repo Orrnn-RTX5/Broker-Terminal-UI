@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   CandleAggregationService,
   omitPartialLeadingM1Aggregate,
@@ -42,6 +42,17 @@ const m1 = (
 });
 
 describe('SymbolCandleBuilder synchronized timeframe contract', () => {
+  it.each([true, false])('preserves explicit snapshot finality isComplete=%s despite local clock skew', (isComplete) => {
+    const start = utcSeconds(2026, 8, 28, 10, 0);
+    const now = vi.spyOn(Date, 'now').mockReturnValue((start + (isComplete ? -3600 : 3600)) * 1000);
+    try {
+      const builder = new SymbolCandleBuilder('XAUUSD.r');
+      builder.loadHistoricalCandles('M1', [{ ...m1(start, 100, 10), isComplete }]);
+      expect(builder.getCandles('M1')).toEqual([expect.objectContaining({ time: start, isComplete })]);
+      expect(builder.getLastClosedCandle('M1')?.time ?? null).toBe(isComplete ? start : null);
+    } finally { now.mockRestore(); }
+  });
+
   it('keeps an aligned leading aggregate and drops only a genuinely partial one', () => {
     const start = utcSeconds(2026, 8, 28, 10, 0);
     const aggregates = [m1(start, 100), m1(start + 60 * 60, 101)];

@@ -2080,5 +2080,11 @@
   "Total commission": "Total commission",
   "Total swap": "Total swap",
   "Total fee": "Total fee",
-  "Total gross profit": "Total gross profit"
+  "Total gross profit": "Total gross profit",
+  "Chart context menu": "Chart-Kontextmenü",
+  "Fine grid": "Feines Raster",
+  "Grid type": "Rastertyp",
+  "Square": "Quadratisch",
+  "Price/time aligned": "An Preis/Zeit ausgerichtet",
+  "Grid line style": "Rasterlinien-Stil"
 }

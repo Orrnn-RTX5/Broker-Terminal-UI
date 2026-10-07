@@ -11,6 +11,7 @@ import type { IndicatorConfig } from '../services/indicatorManager';
 import { commandBus } from '../services/commandBus';
 import { useTemplates, useTemplateStore } from '../store/useTemplateStore';
 import type { ChartTemplate } from '../store/useTemplateStore';
+import type { ChartGridLineStyle, ChartGridType } from '../store/useChartSettingsStore';
 import {
     CandlestickChart, BarChart2, LineChart, AreaChart, ZoomIn, ZoomOut,
     Grid3X3, RefreshCw, Camera, Settings, ChevronRight,
@@ -30,6 +31,8 @@ interface ChartContextMenuProps {
     currentTimeframe: Timeframe;
     oneClickTrading?: boolean;
     showGrid?: boolean;
+    gridType?: ChartGridType;
+    gridLineStyle?: ChartGridLineStyle;
     showVolumes?: boolean;
     autoScroll?: boolean;
     chartShift?: boolean;
@@ -41,6 +44,8 @@ interface ChartContextMenuProps {
     onChangeTimeframe: (tf: Timeframe) => void;
     onToggleOneClickTrading: () => void;
     onToggleGrid: () => void;
+    onChangeGridType?: (type: ChartGridType) => void;
+    onChangeGridLineStyle?: (style: ChartGridLineStyle) => void;
     onToggleVolumes: () => void;
     onToggleAutoScroll: () => void;
     onToggleChartShift: () => void;
@@ -155,12 +160,13 @@ interface MenuItemProps {
     hasSubmenu?: boolean;
     active?: boolean;
     checked?: boolean;
+    radio?: boolean;
     disabled?: boolean;
     highlight?: boolean; // red highlight like "Sell Limit"
 }
 
 const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
-    { icon, label, shortcut, onClick, hasSubmenu, active, checked, disabled }
+    { icon, label, shortcut, onClick, hasSubmenu, active, checked, radio, disabled }
     , ref) => {
     const tr = useUiTranslation();
     const bg = active ? C_ITEM_ACTIVE_BG : 'transparent';
@@ -169,6 +175,11 @@ const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
     return (
         <div
             ref={ref}
+            role={checked === undefined ? 'menuitem' : radio ? 'menuitemradio' : 'menuitemcheckbox'}
+            aria-checked={checked}
+            aria-label={tr(label)}
+            aria-disabled={disabled || undefined}
+            tabIndex={disabled ? -1 : 0}
             style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -190,6 +201,12 @@ const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
             onMouseEnter={e => { if (!active) (e.currentTarget as HTMLDivElement).style.background = C_HOVER; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = active ? C_ITEM_ACTIVE_BG : 'transparent'; }}
             onClick={e => { e.stopPropagation(); if (!disabled && onClick) onClick(); }}
+            onKeyDown={e => {
+                if (disabled || (e.key !== 'Enter' && e.key !== ' ')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                onClick?.();
+            }}
         >
             {/* Icon / Checkmark column — fixed 18px */}
             <span style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.3 : 1 }}>
@@ -213,6 +230,7 @@ const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
 });
 MenuItem.displayName = 'MenuItem';
 
+const SubmenuAncestry = React.createContext<readonly string[]>([]);
 
 const Submenu = ({ children, label, icon, disabled }: {
     children: React.ReactNode;
@@ -221,36 +239,89 @@ const Submenu = ({ children, label, icon, disabled }: {
     disabled?: boolean;
 }) => {
     const tr = useUiTranslation();
+    const ancestorIds = React.useContext(SubmenuAncestry);
+    const submenuId = React.useId();
+    const branchIds = [...ancestorIds, submenuId];
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
-    const [submenuStyle, setSubmenuStyle] = useState<React.CSSProperties>({ left: '100%', top: 0 });
+    const submenuRef = useRef<HTMLDivElement>(null);
+    const focusOnOpenRef = useRef(false);
+    const [submenuStyle, setSubmenuStyle] = useState<React.CSSProperties>({ left: 0, top: 0 });
 
     const calcPosition = useCallback(() => {
         if (!ref.current) return;
         const rect = ref.current.getBoundingClientRect();
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        const submenuWidth = 190;
-        const submenuHeight = 320;
+        const submenuRect = submenuRef.current?.getBoundingClientRect();
+        const submenuWidth = Math.max(200, submenuRect?.width || 0);
+        const maxHeight = Math.max(0, vh - MENU_VIEWPORT_MARGIN * 2);
+        const submenuHeight = Math.min(submenuRef.current?.scrollHeight || submenuRect?.height || 320, maxHeight);
+        const left = Math.max(MENU_VIEWPORT_MARGIN, Math.min(
+            rect.right + submenuWidth > vw - MENU_VIEWPORT_MARGIN ? rect.left - submenuWidth : rect.right,
+            vw - submenuWidth - MENU_VIEWPORT_MARGIN,
+        ));
+        const top = Math.max(MENU_VIEWPORT_MARGIN, Math.min(rect.top, vh - submenuHeight - MENU_VIEWPORT_MARGIN));
 
-        let left: string | number = '100%';
-        let right: string | number = 'auto';
-        let top: number = 0;
-
-        if (rect.right + submenuWidth > vw) { left = 'auto'; right = '100%'; }
-        if (rect.top + submenuHeight > vh) { top = Math.max(0, vh - submenuHeight - rect.top); }
-
-        setSubmenuStyle({ left, right, top });
+        setSubmenuStyle({ left, top, maxHeight });
     }, []);
+
+    useLayoutEffect(() => {
+        if (!open) return;
+        calcPosition();
+        if (focusOnOpenRef.current) {
+            submenuRef.current?.querySelector<HTMLElement>('[role^="menuitem"]:not([aria-disabled="true"])')?.focus();
+            focusOnOpenRef.current = false;
+        }
+    }, [open, calcPosition]);
+
+    useEffect(() => {
+        if (!open) return;
+        const handleParentScroll = (event: Event) => {
+            if (event.target instanceof Element && !submenuRef.current?.contains(event.target)) setOpen(false);
+        };
+        window.addEventListener('scroll', handleParentScroll, true);
+        return () => window.removeEventListener('scroll', handleParentScroll, true);
+    }, [open]);
+
+    const isOwnedSubmenuTarget = (target: EventTarget | null): boolean => (
+        target instanceof Element
+        && (target.closest('[data-chart-submenu-ancestors]')?.getAttribute('data-chart-submenu-ancestors')?.split(' ').includes(submenuId) ?? false)
+    );
 
     return (
         <div
             ref={ref}
             style={{ position: 'relative' }}
-            onMouseEnter={() => { calcPosition(); setOpen(true); }}
-            onMouseLeave={() => setOpen(false)}
+            onMouseEnter={() => { if (!disabled) { calcPosition(); setOpen(true); } }}
+            onMouseLeave={e => {
+                const relatedTarget = e.nativeEvent.relatedTarget ?? e.relatedTarget;
+                if (isOwnedSubmenuTarget(relatedTarget)) return;
+                setOpen(false);
+            }}
         >
             <div
+                role="menuitem"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                aria-disabled={disabled || undefined}
+                tabIndex={disabled ? -1 : 0}
+                onClick={e => {
+                    e.stopPropagation();
+                    if (!disabled) { calcPosition(); setOpen(true); }
+                }}
+                onKeyDown={e => {
+                    if (disabled || !['Enter', ' ', 'ArrowRight'].includes(e.key)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    calcPosition();
+                    focusOnOpenRef.current = true;
+                    if (open) {
+                        submenuRef.current?.querySelector<HTMLElement>('[role^="menuitem"]:not([aria-disabled="true"])')?.focus();
+                        focusOnOpenRef.current = false;
+                    }
+                    setOpen(true);
+                }}
                 style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '3px 14px 3px 12px', minHeight: 30,
@@ -271,11 +342,20 @@ const Submenu = ({ children, label, icon, disabled }: {
                 <ChevronRight size={13} style={{ color: open ? C_ACTIVE_FG : C_HEADER, flexShrink: 0, opacity: 0.85 }} />
             </div>
 
-            {open && (
+            {open && ReactDOM.createPortal(
                 <div
+                    ref={submenuRef}
                     className="rtx-chart-context-menu"
+                    role="menu"
+                    aria-label={tr(label)}
+                    data-chart-submenu-ancestors={branchIds.join(' ')}
+                    onMouseLeave={e => {
+                        const relatedTarget = e.nativeEvent.relatedTarget ?? e.relatedTarget;
+                        if (isOwnedSubmenuTarget(relatedTarget) || (relatedTarget instanceof Node && ref.current?.contains(relatedTarget))) return;
+                        setOpen(false);
+                    }}
                     style={{
-                        position: 'absolute',
+                        position: 'fixed',
                         zIndex: 10002,
                         padding: '4px 0',
                         minWidth: 200,
@@ -284,11 +364,13 @@ const Submenu = ({ children, label, icon, disabled }: {
                         border: `1px solid ${C_BORDER}`,
                         borderRadius: 8,
                         boxShadow: 'var(--ctx-shadow, 0 12px 40px rgba(0,0,0,0.6))',
+                        overflowY: 'auto',
                         ...submenuStyle,
                     }}
                 >
-                    {children}
-                </div>
+                    <SubmenuAncestry.Provider value={branchIds}>{children}</SubmenuAncestry.Provider>
+                </div>,
+                document.body,
             )}
         </div>
     );
@@ -305,6 +387,8 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     currentTimeframe,
     oneClickTrading = false,
     showGrid = true,
+    gridType = 'square',
+    gridLineStyle = 'dashed',
     showVolumes = true,
     autoScroll = false,
     chartShift = false,
@@ -316,6 +400,8 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     onChangeTimeframe,
     onToggleOneClickTrading,
     onToggleGrid,
+    onChangeGridType,
+    onChangeGridLineStyle,
     onToggleVolumes,
     onToggleAutoScroll,
     onToggleChartShift,
@@ -387,7 +473,10 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     // this listener fires regardless — chart scrolls AND the menu closes.
     useEffect(() => {
         if (!visible) return;
-        const handler = () => onClose();
+        const handler = (event: WheelEvent) => {
+            if (event.target instanceof Element && event.target.closest('.rtx-chart-context-menu')) return;
+            onClose();
+        };
         window.addEventListener('wheel', handler, { passive: true, capture: false });
         return () => window.removeEventListener('wheel', handler, { capture: false } as EventListenerOptions);
     }, [visible, onClose]);
@@ -459,6 +548,8 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
         <div
             className="rtx-chart-context-menu"
             ref={menuRef}
+            role="menu"
+            aria-label={tr('Chart context menu')}
             style={{
                 position: 'fixed',
                 zIndex: 10000,
@@ -720,6 +811,61 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 checked={showGrid}
                 onClick={() => closeThen(() => { onToggleGrid(); })}
             />
+
+            {onChangeGridType && (
+                <MenuItem
+                    label={tr('Fine grid')}
+                    radio
+                    checked={gridType === 'mt5' && showGrid}
+                    active={gridType === 'mt5' && showGrid}
+                    onClick={() => closeThen(() => onChangeGridType('mt5'))}
+                />
+            )}
+
+            {onChangeGridType && (
+                <Submenu label={tr('Grid type')} icon={<Grid3X3 size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}>
+                    <MenuItem
+                        label={tr('Square')}
+                        radio
+                        checked={gridType === 'square'}
+                        active={gridType === 'square'}
+                        onClick={() => closeThen(() => onChangeGridType('square'))}
+                    />
+                    <MenuItem
+                        label={tr('Price/time aligned')}
+                        radio
+                        checked={gridType === 'scale'}
+                        active={gridType === 'scale'}
+                        onClick={() => closeThen(() => onChangeGridType('scale'))}
+                    />
+                    <MenuItem
+                        label={tr('Fine grid')}
+                        radio
+                        checked={gridType === 'mt5'}
+                        active={gridType === 'mt5'}
+                        onClick={() => closeThen(() => onChangeGridType('mt5'))}
+                    />
+                </Submenu>
+            )}
+
+            {onChangeGridLineStyle && (
+                <Submenu label={tr('Grid line style')} icon={<AlignJustify size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}>
+                    <MenuItem
+                        label={tr('Dashed')}
+                        radio
+                        checked={gridLineStyle === 'dashed'}
+                        active={gridLineStyle === 'dashed'}
+                        onClick={() => closeThen(() => onChangeGridLineStyle('dashed'))}
+                    />
+                    <MenuItem
+                        label={tr('Solid')}
+                        radio
+                        checked={gridLineStyle === 'solid'}
+                        active={gridLineStyle === 'solid'}
+                        onClick={() => closeThen(() => onChangeGridLineStyle('solid'))}
+                    />
+                </Submenu>
+            )}
 
             {/* ── Auto Scroll ── */}
             <MenuItem

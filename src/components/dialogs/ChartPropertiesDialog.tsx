@@ -9,10 +9,11 @@ import {
   type ColorScheme,
 } from '../../store/useChartSettingsStore';
 import { getChartGridLineColors } from '../../utils/chartGridStyle';
-import { SQUARE_CHART_GRID_CELL_SIZE_PX } from '../../utils/squareChartGridPrimitive';
+import { FINE_CHART_GRID_CELL_SIZE_PX, SQUARE_CHART_GRID_CELL_SIZE_PX } from '../../utils/squareChartGridPrimitive';
 import type { ChartType } from '../../types/chart';
 import { commandBus } from '../../services/commandBus';
 import { isShortcutOwnedBy, shouldIgnoreShortcutEvent } from '../../services/keyboardShortcutManager';
+import './chart-properties-dialog.css';
 
 interface ChartPropertiesDialogProps {
   isOpen: boolean;
@@ -60,6 +61,7 @@ const showOptions = [
 
 const colorSchemeOptions = [
   'Green on Black',
+  'Green and White',
   'Blue on Black',
   'Black on White',
   'Yellow on Black',
@@ -75,6 +77,29 @@ const getIsAdvancedUntitledLight = (): boolean => {
   if (typeof document === 'undefined') return false;
   const root = document.documentElement;
   return root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light');
+};
+
+const getGridPreviewImage = (
+  colors: { vertical: string; horizontal: string },
+  lineStyle: ChartProperties['gridLineStyle'],
+  cellSize: { width: number; height: number },
+  gridType: ChartProperties['gridType'],
+): string => {
+  const escapeAttribute = (value: string) => value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const dashed = lineStyle !== 'solid';
+  const lineOffset = 0.5;
+  const dashedStroke = gridType === 'scale'
+    ? ' stroke-width="1" stroke-dasharray="2 2"'
+    : gridType === 'mt5'
+      ? ' stroke-width="1" stroke-dasharray="3 3"'
+      : ' stroke-width="0.75" stroke-dasharray="8 4"';
+  const dash = dashed ? dashedStroke : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cellSize.width}" height="${cellSize.height}" fill="none"><path d="M${lineOffset} 0V${cellSize.height}" stroke="${escapeAttribute(colors.vertical)}"${dash}/><path d="M0 ${lineOffset}H${cellSize.width}" stroke="${escapeAttribute(colors.horizontal)}"${dash}/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 };
 
 export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
@@ -115,15 +140,23 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
     background: previewBackground,
     grid: effectiveColors.grid,
     showGrid: showState.showGrid,
+    lineStyle: showState.gridLineStyle,
+    gridType: showState.gridType,
+    colorScheme: state.colorScheme,
     preserveConfiguredColor: isAdvancedUntitledLight && state.colorScheme !== 'Custom',
   });
   const previewLabelBackground = previewBackground.toLowerCase() === '#ffffff'
     ? 'rgba(255, 255, 255, 0.82)'
     : 'rgba(0, 0, 0, 0.72)';
+  const previewSquareCellSize = showState.gridType === 'mt5' ? FINE_CHART_GRID_CELL_SIZE_PX : SQUARE_CHART_GRID_CELL_SIZE_PX;
+  const previewGridCellSize = showState.gridType === 'scale'
+    ? { width: 128, height: 48 }
+    : { width: previewSquareCellSize, height: previewSquareCellSize };
   const previewStyle = {
     backgroundColor: previewBackground,
-    backgroundImage: `linear-gradient(to right, ${previewGridColors.vertical} 1px, transparent 1px), linear-gradient(to bottom, ${previewGridColors.horizontal} 1px, transparent 1px)`,
-    backgroundSize: `${SQUARE_CHART_GRID_CELL_SIZE_PX}px ${SQUARE_CHART_GRID_CELL_SIZE_PX}px`,
+    backgroundImage: getGridPreviewImage(previewGridColors, showState.gridLineStyle, previewGridCellSize, showState.gridType),
+    backgroundSize: `${previewGridCellSize.width}px ${previewGridCellSize.height}px`,
+    backgroundPosition: showState.gridType === 'mt5' ? 'left bottom' : 'left top',
     '--rtx-cp-preview-bg': previewBackground,
     '--rtx-cp-preview-text': effectiveColors.foreground,
     '--rtx-cp-preview-label-bg': previewLabelBackground,
@@ -173,6 +206,11 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
     } else {
       useChartSettingsStore.getState().updateGlobalProperty(key, value);
     }
+  };
+
+  const updateActiveGridType = (type: ChartProperties['gridType']) => {
+    updateActiveChartProperty('gridType', type);
+    if (type === 'mt5') updateActiveChartProperty('gridLineStyle', 'dashed');
   };
 
   const updateActiveChartType = (settingsType: ChartProperties['chartType'], runtimeType: ChartType) => {
@@ -309,7 +347,6 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
         aria-modal="true"
         aria-labelledby="chart-properties-title"
         className="rtx-cp-shell relative bg-[#1e1e1e] border border-[#333] rounded shadow-2xl flex flex-col pointer-events-auto select-none animate-in fade-in zoom-in-95 duration-150"
-        style={{ width: 680, height: 420 }}
       >
         {/* Header */}
         <div className="rtx-cp-header flex items-center justify-between px-3 py-2 border-b border-[#333]">
@@ -339,13 +376,14 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
               className="rtx-cp-preview-inner flex-1 border border-[#333] relative m-1 rounded-sm overflow-hidden bg-black"
               style={previewStyle}
             >
-              <span className="rtx-cp-preview-text absolute top-1 left-1 text-[10px] text-zinc-400 font-mono z-10 bg-black/60 px-1">
+              <span className="rtx-cp-preview-text absolute top-1 left-1 text-[10px] text-zinc-400 font-mono z-10 bg-black/60 px-1"
+                style={{ color: effectiveColors.foreground, backgroundColor: previewLabelBackground }}>
                 {symbol},{timeframe}{tr(": Demo Asset")}</span>
             </div>
           </div>
 
           {/* Right Tabs Area */}
-          <div className="flex-1 flex flex-col pt-1 pr-1">
+          <div className="rtx-cp-settings flex-1 flex flex-col pt-1 pr-1">
             <div className="rtx-cp-tabs flex gap-4 border-b border-transparent mb-1 pl-1">
               {(['Common', 'Show', 'Colors'] as const).map(tab => (
                 <button
@@ -360,25 +398,56 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
 
             <div className="rtx-cp-tab-content flex-1 overflow-y-auto pl-1 pr-2 custom-scrollbar">
               {activeTab === 'Show' && (
-                <div className="grid grid-cols-1 gap-1.5 py-2">
+                <div className="rtx-cp-show-grid grid grid-cols-1 gap-1.5 py-2">
                   {showOptions.map(({ key, label }) => (
-                    <label key={key} className="rtx-cp-checkbox-row flex items-center gap-2 cursor-pointer group hover:bg-white/5 px-2 py-0.5 -mx-2 rounded transition-colors">
-                      <input 
-                        type="checkbox" 
-                        className="rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444] cursor-pointer w-3.5 h-3.5" 
-                        checked={showState[key as keyof typeof showState] as boolean}
-                        onChange={(e) => {
-                          updateActiveChartProperty(key, e.target.checked);
-                        }}
-                      />
-                      <span className="rtx-cp-checkbox-label text-[13px] text-[#ccc] group-hover:text-white transition-colors">{tr(label)}</span>
-                    </label>
+                    <React.Fragment key={key}>
+                      <label className="rtx-cp-checkbox-row flex items-center gap-2 cursor-pointer group hover:bg-white/5 px-2 py-0.5 -mx-2 rounded transition-colors">
+                        <input
+                          type="checkbox"
+                          className="rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444] cursor-pointer w-3.5 h-3.5"
+                          checked={showState[key as keyof typeof showState] as boolean}
+                          onChange={(e) => {
+                            updateActiveChartProperty(key, e.target.checked);
+                          }}
+                        />
+                        <span className="rtx-cp-checkbox-label text-[13px] text-[#ccc] group-hover:text-white transition-colors">{tr(label)}</span>
+                      </label>
+                      {key === 'showGrid' && (
+                        <>
+                          <label className="rtx-cp-label flex items-center gap-2 pl-[22px] py-0.5 text-[12px] text-[#ccc]">
+                            <span>{tr('Grid type')}</span>
+                            <select
+                              value={showState.gridType}
+                              disabled={!showState.showGrid}
+                              onChange={(e) => updateActiveGridType(e.target.value as ChartProperties['gridType'])}
+                              className="rtx-cp-select flex-1 min-w-0 bg-[#2b2b2b] border border-[#444] text-[12px] px-2 py-0.5 rounded text-[#ccc] outline-none focus:border-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <option value="square" style={colorSchemeOptionStyle}>{tr('Square')}</option>
+                              <option value="scale" style={colorSchemeOptionStyle}>{tr('Price/time aligned')}</option>
+                              <option value="mt5" style={colorSchemeOptionStyle}>{tr('Fine grid')}</option>
+                            </select>
+                          </label>
+                          <label className="rtx-cp-label flex items-center gap-2 pl-[22px] py-0.5 text-[12px] text-[#ccc]">
+                            <span>{tr('Grid line style')}</span>
+                            <select
+                              value={showState.gridLineStyle}
+                              disabled={!showState.showGrid}
+                              onChange={(e) => updateActiveChartProperty('gridLineStyle', e.target.value as ChartProperties['gridLineStyle'])}
+                              className="rtx-cp-select flex-1 min-w-0 bg-[#2b2b2b] border border-[#444] text-[12px] px-2 py-0.5 rounded text-[#ccc] outline-none focus:border-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <option value="dashed" style={colorSchemeOptionStyle}>{tr('Dashed')}</option>
+                              <option value="solid" style={colorSchemeOptionStyle}>{tr('Solid')}</option>
+                            </select>
+                          </label>
+                        </>
+                      )}
+                    </React.Fragment>
                   ))}
                 </div>
               )}
 
               {activeTab === 'Colors' && (
-                <div className="grid grid-cols-[100px_1fr] items-center gap-y-[5px] gap-x-2 py-2">
+                <div className="rtx-cp-colors-grid grid grid-cols-[100px_1fr] items-center gap-y-[5px] gap-x-2 py-2">
                   <span className="rtx-cp-label text-[12px] text-[#ccc] text-right">{tr("Scheme:")}</span>
                   <select 
                     value={state.colorScheme}
@@ -435,7 +504,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
               )}
 
               {activeTab === 'Common' && (
-                <div className="flex gap-2 h-full pt-1 pr-1 custom-scrollbar">
+                <div className="rtx-cp-common-grid flex gap-2 pt-1 pr-1">
                   <div className="flex flex-col gap-2 flex-1">
                     <div className="rtx-cp-fieldset flex flex-col gap-[3px] p-2 border border-[#444] bg-transparent rounded-sm relative mt-2">
                       <label className="rtx-cp-radio-row flex items-center gap-2 cursor-pointer">

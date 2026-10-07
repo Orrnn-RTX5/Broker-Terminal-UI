@@ -55,6 +55,7 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
   const demoRequestGenerationRef = useRef(0);
   const brokerPolicy = useBrokerLoginPolicy(isOpen);
   const brokerId = brokerPolicy?.status === 'ready' ? brokerPolicy.brokerId : '';
+  const brokerPolicyError = brokerPolicy?.status === 'error' ? brokerPolicy.error : undefined;
   const configuration = getRuntimeBrokerConfiguration();
   const configurationIdentity = JSON.stringify(configuration);
   const termsUrl = configuration.valid ? configuration.brokerTermsUrl : '';
@@ -68,11 +69,17 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
   }, [isOpen, initialMode]);
 
   useLayoutEffect(() => {
-    if (!isOpen) demoRequestGenerationRef.current += 1;
+    if (!isOpen || brokerPolicyError) {
+      demoRequestGenerationRef.current += 1;
+      if (brokerPolicyError) {
+        setSubmitting(false);
+        setMode(current => current === 'login' ? 'choice' : current);
+      }
+    }
     return () => {
       demoRequestGenerationRef.current += 1;
     };
-  }, [isOpen, configurationIdentity]);
+  }, [isOpen, configurationIdentity, brokerPolicyError]);
 
   const closeDialog = useCallback(() => {
     demoRequestGenerationRef.current += 1;
@@ -184,7 +191,7 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
 
   if (!isOpen) return null;
 
-  if (mode === 'login') {
+  if (mode === 'login' && brokerId) {
     return (
       <LoginDialog
         isOpen
@@ -252,7 +259,7 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
           </button>
         </header>
 
-        {mode === 'choice' ? (
+        {!isDemo ? (
           <>
             <div className="rtx-auth-dialog__body">
               {intent && (
@@ -328,23 +335,14 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
                 </button>
               </div>
 
-              {!brokerId && (
+              {brokerPolicyError && (
                 <div role="alert" className="rtx-auth-alert">
                   <AlertCircle size={13} strokeWidth={2.2} />
-                  <span>{brokerPolicy?.error || 'Verifying this terminal broker configuration…'}</span>
+                  <span>{brokerPolicyError}</span>
                 </div>
               )}
             </div>
 
-            <div className="rtx-auth-dialog__footer rtx-auth-dialog__footer--choice">
-              <button
-                type="button"
-                onClick={closeDialog}
-                className="rtx-auth-guest-link"
-              >
-                <span>Continue browsing as guest</span>
-              </button>
-            </div>
           </>
         ) : (
           <form onSubmit={handleDemoSubmit}>
@@ -416,10 +414,10 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
                 </span>
               </div>
 
-              {(error || !brokerId) && (
+              {(error || brokerPolicyError) && (
                 <div role="alert" className="rtx-auth-alert">
                   <AlertCircle size={13} strokeWidth={2.2} />
-                  <span>{error || brokerPolicy?.error || 'Verifying this terminal broker configuration…'}</span>
+                  <span>{error || brokerPolicyError}</span>
                 </div>
               )}
               {termsUrl && (

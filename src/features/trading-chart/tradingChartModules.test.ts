@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from 'vitest';
-import { defaultChartProperties } from '../../store/useChartSettingsStore';
+import { defaultChartProperties, getEffectiveChartColors, normalizeChartProperties } from '../../store/useChartSettingsStore';
 import {
   getFixedChartPriceRange,
   resolveChartIndicatorType,
@@ -23,6 +23,37 @@ import {
 } from './presentation/tradeOverlayPresentation';
 
 describe('trading chart extracted modules', () => {
+  it.each([
+    { position: 0, rightOffset: 0, follows: true },
+    { position: -1, rightOffset: 0, follows: true },
+    { position: 8, rightOffset: 8, follows: true },
+    { position: 7, rightOffset: 8, follows: true },
+    { position: 9, rightOffset: 8, follows: true },
+    { position: -20, rightOffset: 0, follows: false },
+    { position: -20, rightOffset: 8, follows: false },
+    { position: 30, rightOffset: 8, follows: false },
+    { position: NaN, rightOffset: 0, follows: false },
+  ])('follows live bars at $position with a configured offset of $rightOffset: $follows', ({ position, rightOffset, follows }) => {
+    const chart = { timeScale: () => ({ scrollPosition: () => position }) };
+    expect(shouldScrollToRealtime(chart as never, true, true, rightOffset)).toBe(follows);
+    expect(shouldScrollToRealtime(chart as never, false, true, rightOffset)).toBe(false);
+    expect(shouldScrollToRealtime(chart as never, true, false, rightOffset)).toBe(false);
+  });
+
+  it.each([false, true])('renders hollow green bulls and white bears on black with a light interface of %s', (light) => {
+    const properties = normalizeChartProperties({ colorScheme: 'Green and White', gridType: 'mt5' });
+    const colors = getEffectiveChartColors(properties, { isAdvancedUntitledLight: light });
+    const theme = buildChartTheme(colors, true, false, 'dashed', 'mt5', properties.colorScheme);
+    expect(theme).toMatchObject({
+      background: '#000000',
+      candleUp: '#000000', candleDown: '#ffffff',
+      barUp: '#00ff00', barDown: '#00ff00', wickUp: '#00ff00', wickDown: '#00ff00',
+      areaUpLine: '#00ff00', areaDownLine: '#ffffff',
+      gridVertical: '#778899', gridHorizontal: '#778899',
+      volumeUp: '#32cd32', volumeDown: '#32cd32',
+    });
+    expect(buildChartTheme(colors, false, light, 'dashed', 'mt5', properties.colorScheme).gridHorizontal).toBe('rgba(0, 0, 0, 0)');
+  });
   it('resolves indicator requests and fixed ranges without component state', () => {
     expect(resolveChartIndicatorType({ name: 'Exponential Moving Average' })).toBe('ema');
     expect(resolveChartIndicatorType({ id: 'rsi-14', name: 'Custom' })).toBe('rsi');
@@ -84,6 +115,22 @@ describe('trading chart extracted modules', () => {
     expect(theme.axisText).toBe('#111827');
     expect(theme.scaleBorder).toBe('transparent');
     expect(theme.candleUp).toBe(defaultChartProperties.colors.bullCandle);
+  });
+
+  it.each([
+    { mode: 'dark', light: false, background: '#000000', up: '#4597ff', down: '#ff5858' },
+    { mode: 'light', light: true, background: '#f7f8fa', up: '#1d4ed8', down: '#b91c1c' },
+  ])('keeps default candle bodies, borders, wicks and area lines aligned with quote hues in $mode mode', ({ light, background, up, down }) => {
+    const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: light });
+    const theme = buildChartTheme(colors, true, light);
+
+    expect(theme).toMatchObject({
+      background,
+      candleUp: up, candleDown: down,
+      barUp: up, barDown: down,
+      wickUp: up, wickDown: down,
+      areaUpLine: up, areaDownLine: down,
+    });
   });
 
   it('owns trade overlay clipping, tooltip placement, and palette selection', () => {

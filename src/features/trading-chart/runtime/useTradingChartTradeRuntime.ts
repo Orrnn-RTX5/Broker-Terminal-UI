@@ -70,6 +70,7 @@ interface UseTradingChartTradeRuntimeOptions {
   isChartSurfaceLight: () => boolean;
   isDisposedRef: RefObject<boolean>;
   isLivePriceSafeForCandles: (price: number) => boolean;
+  lastRenderedCandlesRef: RefObject<Candle[]>;
   livePriceBadgeRef: RefObject<HTMLDivElement | null>;
   livePriceLineRef: RefObject<HTMLDivElement | null>;
   livePriceOverlayColorsRef: RefObject<LivePriceOverlayColors>;
@@ -115,6 +116,7 @@ export const useTradingChartTradeRuntime = ({
   isChartSurfaceLight,
   isDisposedRef,
   isLivePriceSafeForCandles,
+  lastRenderedCandlesRef,
   livePriceBadgeRef,
   livePriceLineRef,
   livePriceOverlayColorsRef,
@@ -815,6 +817,7 @@ export const useTradingChartTradeRuntime = ({
     isDisposedRef,
     isLivePriceSafeForCandles,
     lastActiveTradeOverlaySignatureRef,
+    lastRenderedCandlesRef,
     lastHistoryTradeOverlaySignatureRef,
     optimisticClosedTradeSnapshotsRef,
     overlayRef,

@@ -8,6 +8,8 @@ import { createWebRuntimeConfig, renderWebRuntimeConfig } from '../../viteWebRun
 const directories: string[] = [];
 const shell = process.platform === 'win32'
   ? join(process.env.ProgramFiles || 'C:/Program Files', 'Git/bin/bash.exe') : '/bin/sh';
+// Git Bash startup shares the existing 60-second Windows child-process budget.
+const containerTestTimeoutMs = process.platform === 'win32' ? 90000 : 10000;
 afterEach(() => {
   for (const directory of directories.splice(0)) {
     if (!directory.startsWith(join(tmpdir(), 'rtx-docker-env-test-'))) throw new Error('Unexpected test directory');
@@ -85,7 +87,7 @@ describe('Docker runtime image contract', () => {
     expect(config.BROKER_LOGIN_HERO_MOBILE_URL).toBe('https://cdn.unknown.example/mobile.jpg');
     expect(config.BROKER_TERMS_URL).toBe('https://registered-broker.example/terms');
     expect(generated.source).not.toContain('DO_NOT_EXPOSE');
-  });
+  }, containerTestTimeoutMs);
   it.each(['BROKER_LOGIN_HERO_URL', 'BROKER_LOGIN_HERO_MOBILE_URL', 'BROKER_TERMS_URL'])('rejects credential-bearing or insecure %s before startup', key => {
     expect(() => generate({ [key]: 'https://user:secret@cdn.example/asset' })).toThrow();
     expect(() => generate({ [key]: 'http://cdn.example/asset' })).toThrow();
@@ -119,7 +121,7 @@ describe('Docker runtime image contract', () => {
 });
 
 describe.skipIf(!existsSync(shell))('container broker environment', {
-  timeout: process.platform === 'win32' ? 90000 : 10000,
+  timeout: containerTestTimeoutMs,
 }, () => {
   it.each([
     ['achiever', 'https://service.achiever.orrnn.com'],

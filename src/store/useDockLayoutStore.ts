@@ -109,7 +109,7 @@ export interface DockState {
   resetToDefaultLayout: () => void;
   resetWindows: () => void;
   arrangeIcons: () => number;
-  tileWindows: () => void;
+  tileWindows: (mode?: Exclude<ChartArrangement, 'cascade'>) => void;
   stepTileWindows: () => void;
   arrangeCharts: (mode: ChartArrangement) => void;
 
@@ -537,8 +537,16 @@ const useDockLayoutStore = create<DockState>()(
           dockManager.resetToDefaultLayout();
           set({ layout: dockManager.getLayout() });
         },
-        tileWindows: () => {
-          get().arrangeCharts('grid');
+        tileWindows: (mode = 'grid') => {
+          runOutsideChartFocus(() => {
+            // Explicit tiling must divide the default one-chart workspace.
+            // Once divided, changing the arrangement reuses its existing charts.
+            while (dockManager.getChartCount() < 2) {
+              if (dockManager.addChartPanel().status !== 'added') break;
+            }
+            dockManager.arrangeCharts(mode);
+            set({ layout: dockManager.getLayout() });
+          });
         },
         stepTileWindows: () => {
           runOutsideChartFocus(() => {

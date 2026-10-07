@@ -2080,5 +2080,11 @@
   "Total commission": "Total commission",
   "Total swap": "Total swap",
   "Total fee": "Total fee",
-  "Total gross profit": "Total gross profit"
+  "Total gross profit": "Total gross profit",
+  "Chart context menu": "Menú contextual del gráfico",
+  "Fine grid": "Cuadrícula fina",
+  "Grid type": "Tipo de cuadrícula",
+  "Square": "Cuadrada",
+  "Price/time aligned": "Alineada con precio/tiempo",
+  "Grid line style": "Estilo de líneas de cuadrícula"
 }

@@ -6,6 +6,7 @@ import {
   buildBrokerWsV2Uri,
   getBrokerWsHost,
   getServerUrl,
+  onSessionChange,
   persistBrokerSessionDiscovery,
 } from './brokerSession';
 
@@ -31,6 +32,62 @@ describe('broker websocket URL builder', () => {
     expect(buildBrokerWsV2Uri()).toBe(
       'wss://testbrokerbackend.orrnn.com/ws/v2?token=access-token'
     );
+  });
+
+  it('clears the previous broker logo when switching to a broker without a logo', () => {
+    persistBrokerSessionDiscovery({ broker_id: 'broker-a', server_url: 'https://broker-a.example', logo_url: 'https://broker-a.example/logo.svg' });
+    expect(localStorage.getItem('logo_url')).toBe('https://broker-a.example/logo.svg');
+    persistBrokerSessionDiscovery({ broker_id: 'broker-b', server_url: 'https://broker-b.example' });
+    expect(localStorage.getItem('logo_url')).toBeNull();
+  });
+
+  it('keeps the logo on same-broker credential updates and replaces it for another broker', () => {
+    persistBrokerSessionDiscovery({ broker_id: 'broker-a', server_url: 'https://broker-a.example', logo_url: 'https://broker-a.example/logo.svg' });
+    persistBrokerSessionDiscovery({ broker_id: 'broker-a', server_url: 'https://broker-a.example', token: 'rotated-token' });
+    expect(localStorage.getItem('logo_url')).toBe('https://broker-a.example/logo.svg');
+    persistBrokerSessionDiscovery({ broker_id: 'broker-b', server_url: 'https://broker-b.example', logo_url: 'https://broker-b.example/logo.png' });
+    expect(localStorage.getItem('logo_url')).toBe('https://broker-b.example/logo.png');
+  });
+
+  it('lets the login store publish the completed transition while preserving default discovery notifications', () => {
+    const changed = vi.fn();
+    const unsubscribe = onSessionChange(changed);
+    try {
+      persistBrokerSessionDiscovery({
+        broker_id: 'broker-a', server_url: 'https://broker-a.example', access_token: 'accepted-token',
+      }, { notifySessionChange: false });
+      expect(buildBrokerWsV2Uri()).toBe('wss://broker-a.example/ws/v2?token=accepted-token');
+      expect(changed).not.toHaveBeenCalled();
+      persistBrokerSessionDiscovery({ broker_id: 'broker-a', token: 'rotated-token' });
+      expect(changed).toHaveBeenCalledExactlyOnceWith('login');
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('keeps existing market connections when preparing login to the same broker', () => {
+    const broker = {
+      broker_id: 'broker-a', server_url: 'https://broker-a.example',
+      backend_url: 'https://broker-a.example', ws_url: 'wss://broker-a.example/ws/v2',
+      feed_url: 'wss://broker-a.example/ws/feed',
+    };
+    persistBrokerSessionDiscovery(broker);
+    const changed = vi.fn();
+    const unsubscribe = onSessionChange(changed);
+    try {
+      persistBrokerSessionDiscovery(broker, { notifySessionChange: 'routing-changes' });
+      expect(changed).not.toHaveBeenCalled();
+      persistBrokerSessionDiscovery({ ...broker, feed_broker_id: 'broker-a-quotes' }, { notifySessionChange: 'routing-changes' });
+      expect(changed).toHaveBeenCalledExactlyOnceWith('broker_url_change');
+      changed.mockClear();
+      persistBrokerSessionDiscovery({ broker_id: 'broker-b', server_url: 'https://broker-b.example' }, { notifySessionChange: 'routing-changes' });
+      expect(changed).toHaveBeenCalledExactlyOnceWith('broker_url_change');
+      changed.mockClear();
+      persistBrokerSessionDiscovery({ broker_id: 'broker-b', token: 'accepted-token' }, { notifySessionChange: 'routing-changes' });
+      expect(changed).toHaveBeenCalledExactlyOnceWith('login');
+    } finally {
+      unsubscribe();
+    }
   });
 
   it('preserves explicit HTTP broker URLs in desktop runtime', () => {

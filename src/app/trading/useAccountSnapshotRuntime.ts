@@ -1,6 +1,7 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../../services/brokerSession';
 import { getStoredBrokerServer } from '../../services/brokerServers';
+import { pickAccountDisplayName } from '../../utils/accountDisplayName';
 import { applyPositionStreamUpdate, decodePositionStreamMessage } from '../../services/tradePositionStream';
 import { loadSessionTradeSnapshot } from '../../services/tradeStartupSnapshot';
 import { useAppStore, type Position } from '../../store/useAppStore';
@@ -109,9 +110,7 @@ export const useAccountSnapshotRuntime = ({
             useAppStore.getState().setAccount(normalizedAccount);
 
             const raw = accountPayload as unknown as Record<string, unknown>;
-            const accountName = [raw.name, raw.account_name, raw.display_name, raw.user_name]
-              .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-              ?.trim();
+            const accountName = pickAccountDisplayName(raw.name, raw.account_name, raw.display_name, raw.user_name);
             if (accountName) {
               const store = useAppStore.getState();
               const existingAccount = store.savedAccounts.find((savedAccount) => savedAccount.login === loginId);

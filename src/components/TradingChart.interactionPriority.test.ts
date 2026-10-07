@@ -181,7 +181,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(liveEffect).toContain('isCandleAtOrBeforeFinalizedTime(finalizedCandleTimeByTimeframe, activeTf, candleTime)');
     expect(liveEffect).toContain('resolveCandleFinalityFromActivePeriod(candle, activeM1Period?.startTime)');
     expect(liveEffect).toContain("applyServerCandle(reconcileServerM1Candle(validatedCandle), 'backend', 'M1')");
-    expect(liveEffect).toContain("markFinalizedCandleTime(finalizedCandleTimeByTimeframe, 'M1', snapshotCandle.time)");
+    expect(liveEffect).toContain('markFinalizedCandleTime(finalizedCandleTimeByTimeframe, displayedStreamTimeframe, snapshotCandle.time)');
   });
 
   it('keeps backend timestamps and OHLC exact instead of guessing time or price scale', () => {

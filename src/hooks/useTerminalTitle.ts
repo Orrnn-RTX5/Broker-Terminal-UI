@@ -8,6 +8,8 @@ import type { NormalizedMarketStatus } from '../utils/marketStatus';
 import { RTX5_API_URL, normalizeServerUrl } from '../config/api';
 import { runAfterTerminalReady } from '../startup/runAfterTerminalReady';
 import { setBrokerServerTimeZoneFromConfig } from '../services/brokerServerClock';
+import { onSessionChange } from '../services/brokerSession';
+import { buildBrokerDirectoryLogoUrl } from '../components/BrokerLogoImage';
 
 export const WEB_TERMINAL_TITLE = 'RTX 5 Web Terminal';
 export const DEFAULT_BROKER_SERVER = WEB_TERMINAL_TITLE;
@@ -19,7 +21,8 @@ const getStoredHeaderValue = (key: string): string => {
     return normalizeHeaderText(localStorage.getItem(key));
 };
 
-const getStoredLogoUrl = (): string => getStoredHeaderValue('logo_url');
+const getStoredBrokerId = (): string => getStoredHeaderValue('broker_id') || getStoredHeaderValue('rtx_broker_id');
+const getStoredLogoUrl = (): string => getStoredHeaderValue('logo_url') || buildBrokerDirectoryLogoUrl(getStoredBrokerId());
 
 const normalizeLogoBaseUrl = (value: unknown): string => {
     const normalized = normalizeServerUrl(normalizeHeaderText(value));
@@ -88,14 +91,16 @@ type BrokerDetails = [BrokerTitleConfig | null, BrokerServer[], { brokers: Broke
 // HeaderBar and StatusBar both mount this hook; share one in-flight fetch per server.
 let detailsCache: { key: string; promise: Promise<BrokerDetails> } | null = null;
 
-const fetchBrokerDetails = (serverName: string): Promise<BrokerDetails> => {
-    if (detailsCache?.key === serverName) return detailsCache.promise;
+const fetchBrokerDetails = (key: string): Promise<BrokerDetails> => {
+    if (detailsCache?.key === key) return detailsCache.promise;
     const promise = Promise.all([
         configApi.getConfig().catch(() => null),
         brokerV2Api.getServers().catch(() => [] as BrokerServer[]),
         brokerV2Api.getBrokers().catch(() => ({ brokers: [] as Broker[], count: 0 })),
-    ]) as Promise<BrokerDetails>;
-    detailsCache = { key: serverName, promise };
+    ]).finally(() => {
+        if (detailsCache?.promise === promise) detailsCache = null;
+    }) as Promise<BrokerDetails>;
+    detailsCache = { key, promise };
     return promise;
 };
 
@@ -110,13 +115,20 @@ export interface TerminalBrokerInfo {
 }
 
 export function useTerminalBrokerInfo(): TerminalBrokerInfo {
+    const [sessionRevision, setSessionRevision] = useState(0);
+    useEffect(() => onSessionChange(reason => {
+        if (reason !== 'token_rotation') setSessionRevision(value => value + 1);
+    }), []);
     const accountId = useAppStore((s) => s.accountId) || '---';
     const savedAccounts = useAppStore((s) => s.savedAccounts) || [];
     const activeAccount = savedAccounts.find(a => String(a.login) === String(accountId));
     const accountName = normalizeHeaderText(activeAccount?.name);
     const storedServer = typeof window !== 'undefined' ? localStorage.getItem('rtx_broker_server') : '';
-    const serverName = activeAccount?.server || storedServer || DEFAULT_BROKER_SERVER;
+    const serverName = storedServer || activeAccount?.server || DEFAULT_BROKER_SERVER;
+    const brokerId = getStoredBrokerId();
+    const infoKey = `${brokerId}|${serverName}|${accountId}|${sessionRevision}`;
 
+    const [resolvedKey, setResolvedKey] = useState(infoKey);
     const [brokerName, setBrokerName] = useState<string>(() => brokerDisplayName(serverName));
     const [marginMode, setMarginMode] = useState<string>('Hedge');
     const [logoUrl, setLogoUrl] = useState<string>(() => getStoredLogoUrl());
@@ -124,13 +136,14 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
 
     useEffect(() => {
         let active = true;
+        setResolvedKey(infoKey);
         setBrokerName(brokerDisplayName(serverName));
         setLogoUrl(getStoredLogoUrl());
         setLogoBaseCandidates([]);
 
         const fetchDetails = async () => {
             try {
-                const [config, servers, brokersData] = await fetchBrokerDetails(serverName);
+                const [config, servers, brokersData] = await fetchBrokerDetails(infoKey);
 
                 if (!active) return;
 
@@ -147,12 +160,13 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
                 }
 
                 // 2. Find broker ID, broker name, and logo from server matching
-                const matchedServer = servers.find(
-                    (server) => matchesBrokerServer(server, serverName)
-                );
+                const matchedServer = servers.find(server => brokerId && String(server.broker_id) === brokerId)
+                    || servers.find((server) => matchesBrokerServer(server, serverName));
                 const brokersList = brokersData?.brokers || [];
+                const matchedBroker = brokersList.find(broker => String(broker.broker_id) === (brokerId || String(matchedServer?.broker_id || '')));
 
-                let finalLogoUrl = getStoredLogoUrl();
+                const finalLogoUrl = matchedServer?.logo_url || matchedBroker?.logo_url
+                    || config?.logo_url || getStoredHeaderValue('logo_url') || getStoredLogoUrl();
                 let nextLogoBaseCandidates: string[] = [];
                 if (matchedServer) {
                     nextLogoBaseCandidates = [
@@ -160,23 +174,6 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
                         matchedServer.backend_url || '',
                         matchedServer.market_api_url || '',
                     ];
-
-                    if (matchedServer.logo_url) {
-                        finalLogoUrl = matchedServer.logo_url;
-                    }
-
-                    // If no logo_url on server, cross-reference with broker list using broker_id
-                    if (!finalLogoUrl && matchedServer.broker_id) {
-                        const matchedBroker = brokersList.find(
-                            (broker) => broker.broker_id === matchedServer.broker_id
-                        );
-                        if (matchedBroker?.logo_url) {
-                            finalLogoUrl = matchedBroker.logo_url;
-                        }
-                    }
-                }
-                if (!finalLogoUrl && config?.logo_url) {
-                    finalLogoUrl = config.logo_url;
                 }
 
                 setBrokerName(resolveBrokerDisplayName(serverName, config, matchedServer, brokersList));
@@ -196,9 +193,15 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
             active = false;
             cancelScheduledDetails();
         };
-    }, [accountId, serverName]);
+    }, [infoKey, serverName, brokerId]);
 
-    return { accountId, accountName, serverName, brokerName, marginMode, logoUrl, logoBaseCandidates };
+    const currentDetails = resolvedKey === infoKey;
+    return {
+        accountId, accountName, serverName, marginMode,
+        brokerName: currentDetails ? brokerName : brokerDisplayName(serverName),
+        logoUrl: currentDetails ? logoUrl : getStoredLogoUrl(),
+        logoBaseCandidates: currentDetails ? logoBaseCandidates : [],
+    };
 }
 
 export function formatTerminalTitle(

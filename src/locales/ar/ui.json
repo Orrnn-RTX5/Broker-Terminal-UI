@@ -2080,5 +2080,11 @@
   "Total commission": "Total commission",
   "Total swap": "Total swap",
   "Total fee": "Total fee",
-  "Total gross profit": "Total gross profit"
+  "Total gross profit": "Total gross profit",
+  "Chart context menu": "قائمة سياق الرسم البياني",
+  "Fine grid": "شبكة دقيقة",
+  "Grid type": "نوع الشبكة",
+  "Square": "مربعة",
+  "Price/time aligned": "محاذاة السعر/الوقت",
+  "Grid line style": "نمط خطوط الشبكة"
 }

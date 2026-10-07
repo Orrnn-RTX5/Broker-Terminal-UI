@@ -109,11 +109,11 @@ export const runTerminalShortcutAction = (id: string): void => {
     case 'timeframe.d1': case 'timeframe.w1': case 'timeframe.mn':
       commandBus.dispatch({ type: 'SET_TIMEFRAME', payload: { timeframe: id.slice('timeframe.'.length).toUpperCase(), targetContextId: target.targetContextId, panelId: getPanelIdFromChartContextId(target.targetContextId) } }); break;
     case 'tools.options': emit('open-terminal-options'); break;
-    case 'window.tile': useDockLayoutStore.getState().arrangeCharts('grid'); break;
+    case 'window.tile': useDockLayoutStore.getState().tileWindows('grid'); break;
     case 'window.add-chart': emit('add-chart-panel'); break;
     case 'window.cascade': useDockLayoutStore.getState().arrangeCharts('cascade'); break;
-    case 'window.tile-horizontal': useDockLayoutStore.getState().arrangeCharts('horizontal'); break;
-    case 'window.tile-vertical': useDockLayoutStore.getState().arrangeCharts('vertical'); break;
+    case 'window.tile-horizontal': useDockLayoutStore.getState().tileWindows('horizontal'); break;
+    case 'window.tile-vertical': useDockLayoutStore.getState().tileWindows('vertical'); break;
     case 'window.arrange-icons': useDockLayoutStore.getState().arrangeIcons(); break;
     case 'window.undo': useDockLayoutStore.getState().undo(); break;
     case 'window.redo': useDockLayoutStore.getState().redo(); break;

@@ -210,14 +210,15 @@ describe('ShortcutHelpDialog', () => {
     expect(toggle).not.toHaveBeenCalled();
   });
 
-  it('preserves left-to-right key combinations and follows visual category order in RTL', async () => {
+  it('preserves left-to-right key combinations and category navigation in Arabic', async () => {
     await i18n.changeLanguage('ar');
     register({ id: 'test.rtl', key: 'p', ctrl: true, description: 'Print chart', category: 'File' });
     open();
     const toolbar = screen.getByRole('toolbar');
     const categories = within(toolbar).getAllByRole('button');
     categories[0].focus();
-    fireEvent.keyDown(categories[0], { key: 'ArrowLeft' });
+    expect(document.documentElement).toHaveAttribute('dir', 'ltr');
+    fireEvent.keyDown(categories[0], { key: 'ArrowRight' });
     expect(categories[1]).toHaveFocus();
     const combo = screen.getByText(i18n.t('Print chart', { ns: 'ui' })).closest('.rtx-shortcut-dialog__row')?.querySelector('dd');
     expect(combo).toHaveAttribute('dir', 'ltr');

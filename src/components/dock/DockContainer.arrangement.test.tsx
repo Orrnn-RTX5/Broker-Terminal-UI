@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import React, { useEffect } from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DockManager, type DockContainer as DockContainerConfig, type DockPanelConfig } from '../../services/dockManager';
@@ -8,11 +10,14 @@ import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { DockContainer, FloatingPanelsLayer } from './DockContainer';
 
 const initialLayout = useDockLayoutStore.getState().layout;
+const focusStyles = readFileSync(resolve(process.cwd(), 'src/styles/legacy-light-overrides.css'), 'utf8')
+  .match(/html\.rtx-advanced-focus-chart \.rtx-dock-workspace[\s\S]*?(?=\/\* === OneClickTrading)/)![0];
 afterEach(() => {
   cleanup();
   document.documentElement.classList.remove('rtx-advanced-view', 'rtx-advanced-focus-chart');
   useDockLayoutStore.getState().setLayout(initialLayout);
   vi.restoreAllMocks();
+  document.querySelector('[data-test-focus-styles]')?.remove();
 });
 const chartsLayout = () => {
   const layout = new DockManager().getLayout();
@@ -27,6 +32,26 @@ const chartsLayout = () => {
 };
 
 describe('visible chart window arrangements', () => {
+  it.each([false, true])('hides and restores surrounding panels when Light is %s without changing the layout', async (light) => {
+    const style = document.createElement('style');
+    style.dataset.testFocusStyles = 'true';
+    style.textContent = focusStyles;
+    document.head.appendChild(style);
+    const layout = chartsLayout();
+    useDockLayoutStore.getState().setLayout(layout);
+    if (light) document.documentElement.classList.add('rtx-advanced-view');
+    const view = render(<DockContainer isRoot renderPanel={panel => <div>{panel.title}</div>} />);
+    const panels = ['market-watch', 'navigator', 'toolbox'].map(id =>
+      view.container.querySelector(`[data-dock-panel="${id}"]`)!);
+    for (const panel of panels) expect(panel).toBeVisible();
+    await act(async () => document.documentElement.classList.add('rtx-advanced-focus-chart'));
+    for (const panel of panels) expect(panel).not.toBeVisible();
+    expect(view.container.querySelector('[data-dock-panel="chart-a"]')).toBeVisible();
+    await act(async () => document.documentElement.classList.remove('rtx-advanced-focus-chart'));
+    for (const panel of panels) expect(panel).toBeVisible();
+    expect(useDockLayoutStore.getState().layout).toEqual(layout);
+  });
+
   it('renders each tiled chart and changes row/column direction through the live store', () => {
     useDockLayoutStore.getState().setLayout(chartsLayout());
     const view = render(<DockContainer isRoot renderPanel={panel => <div data-test-chart={panel.id}>{panel.title}</div>} />);

@@ -92,10 +92,10 @@ describe('terminal top chrome background contract', () => {
     expect(advancedCss).not.toContain('div[class*="h-[22px]"]');
   });
 
-  it('allows Focus Chart only while the Light theme is active', () => {
-    expect(dockContainerSource).toMatch(/classList\.contains\('rtx-advanced-view'\)[\s\S]*classList\.contains\('rtx-advanced-focus-chart'\)/);
-    expect(advancedCss).toContain('html.rtx-advanced-view.rtx-advanced-focus-chart .rtx-dock-workspace');
-    expect(advancedCss).not.toMatch(/html\.rtx-advanced-focus-chart\s/);
+  it('allows Focus Chart in both themes without changing theme colors', () => {
+    expect(dockContainerSource).toContain("document.documentElement.classList.contains('rtx-advanced-focus-chart')");
+    expect(advancedCss).toContain('html.rtx-advanced-focus-chart .rtx-dock-workspace');
+    expect(advancedCss).not.toContain('html.rtx-advanced-view.rtx-advanced-focus-chart');
   });
 
   it('does not apply app table styling to the chart library internals', () => {

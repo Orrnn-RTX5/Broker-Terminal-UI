@@ -18,14 +18,14 @@ import { getActiveChartCommandTarget, getPanelIdFromChartContextId } from '../..
 import { getChartPanelCount, MAX_CHART_PANELS } from '../../services/dockManager';
 import { useDrawingSidebarStore } from '../../store/useDrawingSidebarStore';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
+import { TERMINAL_RESOLUTION_PRESETS, useTerminalResolutionStore } from '../../store/useTerminalResolutionStore';
 import { lockedTerminalTool, unavailableDockSections } from '../../config/terminalToolAvailability';
 import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
-import { BUILTIN_WORKSPACE_PROFILE_NAMES, restoreBuiltinWorkspaceProfile } from '../../services/localWorkspaceProfiles';
 import { getAppVersion } from '../../config/appVersion';
 
-import { optionsFeature, symbolsFeature, loginFeature } from '../../startup/terminalFeatures';
+import { optionsFeature, symbolsFeature, loginFeature, chartPropertiesFeature, chartObjectsFeature, indicatorNavigatorFeature, depthOfMarketFeature } from '../../startup/terminalFeatures';
 const OptionsDialog = optionsFeature.Component;
 const SymbolsDialog = symbolsFeature.Component;
 const LoginDialog = loginFeature.Component;
@@ -58,6 +58,11 @@ interface ApplicationLauncherItem {
     unavailableReason?: string;
 }
 
+const lockedHelpResource = {
+    disabled: true,
+    unavailableReason: 'This Help resource is currently unavailable.',
+} as const;
+
 const DESKTOP_MENU_KEYS = ['File', 'View', 'Insert', 'Charts', 'Tools', 'Window', 'Help'] as const;
 
 export interface MenuBarProps {
@@ -68,6 +73,7 @@ export interface MenuBarProps {
     crosshairEnabled?: boolean;
     chartSymbol?: string;
     accountId?: string;
+    profileSymbols?: readonly string[];
     onSetAdvancedViewEnabled?: (enabled: boolean) => void;
     onSetAdvancedFontSize?: (fontSize: 'small' | 'normal' | 'large') => void;
     onSetFocusChart?: (enabled: boolean) => void;
@@ -82,6 +88,7 @@ export const MenuBar = ({
     crosshairEnabled = false,
     chartSymbol,
     accountId,
+    profileSymbols,
     onSetAdvancedViewEnabled,
     onSetAdvancedFontSize,
     onSetFocusChart,
@@ -125,6 +132,18 @@ export const MenuBar = ({
         setIsMenuOpen(false);
         setActiveMenu(null);
     }, []);
+
+    const terminalResolution = useTerminalResolutionStore(state => state.resolution);
+    const setTerminalResolution = useTerminalResolutionStore(state => state.setResolution);
+
+    useEffect(() => {
+        if ((!isElectronDesktop && (!isMenuOpen || activeMenu !== 'chart-settings')) || (isElectronDesktop && activeMenu !== 'Charts')) return;
+        // Opening chart controls expresses intent to use these tools. Download
+        // their UI now instead of waiting for an idle warmup after the click.
+        for (const feature of [chartPropertiesFeature, chartObjectsFeature, indicatorNavigatorFeature, depthOfMarketFeature]) {
+            void feature.preload().catch(() => undefined);
+        }
+    }, [activeMenu, isElectronDesktop, isMenuOpen]);
 
     const terminalShortcut = (id: Parameters<typeof runTerminalShortcutAction>[0]): Pick<MenuItem, 'shortcut' | 'action'> => ({
         shortcut: getTerminalShortcutHint(id),
@@ -283,80 +302,7 @@ export const MenuBar = ({
     };
 
     const menuItems: { [key: string]: MenuItem[] } = {
-        File: [
-            // New Chart was removed on web and desktop: charts open from the
-            // searchable Symbols dialog instead of a menu entry.
-            { label: t('menu.file.openDeleted'), disabled: true },
-            {
-                label: t('menu.file.profiles'),
-                children: [
-                    {
-                        label: 'Next',
-                        shortcut: 'Shift+F5',
-                        action: () => {
-                            const active = localStorage.getItem('rtx5_active_profile') || 'Default';
-                            const names = BUILTIN_WORKSPACE_PROFILE_NAMES;
-                            const idx = names.findIndex(n => n.toLowerCase() === active.toLowerCase());
-                            const next = names[(idx + 1) % names.length];
-                            const res = restoreBuiltinWorkspaceProfile(next);
-                            if (res.status === 'restored') {
-                                localStorage.setItem('rtx5_active_profile', next);
-                                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
-                                    detail: { message: `Workspace "${next}" restored.`, type: 'success' },
-                                }));
-                            }
-                        },
-                    },
-                    {
-                        label: 'Previous',
-                        shortcut: 'Ctrl+F5',
-                        action: () => {
-                            const active = localStorage.getItem('rtx5_active_profile') || 'Default';
-                            const names = BUILTIN_WORKSPACE_PROFILE_NAMES;
-                            const idx = names.findIndex(n => n.toLowerCase() === active.toLowerCase());
-                            const prev = names[(idx - 1 + names.length) % names.length];
-                            const res = restoreBuiltinWorkspaceProfile(prev);
-                            if (res.status === 'restored') {
-                                localStorage.setItem('rtx5_active_profile', prev);
-                                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
-                                    detail: { message: `Workspace "${prev}" restored.`, type: 'success' },
-                                }));
-                            }
-                        },
-                    },
-                    { divider: true, label: '' },
-                    ...BUILTIN_WORKSPACE_PROFILE_NAMES.map(name => ({
-                        label: name,
-                        action: () => {
-                            const res = restoreBuiltinWorkspaceProfile(name);
-                            if (res.status === 'restored') {
-                                localStorage.setItem('rtx5_active_profile', name);
-                                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
-                                    detail: { message: `Workspace "${name}" restored.`, type: 'success' },
-                                }));
-                            }
-                        },
-                    })),
-                ],
-            },
-            { label: t('menu.file.close'), ...terminalShortcut('file.close-chart') },
-            { divider: true, label: '' },
-            { label: t('menu.file.save'), icon: <Icon name="save" size="sm" />, shortcut: 'Ctrl+S' },
-            { label: t('menu.file.saveAsPicture'), icon: <Icon name="file-text" size="sm" /> },
-            { divider: true, label: '' },
-            { label: t('menu.file.openDataFolder'), icon: <Icon name="folder-open" size="sm" />, shortcut: 'Ctrl+Shift+D' },
-            { divider: true, label: '' },
-            { label: t('menu.file.print'), icon: <Icon name="print" size="sm" />, shortcut: 'Ctrl+P' },
-            { label: t('menu.file.printPreview') },
-            { label: t('menu.file.printSetup'), icon: <Icon name="settings" size="sm" /> },
-            { divider: true, label: '' },
-            { label: t('menu.file.openAccount'), icon: <Icon name="user-plus" size="sm" className="text-blue-400" /> },
-            { label: t('menu.file.loginTrade'), icon: <Icon name="log-in" size="sm" className="text-blue-400" /> },
-            { label: t('menu.file.loginWeb'), icon: <Icon name="globe" size="sm" /> },
-            { label: t('menu.file.loginMql5'), icon: <Icon name="help-circle" size="sm" className="text-blue-500" /> },
-            { divider: true, label: '' },
-            { label: t('menu.file.exit'), icon: <Icon name="log-out" size="sm" className="text-rose-400" />, action: () => alert('Exit clicked') }
-        ],
+        File: [], // FileMenu owns file actions in both terminal shells.
         View: [
             {
                 label: 'Theme',
@@ -579,32 +525,44 @@ export const MenuBar = ({
             {
                 label: t('menu.window.resolution'),
                 icon: <Icon name="monitor" size="sm" />,
-                disabled: true,
-                unavailableReason: 'Display resolution is controlled by your operating system',
+                children: [
+                    {
+                        label: 'Auto (fit window)',
+                        checked: terminalResolution === 'auto',
+                        checkRole: 'radio',
+                        action: () => { setTerminalResolution('auto'); closeMenu(); },
+                    },
+                    ...TERMINAL_RESOLUTION_PRESETS.map(preset => ({
+                        label: `${preset.width} × ${preset.height}`,
+                        translateLabel: false,
+                        checked: terminalResolution === preset.id,
+                        checkRole: 'radio' as const,
+                        action: () => { setTerminalResolution(preset.id); closeMenu(); },
+                    })),
+                ],
             }
         ],
         Help: [{ label: 'Report a Bug', icon: <Bug size={16} strokeWidth={1.5} aria-hidden="true" />, action: () => window.dispatchEvent(new CustomEvent('rtx5:open-bug-report')) },
-            { label: t('menu.help.helpTopics'), icon: <Icon name="help-circle" size="sm" />, ...terminalShortcut('help.shortcuts') },
-            { label: t('menu.help.whatsNew'), icon: <Icon name="zap" size="sm" className="text-yellow-400" /> },
-            { label: t('menu.help.telegramChannel'), icon: <Icon name="arrow-right" size="sm" className="text-blue-400" /> },
-            { label: t('menu.help.videoGuides'), icon: <Icon name="play" size="sm" />, children: [{ label: 'Getting Started' }, { label: 'Trading' }, { label: 'Analysis' }] },
+            { label: t('menu.help.helpTopics'), icon: <Icon name="help-circle" size="sm" />, ...lockedHelpResource },
+            { label: t('menu.help.whatsNew'), icon: <Icon name="zap" size="sm" className="text-yellow-400" />, ...lockedHelpResource },
+            { label: t('menu.help.telegramChannel'), icon: <Icon name="arrow-right" size="sm" className="text-blue-400" />, ...lockedHelpResource },
+            { label: t('menu.help.videoGuides'), icon: <Icon name="play" size="sm" />, ...lockedHelpResource, children: [{ label: 'Getting Started' }, { label: 'Trading' }, { label: 'Analysis' }] },
             { divider: true, label: '' },
-            { label: t('menu.help.webTrader'), icon: <Icon name="globe" size="sm" /> },
             { label: t('menu.help.documentation'), icon: <Icon name="book-open" size="sm" />, disabled: true, unavailableReason: 'Documentation is not configured for this deployment' },
-            { label: t('menu.help.algoBook'), icon: <Icon name="book-open" size="sm" className="text-amber-400" /> },
-            { label: t('menu.help.neuroBook'), icon: <Icon name="cpu" size="sm" className="text-purple-400" /> },
-            { label: t('menu.help.articles'), icon: <Icon name="file-text" size="sm" /> },
-            { label: t('menu.help.codeBase'), icon: <Icon name="code" size="sm" /> },
-            { label: t('menu.help.jobs'), icon: <Icon name="briefcase" size="sm" /> },
+            { label: t('menu.help.algoBook'), icon: <Icon name="book-open" size="sm" className="text-amber-400" />, ...lockedHelpResource },
+            { label: t('menu.help.neuroBook'), icon: <Icon name="cpu" size="sm" className="text-purple-400" />, ...lockedHelpResource },
+            { label: t('menu.help.articles'), icon: <Icon name="file-text" size="sm" />, ...lockedHelpResource },
+            { label: t('menu.help.codeBase'), icon: <Icon name="code" size="sm" />, ...lockedHelpResource },
             { label: t('menu.help.marketplace'), icon: <Icon name="box" size="sm" />, ...lockedTerminalTool('marketplace') },
             { label: t('menu.help.signals'), icon: <Icon name="signal" size="sm" />, ...lockedTerminalTool('signalsHub') },
-            { label: t('menu.help.quotes'), icon: <Icon name="trending-up" size="sm" /> },
-            { label: t('menu.help.forum'), icon: <Icon name="callout" size="sm" /> },
+            { label: t('menu.help.quotes'), icon: <Icon name="trending-up" size="sm" />, ...lockedHelpResource },
+            { label: t('menu.help.forum'), icon: <Icon name="callout" size="sm" />, ...lockedHelpResource },
             { label: t('menu.help.cloudHosting'), icon: <Icon name="globe" size="sm" className="rtx-menu-icon--neutral" />, ...lockedTerminalTool('cloudHosting') },
             { divider: true, label: '' },
             {
                 label: t('menu.help.mobile'),
                 icon: <Icon name="smartphone" size="sm" />,
+                ...lockedHelpResource,
                 children: [
                     { label: 'Economic Calendar' },
                     { label: 'RTX5 Messenger' },
@@ -612,8 +570,8 @@ export const MenuBar = ({
                     { label: 'RTX5 for Android' }
                 ]
             },
-            { label: t('menu.help.mac'), icon: <Icon name="monitor" size="sm" /> },
-            { label: t('menu.help.linux'), icon: <Icon name="terminal" size="sm" /> },
+            { label: t('menu.help.mac'), icon: <Icon name="monitor" size="sm" />, ...lockedHelpResource },
+            { label: t('menu.help.linux'), icon: <Icon name="terminal" size="sm" />, ...lockedHelpResource },
             { divider: true, label: '' },
             {
                 label: t('menu.help.checkForUpdates'),
@@ -645,7 +603,7 @@ export const MenuBar = ({
     };
 
     const colorTemplateItems: MenuItem[] = (
-        ['Green on Black', 'Blue on Black', 'Black on White', 'Yellow on Black'] as const
+        ['Green on Black', 'Green and White', 'Blue on Black', 'Black on White', 'Yellow on Black'] as const
     ).map((scheme) => ({
         label: scheme,
         checked: menuChartProperties.colorScheme === scheme,
@@ -715,6 +673,8 @@ export const MenuBar = ({
     const fileMenu = (
         <FileMenu
             accountId={accountId}
+            profileSymbols={profileSymbols}
+            profileShortcutsEnabled={false}
             onDialogOpenChange={setIsFileDialogOpen}
             onLogout={onLogout ? () => {
                 onLogout();
@@ -912,7 +872,7 @@ export const MenuBar = ({
 
     return (
         <>
-            {React.cloneElement(fileMenu, { shortcutsOnly: true })}
+            {React.cloneElement(fileMenu, { shortcutsOnly: true, profileShortcutsEnabled: !isFileDialogOpen })}
             {isElectronDesktop && (
                 <div
                     ref={menuRef}
@@ -1128,7 +1088,7 @@ export const MenuBar = ({
                                             <span className="rtx-application-menu__root-icon" aria-hidden="true">
                                                 <Icon name={item.icon} size={18} />
                                             </span>
-                                            <span className="min-w-0 flex-1 truncate">{item.translateLabel === false ? item.label : tr(item.label)}</span>
+                                            <span dir="auto" className="min-w-0 flex-1 truncate">{item.translateLabel === false ? item.label : tr(item.label)}</span>
                                             {item.unavailableReason ? (
                                                 <span className="rtx-menu-row__lock" aria-hidden="true">
                                                     <Icon name="lock" size="xs" />
@@ -1298,7 +1258,7 @@ const MenuItem = ({
                 </div>
 
                 {/* Label */}
-                <span className="flex-1 font-segoe">{item.translateLabel === false ? item.label : tr(item.label)}</span>
+                <span dir="auto" className="flex-1 font-segoe">{item.translateLabel === false ? item.label : tr(item.label)}</span>
 
                 {/* Shortcut or Submenu Arrow */}
                 {item.unavailableReason ? (

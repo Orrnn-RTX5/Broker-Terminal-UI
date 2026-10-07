@@ -55,11 +55,12 @@ describe('complete terminal shortcut inventory', () => {
     for (const key of ['n', 't', 'w', 'l']) expect(press(key, { ctrlKey: true })).toBe(true);
   });
 
-  it('opens the requested panels and tabs and runs all four real chart layouts', () => {
+  it('opens the requested panels and tabs and routes all four window layouts', () => {
     render(<GlobalShortcuts {...props()} />);
     const panels = listen('togglePanel'); const options = listen('open-terminal-options');
     const symbols = listen('openSymbolsDialog');
     const arrange = vi.spyOn(useDockLayoutStore.getState(), 'arrangeCharts').mockImplementation(() => undefined);
+    const tile = vi.spyOn(useDockLayoutStore.getState(), 'tileWindows').mockImplementation(() => undefined);
     const addPanel = vi.spyOn(useDockLayoutStore.getState(), 'addPanel').mockReturnValue(true);
     press('m', { ctrlKey: true }); press('n', { altKey: true, shiftKey: true }); press('w', { altKey: true, shiftKey: true });
     expect(panels.mock.calls.map(([event]) => event.detail)).toEqual(['MarketWatch', 'Navigator', 'Terminal']);
@@ -70,7 +71,8 @@ describe('complete terminal shortcut inventory', () => {
     press('F2'); expect(getRequestedBottomDockTab()).toBe('Historical Data');
     press('r', { altKey: true });
     for (const key of ['c', 'h', 'v']) press(key, { altKey: true, shiftKey: true });
-    expect(arrange.mock.calls.map(([mode]) => mode)).toEqual(['grid', 'cascade', 'horizontal', 'vertical']);
+    expect(tile.mock.calls.map(([mode]) => mode)).toEqual(['grid', 'horizontal', 'vertical']);
+    expect(arrange.mock.calls.map(([mode]) => mode)).toEqual(['cascade']);
     addPanel.mockRestore();
   });
 

@@ -620,7 +620,34 @@ describe('formatChartSeriesData market gap separators', () => {
     ]);
   });
 
-  it('does not flag normal new candles for market-gap separator recomputation', () => {
+  it.each([
+    ['M1', '2026-10-06T23:59:00Z', '2026-10-07T00:00:00Z', 'day', 0],
+    ['M5', '2026-10-06T23:55:00Z', '2026-10-07T00:00:00Z', 'day', 0],
+    ['M15', '2026-10-06T23:45:00Z', '2026-10-07T00:00:00Z', 'day', 0],
+    ['M30', '2026-10-06T23:30:00Z', '2026-10-07T00:00:00Z', 'day', 0],
+    ['H1', '2026-10-06T23:00:00Z', '2026-10-07T00:00:00Z', 'day', 0],
+    ['H4', '2026-10-04T20:00:00Z', '2026-10-05T00:00:00Z', 'week', 0],
+    ['D1', '2026-10-31T00:00:00Z', '2026-11-01T00:00:00Z', 'month', 0],
+    ['W1', '2026-12-28T00:00:00Z', '2027-01-04T00:00:00Z', 'year', 0],
+    ['MN', '2026-12-01T00:00:00Z', '2027-01-01T00:00:00Z', 'year', 0],
+    ['M1', '2026-10-06T21:59:00Z', '2026-10-06T22:00:00Z', 'day', 7200],
+  ] as const)('refreshes %s separators at a live period boundary', (timeframe, previous, next, type, brokerOffsetSeconds) => {
+    const candles = [realCandle(Date.parse(previous) / 1000, 100), realCandle(Date.parse(next) / 1000, 101)];
+    const options = { symbol: 'BTCUSD', timeframe, brokerOffsetSeconds };
+    expect(shouldRecomputeMarketGapSeparatorsForCandle(candles, candles[1], options)).toBe(true);
+    expect(formatChartSeriesData(candles, 'candlestick', theme, defaultChartProperties, options).periodSeparators).toEqual([
+      { time: candles[1].time, index: 1, type },
+    ]);
+  });
+
+  it('keeps H4 daily changes and data gaps within the week free of separators', () => {
+    const candles = [realCandle(utcSeconds(2026, 10, 5), 100), realCandle(utcSeconds(2026, 10, 6, 12), 101)];
+    const options = { symbol: 'BTCUSD', timeframe: 'H4' as const, brokerOffsetSeconds: 0 };
+    expect(formatChartSeriesData(candles, 'candlestick', theme, defaultChartProperties, options).periodSeparators).toEqual([]);
+    expect(shouldRecomputeMarketGapSeparatorsForCandle(candles, candles[1], options)).toBe(false);
+  });
+
+  it('does not flag normal new candles within a period for separator recomputation', () => {
     const nextCandle = realCandle(utcSeconds(2026, 6, 26, 20, 15), 1.1010);
 
     expect(shouldRecomputeMarketGapSeparatorsForCandle(
@@ -677,8 +704,11 @@ describe('live price scale geometry', () => {
 });
 
 describe('live price overlay colors', () => {
-  it('separates enterprise light price label fills from the matching candle marks', () => {
-    const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: true });
+  it('separates Green on Black light price label fills from the matching candle marks', () => {
+    const colors = getEffectiveChartColors({
+      colorScheme: 'Green on Black',
+      colors: getPresetSchemeColors('Green on Black'),
+    }, { isAdvancedUntitledLight: true });
 
     expect(getLivePriceOverlayColors(colors, colors.bullCandle, true)).toEqual({
       lineColor: '#089981', badgeBackground: '#07816d', badgeTextColor: '#ffffff',
@@ -693,11 +723,18 @@ describe('live price overlay colors', () => {
     });
   });
 
-  it('uses the reference candle direction colors by default', () => {
-    const colors = defaultChartProperties.colors;
+  it.each([
+    { mode: 'dark', light: false, up: '#4597ff', down: '#ff5858' },
+    { mode: 'light', light: true, up: '#1d4ed8', down: '#b91c1c' },
+  ])('uses the default quote direction colors for price lines and badges in $mode mode', ({ light, up, down }) => {
+    const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: light });
 
-    expect(getLivePriceOverlayColors(colors, colors.bullCandle).lineColor).toBe('#089981');
-    expect(getLivePriceOverlayColors(colors, colors.bearCandle).lineColor).toBe('#F23645');
+    expect(getLivePriceOverlayColors(colors, colors.bullCandle, light)).toMatchObject({
+      lineColor: up, badgeBackground: up,
+    });
+    expect(getLivePriceOverlayColors(colors, colors.bearCandle, light)).toMatchObject({
+      lineColor: down, badgeBackground: down,
+    });
   });
 
   it('takes the live price color from the series that is actually rendered', () => {
@@ -720,8 +757,8 @@ describe('live price overlay colors', () => {
   });
 
   it.each([
-    { name: 'daily loss while the current candle rises', open: 90, close: 95, direction: 'down' as const, color: '#F23645' },
-    { name: 'daily gain while the current candle falls', open: 110, close: 105, direction: 'up' as const, color: '#089981' },
+    { name: 'daily loss while the current candle rises', open: 90, close: 95, direction: 'down' as const, color: '#ff5858' },
+    { name: 'daily gain while the current candle falls', open: 110, close: 105, direction: 'up' as const, color: '#4597ff' },
   ])('matches the area price badge and line to $name', ({ open, close, direction, color }) => {
     const colors = defaultChartProperties.colors;
     const candles = [

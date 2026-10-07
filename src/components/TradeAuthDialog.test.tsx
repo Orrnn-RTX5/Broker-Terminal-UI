@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useAppStore } from '../store/useAppStore';
 import { TradeAuthDialog } from './TradeAuthDialog';
 import { registerRuntimeBrokerDemoAccount } from '../api/demoRegistration';
-import { loadAppBrokerDirectory, loadBrokerDirectory } from '../services/brokerDirectory';
+import { getCachedBrokerDirectory, loadAppBrokerDirectory, loadBrokerDirectory } from '../services/brokerDirectory';
 
 vi.mock('../services/brokerDirectory', () => ({
   loadBrokerDirectory: vi.fn(),
   loadAppBrokerDirectory: vi.fn(),
+  getCachedBrokerDirectory: vi.fn(),
 }));
 
 vi.mock('../api/demoRegistration', () => ({
@@ -47,6 +48,7 @@ describe('TradeAuthDialog', () => {
     ];
     vi.mocked(loadBrokerDirectory).mockReset().mockResolvedValue(brokers);
     vi.mocked(loadAppBrokerDirectory).mockReset().mockResolvedValue(brokers);
+    vi.mocked(getCachedBrokerDirectory).mockReset().mockReturnValue(null);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => brokers,
@@ -56,6 +58,73 @@ describe('TradeAuthDialog', () => {
   afterEach(() => {
     delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, string> }).__RTX_RUNTIME_CONFIG__;
     vi.unstubAllGlobals();
+  });
+
+  it('opens the configured login immediately without a verification alert while directory metadata is pending', async () => {
+    vi.mocked(loadBrokerDirectory).mockReturnValue(new Promise(() => undefined));
+    const view = render(<TradeAuthDialog isOpen intent={null} onClose={vi.fn()} onAuthenticated={vi.fn()} />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/verifying.*broker configuration/i)).not.toBeInTheDocument();
+    const login = screen.getByRole('button', { name: /log in to live account/i });
+    expect(login).toBeEnabled();
+    expect(screen.getByRole('button', { name: /create demo account/i })).toBeEnabled();
+    fireEvent.click(login);
+    expect(await screen.findByPlaceholderText(/search broker/i)).toHaveAttribute('readonly');
+    view.unmount();
+  });
+
+  it('does not show a verification alert in the demo form while directory metadata is pending', () => {
+    vi.mocked(loadBrokerDirectory).mockReturnValue(new Promise(() => undefined));
+    const view = render(<TradeAuthDialog isOpen initialMode="demo" intent={null} onClose={vi.fn()} onAuthenticated={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /create and continue/i })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/verifying.*broker configuration/i)).not.toBeInTheDocument();
+    view.unmount();
+  });
+
+  it('reports actual missing deployment configuration and keeps account actions disabled', () => {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, string> }).__RTX_RUNTIME_CONFIG__!.API_HOST = '';
+    const view = render(<TradeAuthDialog isOpen intent={null} onClose={vi.fn()} onAuthenticated={vi.fn()} />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/API_HOST/i);
+    expect(screen.getByRole('button', { name: /log in to live account/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /create demo account/i })).toBeDisabled();
+    expect(screen.queryByText(/verifying.*broker configuration/i)).not.toBeInTheDocument();
+    view.unmount();
+  });
+
+  it('closes the credential form when broker metadata rejects account access', async () => {
+    let resolveDirectory!: (brokers: Array<{ broker_id: string; enabled: boolean }>) => void;
+    vi.mocked(loadBrokerDirectory).mockReturnValue(new Promise(resolve => { resolveDirectory = resolve; }));
+    const view = render(<TradeAuthDialog isOpen intent={null} onClose={vi.fn()} onAuthenticated={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /log in to live account/i }));
+    expect(await screen.findByPlaceholderText(/search broker/i)).toBeInTheDocument();
+    await act(async () => { resolveDirectory([{ broker_id: 'runtime-broker', enabled: false }]); });
+    expect(screen.queryByPlaceholderText(/search broker/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/unavailable for account access/i);
+    expect(screen.getByRole('button', { name: /log in to live account/i })).toBeDisabled();
+    view.unmount();
+  });
+
+  it('does not commit a pending demo session after broker metadata rejects account access', async () => {
+    let resolveDirectory!: (brokers: Array<{ broker_id: string; enabled: boolean }>) => void;
+    let resolveRegistration!: (response: { access_token: string; account_login: number; broker_id: string }) => void;
+    vi.mocked(loadBrokerDirectory).mockReturnValue(new Promise(resolve => { resolveDirectory = resolve; }));
+    vi.mocked(registerRuntimeBrokerDemoAccount).mockReturnValue(new Promise(resolve => { resolveRegistration = resolve; }));
+    const onAuthenticated = vi.fn();
+    const view = render(<TradeAuthDialog isOpen initialMode="demo" intent={null} onClose={vi.fn()} onAuthenticated={onAuthenticated} />);
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Demo User' } });
+    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'demo@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'Password1' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'Password1' } });
+    fireEvent.click(screen.getByRole('button', { name: /create and continue/i }));
+    expect(registerRuntimeBrokerDemoAccount).toHaveBeenCalledOnce();
+    await act(async () => { resolveDirectory([{ broker_id: 'runtime-broker', enabled: false }]); });
+    expect(screen.getByRole('alert')).toHaveTextContent(/unavailable for account access/i);
+    await act(async () => { resolveRegistration({ access_token: 'late-demo-token', account_login: 123456, broker_id: 'runtime-broker' }); });
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    expect(useAppStore.getState()).toMatchObject({ isAuthenticated: false, authToken: null });
+    expect(screen.getByRole('button', { name: /create and continue/i })).toBeDisabled();
+    view.unmount();
   });
 
   it('creates a demo session and returns the draft to App for review', async () => {

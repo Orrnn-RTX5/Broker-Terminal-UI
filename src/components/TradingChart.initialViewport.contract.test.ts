@@ -70,7 +70,7 @@ describe('TradingChart initial viewport contract', () => {
     expect(initialHistoryStart).toBeGreaterThan(-1);
     expect(initialHistoryEnd).toBeGreaterThan(initialHistoryStart);
     expect(initialHistoryRender).toContain('shouldResetInitialHistoryVisibleRange({');
-    expect(initialHistoryRender).toContain('hydratedFromCache,');
+    expect(initialHistoryRender).toContain('hydratedFromCache: hydratedFromCache || (');
     expect(initialHistoryRender).toContain('resetVisibleRange: shouldResetVisibleRange');
   });
 
@@ -87,7 +87,7 @@ describe('TradingChart initial viewport contract', () => {
     expect(listener).toContain('applyInitialVisibleLogicalRange(chart, totalBars, timeframe);');
   });
 
-  it('keeps sparse live data covered until history settles without blocking live updates', () => {
+  it('keeps sparse live data covered but reveals a complete stream snapshot before REST settles', () => {
     const firstLiveStart = liveCandleSource.indexOf('if (shouldCommitFirstLiveSelectionBaseline({');
     const firstLiveEnd = liveCandleSource.indexOf('} else {', firstLiveStart);
     const firstLiveRender = liveCandleSource.slice(firstLiveStart, firstLiveEnd);
@@ -101,6 +101,7 @@ describe('TradingChart initial viewport contract', () => {
         'finishLoadingAfterRender: !initialHistoryLoadPendingRef.current',
       );
     }
+    expect(snapshotRender).toContain('protectedSnapshot.length >= getStartupSnapshotCandleCount(displayedStreamTimeframe)');
 
     expect(chartRuntimeSource).toContain('initialHistoryLoadPendingRef.current = true;');
     expect(chartRuntimeSource).toContain('initialHistoryLoadPendingRef.current = false;');

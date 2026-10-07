@@ -2080,5 +2080,11 @@
   "Total commission": "Total commission",
   "Total swap": "Total swap",
   "Total fee": "Total fee",
-  "Total gross profit": "Total gross profit"
+  "Total gross profit": "Total gross profit",
+  "Chart context menu": "चार्ट संदर्भ मेनू",
+  "Fine grid": "बारीक ग्रिड",
+  "Grid type": "ग्रिड प्रकार",
+  "Square": "वर्गाकार",
+  "Price/time aligned": "मूल्य/समय के अनुसार संरेखित",
+  "Grid line style": "ग्रिड रेखा शैली"
 }

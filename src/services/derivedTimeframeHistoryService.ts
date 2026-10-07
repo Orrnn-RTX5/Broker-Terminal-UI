@@ -376,6 +376,7 @@ export const getDerivedM1InitialTargetCandleLimit = (targetTimeframe: string): n
 export const aggregateM1CandlesToTimeframe = (
   m1Candles: readonly OHLCData[],
   targetTimeframe: string,
+  boundaryOffsetSeconds = 0,
 ): OHLCData[] => {
   const targetTf = normalizeTimeframe(targetTimeframe);
   if (!targetTf) return [];
@@ -383,7 +384,7 @@ export const aggregateM1CandlesToTimeframe = (
 
   const buckets = new Map<number, OHLCData>();
   for (const candle of normalizeCandlePageAscending(m1Candles)) {
-    const bucketTime = getTimeframePeriodSeconds(candle.time, targetTf)?.startTime;
+    const bucketTime = getTimeframePeriodSeconds(candle.time, targetTf, boundaryOffsetSeconds)?.startTime;
     if (bucketTime === undefined) continue;
     const existing = buckets.get(bucketTime);
     const volume = finiteVolume(candle.volume);

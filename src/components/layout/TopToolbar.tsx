@@ -44,6 +44,7 @@ interface TopToolbarProps {
     onLoadTemplate?: (template: any) => void;
     desktopDrawingTools?: React.ReactNode;
     accountBrokerName?: string;
+    profileSymbols?: readonly string[];
 }
 
 import { MenuBar } from './MenuBar';
@@ -55,6 +56,9 @@ import { captureFullPage } from '../../services/screenshotService';
 import {
     clearAdvancedViewRootClasses,
     RTX_ADVANCED_VIEW_CHANGE_EVENT,
+    RTX_EXIT_CHART_FOCUS_EVENT,
+    readChartFocusPreference,
+    persistChartFocusPreference,
     syncAdvancedViewRootClasses,
     type AdvancedViewAccent,
     type AdvancedViewChartSurface,
@@ -110,7 +114,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     onRefreshConnection,
     onLoadTemplate,
     desktopDrawingTools,
-    accountBrokerName
+    accountBrokerName,
+    profileSymbols,
 }) => {
     const { state: toolbarState, dispatch: dispatchToolbar, syncState: syncToolbarState } = useToolbarState();
     const { dispatch: dispatchCommand } = useCommandBus();
@@ -247,6 +252,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 onLoadTemplate={onLoadTemplate}
                 desktopDrawingTools={desktopDrawingTools}
                 accountBrokerName={accountBrokerName}
+                profileSymbols={profileSymbols}
             />
 
         </div>
@@ -365,9 +371,10 @@ function isStoredOption<T extends string>(value: unknown, options: readonly T[])
 }
 
 function loadAdvancedOptions(): AdvancedViewOptions {
+    const focusChart = readChartFocusPreference();
     try {
         const raw = localStorage.getItem(ADVANCED_OPTIONS_STORAGE_KEY);
-        if (!raw) return DEFAULT_ADVANCED_OPTIONS;
+        if (!raw) return { ...DEFAULT_ADVANCED_OPTIONS, focusChart };
         const parsed = JSON.parse(raw) as Partial<AdvancedViewOptions> | null;
         return {
             fontSize: isStoredOption(parsed?.fontSize, ADVANCED_FONT_SIZES)
@@ -382,12 +389,10 @@ function loadAdvancedOptions(): AdvancedViewOptions {
             chartSurface: isStoredOption(parsed?.chartSurface, ADVANCED_CHART_SURFACES)
                 ? parsed.chartSurface
                 : DEFAULT_ADVANCED_OPTIONS.chartSurface,
-            focusChart: typeof parsed?.focusChart === 'boolean'
-                ? parsed.focusChart
-                : DEFAULT_ADVANCED_OPTIONS.focusChart,
+            focusChart,
         };
     } catch {
-        return DEFAULT_ADVANCED_OPTIONS;
+        return { ...DEFAULT_ADVANCED_OPTIONS, focusChart };
     }
 }
 
@@ -398,7 +403,8 @@ const MainToolbar = ({
     dispatchCommand,
     symbol,
     desktopDrawingTools,
-    accountBrokerName
+    accountBrokerName,
+    profileSymbols,
 }: MainToolbarProps) => {
 
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
@@ -414,6 +420,13 @@ const MainToolbar = ({
         }
     });
     const [advancedOptions, setAdvancedOptions] = useState<AdvancedViewOptions>(loadAdvancedOptions);
+    useEffect(() => {
+        const exitFocus = () => setAdvancedOptions(current => current.focusChart
+            ? { ...current, focusChart: false }
+            : current);
+        window.addEventListener(RTX_EXIT_CHART_FOCUS_EVENT, exitFocus);
+        return () => window.removeEventListener(RTX_EXIT_CHART_FOCUS_EVENT, exitFocus);
+    }, []);
     const historyOverlayRef = useRef<HTMLDivElement>(null);
     const historyOverlayDropdownRef = useRef<HTMLDivElement>(null);
     const accountId = useAppStore((s) => s.accountId) || '';
@@ -487,10 +500,12 @@ const MainToolbar = ({
         try {
             localStorage.setItem('rtx5-advanced-view-enabled', String(advancedViewEnabled));
             localStorage.setItem('rtx5-theme', advancedViewEnabled ? 'light' : 'dark');
-            localStorage.setItem(ADVANCED_OPTIONS_STORAGE_KEY, JSON.stringify(advancedOptions));
+            const { focusChart: _focusChart, ...appearanceOptions } = advancedOptions;
+            localStorage.setItem(ADVANCED_OPTIONS_STORAGE_KEY, JSON.stringify(appearanceOptions));
         } catch {
             // Ignore storage failures; the visual toggle should still work for this session.
         }
+        persistChartFocusPreference(advancedOptions.focusChart);
 
         return () => {
             window.cancelAnimationFrame(resizeFrame);
@@ -598,6 +613,7 @@ const MainToolbar = ({
             crosshairEnabled={toolbarState.crosshairEnabled}
             chartSymbol={symbol}
             accountId={accountId}
+            profileSymbols={profileSymbols}
             onSetAdvancedViewEnabled={setAdvancedViewEnabled}
             onSetAdvancedFontSize={(fontSize) => updateAdvancedOptions({ fontSize })}
             onSetFocusChart={(focusChart) => updateAdvancedOptions({ focusChart })}

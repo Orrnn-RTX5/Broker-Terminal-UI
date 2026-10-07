@@ -1,6 +1,7 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useDesktopStartupReady } from '../startup/useDesktopStartupReady';
 import { useSavedLogin } from '../hooks/useSavedLogin';
+import { getAuthenticatedAccountName } from '../utils/accountDisplayName';
 /**
  * WelcomeTerminal renders the lightweight pre-authentication webterminal.
  * Authenticated chart, data, and WebSocket modules are loaded separately.
@@ -872,15 +873,19 @@ export function WelcomeTerminal({
 
             const token = data.access_token || data.token;
             if (!token) throw new Error('No authentication token received');
+            markAuthenticationAccepted();
+
+            // Start the authenticated store import as soon as the broker accepts
+            // the login. Secure password storage and the pending-feedback paint
+            // can finish concurrently instead of delaying that import.
+            const loginStoreRuntimePromise = loadAuthenticatedLoginStoreRuntime();
+            void loginStoreRuntimePromise.catch(() => undefined);
             try {
                 await persistPassword({ brokerId: submitBroker.broker_id, serverUrl: brokerExtApiUrl }, String(data.account_login ?? username.trim()), password);
             } catch {
                 throw new Error('Unable to save the password. Turn off Save password to log in without saving it.');
             }
-            markAuthenticationAccepted();
             await feedbackPaintPromise;
-
-            const loginStoreRuntimePromise = loadAuthenticatedLoginStoreRuntime();
 
             persistBrokerSessionDiscovery({
                 ...data,
@@ -894,9 +899,9 @@ export function WelcomeTerminal({
                 feed_url: data.feed_url || submitBroker.feed_url || submitBroker.feed_ws_url,
                 feed_ws_url: data.feed_ws_url || submitBroker.feed_ws_url,
                 feed_status_url: data.feed_status_url || submitBroker.feed_status_url,
-                logo_url: submitBroker.logo_url,
+                logo_url: data.logo_url?.trim() || submitBroker.logo_url,
                 theme_color: submitBroker.theme_color,
-            });
+            }, { notifySessionChange: false });
             localStorage.setItem(
                 LAST_AUTHENTICATED_BROKER_ID_KEY,
                 String(data.broker_id || submitBroker.broker_id),
@@ -926,7 +931,7 @@ export function WelcomeTerminal({
                 sessionHandoff.expiresAt ?? undefined,
                 !isNaN(loginNum) ? {
                     login: loginNum,
-                    name: data.user?.username || data.username || '',
+                    name: getAuthenticatedAccountName(data),
                     server: submitBroker.broker_name || '',
                     isLive: true,
                     lastUsed: Date.now(),
