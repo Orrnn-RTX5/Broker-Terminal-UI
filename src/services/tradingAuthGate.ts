@@ -1,3 +1,4 @@
+import { isInvestorToken } from './investorSession';
 import { useAppStore } from '../store/useAppStore';
 
 export const TRADING_AUTH_REQUEST_EVENT = 'rtx:request-trading-auth';
@@ -33,6 +34,7 @@ export const hasAuthenticatedTradingSession = (): boolean => {
     state.isAuthenticated
       && parseTradingLogin(state.accountId)
       && state.authToken
+      && !isInvestorToken(state.authToken)
       && (!expiresAt || expiresAt > Date.now()),
   );
 };
@@ -53,6 +55,7 @@ export const requestTradingAuth = (intent: TradingAuthIntent): void => {
 
 export const requireTradingAuth = (intent: TradingAuthIntent): boolean => {
   if (hasAuthenticatedTradingSession()) return true;
+  if (isInvestorToken(useAppStore.getState().authToken)) return false;
   requestTradingAuth(intent);
   return false;
 };

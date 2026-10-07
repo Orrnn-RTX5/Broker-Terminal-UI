@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { assertTerminalQuoteFresh, calibrateTerminalQuoteClock, getTerminalQuoteFreshness, getTerminalQuoteFreshnessRevision, getTerminalQuoteSession, ingestTerminalQuote, readQuoteFreshnessMetadata, resetTerminalQuoteFreshness, subscribeTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
+import { assertTerminalCloseQuote, assertTerminalQuoteFresh, calibrateTerminalQuoteClock, getTerminalQuoteFreshness, getTerminalQuoteFreshnessRevision, getTerminalQuoteSession, ingestTerminalQuote, readQuoteFreshnessMetadata, resetTerminalQuoteFreshness, subscribeTerminalQuoteFreshness, terminalQuoteFreshnessEnabled } from './terminalQuoteFreshness';
 
 const epoch = 1_800_000_000_000;
 let mono: number;
@@ -26,6 +26,30 @@ describe('terminal quote freshness', () => {
     expect(getTerminalQuoteFreshness('XAUUSD')).toMatchObject({ live: false, reason: 'stale' });
     ingestTerminalQuote('XAUUSD', quote(2));
     expect(getTerminalQuoteFreshness('XAUUSD').live).toBe(true);
+  });
+  it('lets only close defer time uncertainty while strict quote assertions still block', () => {
+    ingestTerminalQuote('XAUUSD', quote());
+    expect(() => assertTerminalCloseQuote('XAUUSD')).not.toThrow();
+    expect(getTerminalQuoteFreshness('XAUUSD').live).toBe(false);
+    expect(() => assertTerminalQuoteFresh('XAUUSD')).toThrow();
+    calibrate();
+    mono += 2999; wall += 2999;
+    expect(getTerminalQuoteFreshness('XAUUSD').reason).toBe('time-unverified');
+    expect(() => assertTerminalCloseQuote('XAUUSD')).not.toThrow();
+    mono += 10; wall += 10;
+    expect(() => assertTerminalCloseQuote('XAUUSD')).toThrow();
+  });
+  it.each([
+    { stale: true }, { tradable: false }, { source_mismatch: true },
+  ])('retains explicit provider vetoes for close: %j', metadata => {
+    ingestTerminalQuote('XAUUSD', { ...quote(), ...metadata });
+    expect(() => assertTerminalCloseQuote('XAUUSD')).toThrow();
+  });
+  it('blocks close without provider evidence and rejects impossible future evidence', () => {
+    expect(() => assertTerminalCloseQuote('XAUUSD')).toThrow();
+    calibrate();
+    expect(ingestTerminalQuote('XAUUSD', { ...quote(), provider_timestamp: epoch + mono + 252 })).toBe(false);
+    expect(() => assertTerminalCloseQuote('XAUUSD')).toThrow();
   });
   it('does not renew duplicates, old sequences or old status snapshots', () => {
     calibrate(); ingestTerminalQuote('XAUUSD', quote(10));

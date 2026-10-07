@@ -11,13 +11,13 @@ import { chartPrinter, DEFAULT_PRINT_PREFERENCES, type ChartPrintData } from './
 global.fetch = vi.fn();
 const fetchMock = vi.mocked(global.fetch);
 
-afterEach(() => { delete (window as any).__RTX_RUNTIME_CONFIG__; });
+afterEach(() => { delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__; });
 
 describe('ChartPrinterService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
-    (window as any).__RTX_RUNTIME_CONFIG__ = {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
       CONFIG_SOURCE: 'deployment', BACKEND_TARGET: 'web', BROKER_ID: 'printer-broker', DEFAULT_MT5_SERVER: 'Printer Server',
       API_HOST: 'https://printer-broker.example', WS_HOST: 'wss://printer-broker.example',
     };

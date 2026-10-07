@@ -239,6 +239,12 @@ export function assertTerminalMarketOrderQuote(symbol: string): void {
   assertTerminalQuoteFresh(symbol);
 }
 
+/** Closing may defer uncertain age to the authoritative execution check. */
+export function assertTerminalCloseQuote(symbol: string): void {
+  if (!terminalQuoteFreshnessEnabled() || canSubmitTerminalMarketOrder(getTerminalQuoteFreshness(symbol))) return;
+  assertTerminalQuoteFresh(symbol);
+}
+
 export function terminalMarketQuoteAdvisory(state: TerminalQuoteFreshness): string | null {
   if (state.reason !== 'time-unverified') return null;
   return state.clockStatus === 'unverified'

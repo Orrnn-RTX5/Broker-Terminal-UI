@@ -1,3 +1,5 @@
+import { useInvestorSession } from '../hooks/useInvestorSession';
+import { INVESTOR_READ_ONLY_MESSAGE } from '../services/investorSession';
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useTerminalQuoteFreshness } from '../hooks/useTerminalQuoteFreshness';
 import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
@@ -452,6 +454,7 @@ export function OrderPanelDialog({
   authorizationSettled = true,
 }: OrderPanelProps) {
     const tr = useUiTranslation();
+    const investorReadOnly = useInvestorSession();
   const [symbol, setSymbol] = useState(initialSymbol);
   const quoteDemandId = React.useId();
   useQuoteSubscription(isOpen && symbol ? [symbol] : [], `order-dialog:${quoteDemandId}`, {
@@ -465,14 +468,14 @@ export function OrderPanelDialog({
   const hasVolumeSpecifications = instruments === undefined || Boolean(specification
     && [specification.minVolume, specification.maxVolume, specification.volumeStep].every(value => typeof value === 'number' && Number.isFinite(value) && value > 0)
     && specification.maxVolume! >= specification.minVolume!);
-  const tradingAuthorized = authorizationSettled && hasVolumeSpecifications
+  const tradingAuthorized = !investorReadOnly && authorizationSettled && hasVolumeSpecifications
     && (authorizedSymbols === undefined || authorizedSymbols.includes(symbol));
   // Catalogue refreshes update validation without replacing the user's text.
   const [volumeStr, setVolumeStr] = useState(() => localStorage.getItem('lastLotSize')
     || formatTradeVolume(volumeConstraints.min, volumeConstraints));
   const parsedVolume = parseTradeVolumeDraft(volumeStr);
   const volumeValid = parsedVolume !== null && isTradeVolumeValid(parsedVolume, volumeConstraints);
-  const volumeMessage = !tradingAuthorized ? 'Trading configuration unavailable for this symbol.'
+  const volumeMessage = investorReadOnly ? INVESTOR_READ_ONLY_MESSAGE : !tradingAuthorized ? 'Trading configuration unavailable for this symbol.'
     : !volumeValid ? `Volume must be between ${volumeConstraints.min} and ${volumeConstraints.max ?? 'the permitted maximum'}, in steps of ${volumeConstraints.step}.` : '';
   const [fillPolicy, setFillPolicy] = useState<FillPolicy>('Fill or Kill');
   const [comment, setComment] = useState('');

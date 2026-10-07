@@ -740,7 +740,7 @@ export function WelcomeTerminal({
         if (isDesktopBrokerSelection) {
             void hydrateBrokerPresentation(nextBroker, serverUrl);
         }
-    }, [hydrateBrokerPresentation, isDesktopBrokerSelection, runHealthCheck]);
+    }, [hydrateBrokerPresentation, isDesktopBrokerSelection, runHealthCheck, setPassword]);
 
     const handleSelectBroker = (broker: BrokerServerItem) => {
         if (!isDesktopBrokerSelection || submittingRef.current || !isDirectoryBrokerSelectable(broker)) return;

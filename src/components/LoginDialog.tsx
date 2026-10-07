@@ -4,7 +4,7 @@ import { getAuthenticatedAccountName } from '../utils/accountDisplayName';
  * Account login dialog shared by the web and desktop terminals.
  */
 
-import React, { useState, useEffect, useRef, useCallback, useId } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useEffectEvent, useId } from 'react';
 import ReactDOM from 'react-dom';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
@@ -244,6 +244,9 @@ export function LoginDialog({
         }).catch(() => undefined);
     };
 
+    const selectDiscoveredBroker = useEffectEvent(handleSelectBroker);
+    const checkDiscoveredBroker = useEffectEvent(runHealthCheck);
+
     // Fetch broker servers from API
     useEffect(() => {
         if (!isOpen) return;
@@ -264,7 +267,7 @@ export function LoginDialog({
             setSelectedBroker(lockedFallback);
             setSearchQuery(lockedFallback.broker_name);
             setDropdownOpen(false);
-            runHealthCheck(resolveBrokerExtApiUrl(lockedFallback));
+            checkDiscoveredBroker(resolveBrokerExtApiUrl(lockedFallback));
         }
         const directoryRequest = !isDesktop && !configuration.discoveryBaseUrl
             ? Promise.resolve(lockedFallback ? [lockedFallback] : [])
@@ -288,7 +291,7 @@ export function LoginDialog({
                     savedBrokerId,
                 });
                 if (selectedDiscoveryBroker) {
-                    handleSelectBroker(selectedDiscoveryBroker);
+                    selectDiscoveredBroker(selectedDiscoveryBroker);
                 }
             })
             .catch(() => {

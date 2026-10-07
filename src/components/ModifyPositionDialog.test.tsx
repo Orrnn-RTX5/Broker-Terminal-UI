@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     placeMarketOrder: vi.fn(),
     setPositions: vi.fn(),
     positions: [] as any[],
+    authToken: null as string | null,
 }));
 
 vi.mock('../store/useMarketDataStore', () => ({
@@ -25,12 +26,12 @@ vi.mock('../store/useMarketDataStore', () => ({
 }));
 
 vi.mock('../store/useAppStore', () => ({
-    useAppStore: {
+    useAppStore: Object.assign((selector: (state: { authToken: string | null }) => unknown) => selector({ authToken: mocks.authToken }), {
         getState: () => ({
             positions: mocks.positions,
             setPositions: mocks.setPositions,
         }),
-    },
+    }),
 }));
 
 vi.mock('../services/api', () => ({
@@ -60,6 +61,7 @@ const makePosition = (id = 165) => ({
 describe('ModifyPositionDialog chart toolbar', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.authToken = null;
         mocks.positions = [];
         mocks.modifyPosition.mockResolvedValue(undefined);
         mocks.modifyPendingOrder.mockResolvedValue(undefined);
@@ -77,6 +79,15 @@ describe('ModifyPositionDialog chart toolbar', () => {
         cleanup();
         vi.useRealTimers();
         commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+    });
+
+    it('disables position modification and closing for an investor session', () => {
+        mocks.authToken = `header.${btoa(JSON.stringify({ investor: true }))}.signature`;
+        render(<ModifyPositionDialog isOpen onClose={() => {}} position={makePosition()} />);
+        expect(screen.getByRole('button', { name: /modify #165/i })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /close #165 buy .* by market/i })).toBeDisabled();
+        expect(mocks.modifyPosition).not.toHaveBeenCalled();
+        expect(mocks.closePosition).not.toHaveBeenCalled();
     });
 
     it('does not close or move focus when Escape/Tab belongs to a newer local dialog', async () => {

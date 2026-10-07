@@ -85,7 +85,6 @@ import { getActiveChartSource } from './services/activeChartSource';
 import {
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
-  onCommittedBrokerAccountSessionScopeChange,
 } from './services/brokerSession';
 import { ORDER_FEEDBACK_EVENT } from './contracts/terminalEvents';
 import {

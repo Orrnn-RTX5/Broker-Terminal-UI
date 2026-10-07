@@ -13,6 +13,9 @@ interface State {
     error: Error | null;
 }
 
+const isModuleLoadError = (error: Error | null): boolean =>
+    /^(?:Failed to fetch dynamically imported module\b|error loading dynamically imported module\b|Importing a module script failed\b)/i.test(error?.message || '');
+
 export class ErrorBoundary extends Component<Props, State> {
     public state: State = {
         hasError: false,
@@ -33,6 +36,9 @@ export class ErrorBoundary extends Component<Props, State> {
             if (this.props.fallback) {
                 return this.props.fallback;
             }
+            // React.lazy caches a rejected import. Resetting this boundary cannot
+            // retry it; a user-requested navigation loads the current release.
+            const needsReload = isModuleLoadError(this.state.error);
             // Show a minimal error indicator in the panel
             return (
                 <div style={{ padding: 8, color: '#f87171', fontSize: 11, fontFamily: 'monospace', background: '#1a0000' }}>
@@ -40,9 +46,12 @@ export class ErrorBoundary extends Component<Props, State> {
                     <br />
                     <button
                         style={{ marginTop: 4, padding: '2px 8px', background: '#333', color: '#ccc', border: 'none', borderRadius: 3, cursor: 'pointer' }}
-                        onClick={() => this.setState({ hasError: false, error: null })}
+                        onClick={() => {
+                            if (needsReload) window.location.reload();
+                            else this.setState({ hasError: false, error: null });
+                        }}
                     >
-                        {tr("Retry")}</button>
+                        {tr(needsReload ? "Reload terminal" : "Retry")}</button>
                 </div>
             );
         }

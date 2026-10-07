@@ -1,3 +1,4 @@
+import { isInvestorSession } from '../services/investorSession';
 /**
  * cTrader-style on-chart position controls.
  *
@@ -360,6 +361,7 @@ const createControlButton = (
   }
   const button = document.createElement('button');
   button.type = 'button';
+  button.disabled = variant !== 'share' && isInvestorSession();
   button.className = `rtx-trade-control-btn rtx-trade-control-btn--${variant}`;
   button.title = title;
   button.setAttribute('aria-label', title);
@@ -376,6 +378,7 @@ const createControlButton = (
   button.addEventListener('click', (event) => {
     event.stopPropagation();
     event.preventDefault();
+    if (variant !== 'share' && isInvestorSession()) return;
     onActivate();
   });
   return button;

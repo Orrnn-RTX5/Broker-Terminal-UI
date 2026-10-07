@@ -108,4 +108,24 @@ describe('Trade rendering latency', () => {
     expect(screen.getByRole('button', { name: 'Close position 72' })).toBeEnabled();
     expect(Date.now()).toBe(startedAt);
   });
+
+  it.each(['rejected', 'expired'])('shows an explicit %s outcome instead of an endless loading row', (placementState) => {
+    trade.pendingPositions = [{ ...makePosition(-1), clientOrderId: 'order-one', placementState }];
+    render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(screen.getByText(placementState === 'rejected' ? 'Rejected' : 'Expired')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Order in progress' })).toHaveTextContent('!');
+    expect(screen.getByRole('button', { name: 'Order in progress' })).toBeDisabled();
+  });
+
+  it('shows an unresolved outcome and keeps all trade actions disabled', () => {
+    trade.pendingPositions = [{
+      ...makePosition(-1), clientOrderId: 'order-one', placementState: 'pending',
+      placementErrorCode: 'ORDER_OUTCOME_UNKNOWN',
+      placementErrorMessage: 'Order outcome unknown. Check command order-one before placing another order.',
+    }];
+    render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(screen.getByText('Outcome unknown')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Order in progress' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Order in progress' })).toHaveAttribute('title', expect.stringContaining('order-one'));
+  });
 });

@@ -9,6 +9,7 @@ export interface ApiErrorResponse {
 }
 
 export interface AuthLoginRequest {
+  login_type?: 'master' | 'investor';
   username?: string | number;
   login?: number;
   email?: string;
@@ -43,6 +44,8 @@ export interface ApiUser {
 export interface AuthTokenResponse {
   name?: string;
   logo_url?: string | null;
+  investor?: boolean;
+  login_type?: 'master' | 'investor';
   token?: string;
   access_token?: string;
   refresh_token?: string;

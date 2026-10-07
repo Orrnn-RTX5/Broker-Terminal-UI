@@ -1158,7 +1158,7 @@ describe('trade v2 API contract calls', () => {
     await accountV2Api.setInvestorPassword(123456, { password: 'investor-runtime-password' });
     expect(lastFetchCall()).toMatchObject({
       url: `${RTX5_API_URL}/api/v2/accounts/123456/investor-password`,
-      body: { password: 'investor-runtime-password' },
+      body: { new_password: 'investor-runtime-password' },
     });
 
     expect(localStorage.getItem('old-runtime-password')).toBeNull();

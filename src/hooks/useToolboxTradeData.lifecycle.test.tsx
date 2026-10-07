@@ -113,6 +113,7 @@ describe('useToolboxTradeData display lifecycle', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it('returns same-session store positions on the first render', () => {
@@ -184,6 +185,84 @@ describe('useToolboxTradeData display lifecycle', () => {
       await request;
     });
     expect(result.current.positions[0]).toMatchObject({ sl: 1.05, tp: 1.2, profit: 22 });
+    unmount();
+  });
+
+  const dispatchPlacement = (status: string, clientOrderId = 'order-one') => act(() => {
+    window.dispatchEvent(new CustomEvent('rtx:market-order-placement-state', {
+      detail: {
+        status, clientOrderId, login: 200001,
+        sessionScope: 'authenticated|200001|test|https://test.example.com',
+        provisionalTicket: -17,
+        ...(status === 'pending' ? { position: { ...rawPosition, ticket: -17, client_order_id: clientOrderId } } : {}),
+      },
+    }));
+  });
+
+  it('replaces a provisional row when the matching fill arrives through the shared position stream', () => {
+    const { result, rerender, unmount } = renderHook(() => useToolboxTradeData());
+    dispatchPlacement('pending');
+    expect(result.current.pendingPositions).toHaveLength(1);
+    mocks.storeState.positions = [{ ...rawPosition, client_order_id: 'different-order' }];
+    rerender();
+    expect(result.current.pendingPositions).toHaveLength(1);
+    mocks.storeState.positions = [{ ...rawPosition, client_order_id: 'order-one' }];
+    rerender();
+    expect(result.current.pendingPositions).toEqual([]);
+    expect(result.current.positions[0].id).toBe(17);
+    unmount();
+  });
+
+  it('does not recreate a pending row when the authoritative fill arrived first', () => {
+    mocks.storeState.positions = [{ ...rawPosition, client_order_id: 'order-one' }];
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    dispatchPlacement('pending');
+    expect(result.current.pendingPositions).toEqual([]);
+    expect(result.current.positions[0].id).toBe(17);
+    unmount();
+  });
+
+  it('keeps an unresolved command visible after its deadline and resolves it on a later authoritative fill', () => {
+    vi.useFakeTimers();
+    const { result, rerender, unmount } = renderHook(() => useToolboxTradeData());
+    dispatchPlacement('pending');
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(result.current.pendingPositions[0]).toMatchObject({
+      placementState: 'pending', placementErrorCode: 'ORDER_OUTCOME_UNKNOWN',
+    });
+    expect(result.current.pendingPositions[0].placementErrorMessage).toContain('order-one');
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(result.current.pendingPositions).toHaveLength(1);
+    mocks.storeState.positions = [{ ...rawPosition, client_order_id: 'order-one' }];
+    rerender();
+    expect(result.current.pendingPositions).toEqual([]);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['rejected', 'expired'])('retains a known %s result briefly and then removes only that terminal placeholder', (status) => {
+    vi.useFakeTimers();
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    dispatchPlacement('pending');
+    dispatchPlacement(status);
+    expect(result.current.pendingPositions[0].placementState).toBe(status);
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(result.current.pendingPositions).toEqual([]);
+    expect(result.current.positions).toEqual([]);
+    unmount();
+  });
+
+  it('reconciles a missed terminal callback from the REST position snapshot', async () => {
+    mocks.getSessionTradeSnapshotRequests.mockReturnValue({
+      positionsResultPromise: Promise.resolve({ status: 'fulfilled', value: [{ ...rawPosition, client_order_id: 'order-one' }] }),
+      accountResultPromise: Promise.resolve({ status: 'fulfilled', value: {} }),
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{}' }));
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    dispatchPlacement('pending');
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.pendingPositions).toEqual([]);
+    expect(result.current.positions[0].id).toBe(17);
     unmount();
   });
 });

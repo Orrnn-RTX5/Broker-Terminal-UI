@@ -1,3 +1,4 @@
+import { isInvestorToken, InvestorReadOnlyError } from '../services/investorSession';
 import { RTX5_WS_URL, buildApiV2WsUrl } from '../config/api';
 import { getRuntimeBrokerConfiguration, isConfiguredBrokerEndpoint, isDesktopBackendTarget } from '../config/backendTarget.js';
 import { isLocalViteDevServer } from '../config/localDevProxy';
@@ -485,6 +486,10 @@ export class TradeWebSocketClient {
   }
 
   send(message: TradeSocketMessage): boolean {
+    const action = String(message.action || message.type || '').trim().toLowerCase();
+    if ((isInvestorToken(this.activeToken) || isInvestorToken(getAuthToken() || this.options.token))
+      && ['place_order', 'place_pending_order', 'cancel_pending_order', 'modify_pending_order',
+        'order', 'close_position', 'modify_position', 'cancel_order'].includes(action)) return false;
     if (this.ws?.readyState !== WS_OPEN || !this.hasCurrentDeploymentConnection()) return false;
 
     try {
@@ -500,6 +505,7 @@ export class TradeWebSocketClient {
     clientOrderId = createTradeOrderUuid(),
     timing: TradeSocketOrderTimingContext = {},
   ): Promise<TradeSocketOrderFilled> {
+    if (isInvestorToken(this.activeToken) || isInvestorToken(getAuthToken() || this.options.token)) return Promise.reject(new InvestorReadOnlyError());
     const localStartedAtMs = tradeOrderNow();
     const intentAtMs = normalizeEarlierMonotonicTime(timing.intentAtMs, localStartedAtMs);
     const apiStartedAtMs = normalizeEarlierMonotonicTime(timing.apiStartedAtMs, localStartedAtMs);

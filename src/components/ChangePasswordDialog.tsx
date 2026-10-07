@@ -1,3 +1,5 @@
+import { useInvestorSession } from '../hooks/useInvestorSession';
+import { INVESTOR_READ_ONLY_MESSAGE } from '../services/investorSession';
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useState, FormEvent } from 'react';
 import { ApiError } from '../api/client';
@@ -11,6 +13,7 @@ interface ChangePasswordDialogProps {
 
 export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePasswordDialogProps) {
     const tr = useUiTranslation();
+    const investorReadOnly = useInvestorSession();
     const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -24,6 +27,7 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+        if (investorReadOnly) { setError(INVESTOR_READ_ONLY_MESSAGE); return; }
         if ((type === 'master' && !oldPassword) || !newPassword || !confirmPassword) {
             setError('Please fill in all fields');
             return;
@@ -156,7 +160,8 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                     <div className="pt-2">
                         <button
                             type="submit"
-                            disabled={isLoading}
+                            disabled={investorReadOnly || isLoading}
+                            title={investorReadOnly ? tr(INVESTOR_READ_ONLY_MESSAGE) : undefined}
                             className="w-full bg-zinc-700 hover:bg-zinc-600 text-white font-medium py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isLoading ? tr("Changing...") : tr("Change Password")}

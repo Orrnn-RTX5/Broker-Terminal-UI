@@ -127,6 +127,17 @@ describe('OneClickTrading guest authentication gate', () => {
     expect(screen.queryByText('Volume must be greater than zero')).toBeNull();
   });
 
+  it('disables investor trading even for an open market without opening guest login', () => {
+    useAppStore.getState().setAuthenticated(true, '10001', `header.${btoa(JSON.stringify({ investor: true }))}.signature`);
+    renderGuest({ tradeAllowed: true, status: 'open' });
+    expect(button('BUY')).toBeDisabled();
+    expect(button('SELL')).toBeDisabled();
+    expect(button('BUY').title).toContain('Read-only investor');
+    fireEvent.click(button('BUY'));
+    expect(intents).toHaveLength(0);
+    expect(mocks.placeMarketOrder).not.toHaveBeenCalled();
+  });
+
   it('keeps authenticated closed and disallowed trades blocked without API calls', () => {
     useAppStore.getState().setAuthenticated(
       true,

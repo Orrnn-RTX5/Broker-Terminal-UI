@@ -277,8 +277,8 @@ describe('backend target resolver', () => {
     expect(getRuntimeDiscoveryBaseUrl()).toBe('https://directory.example');
   });
 
-  it.each(['http://broker.example', 'https://127.0.0.1', 'https://user:pass@broker.example', 'wss://broker.example'])
-  ('leaves unsafe or incorrect API target %s unavailable', (API_HOST) => {
+  it.each(['http://broker.example', 'https://127.0.0.1', 'https://user:pass@broker.example', 'wss://broker.example'])(
+  'leaves unsafe or incorrect API target %s unavailable', (API_HOST) => {
     runtimeWindow.RUNTIME_CONFIG = { API_HOST };
     expect(getBackendTarget()).toBe('');
     expect(resolveBrokerWsUrl({})).toBe('');

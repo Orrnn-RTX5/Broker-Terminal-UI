@@ -1,3 +1,4 @@
+import { isInvestorToken, isInvestorRestrictedRequest, INVESTOR_READ_ONLY_MESSAGE } from '../services/investorSession';
 /**
  * High-Performance BrokerAPI Client Singleton
  * Enforces dynamic broker server routing, proactive token refreshes (<60s expiry),
@@ -290,6 +291,10 @@ export class BrokerAPI {
       throw new BrokerApiError(401, 'SESSION_CHANGED', 'Credentials do not belong to the active deployment broker session.');
     }
 
+    const bearer = headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
+    if (isInvestorToken(bearer) && isInvestorRestrictedRequest(String(options.method || 'GET'), url)) {
+      throw new BrokerApiError(403, 'INVESTOR_READ_ONLY', INVESTOR_READ_ONLY_MESSAGE);
+    }
     return fetch(url, mergedOptions);
   }
 

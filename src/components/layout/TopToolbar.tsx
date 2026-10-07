@@ -1,3 +1,4 @@
+import { useInvestorSession } from '../../hooks/useInvestorSession';
 import React, { useEffect, useLayoutEffect, useState, useRef, useSyncExternalStore } from 'react';
 import ReactDOM from 'react-dom';
 import { Icon } from '../ui/Icon';
@@ -409,6 +410,7 @@ const MainToolbar = ({
 
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const tr = useUiTranslation();
+    const investorReadOnly = useInvestorSession();
 
     const [showHistoryOverlayMenu, setShowHistoryOverlayMenu] = useState(false);
     const [, setHistoryOverlayLayoutVersion] = useState(0);
@@ -686,7 +688,8 @@ const MainToolbar = ({
                             <button
                                 type="button"
                                 className="rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-normal font-segoe"
-                                title="New Order (F9)"
+                                title={investorReadOnly ? tr('Investor - Read-only') : 'New Order (F9)'}
+                                disabled={investorReadOnly}
                                 aria-label={tr("New Order (F9)")}
                                 onClick={() => {
                                     window.dispatchEvent(new CustomEvent('openNewOrder', {

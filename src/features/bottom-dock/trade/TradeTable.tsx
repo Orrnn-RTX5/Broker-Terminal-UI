@@ -1,3 +1,4 @@
+import { useInvestorSession } from '../../../hooks/useInvestorSession';
 import type {
   Dispatch,
   MouseEvent as ReactMouseEvent,
@@ -117,6 +118,7 @@ export function TradeTable({
   visibleTradeTableWidth,
 }: TradeTableProps) {
   const tr = useUiTranslation();
+  const investorReadOnly = useInvestorSession();
 
   const renderColumnResizeHandle = (key: TradeColumnWidthKey) => (
     <button
@@ -220,6 +222,10 @@ export function TradeTable({
               placementState && !['filled', 'confirmed'].includes(placementState),
             );
             const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
+            const isOutcomeUnknown = position.placementErrorCode === 'ORDER_OUTCOME_UNKNOWN';
+            const placementLabel = isTerminalPlacementFailure
+              ? tr(placementState === 'rejected' ? 'Rejected' : 'Expired')
+              : isOutcomeUnknown ? tr('Outcome unknown') : '…';
             const profitValue = resolveTradeProfit(position).value;
             const pointsValue = getTradePointsValue(position);
             const profitIsPositive = profitMode === 'points'
@@ -250,7 +256,7 @@ export function TradeTable({
               ?? position.price,
             );
             const openPriceLabel = isPendingPlacement
-              ? '…'
+              ? placementLabel
               : formatTradePrice(rawOpenPrice, symbolLabel);
             const stopLossLabel = formatTradeLevel(position.price_sl ?? position.sl, symbolLabel);
             const takeProfitLabel = formatTradeLevel(position.price_tp ?? position.tp, symbolLabel);
@@ -258,7 +264,7 @@ export function TradeTable({
               ? null
               : toBackendFinancialNumber(position.price_current ?? position.current_price ?? position.currentPrice);
             const currentPriceLabel = isPendingPlacement
-              ? '…'
+              ? isTerminalPlacementFailure || isOutcomeUnknown ? '-' : '…'
               : rawCurrentPrice === null
                 ? METRIC_UNAVAILABLE
                 : formatTradePrice(rawCurrentPrice, symbolLabel);
@@ -270,7 +276,7 @@ export function TradeTable({
               .join(': ');
             const commentLabel = String(placementError || position.comment || '-');
             const profitLabel = isPendingPlacement
-              ? '…'
+              ? isTerminalPlacementFailure || isOutcomeUnknown ? '-' : '…'
               : profitMode === 'points'
                 ? formatTradePoints(position)
                 : profitValue === null || Number.isNaN(profitValue)
@@ -282,7 +288,7 @@ export function TradeTable({
               tr('{{value0}} lots', { value0: volumeLabel }),
             ].join(' · ');
             const rowComment = isPendingPlacement
-              ? `${rowSummary}${isTerminalPlacementFailure ? `: ${placementError || tr('Order failed')}` : ''}`
+              ? `${rowSummary}${isTerminalPlacementFailure || isOutcomeUnknown ? `: ${placementError || tr('Order failed')}` : ''}`
               : `${rowSummary}\n${tr('Ticket: {{value0}}', { value0: ticketLabel })}\n${tr('Modify Position')} · ${tr('Context menu')}`;
 
             return (
@@ -295,12 +301,12 @@ export function TradeTable({
                   if (!isPendingPlacement) setSelectedPositionKey(positionKey);
                 }}
                 onDoubleClick={() => {
-                  if (isPendingPlacement) return;
+                  if (investorReadOnly || isPendingPlacement) return;
                   setSelectedPositionKey(positionKey);
                   openModifyPosition(position);
                 }}
                 onContextMenu={(event) => {
-                  if (isPendingPlacement) return;
+                  if (investorReadOnly || isPendingPlacement) return;
                   handleTradeContextMenu(event, position);
                 }}
               >
@@ -351,13 +357,13 @@ export function TradeTable({
                     title={`${tr('Stop Loss: {{value0}}', { value0: stopLossLabel })} · ${tr('Modify Position')}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (investorReadOnly || isPendingPlacement) return;
                       setSelectedPositionKey(positionKey);
                       if (event.detail === 0) openModifyPosition(position);
                     }}
                     onDoubleClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (investorReadOnly || isPendingPlacement) return;
                       setSelectedPositionKey(positionKey);
                       openModifyPosition(position);
                     }}
@@ -365,7 +371,7 @@ export function TradeTable({
                     <button
                       type="button"
                       className={`rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_sl ?? position.sl) > 0 ? 'text-[#ff7676]' : 'text-zinc-100'}`}
-                      disabled={isPendingPlacement}
+                      disabled={investorReadOnly || isPendingPlacement}
                       aria-label={`${tr('Modify Position')} · ${tr('Stop Loss:')} #${position.id}`}
                     >
                       {stopLossLabel}
@@ -380,13 +386,13 @@ export function TradeTable({
                     title={`${tr('Take Profit: {{value0}}', { value0: takeProfitLabel })} · ${tr('Modify Position')}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (investorReadOnly || isPendingPlacement) return;
                       setSelectedPositionKey(positionKey);
                       if (event.detail === 0) openModifyPosition(position);
                     }}
                     onDoubleClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (investorReadOnly || isPendingPlacement) return;
                       setSelectedPositionKey(positionKey);
                       openModifyPosition(position);
                     }}
@@ -394,7 +400,7 @@ export function TradeTable({
                     <button
                       type="button"
                       className={`rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_tp ?? position.tp) > 0 ? 'text-profit' : 'text-zinc-100'}`}
-                      disabled={isPendingPlacement}
+                      disabled={investorReadOnly || isPendingPlacement}
                       aria-label={`${tr('Modify Position')} · ${tr('Take Profit:')} #${position.id}`}
                     >
                       {takeProfitLabel}
@@ -448,15 +454,15 @@ export function TradeTable({
                     type="button"
                     aria-label={isPendingPlacement ? tr('Order in progress') : tr('Close position {{value0}}', { value0: position.ticket ?? position.id })}
                     title={isPendingPlacement ? rowComment : tr('Close position {{value0}}', { value0: ticketLabel })}
-                    disabled={isPendingPlacement}
+                    disabled={investorReadOnly || isPendingPlacement}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (isPendingPlacement) return;
+                      if (investorReadOnly || isPendingPlacement) return;
                       onClosePosition(position.id);
                     }}
                     className="rtx-trade-close-button mx-auto flex h-[17px] w-[17px] cursor-default items-center justify-center rounded-sm border border-transparent text-[12px] font-normal leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:cursor-default disabled:text-zinc-600 disabled:hover:border-transparent disabled:hover:bg-transparent"
                   >
-                    {isPendingPlacement ? (isTerminalPlacementFailure ? '!' : '…') : 'x'}
+                    {isPendingPlacement ? (isTerminalPlacementFailure || isOutcomeUnknown ? '!' : '…') : 'x'}
                   </button>
                 </td>
               </tr>
