@@ -158,4 +158,35 @@ describe('NavigatorPanel backend broker logo resolution', () => {
     expect(logo).toBeInTheDocument();
     expect(logo).toHaveAttribute('src', 'https://directory.example/api/v1/brokers/Nexa/logo');
   });
+
+  it('retains the discovery fallback when an image fails before passive effects run', async () => {
+    mockSavedAccounts = [
+      { login: 200001, name: 'Trader', server: 'Nexa', isLive: true },
+    ];
+    brokerApiMocks.getServers.mockResolvedValue([
+      { server_url: 'https://nexa.orrnn.com', broker_id: 'Nexa', broker_name: 'Nexa', logo_url: 'https://broken.example/nexa.png' },
+    ]);
+
+    let failedDuringCommit = false;
+    render(
+      <React.Profiler id="broker-logo" onRender={() => {
+        const logo = screen.queryByRole('img', { name: /Nexa Logo/i });
+        if (!failedDuringCommit && logo?.getAttribute('src') === 'https://broken.example/nexa.png') {
+          // A cached image failure can arrive after DOM commit but before passive effects.
+          failedDuringCommit = true;
+          logo.dispatchEvent(new Event('error'));
+        }
+      }}>
+        <NavigatorPanel />
+      </React.Profiler>,
+    );
+
+    await waitFor(() => {
+      expect(failedDuringCommit).toBe(true);
+      expect(screen.getByRole('img', { name: /Nexa Logo/i })).toHaveAttribute(
+        'src',
+        'https://directory.example/api/v1/brokers/Nexa/logo',
+      );
+    });
+  });
 });

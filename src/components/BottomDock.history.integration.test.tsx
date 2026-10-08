@@ -245,7 +245,9 @@ describe('BottomDock History live-deal integration', () => {
         ]);
         const { container } = renderHistoryDock();
         fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
-        const summary = await screen.findByRole('group', { name: 'History financial summary' });
+        // The first activation imports the real History panel and its dependencies.
+        // Allow that cold mount to finish before asserting the financial behavior.
+        const summary = await screen.findByRole('group', { name: 'History financial summary' }, { timeout: 5000 });
         await waitFor(() => expect(summary).toHaveTextContent('Profit: -735.27 Credit: 0.00 Deposit: 100 000.00 Withdrawal: 0.00 Balance: 99 264.73'));
         expect(container.querySelector('.rtx-history-table tfoot')?.previousElementSibling?.tagName).toBe('TBODY');
         expect(summary.querySelector('[class*="text-[#"]')).toBeNull();

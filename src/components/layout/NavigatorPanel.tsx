@@ -580,8 +580,6 @@ function BrokerServerIcon({
     logoInfo?: BrokerLogoInfo;
     muted?: boolean;
 }) {
-    const [candidateIndex, setCandidateIndex] = useState(0);
-
     const candidates = useMemo(() => {
         const list: string[] = [];
         const add = (url: unknown) => {
@@ -606,9 +604,10 @@ function BrokerServerIcon({
         return list;
     }, [serverName, logoInfo]);
 
-    useEffect(() => {
-        setCandidateIndex(0);
-    }, [serverName, candidates.join('\n')]);
+    const candidateSignature = JSON.stringify([serverName, candidates]);
+    const [attempt, setAttempt] = useState({ signature: candidateSignature, index: 0 });
+    // Derive resets during render so a pending effect cannot overwrite a fast image failure.
+    const candidateIndex = attempt.signature === candidateSignature ? attempt.index : 0;
 
     const currentSrc = candidates[candidateIndex];
 
@@ -619,7 +618,7 @@ function BrokerServerIcon({
                 src={currentSrc}
                 alt={`${logoInfo?.brokerName || serverName} Logo`}
                 className={`inline-block h-[14px] w-[14px] flex-shrink-0 rounded-sm object-contain ${muted ? 'opacity-70' : ''}`}
-                onError={() => setCandidateIndex(prev => prev + 1)}
+                onError={() => setAttempt({ signature: candidateSignature, index: candidateIndex + 1 })}
             />
         );
     }
