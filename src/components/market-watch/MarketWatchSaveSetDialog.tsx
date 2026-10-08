@@ -1,6 +1,8 @@
-import { useEffect, useRef, type FC } from 'react';
+import { useRef, type FC } from 'react';
 import { createPortal } from 'react-dom';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
+import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
+import './market-watch-save-set.css';
 
 interface MarketWatchSaveSetDialogProps {
   isOpen: boolean;
@@ -19,29 +21,26 @@ export const MarketWatchSaveSetDialog: FC<MarketWatchSaveSetDialogProps> = ({
 }) => {
   const tr = useUiTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 0);
-    return () => window.clearTimeout(timer);
-  }, [isOpen]);
+  const dialogRef = useRef<HTMLFormElement>(null);
+  useDialogFocusScope({ isOpen, dialogRef, onClose: onCancel, initialFocusRef: inputRef });
 
   if (!isOpen) return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/45"
+      className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/45 p-4"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
     >
       <form
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={tr('Save Market Watch set')}
         onSubmit={(event) => { event.preventDefault(); onSave(); }}
-        onKeyDown={(event) => { if (event.key === 'Escape') onCancel(); }}
-        className="w-[360px] max-w-[calc(100vw-32px)] border border-[var(--border-secondary)] bg-[var(--bg-secondary)] p-4 text-[var(--text-primary)] shadow-2xl"
+        className="rtx-market-watch-save-set w-[360px] max-w-full max-h-[calc(100dvh-32px)] overflow-y-auto border border-[var(--border-secondary)] bg-[var(--bg-secondary)] p-4 text-[var(--text-primary)] shadow-2xl"
       >
         <div className="mb-3 text-sm font-semibold">{tr('Save Market Watch set')}</div>
         <label className="mb-1 block text-xs text-[var(--text-secondary)]" htmlFor="market-watch-set-name">
@@ -60,7 +59,7 @@ export const MarketWatchSaveSetDialog: FC<MarketWatchSaveSetDialogProps> = ({
           <button type="button" onClick={onCancel} className="h-8 border border-[var(--border-secondary)] px-3 text-xs">
             {tr('Cancel')}
           </button>
-          <button type="submit" disabled={!value.trim()} className="h-8 bg-[#0078d7] px-3 text-xs text-white disabled:opacity-50">
+          <button type="submit" disabled={!value.trim()} className="rtx-market-watch-save-set__primary h-8 bg-[#0078d7] px-3 text-xs text-white disabled:opacity-50">
             {tr('Save')}
           </button>
         </div>

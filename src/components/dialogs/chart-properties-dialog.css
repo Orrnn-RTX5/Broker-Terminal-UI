@@ -1,8 +1,8 @@
 /* Size Chart Properties to its controls, so each desktop tab fits in one view. */
 .rtx-cp-shell {
-  width: min(840px, calc(100vw - 24px));
+  width: min(520px, calc(100vw - 24px));
   height: auto;
-  min-height: min(560px, calc(100dvh - 24px));
+  min-height: 0;
   max-height: calc(100dvh - 24px);
   overflow: hidden;
 }
@@ -20,13 +20,17 @@
 }
 
 .rtx-cp-shell .rtx-cp-preview-box {
-  width: auto;
-  flex: 1 1 0;
+  margin: 8px 0;
   min-width: 0;
 }
 
+.rtx-cp-shell .rtx-cp-preview-inner {
+  height: 76px;
+  border: 1px solid var(--border-primary, #444);
+}
+
 .rtx-cp-shell .rtx-cp-settings {
-  flex: 0 0 380px;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
 }
@@ -64,29 +68,41 @@
   min-width: 0;
 }
 
+.rtx-cp-shell .rtx-cp-tab {
+  min-height: 30px;
+  padding-inline: 10px;
+}
+
+.rtx-cp-shell .rtx-cp-tab:focus-visible {
+  outline: 2px solid var(--color-primary, #60a5fa);
+  outline-offset: -2px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell .rtx-cp-tab {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell .rtx-cp-tab[aria-selected='true'] {
+  color: var(--rtx-light-accent-strong) !important;
+  border-color: var(--rtx-light-accent) !important;
+  background: var(--rtx-light-accent-soft) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell .rtx-cp-tab:hover {
+  color: var(--rtx-light-text) !important;
+}
+
 @media (max-width: 720px) {
   .rtx-cp-shell .rtx-cp-content {
     gap: 10px;
     padding: 10px;
   }
 
-  .rtx-cp-shell .rtx-cp-settings {
-    flex: 1 1 360px;
-  }
-
-  .rtx-cp-shell .rtx-cp-preview-box {
-    flex: 1 1 200px;
-  }
 }
 
 @media (max-width: 540px) {
-  /* Controls take priority when there is no room for a side-by-side preview. */
-  .rtx-cp-shell .rtx-cp-preview-box {
-    display: none;
-  }
-
-  .rtx-cp-shell .rtx-cp-settings {
-    flex-basis: auto;
+  .rtx-cp-shell .rtx-cp-common-grid {
+    flex-direction: column;
   }
 
   .rtx-cp-shell .rtx-cp-footer {

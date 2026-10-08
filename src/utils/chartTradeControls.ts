@@ -282,6 +282,17 @@ export const DARK_CHART_TRADE_COLORS = {
   loss: '#ff4d4f',
 } as const;
 
+// Small overlay labels need text contrast on the matte light chart as well as
+// white labels on filled BUY/SELL chips. Chart backgrounds remain authoritative.
+export const LIGHT_CHART_TRADE_COLORS = {
+  buy: '#1746bc',
+  sell: '#a51f26',
+  tp: '#04685e',
+  sl: '#795000',
+  profit: '#1746bc',
+  loss: '#a51f26',
+} as const;
+
 interface TradeControlSurface {
   chipBackground: string;
   chipText: string;
@@ -296,11 +307,11 @@ interface TradeControlSurface {
 const getTradeControlSurface = (isLightSurface: boolean): TradeControlSurface => (
   isLightSurface
     ? {
-      chipBackground: '#ffffff',
-      chipText: '#111827',
-      dockBackground: '#f2f6fc',
-      dockBorder: '#7d8796',
-      dockText: '#4b5563',
+      chipBackground: '#dce1e6',
+      chipText: '#273444',
+      dockBackground: '#e0e5e9',
+      dockBorder: '#667487',
+      dockText: '#414e5e',
       shadow: '0 1px 3px rgba(15,23,42,0.12)',
     }
     : {
@@ -366,7 +377,7 @@ const createControlButton = (
   button.title = title;
   button.setAttribute('aria-label', title);
   button.innerHTML = iconSvg;
-  button.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;background-color:${background};border:1px solid rgba(255,255,255,0.32);border-radius:2px;cursor:pointer;pointer-events:auto;box-sizing:border-box;flex:0 0 auto;`;
+  button.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;background-color:${background};border:1px solid rgba(255,255,255,0.32);border-radius:2px;cursor:pointer;pointer-events:auto;box-sizing:border-box;flex:0 0 auto;`;
   if (plainTextColor) {
     button.style.color = plainTextColor;
     button.style.borderColor = 'transparent';
@@ -447,13 +458,13 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   } = options;
   const sideColor = (isLightSurface ? TRADE_CONTROL_LIGHT_SIDE_COLORS : TRADE_CONTROL_SIDE_COLORS)[side];
   const surface = getTradeControlSurface(isLightSurface);
-  const actionHoverColor = isLightSurface ? '#1d4ed8' : TRADE_CONTROL_ACTION_HOVER_COLOR;
+  const actionHoverColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.buy : TRADE_CONTROL_ACTION_HOVER_COLOR;
   const plainSideColor = isLightSurface
-    ? (side === 'BUY' ? '#2962ff' : '#f23645')
+    ? (side === 'BUY' ? LIGHT_CHART_TRADE_COLORS.buy : LIGHT_CHART_TRADE_COLORS.sell)
     : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buy : DARK_CHART_TRADE_COLORS.sell);
   const plainNeutralColor = isLightSurface ? '#131722' : '#d1d4dc';
   const plainBackground = isLightSurface
-    ? (options.chartBackground ?? '#ffffff')
+    ? (options.chartBackground ?? '#d8dde2')
     : DARK_CHART_TRADE_COLORS.surface;
   const plainBorderColor = isLightSurface ? plainSideColor : DARK_CHART_TRADE_COLORS.border;
   const plainActionColor = isLightSurface ? plainSideColor : DARK_CHART_TRADE_COLORS.action;
@@ -512,8 +523,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     root.style.filter = 'none';
     root.style.overflow = 'hidden';
     root.style.transform = 'translateY(-50%)';
-    root.style.height = '20px';
-    root.style.minHeight = '20px';
+    root.style.height = 'auto';
+    root.style.minHeight = '26px';
+    root.style.flexWrap = 'wrap';
     root.style.gap = '4px';
     // Keep the active-position strip beside the chart's left edge. The chart
     // relayout only overrides controls explicitly marked as right-aligned.
@@ -525,9 +537,10 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     chipGroup.className = 'rtx-trade-primary';
     chipGroup.style.border = `1px solid ${plainBorderColor}`;
     chipGroup.style.borderRadius = '3px';
-    chipGroup.style.height = '20px';
+    chipGroup.style.height = '26px';
     chipGroup.style.boxSizing = 'border-box';
     chipGroup.style.overflow = 'hidden';
+    chipGroup.style.minWidth = '0';
     chipGroup.style.gap = '0';
     chipGroup.style.backgroundColor = plainBackground;
     for (const chip of [volumeChip, pips.chip, money.chip]) {
@@ -541,6 +554,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       chip.style.fontVariantNumeric = 'tabular-nums';
       chip.style.padding = '0 6px';
       chip.style.marginLeft = '0';
+      chip.style.height = '24px';
     }
     for (const metric of [pips.chip, money.chip]) {
       const label = metric.firstElementChild as HTMLElement;
@@ -561,7 +575,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
 
   const buttonGroup = document.createElement('span');
   buttonGroup.className = 'rtx-trade-control-actions';
-  buttonGroup.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin-left:6px;';
+  buttonGroup.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin-left:6px;flex:0 0 auto;';
   if (options.plainLabel) {
     buttonGroup.style.gap = '4px';
     buttonGroup.style.marginLeft = '0';
@@ -583,8 +597,8 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       const isClose = button.classList.contains('rtx-trade-control-btn--close');
       const restingBackground = 'transparent';
       const restingColor = isLightSurface || isClose ? plainActionColor : DARK_CHART_TRADE_COLORS.actionIcon;
-      button.style.width = isClose ? '20px' : '24px';
-      button.style.height = '18px';
+      button.style.width = '24px';
+      button.style.height = '24px';
       button.style.color = restingColor;
       button.style.border = '0';
       button.style.borderRadius = '0';
@@ -614,7 +628,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     buttonGroup.insertBefore(doubleButton, reverseButton);
     const secondaryGroup = document.createElement('span');
     secondaryGroup.className = 'rtx-trade-secondary';
-    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;height:20px;box-sizing:border-box;border:1px solid ${plainBorderColor};border-radius:3px;background-color:${plainBackground};overflow:hidden;`;
+    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;height:26px;box-sizing:border-box;border:1px solid ${plainBorderColor};border-radius:3px;background-color:${plainBackground};overflow:hidden;`;
     for (const button of Array.from(buttonGroup.querySelectorAll<HTMLButtonElement>('button'))) {
       if (button === closeButton) continue;
       if (secondaryGroup.childElementCount > 0) button.style.borderLeft = `1px solid ${isLightSurface ? `${plainSideColor}66` : DARK_CHART_TRADE_COLORS.divider}`;
@@ -652,9 +666,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     if (!options.plainLabel) return;
     const displayedValue = value != null && Number.isFinite(value) ? Number(value.toFixed(decimals)) : 0;
     chip.style.color = displayedValue > 0
-      ? (isLightSurface ? '#1d4ed8' : DARK_CHART_TRADE_COLORS.profit)
+      ? (isLightSurface ? LIGHT_CHART_TRADE_COLORS.profit : DARK_CHART_TRADE_COLORS.profit)
       : displayedValue < 0
-        ? (isLightSurface ? '#d32f2f' : DARK_CHART_TRADE_COLORS.loss)
+        ? (isLightSurface ? LIGHT_CHART_TRADE_COLORS.loss : DARK_CHART_TRADE_COLORS.loss)
         : plainNeutralColor;
   };
   const setLiveMetrics = (livePips: number | null, liveMoney: number | null) => {
@@ -739,15 +753,15 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
 
   const removeTitle = role === 'SL' ? 'Remove Stop Loss' : 'Remove Take Profit';
   const levelAccent = role === 'TP'
-    ? (isLightSurface ? '#078e80' : DARK_CHART_TRADE_COLORS.tp)
-    : (isLightSurface ? '#b66a13' : DARK_CHART_TRADE_COLORS.sl);
+    ? (isLightSurface ? LIGHT_CHART_TRADE_COLORS.tp : DARK_CHART_TRADE_COLORS.tp)
+    : (isLightSurface ? LIGHT_CHART_TRADE_COLORS.sl : DARK_CHART_TRADE_COLORS.sl);
   const removeButton = createControlButton('remove', removeTitle, closeSvg, sideColor, sideColor, onRemove, options.hoverDetails ? levelAccent : undefined);
   bindChartUiTranslation(removeButton, () => {
     removeButton.title = tr('Delete {{value0}}', { value0: tr(role === 'SL' ? 'Stop loss' : 'Take profit') });
     removeButton.setAttribute('aria-label', removeButton.title);
   });
-  removeButton.style.width = '18px';
-  removeButton.style.height = '18px';
+  removeButton.style.width = '24px';
+  removeButton.style.height = '24px';
   removeButton.style.marginLeft = '4px';
 
   root.appendChild(roleChip);
@@ -758,7 +772,7 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
     root.dataset.align = 'right';
     root.style.filter = 'none';
     root.style.backgroundColor = isLightSurface
-      ? (options.chartBackground ?? '#ffffff')
+      ? (options.chartBackground ?? '#d8dde2')
       : DARK_CHART_TRADE_COLORS.surface;
     root.style.border = `1px dotted ${levelAccent}`;
     root.style.borderRadius = '3px';

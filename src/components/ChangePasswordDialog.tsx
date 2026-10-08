@@ -1,7 +1,9 @@
 import { useInvestorSession } from '../hooks/useInvestorSession';
 import { INVESTOR_READ_ONLY_MESSAGE } from '../services/investorSession';
 import { useUiTranslation } from '../hooks/useUiTranslation';
-import { useState, FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { useDialogFocusScope } from '../hooks/useDialogFocusScope';
 import { ApiError } from '../api/client';
 import { tradeApi } from '../api/trade';
 
@@ -22,8 +24,12 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const dialogId = useId();
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const initialFocusRef = useRef<HTMLInputElement>(null);
+    useDialogFocusScope({ isOpen: isOpen && Boolean(accountLogin), dialogRef, onClose, initialFocusRef });
 
-    if (!isOpen || !accountLogin) return null;
+    if (!isOpen || !accountLogin || typeof document === 'undefined') return null;
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -68,23 +74,29 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
         }
     };
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    return createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
             <div
-                className="rtx-action-sheet bg-[#131316] border border-zinc-700 rounded-lg shadow-2xl w-[400px] overflow-hidden"
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={`${dialogId}-title`}
+                tabIndex={-1}
+                className="rtx-action-sheet bg-[#131316] border border-zinc-700 rounded-lg shadow-2xl flex flex-col w-[400px] max-w-full max-h-[calc(100dvh-32px)] overflow-hidden"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-[#191a1e]">
-                    <h2 className="text-zinc-200 font-medium">{tr("Change Password - ")}{accountLogin}</h2>
-                    <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
+                <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800 bg-[#191a1e]">
+                    <h2 id={`${dialogId}-title`} className="min-w-0 break-words text-zinc-200 font-medium">{tr("Change Password - ")}{accountLogin}</h2>
+                    <button type="button" onClick={onClose} aria-label={tr("Close")} className="shrink-0 text-zinc-400 hover:text-white transition-colors">
                         ✕
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-4 space-y-4">
+                <form onSubmit={handleSubmit} className="min-h-0 overflow-y-auto p-4 space-y-4">
                     <div className="space-y-1">
-                        <label className="text-xs text-zinc-400">{tr("Password Type")}</label>
+                        <label htmlFor={`${dialogId}-type`} className="text-xs text-zinc-400">{tr("Password Type")}</label>
                         <select
+                            id={`${dialogId}-type`}
                             value={type}
                             onChange={(e) => {
                                 setType(e.target.value as 'master' | 'investor');
@@ -100,8 +112,10 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
 
                     {type === 'master' && (
                         <div className="space-y-1">
-                            <label className="text-xs text-zinc-400">{tr("Current Password")}</label>
+                            <label htmlFor={`${dialogId}-current`} className="text-xs text-zinc-400">{tr("Current Password")}</label>
                             <input
+                                id={`${dialogId}-current`}
+                                ref={initialFocusRef}
                                 type="text"
                                 autoComplete="off"
                                 spellCheck={false}
@@ -116,8 +130,10 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                     )}
 
                     <div className="space-y-1">
-                        <label className="text-xs text-zinc-400">{tr("New Password")}</label>
+                        <label htmlFor={`${dialogId}-new`} className="text-xs text-zinc-400">{tr("New Password")}</label>
                         <input
+                            id={`${dialogId}-new`}
+                            ref={type === 'investor' ? initialFocusRef : undefined}
                             type="text"
                             autoComplete="off"
                             spellCheck={false}
@@ -131,8 +147,9 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                     </div>
 
                     <div className="space-y-1">
-                        <label className="text-xs text-zinc-400">{tr("Confirm New Password")}</label>
+                        <label htmlFor={`${dialogId}-confirm`} className="text-xs text-zinc-400">{tr("Confirm New Password")}</label>
                         <input
+                            id={`${dialogId}-confirm`}
                             type="text"
                             autoComplete="off"
                             spellCheck={false}
@@ -146,13 +163,13 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                     </div>
 
                     {error && (
-                        <div className="p-2 bg-red-500/10 border border-red-500/20 text-red-500 text-xs rounded">
+                        <div role="alert" className="p-2 bg-red-500/10 border border-red-500/20 text-red-500 text-xs rounded">
                             {error}
                         </div>
                     )}
 
                     {success && (
-                        <div className="p-2 bg-green-500/10 border border-green-500/20 text-green-500 text-xs rounded">
+                        <div role="status" className="p-2 bg-green-500/10 border border-green-500/20 text-green-500 text-xs rounded">
                             {success}
                         </div>
                     )}
@@ -169,6 +186,7 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

@@ -1,0 +1,29 @@
+.rtx-market-watch-save-set {
+  border-radius: 6px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch-save-set {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-border) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch-save-set input {
+  background: var(--rtx-light-field) !important;
+  border-color: var(--rtx-light-border) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch-save-set .rtx-market-watch-save-set__primary {
+  background: var(--rtx-light-accent) !important;
+  color: #fff !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch-save-set .rtx-market-watch-save-set__primary:hover:not(:disabled) {
+  background: var(--rtx-light-accent-strong) !important;
+}
+
+.rtx-market-watch-save-set :is(button, input):focus-visible {
+  outline: 2px solid var(--color-info);
+  outline-offset: 2px;
+}

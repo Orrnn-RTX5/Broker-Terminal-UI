@@ -5,7 +5,9 @@ import { useUiTranslation } from '../../hooks/useUiTranslation';
  */
 
 import { Icon } from '../ui/Icon';
-import React, { useState } from 'react';
+import React, { useState, useRef, useId, useEffect } from 'react';
+import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
+import './legacy-action-sheets.css';
 import { createPortal } from 'react-dom';
 import type { Workspace } from '../../services/api';
 import {
@@ -34,6 +36,15 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
     const [showOverwriteWarning, setShowOverwriteWarning] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const nameRef = useRef<HTMLInputElement>(null);
+    const backRef = useRef<HTMLButtonElement>(null);
+    const titleId = useId();
+    useDialogFocusScope({ isOpen: true, dialogRef, onClose: onCancel, initialFocusRef: nameRef, closeOnEscape: !isSaving });
+    useEffect(() => {
+        // Replacing the name field must leave focus on a safe action, not the page.
+        (showOverwriteWarning ? backRef.current : nameRef.current)?.focus({ preventScroll: true });
+    }, [showOverwriteWarning]);
 
     const handleSave = async () => {
         setError(null);
@@ -111,7 +122,7 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
 
     return createPortal(
         <div 
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" 
+            className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 z-[9999]"
             onClick={(e) => {
                 e.stopPropagation();
                 if (e.target === e.currentTarget) onCancel();
@@ -126,14 +137,20 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
             onContextMenu={(e) => e.stopPropagation()}
         >
             <div
-                className="rtx-action-sheet bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-lg shadow-2xl w-[420px] animate-in fade-in zoom-in-95 duration-150"
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                data-shortcut-scope="local"
+                tabIndex={-1}
+                className="rtx-action-sheet rtx-legacy-sheet bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-lg shadow-2xl w-[420px] max-w-full max-h-[calc(100dvh-16px)] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#131316] [.rtx-advanced-view_&]:bg-gray-50 rounded-t-lg">
+                <div className="rtx-legacy-sheet__header flex items-center justify-between gap-2 px-4 py-3 shrink-0 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#131316] [.rtx-advanced-view_&]:bg-gray-50 rounded-t-lg">
                     <div className="flex items-center gap-2">
                         <Icon name="save" size="md" className="text-blue-400 [.rtx-advanced-view_&]:text-indigo-600" />
-                        <h2 className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">
+                        <h2 id={titleId} className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">
                             {showOverwriteWarning ? tr("Overwrite Workspace") : tr("Save Workspace")}
                         </h2>
                     </div>
@@ -147,9 +164,9 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="p-4 space-y-4">
+                <div className="rtx-legacy-sheet__body p-4 space-y-4 min-h-0 overflow-y-auto">
                     {error && (
-                        <div className="flex items-start gap-3 p-3 bg-rose-500/10 [.rtx-advanced-view_&]:bg-rose-50 border border-rose-500/30 [.rtx-advanced-view_&]:border-rose-200 rounded">
+                        <div role="alert" className="flex items-start gap-3 p-3 bg-rose-500/10 [.rtx-advanced-view_&]:bg-rose-50 border border-rose-500/30 [.rtx-advanced-view_&]:border-rose-200 rounded">
                             <Icon name="alert-triangle" size="lg" className="text-rose-400 [.rtx-advanced-view_&]:text-rose-600 flex-shrink-0 mt-0.5" />
                             <div className="text-xs space-y-2">
                                 <p className="text-rose-200 [.rtx-advanced-view_&]:text-rose-800 font-medium">{tr("Error")}</p>
@@ -167,17 +184,16 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                                 <label htmlFor="workspace-name" className="block text-xs text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 mb-2">
                                     {tr("Workspace Name")}</label>
                                 <input
+                                    ref={nameRef}
                                     id="workspace-name"
                                     type="text"
                                     value={workspaceName}
                                     onChange={(e) => setWorkspaceName(e.target.value)}
                                     className="w-full bg-[#252528] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-300 rounded px-3 py-2 text-sm text-zinc-100 [.rtx-advanced-view_&]:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 [.rtx-advanced-view_&]:focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
                                     placeholder={tr("Enter workspace name")}
-                                    autoFocus
                                     disabled={isSaving}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !isSaving) handleSave();
-                                        if (e.key === 'Escape') onCancel();
                                     }}
                                 />
                             </div>
@@ -196,7 +212,7 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#252528] [.rtx-advanced-view_&]:bg-gray-50 rounded-b-lg">
+                <div className="rtx-legacy-sheet__footer flex flex-wrap items-center justify-end gap-2 px-4 py-3 shrink-0 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#252528] [.rtx-advanced-view_&]:bg-gray-50 rounded-b-lg">
                     {!showOverwriteWarning ? (
                         <>
                             <button
@@ -208,7 +224,7 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                             <button
                                 onClick={handleSave}
                                 disabled={!workspaceName.trim() || isSaving}
-                                className="px-4 py-1.5 text-xs bg-zinc-700 [.rtx-advanced-view_&]:bg-indigo-600 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-indigo-700 disabled:bg-zinc-700 [.rtx-advanced-view_&]:disabled:bg-indigo-400 disabled:text-zinc-500 [.rtx-advanced-view_&]:disabled:text-indigo-100 text-white rounded transition-colors flex items-center gap-2"
+                                className="rtx-legacy-sheet__primary px-4 py-1.5 text-xs bg-zinc-700 [.rtx-advanced-view_&]:bg-indigo-600 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-indigo-700 disabled:bg-zinc-700 [.rtx-advanced-view_&]:disabled:bg-indigo-400 disabled:text-zinc-500 [.rtx-advanced-view_&]:disabled:text-indigo-100 text-white rounded transition-colors flex items-center gap-2"
                             >
                                 {isSaving ? (
                                     <>
@@ -224,6 +240,7 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                     ) : (
                         <>
                             <button
+                                ref={backRef}
                                 onClick={() => { setShowOverwriteWarning(false); setError(null); }}
                                 disabled={isSaving}
                                 className="px-4 py-1.5 text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors disabled:opacity-50"
@@ -232,7 +249,7 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                             <button
                                 onClick={handleOverwriteConfirm}
                                 disabled={isSaving}
-                                className="px-4 py-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50"
+                                className="rtx-legacy-sheet__warning px-4 py-1.5 text-xs bg-amber-700 hover:bg-amber-800 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50"
                             >
                                 {isSaving ? (
                                     <>

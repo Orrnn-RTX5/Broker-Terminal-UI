@@ -552,6 +552,29 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog {
 
 .rtx-symbols-dialog .rtx-symbols-dialog__history-table-wrap {
   min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* Keep timestamps and prices in separate columns at narrow dialog widths. */
+.rtx-symbols-dialog .rtx-symbols-dialog__history-table {
+  table-layout: auto;
+}
+
+.rtx-symbols-dialog .rtx-symbols-dialog__history-table--bars {
+  min-width: 1000px;
+}
+
+.rtx-symbols-dialog .rtx-symbols-dialog__history-table--ticks {
+  min-width: 800px;
+}
+
+.rtx-symbols-dialog .rtx-symbols-dialog__history-table :is(th, td) {
+  white-space: nowrap;
+}
+
+.rtx-symbols-dialog .rtx-symbols-dialog__history-table :is(th, td):first-child {
+  min-width: 210px;
 }
 
 /* Footer */

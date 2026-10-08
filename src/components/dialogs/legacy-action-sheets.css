@@ -1,0 +1,74 @@
+/* These older sheets share the terminal's light surfaces without restyling
+   every utility-based dialog or the contents of printable chart pages. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet > :is(.rtx-legacy-sheet__header, .rtx-legacy-sheet__footer) {
+  background: var(--rtx-light-panel-header) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet > .rtx-legacy-sheet__body {
+  background: var(--rtx-light-panel) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet :is(input:not([type='checkbox']):not([type='radio']), select, textarea) {
+  min-width: 0;
+  background: var(--rtx-light-field) !important;
+  border-color: var(--rtx-light-control-border) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet :is(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--rtx-light-accent) !important;
+  outline-offset: 2px;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet .rtx-legacy-sheet__primary {
+  background: var(--rtx-light-accent) !important;
+  border-color: var(--rtx-light-accent) !important;
+  color: #fff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet .rtx-legacy-sheet__primary:hover:not(:disabled) {
+  background: var(--rtx-light-accent-strong) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet .rtx-legacy-sheet__danger {
+  background: var(--color-loss) !important;
+  border-color: var(--color-loss) !important;
+  color: #fff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet .rtx-legacy-sheet__danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-loss) 88%, #000) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet .rtx-legacy-sheet__discard {
+  background: transparent !important;
+  color: var(--color-loss) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet .rtx-legacy-sheet__discard:hover:not(:disabled) {
+  background: var(--color-loss-dim) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet .rtx-legacy-sheet__warning {
+  background: var(--color-warning) !important;
+  color: #fff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet .rtx-legacy-sheet__warning:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-warning) 88%, #000) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-legacy-sheet :is(.rtx-legacy-sheet__primary, .rtx-legacy-sheet__warning, .rtx-legacy-sheet__danger):disabled {
+  background: var(--rtx-light-panel-subtle) !important;
+  color: var(--rtx-light-text-muted) !important;
+  opacity: 1;
+  cursor: not-allowed;
+}

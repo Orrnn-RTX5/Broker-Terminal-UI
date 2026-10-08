@@ -80,9 +80,11 @@ describe('cTrader-style position controls contract', () => {
     expect(entryControls).toContain("label: 'TP'");
     expect(entryControls).not.toContain('dockSuffix');
     expect(entryControls).not.toContain('slDockOffset');
-    // Controls stay at their actual price and above the line's drag target.
-    expect(entryControls).toContain("appendActiveInteractionNode(controlBar.root, { kind: 'price-badge', price: trade.entryPrice });");
-    expect(chartSource).toContain("appendActiveInteractionNode(levelBar, { kind: 'price-badge', price: levelPrice });");
+    // Controls retain their price metadata while collision placement can move
+    // their presentation; line hit targets and axis prices stay anchored.
+    expect(entryControls).toContain('appendTradeControls(controlBar.root, trade.entryPrice);');
+    expect(chartSource).toContain('appendTradeControls(levelBar, levelPrice);');
+    expect(chartSource).toContain("appendActiveInteractionNode(control, { kind: 'price-badge', price });");
     // Relayout must restore each node's own display mode — forcing 'block'
     // onto the flex control bars drops their buttons onto the text baseline.
     expect(chartSource).toContain('setGeometryStyle(el, "display", el.dataset.display || \'block\');');

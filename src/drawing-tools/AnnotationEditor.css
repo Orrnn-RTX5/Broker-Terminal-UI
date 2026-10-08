@@ -27,7 +27,7 @@
 .annotation-editor button[aria-pressed=true] { color: #fff; background: #2962ff; }
 .annotation-editor button:focus-visible, .annotation-editor input:focus-visible, .annotation-editor textarea:focus-visible, .annotation-editor select:focus-visible { outline: 2px solid #2962ff; outline-offset: 1px; }
 .annotation-editor p { margin: 8px 0; }
-.annotation-editor [role=alert] { color: #e65757; }
+.annotation-editor [role=alert] { color: var(--color-loss); }
 .annotation-editor--inline { width: 280px; padding: 0; overflow: visible; border: 0; box-shadow: none; }
 .annotation-editor__inline-tools { position: absolute; bottom: 100%; left: 0; display: flex; gap: 5px; padding: 4px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; }
 .annotation-editor__inline-actions { display: flex; justify-content: flex-end; gap: 4px; padding-top: 3px; }

@@ -18,6 +18,7 @@ import {
   type DrawingType,
 } from '../../services/drawingManager';
 import { Icon } from '../ui/Icon';
+import './chart-objects-dialog.css';
 
 export interface ChartObjectsDrawingService {
   getDrawings: (targetContextId?: string) => Drawing[];
@@ -256,10 +257,10 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         data-testid="chart-objects-dialog"
-        className="flex max-h-[calc(100vh-32px)] w-full max-w-[780px] flex-col overflow-hidden rounded-md border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-2xl"
+        className="rtx-chart-objects-dialog flex w-full max-w-[780px] flex-col overflow-hidden rounded-md border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-2xl"
         onMouseDown={event => event.stopPropagation()}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-5 py-4">
+        <header className="rtx-chart-objects-dialog__header flex items-start justify-between gap-4 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-5 py-4">
           <div className="flex min-w-0 items-start gap-3">
             <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded border border-[var(--color-info-dim)] bg-[var(--color-info-dim)] text-[var(--color-info)]">
               <Icon name="chart-list" size="sm" />
@@ -283,7 +284,7 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
           </button>
         </header>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)] px-5 py-3">
+        <div className="rtx-chart-objects-dialog__toolbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)] px-5 py-3">
           <p className="text-[12px] text-[var(--text-secondary)]" aria-live="polite">
             {drawings.length} {drawings.length === 1 ? tr("object") : tr("objects")} · {selectedCount} {tr(" selected")}</p>
           <div className="flex flex-wrap items-center gap-2">
@@ -312,14 +313,14 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
           </div>
         </div>
 
-        <div className="min-h-[260px] flex-1 overflow-auto">
+        <div className="rtx-chart-objects-dialog__body">
           {!targetContextId ? (
-            <div className="flex min-h-[260px] flex-col items-center justify-center gap-2 px-6 text-center text-[12px] text-[var(--text-secondary)]">
+            <div className="rtx-chart-objects-dialog__empty flex flex-col items-center justify-center gap-2 px-6 text-center text-[12px] text-[var(--text-secondary)]">
               <Icon name="chart-list" size="md" />
               <p>{tr("No active chart context is available.")}</p>
             </div>
           ) : drawings.length === 0 ? (
-            <div className="flex min-h-[260px] flex-col items-center justify-center gap-2 px-6 text-center text-[12px] text-[var(--text-secondary)]">
+            <div className="rtx-chart-objects-dialog__empty flex flex-col items-center justify-center gap-2 px-6 text-center text-[12px] text-[var(--text-secondary)]">
               <Icon name="chart-list" size="md" />
               <p>{tr("No drawing objects are attached to ")}{chartLabel || tr('this chart')}.</p>
             </div>
@@ -379,7 +380,7 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
                           type="button"
                           aria-label={tr("Delete {{value0}} {{value1}}", { value0: displayName, value1: shortDrawingId(drawing.id) })}
                           onClick={() => deleteDrawing(drawing)}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                          className="rtx-chart-objects-dialog__delete inline-flex h-7 w-7 items-center justify-center rounded text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 focus:outline-none focus:ring-1 focus:ring-rose-400"
                         >
                           <Icon name="trash" size="xs" />
                         </button>
@@ -392,12 +393,12 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
           )}
         </div>
 
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-5 py-3">
+        <footer className="rtx-chart-objects-dialog__footer flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-5 py-3">
           <button
             type="button"
             onClick={deleteSelected}
             disabled={!targetContextId || selectedCount === 0}
-            className="flex h-8 items-center gap-1.5 rounded border border-rose-500/40 bg-rose-500/10 px-3 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-45"
+            className="rtx-chart-objects-dialog__delete flex h-8 items-center gap-1.5 rounded border border-rose-500/40 bg-rose-500/10 px-3 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-45"
           >
             <Icon name="trash" size="xs" />
             {tr("Delete selected (")}{selectedCount})

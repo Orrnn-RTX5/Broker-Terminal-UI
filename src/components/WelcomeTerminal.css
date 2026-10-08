@@ -32,6 +32,37 @@
     line-height: 20px;
 }
 
+/* The entry form is excluded from terminal typography so its branding can keep
+   its own scale. Functional light-theme text still uses the shared UI roles. */
+html:root.rtx-skin-untitled-light .rtx-login-overlay .rtx-login-panel :is(
+    input, select, textarea, label, button, .rtx-route-row strong,
+    .rtx-broker-option span, .rtx-login-error
+) {
+    font-family: var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif) !important;
+    font-size: var(--rtx-light-type-body, 14px) !important;
+    font-weight: var(--rtx-light-weight-body, 400) !important;
+    line-height: 1.5 !important;
+    letter-spacing: normal;
+}
+
+html:root.rtx-skin-untitled-light .rtx-login-overlay .rtx-login-panel :is(
+    label, button, .rtx-route-row strong
+) {
+    font-weight: var(--rtx-light-weight-control, 500) !important;
+}
+
+html:root.rtx-skin-untitled-light .rtx-login-overlay .rtx-login-panel :is(
+    .rtx-summary-label, .rtx-route-row small, .rtx-broker-state,
+    .rtx-broker-option em, .rtx-broker-empty, .rtx-inline-status,
+    .rtx-login-footer, .rtx-remember-row label
+) {
+    font-family: var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif) !important;
+    font-size: var(--rtx-light-type-caption, 12px) !important;
+    font-weight: var(--rtx-light-weight-body, 400) !important;
+    line-height: 1.5 !important;
+    letter-spacing: normal;
+}
+
 .rtx-login-overlay button,
 .rtx-login-overlay input,
 .rtx-login-overlay label,

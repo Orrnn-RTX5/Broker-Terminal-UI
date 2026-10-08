@@ -24,10 +24,11 @@
   border: 1px solid var(--border-secondary);
   border-radius: 12px;
   box-shadow: var(--shadow-xl);
-  min-width: 480px;
-  max-width: min(640px, 92vw);
-  max-height: 80vh;
-  overflow: hidden;
+  min-width: 0;
+  width: min(640px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
   user-select: none;
   display: flex;
   flex-direction: column;
@@ -36,6 +37,7 @@
 /* ─── Header ─── */
 .rtx-bulk-close-dialog__header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
@@ -45,6 +47,8 @@
 
 .rtx-bulk-close-dialog__header-left {
   display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -71,6 +75,7 @@
 
 .rtx-bulk-close-dialog__close-btn {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 28px;
@@ -91,6 +96,7 @@
 /* ─── Summary Stats Bar ─── */
 .rtx-bulk-close-dialog__stats {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   padding: 12px 18px;
   background: var(--bg-primary);
@@ -170,9 +176,11 @@
 /* ─── Position Preview Table ─── */
 .rtx-bulk-close-dialog__table-wrapper {
   padding: 0;
+  min-height: 0;
+  flex-shrink: 0;
   max-height: 240px;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border-secondary) transparent;
 }
@@ -192,6 +200,7 @@
 
 .rtx-bulk-close-dialog__table {
   width: 100%;
+  min-width: 520px;
   border-collapse: collapse;
   font-size: 12px;
   table-layout: fixed;
@@ -315,6 +324,8 @@
 /* ─── Footer ─── */
 .rtx-bulk-close-dialog__footer {
   display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
@@ -426,4 +437,24 @@ html.rtx-skin-untitled-light .rtx-bulk-close-backdrop {
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-backdrop .rtx-bulk-close-dialog {
   background: var(--rtx-light-elevated) !important;
+}
+
+.rtx-bulk-close-dialog button:focus-visible {
+  outline: 2px solid var(--color-info);
+  outline-offset: 2px;
+}
+
+@media (max-width: 420px) {
+  .rtx-bulk-close-dialog__stats {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .rtx-bulk-close-dialog__stat {
+    flex-basis: calc(50% - 12px);
+  }
+
+  .rtx-bulk-close-dialog__stat-divider {
+    display: none;
+  }
 }

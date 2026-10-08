@@ -6,10 +6,13 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  */
 
 import ReactDOM from 'react-dom';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useId, useCallback } from 'react';
+import { useDialogFocusScope } from '../hooks/useDialogFocusScope';
+import { useFloatingPanelDrag } from '../hooks/useFloatingPanelDrag';
 import { useTemplateStore, type ChartTemplate } from '../store/useTemplateStore';
 import type { ChartType, Timeframe } from '../types/chart';
 import { Save, Download, X, CheckCircle, Trash2, Plus } from 'lucide-react';
+import './dialogs/legacy-action-sheets.css';
 
 interface ChartTemplateDialogProps {
   isOpen: boolean;
@@ -41,26 +44,42 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
   const [templateName, setTemplateName] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [pos, setPos] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const nameId = useId();
+  useDialogFocusScope({ isOpen, dialogRef, onClose, initialFocusRef: mode === 'save' ? nameRef : closeRef });
+
+  const constrainPosition = useCallback((position: { x: number; y: number }) => {
+    const bounds = dialogRef.current?.getBoundingClientRect();
+    if (!bounds) return position;
+    const maxX = Math.max(0, (window.innerWidth - bounds.width) / 2 - 8);
+    const maxY = Math.max(0, (window.innerHeight - bounds.height) / 2 - 8);
+    return { x: Math.max(-maxX, Math.min(maxX, position.x)), y: Math.max(-maxY, Math.min(maxY, position.y)) };
+  }, []);
+  const { dragHandleProps } = useFloatingPanelDrag(dialogRef, (position) => {
+    const bounds = dialogRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    setPos(constrainPosition({
+      x: position.x - (window.innerWidth - bounds.width) / 2,
+      y: position.y - (window.innerHeight - bounds.height) / 2,
+    }));
+  });
+  useEffect(() => {
+    if (!isOpen) return;
+    const constrain = () => setPos(previous => {
+      const next = constrainPosition(previous);
+      return previous.x === next.x && previous.y === next.y ? previous : next;
+    });
+    constrain();
+    window.addEventListener('resize', constrain);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(constrain);
+    if (dialogRef.current) observer?.observe(dialogRef.current);
+    return () => { window.removeEventListener('resize', constrain); observer?.disconnect(); };
+  }, [isOpen, constrainPosition]);
 
   if (!isOpen) return null;
-
-  const handleHeaderMouseDown = (e: React.MouseEvent) => {
-    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
-    const onMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      const dx = ev.clientX - dragRef.current.startX;
-      const dy = ev.clientY - dragRef.current.startY;
-      setPos({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy });
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
 
   const handleSaveTemplate = () => {
     if (!templateName.trim()) {
@@ -124,7 +143,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
 
   return ReactDOM.createPortal(
     <div 
-      className="rtx-chart-template-dialog-backdrop fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+      className="rtx-chart-template-dialog-backdrop fixed inset-0 z-[10001] flex items-center justify-center p-2 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
       onContextMenuCapture={(e) => {
         e.stopPropagation();
         e.preventDefault();
@@ -133,18 +152,23 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div 
-        className="rtx-chart-template-dialog bg-[#1e222d] border border-white/10 rounded-lg shadow-[0_32px_64px_rgba(0,0,0,0.8)] w-[420px] max-h-[600px] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        data-shortcut-scope="local"
+        tabIndex={-1}
+        className="rtx-chart-template-dialog rtx-legacy-sheet bg-[#1e222d] border border-white/10 rounded-lg shadow-[0_32px_64px_rgba(0,0,0,0.8)] w-[420px] max-w-full max-h-[min(600px,calc(100dvh-16px))] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden"
         style={{ 
           transform: `translate(${pos.x}px, ${pos.y}px)`,
-          transition: dragRef.current ? 'none' : 'transform 0.1s ease-out'
         }}
         onContextMenu={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header - Drag Handle */}
         <div 
-          className="flex items-center justify-between px-4 py-3 border-b border-white/5 cursor-move active:cursor-grabbing select-none"
-          onMouseDown={handleHeaderMouseDown}
+          className="rtx-legacy-sheet__header flex items-center justify-between gap-2 px-4 py-3 shrink-0 border-b border-white/5 cursor-move active:cursor-grabbing select-none touch-none"
+          {...dragHandleProps}
         >
           <div className="flex items-center gap-2.5">
             {mode === 'save' ? (
@@ -156,11 +180,12 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
                 <Download size={18} className="text-blue-400" strokeWidth={2.5} />
               </div>
             )}
-            <h2 className="text-[13px] font-bold text-zinc-100 uppercase tracking-wider">
+            <h2 id={titleId} className="text-[13px] font-bold text-zinc-100 uppercase tracking-wider">
               {mode === 'save' ? tr("Save Chart Template") : tr("Load Chart Template")}
             </h2>
           </div>
           <button
+            aria-label={tr("Close template dialog")}
             onClick={onClose}
             className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 hover:bg-white/5 rounded-md"
           >
@@ -169,29 +194,30 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="rtx-legacy-sheet__body flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {/* Save Input */}
           {mode === 'save' && (
             <div className="bg-[#252526] border border-zinc-700 rounded-lg p-4">
-              <label className="block text-xs text-zinc-400 mb-2 font-medium">
+              <label htmlFor={nameId} className="block text-xs text-zinc-400 mb-2 font-medium">
                 {tr("Template Name")}</label>
               <div className="flex gap-2">
                 <input
+                  id={nameId}
+                  ref={nameRef}
                   type="text"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
                   placeholder={tr("My Custom Template")}
-                  className="flex-1 bg-[#131316] border border-zinc-700 rounded px-3 py-1.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
+                  className="flex-1 min-w-0 bg-[#131316] border border-zinc-700 rounded px-3 py-1.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       handleSaveTemplate();
                     }
                   }}
-                  autoFocus
                 />
                 <button
                   onClick={handleSaveTemplate}
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded font-semibold transition-colors shadow-lg shadow-blue-500/10"
+                  className="rtx-legacy-sheet__primary px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded font-semibold transition-colors shadow-lg shadow-blue-500/10"
                 >
                   {tr("Save")}</button>
               </div>
@@ -226,7 +252,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
           {defaultTemplates.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-2.5 px-1">
-                <CheckCircle size={14} className="text-[#eab308]" />
+                <CheckCircle size={14} style={{ color: 'var(--color-warning)' }} />
                 <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
                   {tr("Default Templates")}</h3>
               </div>
@@ -271,14 +297,15 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
             <div className="text-center py-12 text-zinc-600">
               <Plus size={32} className="mx-auto mb-3 opacity-20" />
               <p className="text-sm font-medium">{tr("No custom templates")}</p>
-              <p className="text-[11px] mt-1 opacity-60">{tr("Right-click chart to save a new template")}</p>
+              <p className="text-[11px] mt-1">{tr("Right-click chart to save a new template")}</p>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-white/5 bg-black/20">
+        <div className="rtx-legacy-sheet__footer flex items-center justify-end gap-2 px-4 py-3 shrink-0 border-t border-white/5 bg-black/20">
           <button
+            ref={closeRef}
             onClick={onClose}
             className="px-5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs rounded font-bold uppercase tracking-wider transition-all"
           >
@@ -318,11 +345,11 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
       onClick={onSelect}
     >
       <div className="flex items-start justify-between mb-2">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-zinc-200">{template.name}</h4>
+            <h4 className="min-w-0 text-sm font-semibold text-zinc-200"><button type="button" onClick={onSelect} aria-pressed={isSelected} className="max-w-full truncate text-left" title={template.name}>{template.name}</button></h4>
             {template.isDefault && (
-              <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded border border-yellow-500/30">
+              <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded border" style={{ color: 'var(--color-warning)', background: 'var(--color-warning-dim)', borderColor: 'var(--color-warning)' }}>
                 {tr("Default")}</span>
             )}
           </div>
@@ -330,7 +357,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
             {new Date(template.createdAt).toLocaleDateString()}
           </p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex shrink-0 gap-1">
           {mode === 'load' && (
             <button
               onClick={(e) => {

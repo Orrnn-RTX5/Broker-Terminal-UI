@@ -62,7 +62,8 @@ export const readDepthTypography = () => {
   };
   const fontSize = readNumber('--rtx-ui-font-size', 14);
   const lineHeight = Math.ceil(fontSize * 1.5);
-  const fontFamily = style?.getPropertyValue('--font-mono').trim();
+  const isLight = typeof document !== 'undefined' && document.documentElement.classList.contains('rtx-skin-untitled-light');
+  const fontFamily = style?.getPropertyValue(isLight ? '--rtx-ui-font-family' : '--font-mono').trim();
   return {
     fontSize,
     lineHeight,
@@ -71,7 +72,9 @@ export const readDepthTypography = () => {
     controlWeight: readNumber('--rtx-font-weight-control', 400),
     headingWeight: readNumber('--rtx-font-weight-heading', 500),
     // Canvas2D needs a resolved font string, not CSS custom-property syntax.
-    fontFamily: fontFamily && !fontFamily.includes('var(') ? fontFamily : "'Courier New', monospace",
+    fontFamily: fontFamily && !fontFamily.includes('var(')
+      ? fontFamily
+      : isLight ? "'Segoe UI', Tahoma, Arial, sans-serif" : "'Courier New', monospace",
   };
 };
 
@@ -256,7 +259,9 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
       const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
 
       // Dark/Light background
-      ctx.fillStyle = isLight ? '#f8fafc' : C.bgPrimary;
+      const themeStyle = getComputedStyle(document.documentElement);
+      const lightColor = (name: string, fallback: string) => themeStyle.getPropertyValue(name).trim() || fallback;
+      ctx.fillStyle = isLight ? lightColor('--rtx-light-chart', '#d8dde2') : C.bgPrimary;
       ctx.fillRect(0, 0, width, height);
 
       const chartH = Math.max(labelHeight, (height - labelHeight) * 0.75);
@@ -275,7 +280,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
       const totalRange = maxP - minP;
 
       // Draw grid lines (dark)
-      ctx.strokeStyle = '#1e1e24';
+      ctx.strokeStyle = isLight ? lightColor('--rtx-light-border', '#bcc6d0') : '#1e1e24';
       ctx.lineWidth = 0.5;
       for (let i = 1; i < 5; i++) {
         const y = (chartH / 5) * i;
@@ -288,7 +293,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
 
 
       // Price scale on right
-      ctx.fillStyle = C.textTertiary;
+      ctx.fillStyle = isLight ? lightColor('--rtx-light-text-muted', '#455365') : C.textTertiary;
       ctx.font = bodyFont;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
@@ -534,7 +539,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
         ctx.beginPath(); ctx.moveTo(0, lastY); ctx.lineTo(width - priceLabelWidth, lastY); ctx.stroke();
         ctx.setLineDash([]);
         // Label
-        ctx.fillStyle = C.loss;
+        ctx.fillStyle = isLight ? lightColor('--rtx-light-quote-down', '#a51f26') : C.loss;
         ctx.fillRect(width - priceLabelWidth, priceLabelY, priceLabelWidth, labelHeight);
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
@@ -824,7 +829,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
     >
       {/* ── Title Bar ── */}
       <div
-        className="flex min-h-[30px] items-center justify-between px-2.5 py-1 border-b shrink-0 cursor-move"
+        className="rtx-dom-titlebar flex min-h-[30px] items-center justify-between px-2.5 py-1 border-b shrink-0 cursor-move"
         style={{
           background: 'var(--bg-tertiary)',
           borderColor: 'var(--border-primary)',
@@ -839,7 +844,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             <span className="rtx-depth-of-market__heading uppercase tracking-normal shrink-0" style={{ color: C.textPrimary, fontSize: typography.fontSize, fontWeight: typography.headingWeight }}>
               {symbol}
             </span>
-            <span className="text-[12px] leading-[18px] font-normal truncate" style={{ color: C.textTertiary, letterSpacing: 'normal' }}>
+            <span className="rtx-dom-description text-[12px] leading-[18px] font-normal truncate" style={{ color: C.textTertiary, letterSpacing: 'normal' }}>
               {symbol.startsWith('BTC') ? tr("Bitcoin vs US Dollar") : symbol.startsWith('ETH') ? tr("Ethereum vs US Dollar") : symbol.startsWith('XAU') ? tr("Gold vs US Dollar") : symbol.startsWith('XAG') ? tr("Silver vs US Dollar") : symbol.replace(/([A-Z]{3})([A-Z]{3})/, '$1 / $2')}
             </span>
           </div>
@@ -955,7 +960,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                     )}
                   </div>
                   <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: 'var(--border-primary)' }}>
-                    <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#e58a8a' }}>
+                    <span className="rtx-dom-price rtx-dom-price--ask" style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#e58a8a' }}>
                       {priceBase}<span style={{ color: '#fca5a5', fontWeight: 600 }}>{pricePips}</span>
                     </span>
                   </div>
@@ -977,7 +982,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             {/* ── Spread row ── */}
             {(bestBid > 0 || bestAsk > 0) && (
               <div
-                className="rtx-depth-of-market__row flex items-center justify-center gap-1.5"
+                className="rtx-depth-of-market__row rtx-dom-spread flex items-center justify-center gap-1.5"
                 style={{
                   height: ROW_H,
                   background: 'var(--bg-quaternary)',
@@ -1021,7 +1026,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                     )}
                   </div>
                   <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: 'var(--border-primary)' }}>
-                    <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#7ba4e0' }}>
+                    <span className="rtx-dom-price rtx-dom-price--bid" style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#7ba4e0' }}>
                       {priceBase}<span style={{ color: '#93c5fd', fontWeight: 600 }}>{pricePips}</span>
                     </span>
                   </div>

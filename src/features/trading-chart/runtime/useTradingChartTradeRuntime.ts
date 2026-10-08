@@ -25,11 +25,13 @@ import type {
 } from '../../../utils/chartPostInteractionCoordinator';
 import {
   getTradePlotClipLayer,
+  layoutTradeControls,
   placeTradeMarkerTooltip,
   TRADE_LEVEL_OVERRIDES_STORAGE_KEY,
   TRADE_LEVEL_OVERRIDE_TTL_MS,
   TRADE_MARKER_TIP_OFFSET_PX,
   tradeMarkerTooltipLayouts,
+  tradeControlLeaderNodes,
   type TradeSide,
 } from '../presentation/tradeOverlayPresentation';
 import { useTradingChartTradeLevelDrag } from './useTradingChartTradeLevelDrag';
@@ -461,6 +463,7 @@ export const useTradingChartTradeRuntime = ({
     const projectTime = memoizeTradeOverlayCoordinate(time => chart.timeScale().timeToCoordinate(time as Time));
     const styleBatch = geometryStyleCacheRef.current!.begin();
     const setGeometryStyle = styleBatch.set;
+    const controlNodes = new Map<string, { element: HTMLElement; anchorY: number }>();
     try {
       const overlayHost = overlayRef.current;
       for (const host of [overlayHost, overlayHost?.parentElement]) {
@@ -526,6 +529,10 @@ export const useTradingChartTradeRuntime = ({
           if (!el || !node) continue;
 
           try {
+            if (node.kind === 'control-leader') {
+              setGeometryStyle(el, "display", 'none');
+              continue;
+            }
             if (node.kind === 'axis-price-badge') {
               const y = node.price == null ? null : projectPrice(node.price);
               if (y == null) {
@@ -587,6 +594,14 @@ export const useTradingChartTradeRuntime = ({
                 if (el.dataset.align === 'right') {
                   setGeometryStyle(el, "left", 'auto');
                   setGeometryStyle(el, "right", `${priceScaleWidth + 16}px`);
+                }
+                if (el.classList.contains('rtx-trade-controls')) {
+                  if (snappedY < 0 || snappedY > plotHeight) {
+                    setGeometryStyle(el, "display", 'none');
+                    continue;
+                  }
+                  setGeometryStyle(el, "maxWidth", `${Math.max(0, chartWidth - priceScaleWidth - 12)}px`);
+                  controlNodes.set(`${el.dataset.tradeKey}:${el.dataset.role}:${i}`, { element: el, anchorY: snappedY });
                 }
               }
 
@@ -721,6 +736,46 @@ export const useTradingChartTradeRuntime = ({
       }
     }
 
+    // Read all control/UI bounds together before writing the collision layout.
+    // Only bars move: lines, full-width drag targets and axis prices remain at
+    // series.priceToCoordinate(price).
+    if (controlNodes.size && containerRef.current) {
+      const chartBounds = containerRef.current.getBoundingClientRect();
+      const plotWidth = Math.max(0, chartWidth - priceScaleWidth);
+      const exclusions = Array.from(containerRef.current.parentElement?.querySelectorAll<HTMLElement>('.rtx-oct, .rtx-chart-hud') ?? [])
+        .map(element => element.getBoundingClientRect())
+        .filter(rect => rect.width > 0 && rect.height > 0)
+        .map(rect => ({ left: rect.left - chartBounds.left, top: rect.top - chartBounds.top, width: rect.width, height: rect.height }));
+      const inputs = Array.from(controlNodes, ([key, { element, anchorY }]) => {
+        const width = element.offsetWidth;
+        return {
+          key, anchorY, width, height: element.offsetHeight,
+          preferredLeft: element.dataset.align === 'right'
+            ? plotWidth - width - 16
+            : Number.parseFloat(element.dataset.leftInset ?? '') || 16,
+        };
+      });
+      for (const placement of layoutTradeControls(inputs, plotWidth, plotHeight, exclusions)) {
+        const element = controlNodes.get(placement.key)!.element;
+        element.style.left = `${placement.left}px`;
+        element.style.right = 'auto';
+        element.style.top = `${placement.top + placement.height / 2}px`;
+        element.dataset.priceAnchorOffsetY = String(placement.offsetY);
+        element.dataset.priceAnchorY = String(placement.anchorY);
+        const leader = tradeControlLeaderNodes.get(element);
+        if (!leader || element.style.visibility === 'hidden') continue;
+        const below = placement.offsetY > 0;
+        const edgeY = below ? placement.top : placement.top + placement.height;
+        const height = Math.abs(edgeY - placement.anchorY);
+        if (Math.abs(placement.offsetY) <= placement.height / 2) continue;
+        leader.style.display = 'block';
+        leader.style.left = `${placement.left + (element.dataset.align === 'right' ? placement.width - 8 : 8)}px`;
+        leader.style.top = `${Math.min(edgeY, placement.anchorY)}px`;
+        leader.style.height = `${height}px`;
+        leader.style.color = element.style.borderColor || 'var(--text-secondary, #64748b)';
+      }
+    }
+
     if (
       chartSettingsRef.current.showBidPriceLine
       && livePriceRef.current !== null
@@ -776,6 +831,31 @@ export const useTradingChartTradeRuntime = ({
       }
     };
   }, [repaintTradeOverlayGeometryRef, updateLabelPositions]);
+
+  useEffect(() => {
+    const wrapper = containerRef.current?.parentElement;
+    if (!wrapper) return;
+    let frame: number | null = null;
+    const schedule = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => { frame = null; updateLabelPositions(false); });
+    };
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
+    const observeChrome = () => {
+      resize?.disconnect();
+      resize?.observe(wrapper);
+      wrapper.querySelectorAll('.rtx-oct, .rtx-chart-hud, .rtx-trade-controls').forEach(element => resize?.observe(element));
+      schedule();
+    };
+    const children = new MutationObserver(observeChrome);
+    children.observe(wrapper, { childList: true });
+    observeChrome();
+    return () => {
+      children.disconnect();
+      resize?.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [containerRef, updateLabelPositions]);
 
 
 

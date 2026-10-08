@@ -129,6 +129,32 @@ describe('OpenAccountDialog account flows', () => {
         vi.unstubAllGlobals();
     });
 
+    it('contains keyboard focus and restores the trigger without creating or connecting an account', () => {
+        vi.stubGlobal('electron', { window: {} });
+        mocks.getCachedBrokerDirectory.mockReturnValue(brokers);
+        mocks.loadAppBrokerDirectory.mockReturnValue(new Promise(() => {}));
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+        trigger.focus();
+        const onClose = vi.fn();
+        const view = render(<OpenAccountDialog isOpen onClose={onClose} />);
+        expect(screen.getByRole('textbox', { name: 'Search brokers' })).toHaveFocus();
+        const close = screen.getByRole('button', { name: 'Close' });
+        const next = screen.getByRole('button', { name: 'Next' });
+        close.focus();
+        fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+        expect(next).toHaveFocus();
+        fireEvent.keyDown(next, { key: 'Tab' });
+        expect(close).toHaveFocus();
+        fireEvent.keyDown(close, { key: 'Escape' });
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(mocks.createAccount).not.toHaveBeenCalled();
+        expect(mocks.login).not.toHaveBeenCalled();
+        view.rerender(<OpenAccountDialog isOpen={false} onClose={onClose} />);
+        expect(trigger).toHaveFocus();
+        trigger.remove();
+    });
+
     it('opens a warm directory with broker selection and Next available immediately', () => {
         vi.stubGlobal('electron', { window: {} });
         mocks.getCachedBrokerDirectory.mockReturnValue(brokers);

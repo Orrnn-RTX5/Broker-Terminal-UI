@@ -1,0 +1,15 @@
+/* Keep incomplete/error journal notices readable on the light data surface. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-status-warning {
+  color: #75400a !important;
+  background: #e9dfc9 !important;
+  border-color: #c7b58d !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-status-warning button {
+  flex-shrink: 0;
+  color: inherit !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-status-warning button:hover {
+  color: #512a04 !important;
+}

@@ -1,4 +1,5 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
+import './journal-status.css';
 /**
  * JournalTab — MT5-style server journal panel
  * Fetches broker/account-scoped logs from GET /api/v2/journal.
@@ -957,7 +958,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
             )}
 
             {isAuthenticated && scopeHasLoaded && scopeFetchError && (
-                <div role="status" className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-[12px] font-normal text-amber-300">
+                <div role="status" className="rtx-journal-status-warning flex shrink-0 items-center justify-between gap-3 border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-[12px] font-normal text-amber-300">
                     <span>{tr("Refresh failed. Showing the latest response for this account.")}</span>
                     <button type="button" onClick={refreshJournal} className="underline underline-offset-2 hover:text-amber-100">
                         {tr("Retry")}</button>
@@ -987,7 +988,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
             )}
 
             {isAuthenticated && !scopeHasLoaded && hasLocalJournalData && !isLoading && scopeFetchError && (
-                <div role="alert" className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-[12px] font-normal text-amber-300">
+                <div role="alert" className="rtx-journal-status-warning flex shrink-0 items-center justify-between gap-3 border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-[12px] font-normal text-amber-300">
                     <span>{tr("Unable to load the server journal. Showing local trade diagnostics.")}</span>
                     <button type="button" onClick={refreshJournal} className="underline underline-offset-2 hover:text-amber-100">
                         {tr("Retry")}</button>

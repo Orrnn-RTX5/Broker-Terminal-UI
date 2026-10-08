@@ -724,3 +724,57 @@ html:root body .rtx-auth-dialog .rtx-auth-button {
     padding: 9px 10px;
   }
 }
+
+/* Light-theme account access uses the same roles as terminal dialogs. */
+html:root.rtx-skin-untitled-light body .rtx-auth-backdrop__dismiss {
+  /* This full-screen dismiss target must not inherit a light button fill. */
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-skin-untitled-light body .rtx-auth-dialog {
+  --rtx-type-size: var(--rtx-light-type-body, 14px);
+  --rtx-type-weight: var(--rtx-light-weight-body, 400);
+}
+
+html:root.rtx-skin-untitled-light body .rtx-auth-dialog .rtx-auth-dialog__title {
+  --rtx-type-size: var(--rtx-light-type-title, 18px);
+  --rtx-type-weight: var(--rtx-light-weight-heading, 600);
+  line-height: 1.4 !important;
+  letter-spacing: normal !important;
+}
+
+html:root.rtx-skin-untitled-light body .rtx-auth-dialog :is(
+  .rtx-auth-action__label, .rtx-auth-button, .rtx-auth-option,
+  .rtx-auth-field__label, .rtx-auth-order-symbol, .rtx-auth-broker__value
+) {
+  --rtx-type-size: var(--rtx-light-type-body, 14px);
+  --rtx-type-weight: var(--rtx-light-weight-control, 500);
+  letter-spacing: normal;
+}
+
+html:root.rtx-skin-untitled-light body .rtx-auth-dialog :is(
+  .rtx-auth-field input, .rtx-auth-alert
+) {
+  --rtx-type-size: var(--rtx-light-type-body, 14px);
+  --rtx-type-weight: var(--rtx-light-weight-body, 400);
+  letter-spacing: normal;
+}
+
+html:root.rtx-skin-untitled-light body .rtx-auth-dialog :is(
+  .rtx-auth-dialog__subtitle, .rtx-auth-action__description,
+  .rtx-auth-order-volume, .rtx-auth-order-note, .rtx-auth-field__hint,
+  .rtx-auth-broker__label, .rtx-auth-badge
+) {
+  --rtx-type-size: var(--rtx-light-type-caption, 12px);
+  --rtx-type-weight: var(--rtx-light-weight-body, 400);
+  line-height: 1.5;
+  letter-spacing: normal;
+}
+
+html:root.rtx-skin-untitled-light body .rtx-auth-dialog :is(
+  .rtx-auth-broker__label, .rtx-auth-badge
+) {
+  --rtx-type-weight: var(--rtx-light-weight-control, 500);
+}

@@ -60,23 +60,23 @@ describe('enterprise light visual-system contract', () => {
 
   it('shares the approved light palette across web and desktop surfaces', () => {
     const expectedPalette = {
-      '--rtx-light-canvas': '#f7f8fa',
-      '--rtx-light-panel': '#fafafa',
-      '--rtx-light-panel-header': '#f2f4f8',
-      '--rtx-light-elevated': '#ffffff',
-      '--rtx-light-chart': '#f7f8fa',
-      '--rtx-light-field': '#f2f6fc',
-      '--rtx-light-border': '#e3e8f0',
-      '--rtx-light-control-border': '#7d8796',
-      '--rtx-light-text': '#111827',
-      '--rtx-light-text-secondary': '#4b5563',
-      '--rtx-light-text-muted': '#5f6b7a',
-      '--rtx-light-accent': '#4338ca',
-      '--rtx-light-selected': '#eef2ff',
+      '--rtx-light-canvas': '#c7cfd7',
+      '--rtx-light-panel': '#dce1e6',
+      '--rtx-light-panel-header': '#cbd2d9',
+      '--rtx-light-elevated': '#e0e5e9',
+      '--rtx-light-chart': '#d8dde2',
+      '--rtx-light-field': '#e7ebef',
+      '--rtx-light-border': '#bcc6d0',
+      '--rtx-light-control-border': '#667487',
+      '--rtx-light-text': '#273444',
+      '--rtx-light-text-secondary': '#414e5e',
+      '--rtx-light-text-muted': '#455365',
+      '--rtx-light-accent': '#355786',
+      '--rtx-light-selected': '#d1dced',
       '--rtx-light-buy': '#2563eb',
       '--rtx-light-sell': '#dc2626',
-      '--color-profit': '#1d4ed8',
-      '--color-loss': '#b91c1c',
+      '--color-profit': '#1746bc',
+      '--color-loss': '#a51f26',
     };
     for (const [token, color] of Object.entries(expectedPalette)) {
       expect(readHexToken(token), token).toBe(color);
@@ -89,6 +89,9 @@ describe('enterprise light visual-system contract', () => {
       '--rtx-light-panel',
       '--rtx-light-elevated',
       '--rtx-light-canvas',
+      '--rtx-light-chart',
+      '--rtx-light-panel-header',
+      '--rtx-light-panel-subtle',
       '--rtx-light-field',
       '--rtx-light-hover',
       '--rtx-light-selected',
@@ -99,6 +102,7 @@ describe('enterprise light visual-system contract', () => {
       '--rtx-light-text-secondary',
       '--rtx-light-text-muted',
       '--rtx-light-price',
+      '--rtx-light-chart-high',
       '--rtx-light-accent',
       '--rtx-light-quote-up',
       '--rtx-light-quote-down',
@@ -179,11 +183,11 @@ describe('enterprise light visual-system contract', () => {
   it('keeps the chart calm before and after data becomes ready', () => {
     expect(lightCss).toMatch(/\.rtx-chart-wrapper\s*>\s*div\[class\*="bg-\[#0a0a0f\]"\]/);
     expect(lightCss).toMatch(/\.rtx-chart-hud\s*>\s*span,[\s\S]*?background: transparent !important;/);
-    expect(chartSettingsSource).toContain('background: "#f7f8fa"');
-    expect(chartSettingsSource).toContain('foreground: "#4b5563"');
+    expect(chartSettingsSource).toContain('background: "#d8dde2"');
+    expect(chartSettingsSource).toContain('foreground: "#414e5e"');
     expect(chartSettingsSource).toContain('grid: "rgba(46, 46, 46, 0.11)"');
-    expect(chartSettingsSource).toContain('if (color.toUpperCase() === CHART_PROFIT_COLOR) return "#059669";');
-    expect(chartSettingsSource).toContain('if (color.toUpperCase() === CHART_LOSS_COLOR) return "#dc2626";');
+    expect(chartSettingsSource).toContain('if (color.toUpperCase() === CHART_PROFIT_COLOR) return "#06634e";');
+    expect(chartSettingsSource).toContain('if (color.toUpperCase() === CHART_LOSS_COLOR) return "#a51f26";');
   });
 
   it('repairs selected Market Watch rows even when the row omits mw-row', () => {
@@ -225,14 +229,20 @@ describe('enterprise light visual-system contract', () => {
     expect(overrides).toEqual([]);
     const typography = parse(readSource('src/styles/light-typography.css'));
     typography.walkRules((rule) => {
-      expect(rule.selector).toMatch(/^html:root\.rtx-advanced-view\.rtx-skin-untitled-light/);
+      expect(rule.selector).toMatch(/^html:root(?:\.rtx-advanced-view)?\.rtx-skin-untitled-light/);
     });
     const tokenValues = new Map<string, string>();
-    typography.nodes.filter((node) => node.type === 'rule').slice(0, 1).forEach((rule) => {
+    typography.nodes.filter((node) => node.type === 'rule'
+      && /^html:root(?:\.rtx-advanced-view)?\.rtx-skin-untitled-light$/.test(node.selector)).forEach((rule) => {
       if (rule.type === 'rule') rule.walkDecls((declaration) => { tokenValues.set(declaration.prop, declaration.value); });
     });
     expect(tokenValues.get('--rtx-light-ui-font-size')).toBe('var(--rtx-ui-font-size)');
     expect(tokenValues.get('--rtx-light-ui-font-weight')).toBe('var(--rtx-font-weight-body)');
+    expect(tokenValues.get('--rtx-light-type-body')).toBe('var(--rtx-ui-font-size)');
+    expect(tokenValues.get('--rtx-light-type-caption')).toBe('max(11px, calc(var(--rtx-ui-font-size) - 1px))');
+    expect(tokenValues.get('--rtx-light-weight-body')).toBe('400');
+    expect(tokenValues.get('--rtx-light-weight-control')).toBe('500');
+    expect(tokenValues.get('--rtx-light-weight-heading')).toBe('600');
     expect(readSource('src/authenticatedStyles.ts')).toContain("import './styles/light-typography.css';");
   });
 
@@ -250,8 +260,8 @@ describe('enterprise light visual-system contract', () => {
   });
 
   it('separates blue/red quote movement from green/red daily performance', () => {
-    expect(readHexToken('--rtx-light-quote-up')).toBe('#1d4ed8');
-    expect(readHexToken('--rtx-light-quote-down')).toBe('#b91c1c');
+    expect(readHexToken('--rtx-light-quote-up')).toBe('#1746bc');
+    expect(readHexToken('--rtx-light-quote-down')).toBe('#a51f26');
     expect(lightCss).toMatch(/\.rtx-market-watch__price--up\s*\{[^}]*color: var\(--rtx-light-quote-up\) !important;/);
     expect(lightCss).toMatch(/\.rtx-market-watch__price--down\s*\{[^}]*color: var\(--rtx-light-quote-down\) !important;/);
     expect(lightCss).toMatch(/\.rtx-market-watch__direction--up\s*\{[^}]*color: var\(--rtx-light-quote-up\) !important;/);

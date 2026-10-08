@@ -296,7 +296,7 @@ describe('SavePictureDialog', () => {
       />
     );
 
-    const closeButton = screen.getByRole('button', { name: '' }); // X button has no text
+    const closeButton = screen.getByRole('button', { name: 'Close Save Picture' });
     fireEvent.click(closeButton);
 
     expect(mockOnClose).toHaveBeenCalled();
@@ -327,6 +327,42 @@ describe('SavePictureDialog', () => {
       expect(saveButton).toBeDisabled();
       expect(cancelButton).toBeDisabled();
     });
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(mockOnClose).not.toHaveBeenCalled();
+  });
+
+  it('names the modal, contains keyboard focus, and restores focus on close', () => {
+    const launcher = document.createElement('button');
+    document.body.append(launcher);
+    launcher.focus();
+    const { unmount } = render(
+      <SavePictureDialog isOpen onClose={mockOnClose} chartCanvas={mockCanvas} symbol="EURUSD" timeframe="M1" />,
+    );
+    try {
+      const dialog = screen.getByRole('dialog', { name: 'Save Chart As Picture' });
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+      expect(dialog).toHaveFocus();
+      const close = screen.getByRole('button', { name: 'Close Save Picture' });
+      const save = screen.getByRole('button', { name: 'Save Picture' });
+      close.focus();
+      fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+      expect(save).toHaveFocus();
+      fireEvent.keyDown(save, { key: 'Tab' });
+      expect(close).toHaveFocus();
+      fireEvent.keyDown(close, { key: 'Escape' });
+      expect(mockOnClose).toHaveBeenCalledOnce();
+      unmount();
+      expect(launcher).toHaveFocus();
+    } finally {
+      launcher.remove();
+    }
+  });
+
+  it('keeps export available if the canvas preview cannot be read', () => {
+    vi.mocked(ChartExporter.getPreview).mockImplementationOnce(() => { throw new Error('Preview unavailable'); });
+    render(<SavePictureDialog isOpen onClose={mockOnClose} chartCanvas={mockCanvas} symbol="EURUSD" timeframe="M1" />);
+    expect(screen.getByText('No preview available')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Picture' })).toBeEnabled();
   });
 
   it('should display symbol and timeframe in footer', () => {

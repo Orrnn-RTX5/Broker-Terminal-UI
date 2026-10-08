@@ -24,6 +24,82 @@ export const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
 /** Candle edge to chevron tip: marker offset plus the arrow SVG tip inset. */
 export const TRADE_MARKER_TIP_OFFSET_PX = 6;
 
+export interface TradeControlRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface TradeControlLayoutInput {
+  key: string;
+  anchorY: number;
+  width: number;
+  height: number;
+  preferredLeft: number;
+}
+
+export interface TradeControlPlacement extends TradeControlRect {
+  key: string;
+  anchorY: number;
+  offsetY: number;
+}
+
+/** Keep price lines fixed; move only their controls into the nearest free space. */
+export const layoutTradeControls = (
+  controls: readonly TradeControlLayoutInput[],
+  plotWidth: number,
+  plotHeight: number,
+  exclusions: readonly TradeControlRect[] = [],
+): TradeControlPlacement[] => {
+  const inset = 6;
+  const gap = 6;
+  const occupied = [...exclusions];
+  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(min, max), Math.max(min, value));
+  return [...controls].sort((a, b) => a.anchorY - b.anchorY || a.key.localeCompare(b.key)).map(control => {
+    const width = Math.min(control.width, Math.max(0, plotWidth - inset * 2));
+    const height = control.height;
+    const preferredTop = control.anchorY - height / 2;
+    const maxTop = plotHeight - inset - height;
+    const preferredLeft = clamp(control.preferredLeft, inset, plotWidth - inset - width);
+    const candidateTops = [...new Set([
+      preferredTop,
+      ...occupied.flatMap(rect => [rect.top - gap - height, rect.top + rect.height + gap]),
+    ].map(top => clamp(top, inset, maxTop)))].sort((a, b) => Math.abs(a - preferredTop) - Math.abs(b - preferredTop));
+    let placement: TradeControlRect | undefined;
+    for (const top of candidateTops) {
+      const blockers = occupied.filter(rect => top < rect.top + rect.height + gap && top + height + gap > rect.top)
+        .sort((a, b) => a.left - b.left);
+      const free: Array<{ from: number; to: number }> = [];
+      let start = inset;
+      for (const rect of blockers) {
+        if (rect.left - gap > start) free.push({ from: start, to: Math.min(plotWidth - inset, rect.left - gap) });
+        start = Math.max(start, rect.left + rect.width + gap);
+      }
+      if (start < plotWidth - inset) free.push({ from: start, to: plotWidth - inset });
+      const lefts = free.filter(range => range.to - range.from >= width)
+        .map(range => clamp(preferredLeft, range.from, range.to - width))
+        .sort((a, b) => Math.abs(a - preferredLeft) - Math.abs(b - preferredLeft));
+      if (lefts.length) {
+        placement = { left: lefts[0], top, width, height };
+        break;
+      }
+    }
+    // An overfilled pane has no collision-free solution. Keep its controls
+    // near their anchors instead of moving a price line or dropping an action.
+    placement ??= { left: preferredLeft, top: clamp(preferredTop, inset, maxTop), width, height };
+    occupied.push(placement);
+    return { ...placement, key: control.key, anchorY: control.anchorY, offsetY: placement.top + height / 2 - control.anchorY };
+  });
+};
+
+/** A displaced bar changes presentation, never the price under a drag gesture. */
+export const getTradeControlDragY = (pointerY: number, offsetY: number): number => (
+  pointerY - (Number.isFinite(offsetY) ? offsetY : 0)
+);
+
+export const tradeControlLeaderNodes = new WeakMap<HTMLElement, HTMLElement>();
+
 const TRADE_PLOT_CLIP_CLASS = 'rtx-trade-plot-clip';
 
 /**
@@ -89,23 +165,23 @@ export const getTradeOverlayCardPalette = (
   if (isLightSurface) {
     if (tone === 'BUY') {
       return {
-        background: '#eff6ff',
-        border: '#2563eb',
-        text: '#1d4ed8',
+        background: '#d1dced',
+        border: '#1746bc',
+        text: '#1746bc',
         shadow: 'box-shadow:0 1px 3px rgba(15,23,42,0.12);',
       };
     }
     return isPositiveTone
       ? {
-        background: 'rgba(236, 253, 243, 0.9)',
-        border: '#059669',
-        text: '#047857',
+        background: '#cddfd8',
+        border: '#04685e',
+        text: '#04685e',
         shadow: 'box-shadow:0 1px 3px rgba(15,23,42,0.12);',
       }
       : {
-        background: 'rgba(254, 243, 242, 0.9)',
-        border: '#dc2626',
-        text: '#b91c1c',
+        background: '#e4d3d5',
+        border: '#a51f26',
+        text: '#a51f26',
         shadow: 'box-shadow:0 1px 3px rgba(15,23,42,0.12);',
       };
   }

@@ -1,6 +1,5 @@
 /* Static material finishes for terminal chrome. Dark surfaces retain their
-   existing sheen; the light glass treatment below leaves chart canvases,
-   financial data and semantic action fills on their own opaque surfaces. */
+   existing sheen; light surfaces use opaque, matte shared palette tokens. */
 :root {
   --rtx-panel-sheen: linear-gradient(180deg, rgb(255 255 255 / 2.8%), rgb(255 255 255 / 0.8%) 72px, transparent 180px);
   --rtx-control-sheen: linear-gradient(180deg, rgb(255 255 255 / 4%), transparent);
@@ -118,22 +117,21 @@ html.rtx-desktop-shell-active {
   }
 }
 
-/* Light glass: a satin frame around opaque data, with real frosting reserved
-   for floating surfaces. Filtering a toolbar/dock ancestor can capture its
-   fixed-position dialogs and add a large live-chart compositing layer. */
+/* Keep the late-loading material layer aligned with the shared light palette.
+   Opaque surfaces avoid white glare and keep text contrast independent of the
+   moving chart underneath menus and dialogs. No filters on fixed ancestors. */
 html:root.rtx-advanced-view.rtx-skin-untitled-light {
-  --rtx-glass-chrome: #f2f4f8;
-  --rtx-glass-floating: #ffffff;
-  --rtx-glass-sheen: linear-gradient(180deg, rgb(255 255 255 / 88%), rgb(255 255 255 / 26%) 48%, rgb(226 232 243 / 34%));
-  --rtx-glass-floating-sheen: linear-gradient(135deg, rgb(255 255 255 / 42%), rgb(255 255 255 / 4%) 65%);
-  --rtx-glass-border: rgb(148 163 184 / 36%);
-  --rtx-glass-edge: rgb(255 255 255 / 92%);
-  --rtx-glass-chrome-shadow: inset 0 1px 0 var(--rtx-glass-edge), inset 0 -1px 0 rgb(148 163 184 / 12%);
-  --rtx-glass-floating-shadow: inset 0 1px 0 var(--rtx-glass-edge), 0 0 0 1px rgb(255 255 255 / 52%), 0 8px 24px rgb(30 41 59 / 10%), 0 24px 64px rgb(30 41 59 / 9%);
+  --rtx-glass-chrome: var(--rtx-light-panel-header);
+  --rtx-glass-floating: var(--rtx-light-elevated);
+  --rtx-glass-sheen: none;
+  --rtx-glass-floating-sheen: none;
+  --rtx-glass-border: var(--rtx-light-border-strong);
+  --rtx-glass-edge: transparent;
+  --rtx-glass-chrome-shadow: none;
+  --rtx-glass-floating-shadow: 0 8px 28px rgb(30 41 59 / 14%), 0 2px 6px rgb(30 41 59 / 6%);
   --rtx-glass-filter: none;
 
-  /* These backgrounds provide the glass finish without creating a new
-     containing block for nested fixed-position tools. */
+  /* Shared chrome separates controls from the lighter data surfaces. */
   :is(
     .rtx-top-chrome,
     .rtx-main-toolbar,
@@ -158,9 +156,9 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
 
   .web-drawing-tools-rail:not([data-orientation='horizontal']) {
     background-color: var(--rtx-glass-chrome) !important;
-    background-image: linear-gradient(100deg, rgb(255 255 255 / 82%), rgb(255 255 255 / 12%) 75%) !important;
+    background-image: none !important;
     border-color: var(--rtx-glass-border) !important;
-    box-shadow: inset 1px 0 0 var(--rtx-glass-edge), inset -1px 0 0 rgb(148 163 184 / 14%) !important;
+    box-shadow: none !important;
   }
 
   /* Style actual floating boxes, never full-screen role=dialog backdrops.
@@ -206,7 +204,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
   }
 
   /* File-menu submenus can portal viewport-positioned fixed panels.
-     Keep both possible ancestors free of filters while retaining their sheen. */
+     Keep both possible ancestors free of filters. */
   .rtx-file-menu[class],
   .rtx-application-menu:has(.rtx-file-menu) {
     background-color: var(--rtx-light-elevated) !important;
@@ -214,8 +212,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
     backdrop-filter: none !important;
   }
 
-  /* A single outer frosted layer supplies the material; avoid stacking blur
-     on dialog children or washing out input fields and mini-chart canvases. */
+  /* Let dialog content inherit the opaque outer surface without extra layers. */
   .rtx-order-dialog[class] .rtx-order-dialog__content .rtx-order-dialog__form,
   .rtx-cp-shell .rtx-cp-content,
   .rtx-options-dialog > .overflow-y-auto,
@@ -232,20 +229,10 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
   }
 }
 
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html:root.rtx-advanced-view.rtx-skin-untitled-light {
-    /* 94% white keeps useful dark text readable even over a black backdrop.
-       No element opacity: only the surface, never its text, is translucent. */
-    --rtx-glass-chrome: rgb(242 244 248 / 88%);
-    --rtx-glass-floating: rgb(255 255 255 / 94%);
-    --rtx-glass-filter: blur(18px) saturate(115%);
-  }
-}
-
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active), print {
   html:root.rtx-advanced-view.rtx-skin-untitled-light {
-    --rtx-glass-chrome: #f2f4f8;
-    --rtx-glass-floating: #ffffff;
+    --rtx-glass-chrome: var(--rtx-light-panel-header);
+    --rtx-glass-floating: var(--rtx-light-elevated);
     --rtx-glass-sheen: none;
     --rtx-glass-floating-sheen: none;
     --rtx-glass-border: var(--rtx-light-border-strong);

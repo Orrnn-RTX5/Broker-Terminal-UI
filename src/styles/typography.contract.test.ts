@@ -226,7 +226,7 @@ describe('enterprise typography contract', () => {
     expect(lightCss).toMatch(/\.rtx-journal-table tbody td,[\s\S]*?font-variant-numeric: tabular-nums;/);
     expect(marketWatchSource).toContain("fontVariantNumeric: 'tabular-nums'");
     expect(bottomDockSource).toContain('tabular-nums');
-    expect(advancedCss).toContain('.rtx-dom-dialog :where(.font-mono, input[type="number"], input[inputmode="decimal"])');
+    expect(readSource('src/components/DepthOfMarket.css')).toMatch(/\.rtx-depth-of-market \{[^}]*font-variant-numeric: tabular-nums/);
     expect(advancedCss).not.toMatch(/\.rtx-dom-dialog \* \{[\s\S]*?font-family:/);
   });
 

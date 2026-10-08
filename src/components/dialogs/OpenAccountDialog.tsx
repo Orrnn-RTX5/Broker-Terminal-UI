@@ -1,6 +1,7 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { getAuthenticatedAccountName } from '../../utils/accountDisplayName';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
 import { createPortal } from 'react-dom';
 import { X, Search, ChevronRight, ArrowRight, Building2, Shield, Globe, CheckCircle2, Copy, Loader2, MousePointer2 } from 'lucide-react';
 import { tradeApi } from '../../api/trade';
@@ -216,6 +217,15 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [isCreating, setIsCreating] = useState(false);
     const [createError, setCreateError] = useState('');
     const [validationError, setValidationError] = useState('');
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const searchRef = useRef<HTMLInputElement>(null);
+    const closeDialog = () => {
+        setExistingPassword('');
+        setCreateError('');
+        setValidationError('');
+        onClose();
+    };
+    useDialogFocusScope({ isOpen, dialogRef, onClose: closeDialog, initialFocusRef: searchRef });
 
     useEffect(() => {
         if (!isOpen) return;
@@ -292,13 +302,6 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         const brokerExtApiUrl = resolveBrokerExtApiUrl(submitBroker);
         if (!brokerExtApiUrl) throw new Error('The selected broker does not provide an API endpoint.');
         return { submitBroker, brokerServerUrl, brokerExtApiUrl };
-    };
-
-    const closeDialog = () => {
-        setExistingPassword('');
-        setCreateError('');
-        setValidationError('');
-        onClose();
     };
 
     const connectExistingAccount = async () => {
@@ -470,6 +473,7 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="rtx-open-account-dialog__search">
                 <Search aria-hidden="true" />
                 <input
+                    ref={searchRef}
                     type="text"
                     aria-label={tr("Search brokers")}
                     value={searchQuery}
@@ -919,7 +923,9 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             onPointerDown={e => e.stopPropagation()}
         >
             <div
+                ref={dialogRef}
                 role="dialog"
+                tabIndex={-1}
                 aria-modal="true"
                 aria-labelledby="rtx-open-account-title"
                 aria-describedby="rtx-open-account-description"

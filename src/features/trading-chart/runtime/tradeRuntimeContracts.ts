@@ -28,7 +28,7 @@ export interface ActiveTradeSnapshot {
 export type ClosedTradeSnapshot = ClosedTradeOverlaySnapshot;
 
 export interface OverlayNodeData {
-  kind: 'horizontal-line' | 'price-badge' | 'axis-price-badge' | 'price-hit-area' | 'segment' | 'marker';
+  kind: 'horizontal-line' | 'price-badge' | 'axis-price-badge' | 'price-hit-area' | 'segment' | 'marker' | 'control-leader';
   price?: number;
   time?: number;
   endPrice?: number;

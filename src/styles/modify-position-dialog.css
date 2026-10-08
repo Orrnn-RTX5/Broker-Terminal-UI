@@ -815,3 +815,379 @@
   border: 1px solid rgba(16, 197, 152, 0.3);
   color: #6ee7b7;
 }
+
+/* Use the same light surfaces and execution colors as New Order. Keep these
+   selectors on the current component classes: legacy utility overrides do not
+   reach the header, form, SVG chart, or action buttons. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-overlay {
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog {
+  --modify-chart-background: var(--rtx-light-chart);
+  --modify-chart-plot: var(--rtx-light-chart);
+  --modify-chart-grid: var(--rtx-light-border);
+  --modify-chart-text: var(--rtx-light-text-muted);
+  --modify-chart-axis: var(--rtx-light-panel-header);
+  --modify-chart-border: var(--rtx-light-border-strong);
+  --modify-chart-tick: var(--rtx-light-text-muted);
+  --modify-chart-ask: var(--color-loss);
+  --modify-chart-bid: var(--color-profit);
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  box-shadow: var(--shadow-xl);
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-header, .rtx-modify-chart-header, .rtx-modify-chart-toolbar) {
+  background: var(--rtx-light-panel-header);
+  border-color: var(--rtx-light-border);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-chart-panel, .rtx-modify-chart-canvas) {
+  background: var(--rtx-light-chart) !important;
+  border-color: var(--rtx-light-border);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-form-panel {
+  background: var(--rtx-light-elevated);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-title, .rtx-modify-chart-symbol, .rtx-modify-quote-price) {
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-label, .rtx-modify-meta-detail) {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-points-label, .rtx-modify-tool-zoom, .rtx-modify-chart-quote-separator, .rtx-modify-notice-helper) {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-badge-id, .rtx-modify-chart-spread-pill, .rtx-modify-volume-desc, .rtx-modify-quote-spread) {
+  background: var(--rtx-light-panel);
+  border-color: var(--rtx-light-border-strong);
+  color: var(--rtx-light-text-secondary);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-chart-badge, .rtx-modify-badge-side--buy) {
+  background: var(--color-profit-dimmer);
+  border-color: var(--color-profit);
+  color: var(--color-profit);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-badge-side--sell {
+  background: var(--color-loss-dimmer);
+  border-color: var(--color-loss);
+  color: var(--color-loss);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-chart-quote-pills, .rtx-modify-quote-strip) {
+  background: var(--rtx-light-field);
+  border-color: var(--rtx-light-border-strong);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-chart-quote--bid, .rtx-modify-quote-tag--ask, .rtx-modify-quote-price--ask strong) {
+  color: var(--color-profit);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-chart-quote--ask, .rtx-modify-quote-tag--bid, .rtx-modify-quote-price--bid strong) {
+  color: var(--color-loss);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-label-dot--sl, .rtx-modify-label-dot--tp) {
+  box-shadow: none;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-label-dot--sl {
+  background: var(--color-loss);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-label-dot--tp {
+  background: var(--color-profit);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-input, .rtx-modify-volume-compound) {
+  background: var(--rtx-light-field) !important;
+  border-color: var(--rtx-light-control-border) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-volume-input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-input, .rtx-modify-volume-compound):hover:not(:disabled) {
+  border-color: var(--rtx-light-control-border-hover) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-input:focus, .rtx-modify-volume-compound:focus-within) {
+  border-color: var(--rtx-light-accent) !important;
+  box-shadow: none !important;
+  outline: 2px solid var(--rtx-light-accent) !important;
+  outline-offset: 2px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-volume-stepper {
+  background: var(--rtx-light-panel);
+  border-color: var(--rtx-light-control-border);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-close-btn, .rtx-modify-tool-btn, .rtx-modify-stepper-btn) {
+  color: var(--rtx-light-text-secondary);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-close-btn, .rtx-modify-tool-btn, .rtx-modify-stepper-btn):hover:not(:disabled) {
+  background: var(--rtx-light-hover);
+  border-color: var(--rtx-light-control-border-hover);
+  color: var(--rtx-light-text);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-close-btn, .rtx-modify-stepper-btn):active:not(:disabled) {
+  background: var(--rtx-light-pressed);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-tool-btn[aria-pressed='true'] {
+  background: var(--rtx-light-selected);
+  border-color: var(--rtx-light-accent);
+  color: var(--rtx-light-accent-strong);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-tool-divider {
+  background: var(--rtx-light-border-strong);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-btn--submit, .rtx-modify-btn--market) {
+  box-shadow: none !important;
+  color: #ffffff !important;
+  text-shadow: none;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--submit {
+  background: var(--rtx-light-accent);
+  border-color: var(--rtx-light-accent);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--submit:hover:not(:disabled) {
+  background: var(--rtx-light-accent-strong);
+  border-color: var(--rtx-light-accent-strong);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--submit:active:not(:disabled) {
+  background: var(--rtx-light-accent-pressed);
+  border-color: var(--rtx-light-accent-pressed);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--buy {
+  background: var(--rtx-light-buy);
+  border-color: var(--rtx-light-buy);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--sell {
+  background: var(--rtx-light-sell);
+  border-color: var(--rtx-light-sell);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--buy:hover:not(:disabled) {
+  background: var(--rtx-light-buy-hover);
+  border-color: var(--rtx-light-buy-hover);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--sell:hover:not(:disabled) {
+  background: var(--rtx-light-sell-hover);
+  border-color: var(--rtx-light-sell-hover);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--buy:active:not(:disabled) {
+  background: var(--rtx-light-buy-pressed);
+  border-color: var(--rtx-light-buy-pressed);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--sell:active:not(:disabled) {
+  background: var(--rtx-light-sell-pressed);
+  border-color: var(--rtx-light-sell-pressed);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--close {
+  background: var(--rtx-light-field);
+  border-color: var(--color-warning);
+  color: var(--color-warning) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--close:hover:not(:disabled) {
+  background: var(--rtx-light-hover);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-btn--close:active:not(:disabled) {
+  background: var(--rtx-light-pressed);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog button:focus-visible {
+  outline: 2px solid var(--rtx-light-accent) !important;
+  outline-offset: 2px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog button:disabled {
+  background: var(--rtx-light-panel-subtle);
+  border-color: var(--rtx-light-border-strong);
+  color: var(--rtx-light-text-muted) !important;
+  opacity: 1;
+  cursor: not-allowed;
+  transform: none;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-notice {
+  background: var(--rtx-light-panel);
+  border-color: var(--rtx-light-border);
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-notice-text {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-notice-icon {
+  color: var(--rtx-light-accent);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-alert--error {
+  background: var(--color-loss-dimmer);
+  border-color: var(--color-loss);
+  color: var(--color-loss);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-alert--success {
+  background: var(--color-profit-dimmer);
+  border-color: var(--color-profit);
+  color: var(--color-profit);
+}
+
+/* The optional depth view keeps its quote sides and bar magnitudes. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-depth, .rtx-modify-depth-empty) {
+  background: var(--rtx-light-chart) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-depth-header, .rtx-modify-depth-spread) {
+  background: var(--rtx-light-panel-header) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-depth-row--ask {
+  --modify-depth-color: var(--color-loss);
+  --modify-depth-fill: var(--color-loss-dimmer);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-depth-row--bid {
+  --modify-depth-color: var(--color-profit);
+  --modify-depth-fill: var(--color-profit-dimmer);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-depth-row {
+  background: var(--rtx-light-field) !important;
+  border-color: var(--rtx-light-row-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-depth-row--best {
+  background: var(--rtx-light-selected) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-depth-volume, .rtx-modify-depth-header > div) {
+  border-color: var(--rtx-light-row-border) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-depth-price {
+  border-color: var(--rtx-light-row-border) !important;
+  color: var(--modify-depth-color) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-depth-bar {
+  background: var(--modify-depth-fill) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-depth-action {
+  background: var(--rtx-light-panel) !important;
+  border-color: var(--modify-depth-color) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-depth-action > span {
+  border-top-color: var(--modify-depth-color) !important;
+}
+
+/* Stack before the fixed chart width crowds the price/points controls. One
+   scroll container keeps every action reachable on short or narrow viewports. */
+@media (max-width: 1000px) {
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-body {
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-chart-panel {
+    border-bottom: 1px solid var(--rtx-light-border);
+    border-right: 0;
+    flex: 0 0 248px;
+    width: 100% !important;
+  }
+
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-form-panel {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 640px) {
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-header {
+    flex-basis: auto;
+    height: auto;
+    min-height: 46px;
+    padding: 10px 12px;
+  }
+
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-title-group {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-meta-detail {
+    flex-basis: 100%;
+  }
+
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-chart-header {
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 6px;
+    height: auto;
+    padding: 8px 12px;
+  }
+
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-form-panel {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog :is(.rtx-modify-label--sl, .rtx-modify-label--tp) {
+    justify-content: flex-start;
+  }
+
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-quote-strip {
+    gap: 8px;
+    grid-template-columns: 1fr 1fr;
+    padding: 8px;
+  }
+
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog .rtx-modify-quote-spread {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
+  }
+}

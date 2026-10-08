@@ -370,25 +370,31 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
         {/* Content Area */}
         <div className="rtx-cp-content flex flex-1 overflow-hidden p-3 gap-4 bg-[#1e1e1e]">
           
-          {/* Left Preview Box */}
-          <div className="rtx-cp-preview-box w-[310px] border border-[#444] bg-black rounded flex flex-col p-1 pl-0">
-            <div
-              className="rtx-cp-preview-inner flex-1 border border-[#333] relative m-1 rounded-sm overflow-hidden bg-black"
-              style={previewStyle}
-            >
-              <span className="rtx-cp-preview-text absolute top-1 left-1 text-[10px] text-zinc-400 font-mono z-10 bg-black/60 px-1"
-                style={{ color: effectiveColors.foreground, backgroundColor: previewLabelBackground }}>
-                {symbol},{timeframe}{tr(": Demo Asset")}</span>
-            </div>
-          </div>
-
-          {/* Right Tabs Area */}
+          {/* Settings apply live to the chart behind this dialog. */}
           <div className="rtx-cp-settings flex-1 flex flex-col pt-1 pr-1">
-            <div className="rtx-cp-tabs flex gap-4 border-b border-transparent mb-1 pl-1">
+            <div className="rtx-cp-tabs flex gap-4 border-b border-transparent mb-1 pl-1" role="tablist" aria-label={tr('Chart properties')}>
               {(['Common', 'Show', 'Colors'] as const).map(tab => (
                 <button
                   key={tab}
+                  type="button"
+                  role="tab"
+                  id={`chart-properties-tab-${tab}`}
+                  aria-selected={activeTab === tab}
+                  aria-controls="chart-properties-panel"
+                  tabIndex={activeTab === tab ? 0 : -1}
                   onClick={() => setActiveTab(tab)}
+                  onKeyDown={(event) => {
+                    const tabs = ['Common', 'Show', 'Colors'] as const;
+                    const index = tabs.indexOf(tab);
+                    const nextIndex = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+                      : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+                        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+                    if (nextIndex === null) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setActiveTab(tabs[nextIndex]);
+                    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
+                  }}
                   className={`rtx-cp-tab px-1 py-0.5 text-xs transition-colors ${activeTab === tab ? 'rtx-cp-tab-active text-blue-400 border-b-2 border-blue-400' : 'text-[#ccc] hover:text-white'}`}
                 >
                   {tr(tab)}
@@ -396,7 +402,14 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
               ))}
             </div>
 
-            <div className="rtx-cp-tab-content flex-1 overflow-y-auto pl-1 pr-2 custom-scrollbar">
+            <div className="rtx-cp-tab-content flex-1 overflow-y-auto pl-1 pr-2 custom-scrollbar" role="tabpanel" id="chart-properties-panel" aria-labelledby={`chart-properties-tab-${activeTab}`}>
+              <div className="rtx-cp-preview-box" hidden={activeTab !== 'Colors'}>
+                <div className="rtx-cp-preview-inner relative rounded-sm overflow-hidden" style={previewStyle}>
+                  <span className="rtx-cp-preview-text absolute top-1 left-1 px-1" style={{ color: effectiveColors.foreground, backgroundColor: previewLabelBackground }}>
+                    {tr('Background and grid preview')}
+                  </span>
+                </div>
+              </div>
               {activeTab === 'Show' && (
                 <div className="rtx-cp-show-grid grid grid-cols-1 gap-1.5 py-2">
                   {showOptions.map(({ key, label }) => (

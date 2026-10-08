@@ -119,7 +119,7 @@ describe('trading chart extracted modules', () => {
 
   it.each([
     { mode: 'dark', light: false, background: '#000000', up: '#4597ff', down: '#ff5858' },
-    { mode: 'light', light: true, background: '#f7f8fa', up: '#1d4ed8', down: '#b91c1c' },
+    { mode: 'light', light: true, background: '#d8dde2', up: '#1746bc', down: '#a51f26' },
   ])('keeps default candle bodies, borders, wicks and area lines aligned with quote hues in $mode mode', ({ light, background, up, down }) => {
     const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: light });
     const theme = buildChartTheme(colors, true, light);
@@ -157,8 +157,8 @@ describe('trading chart extracted modules', () => {
     expect(tooltip.style.left).toBe('-69px');
     expect(tooltip.style.top).toBe('calc(100% + 7px)');
     expect(getTradeOverlayCardPalette('BUY', true)).toMatchObject({
-      background: '#eff6ff',
-      border: '#2563eb',
+      background: '#d1dced',
+      border: '#1746bc',
     });
   });
 });
