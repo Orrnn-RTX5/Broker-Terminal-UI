@@ -23,9 +23,19 @@ const hasOwnValue = (record: any, keys: readonly string[]): boolean => (
   ))
 );
 
-const hasOwnField = (record: any, keys: readonly string[]): boolean => (
-  keys.some((key) => Object.prototype.hasOwnProperty.call(record, key))
-);
+const stopLossAliases = ['price_sl', 'sl', 'stopLoss', 'stop_loss'] as const;
+const takeProfitAliases = ['price_tp', 'tp', 'takeProfit', 'take_profit'] as const;
+
+const readProtectionLevel = (record: any, keys: readonly string[]): number | undefined => {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(record, key)
+      && record[key] !== undefined && record[key] !== '') {
+      // Explicit null/zero removes a level; an omitted value leaves it intact.
+      return toFinite(record[key], 0);
+    }
+  }
+  return undefined;
+};
 
 const firstDefined = (record: any, keys: readonly string[]): unknown => {
   for (const key of keys) {
@@ -56,6 +66,8 @@ export function normalizePosition(raw: any) {
   const openPrice = toFinite(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.price, 0);
   const currentPrice = toFinite(raw.price_current ?? raw.current_price ?? raw.currentPrice, 0);
   const unrealizedPnL = toFinite(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0);
+  const sl = readProtectionLevel(raw, stopLossAliases) ?? 0;
+  const tp = readProtectionLevel(raw, takeProfitAliases) ?? 0;
 
   return {
     ...raw,
@@ -68,8 +80,14 @@ export function normalizePosition(raw: any) {
     openPrice,
     currentPrice,
     openTime,
-    sl: toFinite(firstDefined(raw, ['price_sl', 'sl', 'stopLoss', 'stop_loss']), 0),
-    tp: toFinite(firstDefined(raw, ['price_tp', 'tp', 'takeProfit', 'take_profit']), 0),
+    sl,
+    price_sl: sl,
+    stopLoss: sl,
+    stop_loss: sl,
+    tp,
+    price_tp: tp,
+    takeProfit: tp,
+    take_profit: tp,
     swap: toFinite(raw.storage ?? raw.swap, 0),
     commission: toFinite(raw.commission, 0),
     unrealizedPnL,
@@ -155,8 +173,8 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
     : existing.openTime;
   const hasProfit = hasOwnValue(raw, ['profit', 'unrealized_pl', 'unrealizedPnL']);
   const unrealizedPnL = hasProfit ? normalized.unrealizedPnL : existing.unrealizedPnL;
-  const sl = hasOwnField(raw, ['price_sl', 'sl', 'stopLoss', 'stop_loss']) ? normalized.sl : existing.sl;
-  const tp = hasOwnField(raw, ['price_tp', 'tp', 'takeProfit', 'take_profit']) ? normalized.tp : existing.tp;
+  const sl = readProtectionLevel(raw, stopLossAliases) ?? existing.sl;
+  const tp = readProtectionLevel(raw, takeProfitAliases) ?? existing.tp;
 
   return {
     ...existing,
@@ -180,7 +198,11 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
     sl,
     tp,
     price_sl: sl,
+    stopLoss: sl,
+    stop_loss: sl,
     price_tp: tp,
+    takeProfit: tp,
+    take_profit: tp,
     swap: hasOwnValue(raw, ['storage', 'swap']) ? normalized.swap : existing.swap,
     commission: hasOwnValue(raw, ['commission']) ? normalized.commission : existing.commission,
     unrealizedPnL,

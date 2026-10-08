@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ModifyPositionDialog } from './ModifyPositionDialog';
@@ -12,16 +13,14 @@ const mocks = vi.hoisted(() => ({
     placeMarketOrder: vi.fn(),
     setPositions: vi.fn(),
     positions: [] as any[],
+    tick: {
+        symbol: 'GBPUSD', bid: 1.33981, ask: 1.33983, spread: 2,
+        timestamp: 1_797_341_377_000,
+    },
 }));
 
 vi.mock('../store/useMarketDataStore', () => ({
-    useCurrentTick: () => ({
-        symbol: 'GBPUSD',
-        bid: 1.33981,
-        ask: 1.33983,
-        spread: 2,
-        timestamp: 1_797_341_377_000,
-    }),
+    useCurrentTick: () => mocks.tick,
 }));
 
 vi.mock('../store/useAppStore', () => ({
@@ -61,6 +60,10 @@ describe('ModifyPositionDialog chart toolbar', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.positions = [];
+        mocks.tick = {
+            symbol: 'GBPUSD', bid: 1.33981, ask: 1.33983, spread: 2,
+            timestamp: 1_797_341_377_000,
+        };
         mocks.modifyPosition.mockResolvedValue(undefined);
         mocks.modifyPendingOrder.mockResolvedValue(undefined);
         mocks.placeMarketOrder.mockResolvedValue(undefined);
@@ -77,6 +80,58 @@ describe('ModifyPositionDialog chart toolbar', () => {
         cleanup();
         vi.useRealTimers();
         commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+    });
+
+    it('commits only the opening ticket values on first open, ticket switch, and reopen', () => {
+        const commits: Array<{ title: string; sl: string; tp: string; volume: string; comment: string }> = [];
+        const recordCommit = () => {
+            const dialog = document.querySelector('[role="dialog"]');
+            if (!dialog) return;
+            const value = (field: string) => dialog.querySelector<HTMLInputElement>(`input[id$="-${field}"]`)!.value;
+            commits.push({
+                title: document.getElementById(dialog.getAttribute('aria-labelledby')!)!.textContent!,
+                sl: value('sl'), tp: value('tp'), volume: value('volume'), comment: value('comment'),
+            });
+        };
+        const first = { ...makePosition(165), sl: 1.31, tp: 1.37, volume: 0.02, comment: 'First position' };
+        const second = { ...makePosition(166), comment: 'Second position' };
+        const renderDialog = (position: typeof first, isOpen = true) => (
+            <Profiler id="modify-dialog" onRender={recordCommit}>
+                <ModifyPositionDialog isOpen={isOpen} onClose={vi.fn()} position={position} />
+            </Profiler>
+        );
+        const { rerender } = render(renderDialog(first));
+        expect(commits[0]).toEqual({
+            title: expect.stringContaining('#165'), sl: '1.31000', tp: '1.37000', volume: '0.02', comment: 'First position',
+        });
+        commits.length = 0;
+        rerender(renderDialog(second));
+        expect(commits.length).toBeGreaterThan(0);
+        expect(commits.every(commit => commit.title.includes('#166') && commit.sl === '0.00' && commit.tp === '0.00'
+            && commit.volume === '0.01' && commit.comment === 'Second position')).toBe(true);
+
+        fireEvent.change(screen.getByLabelText(/stop loss:$/i), { target: { value: '1.28' } });
+        rerender(renderDialog(second, false));
+        commits.length = 0;
+        rerender(renderDialog({ ...second, sl: 1.32, tp: 1.38 }));
+        expect(commits[0]).toEqual({
+            title: expect.stringContaining('#166'), sl: '1.32000', tp: '1.38000', volume: '0.01', comment: 'Second position',
+        });
+        expect(mocks.modifyPosition).not.toHaveBeenCalled();
+    });
+
+    it('preserves an edited draft when quotes and the same position object refresh', async () => {
+        const position = { ...makePosition(167), sl: 1.31, tp: 1.37, comment: 'Original' };
+        const { rerender } = render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={position} />);
+        fireEvent.change(screen.getByLabelText(/stop loss:$/i), { target: { value: '1.30' } });
+        fireEvent.change(screen.getByLabelText(/comment/i), { target: { value: 'My draft' } });
+        mocks.tick = { ...mocks.tick, bid: 1.34, ask: 1.34002, timestamp: mocks.tick.timestamp + 1_000 };
+        rerender(<ModifyPositionDialog isOpen onClose={vi.fn()} position={{ ...position }} />);
+        expect(screen.getByLabelText(/stop loss:$/i)).toHaveValue(1.3);
+        expect(screen.getByLabelText(/take profit:$/i)).toHaveValue(1.37);
+        expect(screen.getByLabelText(/comment/i)).toHaveValue('My draft');
+        fireEvent.click(screen.getByRole('button', { name: /modify #167/i }));
+        await waitFor(() => expect(mocks.modifyPosition).toHaveBeenCalledWith(167, { price_sl: 1.3, comment: 'My draft' }));
     });
 
     it('does not close or move focus when Escape/Tab belongs to a newer local dialog', async () => {
@@ -309,15 +364,25 @@ describe('ModifyPositionDialog chart toolbar', () => {
         { label: /take profit:$/i, value: '0', patch: { price_tp: 0 } },
     ])('sends only the edited level: $patch', async ({ label, value, patch }) => {
         const user = userEvent.setup();
-        render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={{
-            id: 166, symbol: 'GBPUSD', side: 'BUY', volume: 0.01,
+        const position = {
+            id: 166, symbol: 'GBPUSD', side: 'BUY' as const, volume: 0.01,
             openPrice: 1.34, sl: 1.31, tp: 1.37, comment: '',
-        }} />);
+            price_sl: 1.31, price_tp: 1.37,
+            stopLoss: 1.31, stop_loss: 1.31, takeProfit: 1.37, take_profit: 1.37,
+        };
+        mocks.positions = [position];
+        render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={position} />);
         const input = screen.getByLabelText(label);
         await user.clear(input);
         await user.type(input, value);
         await user.click(screen.getByRole('button', { name: /modify #166/i }));
         await waitFor(() => expect(mocks.modifyPosition).toHaveBeenCalledWith(166, { ...patch, comment: '' }));
+        const sl = patch.price_sl ?? position.sl;
+        const tp = patch.price_tp ?? position.tp;
+        expect(mocks.setPositions).toHaveBeenCalledWith([expect.objectContaining({
+            sl, price_sl: sl, stopLoss: sl, stop_loss: sl,
+            tp, price_tp: tp, takeProfit: tp, take_profit: tp,
+        })]);
     });
 
     it('renders the 5 points difference notice and enhanced left chart elements', () => {

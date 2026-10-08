@@ -2603,7 +2603,6 @@ useTradingChartInitialization({
   const activeTradeSnapshotsRef = useRef<Map<string, ActiveTradeSnapshot>>(new Map());
   const lastCrossRefreshDispatchAtRef = useRef(0);
   const tradeLevelCrossRefreshPendingRef = useRef<Set<string>>(new Set());
-  const tradeLevelCrossCloseCandidatesRef = useRef<Map<string, number>>(new Map());
 
   // ─── Live tick subscription + candle rollover ─────────────────────────────
 useTradingChartLiveCandleRuntime({
@@ -2676,7 +2675,6 @@ useTradingChartLiveCandleRuntime({
     synchronizeChartMarketClock,
     synchronizedMarketClockRef,
     timeframe,
-    tradeLevelCrossCloseCandidatesRef,
     tradeLevelCrossRefreshPendingRef,
     updateChartData,
     updateLegendDOM,
@@ -3036,7 +3034,6 @@ useTradingChartTradeRuntime({
     timeframe,
     tr,
     tradeAllowed,
-    tradeLevelCrossCloseCandidatesRef,
     tradeLevelCrossRefreshPendingRef,
     visibleRuntime,
   });

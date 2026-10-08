@@ -72,6 +72,9 @@ export const normalizeTradeLevelDragPrice = (price: number, digits: number): num
 export const getTradeLevelDragMinDistance = (digits: number): number =>
   5 * Math.pow(10, -getSafeDigits(digits));
 
+/** Identical fills can belong to different tickets; metadata is never mutation ownership. */
+export const getTradeLevelStateKeys = (trade: { key: string }): string[] => [trade.key];
+
 export const createTradeLevelOverrideFingerprint = ({
   symbol,
   side,

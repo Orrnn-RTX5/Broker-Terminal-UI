@@ -10,58 +10,120 @@ const control = (key: string, anchorY: number, width = 240) => ({
   key, anchorY, width, height: 26, preferredLeft: 16,
 });
 
-describe('trade control collision layout', () => {
-  it('keeps an unobstructed control centered on its actual price', () => {
-    expect(layoutTradeControls([control('entry', 100)], 800, 400)).toEqual([
-      { key: 'entry', anchorY: 100, left: 16, top: 87, width: 240, height: 26, offsetY: 0 },
-    ]);
-  });
+const entryControl = (key: string, anchorY: number) => ({
+  ...control(key, anchorY, 310), placement: 'above' as const,
+});
 
-  it('separates nearby levels horizontally before displacing them from price', () => {
-    const placed = layoutTradeControls([control('first', 100), control('second', 108)], 800, 400);
-    expect(placed.every(rect => rect.offsetY === 0)).toBe(true);
-    expect(overlaps(placed[0], placed[1])).toBe(false);
-    expect(placed[1].left).toBeGreaterThan(placed[0].left + placed[0].width);
-  });
+describe('price-anchored trade control layout', () => {
+  it.each([1, 100, 500])('retains all %s same-price bars at the same anchor without hiding or paging', count => {
+    const inputs = Array.from({ length: count }, (_, index) => entryControl(`trade:${index}`, 250));
+    const placed = layoutTradeControls(inputs, 800);
 
-  it('reserves both the HUD and one-click panel without moving price anchors', () => {
-    const chrome = [
-      { left: 12, top: 6, width: 530, height: 20 },
-      { left: 10, top: 28, width: 300, height: 90 },
-    ];
-    const [placed] = layoutTradeControls([control('entry', 55, 300)], 560, 400, chrome);
-    expect(chrome.some(rect => overlaps(placed, rect))).toBe(false);
-    expect(placed.anchorY).toBe(55);
-    expect(placed.top).toBe(124);
-    expect(getTradeControlDragY(placed.top + placed.height / 2, placed.offsetY)).toBe(55);
-  });
-
-  it('stacks same-price and close-price bars within a narrow pane', () => {
-    const inputs = [control('first', 100, 300), control('second', 100, 300), control('third', 108, 300)];
-    const placed = layoutTradeControls(inputs, 380, 250);
-    for (let i = 0; i < placed.length; i++) {
-      for (let j = i + 1; j < placed.length; j++) expect(overlaps(placed[i], placed[j])).toBe(false);
-      expect(placed[i].top).toBeGreaterThanOrEqual(6);
-      expect(placed[i].top + placed[i].height).toBeLessThanOrEqual(244);
-      expect(placed[i].anchorY).toBe(inputs.find(input => input.key === placed[i].key)!.anchorY);
+    expect(placed).toHaveLength(count);
+    expect(new Set(placed.map(rect => rect.key))).toEqual(new Set(inputs.map(input => input.key)));
+    for (const rect of placed) {
+      expect(rect).toMatchObject({ anchorY: 250, left: 16, top: 220, height: 26, width: 310, offsetY: -17 });
+      expect(rect).not.toHaveProperty('hidden');
+      expect(rect).not.toHaveProperty('overflow');
+      expect(overlaps(rect, placed[0])).toBe(true);
     }
-    expect(layoutTradeControls([...inputs].reverse(), 380, 250)).toEqual(placed);
   });
 
-  it('bounds enlarged controls and clears displacement once the obstruction disappears', () => {
-    const entry = { ...control('entry', 40, 500), height: 54 };
-    const [blocked] = layoutTradeControls([entry], 260, 250, [{ left: 0, top: 0, width: 260, height: 100 }]);
-    expect(blocked.left + blocked.width).toBeLessThanOrEqual(254);
-    expect(blocked.offsetY).toBeGreaterThan(0);
-    const [cleared] = layoutTradeControls([entry], 260, 250);
-    expect(cleared.offsetY).toBe(0);
+  it('lets distinct compressed prices overlap and separates them only when their price coordinates expand', () => {
+    const inputs = [entryControl('lower-price', 200), entryControl('higher-price', 210)];
+    const compressed = layoutTradeControls(inputs, 800);
+    expect(overlaps(compressed[0], compressed[1])).toBe(true);
+    expect(compressed[1].top - compressed[0].top).toBe(10);
+
+    const expanded = layoutTradeControls(inputs.map(input => (
+      input.key === 'higher-price' ? { ...input, anchorY: 260 } : input
+    )), 800);
+    expect(overlaps(expanded[0], expanded[1])).toBe(false);
+    expect(expanded[1].top - expanded[0].top).toBe(60);
+    expect(expanded.map(rect => [rect.key, rect.left, rect.width])).toEqual(
+      compressed.map(rect => [rect.key, rect.left, rect.width]),
+    );
+    expect(expanded[0]).toEqual(compressed[0]);
   });
 
-  it.each([-42, 0, 58])('preserves drag distance and price for a visual offset of %s', offset => {
-    const pointerDown = 150 + offset;
-    const pointerMove = pointerDown + 7;
-    expect(getTradeControlDragY(pointerDown, offset)).toBe(150);
-    expect(getTradeControlDragY(pointerMove, offset)).toBe(157);
-    expect(getTradeControlDragY(pointerMove, offset) - getTradeControlDragY(pointerDown, offset)).toBe(7);
+  it('keeps a four-pixel entry gap with measured heights regardless of neighboring bars', () => {
+    const entries = [
+      entryControl('normal', 250),
+      { ...entryControl('wrapped', 250), height: 54 },
+      { ...entryControl('large', 258), height: 72 },
+    ];
+    const crowded = Array.from({ length: 100 }, (_, index) => entryControl(`neighbor:${index}`, 252));
+    const placed = layoutTradeControls([...entries, ...crowded], 800);
+
+    for (const input of entries) {
+      const rect = placed.find(item => item.key === input.key)!;
+      expect(rect.height).toBe(input.height);
+      expect(input.anchorY - (rect.top + rect.height)).toBe(4);
+      expect(rect).toEqual(layoutTradeControls([input], 800)[0]);
+    }
+  });
+
+  it.each([-50, 0, 8, 900])('does not clamp or flip the entry bar at vertical price coordinate %s', anchorY => {
+    const [rect] = layoutTradeControls([entryControl('entry', anchorY)], 800);
+    expect(rect.anchorY).toBe(anchorY);
+    expect(rect.top).toBe(anchorY - rect.height - 4);
+    expect(rect.offsetY).toBe(-17);
+  });
+
+  it('keeps SL and TP centered on their own prices even when they overlap', () => {
+    const levels = [
+      { ...control('sl', 100, 130), preferredLeft: 654 },
+      { ...control('tp', 108, 130), preferredLeft: 654 },
+    ];
+    const placed = layoutTradeControls([entryControl('entry', 100), ...levels], 800);
+    const levelRects = placed.filter(rect => rect.key !== 'entry');
+    for (const rect of levelRects) {
+      expect(rect.top + rect.height / 2).toBe(rect.anchorY);
+      expect(rect.offsetY).toBe(0);
+    }
+    expect(overlaps(levelRects[0], levelRects[1])).toBe(true);
+    expect(levelRects).toEqual(layoutTradeControls(levels, 800));
+  });
+
+  it('bounds horizontal geometry without changing the price coordinate or measured height', () => {
+    const inputs = [
+      { ...entryControl('oversized', 100), width: 500 },
+      { ...entryControl('negative-left', 120), preferredLeft: -30, width: 100 },
+      { ...entryControl('past-right', 140), preferredLeft: 900, width: 100 },
+      { ...entryControl('wrapped', 160), width: 500, height: 54 },
+    ];
+    const placed = layoutTradeControls(inputs, 260);
+    for (const input of inputs) {
+      const rect = placed.find(item => item.key === input.key)!;
+      expect(rect.left).toBeGreaterThanOrEqual(0);
+      expect(rect.width).toBeGreaterThanOrEqual(0);
+      expect(rect.width).toBeLessThanOrEqual(input.width);
+      expect(rect.left + rect.width).toBeLessThanOrEqual(260);
+      expect(rect.height).toBe(input.height);
+      expect(rect.anchorY).toBe(input.anchorY);
+      expect(rect.top + rect.height).toBe(input.anchorY - 4);
+    }
+    expect(placed.find(rect => rect.key === 'oversized')?.left).toBe(16);
+  });
+
+  it('keeps each ticket placement unchanged when input order changes', () => {
+    const inputs = [entryControl('first', 250), entryControl('second', 250), entryControl('third', 258)];
+    const forward = layoutTradeControls(inputs, 800);
+    const reversed = layoutTradeControls([...inputs].reverse(), 800);
+    for (const rect of forward) expect(reversed.find(other => other.key === rect.key)).toEqual(rect);
+  });
+
+  it('preserves the anchor and drag distance for ordinary, wrapped, and centered bars', () => {
+    const placed = layoutTradeControls([
+      entryControl('entry', 250),
+      { ...entryControl('wrapped-entry', 250), height: 54 },
+      control('sl', 258),
+    ], 800);
+    for (const rect of placed) {
+      const pointerDown = rect.top + rect.height / 2;
+      expect(getTradeControlDragY(pointerDown, rect.offsetY)).toBe(rect.anchorY);
+      expect(getTradeControlDragY(pointerDown + 7, rect.offsetY)).toBe(rect.anchorY + 7);
+      expect(getTradeControlDragY(pointerDown - 11, rect.offsetY)).toBe(rect.anchorY - 11);
+    }
   });
 });

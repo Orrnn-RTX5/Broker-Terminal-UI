@@ -28,7 +28,7 @@ export interface ActiveTradeSnapshot {
 export type ClosedTradeSnapshot = ClosedTradeOverlaySnapshot;
 
 export interface OverlayNodeData {
-  kind: 'horizontal-line' | 'price-badge' | 'axis-price-badge' | 'price-hit-area' | 'segment' | 'marker' | 'control-leader';
+  kind: 'horizontal-line' | 'price-badge' | 'axis-price-badge' | 'price-hit-area' | 'segment' | 'marker';
   price?: number;
   time?: number;
   endPrice?: number;
@@ -55,6 +55,11 @@ export interface PriceLevelOptions {
   labelVariant?: 'badge' | 'lineText' | 'none';
   lineColor?: string;
   lineWidthPx?: number;
+}
+
+export interface EntryTradeControlOptions {
+  /** The renderer supplies one shared axis label for each exact entry price. */
+  showAxisPriceLine?: boolean;
 }
 
 export type TradePositionRecord = Position & {

@@ -7,7 +7,7 @@ import { rememberTradeHistoryPositionLevels } from '../../../utils/tradeHistoryL
 import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import {
   applyTradeLevelDragUpdate,
-  createTradeLevelOverrideFingerprint,
+  getTradeLevelStateKeys,
   getTradeLevelDragMinDistance,
   selectNearestTradeLevel,
   tradeLevelModifyPatch,
@@ -105,6 +105,7 @@ export const useTradingChartTradeLevelDrag = ({
       pointerDownY: number;
       controlOffsetY: number;
       didDrag: boolean;
+      pointerId: number;
     } | null = null;
     let lastLevelClick: { tradeKey: string; role: 'SL' | 'TP'; at: number } | null = null;
     // Level bars hidden while their level is being dragged (the live preview
@@ -156,18 +157,15 @@ export const useTradingChartTradeLevelDrag = ({
 
     const getPriceScaleOffset = () => seriesRef.current?.priceScale().width() ?? 52;
 
-    const getTradeLevelStateKeys = (trade: ActiveTradeSnapshot): string[] => {
-      const digits = resolvedPriceDigitsRef.current;
-      const fingerprint = createTradeLevelOverrideFingerprint({
-        symbol: trade.symbol,
-        side: trade.side,
-        volume: trade.volume,
-        entryPrice: trade.entryPrice,
-        entryTime: trade.entryTime,
-        digits,
-      });
-      return Array.from(new Set([trade.key, fingerprint]));
-    };
+    const isInsideTradePlot = (
+      point: { clientX: number; clientY: number },
+      rect: DOMRect,
+    ): boolean => (
+      point.clientX >= rect.left
+      && point.clientX < rect.left + Math.max(0, rect.width - getPriceScaleOffset())
+      && point.clientY >= rect.top
+      && point.clientY <= rect.bottom
+    );
 
     const getTradeLevelState = (
       state: Map<string, TradeLevelOverride>,
@@ -197,6 +195,31 @@ export const useTradingChartTradeLevelDrag = ({
       getTradeLevelStateKeys(trade).forEach((key) => state.delete(key));
     };
 
+    const getCurrentTradeLevels = (trade: ActiveTradeSnapshot): TradeLevelOverride => {
+      const override = getTradeLevelState(tradeLevelOverridesRef.current, trade);
+      const lastKnown = getTradeLevelState(tradeLevelLastKnownLevelsRef.current, trade);
+      const now = Date.now();
+      const hasActiveModifyWindow = getTradeLevelStateKeys(trade).some((key) => (
+        pendingTradeLevelModifyRequestsRef.current.has(key)
+        || (tradeLevelOptimisticGraceUntilRef.current.get(key) ?? 0) > now
+      ));
+      const resolve = (role: 'sl' | 'tp') => {
+        // Match the renderer: zero is an explicit removal only while the
+        // modify request is pending or its optimistic grace is still active.
+        if (override && (override[role] > 0 || hasActiveModifyWindow)) return override[role] || 0;
+        return lastKnown && lastKnown[role] > 0 ? lastKnown[role] : trade[role];
+      };
+      return { sl: resolve('sl'), tp: resolve('tp') };
+    };
+
+    const blockPendingTradeLevelChange = (trade: ActiveTradeSnapshot): boolean => {
+      if (!getTradeLevelStateKeys(trade).some(key => pendingTradeLevelModifyRequestsRef.current.has(key))) return false;
+      window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+        detail: { message: `${tr('Modify Position')}: ${tr('Processing...')}`, type: 'error' },
+      }));
+      return true;
+    };
+
     const getDragRoleColor = (role: 'SL' | 'TP') => role === 'TP' ? '#00a256' : '#eb415c';
 
     const findClosestLevelForTrade = (
@@ -206,29 +229,17 @@ export const useTradingChartTradeLevelDrag = ({
     ): { grabbedType: 'ENTRY' | 'SL' | 'TP'; distance: number } | null => {
       if (!seriesRef.current) return null;
 
-      const override = getTradeLevelState(tradeLevelOverridesRef.current, trade);
-      const lastKnown = getTradeLevelState(tradeLevelLastKnownLevelsRef.current, trade);
+      const levels = getCurrentTradeLevels(trade);
       const getLevelY = (price: number | undefined) => (
         price && price > 0 && seriesRef.current
           ? seriesRef.current.priceToCoordinate(price)
           : null
       );
 
-      const sl = override && override.sl > 0
-        ? override.sl
-        : lastKnown && lastKnown.sl > 0
-          ? lastKnown.sl
-          : trade.sl;
-      const tp = override && override.tp > 0
-        ? override.tp
-        : lastKnown && lastKnown.tp > 0
-          ? lastKnown.tp
-          : trade.tp;
-
       return selectNearestTradeLevel([
         { grabbedType: 'ENTRY', y: getLevelY(trade.entryPrice) },
-        { grabbedType: 'SL', y: getLevelY(sl) },
-        { grabbedType: 'TP', y: getLevelY(tp) },
+        { grabbedType: 'SL', y: getLevelY(levels.sl) },
+        { grabbedType: 'TP', y: getLevelY(levels.tp) },
       ], y, maxDistance);
     };
 
@@ -237,8 +248,10 @@ export const useTradingChartTradeLevelDrag = ({
       maxDistance: number,
     ): { tradeObj: ActiveTradeSnapshot; grabbedType: 'ENTRY' | 'SL' | 'TP'; distance: number } | null => {
       let closest: { tradeObj: ActiveTradeSnapshot; grabbedType: 'ENTRY' | 'SL' | 'TP'; distance: number } | null = null;
+      const entryPriceCounts = new Map<number, number>();
 
-      activeTradeSnapshotsRef.current.forEach((trade) => {
+      for (const trade of activeTradeSnapshotsRef.current.values()) {
+        entryPriceCounts.set(trade.entryPrice, (entryPriceCounts.get(trade.entryPrice) ?? 0) + 1);
         const nearestLevel = findClosestLevelForTrade(trade, y, closest?.distance ?? maxDistance);
         if (nearestLevel) {
           closest = {
@@ -247,19 +260,23 @@ export const useTradingChartTradeLevelDrag = ({
             distance: nearestLevel.distance,
           };
         }
-      });
+      }
 
+      // A shared line has no ticket ownership. Use its explicit ticket bar;
+      // do not fall through to a more distant level after rejecting this one.
+      if (closest?.grabbedType === 'ENTRY' && (entryPriceCounts.get(closest.tradeObj.entryPrice) ?? 0) > 1) return null;
       return closest;
     };
 
-    const beginPointerCapture = (target: HTMLElement | null, pointerId: number) => {
-      capturedPointerElement = target ?? interactionRoot;
+    const beginPointerCapture = (pointerId: number) => {
+      // Level nodes can be replaced by live overlay refreshes during a drag.
+      capturedPointerElement = interactionRoot;
       capturedPointerId = pointerId;
       try {
         capturedPointerElement.setPointerCapture(pointerId);
       } catch {
         capturedPointerElement = null;
-        capturedPointerId = null;
+        // Window listeners still own this pointer when capture is unavailable.
       }
     };
 
@@ -346,13 +363,7 @@ export const useTradingChartTradeLevelDrag = ({
         // Read chart geometry once for this coalesced hover frame. The actual
         // trade-level scan is deliberately outside the active pan path.
         const rect = container.getBoundingClientRect();
-        const isInside = (
-          point.clientX >= rect.left
-          && point.clientX <= rect.right
-          && point.clientY >= rect.top
-          && point.clientY <= rect.bottom
-        );
-        if (!isInside) {
+        if (!isInsideTradePlot(point, rect)) {
           setTradeHoverCursor(false);
           return;
         }
@@ -363,6 +374,11 @@ export const useTradingChartTradeLevelDrag = ({
     };
 
     const handlePointerDown = (e: PointerEvent) => {
+      if (dragState) {
+        if (e.pointerId !== dragState.pointerId) return;
+        // A fresh down from this pointer means the previous release was lost.
+        handlePointerCancel();
+      }
       cancelQueuedTradeHover();
       setTradeHoverCursor(false);
 
@@ -395,8 +411,8 @@ export const useTradingChartTradeLevelDrag = ({
       const targetLevel = e.target instanceof Element
         ? e.target.closest('.rtx-trade-level-badge, .rtx-trade-level-hit-area') as HTMLElement | null
         : null;
-      const targetTradeKey = targetBadge?.dataset.tradeKey;
-      const targetRole = targetBadge?.dataset.role as TradeLevelRole | undefined;
+      const targetTradeKey = targetLevel?.dataset.tradeKey;
+      const targetRole = targetLevel?.dataset.role as TradeLevelRole | undefined;
       const offsetOwner = targetBadge?.closest<HTMLElement>('[data-price-anchor-offset-y]');
       const controlAnchorY = Number(offsetOwner?.dataset.priceAnchorY);
       // Capture the grab point once, including wrapped bars and bracket chips.
@@ -411,7 +427,7 @@ export const useTradingChartTradeLevelDrag = ({
           closestTrade = directTrade;
           grabbedType = targetRole;
         } else {
-          // The badge belongs to a retained trade whose position data is
+          // The target belongs to a retained trade whose position data is
           // refreshing; it is not draggable right now and the press must not
           // fall through to another trade's nearby level.
           return;
@@ -419,6 +435,9 @@ export const useTradingChartTradeLevelDrag = ({
       }
 
       if (!closestTrade) {
+        // The right price axis owns scale gestures, even at a trade's Y.
+        // Explicit ticket controls above are separate, intentional targets.
+        if (!isInsideTradePlot(e, container.getBoundingClientRect())) return;
         const nearestTradeLevel = findClosestTradeLevel(y, TRADE_LEVEL_HIT_AREA_PX / 2);
         if (nearestTradeLevel) {
           closestTrade = nearestTradeLevel.tradeObj;
@@ -432,7 +451,8 @@ export const useTradingChartTradeLevelDrag = ({
         e.preventDefault();
         e.stopPropagation();
         setTradeHoverCursor(false);
-        beginPointerCapture(targetLevel, e.pointerId);
+        if (blockPendingTradeLevelChange(closestTrade)) return;
+        beginPointerCapture(e.pointerId);
         beginDragCursor();
         if (chartRef.current) {
           chartRef.current.applyOptions({
@@ -445,10 +465,7 @@ export const useTradingChartTradeLevelDrag = ({
           ? getFinitePriceCoordinate(closestTrade.entryPrice) ?? y
           : y;
         const initialOverlayY = grabbedType === 'ENTRY' ? entryAnchorY : y;
-        dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY, pointerDownY: y, controlOffsetY, didDrag: false };
-        if (grabbedType !== 'ENTRY') {
-          hideDraggedLevelControls(closestTrade.key, grabbedType);
-        }
+        dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY, pointerDownY: y, controlOffsetY, didDrag: false, pointerId: e.pointerId };
 
         dragLineOverlay = document.createElement('div');
         dragLineOverlay.style.cssText = `position:absolute;left:0;right:${getPriceScaleOffset()}px;top:0;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translate3d(0, ${initialOverlayY}px, 0);will-change:transform;`;
@@ -480,11 +497,15 @@ export const useTradingChartTradeLevelDrag = ({
         e.preventDefault();
         e.stopPropagation();
         const y = getTradeControlDragY(getChartY(e), dragState.controlOffsetY);
+        const wasDragging = dragState.didDrag;
         dragState.didDrag = hasChartTradeLevelGestureDragged(
           dragState.pointerDownY,
           y,
           dragState.didDrag,
         );
+        if (!wasDragging && dragState.didDrag && dragState.grabbedType !== 'ENTRY') {
+          hideDraggedLevelControls(dragState.tradeObj.key, dragState.grabbedType);
+        }
         const rawPrice = seriesRef.current.coordinateToPrice(y as Coordinate);
         if (rawPrice === null) return;
 
@@ -497,7 +518,7 @@ export const useTradingChartTradeLevelDrag = ({
         // Entry-line clicks are ignored, but any real vertical drag should create SL/TP.
         // Existing SL/TP levels remain freely repositionable.
         const hasRealEntryDrag = entryDragDirection !== null;
-        const showPreview = grabbedType !== 'ENTRY' || hasRealEntryDrag;
+        const showPreview = grabbedType === 'ENTRY' ? hasRealEntryDrag : dragState.didDrag;
         const previewUpdate = showPreview
           ? applyTradeLevelDragUpdate({
             side: tradeObj.side,
@@ -607,168 +628,174 @@ export const useTradingChartTradeLevelDrag = ({
       e.preventDefault();
       e.stopPropagation();
 
-      if (seriesRef.current) {
-        const y = getTradeControlDragY(getChartY(e), dragState.controlOffsetY);
-        const rawFinalPrice = seriesRef.current.coordinateToPrice(y as Coordinate);
-        const { tradeObj, grabbedType, entryAnchorY, pointerDownY } = dragState;
+      try {
+        if (seriesRef.current) {
+          const y = getTradeControlDragY(getChartY(e), dragState.controlOffsetY);
+          const rawFinalPrice = seriesRef.current.coordinateToPrice(y as Coordinate);
+          const { tradeObj, grabbedType, entryAnchorY, pointerDownY } = dragState;
 
-        const didLevelDrag = hasChartTradeLevelGestureDragged(pointerDownY, y, dragState.didDrag);
-        const isLevelClick = grabbedType !== 'ENTRY' && !didLevelDrag;
+          const didLevelDrag = hasChartTradeLevelGestureDragged(pointerDownY, y, dragState.didDrag);
+          const isLevelClick = grabbedType !== 'ENTRY' && !didLevelDrag;
 
-        if (isLevelClick) {
-          const role = grabbedType as 'SL' | 'TP';
-          const clickedAt = Date.now();
-          const isDoubleLevelClick = lastLevelClick !== null
-            && lastLevelClick.tradeKey === tradeObj.key
-            && lastLevelClick.role === role
-            && clickedAt - lastLevelClick.at <= CHART_LEVEL_MODIFY_DOUBLE_CLICK_MS;
-          lastLevelClick = isDoubleLevelClick
-            ? null
-            : { tradeKey: tradeObj.key, role, at: clickedAt };
-          if (isDoubleLevelClick) {
-            const ticket = Number.parseInt(tradeObj.key.replace(/^trade:/, ''), 10);
-            dispatchChartPositionModify({
-              ticket,
-              symbol: tradeObj.symbol,
-              sessionScope: brokerAccountSessionScope,
-            });
-          }
-        } else if (rawFinalPrice !== null) {
-          lastLevelClick = null;
-          const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
-          const hasRealEntryDrag = entryDragDirection !== null;
-          if (!(grabbedType === 'ENTRY' && !hasRealEntryDrag)) {
-            const existingOverrides = getTradeLevelState(tradeLevelOverridesRef.current, tradeObj);
-            const lastKnownLevels = getTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj);
-            const currentSl = existingOverrides && existingOverrides.sl > 0
-              ? existingOverrides.sl
-              : lastKnownLevels && lastKnownLevels.sl > 0
-                ? lastKnownLevels.sl
-                : tradeObj.sl;
-            const currentTp = existingOverrides && existingOverrides.tp > 0
-              ? existingOverrides.tp
-              : lastKnownLevels && lastKnownLevels.tp > 0
-                ? lastKnownLevels.tp
-                : tradeObj.tp;
-            const digits = resolvedPriceDigitsRef.current;
-            const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
-            const update = applyTradeLevelDragUpdate({
-              side: tradeObj.side,
-              grabbedType,
-              entryPrice: tradeObj.entryPrice,
-              finalPrice: rawFinalPrice,
-              currentSl,
-              currentTp,
-              digits,
-              currentPrice: liveCurrentPrice,
-              minStopDistance: getTradeLevelDragMinDistance(digits),
-              minEntryDistance: grabbedType === 'ENTRY' ? getTradeLevelDragMinDistance(digits) : undefined,
-              snapEntryToMinDistance: grabbedType === 'ENTRY',
-              entryDragDirection: entryDragDirection ?? undefined,
-            });
+          if (isLevelClick) {
+            const role = grabbedType as 'SL' | 'TP';
+            const clickedAt = Date.now();
+            const isDoubleLevelClick = lastLevelClick !== null
+              && lastLevelClick.tradeKey === tradeObj.key
+              && lastLevelClick.role === role
+              && clickedAt - lastLevelClick.at <= CHART_LEVEL_MODIFY_DOUBLE_CLICK_MS;
+            lastLevelClick = isDoubleLevelClick
+              ? null
+              : { tradeKey: tradeObj.key, role, at: clickedAt };
+            if (isDoubleLevelClick) {
+              const ticket = Number.parseInt(tradeObj.key.replace(/^trade:/, ''), 10);
+              dispatchChartPositionModify({
+                ticket,
+                symbol: tradeObj.symbol,
+                sessionScope: brokerAccountSessionScope,
+              });
+            }
+          } else if (rawFinalPrice !== null) {
+            lastLevelClick = null;
+            const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
+            const hasRealEntryDrag = entryDragDirection !== null;
+            if (!(grabbedType === 'ENTRY' && !hasRealEntryDrag)) {
+              // A cross-button action can start while this gesture is active.
+              if (blockPendingTradeLevelChange(tradeObj)) return;
+              const { sl: currentSl, tp: currentTp } = getCurrentTradeLevels(tradeObj);
+              const digits = resolvedPriceDigitsRef.current;
+              const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
+              const update = applyTradeLevelDragUpdate({
+                side: tradeObj.side,
+                grabbedType,
+                entryPrice: tradeObj.entryPrice,
+                finalPrice: rawFinalPrice,
+                currentSl,
+                currentTp,
+                digits,
+                currentPrice: liveCurrentPrice,
+                minStopDistance: getTradeLevelDragMinDistance(digits),
+                minEntryDistance: grabbedType === 'ENTRY' ? getTradeLevelDragMinDistance(digits) : undefined,
+                snapEntryToMinDistance: grabbedType === 'ENTRY',
+                entryDragDirection: entryDragDirection ?? undefined,
+              });
 
-            if (update) {
-              const ticket = Number(tradeObj.key.replace('trade:', ''));
-              if (ticket) {
-                const { sl, tp } = update;
-                const previousLevels = {
-                  sl: currentSl || 0,
-                  tp: currentTp || 0,
-                };
-                const requestId = tradeLevelModifyRequestSeqRef.current + 1;
-                const requestKeys = getTradeLevelStateKeys(tradeObj);
-                tradeLevelModifyRequestSeqRef.current = requestId;
-                const optimisticGraceUntil = Date.now() + TRADE_LEVEL_OPTIMISTIC_GRACE_MS;
-                requestKeys.forEach((key) => pendingTradeLevelModifyRequestsRef.current.set(key, requestId));
-                requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.set(key, optimisticGraceUntil));
-                const isCurrentRequest = () => requestKeys.some((key) => (
-                  pendingTradeLevelModifyRequestsRef.current.get(key) === requestId
-                ));
-                const clearCurrentRequest = () => {
-                  requestKeys.forEach((key) => {
-                    if (pendingTradeLevelModifyRequestsRef.current.get(key) === requestId) {
-                      pendingTradeLevelModifyRequestsRef.current.delete(key);
-                    }
-                  });
-                };
+              if (update) {
+                const ticket = Number(tradeObj.key.replace('trade:', ''));
+                if (ticket) {
+                  const { sl, tp } = update;
+                  const previousLevels = {
+                    sl: currentSl || 0,
+                    tp: currentTp || 0,
+                  };
+                  const requestId = tradeLevelModifyRequestSeqRef.current + 1;
+                  const requestKeys = getTradeLevelStateKeys(tradeObj);
+                  tradeLevelModifyRequestSeqRef.current = requestId;
+                  const optimisticGraceUntil = Date.now() + TRADE_LEVEL_OPTIMISTIC_GRACE_MS;
+                  requestKeys.forEach((key) => pendingTradeLevelModifyRequestsRef.current.set(key, requestId));
+                  requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.set(key, optimisticGraceUntil));
+                  const isCurrentRequest = () => requestKeys.some((key) => (
+                    pendingTradeLevelModifyRequestsRef.current.get(key) === requestId
+                  ));
+                  const clearCurrentRequest = () => {
+                    requestKeys.forEach((key) => {
+                      if (pendingTradeLevelModifyRequestsRef.current.get(key) === requestId) {
+                        pendingTradeLevelModifyRequestsRef.current.delete(key);
+                      }
+                    });
+                  };
 
-                // Optimistically set UI level overrides immediately
-                setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, { sl: sl || 0, tp: tp || 0 });
-                setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, { sl: sl || 0, tp: tp || 0 });
-                persistTradeLevelOverrides();
-                rememberTradeHistoryPositionLevels([
-                  {
-                    id: ticket,
-                    symbol: tradeObj.symbol,
-                    side: tradeObj.side,
-                    volume: tradeObj.volume,
-                    entryPrice: tradeObj.entryPrice,
-                    entryTime: tradeObj.entryTime,
-                    sl: sl || 0,
-                    tp: tp || 0,
-                    price_sl: sl || 0,
-                    price_tp: tp || 0,
-                  },
-                ], useAppStore.getState().accountId);
-                window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
-                window.dispatchEvent(new CustomEvent('rtx:trade-modified', {
-                  detail: {
-                    id: ticket,
-                    symbol: tradeObj.symbol,
-                    sl: sl || 0,
-                    tp: tp || 0,
-                    sessionScope: brokerAccountSessionScope,
-                  },
-                }));
+                  // Optimistically set UI level overrides immediately
+                  setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, { sl: sl || 0, tp: tp || 0 });
+                  setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, { sl: sl || 0, tp: tp || 0 });
+                  persistTradeLevelOverrides();
+                  rememberTradeHistoryPositionLevels([
+                    {
+                      id: ticket,
+                      symbol: tradeObj.symbol,
+                      side: tradeObj.side,
+                      volume: tradeObj.volume,
+                      entryPrice: tradeObj.entryPrice,
+                      entryTime: tradeObj.entryTime,
+                      sl: sl || 0,
+                      tp: tp || 0,
+                      price_sl: sl || 0,
+                      price_tp: tp || 0,
+                    },
+                  ], useAppStore.getState().accountId);
+                  window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
+                  window.dispatchEvent(new CustomEvent('rtx:trade-modified', {
+                    detail: {
+                      id: ticket,
+                      symbol: tradeObj.symbol,
+                      sl: sl || 0,
+                      tp: tp || 0,
+                      sessionScope: brokerAccountSessionScope,
+                    },
+                  }));
 
-                api.positions.modifyPosition(ticket, tradeLevelModifyPatch(update.role, update.price))
-                  .then(() => {
-                    if (!isCurrentRequest()) return;
-                    clearCurrentRequest();
-                    window.setTimeout(() => window.dispatchEvent(new Event('rtx:force-refresh-positions')), 250);
-                  })
-                  .catch(err => {
-                    if (!isCurrentRequest()) return;
-                    clearCurrentRequest();
-                    requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.delete(key));
-                    console.error('[Chart] Failed to modify SL/TP:', err);
-                    if ((previousLevels.sl || 0) > 0 || (previousLevels.tp || 0) > 0) {
-                      setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, previousLevels);
-                      setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, previousLevels);
-                    } else {
-                      deleteTradeLevelState(tradeLevelOverridesRef.current, tradeObj);
+                  api.positions.modifyPosition(ticket, tradeLevelModifyPatch(update.role, update.price))
+                    .then(() => {
+                      if (!isCurrentRequest()) return;
+                      clearCurrentRequest();
+                      window.setTimeout(() => window.dispatchEvent(new Event('rtx:force-refresh-positions')), 250);
+                    })
+                    .catch(err => {
+                      if (!isCurrentRequest()) return;
+                      clearCurrentRequest();
+                      requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.delete(key));
+                      console.error('[Chart] Failed to modify SL/TP:', err);
+                      if ((previousLevels.sl || 0) > 0 || (previousLevels.tp || 0) > 0) {
+                        setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, previousLevels);
+                        setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, previousLevels);
+                      } else {
+                        deleteTradeLevelState(tradeLevelOverridesRef.current, tradeObj);
                       deleteTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj);
                     }
                     persistTradeLevelOverrides();
+                    window.dispatchEvent(new CustomEvent('rtx:trade-modified', {
+                      detail: {
+                        id: ticket,
+                        symbol: tradeObj.symbol,
+                        sl: previousLevels.sl,
+                        tp: previousLevels.tp,
+                        sessionScope: brokerAccountSessionScope,
+                      },
+                    }));
                     window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
-                  });
+                    window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                      detail: { message: `${tr('Modify Position')}: ${tr('Failed')}`, type: 'error' },
+                    }));
+                    });
+                }
               }
             }
           }
         }
-      }
+      } finally {
+        if (dragLineOverlay) dragLineOverlay.remove();
+        if (dragBadgeOverlay) dragBadgeOverlay.remove();
+        dragZoneOverlay?.remove();
+        dragZoneOverlay = null;
+        dragLineOverlay = null;
+        dragBadgeOverlay = null;
+        dragState = null;
+        restoreDraggedLevelControls();
+        releasePointerCapture();
+        endDragCursor();
+        setTradeHoverCursor(false);
 
-      if (dragLineOverlay) dragLineOverlay.remove();
-      if (dragBadgeOverlay) dragBadgeOverlay.remove();
-      dragZoneOverlay?.remove();
-      dragZoneOverlay = null;
-      dragLineOverlay = null;
-      dragBadgeOverlay = null;
-      dragState = null;
-      restoreDraggedLevelControls();
-      releasePointerCapture();
-      endDragCursor();
-      setTradeHoverCursor(false);
-
-      if (chartRef.current) {
-        chartRef.current.applyOptions({
-          handleScroll: TRADING_VIEW_HANDLE_SCROLL,
-          handleScale: TRADING_VIEW_HANDLE_SCALE,
-        });
+        if (chartRef.current) {
+          chartRef.current.applyOptions({
+            handleScroll: TRADING_VIEW_HANDLE_SCROLL,
+            handleScale: TRADING_VIEW_HANDLE_SCALE,
+          });
+        }
       }
     };
 
-    const handlePointerCancel = () => {
+    const handlePointerCancel = (event?: PointerEvent) => {
+      if (event && dragState && event.pointerId !== dragState.pointerId) return;
       if (!dragState && !dragLineOverlay && !dragBadgeOverlay) return;
       if (dragLineOverlay) dragLineOverlay.remove();
       if (dragBadgeOverlay) dragBadgeOverlay.remove();
@@ -790,16 +817,27 @@ export const useTradingChartTradeLevelDrag = ({
       }
     };
 
+    const handleWindowBlur = () => handlePointerCancel();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') handlePointerCancel();
+    };
+
     interactionRoot.addEventListener('pointerdown', handlePointerDown, true);
+    interactionRoot.addEventListener('lostpointercapture', handlePointerCancel);
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
     window.addEventListener('pointercancel', handlePointerCancel);
+    window.addEventListener('blur', handleWindowBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       interactionRoot.removeEventListener('pointerdown', handlePointerDown, true);
+      interactionRoot.removeEventListener('lostpointercapture', handlePointerCancel);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('blur', handleWindowBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       cancelQueuedTradeHover();
       // A tab can deactivate mid-drag. Reuse the normal cancellation path so
       // capture, overlays, cursors, and chart scroll options are restored.

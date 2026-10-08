@@ -246,12 +246,25 @@ const getFocusableElements = (container: HTMLElement) => {
     });
 };
 
-export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, position, kind = 'position' }: ModifyPositionDialogProps) {
+export function ModifyPositionDialog(props: ModifyPositionDialogProps) {
+    if (!props.isOpen || !props.position) return null;
+    // A new opening or position identity owns a fresh draft before its first
+    // commit. Quote/position refreshes for the same identity preserve edits.
+    return <ModifyPositionDialogContent
+        key={getModifyDialogKey(props.position, props.kind ?? 'position')}
+        {...props}
+        position={props.position}
+    />;
+}
+
+function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, position, kind = 'position' }: Omit<ModifyPositionDialogProps, 'position'> & { position: ModifyPosition }) {
     const tr = useUiTranslation();
-    const [sl, setSl] = useState('0.00');
-    const [tp, setTp] = useState('0.00');
-    const [volumeStr, setVolumeStr] = useState('0.01');
-    const [comment, setComment] = useState('');
+    const tick = useCurrentTick(position.symbol);
+    const initialDigits = (tick as any)?.digits ?? (position as any)?.digits ?? getSymbolDigits(position.symbol);
+    const [sl, setSl] = useState(() => position.sl > 0 ? position.sl.toFixed(initialDigits) : '0.00');
+    const [tp, setTp] = useState(() => position.tp > 0 ? position.tp.toFixed(initialDigits) : '0.00');
+    const [volumeStr, setVolumeStr] = useState(() => position.volume.toFixed(2));
+    const [comment, setComment] = useState(() => position.comment ?? '');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -262,7 +275,7 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
     const [showMiniChartPriceLines, setShowMiniChartPriceLines] = useState(true);
     const dialogRef = useRef<HTMLDivElement>(null);
     const onCloseRef = useRef(onClose);
-    const initialLevelsRef = useRef({ sl: 0, tp: 0 });
+    const initialLevelsRef = useRef({ sl: Number.parseFloat(sl) || 0, tp: Number.parseFloat(tp) || 0 });
     const isDialogVisible = isOpen && position !== null;
     const dialogKey = isDialogVisible && position ? getModifyDialogKey(position, kind) : null;
     const dialogSessionContextRef = useRef<ModifyDialogSessionContext | null>(null);
@@ -303,7 +316,6 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
         scheduledCloseTimerRef.current = timerId;
     }, [clearScheduledClose, isCurrentDialogSession]);
 
-    const tick = useCurrentTick(position?.symbol || '');
     const miniChartKey = isOpen && position ? getMiniChartKey(position, kind) : null;
     const [miniChartState, dispatchMiniChart] = useReducer(miniChartReducer, initialMiniChartState);
 
@@ -350,29 +362,6 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
         observer.observe(container);
         return () => observer.disconnect();
     }, [isDialogVisible, showMiniChart, showMiniMarketDepth]);
-
-    useEffect(() => {
-        if (isOpen && position) {
-            const digits = (tick as any)?.digits ?? (position as any)?.digits ?? getSymbolDigits(position.symbol);
-            setSl(position.sl > 0 ? position.sl.toFixed(digits) : '0.00');
-            setTp(position.tp > 0 ? position.tp.toFixed(digits) : '0.00');
-            initialLevelsRef.current = {
-                sl: position.sl > 0 ? Number(position.sl.toFixed(digits)) : 0,
-                tp: position.tp > 0 ? Number(position.tp.toFixed(digits)) : 0,
-            };
-
-            setVolumeStr(position.volume.toFixed(2));
-            setComment(position.comment ?? '');
-            setIsSubmitting(false);
-            setError(null);
-            setSuccessMessage(null);
-            setShowMiniChart(true);
-            setShowMiniMarketDepth(false);
-            setMiniChartZoomIndex(0);
-            setShowMiniChartGrid(true);
-            setShowMiniChartPriceLines(true);
-        }
-    }, [isOpen, position]);
 
     useEffect(() => {
         if (!miniChartKey) {
@@ -556,8 +545,10 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
             store.setPositions(store.positions.map(p =>
                 p.id === position.id ? {
                     ...p,
-                    ...(levelChanges.price_sl !== undefined ? { sl: slVal } : {}),
-                    ...(levelChanges.price_tp !== undefined ? { tp: tpVal } : {}),
+                    ...(levelChanges.price_sl !== undefined
+                        ? { sl: slVal, price_sl: slVal, stopLoss: slVal, stop_loss: slVal } : {}),
+                    ...(levelChanges.price_tp !== undefined
+                        ? { tp: tpVal, price_tp: tpVal, takeProfit: tpVal, take_profit: tpVal } : {}),
                     comment: nextComment,
                 } : p
             ));

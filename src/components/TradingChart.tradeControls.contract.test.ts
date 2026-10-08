@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { TRADING_VIEW_HANDLE_SCALE } from '../features/trading-chart/runtime/chartInteractionOptions';
-import { TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS } from '../features/trading-chart/presentation/tradeOverlayPresentation';
 
 // CRLF-normalized so anchors match on Windows checkouts too.
 const readChartSource = (relativePath: string) => readFileSync(
@@ -78,8 +77,8 @@ describe('cTrader-style position controls contract', () => {
     expect(entryControls).toContain("label: 'TP'");
     expect(entryControls).not.toContain('dockSuffix');
     expect(entryControls).not.toContain('slDockOffset');
-    // Controls retain their price metadata while collision placement can move
-    // their presentation; line hit targets and axis prices stay anchored.
+    // Controls, line hit targets, and axis prices retain the actual price;
+    // nearby tickets can overlap until the user expands the price scale.
     expect(entryControls).toContain('appendTradeControls(controlBar.root, trade.entryPrice);');
     expect(chartSource).toContain('appendTradeControls(levelBar, levelPrice);');
     expect(chartSource).toContain("appendActiveInteractionNode(control, { kind: 'price-badge', price });");
@@ -139,8 +138,10 @@ describe('cTrader-style position controls contract', () => {
     expect(dragOverlays).not.toContain('isDesktopBackendTarget');
     expect(dragOverlays).toContain("dragZoneOverlay.className = 'rtx-trade-drag-zone';");
     expect(dragOverlays).toContain('overlayRef.current?.appendChild(dragZoneOverlay);');
-    // The stale bar hides during the drag and is restored on release/cancel.
-    expect(chartSource).toContain('hideDraggedLevelControls(closestTrade.key, grabbedType);');
+    // The stale bar hides only after a real drag, then restores on release/cancel.
+    const pointerMove = chartSection('const handlePointerMove = (e: PointerEvent) => {', 'const handlePointerUp = (e: PointerEvent) => {');
+    expect(pointerMove).toContain("if (!wasDragging && dragState.didDrag && dragState.grabbedType !== 'ENTRY')");
+    expect(pointerMove).toContain('hideDraggedLevelControls(dragState.tradeObj.key, dragState.grabbedType);');
     expect(chartSource.match(/restoreDraggedLevelControls\(\);/g)).toHaveLength(2);
   });
 
@@ -156,7 +157,7 @@ describe('cTrader-style position controls contract', () => {
   });
 
   it('opens Modify Position only on an SL/TP double click without replacing drag-to-edit', () => {
-    const pointerRelease = chartSection('const handlePointerUp = (e: PointerEvent) => {', 'const handlePointerCancel = () => {');
+    const pointerRelease = chartSection('const handlePointerUp = (e: PointerEvent) => {', 'const handlePointerCancel = (event?: PointerEvent) => {');
     expect(pointerRelease).toContain("const isLevelClick = grabbedType !== 'ENTRY'");
     expect(pointerRelease).toContain('hasChartTradeLevelGestureDragged(pointerDownY, y, dragState.didDrag)');
     expect(pointerRelease).toContain('const isDoubleLevelClick = lastLevelClick !== null');
@@ -171,7 +172,7 @@ describe('cTrader-style position controls contract', () => {
 
   it('never starts a trade-level gesture from UI overlaid on the chart', () => {
     const pointerPress = chartSection(
-      'const handlePointerDown = (e: PointerEvent) => {\n      cancelQueuedTradeHover();',
+      'const handlePointerDown = (e: PointerEvent) => {',
       'const handlePointerUp = (e: PointerEvent) => {',
     );
     // The one-click BUY/SELL panel, menus, and popovers live inside the same
@@ -182,7 +183,7 @@ describe('cTrader-style position controls contract', () => {
 
   it('scopes every chart level-modified event to its ticket and symbol owner', () => {
     const removalSubmit = chartSection('const submitTradeLevelChange = (', 'const createEntryControlsForTrade = (');
-    const dragRelease = chartSection('const handlePointerUp = (e: PointerEvent) => {', 'const handlePointerCancel = () => {');
+    const dragRelease = chartSection('const handlePointerUp = (e: PointerEvent) => {', 'const handlePointerCancel = (event?: PointerEvent) => {');
     for (const section of [removalSubmit, dragRelease]) {
       expect(section).toContain("new CustomEvent('rtx:trade-modified'");
       expect(section).toContain('symbol: tradeObj.symbol');
@@ -202,14 +203,17 @@ describe('cTrader-style position controls contract', () => {
     expect(modifyDialogHostSource).toContain("window.dispatchEvent(new CustomEvent('rtx:trade-modified'");
   });
 
-  it('colors entry lines by side: dotted blue for BUY, dotted red for SELL', () => {
+  it('groups exact entry prices while preserving side colors and ticket-specific controls', () => {
     expect(chartSource).toContain("const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';");
     expect(chartSource).toContain("const TRADE_ENTRY_LINE_SELL_COLOR = '#ef4444';");
-    expect(chartSource).toContain('lineColor: getEntryLineColor(trade.side)');
-    // The entry axis label matches the line color.
-    expect(chartSource).toContain('addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side));');
-    // The old neutral gray entry line is gone.
-    expect(chartSource).not.toContain('TRADE_ENTRY_LEVEL_COLOR');
+    expect(chartSource).toContain('createEntryPriceLevels(sortedActiveSnapshots, new Set(nextActiveSnapshots.keys()));');
+    expect(chartSource).toContain('createEntryControlsForTrade(trade, levels, { showAxisPriceLine: false });');
+    const entries = chartSection('const createEntryPriceLevels =', 'const submitTradeLevelChange =');
+    expect(entries).toContain('groups.get(trade.entryPrice)');
+    expect(entries).toContain('getEntryLineColor(first.side)');
+    expect(entries).toContain('chartThemeRef.current.axisText');
+    expect(entries).toContain('group.length === 1 && liveTradeKeys.has(first.key)');
+    expect(entries).toContain('addTradeAxisPriceLine(`entry-price:${price}`, price, color);');
   });
 
   it('copies a share deep link from the entry bar share button', () => {
@@ -235,21 +239,21 @@ describe('cTrader-style position controls contract', () => {
     expect(appSource).toContain('setTimeframe(sharedTrade.timeframe as Timeframe);');
   });
 
-  it('never blinks the overlay off for a level-cross guess on a routine feed gap', () => {
-    // The optimistic SL/TP-cross close needs a real dwell before it fires,
-    // and never fires while the whole positions feed is down.
-    expect(TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS).toBe(1_500);
-    expect(chartSource).toContain('&& elapsedMs >= TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS');
-    expect(chartSource).toContain('&& appPositions.length > 0');
-    // Missing trades are retained until PROVEN closed — no 30s giving-up.
-    expect(chartSource).toContain('Retain until the trade is PROVEN closed');
-    // …and a wrong guess is lifted the moment the broker reports the position open.
-    expect(chartSource).toContain('crossCloseGuessedTradeKeysRef.current.add(key);');
-    const invalidation = chartSource.indexOf('the guess was wrong. Lift the');
-    expect(invalidation).toBeGreaterThan(-1);
-    expect(chartSource).toContain('closeSuppressedTradeKeys.delete(key);');
-    // Real close requests take ownership of their suppression.
-    expect(chartSource).toContain('crossCloseGuessedTradeKeysRef.current.delete(key);');
+  it('retains missing overlays until authoritative closure instead of inferring a fill from a crossed level', () => {
+    const pending = chartSection('pendingMissingActiveTradesRef.current.forEach((pending, key) => {', 'const closedTrades = new Map');
+    expect(pending).toContain('shouldKeepMissingActiveTradeOverlay({');
+    expect(pending).toContain('renderActiveSnapshots.set(key, pending.trade);');
+    expect(pending).not.toContain('buildImmediateClosedTrade(pending.trade)');
+    expect(pending).not.toContain('closeSuppressedTradeKeysRef.current.set');
+    expect(pending).not.toContain('clearTradeLevelRuntimeState(pending.trade)');
+    expect(pending).toContain('scheduleHistoryRefresh();');
+    expect(pending).toContain('}, TRADE_MISSING_POSITION_GRACE_MS);');
+    // Explicit close requests still suppress stale open snapshots, and a
+    // failed close request releases that suppression.
+    const closeEvents = chartSection('const handleTradeOverlayCloseState =', 'const handleNewTradePlaced =');
+    expect(closeEvents).toContain('closeSuppressedTradeKeysRef.current.set(key, expiresAt);');
+    expect(closeEvents).toContain("if (status === 'failed')");
+    expect(closeEvents).toContain('closeSuppressedTradeKeysRef.current.delete(key);');
   });
 
   it('uses the same pane-relative price-axis scaling on web and desktop', () => {

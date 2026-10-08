@@ -41,7 +41,6 @@ const createOptions = (): Options => ({
   hasDisplayedHistoryRef: ref(true), protectedDisplayedHistoryRef: ref([]),
   lastAcceptedQuoteRef: ref(null), incompatibleQuoteCountRef: ref(0),
   activeTradeSnapshotsRef: ref(new Map()), tradeLevelCrossRefreshPendingRef: ref(new Set()),
-  tradeLevelCrossCloseCandidatesRef: ref(new Map()),
   getSynchronizedChartMarketNowMs: () => (currentTime + 10) * 1000,
   synchronizeChartMarketClock: vi.fn(),
   validateRenderedCandlesAgainstLivePrice: vi.fn(() => true), isLivePriceSafeForCandles: vi.fn(() => true),

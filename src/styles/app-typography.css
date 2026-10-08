@@ -40,7 +40,7 @@ html:root.rtx-advanced-font-large { --rtx-ui-font-size: 15px; }
       .rtx-bootstrap-loader, .rtx-bootstrap-loader *,
       .rtx-journal-spacer-row, .rtx-journal-spacer-row *,
       .rtx-order-dialog__spinner-button, .rtx-order-dialog__close,
-      .rtx-toolbar-icon-button, .navigator-tree-item__icon, .navigator-tree-item__chevron
+      .navigator-tree-item__icon, .navigator-tree-item__chevron
     )) {
       font-family: var(--rtx-type-family, var(--rtx-ui-font-family)) !important;
       font-size: var(--rtx-type-size, var(--rtx-ui-font-size)) !important;
@@ -172,6 +172,15 @@ html:root body :is(
 /* Trade columns use the same compact size as the terminal tabs. */
 html:root body .rtx-trade-table :is(th, td) {
   --rtx-type-size: calc(var(--rtx-ui-font-size) - 2px);
+}
+
+/* Commands and timeframes share one medium weight, including selected states. */
+html:root .rtx-main-toolbar :is(
+  .rtx-toolbar-action, .rtx-toolbar-icon-button,
+  .rtx-timeframe-option, .rtx-toolbar-symbol-badge
+) {
+  --rtx-type-size: var(--rtx-ui-font-size);
+  --rtx-type-weight: 500;
 }
 
 /* Text fits the chrome at every supported font preference. */

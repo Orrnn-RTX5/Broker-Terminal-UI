@@ -25,14 +25,13 @@ import {
   layoutTradeControls,
   placeTradeMarkerTooltip,
   TRADE_LEVEL_OVERRIDES_STORAGE_KEY,
-  TRADE_LEVEL_OVERRIDE_TTL_MS,
   TRADE_MARKER_TIP_OFFSET_PX,
   tradeMarkerTooltipLayouts,
-  tradeControlLeaderNodes,
   type TradeSide,
 } from '../presentation/tradeOverlayPresentation';
 import { useTradingChartTradeLevelDrag } from './useTradingChartTradeLevelDrag';
 import { useTradingChartTradeOverlayRenderer } from './useTradingChartTradeOverlayRenderer';
+import { readStoredTradeLevelOverrides } from './tradeLevelOverrideStorage';
 import type {
   ActiveTradeSnapshot,
   ClosedTradeSnapshot,
@@ -90,7 +89,6 @@ interface UseTradingChartTradeRuntimeOptions {
   timeframe: Timeframe;
   tr: <T>(source: T, values?: Record<string, unknown>) => T;
   tradeAllowed: boolean;
-  tradeLevelCrossCloseCandidatesRef: RefObject<Map<string, number>>;
   tradeLevelCrossRefreshPendingRef: RefObject<Set<string>>;
   visibleRuntime: TradingChartVisibleRuntime;
 }
@@ -136,7 +134,6 @@ export const useTradingChartTradeRuntime = ({
   timeframe,
   tr,
   tradeAllowed,
-  tradeLevelCrossCloseCandidatesRef,
   tradeLevelCrossRefreshPendingRef,
   visibleRuntime,
 }: UseTradingChartTradeRuntimeOptions): void => {
@@ -174,14 +171,6 @@ export const useTradingChartTradeRuntime = ({
 
 
   const closeSuppressedTradeKeysRef = useRef<Map<string, number>>(new Map());
-
-
-  // Suppressions created by the SL/TP level-cross GUESS (not by a real close
-  // request). If the broker feed shows the position open again, the guess was
-  // wrong and its suppression must be lifted immediately.
-  const crossCloseGuessedTradeKeysRef = useRef<Set<string>>(new Set());
-
-
 
 
   const pendingClosedTradeSnapshotsRef = useRef<Map<string, ActiveTradeSnapshot>>(new Map());
@@ -267,23 +256,8 @@ export const useTradingChartTradeRuntime = ({
     tradeLevelOverridesHydratedRef.current = true;
 
     try {
-      const raw = window.localStorage.getItem(TRADE_LEVEL_OVERRIDES_STORAGE_KEY);
-      if (!raw) return;
-
-      const rows = JSON.parse(raw);
-      if (!Array.isArray(rows)) return;
-
-      const now = Date.now();
-      rows.forEach((row) => {
-        const key = typeof row?.key === 'string' ? row.key : '';
-        const savedAt = Number(row?.savedAt ?? 0);
-        if (!key.startsWith('trade:') || !Number.isFinite(savedAt) || now - savedAt > TRADE_LEVEL_OVERRIDE_TTL_MS) return;
-
-        const sl = Number(row?.sl) || 0;
-        const tp = Number(row?.tp) || 0;
-        if (sl > 0 || tp > 0) {
-          tradeLevelOverridesRef.current.set(key, { sl, tp });
-        }
+      readStoredTradeLevelOverrides(window.localStorage).forEach((levels, key) => {
+        tradeLevelOverridesRef.current.set(key, levels);
       });
     } catch {
       // Ignore malformed local optimistic state.
@@ -331,7 +305,7 @@ export const useTradingChartTradeRuntime = ({
     }
     const overlayHost = overlayRef.current?.parentElement ?? overlayRef.current;
     const staleSelector = layer === 'active'
-      ? '.rtx-trade-marker--active,.rtx-trade-active-segment,.rtx-trade-level-line,.rtx-trade-level-badge,.rtx-trade-level-hit-area,.rtx-trade-axis-price-badge'
+      ? '.rtx-trade-marker--active,.rtx-trade-active-segment,.rtx-trade-level-line,.rtx-trade-level-badge,.rtx-trade-level-hit-area,.rtx-trade-axis-price-badge,.rtx-trade-overflow,.rtx-trade-control-leader'
       : '.rtx-trade-marker--history,.rtx-trade-marker-hover-target,.rtx-trade-history-line';
     overlayHost?.querySelectorAll(staleSelector).forEach((node) => {
       try {
@@ -400,7 +374,6 @@ export const useTradingChartTradeRuntime = ({
     activeTradeSnapshotsRef.current.clear();
     pendingMissingActiveTradesRef.current.clear();
     closeSuppressedTradeKeysRef.current.clear();
-    crossCloseGuessedTradeKeysRef.current.clear();
     pendingClosedTradeSnapshotsRef.current.clear();
     optimisticClosedTradeSnapshotsRef.current.clear();
     frozenEntryTimesRef.current.clear();
@@ -409,7 +382,6 @@ export const useTradingChartTradeRuntime = ({
     tradeLevelLastKnownLevelsRef.current.clear();
     pendingTradeLevelModifyRequestsRef.current.clear();
     tradeLevelOptimisticGraceUntilRef.current.clear();
-    tradeLevelCrossCloseCandidatesRef.current.clear();
     clearTradeOverlay();
 
     if (tradeHistoryRefreshTimerRef.current !== null) {
@@ -426,7 +398,6 @@ export const useTradingChartTradeRuntime = ({
     activeTradeSnapshotsRef,
     clearTradeOverlay,
     symbol,
-    tradeLevelCrossCloseCandidatesRef,
   ]);
 
 
@@ -510,10 +481,6 @@ export const useTradingChartTradeRuntime = ({
         if (!el || !node) continue;
 
         try {
-          if (node.kind === 'control-leader') {
-            el.style.display = 'none';
-            continue;
-          }
           if (node.kind === 'axis-price-badge') {
             const y = node.price == null ? null : series.priceToCoordinate(node.price);
             if (y == null) {
@@ -579,8 +546,8 @@ export const useTradingChartTradeRuntime = ({
                   el.style.display = 'none';
                   continue;
                 }
-                el.style.maxWidth = `${Math.max(0, chartWidth - priceScaleWidth - 12)}px`;
-                controlNodes.set(`${el.dataset.tradeKey}:${el.dataset.role}:${i}`, { element: el, anchorY: snappedY });
+                el.style.maxWidth = `${Math.max(0, chartWidth - priceScaleWidth - 32)}px`;
+                controlNodes.set(`${el.dataset.tradeKey}:${el.dataset.role}`, { element: el, anchorY: snappedY });
               }
             }
 
@@ -700,43 +667,28 @@ export const useTradingChartTradeRuntime = ({
       }
     }
 
-    // Read all control/UI bounds together before writing the collision layout.
-    // Only bars move: lines, full-width drag targets and axis prices remain at
-    // series.priceToCoordinate(price).
+    // Measure controls together, then anchor each one to its own price. Dense
+    // trades overlap until the user expands the price scale; none are paged.
     if (controlNodes.size && containerRef.current) {
-      const chartBounds = containerRef.current.getBoundingClientRect();
       const plotWidth = Math.max(0, chartWidth - priceScaleWidth);
-      const exclusions = Array.from(containerRef.current.parentElement?.querySelectorAll<HTMLElement>('.rtx-oct, .rtx-chart-hud') ?? [])
-        .map(element => element.getBoundingClientRect())
-        .filter(rect => rect.width > 0 && rect.height > 0)
-        .map(rect => ({ left: rect.left - chartBounds.left, top: rect.top - chartBounds.top, width: rect.width, height: rect.height }));
       const inputs = Array.from(controlNodes, ([key, { element, anchorY }]) => {
         const width = element.offsetWidth;
         return {
           key, anchorY, width, height: element.offsetHeight,
+          placement: element.dataset.role === 'ENTRY' ? 'above' as const : undefined,
           preferredLeft: element.dataset.align === 'right'
             ? plotWidth - width - 16
             : Number.parseFloat(element.dataset.leftInset ?? '') || 16,
         };
       });
-      for (const placement of layoutTradeControls(inputs, plotWidth, plotHeight, exclusions)) {
+      const placements = layoutTradeControls(inputs, plotWidth);
+      for (const placement of placements) {
         const element = controlNodes.get(placement.key)!.element;
         element.style.left = `${placement.left}px`;
         element.style.right = 'auto';
         element.style.top = `${placement.top + placement.height / 2}px`;
         element.dataset.priceAnchorOffsetY = String(placement.offsetY);
         element.dataset.priceAnchorY = String(placement.anchorY);
-        const leader = tradeControlLeaderNodes.get(element);
-        if (!leader || element.style.visibility === 'hidden') continue;
-        const below = placement.offsetY > 0;
-        const edgeY = below ? placement.top : placement.top + placement.height;
-        const height = Math.abs(edgeY - placement.anchorY);
-        if (Math.abs(placement.offsetY) <= placement.height / 2) continue;
-        leader.style.display = 'block';
-        leader.style.left = `${placement.left + (element.dataset.align === 'right' ? placement.width - 8 : 8)}px`;
-        leader.style.top = `${Math.min(edgeY, placement.anchorY)}px`;
-        leader.style.height = `${height}px`;
-        leader.style.color = element.style.borderColor || 'var(--text-secondary, #64748b)';
       }
     }
 
@@ -801,15 +753,15 @@ export const useTradingChartTradeRuntime = ({
       frame = window.requestAnimationFrame(() => { frame = null; updateLabelPositions(false); });
     };
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-    const observeChrome = () => {
+    const observeControlSizes = () => {
       resize?.disconnect();
       resize?.observe(wrapper);
-      wrapper.querySelectorAll('.rtx-oct, .rtx-chart-hud, .rtx-trade-controls').forEach(element => resize?.observe(element));
+      wrapper.querySelectorAll('.rtx-trade-controls').forEach(element => resize?.observe(element));
       schedule();
     };
-    const children = new MutationObserver(observeChrome);
+    const children = new MutationObserver(observeControlSizes);
     children.observe(wrapper, { childList: true });
-    observeChrome();
+    observeControlSizes();
     return () => {
       children.disconnect();
       resize?.disconnect();
@@ -882,7 +834,6 @@ export const useTradingChartTradeRuntime = ({
     clearTradeOverlayLayer,
     clearTradeOverlayVisualRuntime,
     closeSuppressedTradeKeysRef,
-    crossCloseGuessedTradeKeysRef,
     currentCandleRef,
     drawingRuntimeContextRef,
     frozenEntryPricesRef,
@@ -915,7 +866,6 @@ export const useTradingChartTradeRuntime = ({
     tr,
     tradeControlLiveUpdatersRef,
     tradeHistoryRefreshTimerRef,
-    tradeLevelCrossCloseCandidatesRef,
     tradeLevelCrossRefreshPendingRef,
     tradeLevelLastKnownLevelsRef,
     tradeLevelModifyRequestSeqRef,

@@ -38,9 +38,13 @@ const tradeEffect = readUseEffectCallbacks(
 ).find(callback => callback.includes('const interactionRoot = container.parentElement ?? container;'))!;
 const tradeParsed = ts.createSourceFile('trade.ts', `const install = ${tradeEffect};`, ts.ScriptTarget.Latest, true);
 let tradePointerHandler = '';
+let tradePlotBounds = '';
 const visitTrade = (node: ts.Node) => {
   if (ts.isVariableDeclaration(node) && node.name.getText(tradeParsed) === 'handlePointerDown') {
     tradePointerHandler = node.initializer!.getText(tradeParsed);
+  }
+  if (ts.isVariableDeclaration(node) && node.name.getText(tradeParsed) === 'isInsideTradePlot') {
+    tradePlotBounds = node.initializer!.getText(tradeParsed);
   }
   ts.forEachChild(node, visitTrade);
 };
@@ -236,15 +240,18 @@ describe('trend drawing input priority', () => {
 
   it('lets armed drawing presses reach the canvas without trade scanning, then restores ordinary trade capture', () => {
     const { container } = makePanel();
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 800, 400));
     const overlay = document.createElement('div');
     const findClosestTradeLevel = vi.fn(() => ({ tradeObj: { key: 'trade:1', entryPrice: 100 }, grabbedType: 'ENTRY' }));
     const beginPointerCapture = vi.fn();
     const handler = execute(`let dragState = null, dragLineOverlay = null, dragBadgeOverlay = null, dragZoneOverlay = null;
+      const isInsideTradePlot = ${tradePlotBounds};
       return ${tradePointerHandler};`, {
       container, isTrendDrawingInputActive, cancelQueuedTradeHover: vi.fn(), setTradeHoverCursor: vi.fn(),
       seriesRef: { current: {} }, tradeAllowed: true, chartSettingsRef: { current: { showTradeLevels: true } },
       getChartY: () => 120, getTradeControlDragY, activeTradeSnapshotsRef: { current: new Map() }, findClosestTradeLevel,
       TRADE_LEVEL_HIT_AREA_PX: 12, activeToolRef: { current: null }, beginPointerCapture,
+      blockPendingTradeLevelChange: () => false,
       beginDragCursor: vi.fn(), chartRef: { current: { applyOptions: vi.fn() } },
       DRAWING_LOCK_HANDLE_SCROLL: {}, DRAWING_LOCK_HANDLE_SCALE: {}, getFinitePriceCoordinate: () => 120,
       hideDraggedLevelControls: vi.fn(), getPriceScaleOffset: () => 40,

@@ -73,7 +73,6 @@ import {
 import type { ChartDataRenderRequest } from './chartRuntimeContracts';
 import type { ActiveTradeSnapshot } from './useTradingChartTradeRuntime';
 import {
-  TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS,
   TRADE_LEVEL_CROSS_REFRESH_MIN_DISPATCH_INTERVAL_MS,
 } from '../presentation/tradeOverlayPresentation';
 
@@ -147,7 +146,6 @@ interface UseTradingChartLiveCandleRuntimeOptions {
   synchronizeChartMarketClock: (sourceTimestamp: unknown) => void;
   synchronizedMarketClockRef: RefObject<SynchronizedMarketClockAnchor | null>;
   timeframe: Timeframe;
-  tradeLevelCrossCloseCandidatesRef: RefObject<Map<string, number>>;
   tradeLevelCrossRefreshPendingRef: RefObject<Set<string>>;
   updateChartData: (candles: Candle[], currentChartType?: ChartType, request?: ChartDataRenderRequest) => void;
   updateLegendDOM: (open: number, high: number, low: number, close: number, volume: number) => void;
@@ -177,7 +175,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     resetLiveQuotePriceGuard, resetVisibleRangeOnNextDataRef, restoreProtectedDisplayedHistory,
     scheduleBoundaryTimerRef, scheduleDrawingRenderAfterChartData, seriesRef, setApiError,
     setHistoryCache, symbol, syncSupplementalPriceLines, synchronizeChartMarketClock,
-    synchronizedMarketClockRef, timeframe, tradeLevelCrossCloseCandidatesRef,
+    synchronizedMarketClockRef, timeframe,
     tradeLevelCrossRefreshPendingRef, updateChartData, updateLegendDOM,
     validateRenderedCandlesAgainstLivePrice, visibleRuntime, volumeRef,
   } = options;
@@ -723,10 +721,6 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
 
         if (shouldRefreshForCross) {
           tradeLevelCrossRefreshPendingRef.current.add(trade.key);
-          tradeLevelCrossCloseCandidatesRef.current.set(
-            trade.key,
-            Date.now() + TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS,
-          );
           // Cluster-wide throttle: with many positions riding their levels the
           // per-trade cooldowns interleave into a near-continuous request
           // storm that destabilizes the positions feed itself.

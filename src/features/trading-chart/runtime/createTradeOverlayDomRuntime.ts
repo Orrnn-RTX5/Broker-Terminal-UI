@@ -11,6 +11,7 @@ import {
   createDockedLevelChip,
   createEntryTradeControlBar,
   createTradeLevelControlBar,
+  dispatchChartPositionModify,
   DARK_CHART_TRADE_COLORS,
   LIGHT_CHART_TRADE_COLORS,
   estimateTradeLevelMoney,
@@ -25,7 +26,6 @@ import {
   getTradeOverlayCardPalette,
   getTradePlotClipLayer,
   placeTradeMarkerTooltip,
-  tradeControlLeaderNodes,
   TRADE_LEVEL_BADGE_LEFT_INSET_PX,
   TRADE_LEVEL_BADGE_STACK_OFFSET_PX,
   TRADE_LEVEL_HIT_AREA_PX,
@@ -41,6 +41,7 @@ import {
 } from './tradeOverlayRuntimeConstants';
 import type {
   ActiveTradeSnapshot,
+  EntryTradeControlOptions,
   OverlayNodeData,
   PriceLevelOptions,
   TradeLevelModifyRequestId,
@@ -147,12 +148,6 @@ export const createTradeOverlayDomRuntime = ({
     };
 
     const appendTradeControls = (control: HTMLElement, price: number) => {
-      const leader = document.createElement('div');
-      leader.className = 'rtx-trade-control-leader';
-      leader.setAttribute('aria-hidden', 'true');
-      leader.style.cssText = 'position:absolute;display:none;width:0;border-left:1px dotted currentColor;opacity:0.65;pointer-events:none;z-index:20;';
-      tradeControlLeaderNodes.set(control, leader);
-      appendActiveInteractionNode(leader, { kind: 'control-leader' });
       appendActiveInteractionNode(control, { kind: 'price-badge', price });
     };
 
@@ -426,6 +421,38 @@ export const createTradeOverlayDomRuntime = ({
       appendActiveInteractionNode(badge, { kind: 'axis-price-badge', price });
     };
 
+    // Presentation groups use the exact entry price, never a rounded label or
+    // screen coordinate. They never own a ticket's SL/TP or trading actions.
+    const createEntryPriceLevels = (
+      trades: readonly ActiveTradeSnapshot[],
+      liveTradeKeys: ReadonlySet<string>,
+    ) => {
+      const groups = new Map<number, ActiveTradeSnapshot[]>();
+      for (const trade of trades) {
+        if (!Number.isFinite(trade.entryPrice) || !(trade.entryPrice > 0)) continue;
+        const group = groups.get(trade.entryPrice) ?? [];
+        group.push(trade);
+        groups.set(trade.entryPrice, group);
+      }
+      for (const [price, group] of groups) {
+        const first = group[0];
+        const sameSide = group.every(trade => trade.side === first.side);
+        const color = sameSide
+          ? getEntryLineColor(first.side)
+          : chartThemeRef.current.axisText || (isChartSurfaceLight() ? '#475569' : '#b9bcc6');
+        const owner = group.length === 1 && liveTradeKeys.has(first.key) ? first : undefined;
+        createPriceLevel('', price, color, {
+          role: 'ENTRY',
+          // A shared price line cannot choose which position to modify.
+          tradeKey: owner?.key,
+          getTitle: () => group.map(trade => getLocalizedTradeTitle(trade)).join('\n'),
+          labelVariant: 'none',
+          lineColor: color,
+        });
+        addTradeAxisPriceLine(`entry-price:${price}`, price, color);
+      }
+    };
+
     // Optimistic SL/TP submission used by the level-bar ✕ buttons. Mirrors the
     // drag-release flow: override immediately, then reconcile or roll back.
     const submitTradeLevelChange = (
@@ -436,6 +463,12 @@ export const createTradeOverlayDomRuntime = ({
     ) => {
       const ticket = getTradeTicket(tradeObj.key);
       if (!ticket) return;
+      if (getTradeLevelStateKeys(tradeObj).some(key => pendingTradeLevelModifyRequestsRef.current.has(key))) {
+        window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+          detail: { message: `${tr('Modify Position')}: ${tr('Processing...')}`, type: 'error' },
+        }));
+        return;
+      }
       const requestId = tradeLevelModifyRequestSeqRef.current + 1;
       tradeLevelModifyRequestSeqRef.current = requestId;
       const requestKeys = getTradeLevelStateKeys(tradeObj);
@@ -501,12 +534,25 @@ export const createTradeOverlayDomRuntime = ({
           }
           persistTradeLevelOverrides();
           window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+          window.dispatchEvent(new CustomEvent('rtx:trade-modified', {
+            detail: {
+              id: ticket,
+              symbol: tradeObj.symbol,
+              sl: previousLevels.sl || 0,
+              tp: previousLevels.tp || 0,
+              sessionScope: brokerAccountSessionScope,
+            },
+          }));
+          window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+            detail: { message: `${tr('Modify Position')}: ${tr('Failed')}`, type: 'error' },
+          }));
         });
     };
 
     const createEntryControlsForTrade = (
       trade: ActiveTradeSnapshot,
       levels: TradeLevelOverride,
+      options: EntryTradeControlOptions = {},
     ) => {
       const ticket = getTradeTicket(trade.key);
       if (!ticket) return;
@@ -549,8 +595,9 @@ export const createTradeOverlayDomRuntime = ({
           });
         },
       });
+      controlBar.root.dataset.entryPrice = String(trade.entryPrice);
       bindChartUiTranslation(controlBar.root, () => { controlBar.root.title = getLocalizedTradeTitle(trade); });
-      // Relayout separates nearby controls without moving their price lines.
+      // Entry controls retain their actual price for placement above the line.
       appendTradeControls(controlBar.root, trade.entryPrice);
 
       const refreshLiveMetrics = () => {
@@ -572,10 +619,13 @@ export const createTradeOverlayDomRuntime = ({
       tradeControlLiveUpdatersRef.current.push(refreshLiveMetrics);
       refreshLiveMetrics();
 
-      addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side));
+      if (options.showAxisPriceLine !== false) {
+        addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side));
+      }
 
-      // Bracket shortcuts share the action strip until a level is created.
-      const appendDockChip = (chip: HTMLDivElement, role: 'SL' | 'TP') => {
+      // Keep both levels reachable from the entry strip, including when an
+      // existing level's price is outside the visible chart scale.
+      const appendDockChip = (chip: HTMLElement, role: 'SL' | 'TP') => {
         const accent = role === 'TP'
           ? (lightSurface ? LIGHT_CHART_TRADE_COLORS.tp : DARK_CHART_TRADE_COLORS.tp)
           : (lightSurface ? LIGHT_CHART_TRADE_COLORS.sl : DARK_CHART_TRADE_COLORS.sl);
@@ -603,6 +653,33 @@ export const createTradeOverlayDomRuntime = ({
         const before = role === 'TP' ? brackets.querySelector('.rtx-trade-dock-chip--sl') : null;
         brackets.insertBefore(chip, before);
       };
+      const appendExistingLevelButton = (role: 'SL' | 'TP', price: number) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        // Existing levels open the dialog; they must not start a drag from the
+        // entry price, which can be far from their actual SL/TP price.
+        button.className = `rtx-trade-control-btn rtx-trade-control-btn--modify rtx-trade-dock-chip rtx-trade-dock-chip--${role.toLowerCase()}`;
+        button.dataset.tradeKey = trade.key;
+        button.dataset.role = role;
+        button.setAttribute('aria-haspopup', 'dialog');
+        bindChartUiTranslation(button, () => {
+          button.textContent = tr(role);
+          button.title = getLocalizedTradeTitle(trade, role, price);
+          button.setAttribute('aria-label', button.title);
+        });
+        button.addEventListener('pointerdown', event => event.stopPropagation());
+        button.addEventListener('mousedown', event => event.stopPropagation());
+        button.addEventListener('click', event => {
+          event.stopPropagation();
+          dispatchChartPositionModify({
+            ticket: Number(trade.key.replace(/^trade:/, '')),
+            symbol: trade.symbol,
+            sessionScope: brokerAccountSessionScope,
+          });
+        });
+        button.style.cursor = 'pointer';
+        appendDockChip(button, role);
+      };
       if (!(levels.sl > 0)) {
         const slChip = createDockedLevelChip({
           tradeKey: trade.key,
@@ -614,6 +691,8 @@ export const createTradeOverlayDomRuntime = ({
         });
         bindChartUiTranslation(slChip, () => { slChip.title = getLocalizedTradeTitle(trade, 'SL'); });
         appendDockChip(slChip, 'SL');
+      } else {
+        appendExistingLevelButton('SL', levels.sl);
       }
       if (!(levels.tp > 0)) {
         const tpChip = createDockedLevelChip({
@@ -626,6 +705,8 @@ export const createTradeOverlayDomRuntime = ({
         });
         bindChartUiTranslation(tpChip, () => { tpChip.title = getLocalizedTradeTitle(trade, 'TP'); });
         appendDockChip(tpChip, 'TP');
+      } else {
+        appendExistingLevelButton('TP', levels.tp);
       }
     };
 
@@ -702,6 +783,7 @@ export const createTradeOverlayDomRuntime = ({
     getLocalizedTradeTitle,
     getTradeTicket,
     addTradeAxisPriceLine,
+    createEntryPriceLevels,
     createEntryControlsForTrade,
     createLevelControlsForTrade,
   };

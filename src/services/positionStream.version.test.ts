@@ -4,6 +4,16 @@ import { mergePositionRecord, normalizePosition, reconcilePositionStreamBatch } 
 const row = { ticket: 10, symbol: 'EURUSD', side: 'buy', volume: 1, profit: 3, state_version: '9007199254740993' };
 
 describe('position state version fence', () => {
+  it('clears all protection aliases for an explicit wire null and preserves omitted levels', () => {
+    const existing = normalizePosition({ ...row, price_sl: 1.08, price_tp: 1.12,
+      stopLoss: 1.08, stop_loss: 1.08, takeProfit: 1.12, take_profit: 1.12 });
+    const cleared = mergePositionRecord({ ...existing, price_sl: null }, existing);
+    expect(cleared).toMatchObject({ sl: 0, price_sl: 0, stopLoss: 0, stop_loss: 0,
+      tp: 1.12, price_tp: 1.12, takeProfit: 1.12, take_profit: 1.12 });
+    expect(mergePositionRecord({ ticket: 10, profit: 4, price_sl: undefined }, existing))
+      .toMatchObject({ sl: 1.08, price_sl: 1.08, tp: 1.12, price_tp: 1.12 });
+  });
+
   it('does not resurrect a closed position from a delayed complete valuation', () => {
     const result = reconcilePositionStreamBatch([], { mode: 'delta', positions: [{ ...row, display_only: true }] });
     expect(result.positions).toEqual([]);

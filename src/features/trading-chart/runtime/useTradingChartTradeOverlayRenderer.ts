@@ -22,13 +22,11 @@ import {
   resolveStableTradeEntryTime,
   shouldKeepMissingActiveTradeOverlay,
   shouldUseClosedTradeHistorySnapshot,
-  TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS,
   type TradeOverlayHistoryRow,
 } from '../../../services/tradeOverlayHistory';
 import type { Candle, Timeframe, TradingViewChartTheme } from '../../../types/chart';
 import type { ChartPostInteractionCoordinator } from '../../../utils/chartPostInteractionCoordinator';
 import {
-  TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS,
   TRADE_MISSING_POSITION_GRACE_MS,
   type TradeSide,
 } from '../presentation/tradeOverlayPresentation';
@@ -51,7 +49,7 @@ import type {
   TradePositionRecord,
 } from './tradeRuntimeContracts';
 
-const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v13-entry-close-connectors';
+const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v14-shared-entry-prices';
 
 interface UseTradingChartTradeOverlayRendererOptions {
   activeOverlayNodeDataRef: RefObject<OverlayNodeData[]>;
@@ -67,7 +65,6 @@ interface UseTradingChartTradeOverlayRendererOptions {
   clearTradeOverlayLayer: (layer: TradeOverlayLayer) => void;
   clearTradeOverlayVisualRuntime: () => void;
   closeSuppressedTradeKeysRef: RefObject<Map<string, number>>;
-  crossCloseGuessedTradeKeysRef: RefObject<Set<string>>;
   currentCandleRef: RefObject<Candle | null>;
   drawingRuntimeContextRef: RefObject<{ contextId: string; accountScope?: string; symbol: string; timeframe: Timeframe }>;
   frozenEntryPricesRef: RefObject<Map<number | string, number>>;
@@ -100,7 +97,6 @@ interface UseTradingChartTradeOverlayRendererOptions {
   tr: <T>(source: T, values?: Record<string, unknown>) => T;
   tradeControlLiveUpdatersRef: RefObject<Array<() => void>>;
   tradeHistoryRefreshTimerRef: RefObject<number | null>;
-  tradeLevelCrossCloseCandidatesRef: RefObject<Map<string, number>>;
   tradeLevelCrossRefreshPendingRef: RefObject<Set<string>>;
   tradeLevelLastKnownLevelsRef: RefObject<Map<string, TradeLevelOverride>>;
   tradeLevelModifyRequestSeqRef: RefObject<TradeLevelModifyRequestId>;
@@ -126,7 +122,6 @@ export const useTradingChartTradeOverlayRenderer = ({
   clearTradeOverlayLayer,
   clearTradeOverlayVisualRuntime,
   closeSuppressedTradeKeysRef,
-  crossCloseGuessedTradeKeysRef,
   currentCandleRef,
   drawingRuntimeContextRef,
   frozenEntryPricesRef,
@@ -159,7 +154,6 @@ export const useTradingChartTradeOverlayRenderer = ({
   tr,
   tradeControlLiveUpdatersRef,
   tradeHistoryRefreshTimerRef,
-  tradeLevelCrossCloseCandidatesRef,
   tradeLevelCrossRefreshPendingRef,
   tradeLevelLastKnownLevelsRef,
   tradeLevelModifyRequestSeqRef,
@@ -187,7 +181,6 @@ export const useTradingChartTradeOverlayRenderer = ({
       formatTradeLevelBadgePrice,
       resolveSymbolTick,
       mapTradeTimestampToChartTime,
-      getEntryColor,
       getClosedTradeLineColor,
       getLiveTrailTime,
       getActiveMarkerTimeKey,
@@ -238,6 +231,7 @@ export const useTradingChartTradeOverlayRenderer = ({
       getLocalizedTradeTitle,
       getTradeTicket,
       addTradeAxisPriceLine,
+      createEntryPriceLevels,
       createEntryControlsForTrade,
       createLevelControlsForTrade,
     } = createTradeOverlayDomRuntime({
@@ -274,15 +268,6 @@ export const useTradingChartTradeOverlayRenderer = ({
       closeSuppressedTradeKeysRef.current.forEach((expiresAt, key) => {
         if (expiresAt <= now) {
           closeSuppressedTradeKeysRef.current.delete(key);
-          crossCloseGuessedTradeKeysRef.current.delete(key);
-        }
-      });
-    };
-
-    const pruneTradeLevelCrossCloseCandidates = (now = Date.now()) => {
-      tradeLevelCrossCloseCandidatesRef.current.forEach((expiresAt, key) => {
-        if (expiresAt <= now) {
-          tradeLevelCrossCloseCandidatesRef.current.delete(key);
         }
       });
     };
@@ -296,7 +281,6 @@ export const useTradingChartTradeOverlayRenderer = ({
       const forceHistory = typeof options === 'boolean' ? options : Boolean(options.forceHistory);
       const now = Date.now();
       pruneCloseSuppressedTradeKeys(now);
-      pruneTradeLevelCrossCloseCandidates(now);
       const closeSuppressedTradeKeys = new Set(closeSuppressedTradeKeysRef.current.keys());
 
       const chartProperties = useChartSettingsStore.getState().symbolProperties[symbol]
@@ -399,7 +383,6 @@ export const useTradingChartTradeOverlayRenderer = ({
           ? clearTradeLevelRuntimeState(capturedTrade) || didClearClosedHistoryTradeLevels
           : clearTradeLevelRuntimeStateByKey(key) || didClearClosedHistoryTradeLevels;
         pendingClosedTradeSnapshotsRef.current.delete(key);
-        tradeLevelCrossCloseCandidatesRef.current.delete(key);
       });
       if (didClearClosedHistoryTradeLevels) persistTradeLevelOverrides();
 
@@ -429,21 +412,8 @@ export const useTradingChartTradeOverlayRenderer = ({
       for (const position of matchingPositions) {
         const key = `trade:${String(position.id)}`;
         if (closeSuppressedTradeKeys.has(key)) {
-          if (crossCloseGuessedTradeKeysRef.current.has(key)) {
-            // The level-cross close was only a guess and the broker feed still
-            // reports the position open — the guess was wrong. Lift the
-            // suppression and drop the fake closed snapshot so the live
-            // controls come back on this very render.
-            crossCloseGuessedTradeKeysRef.current.delete(key);
-            closeSuppressedTradeKeysRef.current.delete(key);
-            closeSuppressedTradeKeys.delete(key);
-            optimisticClosedTradeSnapshotsRef.current.delete(key);
-            forgetTradeOverlayOptimisticClosedSnapshot(key);
-            pendingClosedTradeSnapshotsRef.current.delete(key);
-          } else {
-            pendingMissingActiveTradesRef.current.delete(key);
-            continue;
-          }
+          pendingMissingActiveTradesRef.current.delete(key);
+          continue;
         }
 
         const activeTf = prevTimeframeRef.current || timeframe;
@@ -489,8 +459,6 @@ export const useTradingChartTradeOverlayRenderer = ({
 
       const renderActiveSnapshots = new Map(nextActiveSnapshots);
       const visuallyRetainedActiveTradeKeys = new Set<string>();
-      let nextMissingGraceDelayMs: number | null = null;
-      let didClearCrossClosedTradeLevels = false;
 
       activeTradeSnapshotsRef.current.forEach((previousTrade, key) => {
         if (previousTrade.symbol !== normalizedChartSymbol || nextActiveSnapshots.has(key)) return;
@@ -525,66 +493,27 @@ export const useTradingChartTradeOverlayRenderer = ({
           return;
         }
 
-        const elapsedMs = now - pending.missingSince;
-        const crossedLevelCandidateExpiresAt = tradeLevelCrossCloseCandidatesRef.current.get(key) ?? 0;
-        const crossCandidateArmed = crossedLevelCandidateExpiresAt > now;
-        // Guess a level-cross close only after a real dwell AND while the
-        // positions feed itself is alive (it still reports some position). A
-        // dead feed loses every trade at once — that is a backend outage, not
-        // a fill, and open trades must not be painted as closed.
-        if (
-          crossCandidateArmed
-          && elapsedMs >= TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS
-          && appPositions.length > 0
-        ) {
-          const closedTrade = buildImmediateClosedTrade(pending.trade);
-          if (closedTrade) {
-            optimisticClosedTradeSnapshotsRef.current.set(key, closedTrade);
-          }
-          pendingClosedTradeSnapshotsRef.current.delete(key);
-          pendingMissingActiveTradesRef.current.delete(key);
-          closeSuppressedTradeKeysRef.current.set(key, now + TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS);
-          crossCloseGuessedTradeKeysRef.current.add(key);
-          tradeLevelCrossCloseCandidatesRef.current.delete(key);
-          tradeLevelCrossRefreshPendingRef.current.delete(key);
-          didClearCrossClosedTradeLevels = clearTradeLevelRuntimeState(pending.trade) || didClearCrossClosedTradeLevels;
-          scheduleHistoryRefresh();
-          return;
-        }
-
-        // Retain until the trade is PROVEN closed — a close event, a closed
-        // history row, or an evidenced level-cross. Feed gaps and backend
-        // outages of any length must never hide open trades; only the settings
-        // toggle or a real close removes the on-chart controls.
+        // Retain until a broker close marker, closed history row, or explicit
+        // close request owns removal. Local price crossings and a missing row
+        // cannot prove execution, even when other account positions are live.
         renderActiveSnapshots.set(key, pending.trade);
         visuallyRetainedActiveTradeKeys.add(key);
-        if (crossCandidateArmed) {
-          const remainingMs = Math.max(50, TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS - elapsedMs);
-          nextMissingGraceDelayMs = nextMissingGraceDelayMs == null
-            ? remainingMs
-            : Math.min(nextMissingGraceDelayMs, remainingMs);
-        }
-        if (elapsedMs >= TRADE_MISSING_POSITION_GRACE_MS) {
-          // Keep nudging history so a genuinely closed trade gets its closed
-          // row and leaves retention through the proven path.
-          scheduleHistoryRefresh();
-        }
       });
-
-      if (didClearCrossClosedTradeLevels) persistTradeLevelOverrides();
 
       // Keep retained fills in the live snapshot map so a lagged empty store
       // cannot drop on-chart open trades on the next overlay pass.
       activeTradeSnapshotsRef.current = renderActiveSnapshots;
 
-      if (nextMissingGraceDelayMs != null) {
-        if (tradeMissingGraceTimerRef.current !== null) {
-          window.clearTimeout(tradeMissingGraceTimerRef.current);
+      // The first missing snapshot already requests history above. Continue
+      // checking at a bounded cadence without inferring a fill from elapsed time.
+      if (pendingMissingActiveTradesRef.current.size > 0) {
+        if (tradeMissingGraceTimerRef.current === null) {
+          tradeMissingGraceTimerRef.current = window.setTimeout(() => {
+            tradeMissingGraceTimerRef.current = null;
+            scheduleHistoryRefresh();
+            renderTradeOverlay({ forceActive: true });
+          }, TRADE_MISSING_POSITION_GRACE_MS);
         }
-        tradeMissingGraceTimerRef.current = window.setTimeout(() => {
-          tradeMissingGraceTimerRef.current = null;
-          renderTradeOverlay({ forceActive: true });
-        }, Math.max(0, nextMissingGraceDelayMs + 25));
       } else if (tradeMissingGraceTimerRef.current !== null) {
         window.clearTimeout(tradeMissingGraceTimerRef.current);
         tradeMissingGraceTimerRef.current = null;
@@ -727,10 +656,10 @@ export const useTradingChartTradeOverlayRenderer = ({
 
         if (showTradeLevels) {
           const nextLevelOffset = createCollisionOffsetFactory();
+          createEntryPriceLevels(sortedActiveSnapshots, new Set(nextActiveSnapshots.keys()));
           sortedActiveSnapshots.forEach((trade) => {
             const isLiveActiveTrade = nextActiveSnapshots.has(trade.key);
             const isVisuallyRetainedTrade = visuallyRetainedActiveTradeKeys.has(trade.key);
-            const entryColor = getEntryColor(trade.side);
             const ticketLabel = getTradeTicketLabel(trade.key);
             const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
             const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${entryPriceLabel}`.trim();
@@ -755,28 +684,10 @@ export const useTradingChartTradeOverlayRenderer = ({
             // live<->retained flap must not blink the on-chart controls; only
             // the settings toggle or a real close removes them.
             const showTradeControls = isLiveActiveTrade || isVisuallyRetainedTrade;
-            const entryStackIndex = nextLevelOffset('ENTRY', trade.entryPrice);
-            createPriceLevel(
-              `${trade.side} ${ticketLabel} ${trade.volume} at ${entryPriceLabel}`.trim(),
-              trade.entryPrice,
-              entryColor,
-              {
-                tradeKey: isLiveActiveTrade ? trade.key : undefined,
-                role: isLiveActiveTrade ? 'ENTRY' : undefined,
-                badgeOffsetIndex: showTradeControls ? 0 : entryStackIndex,
-                title: isLiveActiveTrade ? `${markerTitle}. Drag above/below to create TP or SL.` : markerTitle,
-                getTitle: () => getLocalizedTradeTitle(trade),
-                getLabel: () => `${tr(trade.side)} ${ticketLabel} ${tr('{{value0}} lots', { value0: trade.volume })} @ ${entryPriceLabel}`,
-                // The control bar replaces the plain text label.
-                labelVariant: showTradeControls ? 'none' : 'lineText',
-                lineColor: getEntryLineColor(trade.side),
-              },
-            );
-
             const levels = isLiveActiveTrade || isVisuallyRetainedTrade ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
 
             if (showTradeControls) {
-              createEntryControlsForTrade(trade, levels);
+              createEntryControlsForTrade(trade, levels, { showAxisPriceLine: false });
             }
 
             if (levels.sl && levels.sl > 0) {
@@ -911,7 +822,6 @@ export const useTradingChartTradeOverlayRenderer = ({
       clearTradeOverlayLayer,
       clearTradeOverlayVisualRuntime,
       closeSuppressedTradeKeysRef,
-      crossCloseGuessedTradeKeysRef,
       drawingRuntimeContextRef,
       frozenEntryPricesRef,
       isActiveRef,
@@ -924,7 +834,6 @@ export const useTradingChartTradeOverlayRenderer = ({
       resolveSymbolTick,
       scheduleHistoryRefresh,
       symbol,
-      tradeLevelCrossCloseCandidatesRef,
       tradeLevelCrossRefreshPendingRef,
     });
   }, [brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, TRADE_HISTORY_PRESENTATION_VERSION, updateLabelPositions]);

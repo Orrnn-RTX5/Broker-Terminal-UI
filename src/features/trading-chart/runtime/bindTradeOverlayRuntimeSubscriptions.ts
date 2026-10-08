@@ -30,7 +30,6 @@ type BindTradeOverlayRuntimeSubscriptionsOptions = {
   clearTradeOverlayLayer: (layer: TradeOverlayLayer) => void;
   clearTradeOverlayVisualRuntime: () => void;
   closeSuppressedTradeKeysRef: RefObject<Map<string, number>>;
-  crossCloseGuessedTradeKeysRef: RefObject<Set<string>>;
   drawingRuntimeContextRef: RefObject<{ contextId: string; accountScope?: string; symbol: string; timeframe: Timeframe }>;
   frozenEntryPricesRef: RefObject<Map<number | string, number>>;
   isActiveRef: RefObject<boolean>;
@@ -40,7 +39,6 @@ type BindTradeOverlayRuntimeSubscriptionsOptions = {
   persistTradeLevelOverrides: () => void;
   renderTradeOverlay: RenderTradeOverlay;
   symbol: string;
-  tradeLevelCrossCloseCandidatesRef: RefObject<Map<string, number>>;
   tradeLevelCrossRefreshPendingRef: RefObject<Set<string>>;
 } & Pick<TradeOverlayModelRuntime,
   | 'buildClosedTradeFromEventSnapshot'
@@ -64,7 +62,6 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
   clearTradeOverlayLayer,
   clearTradeOverlayVisualRuntime,
   closeSuppressedTradeKeysRef,
-  crossCloseGuessedTradeKeysRef,
   drawingRuntimeContextRef,
   frozenEntryPricesRef,
   isActiveRef,
@@ -77,7 +74,6 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
   resolveSymbolTick,
   scheduleHistoryRefresh,
   symbol,
-  tradeLevelCrossCloseCandidatesRef,
   tradeLevelCrossRefreshPendingRef,
 }: BindTradeOverlayRuntimeSubscriptionsOptions): (() => void) => {
     renderTradeOverlay();
@@ -155,12 +151,10 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
       if (status === 'failed') {
         tradeKeys.forEach((key) => {
           closeSuppressedTradeKeysRef.current.delete(key);
-          crossCloseGuessedTradeKeysRef.current.delete(key);
           pendingClosedTradeSnapshotsRef.current.delete(key);
           optimisticClosedTradeSnapshotsRef.current.delete(key);
           forgetTradeOverlayOptimisticClosedSnapshot(key);
           tradeLevelCrossRefreshPendingRef.current.delete(key);
-          tradeLevelCrossCloseCandidatesRef.current.delete(key);
         });
       } else {
         const expiresAt = Date.now() + TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS;
@@ -193,9 +187,6 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
             pendingClosedTradeSnapshotsRef.current.delete(key);
           }
           closeSuppressedTradeKeysRef.current.set(key, expiresAt);
-          // A real close request owns this suppression from here on; the
-          // level-cross guess marker must not lift it on stale snapshots.
-          crossCloseGuessedTradeKeysRef.current.delete(key);
           activeTradeSnapshotsRef.current.delete(key);
           pendingMissingActiveTradesRef.current.delete(key);
           if (status === 'confirmed') {
@@ -204,7 +195,6 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
             frozenEntryPricesRef.current.delete(key);
           }
           tradeLevelCrossRefreshPendingRef.current.delete(key);
-          tradeLevelCrossCloseCandidatesRef.current.delete(key);
         });
         if (didClearTradeLevels) persistTradeLevelOverrides();
         scheduleHistoryRefresh();

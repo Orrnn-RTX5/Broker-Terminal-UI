@@ -8,14 +8,13 @@ export interface TradeOverlayCardPalette {
   shadow: string;
 }
 
-export const TRADE_LEVEL_OVERRIDES_STORAGE_KEY = 'rtx-trade-level-overrides-v1';
+// v1 could persist another ticket's levels through its metadata-only alias.
+export const TRADE_LEVEL_OVERRIDES_STORAGE_KEY = 'rtx-trade-level-overrides-v2';
 export const TRADE_LEVEL_OVERRIDE_TTL_MS = 5 * 60 * 1000;
 export const TRADE_LEVEL_OPTIMISTIC_GRACE_MS = 15_000;
 export const TRADE_LEVEL_HIT_AREA_PX = 24;
 export const TRADE_LEVEL_MIN_DRAG_PX = 2;
 export const CHART_LEVEL_MODIFY_DOUBLE_CLICK_MS = 500;
-export const TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS = 15_000;
-export const TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS = 1_500;
 export const TRADE_LEVEL_CROSS_REFRESH_MIN_DISPATCH_INTERVAL_MS = 3_000;
 export const TRADE_LEVEL_BADGE_LEFT_INSET_PX = 16;
 export const TRADE_LEVEL_BADGE_STACK_OFFSET_PX = 76;
@@ -37,6 +36,8 @@ export interface TradeControlLayoutInput {
   width: number;
   height: number;
   preferredLeft: number;
+  /** Entry controls sit just above their line; SL/TP stay centered on theirs. */
+  placement?: 'above';
 }
 
 export interface TradeControlPlacement extends TradeControlRect {
@@ -45,60 +46,27 @@ export interface TradeControlPlacement extends TradeControlRect {
   offsetY: number;
 }
 
-/** Keep price lines fixed; move only their controls into the nearest free space. */
+/**
+ * Every control follows its actual price coordinate. Nearby prices may overlap;
+ * expanding the price scale separates them without moving or hiding any ticket.
+ */
 export const layoutTradeControls = (
-  controls: readonly TradeControlLayoutInput[],
-  plotWidth: number,
-  plotHeight: number,
-  exclusions: readonly TradeControlRect[] = [],
-): TradeControlPlacement[] => {
+  controls: readonly TradeControlLayoutInput[], plotWidth: number,
+): TradeControlPlacement[] => controls.map(control => {
   const inset = 6;
-  const gap = 6;
-  const occupied = [...exclusions];
-  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(min, max), Math.max(min, value));
-  return [...controls].sort((a, b) => a.anchorY - b.anchorY || a.key.localeCompare(b.key)).map(control => {
-    const width = Math.min(control.width, Math.max(0, plotWidth - inset * 2));
-    const height = control.height;
-    const preferredTop = control.anchorY - height / 2;
-    const maxTop = plotHeight - inset - height;
-    const preferredLeft = clamp(control.preferredLeft, inset, plotWidth - inset - width);
-    const candidateTops = [...new Set([
-      preferredTop,
-      ...occupied.flatMap(rect => [rect.top - gap - height, rect.top + rect.height + gap]),
-    ].map(top => clamp(top, inset, maxTop)))].sort((a, b) => Math.abs(a - preferredTop) - Math.abs(b - preferredTop));
-    let placement: TradeControlRect | undefined;
-    for (const top of candidateTops) {
-      const blockers = occupied.filter(rect => top < rect.top + rect.height + gap && top + height + gap > rect.top)
-        .sort((a, b) => a.left - b.left);
-      const free: Array<{ from: number; to: number }> = [];
-      let start = inset;
-      for (const rect of blockers) {
-        if (rect.left - gap > start) free.push({ from: start, to: Math.min(plotWidth - inset, rect.left - gap) });
-        start = Math.max(start, rect.left + rect.width + gap);
-      }
-      if (start < plotWidth - inset) free.push({ from: start, to: plotWidth - inset });
-      const lefts = free.filter(range => range.to - range.from >= width)
-        .map(range => clamp(preferredLeft, range.from, range.to - width))
-        .sort((a, b) => Math.abs(a - preferredLeft) - Math.abs(b - preferredLeft));
-      if (lefts.length) {
-        placement = { left: lefts[0], top, width, height };
-        break;
-      }
-    }
-    // An overfilled pane has no collision-free solution. Keep its controls
-    // near their anchors instead of moving a price line or dropping an action.
-    placement ??= { left: preferredLeft, top: clamp(preferredTop, inset, maxTop), width, height };
-    occupied.push(placement);
-    return { ...placement, key: control.key, anchorY: control.anchorY, offsetY: placement.top + height / 2 - control.anchorY };
-  });
-};
+  const left = Math.max(inset, Math.min(control.preferredLeft, plotWidth - inset));
+  const width = Math.min(control.width, Math.max(0, plotWidth - inset - left));
+  const top = control.anchorY - (control.placement === 'above' ? control.height + 4 : control.height / 2);
+  return {
+    key: control.key, anchorY: control.anchorY, left, top, width, height: control.height,
+    offsetY: top + control.height / 2 - control.anchorY,
+  };
+});
 
 /** A displaced bar changes presentation, never the price under a drag gesture. */
 export const getTradeControlDragY = (pointerY: number, offsetY: number): number => (
   pointerY - (Number.isFinite(offsetY) ? offsetY : 0)
 );
-
-export const tradeControlLeaderNodes = new WeakMap<HTMLElement, HTMLElement>();
 
 const TRADE_PLOT_CLIP_CLASS = 'rtx-trade-plot-clip';
 

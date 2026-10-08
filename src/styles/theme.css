@@ -323,11 +323,30 @@ body {
 }
 
 .rtx-toolbar-icon-button svg.rtx-chart-command-icon {
-  /* A balanced toolbar scale with breathing room inside the 32px controls. */
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+  /* Match the sidebar's native artwork scale. Its built-in padding leaves
+     the visible glyph around 18–22px without compressing fine details. */
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   stroke-width: 1;
+}
+
+/* The web bar has a 39px inner height. Keep controls on whole pixels instead
+   of centering their one-pixel artwork at a blurred half-pixel offset. */
+.rtx-main-toolbar:not(.rtx-desktop-main-toolbar) .rtx-chart-toolbar-scroll {
+  align-items: flex-start;
+  padding-top: 4px;
+}
+
+.rtx-toolbar-action__icon svg :is(path, rect, circle, line, polyline, polygon) {
+  vector-effect: non-scaling-stroke;
+}
+
+.rtx-main-toolbar:not(.rtx-desktop-main-toolbar) .rtx-report-bug-button > svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  stroke-width: 1.5;
 }
 
 .rtx-toolbar-command-cluster .rtx-toolbar-action {

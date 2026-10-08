@@ -3,7 +3,7 @@ import type { IChartApi, Time } from 'lightweight-charts';
 import { getTimeframeSeconds, type Timeframe as AggTimeframe } from '../../../services/candleAggregationService';
 import { useAppStore, type Tick } from '../../../store/useAppStore';
 import { alignTimeframeBoundarySeconds } from '../../../utils/timeframeBoundary';
-import { createTradeLevelOverrideFingerprint } from '../../../utils/tradeLevelDrag';
+import { getTradeLevelStateKeys } from '../../../utils/tradeLevelDrag';
 import {
   buildOptimisticClosedTradeSnapshot,
   type TradeOverlayCloseSnapshotSeed,
@@ -313,18 +313,6 @@ export const createTradeOverlayModelRuntime = ({
         tradeHistoryRefreshTimerRef.current = null;
         requestTradeHistoryRefresh();
       }, 350);
-    };
-
-    const getTradeLevelStateKeys = (trade: ActiveTradeSnapshot): string[] => {
-      const fingerprint = createTradeLevelOverrideFingerprint({
-        symbol: trade.symbol,
-        side: trade.side,
-        volume: trade.volume,
-        entryPrice: trade.entryPrice,
-        entryTime: trade.entryTime,
-        digits,
-      });
-      return Array.from(new Set([trade.key, fingerprint]));
     };
 
     const getTradeLevelState = (

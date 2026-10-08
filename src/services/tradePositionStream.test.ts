@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyPositionStreamUpdate, decodePositionStreamMessage, positionStreamNeedsReconciliation } from './tradePositionStream';
+import { mergePositionRecord } from './positionStream';
 
 // Models the existing normalizer's zero/default behavior. The stream reducer
 // must prevent those defaults from overwriting fields absent from a delta.
@@ -101,6 +102,28 @@ describe('broker position stream decoding', () => {
 });
 
 describe('position stream ordering and sparse updates', () => {
+  it.each([
+    { patch: { price_sl: 82500 }, sl: 82500, tp: 78000 },
+    { patch: { price_tp: 77500 }, sl: 82000, tp: 77500 },
+    { patch: { price_sl: 0 }, sl: 0, tp: 78000 },
+    { patch: { price_tp: 0 }, sl: 82000, tp: 0 },
+    { patch: { price_sl: null }, sl: 0, tp: 78000 },
+    { patch: { profit: 30 }, sl: 82000, tp: 78000 },
+  ])('keeps protection aliases consistent through the store merge: $patch', ({ patch, sl, tp }) => {
+    const original = position({
+      price_sl: 82000, stopLoss: 82000, stop_loss: 82000,
+      price_tp: 78000, takeProfit: 78000, take_profit: 78000,
+    });
+    const frame = decode({ data: { type: 'position_modified', data: {
+      ticket: 17, state_version: '9007199254740994', ...patch,
+    } } });
+    const [updated] = applyPositionStreamUpdate([original], frame, normalize);
+    const expected = { sl, price_sl: sl, stopLoss: sl, stop_loss: sl,
+      tp, price_tp: tp, takeProfit: tp, take_profit: tp };
+    expect(updated).toMatchObject(expected);
+    expect(mergePositionRecord(updated, original)).toMatchObject(expected);
+  });
+
   it.each([
     { state_version: '9007199254740992' },
     { state_version: '9007199254740994' },
