@@ -1,8 +1,8 @@
-import type { Dispatch, RefObject, SetStateAction } from 'react';
-import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
+import type { UseTradingChartLiveCandleRuntimeOptions } from './liveCandleRuntimeContracts';
+import { createServerM1CandleModel, resolvePendingLiveCandleBoundary } from './createServerM1CandleModel';
+import type { Time } from 'lightweight-charts';
 import { updateDrawingCandle } from '../../../drawing-tools/drawingCandleUpdates';
 import { useActiveChartRuntimeEffect } from '../../../hooks/useActiveChartRuntimeEffect';
-import type { TradingChartVisibleRuntime } from '../../../hooks/useTradingChartVisibleRuntime';
 import {
   candleAggregationService,
   getTimeframeSeconds,
@@ -20,11 +20,9 @@ import {
   createRenderedPriceReference,
   getChartPriceFromQuote,
   updateLiveQuoteGuardState,
-  type RenderedPriceReference,
 } from '../../../services/chartPriceGuards';
 import { getQuoteSocketManager } from '../../../services/quoteSocketManager';
 import { useAppStore } from '../../../store/useAppStore';
-import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import {
   applyTickToFormingCandle,
   formatHistoryForOhlcv,
@@ -34,20 +32,12 @@ import {
   mergeHistoricalCandlesWithBufferedLive,
   resolveCanonicalServerCandle,
   upsertCandleIntoHistory,
-  type LogicalRangeLike,
 } from '../../../utils/candleHistory';
-import type {
-  ChartPostInteractionCallbacks,
-  ChartPostInteractionCoordinator,
-} from '../../../utils/chartPostInteractionCoordinator';
 import {
   isChartSelectionLivePaintAllowed,
   shouldCommitFirstLiveSelectionBaseline,
 } from '../../../utils/chartSelectionPresentation';
-import type { PeriodSeparator } from '../../../utils/periodSeparators';
 import { getRawQuoteSides } from '../../../utils/spreadMarkup';
-import { resolveFormingCandleLiveClose } from '../../../utils/liveCandleQuote';
-import type { SynchronizedMarketClockAnchor } from '../../../utils/synchronizedMarketClock';
 import { getTradingChartShiftRightOffset } from '../../../utils/chartTimeFormat';
 import {
   alignTimeframeBoundarySeconds,
@@ -55,10 +45,7 @@ import {
 } from '../../../utils/timeframeBoundary';
 import type {
   Candle,
-  ChartSelectionPresentationGate,
-  ChartType,
   Timeframe,
-  TradingViewChartTheme,
 } from '../../../types/chart';
 import {
   getDisplayVolume,
@@ -74,92 +61,10 @@ import {
   shouldBuildVolumeData,
   shouldScrollToRealtime,
 } from './chartRuntime';
-import type { ChartDataRenderRequest } from './chartRuntimeContracts';
-import type { ActiveTradeSnapshot } from './useTradingChartTradeRuntime';
 import {
   TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS,
   TRADE_LEVEL_CROSS_REFRESH_MIN_DISPATCH_INTERVAL_MS,
 } from '../presentation/tradeOverlayPresentation';
-
-interface UseTradingChartLiveCandleRuntimeOptions {
-  discardRetainedPublicChartSurface: () => void;
-  diagnosticChartId: string;
-  activeTradeSnapshotsRef: RefObject<Map<string, ActiveTradeSnapshot>>;
-  applyAreaTrendColors: (latestClose?: number) => void;
-  authToken: string | null;
-  autoScrollEnabledRef: RefObject<boolean>;
-  brokerAccountSessionScope: string;
-  brokerTimeOffsetSecRef: RefObject<number>;
-  cancelQueuedChartRender: () => void;
-  candlesRef: RefObject<Candle[]>;
-  chartRef: RefObject<IChartApi | null>;
-  chartSelectionPresentationKey: string;
-  chartSelectionPresentationRef: RefObject<ChartSelectionPresentationGate>;
-  chartSettingsRef: RefObject<ChartProperties>;
-  chartThemeRef: RefObject<TradingViewChartTheme>;
-  clearPeriodSeparators: () => void;
-  currentCandleRef: RefObject<Candle | null>;
-  drawingRenderFrameRef: RefObject<number | null>;
-  drawingRenderSettledFrameRef: RefObject<number | null>;
-  drawingRuntimeContextRef: RefObject<{ contextId: string; accountScope?: string; symbol: string; timeframe: Timeframe }>;
-  firstRenderedCandleTimeRef: RefObject<number | null>;
-  flushPostInteractionWork: () => boolean;
-  getSynchronizedChartMarketNowMs: () => number;
-  hasDisplayedHistoryRef: RefObject<boolean>;
-  hideLivePriceOverlay: (clearPrice?: boolean) => void;
-  incompatibleQuoteCountRef: RefObject<number>;
-  initialHistoryLoadPendingRef: RefObject<boolean>;
-  isActive: boolean;
-  isActiveRef: RefObject<boolean>;
-  isChartInteractionActiveRef: RefObject<boolean>;
-  isDisposedRef: RefObject<boolean>;
-  isLivePriceSafeForCandles: (price: number) => boolean;
-  isPotentialMarketClosedPlaceholder: (candle: Candle) => boolean;
-  isRebuildingRef: RefObject<boolean>;
-  lastAcceptedQuoteRef: RefObject<number | null>;
-  lastCrossRefreshDispatchAtRef: RefObject<number>;
-  lastRenderedCandlesRef: RefObject<Candle[]>;
-  lastStoreCandleSecRef: RefObject<number>;
-  lastVisibleLogicalRangeRef: RefObject<LogicalRangeLike | null>;
-  leftVisibleTimeRef: RefObject<number | null>;
-  liveCandleMutationGenerationByTimeRef: RefObject<Map<number, number>>;
-  liveCandleMutationGenerationRef: RefObject<number>;
-  liveMarketDataFrozenRef: RefObject<boolean>;
-  mergeCandleIntoRef: (incoming: Candle) => void;
-  mergeHistoryCache: (activeTimeframe: Timeframe, candles: Candle[], brokerOffsetSeconds?: number, source?: CandleCacheSource) => void;
-  periodSeparatorsRef: RefObject<PeriodSeparator[]>;
-  postInteractionCallbacksRef: RefObject<ChartPostInteractionCallbacks>;
-  postInteractionCoordinatorRef: RefObject<ChartPostInteractionCoordinator | null>;
-  prevChartTypeRef: RefObject<ChartType>;
-  prevPriceRef: RefObject<number | null>;
-  prevSymbolRef: RefObject<string>;
-  prevTimeframeRef: RefObject<Timeframe>;
-  protectedDisplayedHistoryRef: RefObject<Candle[]>;
-  reconcileCandlesWithLiveQuote: (candles: Candle[], context: string) => Candle[];
-  repaintLivePriceOverlayFromCurrentPrice: (activeCandle: Candle) => void;
-  renderedPriceReferenceRef: RefObject<RenderedPriceReference | null>;
-  requestChartDataRender: (request?: ChartDataRenderRequest) => void;
-  resetLiveQuotePriceGuard: () => void;
-  resetVisibleRangeOnNextDataRef: RefObject<boolean>;
-  restoreProtectedDisplayedHistory: (activeTimeframe: Timeframe, reason: string) => boolean;
-  scheduleBoundaryTimerRef: RefObject<() => void>;
-  scheduleDrawingRenderAfterChartData: (activeSymbol: string, activeTimeframe: Timeframe) => void;
-  seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
-  setApiError: Dispatch<SetStateAction<string>>;
-  setHistoryCache: (activeTimeframe: Timeframe, candles: Candle[], brokerOffsetSeconds?: number, source?: CandleCacheSource) => void;
-  symbol: string;
-  syncSupplementalPriceLines: (askPrice: number, lastPrice: number) => void;
-  synchronizeChartMarketClock: (sourceTimestamp: unknown) => void;
-  synchronizedMarketClockRef: RefObject<SynchronizedMarketClockAnchor | null>;
-  timeframe: Timeframe;
-  tradeLevelCrossCloseCandidatesRef: RefObject<Map<string, number>>;
-  tradeLevelCrossRefreshPendingRef: RefObject<Set<string>>;
-  updateChartData: (candles: Candle[], currentChartType?: ChartType, request?: ChartDataRenderRequest) => void;
-  updateLegendDOM: (open: number, high: number, low: number, close: number, volume: number) => void;
-  validateRenderedCandlesAgainstLivePrice: (price: number, activeTimeframe: Timeframe) => boolean;
-  visibleRuntime: TradingChartVisibleRuntime;
-  volumeRef: RefObject<ISeriesApi<SeriesType> | null>;
-}
 
 export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCandleRuntimeOptions): void => {
   const { diagnosticChartId } = options;
@@ -443,21 +348,12 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       const currentCandle = currentCandleRef.current;
       if (!currentCandle) return null;
 
-      const activeTf = (prevTimeframeRef.current || timeframe) as AggTimeframe;
-      const marketNowSeconds = getSynchronizedChartMarketNowMs() / 1000;
-      const boundaryOffsetSeconds = brokerTimeOffsetSecRef.current;
-      const currentPeriod = getTimeframePeriodSeconds(
-        marketNowSeconds,
-        activeTf,
-        boundaryOffsetSeconds,
+      return resolvePendingLiveCandleBoundary(
+        currentCandle,
+        (prevTimeframeRef.current || timeframe) as AggTimeframe,
+        getSynchronizedChartMarketNowMs() / 1000,
+        brokerTimeOffsetSecRef.current,
       );
-      if (!currentPeriod || currentPeriod.startTime <= Number(currentCandle.time)) {
-        return null;
-      }
-
-      // FIX: Return the pending real boundary for stale-tick rejection/countdown
-      // only. The first source event is responsible for creating the new bar.
-      return currentPeriod.startTime;
     };
 
     scheduleBoundaryTimerRef.current = reconcileSynchronizedCandleBoundary;
@@ -925,58 +821,14 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     // Higher-timeframe history and server updates use M1 as their normal input.
     // Raw ticks still update the forming minute between server candle messages.
     const streamTimeframe: AggTimeframe = 'M1';
-    const getDisplayedStreamTimeframe = (): AggTimeframe => (
-      (prevTimeframeRef.current || 'M1') as AggTimeframe
-    );
-    const classifyServerM1CandleFinality = (candle: Candle): Candle => {
-      if (typeof candle.closed === 'boolean') return candle;
-      const marketNowSeconds = getSynchronizedChartMarketNowMs() / 1000;
-      const activeM1Period = getTimeframePeriodSeconds(
-        marketNowSeconds,
-        'M1',
-        brokerTimeOffsetSecRef.current,
-      );
-      // FIX: Legacy updates without finality metadata are classified against
-      // broker-synchronized M1 time, not arrival order or the local PC clock.
-      return resolveCandleFinalityFromActivePeriod(candle, activeM1Period?.startTime);
-    };
-    const resolveServerM1LiveClose = (candle: Candle): Candle => {
-      const quote = window.rtxTickCache?.get(normalizedSymbol)
-        ?? useAppStore.getState().ticks[normalizedSymbol];
-      // Recovery snapshots update the price overlay, never broker candle OHLC.
-      if (quote?.quoteDeliveryKind === 'snapshot') return candle;
-      return resolveFormingCandleLiveClose(candle, quote, symbol, 'M1', brokerTimeOffsetSecRef.current);
-    };
-    const reconcileServerM1Candle = (candle: Candle): Candle => {
-      const classifiedCandle = resolveServerM1LiveClose(classifyServerM1CandleFinality(candle));
-      const [m1] = formatHistoryForOhlcv([classifiedCandle]);
-      if (!m1) return classifiedCandle;
-      candleAggregationService.reconcileServerCandle(
-        symbol,
-        'M1',
-        m1,
-        classifiedCandle.closed === true,
-      );
-      return classifiedCandle;
-    };
-    const applyLatestM1DerivedServerCandle = () => {
-      const displayedStreamTimeframe = getDisplayedStreamTimeframe();
-      if (displayedStreamTimeframe === 'M1') return;
-      const derivedCandles = candleAggregationService.getCandles(
-        symbol,
-        displayedStreamTimeframe,
-        true,
-        false,
-      );
-      const latest = derivedCandles[derivedCandles.length - 1];
-      if (latest) {
-        applyServerCandle(
-          { ...latest, tickVolume: latest.volume, closed: latest.isComplete === true },
-          'derived-m1',
-          displayedStreamTimeframe,
-        );
-      }
-    };
+    const {
+      getDisplayedStreamTimeframe, classifyServerM1CandleFinality, resolveServerM1LiveClose,
+      reconcileServerM1Candle, applyLatestM1DerivedServerCandle,
+    } = createServerM1CandleModel({
+      symbol, normalizedSymbol, getDisplayedTimeframe: () => prevTimeframeRef.current || 'M1',
+      getBrokerTimeOffsetSeconds: () => brokerTimeOffsetSecRef.current,
+      getSynchronizedChartMarketNowMs, applyServerCandle,
+    });
     const candleStream = chartDataService.subscribeCandles({
       symbol,
       timeframe: streamTimeframe,
