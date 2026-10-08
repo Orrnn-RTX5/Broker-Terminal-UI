@@ -347,7 +347,7 @@ describe('lazy historical marker details', () => {
     const tooltip = target.querySelector<HTMLElement>('.rtx-trade-marker__price-tooltip')!;
     // jsdom does not retain this existing CSS block with variable font tokens.
     // Verify the actual declaration supplied to the browser's style setter.
-    expect(cssText.mock.calls.some(([value]) => value.includes('min-width:148px;') && value.includes('background:#ffffff;'))).toBe(true);
+    expect(cssText.mock.calls.some(([value]) => value.includes('min-width:148px;') && value.includes('background:#e0e5e9;'))).toBe(true);
     expect(tooltip.textContent).toContain('current:Price');
     expect(tooltip.style.transform).toBe('none'); expect(tooltip.style.left).toBe('8px');
     expect(tooltip.style.top).toBe('calc(100% + 7px)');
