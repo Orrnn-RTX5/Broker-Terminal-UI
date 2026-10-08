@@ -11,7 +11,7 @@ export const TERMINAL_RESOLUTION_PRESETS = [
 ] as const;
 
 export type TerminalResolution = 'auto' | typeof TERMINAL_RESOLUTION_PRESETS[number]['id'];
-export const DEFAULT_TERMINAL_RESOLUTION: TerminalResolution = '1920x1080';
+export const DEFAULT_TERMINAL_RESOLUTION: TerminalResolution = 'auto';
 
 const isTerminalResolution = (value: unknown): value is TerminalResolution =>
   value === 'auto' || TERMINAL_RESOLUTION_PRESETS.some(preset => preset.id === value);

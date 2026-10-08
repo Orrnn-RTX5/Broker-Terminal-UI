@@ -224,8 +224,10 @@ describe('chart settings trade history overlay defaults', () => {
     for (const properties of [hydrated.globalProperties, hydrated.symbolProperties.XAUUSD]) {
       for (const isAdvancedUntitledLight of [false, true]) {
         expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight })).toMatchObject({
-          barUp: '#089981', barDown: '#F23645',
-          bullCandle: '#089981', bearCandle: '#F23645',
+          barUp: isAdvancedUntitledLight ? '#087f6c' : '#089981',
+          barDown: isAdvancedUntitledLight ? '#ce2938' : '#F23645',
+          bullCandle: isAdvancedUntitledLight ? '#087f6c' : '#089981',
+          bearCandle: isAdvancedUntitledLight ? '#ce2938' : '#F23645',
         });
       }
     }
@@ -414,20 +416,20 @@ describe('chart settings trade history overlay defaults', () => {
     expect(greenOnBlack.colors.background).toBe('#000000');
     expect(getEffectiveChartColors(greenOnBlack, { isAdvancedUntitledLight: false }).background).toBe('#000000');
     expect(getEffectiveChartColors(greenOnBlack, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#f7f8fa',
-      foreground: '#4b5563',
+      background: '#d8dde2',
+      foreground: '#414e5e',
       grid: 'rgba(46, 46, 46, 0.11)',
     });
   });
 
-  it('keeps candle colors the same in light and dark without mutating saved custom palettes', () => {
+  it('deepens built-in candle colors for the dim light canvas without mutating saved custom palettes', () => {
     const properties = normalizeChartProperties({ colorScheme: 'Green on Black' });
     const savedColors = { ...properties.colors };
     const light = getEffectiveChartColors(properties, { isAdvancedUntitledLight: true });
     expect(light).toMatchObject({
-      barUp: '#089981', bullCandle: '#089981',
-      barDown: '#F23645', bearCandle: '#F23645',
-      lineChart: '#059669', lastPriceLine: '#059669',
+      barUp: '#087f6c', bullCandle: '#087f6c',
+      barDown: '#ce2938', bearCandle: '#ce2938',
+      lineChart: '#06634e', lastPriceLine: '#06634e',
     });
     expect(properties.colors).toEqual(savedColors);
     expect(getEffectiveChartColors(properties)).toBe(properties.colors);
@@ -443,8 +445,8 @@ describe('chart settings trade history overlay defaults', () => {
       barDown: '#ff5858', bearCandle: '#ff5858',
     });
     expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#f7f8fa', barUp: '#1d4ed8', bullCandle: '#1d4ed8',
-      barDown: '#b91c1c', bearCandle: '#b91c1c',
+      background: '#d8dde2', barUp: '#1746bc', bullCandle: '#1746bc',
+      barDown: '#a51f26', bearCandle: '#a51f26',
     });
     expect(properties.colors.bullCandle).toBe('#4597ff');
     expect(properties.colors.bearCandle).toBe('#ff5858');
@@ -465,7 +467,7 @@ describe('chart settings trade history overlay defaults', () => {
     expect(normalizeChartProperties({ colorScheme: 'Custom', colors }).colors).toEqual(colors);
   });
 
-  it('keeps Yellow on Black black in dark mode but light gray in advanced light mode', () => {
+  it('keeps Yellow on Black yellow in dark mode and uses readable amber on the light surface', () => {
     const yellowOnBlack = normalizeChartProperties({
       colorScheme: 'Yellow on Black',
       colors: getPresetSchemeColors('Yellow on Black'),
@@ -473,14 +475,21 @@ describe('chart settings trade history overlay defaults', () => {
 
     expect(yellowOnBlack.colors.grid).toBe('#e0ded7');
     expect(yellowOnBlack.colors.lastPriceLine).toBe('#facc15');
-    expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: false }).background).toBe('#000000');
-    expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#f7f8fa',
-      foreground: '#4b5563',
-      grid: 'rgba(46, 46, 46, 0.11)',
+    expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: false })).toMatchObject({
+      background: '#000000',
       barUp: '#facc15',
       barDown: '#facc15',
+      lineChart: '#facc15',
       lastPriceLine: '#facc15',
+    });
+    expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: true })).toMatchObject({
+      background: '#d8dde2',
+      foreground: '#414e5e',
+      grid: 'rgba(46, 46, 46, 0.11)',
+      barUp: '#795000',
+      barDown: '#795000',
+      lineChart: '#795000',
+      lastPriceLine: '#795000',
     });
   });
 
@@ -502,8 +511,8 @@ describe('chart settings trade history overlay defaults', () => {
       lastPriceLine: '#adadad',
     });
     expect(getEffectiveChartColors(blackOnWhite, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#f7f8fa',
-      foreground: '#4b5563',
+      background: '#d8dde2',
+      foreground: '#414e5e',
       grid: 'rgba(46, 46, 46, 0.11)',
       barUp: '#000000',
       barDown: '#000000',

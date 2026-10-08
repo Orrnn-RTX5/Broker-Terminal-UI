@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useBulkCloseConfirmStore } from '../../store/useBulkCloseConfirmStore';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
+import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
 
 const MAX_PREVIEW_ROWS = 10;
 
@@ -16,8 +17,9 @@ export function BulkCloseConfirmDialog() {
         onCancel,
     } = useBulkCloseConfirmStore();
 
-    const confirmBtnRef = useRef<HTMLButtonElement>(null);
+    const cancelBtnRef = useRef<HTMLButtonElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
+    useDialogFocusScope({ isOpen, dialogRef, onClose: onCancel, initialFocusRef: cancelBtnRef });
 
     // Sort positions by P&L descending
     const sortedPositions = useMemo(() =>
@@ -31,29 +33,6 @@ export function BulkCloseConfirmDialog() {
     const profitableCount = positions.filter(p => p.pnl > 0).length;
     const losingCount = positions.filter(p => p.pnl < 0).length;
     const breakEvenCount = positions.filter(p => p.pnl === 0).length;
-
-    // Keyboard handling
-    useEffect(() => {
-        if (!isOpen) return;
-        const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                onCancel();
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                onConfirm();
-            }
-        };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [isOpen, onConfirm, onCancel]);
-
-    // Focus trap
-    useEffect(() => {
-        if (isOpen && confirmBtnRef.current) {
-            confirmBtnRef.current.focus();
-        }
-    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -74,7 +53,7 @@ export function BulkCloseConfirmDialog() {
             onContextMenuCapture={(e) => { e.stopPropagation(); e.preventDefault(); }}
             onContextMenu={(e) => e.stopPropagation()}
         >
-            <div ref={dialogRef} className="rtx-bulk-close-dialog" role="dialog" aria-modal="true" aria-labelledby="bulk-close-title">
+            <div ref={dialogRef} tabIndex={-1} className="rtx-bulk-close-dialog" role="dialog" aria-modal="true" aria-labelledby="bulk-close-title">
 
                 {/* ─── Header ─── */}
                 <div className="rtx-bulk-close-dialog__header">
@@ -84,7 +63,7 @@ export function BulkCloseConfirmDialog() {
                             <span className="rtx-bulk-close-dialog__symbol-badge">{symbol}</span>
                         )}
                     </div>
-                    <button onClick={onCancel} className="rtx-bulk-close-dialog__close-btn" aria-label="Close dialog">
+                    <button type="button" onClick={onCancel} className="rtx-bulk-close-dialog__close-btn" aria-label={tr('Close dialog')}>
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
                     </button>
                 </div>
@@ -164,11 +143,11 @@ export function BulkCloseConfirmDialog() {
 
                 {/* ─── Footer ─── */}
                 <div className="rtx-bulk-close-dialog__footer">
-                    <button onClick={onCancel} className="rtx-bulk-close-dialog__btn-cancel">
+                    <button ref={cancelBtnRef} type="button" onClick={onCancel} className="rtx-bulk-close-dialog__btn-cancel">
                         {tr('Cancel')}
                     </button>
                     <button
-                        ref={confirmBtnRef}
+                        type="button"
                         onClick={onConfirm}
                         className="rtx-bulk-close-dialog__btn-confirm"
                     >

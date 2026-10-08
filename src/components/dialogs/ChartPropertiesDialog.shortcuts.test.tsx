@@ -4,6 +4,19 @@ import { ChartPropertiesDialog } from './ChartPropertiesDialog';
 import { defaultChartProperties, getPresetSchemeColors, useChartSettingsStore } from '../../store/useChartSettingsStore';
 
 describe('Chart Properties keyboard ownership', () => {
+  it('exposes keyboard-operated tabs and labels the compact color preview', () => {
+    render(<ChartPropertiesDialog isOpen symbol="EURUSD" timeframe="M1" onClose={vi.fn()} />);
+    const common = screen.getByRole('tab', { name: 'Common', selected: true });
+    common.focus();
+    fireEvent.keyDown(common, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Show', selected: true })).toHaveFocus();
+    expect(screen.getByRole('tabpanel', { name: 'Show' })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Show' }), { key: 'End' });
+    expect(screen.getByRole('tab', { name: 'Colors', selected: true })).toHaveFocus();
+    expect(screen.getByText('Background and grid preview')).toBeVisible();
+    expect(screen.queryByText(/Demo Asset/)).not.toBeInTheDocument();
+  });
+
   it('leaves a newer help dialog focused and closes only for its own Escape', () => {
     const onClose = vi.fn(); const nextClose = vi.fn();
     const { rerender } = render(<ChartPropertiesDialog isOpen symbol="EURUSD" timeframe="M1" onClose={onClose} />);
@@ -30,7 +43,7 @@ describe('Chart Properties grid settings', () => {
     useChartSettingsStore.setState({ globalProperties: { ...defaultChartProperties }, symbolProperties: {} });
     const { unmount } = render(<ChartPropertiesDialog isOpen symbol="EURUSD" timeframe="M1" onClose={vi.fn()} />);
     try {
-      fireEvent.click(screen.getByRole('button', { name: 'Colors' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Colors' }));
       const scheme = screen.getByDisplayValue('Blue on Black');
       fireEvent.change(scheme, { target: { value: 'Green and White' } });
       expect(scheme).toHaveValue('Green and White');
@@ -52,7 +65,7 @@ describe('Chart Properties grid settings', () => {
     const onClose = vi.fn();
     const { unmount } = render(<ChartPropertiesDialog isOpen symbol="EURUSD" timeframe="M1" onClose={onClose} />);
     try {
-      fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Show' }));
       const selector = screen.getByRole('combobox', { name: 'Grid line style' });
       const typeSelector = screen.getByRole('combobox', { name: 'Grid type' });
       const preview = screen.getByRole('dialog').querySelector<HTMLElement>('.rtx-cp-preview-inner')!;
@@ -101,7 +114,7 @@ describe('Chart Properties grid settings', () => {
     useChartSettingsStore.setState({ globalProperties: { ...defaultChartProperties }, symbolProperties: {} });
     const { unmount } = render(<ChartPropertiesDialog isOpen symbol="" timeframe="M1" onClose={vi.fn()} />);
     try {
-      fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Show' }));
       fireEvent.change(screen.getByRole('combobox', { name: 'Grid line style' }), { target: { value: 'solid' } });
       fireEvent.change(screen.getByRole('combobox', { name: 'Grid type' }), { target: { value: 'scale' } });
       expect(useChartSettingsStore.getState().globalProperties.gridLineStyle).toBe('solid');
@@ -121,7 +134,7 @@ describe('Chart Properties grid settings', () => {
     useChartSettingsStore.setState({ globalProperties: original, symbolProperties: {} });
     const { unmount } = render(<ChartPropertiesDialog isOpen symbol="EURUSD" timeframe="M1" onClose={vi.fn()} />);
     try {
-      fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Show' }));
       const type = screen.getByRole('combobox', { name: 'Grid type' });
       const style = screen.getByRole('combobox', { name: 'Grid line style' });
       const preview = screen.getByRole('dialog').querySelector<HTMLElement>('.rtx-cp-preview-inner')!;

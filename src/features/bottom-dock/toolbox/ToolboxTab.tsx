@@ -77,7 +77,7 @@ export function ToolboxTab() {
     ];
 
     return (
-        <div className="h-full w-full overflow-auto bg-[#131316] p-2 sm:p-4">
+        <div className="rtx-toolbox-tab h-full w-full overflow-auto bg-[#131316] p-2 sm:p-4">
             <div className="grid gap-3 min-w-0" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))' }}>
                 {tools.map((section) => (
                     <div key={section.category} className="space-y-2 min-w-0">

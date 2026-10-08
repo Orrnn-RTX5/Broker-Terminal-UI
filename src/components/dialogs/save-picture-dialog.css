@@ -1,0 +1,167 @@
+.rtx-save-picture-backdrop {
+  padding: 12px;
+}
+
+.rtx-save-picture-dialog {
+  --picture-surface: #131316;
+  --picture-field: #18181b;
+  --picture-border: #3f3f46;
+  --picture-text: #e4e4e7;
+  --picture-muted: #a1a1aa;
+  --picture-button: #3f3f46;
+  --picture-hover: #52525b;
+  --picture-primary: #059669;
+  --picture-primary-hover: #047857;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 100%);
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
+  background: var(--picture-surface);
+  color: var(--picture-text);
+  border: 1px solid var(--picture-border);
+  border-radius: 8px;
+  box-shadow: 0 20px 45px rgb(0 0 0 / 30%);
+  font-size: var(--rtx-ui-font-size, 13px);
+  line-height: 1.5;
+}
+
+.rtx-save-picture-header,
+.rtx-save-picture-footer {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.rtx-save-picture-header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--picture-border);
+}
+
+.rtx-save-picture-header h3 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: var(--rtx-font-weight-heading, 600);
+}
+
+.rtx-save-picture-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--picture-border);
+}
+
+.rtx-save-picture-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+
+.rtx-save-picture-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  overflow: hidden;
+  border: 1px solid var(--picture-border);
+  border-radius: 4px;
+  background: var(--picture-field);
+  color: var(--picture-muted);
+}
+
+.rtx-save-picture-input {
+  min-height: 32px;
+  border: 1px solid var(--picture-border);
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: var(--picture-field);
+  color: var(--picture-text);
+}
+
+.rtx-save-picture-dialog input {
+  accent-color: var(--picture-primary);
+}
+
+.rtx-save-picture-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  color: var(--picture-muted);
+}
+
+.rtx-save-picture-button {
+  min-height: 32px;
+  min-width: 80px;
+  padding: 5px 12px;
+  border: 1px solid var(--picture-border);
+  border-radius: 4px;
+  background: var(--picture-button);
+  color: var(--picture-text);
+}
+
+.rtx-save-picture-dialog :is(.rtx-save-picture-close, .rtx-save-picture-button):hover:not(:disabled) {
+  background: var(--picture-hover);
+}
+
+.rtx-save-picture-dialog .rtx-save-picture-button-primary {
+  background: var(--picture-primary);
+  border-color: var(--picture-primary);
+  color: #fff;
+}
+
+.rtx-save-picture-dialog .rtx-save-picture-button-primary:hover:not(:disabled) {
+  background: var(--picture-primary-hover);
+  border-color: var(--picture-primary-hover);
+}
+
+.rtx-save-picture-dialog :is(button, input, select):focus-visible {
+  outline: 2px solid var(--picture-primary);
+  outline-offset: 2px;
+}
+
+.rtx-save-picture-dialog button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.rtx-save-picture-caption {
+  color: var(--picture-muted);
+  overflow-wrap: anywhere;
+}
+
+.rtx-save-picture-error {
+  padding: 8px 12px;
+  border: 1px solid var(--color-loss, #f87171);
+  border-radius: 4px;
+  color: var(--color-loss, #f87171);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-save-picture-dialog {
+  --picture-surface: var(--rtx-light-elevated);
+  --picture-field: var(--rtx-light-field);
+  --picture-border: var(--rtx-light-control-border);
+  --picture-text: var(--rtx-light-text);
+  --picture-muted: var(--rtx-light-text-muted);
+  --picture-button: var(--rtx-light-elevated);
+  --picture-hover: var(--rtx-light-hover);
+  --picture-primary: var(--rtx-light-accent);
+  --picture-primary-hover: var(--rtx-light-accent-strong);
+  background: var(--picture-surface) !important;
+  border-color: var(--picture-border) !important;
+  color: var(--picture-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-save-picture-dialog .rtx-save-picture-button-primary {
+  background: var(--picture-primary) !important;
+  border-color: var(--picture-primary) !important;
+  color: #fff !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-save-picture-dialog .rtx-save-picture-button-primary:hover:not(:disabled) {
+  background: var(--picture-primary-hover) !important;
+}

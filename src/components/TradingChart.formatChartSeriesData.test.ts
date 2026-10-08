@@ -704,17 +704,17 @@ describe('live price scale geometry', () => {
 });
 
 describe('live price overlay colors', () => {
-  it('separates Green on Black light price label fills from the matching candle marks', () => {
+  it('keeps the dim light Green on Black price labels aligned with readable candle hues', () => {
     const colors = getEffectiveChartColors({
       colorScheme: 'Green on Black',
       colors: getPresetSchemeColors('Green on Black'),
     }, { isAdvancedUntitledLight: true });
 
     expect(getLivePriceOverlayColors(colors, colors.bullCandle, true)).toEqual({
-      lineColor: '#089981', badgeBackground: '#07816d', badgeTextColor: '#ffffff',
+      lineColor: '#087f6c', badgeBackground: '#087f6c', badgeTextColor: '#ffffff',
     });
     expect(getLivePriceOverlayColors(colors, colors.bearCandle, true)).toEqual({
-      lineColor: '#F23645', badgeBackground: '#d22f3c', badgeTextColor: '#ffffff',
+      lineColor: '#ce2938', badgeBackground: '#ce2938', badgeTextColor: '#ffffff',
     });
     // Reusing a candle hue in a saved custom scheme must not opt that scheme
     // into the default light label palette.
@@ -725,7 +725,7 @@ describe('live price overlay colors', () => {
 
   it.each([
     { mode: 'dark', light: false, up: '#4597ff', down: '#ff5858' },
-    { mode: 'light', light: true, up: '#1d4ed8', down: '#b91c1c' },
+    { mode: 'light', light: true, up: '#1746bc', down: '#a51f26' },
   ])('uses the default quote direction colors for price lines and badges in $mode mode', ({ light, up, down }) => {
     const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: light });
 

@@ -5,7 +5,9 @@ import { useUiTranslation } from '../../hooks/useUiTranslation';
  */
 
 import { Icon } from '../ui/Icon';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
+import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
+import './legacy-action-sheets.css';
 import { createPortal } from 'react-dom';
 import {
   chartPrinter,
@@ -37,6 +39,10 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [savePreferences, setSavePreferences] = useState(false);
   const hasEditedPreferences = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const fieldId = useId();
+  useDialogFocusScope({ isOpen: true, dialogRef, onClose: onCancel, initialFocusRef: cancelRef, closeOnEscape: !isSaving });
 
   // Load preferences on mount
   useEffect(() => {
@@ -87,7 +93,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
     onConfirm(preferences);
   };
 
-  const inputClass = "w-full bg-[#252528] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-300 rounded px-2 py-1.5 text-xs text-zinc-100 [.rtx-advanced-view_&]:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 [.rtx-advanced-view_&]:focus:ring-indigo-500 [.rtx-advanced-view_&]:focus:border-indigo-500";
+  const inputClass = "w-full min-w-0 bg-[#252528] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-300 rounded px-2 py-1.5 text-xs text-zinc-100 [.rtx-advanced-view_&]:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 [.rtx-advanced-view_&]:focus:ring-indigo-500 [.rtx-advanced-view_&]:focus:border-indigo-500";
   const labelClass = "block text-xs text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 mb-1.5";
   const sectionTitleClass = "text-xs font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 pb-1";
   const checkboxClass = "w-3.5 h-3.5 bg-[#252528] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-300 rounded text-blue-600 [.rtx-advanced-view_&]:text-indigo-600 focus:ring-2 focus:ring-blue-500 [.rtx-advanced-view_&]:focus:ring-indigo-500 accent-blue-600 [.rtx-advanced-view_&]:accent-indigo-600";
@@ -95,7 +101,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
 
   return createPortal(
     <div
-        className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+        className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 z-[9999]"
         onClick={(e) => {
             e.stopPropagation();
             if (e.target === e.currentTarget) onCancel();
@@ -105,14 +111,20 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
         onPointerDown={(e) => e.stopPropagation()}
     >
         <div
-            className="rtx-action-sheet bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-lg shadow-2xl w-[480px] animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]"
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`${fieldId}-title`}
+            data-shortcut-scope="local"
+            tabIndex={-1}
+            className="rtx-action-sheet rtx-legacy-sheet bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-lg shadow-2xl w-[480px] max-w-full animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[calc(100dvh-16px)] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 shrink-0">
+            <div className="rtx-legacy-sheet__header flex items-center justify-between px-4 py-3 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 shrink-0">
                 <div className="flex items-center gap-2">
                     <Icon name="settings" size="md" className="text-blue-400 [.rtx-advanced-view_&]:text-indigo-600" />
-                    <h2 className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">{tr("Print Setup")}</h2>
+                    <h2 id={`${fieldId}-title`} className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">{tr("Print Setup")}</h2>
                 </div>
                 <button
                     onClick={onCancel}
@@ -124,7 +136,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
             </div>
 
             {/* Content */}
-            <div className="p-4 space-y-4 overflow-y-auto min-h-0">
+            <div className="rtx-legacy-sheet__body p-4 space-y-4 overflow-y-auto min-h-0">
                 {/* Page Setup */}
                 <div className="space-y-3">
                     <h3 className={sectionTitleClass}>
@@ -132,8 +144,9 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
 
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className={labelClass}>{tr("Orientation")}</label>
+                            <label htmlFor={`${fieldId}-orientation`} className={labelClass}>{tr("Orientation")}</label>
                             <select
+                                id={`${fieldId}-orientation`}
                                 value={preferences.orientation}
                                 onChange={(e) => handleChange('orientation', e.target.value as PageOrientation)}
                                 className={inputClass}
@@ -144,8 +157,9 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         </div>
 
                         <div>
-                            <label className={labelClass}>{tr("Paper Size")}</label>
+                            <label htmlFor={`${fieldId}-paper-size`} className={labelClass}>{tr("Paper Size")}</label>
                             <select
+                                id={`${fieldId}-paper-size`}
                                 value={preferences.pageSize}
                                 onChange={(e) => handleChange('pageSize', e.target.value as PageSize)}
                                 className={inputClass}
@@ -166,8 +180,9 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
 
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className={labelClass}>{tr("Top")}</label>
+                            <label htmlFor={`${fieldId}-top`} className={labelClass}>{tr("Top")}</label>
                             <input
+                                id={`${fieldId}-top`}
                                 type="number"
                                 min="0"
                                 max="50"
@@ -178,8 +193,9 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         </div>
 
                         <div>
-                            <label className={labelClass}>{tr("Right")}</label>
+                            <label htmlFor={`${fieldId}-right`} className={labelClass}>{tr("Right")}</label>
                             <input
+                                id={`${fieldId}-right`}
                                 type="number"
                                 min="0"
                                 max="50"
@@ -190,8 +206,9 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         </div>
 
                         <div>
-                            <label className={labelClass}>{tr("Bottom")}</label>
+                            <label htmlFor={`${fieldId}-bottom`} className={labelClass}>{tr("Bottom")}</label>
                             <input
+                                id={`${fieldId}-bottom`}
                                 type="number"
                                 min="0"
                                 max="50"
@@ -202,8 +219,9 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         </div>
 
                         <div>
-                            <label className={labelClass}>{tr("Left")}</label>
+                            <label htmlFor={`${fieldId}-left`} className={labelClass}>{tr("Left")}</label>
                             <input
+                                id={`${fieldId}-left`}
                                 type="number"
                                 min="0"
                                 max="50"
@@ -232,13 +250,16 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         </label>
 
                         {preferences.includeHeader && (
+                          <div className="min-w-0 pl-5">
                           <input
                             type="text"
                             placeholder={tr("Header text (optional)")}
+                            aria-label={tr("Header text (optional)")}
                             value={preferences.headerText || ''}
                             onChange={(e) => handleChange('headerText', e.target.value)}
-                            className={`${inputClass} ml-5 w-[calc(100%-1.25rem)]`}
+                            className={inputClass}
                           />
+                          </div>
                         )}
 
                         <label className="flex items-center gap-2 cursor-pointer">
@@ -252,13 +273,16 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         </label>
 
                         {preferences.includeFooter && (
+                          <div className="min-w-0 pl-5">
                           <input
                             type="text"
                             placeholder={tr("Footer text (optional)")}
+                            aria-label={tr("Footer text (optional)")}
                             value={preferences.footerText || ''}
                             onChange={(e) => handleChange('footerText', e.target.value)}
-                            className={`${inputClass} ml-5 w-[calc(100%-1.25rem)]`}
+                            className={inputClass}
                           />
+                          </div>
                         )}
 
                         <p className="text-xs text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">{tr("The print captures the visible chart, including its grid, indicators and drawings.")}</p>
@@ -296,8 +320,9 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
 
                     <div className="grid grid-cols-1 gap-3 pt-2">
                         <div>
-                            <label className={labelClass}>{tr("Color Mode")}</label>
+                            <label htmlFor={`${fieldId}-color-mode`} className={labelClass}>{tr("Color Mode")}</label>
                             <select
+                                id={`${fieldId}-color-mode`}
                                 value={preferences.colorMode}
                                 onChange={(e) => handleChange('colorMode', e.target.value as ColorMode)}
                                 className={inputClass}
@@ -326,8 +351,9 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#252528] [.rtx-advanced-view_&]:bg-gray-50 shrink-0">
+            <div className="rtx-legacy-sheet__footer flex flex-wrap items-center justify-end gap-2 px-4 py-3 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 shrink-0" style={{ background: 'var(--bg-tertiary)' }}>
                 <button
+                    ref={cancelRef}
                     onClick={onCancel}
                     className="px-4 py-1.5 text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors"
                 >
@@ -335,7 +361,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                 <button
                     onClick={handlePrint}
                     disabled={isSaving}
-                    className="px-4 py-1.5 text-xs bg-zinc-700 [.rtx-advanced-view_&]:bg-indigo-600 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-indigo-700 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rtx-legacy-sheet__primary px-4 py-1.5 text-xs bg-zinc-700 [.rtx-advanced-view_&]:bg-indigo-600 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-indigo-700 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Icon name="print" size="xs" />
                     {isSaving ? tr("Saving...") : tr("OK")}

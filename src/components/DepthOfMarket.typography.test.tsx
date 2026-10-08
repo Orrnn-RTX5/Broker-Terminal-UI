@@ -79,4 +79,17 @@ describe('Depth of Market typography', () => {
     expect(drawnFonts).toContain('400 15px Consolas, monospace');
     expect(view.container.querySelector<HTMLElement>('.rtx-depth-of-market__row')?.style.height).toBe('28px');
   });
+
+  it('uses the terminal reading face for the light canvas while retaining the dark canvas face', () => {
+    const root = document.documentElement;
+    root.style.setProperty('--rtx-ui-font-family', 'Segoe UI, Tahoma, sans-serif');
+    root.style.setProperty('--font-mono', 'Consolas, monospace');
+    root.classList.add('rtx-skin-untitled-light');
+    try {
+      expect(readDepthTypography().fontFamily).toBe('Segoe UI, Tahoma, sans-serif');
+    } finally {
+      root.classList.remove('rtx-skin-untitled-light');
+    }
+    expect(readDepthTypography().fontFamily).toBe('Consolas, monospace');
+  });
 });

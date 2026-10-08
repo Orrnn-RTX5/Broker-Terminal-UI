@@ -28,6 +28,20 @@ import {
 /** Swap plain spaces for the chip separator so expected strings stay readable. */
 const grouped = (text: string): string => text.replace(/ /g, THOUSANDS_SEPARATOR);
 
+const textContrast = (first: string, second: string): number => {
+  const luminance = (color: string) => {
+    const channels = color.startsWith('#')
+      ? color.slice(1).match(/../g)!.map(value => Number.parseInt(value, 16))
+      : color.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+    return channels.map(channel => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  };
+  const values = [luminance(first), luminance(second)].sort((a, b) => a - b);
+  return (values[1] + 0.05) / (values[0] + 0.05);
+};
+
 afterEach(() => {
   document.body.innerHTML = '';
   vi.restoreAllMocks();
@@ -221,6 +235,24 @@ describe('dispatchChartPositionModify', () => {
 });
 
 describe('createEntryTradeControlBar', () => {
+  it.each(['BUY', 'SELL'] as const)('keeps light %s labels, action icons and signed profit readable on the matte chart', side => {
+    const background = '#d8dde2';
+    const { root, setLiveMetrics } = createEntryTradeControlBar({
+      tradeKey: 'trade:contrast', ticket: 987, symbol: 'XAUUSD', side,
+      volume: 0.01, isLightSurface: true, leftInset: 10, plainLabel: true, chartBackground: background,
+    });
+    const volume = root.querySelector<HTMLElement>('.rtx-trade-chip--volume')!;
+    const action = root.querySelector<HTMLElement>('.rtx-trade-control-btn--reverse')!;
+    const money = root.querySelector<HTMLElement>('.rtx-trade-chip--money')!;
+    expect(textContrast(volume.style.color, volume.style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
+    expect(textContrast(action.style.color, background)).toBeGreaterThanOrEqual(4.5);
+    for (const profit of [-1, 1]) {
+      setLiveMetrics(profit, profit);
+      expect(textContrast(money.style.color, background)).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(root.querySelector('.rtx-trade-primary')).toHaveStyle({ backgroundColor: background });
+  });
+
   it('preserves every action with close grouped beside the live profit', () => {
     const onAction = vi.fn();
     const onShare = vi.fn();
@@ -231,12 +263,15 @@ describe('createEntryTradeControlBar', () => {
     for (const action of ['share', 'reverse', 'double', 'close']) {
       const button = root.querySelector<HTMLButtonElement>(`.rtx-trade-control-btn--${action}`)!;
       expect(button.querySelector('svg')?.getAttribute('stroke')).toBe('currentColor');
+      expect(button).toHaveStyle({ width: '24px', height: '24px' });
       button.click();
     }
     const capsule = root.querySelector('.rtx-trade-primary')!;
     expect(capsule.querySelector('.rtx-trade-chip--volume')).not.toBeNull();
     expect(capsule.querySelector('.rtx-trade-chip--money')).not.toBeNull();
     expect(capsule.lastElementChild).toBe(root.querySelector('.rtx-trade-control-btn--close'));
+    expect(capsule).toHaveStyle({ height: '26px' });
+    expect(root).toHaveStyle({ minHeight: '26px', flexWrap: 'wrap' });
     expect(root.querySelector('.rtx-trade-brackets')).not.toBeNull();
     expect(onShare).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls.map(([action]) => action)).toEqual(['reverse', 'double', 'close']);
@@ -270,8 +305,8 @@ describe('createEntryTradeControlBar', () => {
     const pips = root.querySelector<HTMLElement>('.rtx-trade-chip--pips')!;
     const money = root.querySelector<HTMLElement>('.rtx-trade-chip--money')!;
     const neutral = money.style.color;
-    const profit = isLightSurface ? '#1d4ed8' : '#4597ff';
-    const loss = isLightSurface ? '#d32f2f' : '#ff4d4f';
+    const profit = isLightSurface ? '#1746bc' : '#4597ff';
+    const loss = isLightSurface ? '#a51f26' : '#ff4d4f';
     setLiveMetrics(12, 4.5);
     expect(pips).toHaveStyle({ color: profit });
     expect(money).toHaveStyle({ color: profit });
@@ -401,8 +436,8 @@ describe('createEntryTradeControlBar', () => {
       leftInset: 10,
     });
 
-    expect(root.querySelector('.rtx-trade-chip--pips')).toHaveStyle({ backgroundColor: '#ffffff', color: '#111827' });
-    expect(root.querySelector('.rtx-trade-chip--money')).toHaveStyle({ backgroundColor: '#ffffff', color: '#111827' });
+    expect(root.querySelector('.rtx-trade-chip--pips')).toHaveStyle({ backgroundColor: '#dce1e6', color: '#273444' });
+    expect(root.querySelector('.rtx-trade-chip--money')).toHaveStyle({ backgroundColor: '#dce1e6', color: '#273444' });
     expect(root.querySelector('.rtx-trade-chip--volume')).toHaveStyle({ backgroundColor: '#dc2626', color: '#ffffff' });
   });
 
@@ -465,6 +500,19 @@ describe('createEntryTradeControlBar', () => {
 });
 
 describe('createTradeLevelControlBar', () => {
+  it.each(['SL', 'TP'] as const)('keeps light %s text readable on the chart without changing its supplied background', role => {
+    const background = '#d8dde2';
+    const bar = createTradeLevelControlBar({
+      tradeKey: 'trade:contrast', role, side: 'BUY', label: role, pips: 10, money: 5,
+      isLightSurface: true, chartBackground: background, leftInset: 10, onRemove: vi.fn(),
+      hoverDetails: { entryPrice: 100, levelPrice: 101, digits: 2, tickSize: 0.01 },
+    });
+    expect(bar).toHaveStyle({ backgroundColor: background });
+    for (const selector of ['.rtx-trade-chip--role', '.rtx-trade-chip--money', '.rtx-trade-control-btn--remove']) {
+      expect(textContrast(bar.querySelector<HTMLElement>(selector)!.style.color, background)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it.each(['SL', 'TP'] as const)('omits pips from the web %s label and preserves its remove action', (role) => {
     const onRemove = vi.fn();
     const bar = createTradeLevelControlBar({
@@ -475,6 +523,7 @@ describe('createTradeLevelControlBar', () => {
     expect(bar.querySelector('.rtx-trade-chip--pips')).toBeNull();
     expect(bar.querySelector('.rtx-trade-chip--money')?.textContent).toBe('USD:5.00');
     const remove = bar.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--remove')!;
+    expect(remove).toHaveStyle({ width: '24px', height: '24px' });
     expect(remove).not.toBeNull();
     remove.click();
     expect(onRemove).toHaveBeenCalledTimes(1);
@@ -565,11 +614,11 @@ describe('createDockedLevelChip', () => {
   it('uses the light field surface and restores its outline after hover', () => {
     const chip = createDockedLevelChip({ tradeKey: 'trade:987', role: 'SL', label: 'SL', isLightSurface: true, leftInset: 10 });
     document.body.appendChild(chip);
-    expect(chip).toHaveStyle({ backgroundColor: '#f2f6fc', color: '#4b5563', borderColor: '#7d8796' });
+    expect(chip).toHaveStyle({ backgroundColor: '#e0e5e9', color: '#414e5e', borderColor: '#667487' });
     chip.dispatchEvent(new MouseEvent('mouseenter'));
     expect(chip).toHaveStyle({ borderTopColor: '#64748b' });
     chip.dispatchEvent(new MouseEvent('mouseleave'));
-    expect(chip).toHaveStyle({ borderTopColor: '#7d8796' });
+    expect(chip).toHaveStyle({ borderTopColor: '#667487' });
   });
 
   it('builds a draggable docked handle with the level role dataset', () => {

@@ -9,7 +9,7 @@ import { TerminalViewport } from './TerminalViewport';
 
 afterEach(() => {
   cleanup();
-  useTerminalResolutionStore.getState().setResolution('1920x1080');
+  useTerminalResolutionStore.getState().setResolution('auto');
   sessionStorage.removeItem('rtx-terminal-resolution');
   vi.restoreAllMocks();
 });
@@ -22,7 +22,7 @@ describe('terminal resolution', () => {
       return <div>Chart</div>;
     };
     const { container } = render(<TerminalViewport role="main"><Chart /></TerminalViewport>);
-    expect(screen.getByRole('main')).toHaveStyle({ width: '1920px', height: '1080px' });
+    expect(screen.getByRole('main')).toHaveStyle({ width: '100%', height: '100%' });
     act(() => useTerminalResolutionStore.getState().setResolution(preset.id));
     expect(screen.getByRole('main')).toHaveStyle({ width: `${preset.width}px`, height: `${preset.height}px` });
     expect(container.querySelector('.rtx-terminal-viewport')).toHaveStyle({ overflow: 'auto' });
@@ -39,7 +39,7 @@ describe('terminal resolution', () => {
     expect(localStorage.getItem('rtx-terminal-resolution')).toBe(sharedPreference);
     sessionStorage.setItem('rtx-terminal-resolution', JSON.stringify({ state: { resolution: '90000x1' }, version: 0 }));
     await act(async () => useTerminalResolutionStore.persist.rehydrate());
-    expect(useTerminalResolutionStore.getState().resolution).toBe('1920x1080');
+    expect(useTerminalResolutionStore.getState().resolution).toBe('auto');
     expect(useTerminalResolutionStore.getState().setResolution).toBeTypeOf('function');
   });
 

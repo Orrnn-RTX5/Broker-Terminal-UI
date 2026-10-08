@@ -28,6 +28,7 @@ import {
 import {
   CHART_LEVEL_MODIFY_DOUBLE_CLICK_MS,
   getTradeOverlayCardPalette,
+  getTradeControlDragY,
   TRADE_LEVEL_BADGE_LEFT_INSET_PX,
   TRADE_LEVEL_HIT_AREA_PX,
   TRADE_LEVEL_MIN_DRAG_PX,
@@ -102,6 +103,7 @@ export const useTradingChartTradeLevelDrag = ({
       grabbedType: 'ENTRY' | 'SL' | 'TP';
       entryAnchorY: number;
       pointerDownY: number;
+      controlOffsetY: number;
       didDrag: boolean;
     } | null = null;
     let lastLevelClick: { tradeKey: string; role: 'SL' | 'TP'; at: number } | null = null;
@@ -383,7 +385,7 @@ export const useTradingChartTradeLevelDrag = ({
       if (!tradeAllowed) return;
       if (chartSettingsRef.current.showTradeLevels === false) return;
 
-      const y = getChartY(e);
+      let y = getChartY(e);
       let closestTrade: ActiveTradeSnapshot | null = null;
       let grabbedType: 'ENTRY' | 'SL' | 'TP' = 'ENTRY';
 
@@ -395,6 +397,14 @@ export const useTradingChartTradeLevelDrag = ({
         : null;
       const targetTradeKey = targetBadge?.dataset.tradeKey;
       const targetRole = targetBadge?.dataset.role as TradeLevelRole | undefined;
+      const offsetOwner = targetBadge?.closest<HTMLElement>('[data-price-anchor-offset-y]');
+      const controlAnchorY = Number(offsetOwner?.dataset.priceAnchorY);
+      // Capture the grab point once, including wrapped bars and bracket chips.
+      // Clicking any part of the control starts at its unchanged price anchor.
+      const controlOffsetY = offsetOwner && Number.isFinite(controlAnchorY)
+        ? y - controlAnchorY
+        : Number(offsetOwner?.dataset.priceAnchorOffsetY) || 0;
+      y = getTradeControlDragY(y, controlOffsetY);
       if (targetTradeKey && (targetRole === 'ENTRY' || targetRole === 'SL' || targetRole === 'TP')) {
         const directTrade = activeTradeSnapshotsRef.current.get(targetTradeKey);
         if (directTrade) {
@@ -435,7 +445,7 @@ export const useTradingChartTradeLevelDrag = ({
           ? getFinitePriceCoordinate(closestTrade.entryPrice) ?? y
           : y;
         const initialOverlayY = grabbedType === 'ENTRY' ? entryAnchorY : y;
-        dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY, pointerDownY: y, didDrag: false };
+        dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY, pointerDownY: y, controlOffsetY, didDrag: false };
         if (grabbedType !== 'ENTRY') {
           hideDraggedLevelControls(closestTrade.key, grabbedType);
         }
@@ -469,7 +479,7 @@ export const useTradingChartTradeLevelDrag = ({
         if (capturedPointerId !== null && e.pointerId !== capturedPointerId) return;
         e.preventDefault();
         e.stopPropagation();
-        const y = getChartY(e);
+        const y = getTradeControlDragY(getChartY(e), dragState.controlOffsetY);
         dragState.didDrag = hasChartTradeLevelGestureDragged(
           dragState.pointerDownY,
           y,
@@ -598,7 +608,7 @@ export const useTradingChartTradeLevelDrag = ({
       e.stopPropagation();
 
       if (seriesRef.current) {
-        const y = getChartY(e);
+        const y = getTradeControlDragY(getChartY(e), dragState.controlOffsetY);
         const rawFinalPrice = seriesRef.current.coordinateToPrice(y as Coordinate);
         const { tradeObj, grabbedType, entryAnchorY, pointerDownY } = dragState;
 

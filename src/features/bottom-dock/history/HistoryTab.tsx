@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getStoredAccountLogin } from '../../../api/tradeGateway';
 import { ContextMenu, type ContextMenuItemConfig } from '../../../components/ui/ContextMenu';
 import { Icon } from '../../../components/ui/Icon';
 import { useUiTranslation } from '../../../hooks/useUiTranslation';
+import { useDialogFocusScope } from '../../../hooks/useDialogFocusScope';
 import { useChartSettingsStore } from '../../../store/useChartSettingsStore';
 import { useAppStore, type Trade } from '../../../store/useAppStore';
 import { formatPrice } from '../../../utils/symbolUtils';
@@ -69,6 +70,12 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [], accountBalance
     const [customPeriod, setCustomPeriod] = useState<HistoryCustomPeriod>(createDefaultHistoryCustomPeriod);
     const [customPeriodDraft, setCustomPeriodDraft] = useState<HistoryCustomPeriod>(createDefaultHistoryCustomPeriod);
     const [customPeriodDialogOpen, setCustomPeriodDialogOpen] = useState(false);
+    const customPeriodDialogRef = useRef<HTMLFormElement>(null);
+    useDialogFocusScope({
+        isOpen: customPeriodDialogOpen,
+        dialogRef: customPeriodDialogRef,
+        onClose: () => setCustomPeriodDialogOpen(false),
+    });
     const [customPeriodError, setCustomPeriodError] = useState<string | null>(null);
     const [historyContextMenu, setHistoryContextMenu] = useState<HistoryContextMenuState | null>(null);
     const [selectedTradeKey, setSelectedTradeKey] = useState<string | null>(null);
@@ -889,13 +896,12 @@ ${rows}
                     }}
                 >
                     <form
+                        ref={customPeriodDialogRef}
                         role="dialog"
                         aria-modal="true"
                         aria-label={tr('Custom history period')}
+                        tabIndex={-1}
                         className="rtx-history-period-dialog w-[360px] rounded-sm border border-zinc-600 bg-[#202126] p-4 text-[12px] text-zinc-200 shadow-2xl"
-                        onKeyDown={(event) => {
-                            if (event.key === 'Escape') setCustomPeriodDialogOpen(false);
-                        }}
                         onSubmit={(event) => {
                             event.preventDefault();
                             applyCustomPeriod();
@@ -935,7 +941,7 @@ ${rows}
                             </button>
                             <button
                                 type="submit"
-                                className="rounded-sm bg-[#0078d4] px-3 py-1.5 text-white hover:bg-[#1686d9]"
+                                className="rtx-history-period-apply rounded-sm bg-[#0078d4] px-3 py-1.5 text-white hover:bg-[#1686d9]"
                             >
                                 {tr('Apply')}
                             </button>

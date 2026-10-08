@@ -203,21 +203,21 @@ table tbody tr:hover {
   transform: none;
 }
 
-tr.rtx-trade-row.rtx-trade-row--selected,
-tr.rtx-trade-row.rtx-trade-row--selected:hover {
+html:not(.rtx-skin-untitled-light):not(.theme-light) tr.rtx-trade-row.rtx-trade-row--selected,
+html:not(.rtx-skin-untitled-light):not(.theme-light) tr.rtx-trade-row.rtx-trade-row--selected:hover {
   background: #0b63ce !important;
 }
 
-tr.rtx-trade-row.rtx-trade-row--selected td {
+html:not(.rtx-skin-untitled-light):not(.theme-light) tr.rtx-trade-row.rtx-trade-row--selected td {
   background: transparent !important;
   color: #ffffff !important;
 }
 
-tr.rtx-trade-row.rtx-trade-row--selected td span {
+html:not(.rtx-skin-untitled-light):not(.theme-light) tr.rtx-trade-row.rtx-trade-row--selected td span {
   color: #ffffff !important;
 }
 
-tr.rtx-trade-row.rtx-trade-row--selected button {
+html:not(.rtx-skin-untitled-light):not(.theme-light) tr.rtx-trade-row.rtx-trade-row--selected button {
   color: #ffffff !important;
 }
 

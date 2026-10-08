@@ -18,5 +18,27 @@
 .rtx-print-preview__footer { border-top: 1px solid var(--border-secondary); flex-wrap: wrap; }
 .rtx-print-preview__footer > div { flex: 1; min-width: 180px; }
 .rtx-print-preview button.rtx-print-preview__primary { background: #245caa; border-color: #245caa; color: white; }
-.rtx-print-preview__error { padding: 10px 16px; color: #e65a64; border-bottom: 1px solid var(--border-secondary); }
+.rtx-print-preview__error { padding: 10px 16px; color: var(--color-loss); border-bottom: 1px solid var(--border-secondary); }
 @media (max-width: 640px) { .rtx-print-backdrop { padding: 8px; } .rtx-print-preview { height: calc(100dvh - 16px); } .rtx-print-preview__zoom { margin-left: 0; } }
+
+/* The paper remains white; only the surrounding preview controls are chrome. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-print-preview {
+  background: var(--rtx-light-elevated) !important;
+  color: var(--rtx-light-text);
+  border-color: var(--rtx-light-border-strong);
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-print-preview :is(.rtx-print-preview__header, .rtx-print-preview__toolbar, .rtx-print-preview__footer) {
+  background: var(--rtx-light-panel-header) !important;
+  border-color: var(--rtx-light-border-strong);
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-print-preview__viewport {
+  background: var(--rtx-light-panel-subtle);
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-print-preview :is(button:not(.rtx-print-preview__primary), select) {
+  background: var(--rtx-light-field);
+  color: var(--rtx-light-text);
+  border-color: var(--rtx-light-control-border);
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-print-preview button:not(.rtx-print-preview__primary):hover:not(:disabled) {
+  background: var(--rtx-light-panel-subtle);
+}

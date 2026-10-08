@@ -1,0 +1,67 @@
+.rtx-chart-objects-dialog {
+  max-height: calc(100dvh - 32px);
+}
+
+.rtx-chart-objects-dialog__header,
+.rtx-chart-objects-dialog__toolbar,
+.rtx-chart-objects-dialog__footer {
+  flex-shrink: 0;
+}
+
+/* Keep the usual list height when space permits, but let it give space back to
+   the controls on short viewports. Only the list scrolls, never the footer. */
+.rtx-chart-objects-dialog__body {
+  flex: 1 1 260px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.rtx-chart-objects-dialog__empty {
+  min-height: 100%;
+  padding-block: 24px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-objects-dialog {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-objects-dialog :is(.rtx-chart-objects-dialog__body, .rtx-chart-objects-dialog__toolbar) {
+  background: var(--rtx-light-panel) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-objects-dialog :is(.rtx-chart-objects-dialog__header, .rtx-chart-objects-dialog__footer, thead) {
+  background: var(--rtx-light-panel-header) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-objects-dialog__body :is(table, tbody, tr, td, th) {
+  background: transparent !important;
+  border-color: var(--rtx-light-row-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-objects-dialog__body tbody tr:hover > :is(td, th) {
+  background: var(--rtx-light-hover) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-objects-dialog__body tbody tr[data-selected='true'] > :is(td, th) {
+  background: var(--rtx-light-selected) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-objects-dialog .rtx-chart-objects-dialog__delete {
+  color: var(--color-loss) !important;
+}
+
+@media (max-height: 480px), (max-width: 480px) {
+  .rtx-chart-objects-dialog__header {
+    padding: 10px 12px;
+  }
+
+  .rtx-chart-objects-dialog__toolbar,
+  .rtx-chart-objects-dialog__footer {
+    padding: 8px 12px;
+  }
+}

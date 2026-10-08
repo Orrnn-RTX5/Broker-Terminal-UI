@@ -176,3 +176,41 @@ html:root .rtx-bug-report-success h3 { --rtx-type-size: 18px; --rtx-type-weight:
   .rtx-bug-report-footer-actions { width: 100%; }
   .rtx-bug-report-footer-actions > button { flex: 1; }
 }
+
+/* Solid actions need explicit light-theme text: the generic button rule must
+   not put muted dark text over the action fill. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bug-report-dialog .rtx-bug-report-send {
+  background: var(--rtx-light-accent);
+  border-color: var(--rtx-light-accent);
+  color: #ffffff !important;
+  filter: none;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bug-report-dialog .rtx-bug-report-send:hover:not(:disabled) {
+  background: var(--rtx-light-accent-strong);
+  border-color: var(--rtx-light-accent-strong);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bug-report-dialog .rtx-bug-report-send:active:not(:disabled) {
+  background: var(--rtx-light-accent-pressed);
+  border-color: var(--rtx-light-accent-pressed);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bug-report-dialog .rtx-bug-report-send:focus-visible {
+  outline: 2px solid var(--rtx-light-accent) !important;
+  outline-offset: 2px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bug-report-dialog .rtx-bug-report-send:disabled {
+  background: var(--rtx-light-panel-subtle);
+  border-color: var(--rtx-light-border-strong);
+  color: var(--rtx-light-text-muted) !important;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bug-report-dialog .rtx-bug-report-error {
+  background: var(--color-loss-dimmer);
+  border-color: var(--color-loss);
+  color: var(--color-loss);
+}

@@ -5,22 +5,17 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  */
 
 import { Icon } from './ui/Icon';
-import { useState } from 'react';
-import { TrendingUp, Activity, BarChart3, Zap } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Plus } from 'lucide-react';
+import { isIndicatorSupported } from '../utils/indicatorSupport';
 import './IndicatorNavigator.css';
-
-export const SUPPORTED_INDICATOR_IDS = new Set(['ma', 'ema', 'bb', 'rsi', 'macd', 'volume']);
-
-export const isIndicatorSupported = (indicatorId: string): boolean => (
-  SUPPORTED_INDICATOR_IDS.has(indicatorId.trim().toLowerCase().split('-')[0])
-);
 
 export interface IndicatorInfo {
   id: string;
   name: string;
   category: string;
   description: string;
-  parameters?: Record<string, any>;
+  parameters?: Record<string, string | number>;
 }
 
 interface IndicatorNavigatorProps {
@@ -30,9 +25,10 @@ interface IndicatorNavigatorProps {
   initialCategory?: string;
 }
 
-const INDICATOR_CATEGORIES = {
+const INDICATOR_CATEGORIES: Record<string, {
+  indicators: Omit<IndicatorInfo, 'category'>[];
+}> = {
   'Trend': {
-    icon: TrendingUp,
     indicators: [
       {
         id: 'ma',
@@ -67,7 +63,6 @@ const INDICATOR_CATEGORIES = {
     ]
   },
   'Oscillators': {
-    icon: Activity,
     indicators: [
       {
         id: 'rsi',
@@ -102,7 +97,6 @@ const INDICATOR_CATEGORIES = {
     ]
   },
   'Volume': {
-    icon: BarChart3,
     indicators: [
       {
         id: 'volume',
@@ -131,7 +125,6 @@ const INDICATOR_CATEGORIES = {
     ]
   },
   'Bill Williams': {
-    icon: Zap,
     indicators: [
       {
         id: 'alligator',
@@ -166,21 +159,32 @@ const createIndicatorInstanceId = (indicatorId: string): string => (
 );
 
 export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCategory }: IndicatorNavigatorProps) {
-    const tr = useUiTranslation();
+  const tr = useUiTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory ?? null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    searchRef.current?.focus();
+    return () => { previousFocus?.focus(); };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
+  const query = searchTerm.trim().toLowerCase();
   const filteredCategories = Object.entries(INDICATOR_CATEGORIES).map(([category, data]) => {
     const filtered = data.indicators.filter(ind =>
-      ind.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ind.description.toLowerCase().includes(searchTerm.toLowerCase())
+      ind.name.toLowerCase().includes(query) ||
+      ind.description.toLowerCase().includes(query)
     );
-    return { category, data, indicators: filtered };
-  }).filter(cat => cat.indicators.length > 0);
+    return { category, indicators: filtered };
+  }).filter(cat => cat.indicators.length > 0 && (selectedCategory === null || cat.category === selectedCategory));
 
-  const handleAddIndicator = (category: string, indicator: any) => {
+  const handleAddIndicator = (category: string, indicator: Omit<IndicatorInfo, 'category'>) => {
     onAddIndicator({
       id: createIndicatorInstanceId(indicator.id),
       name: indicator.name,
@@ -191,74 +195,97 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="rtx-indicator-dialog bg-zinc-900 rounded-lg shadow-2xl w-full max-w-3xl h-[80vh] max-h-[80vh] flex flex-col border border-zinc-800">
+    <div className="rtx-indicator-backdrop">
+      <div
+        ref={dialogRef}
+        className="rtx-indicator-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            onClose();
+          }
+          if (event.key !== 'Tab') return;
+          const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button, input') ?? [])
+            .filter(control => !control.matches(':disabled'));
+          const first = controls[0];
+          const last = controls[controls.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last?.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first?.focus();
+          }
+        }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-          <h2 className="text-lg font-semibold text-zinc-100">{tr("Indicators")}</h2>
+        <div className="rtx-indicator-header">
+          <h2 id={titleId}>{tr("Indicators")}</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 hover:bg-zinc-800 rounded transition-colors text-zinc-400 hover:text-zinc-100"
+            aria-label={tr("Close")}
+            className="rtx-indicator-close"
           >
-            <Icon name="x-close" size="lg" />
+            <Icon name="x-close" size={18} />
           </button>
         </div>
 
         {/* Search */}
-        <div className="p-4 border-b border-zinc-800">
-          <div className="relative">
-            <Icon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <div className="rtx-indicator-search-wrap">
+          <div className="rtx-indicator-search-field">
+            <Icon name="search" size={16} className="rtx-indicator-search-icon" />
             <input
+              ref={searchRef}
               type="text"
+              aria-label={tr("Search indicators...")}
               placeholder={tr("Search indicators...")}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="rtx-indicator-search w-full pl-10 pr-4 py-2 placeholder-zinc-500"
+              className="rtx-indicator-search"
             />
           </div>
         </div>
 
         {/* Category Tabs */}
-        <div className="flex flex-wrap gap-2 px-4 py-2 border-b border-zinc-800 overflow-visible">
+        <div className="rtx-indicator-categories">
           <button
+            type="button"
             onClick={() => setSelectedCategory(null)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium leading-none transition-colors ${selectedCategory === null
-                ? 'bg-emerald-500/20 text-emerald-400'
-                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
-              }`}
+            aria-pressed={selectedCategory === null}
+            className="rtx-indicator-category"
           >
-            {tr("All")}</button>
+            {tr("All")}
+          </button>
           {Object.keys(INDICATOR_CATEGORIES).map(category => (
             <button
               key={category}
+              type="button"
               onClick={() => setSelectedCategory(category)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium leading-none transition-colors ${selectedCategory === category
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
-                }`}
+              aria-pressed={selectedCategory === category}
+              className="rtx-indicator-category"
             >
-              {category}
+              {tr(category)}
             </button>
           ))}
         </div>
 
         {/* Indicators List */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="rtx-indicator-list">
           {filteredCategories
-            .filter(cat => selectedCategory === null || cat.category === selectedCategory)
-            .map(({ category, data, indicators }) => (
-              <div key={category} className="mb-6 last:mb-0">
-                <div className="flex items-center gap-2 mb-3">
-                  {(() => {
-                    const Icon = data.icon;
-                    return <Icon size={18} className="text-emerald-400" />;
-                  })()}
-                  <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide">
-                    {category}
-                  </h3>
-                </div>
+            .map(({ category, indicators }) => (
+              <section key={category} className="rtx-indicator-section" aria-label={tr(category)}>
+                {selectedCategory === null && (
+                  <div className="rtx-indicator-section-heading">
+                    <h3>{tr(category)}</h3>
+                  </div>
+                )}
 
-                <div className="grid grid-cols-1 gap-2">
+                <div className="rtx-indicator-rows">
                   {indicators.map(indicator => (
                     <div
                       key={indicator.id}
@@ -267,64 +294,41 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
                       }}
                       aria-disabled={!isIndicatorSupported(indicator.id)}
                       title={isIndicatorSupported(indicator.id) ? undefined : tr("This indicator is not available in the current chart engine")}
-                      className={`p-3 rounded-lg border transition-all group ${isIndicatorSupported(indicator.id)
-                        ? 'bg-zinc-800/50 hover:bg-zinc-800 border-zinc-700/50 hover:border-emerald-500/50 cursor-pointer'
-                        : 'bg-zinc-800/25 border-zinc-800 cursor-not-allowed opacity-55'
-                      }`}
+                      className="rtx-indicator-row"
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="text-sm font-medium text-zinc-100 group-hover:text-emerald-400 transition-colors">
-                            {indicator.name}
-                          </h4>
-                          <p className="text-xs text-zinc-500 mt-1">
-                            {indicator.description}
-                          </p>
-                          {indicator.parameters && Object.keys(indicator.parameters).length > 0 && (
-                            <div className="flex gap-2 mt-2 flex-wrap">
-                              {Object.entries(indicator.parameters).map(([key, value]) => (
-                                <span
-                                  key={key}
-                                  className="text-[10px] px-2 py-0.5 bg-zinc-700/50 text-zinc-400 rounded"
-                                >
-                                  {key}: {String(value)}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!isIndicatorSupported(indicator.id)) return;
-                            handleAddIndicator(category, indicator);
-                          }}
-                          disabled={!isIndicatorSupported(indicator.id)}
-                          className="ml-2 px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs rounded transition-colors disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed"
-                        >
-                          {!isIndicatorSupported(indicator.id) ? tr("Unavailable") : indicator.id === 'volume' ? tr("Enable") : tr("Add")}
-                        </button>
+                      <div className="rtx-indicator-details">
+                        <h4>{indicator.name}</h4>
+                        <p className="rtx-indicator-description" title={indicator.description}>
+                          {indicator.description}
+                        </p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isIndicatorSupported(indicator.id)) return;
+                          handleAddIndicator(category, indicator);
+                        }}
+                        disabled={!isIndicatorSupported(indicator.id)}
+                        className="rtx-indicator-add"
+                      >
+                        {isIndicatorSupported(indicator.id) && <Plus size={14} aria-hidden="true" />}
+                        {!isIndicatorSupported(indicator.id) ? tr("Unavailable") : indicator.id === 'volume' ? tr("Enable") : tr("Add")}
+                      </button>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             ))}
 
           {filteredCategories.length === 0 && (
-            <div className="text-center py-12 text-zinc-500">
-              <Icon name="activity" size="xl" className="mx-auto mb-4 opacity-50" />
+            <div className="rtx-indicator-empty" role="status">
+              <Icon name="search" size={24} />
               <p>{tr("No indicators found matching \"")}{searchTerm}"</p>
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
-          <p className="text-xs text-zinc-500 text-center">
-            {tr("Double-click or press \"Add\" to insert an available indicator")}</p>
-        </div>
       </div>
     </div>
   );

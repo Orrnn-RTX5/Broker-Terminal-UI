@@ -1594,7 +1594,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
         aria-modal="true"
         aria-label={`${symbol} ${tr('Specification')}`}
         data-testid="symbol-specification-dialog"
-        className={`absolute flex min-w-0 flex-col overflow-hidden border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-2xl ${isDragging ? 'select-none' : ''} ${isResizing ? 'select-none' : ''}`}
+        className={`rtx-symbol-specification-dialog absolute flex min-w-0 flex-col overflow-hidden border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-2xl ${isDragging ? 'select-none' : ''} ${isResizing ? 'select-none' : ''}`}
         style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
         onMouseDown={(event) => event.stopPropagation()}
       >

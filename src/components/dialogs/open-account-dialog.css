@@ -268,3 +268,50 @@ html:root .rtx-open-account-dialog.rtx-open-account-dialog--desktop[data-step] .
   .rtx-account-progress { gap: 8px; flex-wrap: wrap; }
   .rtx-account-progress li { font-size: 11px; gap: 4px; }
 }
+
+/* Keep broker discovery and registration on the terminal's light type scale. */
+html:root.rtx-skin-untitled-light .rtx-open-account-dialog[data-step] {
+  --rtx-type-size: var(--rtx-light-type-body, 14px);
+  --rtx-type-weight: var(--rtx-light-weight-body, 400);
+}
+
+html:root.rtx-skin-untitled-light .rtx-open-account-dialog[data-step] .rtx-dialog-title {
+  --rtx-type-size: var(--rtx-light-type-title, 18px);
+  --rtx-type-weight: var(--rtx-light-weight-heading, 600);
+  line-height: 1.4 !important;
+}
+
+html:root.rtx-skin-untitled-light .rtx-open-account-dialog[data-step] :is(
+  .rtx-open-account-dialog__broker-name, .rtx-account-field > span,
+  .rtx-country-combobox > label, .rtx-open-account-dialog__footer button,
+  .rtx-account-footer button, .rtx-open-account-dialog__selection strong
+) {
+  --rtx-type-size: var(--rtx-light-type-body, 14px);
+  --rtx-type-weight: var(--rtx-light-weight-control, 500);
+}
+
+html:root.rtx-skin-untitled-light .rtx-open-account-dialog[data-step] :is(
+  input, select, .rtx-account-consent span, .rtx-account-error
+) {
+  --rtx-type-size: var(--rtx-light-type-body, 14px);
+  --rtx-type-weight: var(--rtx-light-weight-body, 400);
+}
+
+html:root.rtx-skin-untitled-light .rtx-open-account-dialog[data-step] :is(
+  .rtx-open-account-dialog__header p, .rtx-open-account-dialog__badge,
+  .rtx-open-account-dialog__broker-id, .rtx-open-account-dialog__selection,
+  .rtx-open-account-dialog__list-heading > span, .rtx-open-account-dialog__footer-hint,
+  .rtx-open-account-dialog__shortcut, .rtx-account-progress li,
+  .rtx-account-field small, .rtx-account-note, .rtx-account-consent a
+) {
+  --rtx-type-size: var(--rtx-light-type-caption, 12px);
+  --rtx-type-weight: var(--rtx-light-weight-body, 400);
+  line-height: 1.5;
+}
+
+html:root.rtx-skin-untitled-light .rtx-open-account-dialog[data-step] :is(
+  .rtx-open-account-dialog__badge, .rtx-open-account-dialog__list-heading > span,
+  .rtx-account-progress li[aria-current='step']
+) {
+  --rtx-type-weight: var(--rtx-light-weight-control, 500);
+}

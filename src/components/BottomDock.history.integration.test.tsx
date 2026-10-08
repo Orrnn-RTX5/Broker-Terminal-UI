@@ -721,6 +721,13 @@ describe('BottomDock History live-deal integration', () => {
         const dialog = await screen.findByRole('dialog', { name: 'Custom history period' });
         const fromInput = within(dialog).getByLabelText('From');
         const toInput = within(dialog).getByLabelText('To');
+        expect(dialog).toHaveFocus();
+        fromInput.focus();
+        fireEvent.keyDown(fromInput, { key: 'Tab', shiftKey: true });
+        const applyButton = within(dialog).getByRole('button', { name: 'Apply' });
+        expect(applyButton).toHaveFocus();
+        fireEvent.keyDown(applyButton, { key: 'Tab' });
+        expect(fromInput).toHaveFocus();
 
         fireEvent.change(fromInput, { target: { value: '2026-09-13' } });
         fireEvent.change(toInput, { target: { value: '2026-09-10' } });

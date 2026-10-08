@@ -1045,7 +1045,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               
               {/* Bars Table */}
               <div className="rtx-symbols-dialog__history-table-wrap flex-1 overflow-y-auto custom-scrollbar" onScroll={handleBarsScroll}>
-                <table className="rtx-symbols-dialog__history-table w-full border-collapse text-[13px] font-normal" aria-label={tr('Historical bars')}>
+                <table className="rtx-symbols-dialog__history-table rtx-symbols-dialog__history-table--bars w-full border-collapse text-[13px] font-normal" aria-label={tr('Historical bars')}>
                     <thead>
                       <tr className="bg-[var(--bg-tertiary)] sticky top-0 z-10">
                         {['Date', 'Open', 'High', 'Low', 'Close', 'Tick Volume', 'Volume', 'Spread'].map((h, i) => (
@@ -1160,7 +1160,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               
               {/* Ticks Table */}
               <div className="rtx-symbols-dialog__history-table-wrap flex-1 overflow-y-auto custom-scrollbar" onScroll={handleTicksScroll}>
-                <table className="rtx-symbols-dialog__history-table w-full border-collapse text-[13px] font-normal" aria-label={tr('Historical ticks')}>
+                <table className="rtx-symbols-dialog__history-table rtx-symbols-dialog__history-table--ticks w-full border-collapse text-[13px] font-normal" aria-label={tr('Historical ticks')}>
                     <thead>
                       <tr className="bg-[var(--bg-tertiary)] sticky top-0 z-10">
                         {['Date', 'Bid', 'Ask', 'Last', 'Volume', 'Flags'].map((h, i) => (

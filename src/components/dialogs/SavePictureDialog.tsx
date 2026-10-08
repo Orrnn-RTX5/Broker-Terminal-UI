@@ -1,8 +1,10 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../ui/Icon';
 import { ChartExporter, type ChartExportOptions } from '../../services/chartExporter';
+import { isShortcutOwnedBy, shouldIgnoreShortcutEvent } from '../../services/keyboardShortcutManager';
+import './save-picture-dialog.css';
 
 export interface SavePictureDialogProps {
   isOpen: boolean;
@@ -23,7 +25,9 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
   symbol,
   timeframe,
 }) => {
-    const tr = useUiTranslation();
+  const tr = useUiTranslation();
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [format, setFormat] = useState<ImageFormat>('png');
   const [quality, setQuality] = useState(0.92);
   const [scale, setScale] = useState(1);
@@ -40,8 +44,22 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
 
     setError(null);
     setIsExporting(false);
-    setPreview(chartCanvas ? ChartExporter.getPreview(chartCanvas, 300, 200) : '');
+    try {
+      setPreview(chartCanvas ? ChartExporter.getPreview(chartCanvas, 300, 200) : '');
+    } catch {
+      setPreview('');
+    }
   }, [chartCanvas, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    dialog?.focus();
+    return () => {
+      if (previousFocus?.isConnected && (document.activeElement === document.body || dialog?.contains(document.activeElement))) previousFocus.focus();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -82,7 +100,7 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+      className="rtx-save-picture-backdrop fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => {
         e.stopPropagation();
         if (e.target === e.currentTarget && !isExporting) onClose();
@@ -92,26 +110,55 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div
-        className="rtx-action-sheet bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-lg shadow-2xl w-[440px] animate-in zoom-in-95 duration-200"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-busy={isExporting}
+        tabIndex={-1}
+        className="rtx-action-sheet rtx-save-picture-dialog animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(event) => {
+          if (shouldIgnoreShortcutEvent(event.nativeEvent) || !isShortcutOwnedBy(event.nativeEvent, dialogRef.current)) return;
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!isExporting) onClose();
+          }
+          if (event.key === 'Tab') {
+            const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('*'))
+              .filter(control => control.tabIndex >= 0 && !control.matches(':disabled'));
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+              event.preventDefault();
+              last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first?.focus();
+            }
+          }
+        }}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#131316] [.rtx-advanced-view_&]:bg-gray-50 rounded-t-lg">
-          <h3 className="text-sm font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-900">{tr("Save Chart As Picture")}</h3>
+        <div className="rtx-save-picture-header">
+          <h3 id={titleId}>{tr("Save Chart As Picture")}</h3>
           <button
+            type="button"
+            aria-label={tr('Close Save Picture')}
             onClick={onClose}
             disabled={isExporting}
-            className="text-zinc-400 hover:text-white [.rtx-advanced-view_&]:hover:text-gray-900 transition-colors disabled:opacity-50"
+            className="rtx-save-picture-close"
           >
             <Icon name="x-close" size="md" />
           </button>
         </div>
 
-        <div className="p-4 space-y-4 text-sm text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">
-          <div className="h-[150px] rounded border border-zinc-700 bg-zinc-950 flex items-center justify-center overflow-hidden">
+        <div className="rtx-save-picture-body space-y-4">
+          <div className="rtx-save-picture-preview">
             {preview ? (
               <img src={preview} alt={tr("Chart preview")} className="max-h-full max-w-full object-contain" />
             ) : (
-              <span className="text-xs text-zinc-500">{tr("No preview available")}</span>
+              <span>{tr("No preview available")}</span>
             )}
           </div>
 
@@ -154,7 +201,7 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
             <select
               value={scale}
               onChange={(e) => setScale(Number(e.target.value))}
-              className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-zinc-200"
+              className="rtx-save-picture-input w-full"
             >
               <option value={1}>{tr("1x - Standard")}</option>
               <option value={2}>{tr("2x - Retina")}</option>
@@ -191,30 +238,33 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
               value={watermarkText}
               onChange={(e) => setWatermarkText(e.target.value)}
               placeholder={tr("Watermark text")}
-              className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-zinc-200"
+              aria-label={tr('Watermark text')}
+              className="rtx-save-picture-input w-full"
             />
           )}
 
           {error && (
-            <div className="rounded border border-red-700 bg-red-900/30 px-3 py-2 text-red-300">
+            <div role="alert" className="rtx-save-picture-error">
               {tr(error)}
             </div>
           )}
 
-          <div className="text-xs text-zinc-500">{symbol} - {timeframe}</div>
+          <div className="rtx-save-picture-caption">{symbol} - {timeframe}</div>
         </div>
 
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#131316] [.rtx-advanced-view_&]:bg-gray-50 rounded-b-lg">
+        <div className="rtx-save-picture-footer">
           <button
+            type="button"
             onClick={onClose}
             disabled={isExporting}
-            className="px-3 py-1 bg-zinc-700 [.rtx-advanced-view_&]:bg-gray-200 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-gray-300 text-white [.rtx-advanced-view_&]:text-gray-800 rounded disabled:opacity-50"
+            className="rtx-save-picture-button"
           >
             {tr("Cancel")}</button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={isExporting}
-            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded disabled:opacity-50"
+            className="rtx-save-picture-button rtx-save-picture-button-primary"
           >
             {tr("Save Picture")}</button>
         </div>

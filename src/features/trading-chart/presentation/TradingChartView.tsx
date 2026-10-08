@@ -317,8 +317,8 @@ return (
         }}>
           {chartSettings.showTicker && (
             <span className="rtx-chart-hud__symbol" style={{
-              fontWeight: 'var(--rtx-font-weight-control, 400)', color: '#7f56d9',
-              background: 'rgba(127, 86, 217, 0.10)',
+              fontWeight: 'var(--rtx-font-weight-control, 400)', color: 'var(--rtx-light-text)',
+              background: 'transparent',
               padding: '2px 8px', borderRadius: '4px',
             }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
           )}
@@ -326,25 +326,25 @@ return (
             <>
               <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                 O: <span ref={ohlcOpenRef} style={{
-                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#1d2939',
+                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-price)',
                   background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
                 }}>0.00000</span>
               </span>
               <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                 H: <span ref={ohlcHighRef} style={{
-                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#16a34a',
+                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-chart-high)',
                   background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
                 }}>0.00000</span>
               </span>
               <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                 L: <span ref={ohlcLowRef} style={{
-                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#dc2626',
+                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-quote-down)',
                   background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
                 }}>0.00000</span>
               </span>
               <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                 C: <span ref={ohlcCloseRef} style={{
-                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#1d2939',
+                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-price)',
                   background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
                 }}>0.00000</span>
               </span>

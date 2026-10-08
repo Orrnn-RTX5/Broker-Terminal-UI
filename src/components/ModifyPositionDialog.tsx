@@ -1,6 +1,6 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
- * MT5-style Modify Position Dialog (Dark Theme)
+ * MT5-style Modify Position Dialog
  * Opens from position Modify actions and S/L or T/P controls
  * Matches the MT5 "Order" dialog visual style
  */
@@ -794,22 +794,22 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
             return (
                 <div
                     key={`${level.side}-${level.price}`}
-                    className={`grid h-[19px] grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#29344a] text-[14px] font-normal ${rowBackground}`}
+                    className={`rtx-modify-depth-row rtx-modify-depth-row--${isAsk ? 'ask' : 'bid'}${level.isBest ? ' rtx-modify-depth-row--best' : ''} grid h-[19px] grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#29344a] text-[14px] font-normal ${rowBackground}`}
                 >
-                    <div className="relative flex min-w-0 items-center justify-end overflow-hidden border-r border-[#29344a] pr-1 font-mono text-[#d7e2f2]">
+                    <div className="rtx-modify-depth-volume relative flex min-w-0 items-center justify-end overflow-hidden border-r border-[#29344a] pr-1 font-mono text-[#d7e2f2]">
                         <div
-                            className="absolute inset-y-0 left-0"
+                            className="rtx-modify-depth-bar absolute inset-y-0 left-0"
                             style={{ width: `${level.intensity}%`, backgroundColor: barColor }}
                         />
                         <span className="relative z-10">{level.volume.toFixed(2)}</span>
                     </div>
-                    <div className={`flex min-w-0 items-center justify-end border-r border-[#29344a] pr-1.5 font-mono ${textColor}`}>
+                    <div className={`rtx-modify-depth-price flex min-w-0 items-center justify-end border-r border-[#29344a] pr-1.5 font-mono ${textColor}`}>
                         {level.price.toFixed(digits)}
                     </div>
                     <div className="flex items-center justify-center">
                         <button
                             type="button"
-                            className={`flex h-[16px] w-[18px] items-center justify-center border bg-[#162030] ${tradeBorder}`}
+                            className={`rtx-modify-depth-action flex h-[16px] w-[18px] items-center justify-center border bg-[#162030] ${tradeBorder}`}
                             title={tr("Use the Sell or Buy by Market buttons to trade")}
                             aria-label={tr("{{value0}} depth level {{value1}}", { value0: level.side === 'ASK' ? 'Ask' : 'Bid', value1: level.price.toFixed(digits) })}
                             onClick={() => setError('Use the Sell by Market or Buy by Market buttons to trade from this dialog.')}
@@ -825,23 +825,23 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
             <div
                 role="region"
                 aria-label={tr("{{value0}} market depth", { value0: position.symbol })}
-                className="flex h-full min-h-0 flex-col overflow-hidden border border-[#334057] bg-[#0d1420]"
+                className="rtx-modify-depth flex h-full min-h-0 flex-col overflow-hidden border border-[#334057] bg-[#0d1420]"
             >
-                <div className="grid h-[24px] shrink-0 grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#334057] bg-[#121b2a] text-[12px] font-normal text-[#b8c4d6]">
+                <div className="rtx-modify-depth-header grid h-[24px] shrink-0 grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#334057] bg-[#121b2a] text-[12px] font-normal text-[#b8c4d6]">
                     <div className="flex items-center justify-center border-r border-[#334057]">{tr("Volume")}</div>
                     <div className="flex items-center justify-center border-r border-[#334057]">{tr("Price")}</div>
                     <div className="flex items-center justify-center">{tr("Trade")}</div>
                 </div>
                 <div className="flex-1 overflow-hidden">
-                    <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
+                    <div className="rtx-modify-depth-empty h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
                     {asks.map(renderDepthLevel)}
-                    <div className="flex h-[22px] items-center justify-center border-y border-[#3d4b64] bg-[#111827] font-mono text-[12px] font-normal text-[#8fa2bd]">
+                    <div className="rtx-modify-depth-spread flex h-[22px] items-center justify-center border-y border-[#3d4b64] bg-[#111827] font-mono text-[12px] font-normal text-[#8fa2bd]">
                         {tr("Spread ")}{spreadPoints}
                     </div>
                     {bids.map(renderDepthLevel)}
-                    <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
-                    <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
-                    <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
+                    <div className="rtx-modify-depth-empty h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
+                    <div className="rtx-modify-depth-empty h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
+                    <div className="rtx-modify-depth-empty h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
                 </div>
             </div>
         );
@@ -898,14 +898,15 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
         const maxTagY = plotBottom - tagHeight - 1;
         const gridFractions = [0, 0.25, 0.5, 0.75, 1];
         const timeFractions = [0, 0.5, 1];
-        const chartBackground = '#101216';
-        const plotBackground = '#0c0e12';
-        const gridColor = '#222632';
-        const axisColor = '#cbd2dc';
-        const axisBg = '#121519';
-        const borderColor = '#252932';
-        const askColor = '#ff5b6b';
-        const bidColor = '#00d2ff';
+        const chartBackground = 'var(--modify-chart-background, #101216)';
+        const plotBackground = 'var(--modify-chart-plot, #0c0e12)';
+        const gridColor = 'var(--modify-chart-grid, #222632)';
+        const axisColor = 'var(--modify-chart-text, #cbd2dc)';
+        const axisBg = 'var(--modify-chart-axis, #121519)';
+        const borderColor = 'var(--modify-chart-border, #252932)';
+        const tickColor = 'var(--modify-chart-tick, #3b4049)';
+        const askColor = 'var(--modify-chart-ask, #ff5b6b)';
+        const bidColor = 'var(--modify-chart-bid, #00d2ff)';
 
         const toPath = (data: number[]) => {
             return data.map((v, i) => {
@@ -998,8 +999,8 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
             >
                 <defs>
                     <linearGradient id="rtx-spread-corridor-grad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#ff5b6b" stopOpacity="0.22" />
-                        <stop offset="100%" stopColor="#00d2ff" stopOpacity="0.16" />
+                        <stop offset="0%" stopColor={askColor} stopOpacity="0.22" />
+                        <stop offset="100%" stopColor={bidColor} stopOpacity="0.16" />
                     </linearGradient>
                     <clipPath id="rtx-plot-clip">
                         <rect x={plotLeft} y={plotTop} width={plotWidth} height={plotHeight} />
@@ -1021,7 +1022,7 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
                             {showMiniChartGrid && (
                                 <line x1={plotLeft} y1={y} x2={plotRight} y2={y} stroke={gridColor} strokeWidth="0.8" strokeDasharray="3 3" />
                             )}
-                            <line x1={plotRight} y1={y} x2={plotRight + 4} y2={y} stroke="#3b4049" strokeWidth="1" />
+                            <line x1={plotRight} y1={y} x2={plotRight + 4} y2={y} stroke={tickColor} strokeWidth="1" />
                             <text
                                 x={plotRight + 6}
                                 y={clamp(y + 4, plotTop + 12, plotBottom - 4)}
@@ -1093,7 +1094,7 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
                     const anchor = f === 0 ? 'start' : f === 1 ? 'end' : 'middle';
                     return (
                         <g key={`time-${f}`}>
-                            <line x1={x} y1={plotBottom} x2={x} y2={plotBottom + 5} stroke="#3b4049" strokeWidth="1" />
+                            <line x1={x} y1={plotBottom} x2={x} y2={plotBottom + 5} stroke={tickColor} strokeWidth="1" />
                             <text
                                 x={x}
                                 y={timeAxisY}
@@ -1203,12 +1204,12 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
                             </div>
                             <div className="rtx-modify-chart-quote-pills">
                                 <span className="rtx-modify-chart-quote--bid">{bid.toFixed(digits)}</span>
-                                <span className="text-[#555a64]">/</span>
+                                <span className="rtx-modify-chart-quote-separator text-[#555a64]">/</span>
                                 <span className="rtx-modify-chart-quote--ask">{ask.toFixed(digits)}</span>
                             </div>
                         </div>
                         {renderMiniChartToolbar()}
-                        <div className="min-h-0 flex-1 bg-[#101216] p-0 flex flex-col items-stretch overflow-hidden">
+                        <div className="rtx-modify-chart-canvas min-h-0 flex-1 bg-[#101216] p-0 flex flex-col items-stretch overflow-hidden">
                             {showMiniMarketDepth ? (
                                 <div className={showMiniChart ? 'grid h-full min-h-0 grid-cols-[minmax(0,1fr)_154px] gap-1.5' : 'h-full'}>
                                     {showMiniChart && (
@@ -1441,7 +1442,7 @@ export function ModifyPositionDialog({ isOpen, onClose, onClosePosition, positio
                             <Info size={14} className="rtx-modify-notice-icon" aria-hidden="true" />
                             <div className="rtx-modify-notice-text">
                                 <div className="text-[12px] font-normal">{tr("Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.", { value0: stopsLevel })}</div>
-                                <div className="mt-0.5 text-[#737882] text-[12px] font-normal">{tr("Stops processing is performed on the broker side.")}</div>
+                                <div className="rtx-modify-notice-helper mt-0.5 text-[#737882] text-[12px] font-normal">{tr("Stops processing is performed on the broker side.")}</div>
                             </div>
                         </div>
                     </div>

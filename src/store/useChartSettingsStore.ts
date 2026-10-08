@@ -513,8 +513,8 @@ export const getEffectiveChartColors = (
   // Apply the shared light palette at render time so switching back to dark
   // restores the saved template and custom chart colors remain authoritative.
   const lightSurface = {
-    background: "#f7f8fa",
-    foreground: "#4b5563",
+    background: "#d8dde2",
+    foreground: "#414e5e",
     grid: "rgba(46, 46, 46, 0.11)",
   };
 
@@ -525,19 +525,23 @@ export const getEffectiveChartColors = (
     };
     if (properties.colorScheme === "Green on Black") {
       const referenceColor = (color: string): string => {
-        if (color.toUpperCase() === CHART_PROFIT_COLOR) return "#059669";
-        if (color.toUpperCase() === CHART_LOSS_COLOR) return "#dc2626";
+        if (color.toUpperCase() === CHART_PROFIT_COLOR) return "#06634e";
+        if (color.toUpperCase() === CHART_LOSS_COLOR) return "#a51f26";
         return color;
       };
-      // Candle hues remain identical in light and dark mode. Only the separate
-      // line-chart and configured last-price colors need the light treatment.
+      // Deepen only built-in candle hues so thin bodies and wicks remain
+      // visible on the dimmer light canvas. User-selected colors stay intact.
+      for (const key of ["barUp", "barDown", "bullCandle", "bearCandle"] as const) {
+        if (colors[key].toLowerCase() === CHART_CANDLE_UP_COLOR.toLowerCase()) colors[key] = "#087f6c";
+        if (colors[key].toLowerCase() === CHART_CANDLE_DOWN_COLOR.toLowerCase()) colors[key] = "#ce2938";
+      }
       colors.lineChart = referenceColor(colors.lineChart);
       colors.lastPriceLine = referenceColor(colors.lastPriceLine);
     } else {
       // Use the same contrast-safe quote colors as Market Watch in light mode.
       const quoteColor = (color: string): string => {
-        if (color.toLowerCase() === CHART_BLUE_COLOR) return "#1d4ed8";
-        if (color.toLowerCase() === BLUE_TEMPLATE_RED_COLOR) return "#b91c1c";
+        if (color.toLowerCase() === CHART_BLUE_COLOR) return "#1746bc";
+        if (color.toLowerCase() === BLUE_TEMPLATE_RED_COLOR) return "#a51f26";
         return color;
       };
       for (const key of ["barUp", "barDown", "bullCandle", "bearCandle", "lineChart", "askPriceLine", "lastPriceLine", "stopLevels"] as const) {
@@ -565,13 +569,13 @@ export const getEffectiveChartColors = (
     return {
       ...properties.colors,
       ...lightSurface,
-      barUp: "#facc15",
-      barDown: "#facc15",
+      barUp: "#795000",
+      barDown: "#795000",
       bullCandle: "#000000",
       bearCandle: "#f8fafc",
-      lineChart: "#facc15",
+      lineChart: "#795000",
       volumes: "rgba(250, 204, 21, 0.4)",
-      lastPriceLine: "#facc15",
+      lastPriceLine: "#795000",
     };
   }
 

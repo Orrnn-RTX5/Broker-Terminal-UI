@@ -436,7 +436,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog-backdrop {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog {
-  --order-ask: var(--rtx-light-buy-hover);
+  --order-ask: var(--rtx-light-quote-up);
   --order-bid: var(--color-loss);
   --order-buy-action: var(--rtx-light-buy);
   --order-sell-action: var(--rtx-light-sell);

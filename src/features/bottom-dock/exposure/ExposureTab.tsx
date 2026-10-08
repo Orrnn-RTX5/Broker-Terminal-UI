@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useUiTranslation } from '../../../hooks/useUiTranslation';
 import { useLiveAccountMetrics } from '../../../hooks/useLiveAccountMetrics';
+import './exposure-tab.css';
 import {
   buildExposureSummary,
   formatExposureVolume,
@@ -81,10 +82,10 @@ export function ExposureTab({ positions, formatMoney, account }: ExposureTabProp
                   >
                     <td className="border-r border-zinc-800/80 p-1.5 pl-3 font-sans font-semibold">
                       <div className="inline-flex items-center gap-1.5">
-                        <span className={`inline-flex h-[17px] w-[17px] items-center justify-center rounded-[3px] border text-[9.5px] font-bold ${badge.badgeClass}`}>
+                        <span aria-hidden="true" className={`rtx-exposure-asset-badge inline-flex h-[17px] w-[17px] items-center justify-center rounded-[3px] border text-[9.5px] font-bold ${badge.badgeClass}`}>
                           {badge.icon}
                         </span>
-                        <span className={badge.textClass}>{row.asset}</span>
+                        <span className={`rtx-exposure-asset-name ${badge.textClass}`}>{row.asset}</span>
                       </div>
                     </td>
                     <td className="border-r border-zinc-800/80 p-1.5 text-right font-medium text-zinc-300">

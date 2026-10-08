@@ -117,7 +117,7 @@ export const TRADE_FIXED_COLUMN_DEFS: Record<
   Omit<TradeColumnDef, 'key'> & { key: 'symbol' | 'close' }
 > = {
   symbol: { key: 'symbol', label: 'Symbol', defaultWidth: 92, minWidth: 74, maxWidth: 180 },
-  close: { key: 'close', label: 'Close', defaultWidth: 22, minWidth: 22, maxWidth: 36 },
+  close: { key: 'close', label: 'Close', defaultWidth: 32, minWidth: 28, maxWidth: 40 },
 };
 
 export const DEFAULT_TRADE_COLUMN_WIDTHS: TradeColumnWidths = TRADE_COLUMN_DEFS.reduce((acc, column) => {

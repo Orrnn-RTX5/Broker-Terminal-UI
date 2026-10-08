@@ -430,7 +430,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .mw-row[aria-selected="true"] {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .mw-scrollbar {
-  background-color: #ffffff !important;
+  background-color: var(--rtx-light-panel) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light table:not(.tv-lightweight-charts *) {
@@ -1361,122 +1361,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .text-zinc-300.
   color: #101828 !important;
 }
 
-/* === DOM Panel Overrides === */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog {
-  background: #ffffff !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.02) !important;
-  font-family: var(--font-sans) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog :where(.font-mono, input[type="number"], input[inputmode="decimal"]) {
-  font-family: var(--font-mono) !important;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Main wrapper */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog {
-  background: transparent !important;
-  /* Remove background from the absolute container */
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div:first-child {
-  background: transparent !important;
-  flex: 1 !important;
-  height: 100% !important;
-  width: 100% !important;
-}
-
-/* Title bar */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(1) {
-  background: #f8fafc !important;
-  border-bottom-color: #e2e8f0 !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(1) span {
-  color: #101828 !important;
-}
-
-/* Toolbar */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(2) {
-  background: #ffffff !important;
-  border-bottom-color: #e2e8f0 !important;
-}
-
-/* Main Content Row */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(3) {
-  background: #ffffff !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(3)>div:nth-child(1) {
-  border-right-color: #e2e8f0 !important;
-}
-
-/* DOM Headers */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(3)>div:nth-child(2)>div:nth-child(1) {
-  background: #f8fafc !important;
-  border-bottom-color: #e2e8f0 !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(3)>div:nth-child(2)>div:nth-child(1) div {
-  color: #475569 !important;
-  border-right-color: #e2e8f0 !important;
-}
-
-/* DOM Rows Backgrounds */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(3)>div:nth-child(2)>div:nth-child(2) {
-  background: #ffffff !important;
-  overflow-x: hidden !important;
-  /* Hide unwanted horizontal scrollbar */
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog .grid {
-  border-bottom-color: #f1f5f9 !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog .grid>div {
-  border-right-color: #f1f5f9 !important;
-}
-
-/* Fix DOM Spread Row (Black -> Light Gray) */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog .grid:not(.cursor-pointer) {
-  background: #f8fafc !important;
-  border-top-color: #cbd5e1 !important;
-  border-bottom-color: #cbd5e1 !important;
-}
-
-/* Fix DOM Hover Effect (Black -> Light Purple) */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog .grid:hover {
-  background: #F3E5F5 !important;
-}
-
-/* Ensure the grid rows don't overflow horizontally */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog .flex-1.overflow-y-auto {
-  overflow-x: hidden !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog {
-  overflow: hidden !important;
-}
-
-/* Bottom Controls */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(4) {
-  background: #f8fafc !important;
-  border-top-color: #e2e8f0 !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog>div>div:nth-child(4) label {
-  color: #475569 !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog input {
-  background: #ffffff !important;
-  border-color: #cbd5e1 !important;
-  color: #101828 !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog input:focus {
-  border-color: #7E57C2 !important;
-}
+/* Depth of Market light styling uses semantic hooks in enterprise-light.css. */
 
 /* === Bottom Dock Tabs Advanced Mode === */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs {

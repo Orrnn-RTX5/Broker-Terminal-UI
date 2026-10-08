@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useBulkCloseConfirmStore, type BulkCloseType } from '../../store/useBulkCloseConfirmStore';
 import { BulkCloseConfirmDialog } from './BulkCloseConfirmDialog';
@@ -67,6 +68,21 @@ describe('BulkCloseConfirmDialog', () => {
     expect(dialogRule).not.toContain('animation:');
     expect(css).not.toContain('rtx-bulk-close-backdrop-in');
     expect(css).not.toContain('rtx-bulk-close-dialog-in');
+  });
+
+  it('starts on Cancel and ignores global Enter instead of confirming a financial action', async () => {
+    const user = userEvent.setup();
+    let confirmation: Promise<boolean> | undefined;
+    render(<><button onClick={() => {
+      confirmation = useBulkCloseConfirmStore.getState().showBulkCloseConfirm({ type: 'ALL', positions, combinedPnL: 1.25 });
+    }}>Open confirmation</button><BulkCloseConfirmDialog /></>);
+    await user.click(screen.getByRole('button', { name: 'Open confirmation' }));
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(useBulkCloseConfirmStore.getState().isOpen).toBe(true);
+    await user.keyboard('{Enter}');
+    await expect(confirmation!).resolves.toBe(false);
+    expect(screen.getByRole('button', { name: 'Open confirmation' })).toHaveFocus();
   });
 
   it('resolves a programmatically closed confirmation as cancelled', async () => {

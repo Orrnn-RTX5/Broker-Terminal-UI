@@ -15,6 +15,11 @@ html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-
   --mw-desktop-grid: #404040;
 }
 
+/* The focused light row must retain contrast for both blue and red quotes. */
+html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop {
+  --mw-desktop-selection: var(--rtx-light-selected, #d1dced);
+}
+
 /* The shared typography stylesheet reads these tokens on each text element.
    Scope the compact rhythm to this chrome/table, keeping Trading's quote sizes. */
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__title-clock,
@@ -107,10 +112,14 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tb
   box-shadow: none !important;
 }
 
-/* Keep the chosen symbol; blue belongs only to its focused quote row. */
+/* Keep the chosen symbol; the stronger selection belongs to its focused row. */
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true']:focus-within,
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true']:focus-within td {
   background: var(--mw-desktop-selection) !important;
+}
+
+html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true']:focus-within td:first-child {
+  box-shadow: inset 2px 0 0 var(--rtx-light-accent, #355786) !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid--lines tbody td {

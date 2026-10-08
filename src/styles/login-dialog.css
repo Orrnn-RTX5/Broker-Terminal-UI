@@ -564,7 +564,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light body .rtx-login-dialog.rtx-l
   --login-accent-hover: var(--rtx-light-accent-strong);
   --login-accent-pressed: var(--rtx-light-accent-pressed);
   --login-focus: var(--rtx-light-accent);
-  --login-focus-ring: rgba(67, 56, 202, 0.28);
+  --login-focus-ring: var(--rtx-light-focus-ring);
   --login-soft: var(--rtx-light-accent-soft);
   --login-hover: var(--rtx-light-hover);
   --login-online: var(--color-profit);
@@ -590,6 +590,57 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light body .rtx-login-dialog.rtx-l
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   color-scheme: light;
+
+  /* Functional login text follows the terminal's light-theme roles, including
+     when this lazy-loaded dialog renders before the shared typography sheet. */
+  --rtx-type-size: var(--rtx-light-type-body, 14px);
+  --rtx-type-weight: var(--rtx-light-weight-body, 400);
+  font-family: var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif);
+  font-size: var(--rtx-light-type-body, 14px);
+  font-weight: var(--rtx-light-weight-body, 400);
+
+  .rtx-login-title {
+    --rtx-type-size: var(--rtx-light-type-title, 18px);
+    --rtx-type-weight: var(--rtx-light-weight-heading, 600);
+    font-size: var(--rtx-light-type-title, 18px);
+    font-weight: var(--rtx-light-weight-heading, 600);
+    line-height: 1.4;
+    letter-spacing: normal;
+  }
+
+  :is(.rtx-login-label, .rtx-login-button, .rtx-login-broker-option) {
+    --rtx-type-size: var(--rtx-light-type-body, 14px);
+    --rtx-type-weight: var(--rtx-light-weight-control, 500);
+    font-size: var(--rtx-light-type-body, 14px);
+    font-weight: var(--rtx-light-weight-control, 500);
+    line-height: 1.4;
+    letter-spacing: normal;
+  }
+
+  :is(.rtx-login-input, .rtx-login-brokers-empty, .rtx-login-save-password,
+    .rtx-login-offline, .rtx-login-error, .rtx-login-trade-notice) {
+    --rtx-type-size: var(--rtx-light-type-body, 14px);
+    --rtx-type-weight: var(--rtx-light-weight-body, 400);
+    font-size: var(--rtx-light-type-body, 14px);
+    font-weight: var(--rtx-light-weight-body, 400);
+    line-height: 1.5;
+    letter-spacing: normal;
+  }
+
+  :is(.rtx-login-description, .rtx-login-storage-note, .rtx-login-broker-region,
+    .rtx-login-status, .rtx-login-badge) {
+    --rtx-type-size: var(--rtx-light-type-caption, 12px);
+    --rtx-type-weight: var(--rtx-light-weight-body, 400);
+    font-size: var(--rtx-light-type-caption, 12px);
+    font-weight: var(--rtx-light-weight-body, 400);
+    line-height: 1.5;
+    letter-spacing: normal;
+  }
+
+  :is(.rtx-login-status, .rtx-login-badge) {
+    --rtx-type-weight: var(--rtx-light-weight-control, 500);
+    font-weight: var(--rtx-light-weight-control, 500);
+  }
 
   .rtx-login-brokers {
     background: var(--rtx-light-elevated);

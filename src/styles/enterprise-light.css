@@ -1,40 +1,41 @@
 /*
- * RTX5 shared web and desktop light palette (2026-09-12).
+ * RTX5 shared web and desktop light palette.
  *
- * Soft data surfaces, cool gray chrome, indigo interaction states, and distinct
- * execution and financial-text colors follow LIGHT_THEME_COLOR_RESEARCH.md.
+ * Dim light surfaces, cool gray chrome, restrained blue interaction states,
+ * and distinct execution and financial-text colors reduce large-area glare.
  * It intentionally loads after legacy-light-overrides.css so older dark
  * utility classes and legacy purple overrides cannot leak into light mode.
  */
 
 html.rtx-advanced-view.rtx-skin-untitled-light {
-  --rtx-light-canvas: #f7f8fa;
-  --rtx-light-panel: #fafafa;
-  --rtx-light-panel-subtle: #f2f4f8;
-  --rtx-light-panel-header: #f2f4f8;
-  --rtx-light-elevated: #ffffff;
-  --rtx-light-chart: #f7f8fa;
-  --rtx-light-field: #f2f6fc;
-  --rtx-light-hover: #f2f4f8;
-  --rtx-light-pressed: #e8ecf2;
-  --rtx-light-selected: #eef2ff;
-  --rtx-light-border: #e3e8f0;
-  --rtx-light-border-strong: #d1d5db;
-  --rtx-light-control-border: #7d8796;
-  --rtx-light-control-border-hover: #64748b;
-  --rtx-light-row-border: #f3f4f6;
-  --rtx-light-text: #111827;
-  --rtx-light-text-secondary: #4b5563;
-  --rtx-light-text-muted: #5f6b7a;
-  --rtx-light-price: #0f172a;
-  --rtx-light-quote-up: #1d4ed8;
-  --rtx-light-quote-down: #b91c1c;
-  --rtx-light-accent: #4338ca;
-  --rtx-light-accent-strong: #3730a3;
-  --rtx-light-accent-pressed: #312e81;
-  --rtx-light-accent-soft: #eef2ff;
-  --rtx-light-accent-border: #4338ca;
-  --rtx-light-focus-ring: rgba(67, 56, 202, 0.15);
+  --rtx-light-canvas: #c7cfd7;
+  --rtx-light-panel: #dce1e6;
+  --rtx-light-panel-subtle: #d4dbe2;
+  --rtx-light-panel-header: #cbd2d9;
+  --rtx-light-elevated: #e0e5e9;
+  --rtx-light-chart: #d8dde2;
+  --rtx-light-field: #e7ebef;
+  --rtx-light-hover: #d1d9e1;
+  --rtx-light-pressed: #cbd5e0;
+  --rtx-light-selected: #d1dced;
+  --rtx-light-border: #bcc6d0;
+  --rtx-light-border-strong: #a2afbd;
+  --rtx-light-control-border: #667487;
+  --rtx-light-control-border-hover: #56677d;
+  --rtx-light-row-border: #cbd3dc;
+  --rtx-light-text: #273444;
+  --rtx-light-text-secondary: #414e5e;
+  --rtx-light-text-muted: #455365;
+  --rtx-light-price: #243247;
+  --rtx-light-chart-high: #06634e;
+  --rtx-light-quote-up: #1746bc;
+  --rtx-light-quote-down: #a51f26;
+  --rtx-light-accent: #355786;
+  --rtx-light-accent-strong: #29446a;
+  --rtx-light-accent-pressed: #203653;
+  --rtx-light-accent-soft: #d1dced;
+  --rtx-light-accent-border: #355786;
+  --rtx-light-focus-ring: rgba(53, 87, 134, 0.18);
   --rtx-light-buy: #2563eb;
   --rtx-light-buy-hover: #1d4ed8;
   --rtx-light-buy-pressed: #1e40af;
@@ -71,17 +72,17 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
   --border-secondary: var(--rtx-light-border-strong);
   --border-tertiary: var(--rtx-light-control-border);
   --color-primary: var(--rtx-light-accent);
-  --color-primary-dim: rgba(67, 56, 202, 0.14);
-  --color-primary-dimmer: rgba(67, 56, 202, 0.07);
+  --color-primary-dim: rgba(53, 87, 134, 0.14);
+  --color-primary-dimmer: rgba(53, 87, 134, 0.07);
   --color-info: var(--rtx-light-accent);
-  --color-info-dim: rgba(67, 56, 202, 0.12);
-  --color-profit: #1d4ed8;
+  --color-info-dim: rgba(53, 87, 134, 0.12);
+  --color-profit: #1746bc;
   --color-quote-up: var(--rtx-light-quote-up);
-  --color-profit-dim: rgba(29, 78, 216, 0.16);
-  --color-profit-dimmer: rgba(29, 78, 216, 0.08);
-  --color-loss: #b91c1c;
-  --color-loss-dim: rgba(185, 28, 28, 0.16);
-  --color-loss-dimmer: rgba(185, 28, 28, 0.08);
+  --color-profit-dim: rgba(23, 70, 188, 0.16);
+  --color-profit-dimmer: rgba(23, 70, 188, 0.08);
+  --color-loss: #a51f26;
+  --color-loss-dim: rgba(165, 31, 38, 0.16);
+  --color-loss-dimmer: rgba(165, 31, 38, 0.08);
   --color-warning: #78350f;
   --color-warning-dim: #fffbeb;
   --status-connected: var(--color-profit);
@@ -137,6 +138,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light *::-webkit-scrollbar-thumb:hover 
 }
 
 /* Shell, chrome, and dock geometry stay flat and quiet. */
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.text-zinc-400, .text-zinc-500,
+  .text-zinc-600, .text-gray-400, .text-gray-500, .text-gray-600) {
+  color: var(--rtx-light-text-muted) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light :where(.bg-\[\#0d0d0d\], .bg-\[\#0d0d11\], .bg-\[\#0d0f18\],
   .bg-\[\#0f0f12\], .bg-\[\#131316\], .bg-\[\#191a1e\],
   .bg-\[\#252525\], .bg-zinc-900, .bg-gray-900, .bg-gray-950) {
@@ -309,7 +315,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action,
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action[aria-pressed="true"],
-  .rtx-toolbar-icon-button[aria-pressed="true"]:not(.rtx-period-separator-toggle),
+  .rtx-toolbar-icon-button[aria-pressed="true"],
   .rtx-toolbar-icon-button[aria-checked="true"],
   .rtx-trade-history-overlay-button[aria-expanded="true"],
   .rtx-advanced-grid-button[aria-expanded="true"]) {
@@ -536,6 +542,37 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr:hover>*
   background: var(--rtx-light-hover) !important;
 }
 
+/* History filters share the dim chrome instead of inheriting legacy white
+   utility surfaces or dark active-button fills. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-history-toolbar {
+  background: var(--rtx-light-panel-header) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text-secondary) !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar :is(.rtx-history-time-btn, .rtx-history-refresh-btn) {
+  background: transparent !important;
+  color: var(--rtx-light-text-secondary) !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar :is(.rtx-history-time-btn, .rtx-history-refresh-btn):not(:disabled):hover {
+  background: var(--rtx-light-hover) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar .rtx-history-time-btn[aria-pressed="true"] {
+  background: var(--rtx-light-selected) !important;
+  color: var(--rtx-light-accent-strong) !important;
+  box-shadow: inset 0 -2px 0 var(--rtx-light-accent) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar :is(.rtx-history-time-btn, .rtx-history-refresh-btn):not(:disabled):active {
+  background: var(--rtx-light-pressed) !important;
+  color: var(--rtx-light-accent-strong) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
   background: transparent !important;
   border-color: transparent !important;
@@ -550,7 +587,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
-  background: #ffffff !important;
+  background: var(--rtx-light-panel) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: none !important;
 }
@@ -736,7 +773,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog button[type
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-cp-tab-active,
   .rtx-oad-item-selected,
-  .rtx-journal-time-btn.bg-zinc-600) {
+  .rtx-journal-time-btn.bg-zinc-600,
+  .rtx-journal-time-btn[aria-pressed="true"]) {
   background: var(--rtx-light-accent-soft) !important;
   border-color: var(--rtx-light-accent-border) !important;
   color: var(--rtx-light-accent-strong) !important;
@@ -807,7 +845,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-options-dialog-backdrop,
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-options-dialog,
   .rtx-chart-template-dialog,
-  .rtx-symbols-dialog) {
+  .rtx-symbols-dialog, .rtx-bug-report-dialog) {
   background: var(--rtx-light-elevated) !important;
   border-color: var(--rtx-light-border-strong) !important;
   color: var(--rtx-light-text) !important;
@@ -1424,6 +1462,54 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-tra
   background: var(--rtx-light-selected) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button {
+  color: var(--rtx-light-text-muted) !important;
+  background: transparent !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button:not(:disabled):hover {
+  color: var(--color-loss) !important;
+  background: var(--color-loss-dimmer) !important;
+  border-color: var(--color-loss) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button:focus-visible {
+  outline: 2px solid var(--rtx-light-accent) !important;
+  outline-offset: 1px;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-period-dialog [role="alert"] {
+  color: var(--color-loss) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-period-dialog .rtx-history-period-apply {
+  background: var(--rtx-light-accent) !important;
+  color: #fff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-period-dialog .rtx-history-period-apply:hover {
+  background: var(--rtx-light-accent-strong) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-period-dialog :is(button, input):focus-visible {
+  outline: 2px solid var(--rtx-light-accent);
+  outline-offset: 2px;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbox-tab {
+  background: var(--rtx-light-panel) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbox-tab button:not(:disabled):hover {
+  background: var(--rtx-light-hover) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbox-tab button:focus-visible {
+  outline: 2px solid var(--rtx-light-accent);
+  outline-offset: -2px;
+}
+
 /* Market Watch follows MetaTrader semantics: blue for an uptick, red for a downtick. */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__symbol {
   color: var(--rtx-light-text) !important;
@@ -1819,6 +1905,143 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-tp-value {
   border: none !important;
   padding: 0 !important;
   box-shadow: none !important;
+}
+
+/* Secondary dialogs share the dim surface and legible primary actions. */
+html:root.rtx-skin-untitled-light .rtx-symbol-specification-dialog {
+  background: var(--rtx-light-panel) !important;
+}
+
+html:root.rtx-skin-untitled-light .rtx-export-sheet .rtx-export-sheet__button--primary {
+  color: #ffffff !important;
+  background: var(--rtx-light-accent) !important;
+  border-color: var(--rtx-light-accent) !important;
+}
+
+html:root.rtx-skin-untitled-light .rtx-export-sheet .rtx-export-sheet__button--primary:hover {
+  background: var(--rtx-light-accent-strong) !important;
+  border-color: var(--rtx-light-accent-strong) !important;
+}
+
+/* Depth of Market is also a light-theme surface. Older structural overrides
+   left white panes and dark-theme quote colors inside this floating panel. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog .rtx-depth-of-market {
+  background: var(--rtx-light-panel) !important;
+  color: var(--rtx-light-text) !important;
+  box-shadow: none;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(
+  .rtx-dom-titlebar, .rtx-depth-of-market__columns, .rtx-dom-spread
+) {
+  background: var(--rtx-light-panel-header) !important;
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(
+  .rtx-dom-titlebar span, .rtx-depth-of-market__columns div,
+  .rtx-dom-spread span, .rtx-dom-stepper__label, .rtx-dom-drag-hint
+) {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-level {
+  background: var(--rtx-light-panel) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-level:hover {
+  background: var(--rtx-light-hover) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(
+  .rtx-dom-price--ask, .rtx-dom-price--ask span
+) {
+  color: var(--rtx-light-quote-down) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(
+  .rtx-dom-price--bid, .rtx-dom-price--bid span
+) {
+  color: var(--rtx-light-quote-up) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-level:has(.rtx-dom-price--ask) :is(.rtx-dom-trade-btn, .relative.z-10) {
+  color: var(--rtx-light-quote-down) !important;
+  opacity: 1 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-level:has(.rtx-dom-price--bid) :is(.rtx-dom-trade-btn, .relative.z-10) {
+  color: var(--rtx-light-quote-up) !important;
+  opacity: 1 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-level--best-ask {
+  box-shadow: inset 2px 0 0 var(--rtx-light-quote-down);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-level--best-bid {
+  box-shadow: inset 2px 0 0 var(--rtx-light-quote-up);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(
+  .rtx-dom-stepper, .rtx-dom-stepper__input
+) {
+  background: var(--rtx-light-field) !important;
+  border-color: var(--rtx-light-control-border) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(
+  .rtx-dom-icon-btn, .rtx-dom-toolbar-btn, .rtx-dom-stepper__btn
+) {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(
+  .rtx-dom-icon-btn:hover, .rtx-dom-toolbar-btn:hover,
+  .rtx-dom-stepper__btn:hover, .rtx-dom-toolbar-btn.is-active
+) {
+  background: var(--rtx-light-hover) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-trade-btn:hover {
+  background: var(--rtx-light-hover) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-exec-btn--sell {
+  background: var(--rtx-light-quote-down) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-exec-btn--buy {
+  background: var(--rtx-light-quote-up) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(.rtx-dom-exec-btn--sell:hover, .rtx-dom-exec-btn--buy:hover) {
+  filter: brightness(0.9);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-exec-btn--flat:hover {
+  background: var(--rtx-light-hover) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(
+  .rtx-dom-exec-btn--sell, .rtx-dom-exec-btn--buy,
+  .rtx-dom-exec-btn--sell span, .rtx-dom-exec-btn--buy span
+) {
+  color: #ffffff !important;
+  opacity: 1;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market .rtx-dom-exec-btn--flat {
+  background: var(--rtx-light-panel-header) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-depth-of-market :is(
+  .rtx-dom-exec-btn--flat, .rtx-dom-exec-btn--flat span
+) {
+  color: var(--rtx-light-text) !important;
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
