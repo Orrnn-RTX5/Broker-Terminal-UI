@@ -11,6 +11,7 @@ import { FORECASTING_MEASUREMENT_TOOLS } from './forecastingMeasurementToolCatal
 import { getPictographStamp } from './pictographCatalog';
 import { applyChartCursorMode } from './chartCursorInteractions';
 import { isTrendDrawingInputActive, setTrendDrawingInputActive, usesDirectDrawingPointerInput } from './drawingInteractionPriority';
+import { getTradeControlDragY } from '../features/trading-chart/presentation/tradeOverlayPresentation';
 
 const readUseEffectCallbacks = (relativePath: string): string[] => {
   const source = readFileSync(resolve(process.cwd(), relativePath), 'utf8');
@@ -242,7 +243,7 @@ describe('trend drawing input priority', () => {
       return ${tradePointerHandler};`, {
       container, isTrendDrawingInputActive, cancelQueuedTradeHover: vi.fn(), setTradeHoverCursor: vi.fn(),
       seriesRef: { current: {} }, tradeAllowed: true, chartSettingsRef: { current: { showTradeLevels: true } },
-      getChartY: () => 120, activeTradeSnapshotsRef: { current: new Map() }, findClosestTradeLevel,
+      getChartY: () => 120, getTradeControlDragY, activeTradeSnapshotsRef: { current: new Map() }, findClosestTradeLevel,
       TRADE_LEVEL_HIT_AREA_PX: 12, activeToolRef: { current: null }, beginPointerCapture,
       beginDragCursor: vi.fn(), chartRef: { current: { applyOptions: vi.fn() } },
       DRAWING_LOCK_HANDLE_SCROLL: {}, DRAWING_LOCK_HANDLE_SCALE: {}, getFinitePriceCoordinate: () => 120,

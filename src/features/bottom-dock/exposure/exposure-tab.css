@@ -13,3 +13,12 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-tab .rtx-expos
   background: var(--rtx-light-panel-header) !important;
   border-color: var(--rtx-light-border-strong) !important;
 }
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-tab .rtx-exposure-graph-fill {
+  background: var(--color-profit) !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-tab .rtx-exposure-graph-fill--negative {
+  background: var(--color-loss) !important;
+}

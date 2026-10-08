@@ -10,8 +10,12 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch-save-set {
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch-save-set input {
   background: var(--rtx-light-field) !important;
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-control-border) !important;
   color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch-save-set input:focus {
+  border-color: var(--rtx-light-accent) !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch-save-set .rtx-market-watch-save-set__primary {

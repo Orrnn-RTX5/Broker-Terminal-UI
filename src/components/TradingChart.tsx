@@ -2912,6 +2912,7 @@ useTradingChartDrawingCommands({
           width: container.clientWidth - chart.priceScale('right').width(),
           height: container.clientHeight - chart.timeScale().height(),
           totalWidth: container.clientWidth, totalHeight: container.clientHeight,
+          useLightPalette: useEnterpriseLightPricePaletteRef.current,
           x: index => chart.timeScale().logicalToCoordinate(index as Logical),
           y: price => series.priceToCoordinate(price),
           formatPrice: price => series.priceFormatter().format(price),

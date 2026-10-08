@@ -2081,5 +2081,11 @@
   "Grid type": "ग्रिड प्रकार",
   "Square": "वर्गाकार",
   "Price/time aligned": "मूल्य/समय के अनुसार संरेखित",
-  "Grid line style": "ग्रिड रेखा शैली"
+  "Grid line style": "ग्रिड रेखा शैली",
+  "Close template dialog": "टेम्पलेट संवाद बंद करें",
+  "Chart properties": "चार्ट के गुण",
+  "Background and grid preview": "पृष्ठभूमि और ग्रिड का पूर्वावलोकन",
+  "Close Save Picture": "चित्र सहेजने का संवाद बंद करें",
+  "Close dialog": "संवाद बंद करें",
+  "Symbol unavailable": "प्रतीक उपलब्ध नहीं है"
 }

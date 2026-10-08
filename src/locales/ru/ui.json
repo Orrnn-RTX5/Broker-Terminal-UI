@@ -2081,5 +2081,11 @@
   "Grid type": "Тип сетки",
   "Square": "Квадратная",
   "Price/time aligned": "По цене и времени",
-  "Grid line style": "Стиль линий сетки"
+  "Grid line style": "Стиль линий сетки",
+  "Close template dialog": "Закрыть диалог шаблонов",
+  "Chart properties": "Свойства графика",
+  "Background and grid preview": "Предпросмотр фона и сетки",
+  "Close Save Picture": "Закрыть сохранение изображения",
+  "Close dialog": "Закрыть диалог",
+  "Symbol unavailable": "Символ недоступен"
 }

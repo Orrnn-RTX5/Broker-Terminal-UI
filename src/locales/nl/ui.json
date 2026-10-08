@@ -2081,5 +2081,11 @@
   "Grid type": "Rastertype",
   "Square": "Vierkant",
   "Price/time aligned": "Uitgelijnd op prijs/tijd",
-  "Grid line style": "Rasterlijnstijl"
+  "Grid line style": "Rasterlijnstijl",
+  "Close template dialog": "Sjabloonvenster sluiten",
+  "Chart properties": "Grafiekeigenschappen",
+  "Background and grid preview": "Voorbeeld van achtergrond en raster",
+  "Close Save Picture": "Afbeelding opslaan sluiten",
+  "Close dialog": "Dialoogvenster sluiten",
+  "Symbol unavailable": "Symbool niet beschikbaar"
 }

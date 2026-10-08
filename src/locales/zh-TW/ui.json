@@ -2081,5 +2081,11 @@
   "Grid type": "網格類型",
   "Square": "方形",
   "Price/time aligned": "按價格/時間對齊",
-  "Grid line style": "網格線樣式"
+  "Grid line style": "網格線樣式",
+  "Close template dialog": "關閉範本對話方塊",
+  "Chart properties": "圖表屬性",
+  "Background and grid preview": "背景與格線預覽",
+  "Close Save Picture": "關閉儲存圖片",
+  "Close dialog": "關閉對話方塊",
+  "Symbol unavailable": "交易商品無法使用"
 }

@@ -29,7 +29,7 @@ function createRuntime(lightSurface = false) {
     activeOverlayNodeDataRef: { current: [] }, activeOverlayNodesRef: { current: [] },
     activeTradeSnapshotsRef: { current: new Map([[trade.key, trade]]) },
     brokerAccountSessionScope: 'Orrnn:200003',
-    chartThemeRef: { current: { background: lightSurface ? '#d8dde2' : '#000000' } } as RuntimeOptions['chartThemeRef'],
+    chartThemeRef: { current: { background: lightSurface ? '#fafbfc' : '#000000' } } as RuntimeOptions['chartThemeRef'],
     digits: 2, historyOverlayNodeDataRef: { current: [] }, historyOverlayNodesRef: { current: [] },
     isChartSurfaceLight: () => lightSurface, overlayRef: { current: overlay },
     pendingTradeLevelModifyRequestsRef: { current: new Map() }, persistTradeLevelOverrides: vi.fn(),
@@ -83,7 +83,7 @@ describe('SL/TP chart remove controls', () => {
     runtime.createEntryControlsForTrade({ ...trade, side }, { sl: 0, tp: 0 });
     const axisBadge = host.querySelector<HTMLElement>(`[data-trade-axis-key='${trade.key}:entry']`)!;
     expect(axisBadge).toHaveStyle({
-      backgroundColor: '#d8dde2',
+      backgroundColor: '#fafbfc',
       color: side === 'BUY' ? '#1746bc' : '#a51f26',
     });
   });

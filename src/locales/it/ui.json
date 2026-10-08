@@ -2081,5 +2081,11 @@
   "Grid type": "Tipo di griglia",
   "Square": "Quadrata",
   "Price/time aligned": "Allineata a prezzo/tempo",
-  "Grid line style": "Stile delle linee della griglia"
+  "Grid line style": "Stile delle linee della griglia",
+  "Close template dialog": "Chiudi la finestra dei modelli",
+  "Chart properties": "Proprietà del grafico",
+  "Background and grid preview": "Anteprima dello sfondo e della griglia",
+  "Close Save Picture": "Chiudi Salva immagine",
+  "Close dialog": "Chiudi finestra di dialogo",
+  "Symbol unavailable": "Simbolo non disponibile"
 }

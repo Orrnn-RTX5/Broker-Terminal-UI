@@ -13,3 +13,9 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journa
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-status-warning button:hover {
   color: #512a04 !important;
 }
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-status-loading {
+  color: var(--rtx-light-text-secondary) !important;
+  background: var(--rtx-light-panel-subtle) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+}

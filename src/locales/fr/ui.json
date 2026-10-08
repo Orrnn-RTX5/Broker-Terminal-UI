@@ -2081,5 +2081,11 @@
   "Grid type": "Type de grille",
   "Square": "Carrée",
   "Price/time aligned": "Alignée sur le prix et le temps",
-  "Grid line style": "Style des lignes de grille"
+  "Grid line style": "Style des lignes de grille",
+  "Close template dialog": "Fermer la boîte de dialogue des modèles",
+  "Chart properties": "Propriétés du graphique",
+  "Background and grid preview": "Aperçu de l’arrière-plan et de la grille",
+  "Close Save Picture": "Fermer Enregistrer l’image",
+  "Close dialog": "Fermer la boîte de dialogue",
+  "Symbol unavailable": "Symbole indisponible"
 }

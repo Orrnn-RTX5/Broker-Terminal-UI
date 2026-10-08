@@ -629,9 +629,9 @@ function BrokerServerIcon({
 
 /** MT5-style account icon - person silhouette with color */
 function AccountIcon({ isActive }: { isActive: boolean; isLive: boolean }) {
-    const color = '#fbbf24'; // always yellow for both real and demo
+    const color = isActive ? 'var(--rtx-light-accent, #fbbf24)' : 'var(--rtx-light-text-muted, #fbbf24)';
     return (
-        <svg width={14} height={14} viewBox="0 0 16 16" fill="none" className={`inline-block flex-shrink-0 ${isActive ? 'opacity-100' : 'opacity-60'}`}>
+        <svg width={14} height={14} viewBox="0 0 16 16" fill="none" className="navigator-account-icon inline-block flex-shrink-0" style={{ opacity: isActive ? 1 : 'var(--rtx-light-icon-opacity, 0.6)' }}>
             <circle cx="8" cy="5" r="3" fill={color} stroke="none" />
             <path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" fill={color} stroke="none" />
         </svg>

@@ -972,7 +972,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
             )}
 
             {isAuthenticated && !scopeHasLoaded && hasLocalJournalData && (isLoading || !scopeFetchError) && (
-                <div role="status" className="flex shrink-0 items-center gap-2 border-b border-zinc-700 bg-zinc-900/70 px-3 py-1 text-[12px] font-normal text-zinc-400">
+                <div role="status" className="rtx-journal-status-loading flex shrink-0 items-center gap-2 border-b border-zinc-700 bg-zinc-900/70 px-3 py-1 text-[12px] font-normal text-zinc-400">
                     <Icon name="refresh" size="sm" className="animate-spin" />
                     <span>{tr("Loading server journal. Showing local trade diagnostics.")}</span>
                 </div>

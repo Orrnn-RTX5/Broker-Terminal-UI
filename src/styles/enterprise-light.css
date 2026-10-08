@@ -1,41 +1,44 @@
 /*
  * RTX5 shared web and desktop light palette.
  *
- * Dim light surfaces, cool gray chrome, restrained blue interaction states,
- * and distinct execution and financial-text colors reduce large-area glare.
+ * Near-white data surfaces, distinct gray chrome, and dark operational text
+ * separate content from controls. Blue marks selection and primary actions;
+ * execution and financial colors keep their own semantic roles.
  * It intentionally loads after legacy-light-overrides.css so older dark
  * utility classes and legacy purple overrides cannot leak into light mode.
  */
 
 html.rtx-advanced-view.rtx-skin-untitled-light {
-  --rtx-light-canvas: #c7cfd7;
-  --rtx-light-panel: #dce1e6;
-  --rtx-light-panel-subtle: #d4dbe2;
-  --rtx-light-panel-header: #cbd2d9;
-  --rtx-light-elevated: #e0e5e9;
-  --rtx-light-chart: #d8dde2;
-  --rtx-light-field: #e7ebef;
-  --rtx-light-hover: #d1d9e1;
-  --rtx-light-pressed: #cbd5e0;
-  --rtx-light-selected: #d1dced;
-  --rtx-light-border: #bcc6d0;
-  --rtx-light-border-strong: #a2afbd;
-  --rtx-light-control-border: #667487;
-  --rtx-light-control-border-hover: #56677d;
-  --rtx-light-row-border: #cbd3dc;
-  --rtx-light-text: #273444;
-  --rtx-light-text-secondary: #414e5e;
-  --rtx-light-text-muted: #455365;
-  --rtx-light-price: #243247;
+  --rtx-light-canvas: #e8edf3;
+  --rtx-light-panel: #f8fafc;
+  --rtx-light-panel-subtle: #f1f4f8;
+  --rtx-light-panel-header: #e2e8f0;
+  --rtx-light-elevated: #ffffff;
+  --rtx-light-chart: #fafbfc;
+  --rtx-light-field: #ffffff;
+  --rtx-light-hover: #e8eef6;
+  --rtx-light-pressed: #d6e3f3;
+  --rtx-light-selected: #dce9fa;
+  --rtx-light-border: #c5ced9;
+  --rtx-light-border-strong: #9eacbd;
+  --rtx-light-control-border: #697b91;
+  --rtx-light-control-border-hover: #52667f;
+  --rtx-light-row-border: #dde4ed;
+  --rtx-light-text: #182230;
+  --rtx-light-text-secondary: #334155;
+  --rtx-light-text-muted: #475569;
+  --rtx-light-text-disabled: #68788d;
+  --rtx-light-icon-opacity: 1;
+  --rtx-light-price: #172b45;
   --rtx-light-chart-high: #06634e;
   --rtx-light-quote-up: #1746bc;
   --rtx-light-quote-down: #a51f26;
-  --rtx-light-accent: #355786;
-  --rtx-light-accent-strong: #29446a;
-  --rtx-light-accent-pressed: #203653;
-  --rtx-light-accent-soft: #d1dced;
-  --rtx-light-accent-border: #355786;
-  --rtx-light-focus-ring: rgba(53, 87, 134, 0.18);
+  --rtx-light-accent: #2457a7;
+  --rtx-light-accent-strong: #1e4788;
+  --rtx-light-accent-pressed: #173768;
+  --rtx-light-accent-soft: #dce9fa;
+  --rtx-light-accent-border: #2457a7;
+  --rtx-light-focus-ring: rgba(36, 87, 167, 0.18);
   --rtx-light-buy: #2563eb;
   --rtx-light-buy-hover: #1d4ed8;
   --rtx-light-buy-pressed: #1e40af;
@@ -66,16 +69,16 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
   --text-primary: var(--rtx-light-text);
   --text-secondary: var(--rtx-light-text-secondary);
   --text-tertiary: var(--rtx-light-text-muted);
-  --text-quaternary: #9ca3af;
+  --text-quaternary: var(--rtx-light-text-disabled);
   --text-inverse: #ffffff;
   --border-primary: var(--rtx-light-border);
   --border-secondary: var(--rtx-light-border-strong);
   --border-tertiary: var(--rtx-light-control-border);
   --color-primary: var(--rtx-light-accent);
-  --color-primary-dim: rgba(53, 87, 134, 0.14);
-  --color-primary-dimmer: rgba(53, 87, 134, 0.07);
+  --color-primary-dim: rgba(36, 87, 167, 0.14);
+  --color-primary-dimmer: rgba(36, 87, 167, 0.07);
   --color-info: var(--rtx-light-accent);
-  --color-info-dim: rgba(53, 87, 134, 0.12);
+  --color-info-dim: rgba(36, 87, 167, 0.12);
   --color-profit: #1746bc;
   --color-quote-up: var(--rtx-light-quote-up);
   --color-profit-dim: rgba(23, 70, 188, 0.16);
@@ -190,7 +193,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel--active {
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-border-strong) !important;
   box-shadow: none !important;
 }
 
@@ -207,9 +210,13 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.dock-panel__header,
 
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title,
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .dock-panel__title {
-  color: var(--rtx-light-text-secondary) !important;
+  color: var(--rtx-light-text) !important;
   line-height: var(--rtx-light-control-line-height) !important;
   letter-spacing: 0 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__header--inactive {
+  background: var(--rtx-light-panel-subtle) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-resize-handle {
@@ -221,7 +228,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-resize-handle:is(:hover, .d
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-top-chrome, .rtx-main-toolbar) {
-  background: var(--rtx-light-panel-header) !important;
+  background: var(--rtx-light-panel-subtle) !important;
   border-color: var(--rtx-light-border) !important;
   box-shadow: none !important;
   color: var(--rtx-light-text) !important;
@@ -289,18 +296,27 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role="tab"][a
   color: var(--rtx-light-text) !important;
 }
 
-/* Neutral hover distinguishes pointer feedback from indigo selection. */
+/* Neutral hover distinguishes pointer feedback from blue selection. */
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action, .rtx-toolbar-icon-button) {
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
-  color: var(--rtx-light-text-secondary) !important;
+  color: var(--rtx-light-text) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-action--primary {
   background: transparent !important;
   border-color: transparent !important;
   color: var(--rtx-light-text) !important;
+}
+
+/* Legacy dark-toolbar rules color the icon separately from its label. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-action .rtx-toolbar-action__icon {
+  color: inherit !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-action--primary .rtx-toolbar-action__icon {
+  color: var(--rtx-light-accent) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action,
@@ -394,7 +410,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-i
   .rtx-menu-row,
   [role="menuitem"],
   [role="option"]):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
-  color: var(--rtx-light-text-secondary) !important;
+  color: var(--rtx-light-text) !important;
   border-color: transparent !important;
   box-shadow: none !important;
 }
@@ -415,17 +431,24 @@ html.rtx-advanced-view.rtx-skin-untitled-light [data-rtx-desktop-submenu='true']
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-item:hover,
-  .rtx-application-menu__root-item:focus-visible,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-item:not(:disabled):not(.is-disabled):hover,
+  .rtx-application-menu__root-item:not(:disabled):not(.is-disabled):focus-visible,
   .rtx-application-menu__root-item.is-active,
   .rtx-menu-row:not(.is-disabled):hover,
   .rtx-menu-row:not(.is-disabled):focus-visible,
   .rtx-menu-row.is-open,
   [role="menuitem"]:not(:disabled):not([aria-disabled="true"]):hover,
-  [role="option"]:hover):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
+  [role="option"]:not(:disabled):not([aria-disabled="true"]):hover):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   background: var(--rtx-light-accent-soft) !important;
   border-color: transparent !important;
   color: var(--rtx-light-accent-strong) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-item,
+  .rtx-menu-row, [role="menuitem"], [role="option"]):is(:disabled, [aria-disabled="true"], .is-disabled):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
+  color: var(--rtx-light-text-disabled) !important;
+  background: transparent !important;
+  opacity: 1 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-file-menu button.rtx-file-menu__logout[role="menuitem"],
@@ -482,7 +505,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__label {
-  color: var(--rtx-light-text-secondary) !important;
+  color: var(--rtx-light-text) !important;
   line-height: 1.5 !important;
 }
 
@@ -490,8 +513,13 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.navigator-tree-item__chevron
   color: var(--rtx-light-text-muted) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(.mw-row, .navigator-tree-item__row):hover {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.mw-row, .navigator-tree-item__row:not([aria-disabled="true"])):hover {
   background: var(--rtx-light-hover) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row[aria-disabled="true"] :is(.navigator-tree-item__label,
+  .navigator-tree-item__icon, .navigator-tree-item__lock) {
+  color: var(--rtx-light-text-disabled) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch :is(.mw-row, tr)[aria-selected="true"] {
@@ -542,7 +570,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr:hover>*
   background: var(--rtx-light-hover) !important;
 }
 
-/* History filters share the dim chrome instead of inheriting legacy white
+/* History filters share the neutral chrome instead of inheriting legacy white
    utility surfaces or dark active-button fills. */
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-history-toolbar {
   background: var(--rtx-light-panel-header) !important;
@@ -576,20 +604,25 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar :is(.rt
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
   background: transparent !important;
   border-color: transparent !important;
-  color: var(--rtx-light-text-muted) !important;
+  color: var(--rtx-light-text-secondary) !important;
   line-height: var(--rtx-light-control-line-height) !important;
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:hover {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:not(:disabled):hover {
   background: var(--rtx-light-hover) !important;
   color: var(--rtx-light-text) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
-  background: var(--rtx-light-panel) !important;
-  color: var(--rtx-light-text) !important;
-  box-shadow: none !important;
+  background: var(--rtx-light-selected) !important;
+  color: var(--rtx-light-accent-strong) !important;
+  box-shadow: inset 0 -2px 0 var(--rtx-light-accent) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:disabled {
+  color: var(--rtx-light-text-disabled) !important;
+  opacity: 1 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab-indicator {
@@ -719,6 +752,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog, .rtx-dom-d
 
 html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *))::placeholder {
   color: var(--rtx-light-text-muted) !important;
+  opacity: 1 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input:hover,
@@ -1505,6 +1539,10 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbox-tab button:not(:disa
   background: var(--rtx-light-hover) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbox-tab button:not(:disabled) .rtx-toolbox-command-label {
+  color: var(--rtx-light-text) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbox-tab button:focus-visible {
   outline: 2px solid var(--rtx-light-accent);
   outline-offset: -2px;
@@ -1841,14 +1879,21 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(button, [role="menuitem"], [r
 }
 
 /* A solid action needs its focus ring outside the fill to remain visible. */
-html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog button[type="submit"],
+html:root.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog button[type="submit"],
   .rtx-cp-btn-primary,
   .rtx-oad-btn-next,
   .rtx-confirm-dialog__confirm,
   .rtx-order-dialog__action,
+  .rtx-save-picture-button-primary,
+  .rtx-market-watch-save-set__primary,
+  .rtx-export-sheet__button--primary,
+  .rtx-print-preview__primary,
+  .rtx-auth-button[data-variant='primary'],
+  .rtx-bulk-close-dialog__btn-confirm,
   .rtx-options-dialog button.bg-zinc-700,
   .rtx-chart-template-dialog .bg-blue-600):focus-visible {
-  outline-offset: 2px;
+  outline: 2px solid var(--rtx-light-accent) !important;
+  outline-offset: 2px !important;
   box-shadow: 0 0 0 2px var(--rtx-light-elevated) !important;
 }
 

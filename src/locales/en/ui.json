@@ -2081,5 +2081,11 @@
   "Grid type": "Grid type",
   "Square": "Square",
   "Price/time aligned": "Price/time aligned",
-  "Grid line style": "Grid line style"
+  "Grid line style": "Grid line style",
+  "Close template dialog": "Close template dialog",
+  "Chart properties": "Chart properties",
+  "Background and grid preview": "Background and grid preview",
+  "Close Save Picture": "Close Save Picture",
+  "Close dialog": "Close dialog",
+  "Symbol unavailable": "Symbol unavailable"
 }

@@ -2081,5 +2081,11 @@
   "Grid type": "グリッドの種類",
   "Square": "正方形",
   "Price/time aligned": "価格・時間に合わせる",
-  "Grid line style": "グリッド線のスタイル"
+  "Grid line style": "グリッド線のスタイル",
+  "Close template dialog": "テンプレートダイアログを閉じる",
+  "Chart properties": "チャートのプロパティ",
+  "Background and grid preview": "背景とグリッドのプレビュー",
+  "Close Save Picture": "画像保存を閉じる",
+  "Close dialog": "ダイアログを閉じる",
+  "Symbol unavailable": "銘柄を利用できません"
 }

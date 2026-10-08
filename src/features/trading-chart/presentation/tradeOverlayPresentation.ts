@@ -165,7 +165,7 @@ export const getTradeOverlayCardPalette = (
   if (isLightSurface) {
     if (tone === 'BUY') {
       return {
-        background: '#d1dced',
+        background: '#eff6ff',
         border: '#1746bc',
         text: '#1746bc',
         shadow: 'box-shadow:0 1px 3px rgba(15,23,42,0.12);',
@@ -173,13 +173,13 @@ export const getTradeOverlayCardPalette = (
     }
     return isPositiveTone
       ? {
-        background: '#cddfd8',
+        background: '#ecfdf5',
         border: '#04685e',
         text: '#04685e',
         shadow: 'box-shadow:0 1px 3px rgba(15,23,42,0.12);',
       }
       : {
-        background: '#e4d3d5',
+        background: '#fef2f2',
         border: '#a51f26',
         text: '#a51f26',
         shadow: 'box-shadow:0 1px 3px rgba(15,23,42,0.12);',

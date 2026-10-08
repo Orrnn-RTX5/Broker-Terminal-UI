@@ -1209,6 +1209,14 @@ html.rtx-skin-untitled-light .rtx-journal-toolbar .rtx-journal-auto[aria-pressed
   color: var(--color-sell, #ef5350);
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-values-tooltip__value[data-tone='up'] {
+  color: var(--rtx-light-quote-up);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-values-tooltip__value[data-tone='down'] {
+  color: var(--rtx-light-quote-down);
+}
+
 .chart-drawing {
   pointer-events: auto !important;
   z-index: 20;

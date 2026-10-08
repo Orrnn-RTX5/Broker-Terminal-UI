@@ -332,24 +332,31 @@ const MenuItem: React.FC<MenuItemProps> = ({
   }
 
   const isActive = !item.disabled && (isSubmenuActive || isFocused || isPointerHovered || isHovered);
-  const glyphColor = skin === 'theme'
+  const fallbackGlyphColor = skin === 'theme'
     ? (item.disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)')
     : item.disabled
     ? (skin === 'light' ? 'rgba(0, 0, 0, 0.28)' : 'rgba(255, 255, 255, 0.25)')
     : isActive
       ? (skin === 'light' ? '#0f172a' : '#ffffff')
       : (skin === 'light' ? '#475569' : 'rgba(255, 255, 255, 0.70)');
+  const glyphColor = `var(${item.disabled ? '--rtx-light-text-disabled' : isActive ? '--rtx-light-accent-strong' : '--rtx-light-text-secondary'}, ${fallbackGlyphColor})`;
+  const fallbackShortcutColor = skin === 'theme' ? 'var(--text-tertiary)' : item.disabled
+    ? (skin === 'light' ? 'rgba(0, 0, 0, 0.25)' : 'rgba(255, 255, 255, 0.20)')
+    : isActive
+      ? (skin === 'light' ? 'rgba(0, 0, 0, 0.60)' : 'rgba(255, 255, 255, 0.70)')
+      : (skin === 'light' ? 'rgba(0, 0, 0, 0.42)' : 'rgba(255, 255, 255, 0.40)');
+  const shortcutColor = `var(${item.disabled ? '--rtx-light-text-disabled' : '--rtx-light-text-muted'}, ${fallbackShortcutColor})`;
 
   const checkmark = (
     <svg
-      className="w-3.5 h-3.5"
+      className="rtx-context-menu__check w-3.5 h-3.5"
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
       strokeWidth={2.2}
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ color: item.disabled ? 'inherit' : (skin === 'light' ? '#0284c7' : '#38bdf8') }}
+      style={{ color: item.disabled ? 'var(--rtx-light-text-disabled, inherit)' : `var(--rtx-light-accent, ${skin === 'light' ? '#0284c7' : '#38bdf8'})` }}
     >
       <polyline points="3 8.5 6.5 12 13 4.5" />
     </svg>
@@ -406,7 +413,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
       >
         {isCompact && item.checked ? checkmark : item.icon ? (
           <span
-            className="flex items-center justify-center transition-colors"
+            className="rtx-context-menu__glyph flex items-center justify-center transition-colors"
             style={{ color: glyphColor }}
           >
             {item.icon}
@@ -418,24 +425,18 @@ const MenuItem: React.FC<MenuItemProps> = ({
       </span>
       {item.shortcut && (
         <span
-          className="ml-auto whitespace-nowrap pl-4 pr-1 font-mono text-[11px] font-normal tracking-wide tabular-nums select-none leading-none transition-colors"
-          style={{
-            color: skin === 'theme' ? 'var(--text-tertiary)' : item.disabled
-              ? (skin === 'light' ? 'rgba(0, 0, 0, 0.25)' : 'rgba(255, 255, 255, 0.20)')
-              : isActive
-                ? (skin === 'light' ? 'rgba(0, 0, 0, 0.60)' : 'rgba(255, 255, 255, 0.70)')
-                : (skin === 'light' ? 'rgba(0, 0, 0, 0.42)' : 'rgba(255, 255, 255, 0.40)'),
-          }}
+          className="rtx-context-menu__shortcut ml-auto whitespace-nowrap pl-4 pr-1 font-mono text-[11px] font-normal tracking-wide tabular-nums select-none leading-none transition-colors"
+          style={{ color: shortcutColor }}
         >
           {item.shortcut}
         </span>
       )}
       {hasSubmenu && (
         <span
-          className="ml-2 -mr-0.5 flex items-center justify-center transition-opacity"
+          className="rtx-context-menu__chevron ml-2 -mr-0.5 flex items-center justify-center transition-opacity"
           style={{
             color: glyphColor,
-            opacity: isActive ? 1 : 0.65,
+            opacity: isActive ? 1 : 'var(--rtx-light-icon-opacity, 0.65)',
           }}
         >
           <Icon name="chevron-right" size="xs" />

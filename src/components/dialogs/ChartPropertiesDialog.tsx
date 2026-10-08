@@ -500,6 +500,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
                         <label className="rtx-cp-color-picker flex items-center gap-2 bg-[#2b2b2b] border border-[#444] rounded px-1.5 py-[2px] cursor-pointer hover:border-[#666] transition-colors relative">
                           <input 
                             type="color" 
+                            aria-label={tr(c.label)}
                             value={isRgba ? '#ffffff' : colorVal} 
                             onChange={(e) => updateActiveChartColor(c.key as keyof ChartProperties['colors'], e.target.value)}
                             className="absolute opacity-0 w-0 h-0" 

@@ -15,6 +15,10 @@ describe('Chart Properties keyboard ownership', () => {
     expect(screen.getByRole('tab', { name: 'Colors', selected: true })).toHaveFocus();
     expect(screen.getByText('Background and grid preview')).toBeVisible();
     expect(screen.queryByText(/Demo Asset/)).not.toBeInTheDocument();
+    const backgroundColor = screen.getByLabelText('Background');
+    backgroundColor.focus();
+    expect(backgroundColor).toHaveFocus();
+    expect(backgroundColor.closest('.rtx-cp-color-picker')).not.toBeNull();
   });
 
   it('leaves a newer help dialog focused and closes only for its own Escape', () => {

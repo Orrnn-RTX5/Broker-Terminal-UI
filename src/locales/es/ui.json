@@ -2081,5 +2081,11 @@
   "Grid type": "Tipo de cuadrícula",
   "Square": "Cuadrada",
   "Price/time aligned": "Alineada con precio/tiempo",
-  "Grid line style": "Estilo de líneas de cuadrícula"
+  "Grid line style": "Estilo de líneas de cuadrícula",
+  "Close template dialog": "Cerrar el diálogo de plantillas",
+  "Chart properties": "Propiedades del gráfico",
+  "Background and grid preview": "Vista previa del fondo y la cuadrícula",
+  "Close Save Picture": "Cerrar Guardar imagen",
+  "Close dialog": "Cerrar diálogo",
+  "Symbol unavailable": "Símbolo no disponible"
 }

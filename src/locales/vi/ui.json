@@ -2081,5 +2081,11 @@
   "Grid type": "Loại lưới",
   "Square": "Vuông",
   "Price/time aligned": "Căn theo giá/thời gian",
-  "Grid line style": "Kiểu đường lưới"
+  "Grid line style": "Kiểu đường lưới",
+  "Close template dialog": "Đóng hộp thoại mẫu",
+  "Chart properties": "Thuộc tính biểu đồ",
+  "Background and grid preview": "Xem trước nền và lưới",
+  "Close Save Picture": "Đóng Lưu hình ảnh",
+  "Close dialog": "Đóng hộp thoại",
+  "Symbol unavailable": "Mã giao dịch không khả dụng"
 }

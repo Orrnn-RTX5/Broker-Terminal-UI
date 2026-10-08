@@ -218,8 +218,8 @@ export const createTradeOverlayDomRuntime = ({
       const verticalPosition = side === 'BUY'
         ? 'bottom:calc(100% + 7px);'
         : 'top:calc(100% + 7px);';
-      const tooltipBackground = lightSurface ? '#e0e5e9' : '#111827';
-      const tooltipText = lightSurface ? '#273444' : '#f8fafc';
+      const tooltipBackground = lightSurface ? '#ffffff' : '#111827';
+      const tooltipText = lightSurface ? '#182230' : '#f8fafc';
       tooltip.style.cssText = `position:absolute;left:50%;${verticalPosition}display:block;min-width:148px;padding:0;border:1px solid ${palette.border};border-radius:6px;background:${tooltipBackground};color:${tooltipText};font-size:var(--rtx-ui-font-size, 14px);font-family:${CHART_AXIS_FONT_FAMILY};font-variant-numeric:tabular-nums;line-height:16px;white-space:nowrap;pointer-events:none;opacity:0;visibility:hidden;transform:translateX(-50%);transition:opacity 90ms ease;box-shadow:0 6px 18px rgba(0,0,0,0.38);overflow:hidden;`;
 
       const tooltipHeader = document.createElement('span');
@@ -230,7 +230,7 @@ export const createTradeOverlayDomRuntime = ({
       const tooltipDetails = document.createElement('span');
       tooltipDetails.className = 'rtx-trade-marker__tooltip-details';
       tooltipDetails.style.cssText = 'display:grid;grid-template-columns:auto 1fr;column-gap:10px;row-gap:1px;padding:4px 8px 5px;';
-      const detailLabelColor = lightSurface ? '#455365' : '#98a2b3';
+      const detailLabelColor = lightSurface ? '#475569' : '#98a2b3';
       const appendTooltipDetail = (labelText: string, valueText: string) => {
         const label = document.createElement('span');
         label.dataset.chartUiLabel = labelText;
@@ -413,7 +413,7 @@ export const createTradeOverlayDomRuntime = ({
       badge.dataset.tradeAxisKey = key;
       badge.textContent = seriesRef.current.priceFormatter().format(price);
       const lightSurface = isChartSurfaceLight();
-      const background = chartThemeRef.current.background ?? (lightSurface ? '#d8dde2' : '#000000');
+      const background = chartThemeRef.current.background ?? (lightSurface ? '#fafbfc' : '#000000');
       const lightEntryColors: Record<string, string> = {
         [TRADE_ENTRY_LINE_BUY_COLOR]: LIGHT_CHART_TRADE_COLORS.buy,
         [TRADE_ENTRY_LINE_SELL_COLOR]: LIGHT_CHART_TRADE_COLORS.sell,
@@ -585,7 +585,7 @@ export const createTradeOverlayDomRuntime = ({
           color: accent, padding: '0 5px', height: '24px', lineHeight: '20px', boxSizing: 'border-box',
           minWidth: '24px', justifyContent: 'center', flex: '0 0 auto',
           backgroundColor: lightSurface
-            ? (chartThemeRef.current.background ?? '#d8dde2')
+            ? (chartThemeRef.current.background ?? '#fafbfc')
             : DARK_CHART_TRADE_COLORS.surface,
           border: `1px ${lightSurface ? 'dotted' : 'solid'} ${accent}`, borderRadius: '3px', textShadow: 'none',
         });

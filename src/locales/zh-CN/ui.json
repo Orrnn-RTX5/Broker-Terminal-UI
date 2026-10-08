@@ -2081,5 +2081,11 @@
   "Grid type": "网格类型",
   "Square": "方形",
   "Price/time aligned": "按价格/时间对齐",
-  "Grid line style": "网格线样式"
+  "Grid line style": "网格线样式",
+  "Close template dialog": "关闭模板对话框",
+  "Chart properties": "图表属性",
+  "Background and grid preview": "背景和网格预览",
+  "Close Save Picture": "关闭保存图片",
+  "Close dialog": "关闭对话框",
+  "Symbol unavailable": "交易品种不可用"
 }

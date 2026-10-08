@@ -513,9 +513,9 @@ export const getEffectiveChartColors = (
   // Apply the shared light palette at render time so switching back to dark
   // restores the saved template and custom chart colors remain authoritative.
   const lightSurface = {
-    background: "#d8dde2",
-    foreground: "#414e5e",
-    grid: "rgba(46, 46, 46, 0.11)",
+    background: "#fafbfc",
+    foreground: "#334155",
+    grid: "rgba(71, 85, 105, 0.07)",
   };
 
   if (properties.colorScheme === "Green on Black" || properties.colorScheme === "Blue on Black") {
@@ -530,7 +530,7 @@ export const getEffectiveChartColors = (
         return color;
       };
       // Deepen only built-in candle hues so thin bodies and wicks remain
-      // visible on the dimmer light canvas. User-selected colors stay intact.
+      // visible on the neutral light canvas. User-selected colors stay intact.
       for (const key of ["barUp", "barDown", "bullCandle", "bearCandle"] as const) {
         if (colors[key].toLowerCase() === CHART_CANDLE_UP_COLOR.toLowerCase()) colors[key] = "#087f6c";
         if (colors[key].toLowerCase() === CHART_CANDLE_DOWN_COLOR.toLowerCase()) colors[key] = "#ce2938";

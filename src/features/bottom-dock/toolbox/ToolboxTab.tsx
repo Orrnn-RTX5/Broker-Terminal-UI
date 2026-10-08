@@ -99,7 +99,7 @@ export function ToolboxTab() {
                                 >
                                     <span className="flex items-center gap-2 min-w-0 overflow-hidden">
                                         <Icon name={item.icon as IconName} size="xs" className="text-zinc-500 group-hover:text-zinc-300 flex-shrink-0" />
-                                        <span className="group-hover:text-white truncate">{tr(item.name)}</span>
+                                        <span className="rtx-toolbox-command-label group-hover:text-white truncate">{tr(item.name)}</span>
                                     </span>
                                     {item.disabled ? (
                                         <span className="ml-2 flex-shrink-0" aria-hidden="true"><Icon name="lock" size="xs" /></span>

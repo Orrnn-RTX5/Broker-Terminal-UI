@@ -178,7 +178,7 @@ export const MarketWatchGrid = ({
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: 3,
                 background: 'rgba(255,255,255,0.04)',
-                color: '#808088',
+                color: 'var(--rtx-light-text-muted, #808088)',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
                 fontSize: 10,

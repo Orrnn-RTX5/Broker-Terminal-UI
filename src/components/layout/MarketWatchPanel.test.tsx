@@ -1148,6 +1148,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       'BTCUSD',
       { symbol: 'EURUSD', digits: 5 },
     ]);
+    marketHooks.activeSymbols = ['XAUUSD', 'BTCUSD'];
     act(() => {
       useAppStore.getState().setTicks({
         XAUUSD: {
@@ -1164,7 +1165,7 @@ describe('MarketWatchPanel symbol visibility', () => {
           close: 4272.74,
           dailyChange: -2.87,
         },
-        EURUSD: { symbol: 'EURUSD', bid: 1.1, ask: 1.1001, spread: 0.0001, timestamp: Date.now() },
+        EURUSD: { symbol: 'EURUSD', bid: 1.1, ask: 1.1001, spread: 0.0001, dailyChange: -0.42, timestamp: Date.now() },
       });
     });
 
@@ -1182,6 +1183,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(screen.getByRole('combobox', { name: 'Symbol' })).toHaveValue('XAUUSD');
     expect(screen.getByRole('option', { name: 'XAUUSD, Gold vs US Dollar' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'XAUUSD Details' })).toBeInTheDocument();
+    expect(screen.queryByText('Symbol unavailable')).not.toBeInTheDocument();
     const labels = [
       'Tick Size', 'Tick Value', 'Bid', 'Bid High', 'Bid Low', 'Ask', 'Ask High', 'Ask Low',
       'Change %', 'Open Price', 'Close Price',
@@ -1202,6 +1204,8 @@ describe('MarketWatchPanel symbol visibility', () => {
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Symbol' }), { target: { value: 'EURUSD' } });
     expect(screen.getByRole('region', { name: 'EURUSD Details' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Symbol unavailable');
+    expect(screen.getByText('-0.42%')).toHaveAttribute('data-tone', 'down');
     expect(getDetailValue('Bid')).toBe('1.10000');
     expect(getDetailValue('Bid High')).toBe('—');
     expect(getDetailValue('Tick Value')).toBe('—');

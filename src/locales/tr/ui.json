@@ -2081,5 +2081,11 @@
   "Grid type": "Izgara türü",
   "Square": "Kare",
   "Price/time aligned": "Fiyat/zamana hizalı",
-  "Grid line style": "Izgara çizgi stili"
+  "Grid line style": "Izgara çizgi stili",
+  "Close template dialog": "Şablon iletişim kutusunu kapat",
+  "Chart properties": "Grafik özellikleri",
+  "Background and grid preview": "Arka plan ve ızgara önizlemesi",
+  "Close Save Picture": "Resmi Kaydet penceresini kapat",
+  "Close dialog": "İletişim kutusunu kapat",
+  "Symbol unavailable": "Sembol kullanılamıyor"
 }

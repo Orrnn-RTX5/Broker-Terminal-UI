@@ -118,7 +118,7 @@ html.rtx-desktop-shell-active {
 }
 
 /* Keep the late-loading material layer aligned with the shared light palette.
-   Opaque surfaces avoid white glare and keep text contrast independent of the
+   Opaque surfaces keep text contrast independent of the
    moving chart underneath menus and dialogs. No filters on fixed ancestors. */
 html:root.rtx-advanced-view.rtx-skin-untitled-light {
   --rtx-glass-chrome: var(--rtx-light-panel-header);
@@ -154,8 +154,12 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
     box-shadow: var(--rtx-glass-chrome-shadow) !important;
   }
 
+  :is(.rtx-top-chrome, .rtx-main-toolbar, .dock-panel__header--inactive) {
+    background-color: var(--rtx-light-panel-subtle) !important;
+  }
+
   .web-drawing-tools-rail:not([data-orientation='horizontal']) {
-    background-color: var(--rtx-glass-chrome) !important;
+    background-color: var(--rtx-light-panel-subtle) !important;
     background-image: none !important;
     border-color: var(--rtx-glass-border) !important;
     box-shadow: none !important;

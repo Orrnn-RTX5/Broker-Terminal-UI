@@ -49,6 +49,29 @@ describe('ruler rendering', () => {
     renderChartRuler(svg, { ...start, logical: 80 }, { ...end, logical: 100 }, rulerMetrics(start, end, [], 2, .01), geometry);
     expect(svg.childElementCount).toBe(0);
   });
+
+  it('deepens only the negative label on built-in light charts, preserving measurement geometry and values', () => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const metrics = rulerMetrics(start, end, [], 2, .01);
+    renderChartRuler(svg, start, end, metrics, geometry);
+    const previousMarkup = svg.innerHTML;
+    renderChartRuler(svg, start, end, metrics, { ...geometry, useLightPalette: true });
+    const label = svg.querySelector('[data-ruler-part="label"]')!;
+    expect(label.getAttribute('fill')).toBe('var(--rtx-light-quote-down, #a51f26)');
+    expect(label.nextElementSibling?.getAttribute('fill')).toBe('#ffffff');
+    label.setAttribute('fill', metrics.color);
+    expect(svg.innerHTML).toBe(previousMarkup);
+  });
+
+  it.each([
+    { light: false, color: '#f7525f' },
+    { light: true, color: '#2962ff' },
+    { light: true, color: '#804080' },
+  ])('preserves dark, positive, and custom measurement fills: $color / light $light', ({ light, color }) => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    renderChartRuler(svg, start, end, { ...rulerMetrics(start, end, [], 2, .01), color }, { ...geometry, useLightPalette: light });
+    expect(svg.querySelector('[data-ruler-part="label"]')?.getAttribute('fill')).toBe(color);
+  });
 });
 
 describe('ruler pointer lifecycle', () => {

@@ -2,6 +2,7 @@ import { barVolume, type ForecastingBar } from './forecastingMeasurementRenderer
 
 export interface RulerPoint { logical: number; time: number; price: number }
 export interface RulerMetrics { price: string; range: string; volume: string; color: string }
+const RULER_NEGATIVE_COLOR = '#f7525f';
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 
@@ -36,12 +37,14 @@ export function rulerMetrics(start: RulerPoint, end: RulerPoint, bars: readonly 
     price: `${format(delta, precision)} (${percentage})${ticks}`,
     range: `${end.logical - start.logical} bars, ${rulerDuration(end.time - start.time)}`,
     volume: `Vol ${known ? compact(volume) : '—'}`,
-    color: delta < 0 ? '#f7525f' : '#2962ff',
+    color: delta < 0 ? RULER_NEGATIVE_COLOR : '#2962ff',
   };
 }
 
 export interface RulerGeometry {
   width: number; height: number; totalWidth: number; totalHeight: number;
+  /** Opt in only for built-in light palettes; custom chart colors remain authoritative. */
+  useLightPalette?: boolean;
   x: (logical: number) => number | null;
   y: (price: number) => number | null;
   formatPrice: (price: number) => string;
@@ -81,7 +84,10 @@ export function renderChartRuler(svg: SVGSVGElement, start: RulerPoint, end: Rul
   const boxX = clamp(middleX - boxWidth / 2, 4, width - boxWidth - 4);
   const preferredY = end.price >= start.price ? top - boxHeight - 10 : bottom + 10;
   const boxY = clamp(preferredY, 4, Math.max(4, height - boxHeight - 4));
-  node('rect', { 'data-ruler-part': 'label', x: boxX, y: boxY, width: boxWidth, height: boxHeight, rx: 3, fill: metrics.color });
+  const labelColor = geometry.useLightPalette && metrics.color === RULER_NEGATIVE_COLOR
+    ? 'var(--rtx-light-quote-down, #a51f26)'
+    : metrics.color;
+  node('rect', { 'data-ruler-part': 'label', x: boxX, y: boxY, width: boxWidth, height: boxHeight, rx: 3, fill: labelColor });
   lines.forEach((text, index) => node('text', { x: boxX + boxWidth / 2, y: boxY + 19 + index * 20, fill: '#ffffff', 'font-size': 12, 'font-weight': 600, 'font-family': 'Arial, sans-serif', 'text-anchor': 'middle' }, text));
   // TradingView highlights both axis intervals in blue for either direction.
   const blue = '#2962ff';

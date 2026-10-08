@@ -1,0 +1,6 @@
+/* Preserve the partial-data warning without dark translucent surfaces in light mode. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-history-status-warning {
+  color: var(--color-warning) !important;
+  background: var(--color-warning-dim) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+}

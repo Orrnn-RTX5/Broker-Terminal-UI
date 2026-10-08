@@ -235,8 +235,8 @@ describe('dispatchChartPositionModify', () => {
 });
 
 describe('createEntryTradeControlBar', () => {
-  it.each(['BUY', 'SELL'] as const)('keeps light %s labels, action icons and signed profit readable on the matte chart', side => {
-    const background = '#d8dde2';
+  it.each(['BUY', 'SELL'] as const)('keeps light %s labels, action icons and signed profit readable on the neutral chart', side => {
+    const background = '#fafbfc';
     const { root, setLiveMetrics } = createEntryTradeControlBar({
       tradeKey: 'trade:contrast', ticket: 987, symbol: 'XAUUSD', side,
       volume: 0.01, isLightSurface: true, leftInset: 10, plainLabel: true, chartBackground: background,
@@ -436,8 +436,8 @@ describe('createEntryTradeControlBar', () => {
       leftInset: 10,
     });
 
-    expect(root.querySelector('.rtx-trade-chip--pips')).toHaveStyle({ backgroundColor: '#dce1e6', color: '#273444' });
-    expect(root.querySelector('.rtx-trade-chip--money')).toHaveStyle({ backgroundColor: '#dce1e6', color: '#273444' });
+    expect(root.querySelector('.rtx-trade-chip--pips')).toHaveStyle({ backgroundColor: '#ffffff', color: '#182230' });
+    expect(root.querySelector('.rtx-trade-chip--money')).toHaveStyle({ backgroundColor: '#ffffff', color: '#182230' });
     expect(root.querySelector('.rtx-trade-chip--volume')).toHaveStyle({ backgroundColor: '#dc2626', color: '#ffffff' });
   });
 
@@ -501,7 +501,7 @@ describe('createEntryTradeControlBar', () => {
 
 describe('createTradeLevelControlBar', () => {
   it.each(['SL', 'TP'] as const)('keeps light %s text readable on the chart without changing its supplied background', role => {
-    const background = '#d8dde2';
+    const background = '#fafbfc';
     const bar = createTradeLevelControlBar({
       tradeKey: 'trade:contrast', role, side: 'BUY', label: role, pips: 10, money: 5,
       isLightSurface: true, chartBackground: background, leftInset: 10, onRemove: vi.fn(),
@@ -614,11 +614,11 @@ describe('createDockedLevelChip', () => {
   it('uses the light field surface and restores its outline after hover', () => {
     const chip = createDockedLevelChip({ tradeKey: 'trade:987', role: 'SL', label: 'SL', isLightSurface: true, leftInset: 10 });
     document.body.appendChild(chip);
-    expect(chip).toHaveStyle({ backgroundColor: '#e0e5e9', color: '#414e5e', borderColor: '#667487' });
+    expect(chip).toHaveStyle({ backgroundColor: '#ffffff', color: '#334155', borderColor: '#697b91' });
     chip.dispatchEvent(new MouseEvent('mouseenter'));
     expect(chip).toHaveStyle({ borderTopColor: '#64748b' });
     chip.dispatchEvent(new MouseEvent('mouseleave'));
-    expect(chip).toHaveStyle({ borderTopColor: '#667487' });
+    expect(chip).toHaveStyle({ borderTopColor: '#697b91' });
   });
 
   it('builds a draggable docked handle with the level role dataset', () => {

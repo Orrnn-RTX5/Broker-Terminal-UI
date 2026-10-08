@@ -92,7 +92,7 @@ export const TimeframePicker: React.FC<TimeframePickerProps> = ({
             tabIndex={selected ? 0 : -1}
             onClick={() => onSelect(option.value)}
             onKeyDown={(event) => handleKeyDown(event, optionIndex)}
-            className={`rtx-timeframe-option flex h-[32px] min-w-[38px] shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border px-2.5 text-[13px] font-normal font-segoe leading-none transition-colors focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 ${optionClassName}`}
+            className={`rtx-timeframe-option flex h-[32px] shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border text-[13px] font-normal font-segoe leading-none transition-colors focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 ${optionClassName}`}
           >
             {option.value}
           </button>

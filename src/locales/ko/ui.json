@@ -2081,5 +2081,11 @@
   "Grid type": "격자 유형",
   "Square": "정사각형",
   "Price/time aligned": "가격/시간에 맞춤",
-  "Grid line style": "격자선 스타일"
+  "Grid line style": "격자선 스타일",
+  "Close template dialog": "템플릿 대화 상자 닫기",
+  "Chart properties": "차트 속성",
+  "Background and grid preview": "배경 및 격자 미리보기",
+  "Close Save Picture": "이미지 저장 닫기",
+  "Close dialog": "대화 상자 닫기",
+  "Symbol unavailable": "종목을 사용할 수 없습니다"
 }

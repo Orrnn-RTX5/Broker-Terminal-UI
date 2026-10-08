@@ -2081,5 +2081,11 @@
   "Grid type": "ประเภทกริด",
   "Square": "สี่เหลี่ยมจัตุรัส",
   "Price/time aligned": "จัดแนวตามราคา/เวลา",
-  "Grid line style": "รูปแบบเส้นกริด"
+  "Grid line style": "รูปแบบเส้นกริด",
+  "Close template dialog": "ปิดกล่องโต้ตอบเทมเพลต",
+  "Chart properties": "คุณสมบัติกราฟ",
+  "Background and grid preview": "ตัวอย่างพื้นหลังและเส้นตาราง",
+  "Close Save Picture": "ปิดการบันทึกรูปภาพ",
+  "Close dialog": "ปิดกล่องโต้ตอบ",
+  "Symbol unavailable": "สัญลักษณ์ไม่พร้อมใช้งาน"
 }

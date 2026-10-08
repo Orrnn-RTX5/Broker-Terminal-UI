@@ -900,7 +900,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                 <div role="alert" aria-label={tr("Market Watch errors")} style={{
                   padding: '5px 10px',
                   borderTop: '1px solid rgba(248,113,113,0.16)',
-                  color: '#f87171',
+                  color: 'var(--rtx-light-quote-down, #f87171)',
                   background: 'rgba(248,113,113,0.06)',
                   fontSize: 10,
                   lineHeight: 1.3,

@@ -1,11 +1,12 @@
 /* Light-theme role values feed the shared renderer in app-typography.css.
    Keep one reading size across peer surfaces, with a separate caption and
    heading hierarchy. Every role follows the user's Small / Normal / Large
-   preference. The light reading scale is one pixel smaller for a compact UI. */
+   preference. A readable 13/14/15px scale keeps regular body text clear;
+   medium controls and semibold headings provide restrained emphasis. */
 html:root.rtx-skin-untitled-light {
-  --rtx-ui-font-size: 13px;
+  --rtx-ui-font-size: 14px;
   --rtx-light-type-body: var(--rtx-ui-font-size);
-  --rtx-light-type-caption: max(11px, calc(var(--rtx-ui-font-size) - 1px));
+  --rtx-light-type-caption: max(12px, calc(var(--rtx-ui-font-size) - 1px));
   --rtx-light-type-section: calc(var(--rtx-ui-font-size) + 2px);
   --rtx-light-type-title: calc(var(--rtx-ui-font-size) + 4px);
   --rtx-light-weight-body: 400;
@@ -19,11 +20,11 @@ html:root.rtx-skin-untitled-light {
 }
 
 html:root.rtx-skin-untitled-light.rtx-advanced-font-small {
-  --rtx-ui-font-size: 12px;
+  --rtx-ui-font-size: 13px;
 }
 
 html:root.rtx-skin-untitled-light.rtx-advanced-font-large {
-  --rtx-ui-font-size: 14px;
+  --rtx-ui-font-size: 15px;
 }
 
 /* Shared controls, navigation and table data use the same base size. Explicit
@@ -128,9 +129,35 @@ html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop .r
   min-height: calc(var(--rtx-ui-line-height) + 5px);
 }
 
+html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs {
+  height: calc(var(--rtx-ui-line-height) + 6px);
+  min-height: calc(var(--rtx-ui-line-height) + 6px);
+}
+
+/* Fixed chrome must grow with the reading scale. Virtual table rows retain
+   their existing measured heights so scrolling and column resizing stay stable. */
+html:root.rtx-skin-untitled-light .rtx-trade-footer-metric {
+  height: auto;
+  min-height: calc(var(--rtx-ui-line-height) + 2px);
+}
+
+html:root.rtx-skin-untitled-light .rtx-journal-toolbar {
+  height: auto;
+  min-height: calc(var(--rtx-ui-line-height) + 12px);
+}
+
+html:root.rtx-skin-untitled-light .rtx-journal-toolbar button.rtx-journal-control {
+  height: auto;
+  min-height: calc(var(--rtx-ui-line-height) + 4px);
+}
+
+html:root.rtx-skin-untitled-light .rtx-journal-table thead th:first-child {
+  width: max(144px, calc(var(--rtx-light-type-body) * 10 + 12px)) !important;
+}
+
 /* Secondary information uses one readable caption role, never ad-hoc 10/11px. */
 html:root.rtx-skin-untitled-light :is(
-  .rtx-status-bar, .rtx-menu-row__shortcut,
+  .rtx-status-bar, .rtx-menu-row__shortcut, .rtx-context-menu__shortcut,
   .rtx-market-watch__symbol-count, .rtx-order-dialog__chart-meta,
   .rtx-order-dialog__chart-quotes, .rtx-order-dialog__margin,
   .rtx-bug-report-subtitle,
@@ -164,11 +191,15 @@ html:root.rtx-skin-untitled-light :is(
 /* These system-generated chart controls carry inline role values. Restrict
    the override to their hooks so user-authored drawing typography stays intact. */
 html:root.rtx-skin-untitled-light :is(
-  .rtx-trade-controls, .rtx-trade-axis-price-badge, .rtx-trade-marker__tooltip
+  .rtx-trade-controls, .rtx-trade-axis-price-badge, .rtx-trade-marker__price-tooltip
 ) {
   --rtx-type-size: var(--rtx-light-type-body) !important;
   --rtx-type-weight: var(--rtx-light-weight-body) !important;
   --rtx-type-family: var(--rtx-ui-font-family) !important;
+}
+
+html:root.rtx-skin-untitled-light .rtx-trade-marker__tooltip-header {
+  --rtx-type-weight: var(--rtx-light-weight-heading);
 }
 
 html:root.rtx-skin-untitled-light .rtx-oct .rtx-oct-trade-button :is(.rtx-oct-side-label, .rtx-oct-price) {
@@ -280,7 +311,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='
    to join the shared panel above, with a quiet outline on the other sides. */
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs {
   --rtx-light-ui-font-size: var(--rtx-light-toolbox-tab-size);
-  --rtx-light-ui-font-weight: 400;
+  --rtx-light-ui-font-weight: var(--rtx-light-weight-body);
   --rtx-light-control-line-height: var(--rtx-ui-line-height);
   --rtx-dock-tab-strip-height: calc(var(--rtx-light-control-line-height) + 7px);
   height: var(--rtx-dock-tab-strip-height) !important;
@@ -570,6 +601,7 @@ html:root.rtx-skin-untitled-light :is(
 html:root.rtx-skin-untitled-light :is(
   .rtx-cp-title, .rtx-confirm-dialog__header > span,
   .rtx-modify-dialog > div:first-child > span,
+  .rtx-market-watch-save-set__title, .rtx-save-picture-header h3,
   .rtx-bulk-close-dialog__title, .last-symbol-brand strong
 ) {
   --rtx-type-size: var(--rtx-light-type-title);

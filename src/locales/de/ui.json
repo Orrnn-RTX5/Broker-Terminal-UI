@@ -2081,5 +2081,11 @@
   "Grid type": "Rastertyp",
   "Square": "Quadratisch",
   "Price/time aligned": "An Preis/Zeit ausgerichtet",
-  "Grid line style": "Rasterlinien-Stil"
+  "Grid line style": "Rasterlinien-Stil",
+  "Close template dialog": "Vorlagendialog schließen",
+  "Chart properties": "Charteigenschaften",
+  "Background and grid preview": "Vorschau von Hintergrund und Raster",
+  "Close Save Picture": "Bildspeicherung schließen",
+  "Close dialog": "Dialog schließen",
+  "Symbol unavailable": "Symbol nicht verfügbar"
 }

@@ -42,7 +42,7 @@ export const MarketWatchSaveSetDialog: FC<MarketWatchSaveSetDialogProps> = ({
         onSubmit={(event) => { event.preventDefault(); onSave(); }}
         className="rtx-market-watch-save-set w-[360px] max-w-full max-h-[calc(100dvh-32px)] overflow-y-auto border border-[var(--border-secondary)] bg-[var(--bg-secondary)] p-4 text-[var(--text-primary)] shadow-2xl"
       >
-        <div className="mb-3 text-sm font-semibold">{tr('Save Market Watch set')}</div>
+        <div className="rtx-market-watch-save-set__title mb-3 text-sm font-semibold">{tr('Save Market Watch set')}</div>
         <label className="mb-1 block text-xs text-[var(--text-secondary)]" htmlFor="market-watch-set-name">
           {tr('Set name')}
         </label>

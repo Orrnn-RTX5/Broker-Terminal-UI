@@ -2081,5 +2081,11 @@
   "Grid type": "Jenis kisi",
   "Square": "Persegi",
   "Price/time aligned": "Selaras dengan harga/waktu",
-  "Grid line style": "Gaya garis kisi"
+  "Grid line style": "Gaya garis kisi",
+  "Close template dialog": "Tutup dialog templat",
+  "Chart properties": "Properti grafik",
+  "Background and grid preview": "Pratinjau latar belakang dan kisi",
+  "Close Save Picture": "Tutup Simpan Gambar",
+  "Close dialog": "Tutup dialog",
+  "Symbol unavailable": "Simbol tidak tersedia"
 }

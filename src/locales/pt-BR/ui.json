@@ -2081,5 +2081,11 @@
   "Grid type": "Tipo de grade",
   "Square": "Quadrada",
   "Price/time aligned": "Alinhada a preço/tempo",
-  "Grid line style": "Estilo das linhas da grade"
+  "Grid line style": "Estilo das linhas da grade",
+  "Close template dialog": "Fechar diálogo de modelos",
+  "Chart properties": "Propriedades do gráfico",
+  "Background and grid preview": "Prévia do fundo e da grade",
+  "Close Save Picture": "Fechar Salvar imagem",
+  "Close dialog": "Fechar diálogo",
+  "Symbol unavailable": "Símbolo indisponível"
 }

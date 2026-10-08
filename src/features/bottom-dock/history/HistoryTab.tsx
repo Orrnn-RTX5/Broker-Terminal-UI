@@ -23,6 +23,7 @@ import { useHistoryDataController } from './useHistoryDataController';
 import { useHistoryVirtualWindow } from './useHistoryVirtualWindow';
 import { calculateHistoryFinancialSummary } from './historyFinancialSummary';
 import './history-summary.css';
+import './history-status.css';
 import {
   DEFAULT_HISTORY_COLUMNS,
   HISTORY_AUTO_ARRANGE_STORAGE_KEY,
@@ -731,7 +732,7 @@ ${rows}
             {displayError && filteredOrders.length > 0 && (
                 <div
                     role="status"
-                    className="shrink-0 border-b border-amber-700/50 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-300"
+                    className="rtx-history-status-warning shrink-0 border-b border-amber-700/50 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-300"
                 >
                     {tr('Partial history data')}: {displayError}
                 </div>

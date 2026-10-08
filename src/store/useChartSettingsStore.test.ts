@@ -416,13 +416,13 @@ describe('chart settings trade history overlay defaults', () => {
     expect(greenOnBlack.colors.background).toBe('#000000');
     expect(getEffectiveChartColors(greenOnBlack, { isAdvancedUntitledLight: false }).background).toBe('#000000');
     expect(getEffectiveChartColors(greenOnBlack, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#d8dde2',
-      foreground: '#414e5e',
-      grid: 'rgba(46, 46, 46, 0.11)',
+      background: '#fafbfc',
+      foreground: '#334155',
+      grid: 'rgba(71, 85, 105, 0.07)',
     });
   });
 
-  it('deepens built-in candle colors for the dim light canvas without mutating saved custom palettes', () => {
+  it('keeps built-in candle colors readable on the neutral light canvas without mutating saved custom palettes', () => {
     const properties = normalizeChartProperties({ colorScheme: 'Green on Black' });
     const savedColors = { ...properties.colors };
     const light = getEffectiveChartColors(properties, { isAdvancedUntitledLight: true });
@@ -445,7 +445,7 @@ describe('chart settings trade history overlay defaults', () => {
       barDown: '#ff5858', bearCandle: '#ff5858',
     });
     expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#d8dde2', barUp: '#1746bc', bullCandle: '#1746bc',
+      background: '#fafbfc', barUp: '#1746bc', bullCandle: '#1746bc',
       barDown: '#a51f26', bearCandle: '#a51f26',
     });
     expect(properties.colors.bullCandle).toBe('#4597ff');
@@ -483,9 +483,9 @@ describe('chart settings trade history overlay defaults', () => {
       lastPriceLine: '#facc15',
     });
     expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#d8dde2',
-      foreground: '#414e5e',
-      grid: 'rgba(46, 46, 46, 0.11)',
+      background: '#fafbfc',
+      foreground: '#334155',
+      grid: 'rgba(71, 85, 105, 0.07)',
       barUp: '#795000',
       barDown: '#795000',
       lineChart: '#795000',
@@ -511,9 +511,9 @@ describe('chart settings trade history overlay defaults', () => {
       lastPriceLine: '#adadad',
     });
     expect(getEffectiveChartColors(blackOnWhite, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#d8dde2',
-      foreground: '#414e5e',
-      grid: 'rgba(46, 46, 46, 0.11)',
+      background: '#fafbfc',
+      foreground: '#334155',
+      grid: 'rgba(71, 85, 105, 0.07)',
       barUp: '#000000',
       barDown: '#000000',
       bullCandle: '#ffffff',

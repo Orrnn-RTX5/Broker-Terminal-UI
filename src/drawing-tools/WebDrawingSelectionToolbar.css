@@ -111,3 +111,9 @@
 .light .web-drawing-selection-toolbar {
   color-scheme: light;
 }
+
+/* The native picker is transparent, so its visible wrapper owns the focus ring. */
+html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-selection-toolbar__color:focus-within {
+  outline: 2px solid var(--rtx-light-accent);
+  outline-offset: 1px;
+}

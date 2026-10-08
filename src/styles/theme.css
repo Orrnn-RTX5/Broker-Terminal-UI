@@ -229,15 +229,30 @@ body {
 
 /* === Primary chart command strip === */
 .rtx-toolbar-command-cluster {
-  --rtx-toolbar-item-gap: 10px;
-  gap: 0;
-  padding-inline: 10px;
+  --rtx-toolbar-control-width: 40px;
+  --rtx-toolbar-item-gap: 8px;
+  --rtx-toolbar-group-gap: 16px;
+  gap: var(--rtx-toolbar-group-gap);
+  padding-inline: 8px;
+}
+
+/* Group spacing has one owner; invisible divider margins must not add to it. */
+.rtx-toolbar-command-cluster > .rtx-mt5-divider {
+  display: none;
 }
 
 .rtx-toolbar-group,
 .rtx-timeframe-strip {
   flex-shrink: 0;
-  gap: var(--rtx-toolbar-item-gap, 10px);
+  gap: var(--rtx-toolbar-item-gap, 8px);
+}
+
+.rtx-toolbar-command-cluster .rtx-toolbar-icon-button,
+.rtx-timeframe-strip .rtx-timeframe-option {
+  flex: 0 0 var(--rtx-toolbar-control-width, 40px);
+  min-width: var(--rtx-toolbar-control-width, 40px);
+  width: var(--rtx-toolbar-control-width, 40px);
+  padding-inline: 0;
 }
 
 .rtx-timeframe-strip .rtx-timeframe-option {
@@ -269,11 +284,19 @@ body {
 .rtx-chart-toolbar-scroll:focus-visible { outline: 1px solid var(--color-info); outline-offset: -1px; }
 
 @supports selector(::-webkit-scrollbar) {
-  .rtx-chart-toolbar-scroll { scrollbar-width: auto; }
+  .rtx-chart-toolbar-scroll,
+  html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-toolbar-scroll {
+    /* Let the 3px scrollbar below the controls own its size in Chromium. */
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
 }
 
 @media (max-width: 1280px) {
-  .rtx-toolbar-command-cluster { --rtx-toolbar-item-gap: 8px; }
+  .rtx-toolbar-command-cluster {
+    --rtx-toolbar-item-gap: 4px;
+    --rtx-toolbar-group-gap: 12px;
+  }
 }
 
 .rtx-toolbar-icon-button svg,
@@ -300,9 +323,10 @@ body {
 }
 
 .rtx-toolbar-icon-button svg.rtx-chart-command-icon {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  /* A balanced toolbar scale with breathing room inside the 32px controls. */
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   stroke-width: 1;
 }
 
@@ -1396,8 +1420,6 @@ html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-r
 
 html.rtx-desktop-shell-active .rtx-timeframe-option {
   height: 32px;
-  min-width: 34px;
-  padding-inline: 7px;
   font-size: 13px;
 }
 
@@ -1434,11 +1456,6 @@ html.rtx-desktop-shell-active .rtx-desktop-command-row .rtx-trade-history-overla
   color: var(--color-blue-300, #93c5fd);
 }
 
-/* Solid candle bodies keep the enabled chart type legible inside the frame. */
-html.rtx-desktop-shell-active .rtx-desktop-command-row .rtx-toolbar-icon-button:is([aria-checked='true'], [aria-pressed='true']) .rtx-chart-command-icon__active-fill {
-  fill: currentColor;
-}
-
 /* One typography scale across commands, timeframes, search, and drawing tools. */
 html.rtx-desktop-shell-active .rtx-desktop-command-row :is(
   .rtx-toolbar-action, .rtx-toolbar-icon-button, .rtx-timeframe-option,
@@ -1449,7 +1466,6 @@ html.rtx-desktop-shell-active .rtx-desktop-command-row :is(
 }
 
 html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
-  --rtx-toolbar-item-gap: inherit;
   padding-right: 0;
 }
 
@@ -2134,11 +2150,6 @@ html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
   .rtx-history-overlay-menu *::after {
     transition: none;
   }
-}
-
-/* Desktop groups use the same spacing as their controls, without pipe dividers. */
-html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
-  column-gap: var(--rtx-toolbar-item-gap);
 }
 
 html.rtx-desktop-shell-active .navigator-tree-item__lock {

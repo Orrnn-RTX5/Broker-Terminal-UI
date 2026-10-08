@@ -89,14 +89,16 @@ describe('TopToolbar primary command cluster', () => {
     expect(advancedCss).toContain('color: #344054 !important;');
   });
 
-  it('keeps equal spacing across command groups and the timeframe strip', () => {
-    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster \{[\s\S]*gap: 0;[\s\S]*padding-inline: 10px;/);
-    expect(themeCss).toMatch(/\.rtx-toolbar-group,[\s\S]*\.rtx-timeframe-strip \{[\s\S]*gap: var\(--rtx-toolbar-item-gap, 10px\);/);
-    expect(themeCss).toMatch(/\.rtx-mt5-divider \{[\s\S]*margin-inline: 6px;[\s\S]*width: 0;/);
-    expect(toolbarSource).toContain('className="rtx-mt5-divider invisible h-6 w-0 shrink-0"');
-    expect(toolbarSource).not.toContain('mx-[4px] h-6 w-[2px]');
-    expect(timeframePickerSource).toContain('min-w-[38px]');
-    expect(timeframePickerSource).toContain('px-2.5');
+  it('uses equal control widths and consistent spacing within and between groups', () => {
+    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster \{[^}]*--rtx-toolbar-control-width: 40px;[^}]*--rtx-toolbar-item-gap: 8px;[^}]*--rtx-toolbar-group-gap: 16px;[^}]*gap: var\(--rtx-toolbar-group-gap\);/);
+    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster > \.rtx-mt5-divider \{\s*display: none;/);
+    expect(themeCss).toMatch(/\.rtx-toolbar-group,\s*\.rtx-timeframe-strip \{[^}]*gap: var\(--rtx-toolbar-item-gap, 8px\);/);
+    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster \.rtx-toolbar-icon-button,\s*\.rtx-timeframe-strip \.rtx-timeframe-option \{[^}]*flex: 0 0 var\(--rtx-toolbar-control-width, 40px\);[^}]*min-width: var\(--rtx-toolbar-control-width, 40px\);[^}]*width: var\(--rtx-toolbar-control-width, 40px\);/);
+    expect(themeCss).not.toMatch(/html\.rtx-desktop-shell-active \.rtx-toolbar-command-cluster \{[^}]*column-gap: var\(--rtx-toolbar-item-gap\);/);
+    expect(themeCss).toMatch(/@media \(max-width: 1280px\) \{\s*\.rtx-toolbar-command-cluster \{[^}]*--rtx-toolbar-item-gap: 4px;[^}]*--rtx-toolbar-group-gap: 12px;/);
+    expect(toolbarSource).toContain('rtx-chart-toolbar-scroll');
+    expect(timeframePickerSource).not.toContain('min-w-[38px]');
+    expect(timeframePickerSource).not.toContain('px-2.5');
   });
 
   it('keeps screenshot, period separators, and trade-history overlays as three equal buttons before timeframes', () => {

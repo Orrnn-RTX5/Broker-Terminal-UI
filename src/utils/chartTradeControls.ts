@@ -281,7 +281,7 @@ export const DARK_CHART_TRADE_COLORS = {
   loss: '#ff4d4f',
 } as const;
 
-// Small overlay labels need text contrast on the matte light chart as well as
+// Small overlay labels need text contrast on the neutral light chart as well as
 // white labels on filled BUY/SELL chips. Chart backgrounds remain authoritative.
 export const LIGHT_CHART_TRADE_COLORS = {
   buy: '#1746bc',
@@ -306,11 +306,11 @@ interface TradeControlSurface {
 const getTradeControlSurface = (isLightSurface: boolean): TradeControlSurface => (
   isLightSurface
     ? {
-      chipBackground: '#dce1e6',
-      chipText: '#273444',
-      dockBackground: '#e0e5e9',
-      dockBorder: '#667487',
-      dockText: '#414e5e',
+      chipBackground: '#ffffff',
+      chipText: '#182230',
+      dockBackground: '#ffffff',
+      dockBorder: '#697b91',
+      dockText: '#334155',
       shadow: '0 1px 3px rgba(15,23,42,0.12)',
     }
     : {
@@ -461,7 +461,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buy : DARK_CHART_TRADE_COLORS.sell);
   const plainNeutralColor = isLightSurface ? '#131722' : '#d1d4dc';
   const plainBackground = isLightSurface
-    ? (options.chartBackground ?? '#d8dde2')
+    ? (options.chartBackground ?? '#fafbfc')
     : DARK_CHART_TRADE_COLORS.surface;
   const plainBorderColor = isLightSurface ? plainSideColor : DARK_CHART_TRADE_COLORS.border;
   const plainActionColor = isLightSurface ? plainSideColor : DARK_CHART_TRADE_COLORS.action;
@@ -769,7 +769,7 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
     root.dataset.align = 'right';
     root.style.filter = 'none';
     root.style.backgroundColor = isLightSurface
-      ? (options.chartBackground ?? '#d8dde2')
+      ? (options.chartBackground ?? '#fafbfc')
       : DARK_CHART_TRADE_COLORS.surface;
     root.style.border = `1px dotted ${levelAccent}`;
     root.style.borderRadius = '3px';

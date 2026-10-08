@@ -227,6 +227,11 @@ export function MarketWatchSymbolDetails({
             );
           })}
         </select>
+        {!isLive && (
+          <span className="rtx-market-watch-details__availability-status" role="status">
+            {tr('Symbol unavailable')}
+          </span>
+        )}
       </div>
       {/* A description list, not a table: both skins restyle every Market
           Watch td/th with !important for the quote grid. */}

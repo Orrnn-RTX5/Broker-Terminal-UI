@@ -55,6 +55,13 @@
   padding-block: 1px;
 }
 
+/* The zero-size native color input cannot display the shared field focus ring. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell .rtx-cp-color-picker:focus-within {
+  outline: 2px solid var(--rtx-light-accent);
+  outline-offset: 2px;
+  border-color: var(--rtx-light-accent) !important;
+}
+
 .rtx-cp-shell .rtx-cp-colors-grid .rtx-cp-divider {
   margin-block: 2px;
 }

@@ -2081,5 +2081,11 @@
   "Grid type": "نوع الشبكة",
   "Square": "مربعة",
   "Price/time aligned": "محاذاة السعر/الوقت",
-  "Grid line style": "نمط خطوط الشبكة"
+  "Grid line style": "نمط خطوط الشبكة",
+  "Close template dialog": "إغلاق مربع حوار القالب",
+  "Chart properties": "خصائص الرسم البياني",
+  "Background and grid preview": "معاينة الخلفية والشبكة",
+  "Close Save Picture": "إغلاق حفظ الصورة",
+  "Close dialog": "إغلاق مربع الحوار",
+  "Symbol unavailable": "الرمز غير متاح"
 }

@@ -100,7 +100,7 @@ export function ExposureTab({ positions, formatMoney, account }: ExposureTabProp
                     <td className="p-1.5 px-4 align-middle">
                       <div className="rtx-exposure-graph-track relative h-[13px] w-full min-w-[120px] overflow-hidden rounded-[3px] border border-white/[0.04] bg-[#161820]">
                         <div
-                          className={`absolute top-0 h-full rounded-[2px] transition-all duration-300 ${isLong
+                          className={`rtx-exposure-graph-fill rtx-exposure-graph-fill--${isLong ? 'positive' : 'negative'} absolute top-0 h-full rounded-[2px] transition-all duration-300 ${isLong
                             ? 'left-0 bg-gradient-to-r from-[#0284c7] to-[#38bdf8] shadow-[0_0_8px_rgba(56,189,248,0.3)]'
                             : 'right-0 bg-gradient-to-r from-[#e11d48] to-[#f43f5e] shadow-[0_0_8px_rgba(244,63,94,0.3)]'}`}
                           style={{ width: `${Math.max(1.5, Math.min(100, row.graphPercent))}%` }}

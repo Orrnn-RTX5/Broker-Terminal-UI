@@ -2081,5 +2081,11 @@
   "Grid type": "Typ siatki",
   "Square": "Kwadratowa",
   "Price/time aligned": "Wyrównana do ceny/czasu",
-  "Grid line style": "Styl linii siatki"
+  "Grid line style": "Styl linii siatki",
+  "Close template dialog": "Zamknij okno szablonów",
+  "Chart properties": "Właściwości wykresu",
+  "Background and grid preview": "Podgląd tła i siatki",
+  "Close Save Picture": "Zamknij zapisywanie obrazu",
+  "Close dialog": "Zamknij okno dialogowe",
+  "Symbol unavailable": "Symbol niedostępny"
 }
