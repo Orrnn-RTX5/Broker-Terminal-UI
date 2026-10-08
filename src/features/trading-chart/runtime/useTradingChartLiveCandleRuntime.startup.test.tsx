@@ -19,7 +19,7 @@ vi.mock('../../../services/chartDataService', () => ({
   } },
 }));
 vi.mock('../../../services/quoteSocketManager', () => ({
-  getQuoteSocketManager: () => ({ onQuoteSnapshot: () => vi.fn() }),
+  getQuoteSocketManager: () => ({ onFinancialQuote: () => vi.fn() }),
 }));
 vi.mock('../../../store/useAppStore', () => ({ useAppStore: { getState: () => ({ ticks: {} }) } }));
 

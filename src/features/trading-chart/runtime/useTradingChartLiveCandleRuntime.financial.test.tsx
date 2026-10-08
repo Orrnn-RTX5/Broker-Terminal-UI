@@ -39,9 +39,22 @@ function fixture() {
   const candlesRef = ref<Candle[]>([]);
   const isChartInteractionActiveRef = ref(false);
   const repaint = vi.fn();
-  const seriesUpdate = vi.fn();
+  const painted = new Map<number, Partial<Candle>>();
+  const seriesUpdate = vi.fn((candle: Partial<Candle> & { time: number }) => {
+    painted.set(candle.time, { ...candle });
+  });
+  const paintModel = () => {
+    painted.clear();
+    for (const candle of [...candlesRef.current, ...(currentCandleRef.current ? [currentCandleRef.current] : [])]) {
+      painted.set(candle.time, { ...candle });
+    }
+    return true;
+  };
+  const updateChartData = vi.fn(() => {
+    if (!isChartInteractionActiveRef.current) paintModel();
+  });
   const callbacks: ChartPostInteractionCallbacks = {
-    consumeHistory: vi.fn(), prepareLiveModel: vi.fn(), paintModel: () => false,
+    consumeHistory: vi.fn(), prepareLiveModel: vi.fn(), paintModel,
     paintLive: vi.fn(), paintSeparators: vi.fn(), layoutOverlay: vi.fn(),
   };
   const coordinator = createChartPostInteractionCoordinator(callbacks);
@@ -68,6 +81,7 @@ function fixture() {
     validateRenderedCandlesAgainstLivePrice: () => true, isLivePriceSafeForCandles: () => true,
     isPotentialMarketClosedPlaceholder: () => false, reconcileCandlesWithLiveQuote: (rows: Candle[]) => rows,
     repaintLivePriceOverlayFromCurrentPrice: repaint,
+    updateChartData,
     mergeCandleIntoRef: (incoming: Candle) => {
       candlesRef.current = [...candlesRef.current.filter(row => row.time !== incoming.time), incoming].sort((a, b) => a.time - b.time);
     },
@@ -84,7 +98,7 @@ function fixture() {
     vi.advanceTimersByTime(50);
   });
   const financial = (tick: NormalizedQuoteTick) => act(() => transport.financial!(tick));
-  return { options, initial, currentCandleRef, candlesRef, isChartInteractionActiveRef, repaint, seriesUpdate, poll, financial, mounted };
+  return { options, initial, currentCandleRef, candlesRef, isChartInteractionActiveRef, repaint, seriesUpdate, updateChartData, painted, poll, financial, mounted };
 }
 
 describe('actual live candle runtime financial/snapshot boundary', () => {
@@ -143,6 +157,93 @@ describe('actual live candle runtime financial/snapshot boundary', () => {
     ]);
     expect(f.currentCandleRef.current).toMatchObject({ time: epoch / 1000 + 60, open: 80, high: 102, low: 80, close: 102, volume: 2 });
     expect(f.seriesUpdate).toHaveBeenCalled();
+  });
+
+  it('archives and renders the completed raw OHLC when a newer quote snapshot hides the preceding minute from polling', () => {
+    const f = fixture();
+    const firstTick = quote(1_000, 100, '1', 'event');
+    f.financial(firstTick);
+    f.poll(firstTick);
+    expect(f.currentCandleRef.current).toMatchObject({ time: epoch / 1000, high: 100, low: 100, close: 100 });
+
+    // A latest-price REST snapshot arrives before the raw stream catches up.
+    // It may paint the price overlay, but must not manufacture candle ticks.
+    f.poll(quote(69_000, 102, '4', 'snapshot'));
+    f.financial(quote(59_000, 130, '2', 'event'));
+    f.financial(quote(61_000, 80, '3', 'event'));
+    f.financial(quote(69_000, 102, '4', 'event'));
+    f.poll(quote(69_000, 102, '4', 'event'));
+
+    const completed = { time: epoch / 1000, open: 100, high: 130, low: 100, close: 130, volume: 2 };
+    // The raw builder already has the correct previous minute; asserting only
+    // its history would miss a flat candle retained by the visible chart.
+    expect(candleAggregationService.getCandles('BTCUSD', 'M1', true, false)[0]).toMatchObject(completed);
+    expect(f.currentCandleRef.current).toMatchObject({ time: epoch / 1000 + 60, open: 80, high: 102, low: 80, close: 102 });
+    expect(f.candlesRef.current.find(candle => candle.time === completed.time)).toMatchObject(completed);
+    expect(f.painted.get(completed.time)).toMatchObject(completed);
+    expect(f.updateChartData).toHaveBeenCalledOnce();
+    expect(f.options.mergeHistoryCache).toHaveBeenCalledWith('M1', expect.arrayContaining([expect.objectContaining(completed)]), 0, 'mixed');
+    f.poll(quote(69_000, 102, '4', 'event'));
+    f.financial(quote(70_000, 103, '5', 'event'));
+    f.poll(quote(70_000, 103, '5', 'event'));
+    expect(f.updateChartData).toHaveBeenCalledOnce();
+  });
+
+  it('recovers intermediate raw buckets without filling a minute that had no trades', () => {
+    vi.setSystemTime(epoch + 200_000);
+    const f = fixture();
+    f.financial(quote(1_000, 100, '1', 'event'));
+    f.poll(quote(1_000, 100, '1', 'event'));
+    f.poll(quote(190_000, 110, '6', 'snapshot'));
+    for (const tick of [quote(59_000, 130, '2', 'event'), quote(61_000, 80, '3', 'event'),
+      quote(119_000, 95, '4', 'event'), quote(181_000, 105, '5', 'event'), quote(190_000, 110, '6', 'event')]) f.financial(tick);
+    f.poll(quote(190_000, 110, '6', 'event'));
+    expect(f.candlesRef.current.map(candle => candle.time)).toEqual([epoch / 1000, epoch / 1000 + 60]);
+    expect(f.painted.get(epoch / 1000)).toMatchObject({ high: 130, close: 130 });
+    expect(f.painted.get(epoch / 1000 + 60)).toMatchObject({ open: 80, high: 95, low: 80, close: 95, volume: 2 });
+    expect(f.painted.has(epoch / 1000 + 120)).toBe(false);
+    expect(f.painted.get(epoch / 1000 + 180)).toMatchObject({ open: 105, high: 110, close: 110 });
+    expect(f.updateChartData).toHaveBeenCalledOnce();
+  });
+
+  it.each(['server-event', 'history-with-stale-tail'] as const)('preserves an explicit server final from %s while raw catchup advances', (arrival) => {
+    const f = fixture();
+    f.financial(quote(1_000, 100, '1', 'event'));
+    f.poll(quote(1_000, 100, '1', 'event'));
+    const final = { ...bar(), high: 105, low: 95, close: 101, volume: 40, tickVolume: 40, closed: true };
+    if (arrival === 'server-event') act(() => transport.candle!(final));
+    else {
+      // A refreshed history page may be newer than the displayed forming ref.
+      f.candlesRef.current = [final];
+      f.painted.set(final.time, { ...final });
+    }
+    f.updateChartData.mockClear();
+    f.poll(quote(69_000, 102, '4', 'snapshot'));
+    f.financial(quote(59_000, 130, '2', 'event'));
+    f.financial(quote(61_000, 80, '3', 'event'));
+    f.financial(quote(69_000, 102, '4', 'event'));
+    f.poll(quote(69_000, 102, '4', 'event'));
+    expect(f.candlesRef.current.find(candle => candle.time === final.time)).toEqual(final);
+    expect(f.painted.get(final.time)).toEqual(final);
+    expect(f.currentCandleRef.current).toMatchObject({ time: epoch / 1000 + 60, open: 80, high: 102, low: 80, close: 102 });
+    expect(f.updateChartData).not.toHaveBeenCalled();
+  });
+
+  it('keeps recovered history in the model during interaction and paints it on release', () => {
+    const f = fixture();
+    f.financial(quote(1_000, 100, '1', 'event'));
+    f.poll(quote(1_000, 100, '1', 'event'));
+    f.isChartInteractionActiveRef.current = true;
+    f.poll(quote(69_000, 102, '4', 'snapshot'));
+    f.financial(quote(59_000, 130, '2', 'event'));
+    f.financial(quote(61_000, 80, '3', 'event'));
+    f.financial(quote(69_000, 102, '4', 'event'));
+    f.poll(quote(69_000, 102, '4', 'event'));
+    expect(f.candlesRef.current[0]).toMatchObject({ high: 130, close: 130 });
+    expect(f.painted.get(epoch / 1000)).toMatchObject({ high: 100, close: 100 });
+    act(() => { f.isChartInteractionActiveRef.current = false; f.options.flushPostInteractionWork(); });
+    expect(f.painted.get(epoch / 1000)).toMatchObject({ high: 130, close: 130 });
+    expect(f.painted.get(epoch / 1000 + 60)).toMatchObject({ open: 80, high: 102, low: 80, close: 102 });
   });
 
   it('releases the latest deferred snapshot overlay without a new quote or candle mutation', () => {

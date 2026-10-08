@@ -31,6 +31,7 @@ import {
   mergeAuthoritativeCandleHistory,
   mergeBackendCandlePage,
   mergeFormingCandleEnvelope,
+  mergeHistoricalCandlesWithBufferedLive,
   resolveCanonicalServerCandle,
   upsertCandleIntoHistory,
   type LogicalRangeLike,
@@ -708,6 +709,31 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
           ?? { time: candleTime, open: price, high: price, low: price, close: price, volume: 1, tickVolume: 1 };
         push(currentCandleRef.current, true);
       } else if (candleTime > currentCandleRef.current.time) {
+        // The raw listener can finish several buckets while the display cache
+        // still holds a newer REST quote snapshot. Recover those real buckets
+        // before rollover archives the last displayed (possibly flat) candle.
+        const previousTime = currentCandleRef.current.time;
+        const bufferedCompleted: Candle[] = aggregationCandles
+          .filter(candle => candle.time >= previousTime && candle.time < candleTime)
+          .map(candle => ({ ...candle, tickVolume: candle.volume }));
+        const previousHistory = mergeHistoricalCandlesWithBufferedLive(
+          candlesRef.current.filter(candle => candle.time >= previousTime && candle.time < candleTime),
+          [currentCandleRef.current],
+        );
+        const recoveredHistory = mergeHistoricalCandlesWithBufferedLive(previousHistory, bufferedCompleted);
+        const previousByTime = new Map(previousHistory.map(candle => [candle.time, candle]));
+        const historyChanged = recoveredHistory.some(candle => {
+          const previous = previousByTime.get(candle.time);
+          return !previous || (['open', 'high', 'low', 'close', 'volume', 'tickVolume', 'realVolume'] as const)
+            .some(field => previous[field] !== candle[field]);
+        });
+        // Also preserve a final already in history if the displayed tail lags it.
+        currentCandleRef.current = recoveredHistory.find(candle => candle.time === previousTime)
+          ?? currentCandleRef.current;
+        if (historyChanged) {
+          candlesRef.current = mergeBackendCandlePage(candlesRef.current, recoveredHistory).candles;
+          mergeHistoryCache(activeTf, recoveredHistory, brokerTimeOffsetSecRef.current, 'mixed');
+        }
         // rollover() with real first tick price allows true gaps to render properly.
         rollover(candleTime, derivedCurrentCandle?.open ?? price);
         if (currentCandleRef.current && currentCandleRef.current.time === candleTime) {
@@ -721,6 +747,14 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
             currentCandleRef.current.volume = 1;
             currentCandleRef.current.tickVolume = 1;
           }
+        }
+        if (historyChanged) {
+          // series.update only changes the newest index. Let the existing
+          // render owner repaint corrected history, respecting interaction gates.
+          updateChartData(candlesRef.current, undefined, {
+            resetVisibleRange: false,
+            reason: 'raw-candle-history-catchup',
+          });
         }
       } else {
         if (derivedCurrentCandle && derivedCurrentCandle.time === currentCandleRef.current.time) {

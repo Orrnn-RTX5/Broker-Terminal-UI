@@ -10,7 +10,7 @@ vi.mock('../../../services/chartDataService', () => ({
   chartDataService: { subscribeCandles: () => ({ close: vi.fn() }) },
 }));
 vi.mock('../../../services/quoteSocketManager', () => ({
-  getQuoteSocketManager: () => ({ onQuoteSnapshot: () => vi.fn() }),
+  getQuoteSocketManager: () => ({ onFinancialQuote: () => vi.fn() }),
 }));
 vi.mock('../../../store/useAppStore', () => ({ useAppStore: { getState: () => ({ ticks: {} }) } }));
 
