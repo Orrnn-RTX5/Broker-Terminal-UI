@@ -2087,5 +2087,8 @@
   "Background and grid preview": "ตัวอย่างพื้นหลังและเส้นตาราง",
   "Close Save Picture": "ปิดการบันทึกรูปภาพ",
   "Close dialog": "ปิดกล่องโต้ตอบ",
-  "Symbol unavailable": "สัญลักษณ์ไม่พร้อมใช้งาน"
+  "Symbol unavailable": "สัญลักษณ์ไม่พร้อมใช้งาน",
+  "Accepted": "ยอมรับแล้ว",
+  "Processing": "กำลังประมวลผล",
+  "Expired": "หมดอายุ"
 }

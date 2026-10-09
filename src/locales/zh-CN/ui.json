@@ -2087,5 +2087,8 @@
   "Background and grid preview": "背景和网格预览",
   "Close Save Picture": "关闭保存图片",
   "Close dialog": "关闭对话框",
-  "Symbol unavailable": "交易品种不可用"
+  "Symbol unavailable": "交易品种不可用",
+  "Accepted": "已接受",
+  "Processing": "处理中",
+  "Expired": "已过期"
 }

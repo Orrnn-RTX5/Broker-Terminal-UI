@@ -2087,5 +2087,8 @@
   "Background and grid preview": "Anteprima dello sfondo e della griglia",
   "Close Save Picture": "Chiudi Salva immagine",
   "Close dialog": "Chiudi finestra di dialogo",
-  "Symbol unavailable": "Simbolo non disponibile"
+  "Symbol unavailable": "Simbolo non disponibile",
+  "Accepted": "Accettato",
+  "Processing": "In elaborazione",
+  "Expired": "Scaduto"
 }

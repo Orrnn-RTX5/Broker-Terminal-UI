@@ -1,8 +1,10 @@
-import type {
-  Dispatch,
-  MouseEvent as ReactMouseEvent,
-  ReactNode,
-  SetStateAction,
+import {
+  Fragment,
+  type CSSProperties,
+  type Dispatch,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  type SetStateAction,
 } from 'react';
 import type { ClosePositionAction } from '../../../contracts/tradeActions';
 import type { ToolboxTradePosition } from '../../../hooks/useToolboxTradeData';
@@ -220,6 +222,12 @@ export function TradeTable({
               placementState && !['filled', 'confirmed'].includes(placementState),
             );
             const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
+            const placementLabel = placementState === 'accepted' ? tr('Accepted')
+              : placementState === 'processing' ? tr('Processing')
+                : placementState === 'rejected' ? tr('Rejected')
+                  : placementState === 'expired' ? tr('Expired')
+                    : tr('Pending');
+            const placementPlaceholder = isTerminalPlacementFailure ? '-' : '…';
             const profitValue = resolveTradeProfit(position).value;
             const pointsValue = getTradePointsValue(position);
             const profitIsPositive = profitMode === 'points'
@@ -231,7 +239,7 @@ export function TradeTable({
             const positionKey = getPositionKey(position);
             const isSelected = selectedPositionKey === positionKey;
             const symbolLabel = position.symbol ?? '-';
-            const ticketLabel = isPendingPlacement ? '-' : String(position.ticket ?? position.id ?? '-');
+            const ticketLabel = isPendingPlacement ? placementLabel : String(position.ticket ?? position.id ?? '-');
             const openTime = position.time_create
               ?? position.openTime
               ?? position.open_time
@@ -250,7 +258,7 @@ export function TradeTable({
               ?? position.price,
             );
             const openPriceLabel = isPendingPlacement
-              ? '…'
+              ? placementPlaceholder
               : formatTradePrice(rawOpenPrice, symbolLabel);
             const stopLossLabel = formatTradeLevel(position.price_sl ?? position.sl, symbolLabel);
             const takeProfitLabel = formatTradeLevel(position.price_tp ?? position.tp, symbolLabel);
@@ -258,7 +266,7 @@ export function TradeTable({
               ? null
               : toBackendFinancialNumber(position.price_current ?? position.current_price ?? position.currentPrice);
             const currentPriceLabel = isPendingPlacement
-              ? '…'
+              ? placementPlaceholder
               : rawCurrentPrice === null
                 ? METRIC_UNAVAILABLE
                 : formatTradePrice(rawCurrentPrice, symbolLabel);
@@ -270,7 +278,7 @@ export function TradeTable({
               .join(': ');
             const commentLabel = String(placementError || position.comment || '-');
             const profitLabel = isPendingPlacement
-              ? '…'
+              ? placementPlaceholder
               : profitMode === 'points'
                 ? formatTradePoints(position)
                 : profitValue === null || Number.isNaN(profitValue)
@@ -281,14 +289,16 @@ export function TradeTable({
               tr(sideLabel),
               tr('{{value0}} lots', { value0: volumeLabel }),
             ].join(' · ');
+            const placementSummary = `${placementLabel} · ${rowSummary}${isTerminalPlacementFailure ? `: ${placementError || tr('Order failed')}` : ''}`;
             const rowComment = isPendingPlacement
-              ? `${rowSummary}${isTerminalPlacementFailure ? `: ${placementError || tr('Order failed')}` : ''}`
+              ? placementSummary
               : `${rowSummary}\n${tr('Ticket: {{value0}}', { value0: ticketLabel })}\n${tr('Modify Position')} · ${tr('Context menu')}`;
 
             return (
+              <Fragment key={position.id ?? index}>
               <tr
-                key={position.id ?? index}
                 title={rowComment}
+                data-placement-state={isPendingPlacement ? placementState : undefined}
                 aria-selected={isSelected}
                 className={`rtx-trade-row h-[30px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-default`}
                 onClick={() => {
@@ -306,12 +316,17 @@ export function TradeTable({
               >
                 {/* symbol */}
                 <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={tr('Symbol: {{value0}}', { value0: symbolLabel })}>
-                  <span>{symbolLabel}</span>
+                  {isPendingPlacement && !isColumnVisible('ticket') ? (
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate">{symbolLabel}</span>
+                      <span className={`truncate ${isTerminalPlacementFailure ? 'text-loss' : 'text-zinc-400'}`}>{placementLabel}</span>
+                    </span>
+                  ) : <span>{symbolLabel}</span>}
                 </td>
 
                 {/* ticket */}
                 {isColumnVisible('ticket') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums whitespace-nowrap" title={tr('Ticket: {{value0}}', { value0: ticketLabel })}>{ticketLabel}</td>
+                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums truncate" title={isPendingPlacement ? placementSummary : tr('Ticket: {{value0}}', { value0: ticketLabel })}>{ticketLabel}</td>
                 )}
 
                 {/* time_create */}
@@ -446,7 +461,7 @@ export function TradeTable({
                 <td className="px-0.5 py-[2px] text-center">
                   <button
                     type="button"
-                    aria-label={isPendingPlacement ? tr('Order in progress') : tr('Close position {{value0}}', { value0: position.ticket ?? position.id })}
+                    aria-label={isPendingPlacement ? placementLabel : tr('Close position {{value0}}', { value0: position.ticket ?? position.id })}
                     title={isPendingPlacement ? rowComment : tr('Close position {{value0}}', { value0: ticketLabel })}
                     disabled={isPendingPlacement}
                     onClick={(event) => {
@@ -460,6 +475,21 @@ export function TradeTable({
                   </button>
                 </td>
               </tr>
+              {isTerminalPlacementFailure && (
+                <tr className="rtx-trade-placement-message text-loss" data-placement-state={placementState}>
+                  <td colSpan={visibleOptionalColumnCount + 2} className="px-1.5 py-[2px] text-left">
+                    <div
+                      role="status"
+                      className="truncate font-normal"
+                      style={{ '--rtx-type-size': '13px', '--rtx-type-weight': 400 } as CSSProperties}
+                      title={placementSummary}
+                    >
+                      {placementSummary}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
         </tbody>

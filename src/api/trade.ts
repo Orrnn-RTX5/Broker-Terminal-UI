@@ -680,7 +680,7 @@ const closeRejectionError = (payload: unknown, clientOrderId: string): ApiError 
   return new ApiError(
     retryable ? 503 : 400,
     `${message} (client_order_id ${clientOrderId})`,
-    { code, client_order_id: clientOrderId, payload },
+    { code, message, retryable, client_order_id: clientOrderId, payload },
   );
 };
 

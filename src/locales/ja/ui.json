@@ -2087,5 +2087,8 @@
   "Background and grid preview": "背景とグリッドのプレビュー",
   "Close Save Picture": "画像保存を閉じる",
   "Close dialog": "ダイアログを閉じる",
-  "Symbol unavailable": "銘柄を利用できません"
+  "Symbol unavailable": "銘柄を利用できません",
+  "Accepted": "受付済み",
+  "Processing": "処理中",
+  "Expired": "期限切れ"
 }

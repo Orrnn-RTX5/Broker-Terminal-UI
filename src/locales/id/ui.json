@@ -2087,5 +2087,8 @@
   "Background and grid preview": "Pratinjau latar belakang dan kisi",
   "Close Save Picture": "Tutup Simpan Gambar",
   "Close dialog": "Tutup dialog",
-  "Symbol unavailable": "Simbol tidak tersedia"
+  "Symbol unavailable": "Simbol tidak tersedia",
+  "Accepted": "Diterima",
+  "Processing": "Sedang diproses",
+  "Expired": "Kedaluwarsa"
 }

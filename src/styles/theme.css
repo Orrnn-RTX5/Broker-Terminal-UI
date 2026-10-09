@@ -1000,6 +1000,8 @@ textarea {
   font-family: var(--font-sans);
   font-size: 12px;
   font-weight: var(--font-weight-normal);
+  letter-spacing: normal;
+  white-space: nowrap;
 }
 
 .rtx-application-menu .rtx-menu-row__shortcut {

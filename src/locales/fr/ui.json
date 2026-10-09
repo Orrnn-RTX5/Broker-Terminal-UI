@@ -2087,5 +2087,8 @@
   "Background and grid preview": "Aperçu de l’arrière-plan et de la grille",
   "Close Save Picture": "Fermer Enregistrer l’image",
   "Close dialog": "Fermer la boîte de dialogue",
-  "Symbol unavailable": "Symbole indisponible"
+  "Symbol unavailable": "Symbole indisponible",
+  "Accepted": "Accepté",
+  "Processing": "En cours de traitement",
+  "Expired": "Expiré"
 }

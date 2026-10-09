@@ -2087,5 +2087,8 @@
   "Background and grid preview": "Vorschau von Hintergrund und Raster",
   "Close Save Picture": "Bildspeicherung schließen",
   "Close dialog": "Dialog schließen",
-  "Symbol unavailable": "Symbol nicht verfügbar"
+  "Symbol unavailable": "Symbol nicht verfügbar",
+  "Accepted": "Angenommen",
+  "Processing": "In Bearbeitung",
+  "Expired": "Abgelaufen"
 }

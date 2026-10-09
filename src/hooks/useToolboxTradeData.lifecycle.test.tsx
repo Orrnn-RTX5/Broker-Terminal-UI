@@ -76,6 +76,7 @@ vi.mock('../services/marketOrderPlacementEvents', () => ({
 }));
 
 import { useToolboxTradeData } from './useToolboxTradeData';
+import type { MarketOrderPlacementStateDetail } from '../services/marketOrderPlacementEvents';
 
 const rawPosition = {
   ticket: 17,
@@ -164,6 +165,64 @@ describe('useToolboxTradeData display lifecycle', () => {
     expect(mocks.getSessionTradeSnapshotRequests).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(webSocketSpy).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it.each(['rejected', 'expired'] as const)('updates normalized pending rows through %s without affecting another order', (terminalStatus) => {
+    const scope = 'authenticated|200001|test|https://test.example.com';
+    const first = {
+      login: 200001,
+      sessionScope: scope,
+      clientOrderId: 'order-one',
+      provisionalTicket: -101,
+    };
+    const second = { ...first, clientOrderId: 'order-two', provisionalTicket: -102 };
+    const emit = (detail: MarketOrderPlacementStateDetail) => act(() => {
+      window.dispatchEvent(new CustomEvent('rtx:market-order-placement-state', { detail }));
+    });
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    for (const order of [first, second]) {
+      emit({ ...order, status: 'pending', position: { ...rawPosition, ticket: order.provisionalTicket } });
+    }
+    expect(result.current.pendingPositions).toHaveLength(2);
+    const otherPending = result.current.pendingPositions.find((row) => row.clientOrderId === second.clientOrderId);
+    const firstRow = () => result.current.pendingPositions.find((row) => row.clientOrderId === first.clientOrderId);
+
+    // A late response from another account or broker session must not settle it.
+    emit({ ...first, status: 'rejected', login: 200002, errorCode: 'WRONG_ACCOUNT' });
+    emit({ ...first, status: 'rejected', sessionScope: 'old-broker-session', errorCode: 'WRONG_SESSION' });
+    expect(firstRow()).toMatchObject({ placementState: 'pending' });
+    expect(firstRow()?.placementErrorCode).toBeUndefined();
+
+    for (const status of ['accepted', 'processing'] as const) {
+      emit({ ...first, status });
+      expect(firstRow()).toMatchObject({ placementState: status, id: first.provisionalTicket });
+      expect(result.current.pendingPositions.find((row) => row.clientOrderId === second.clientOrderId)).toBe(otherPending);
+    }
+    const errorCode = terminalStatus === 'rejected' ? 'TOO_MANY_ORDERS' : 'ORDER_COMMAND_EXPIRED';
+    const errorMessage = terminalStatus === 'rejected'
+      ? 'Too many orders are already in flight for this account'
+      : 'No terminal order result arrived before execute_before.';
+    emit({ ...first, status: terminalStatus, errorCode, errorMessage });
+    expect(firstRow()).toMatchObject({
+      placementState: terminalStatus,
+      placementErrorCode: errorCode,
+      placementErrorMessage: errorMessage,
+    });
+    expect(result.current.positions).toEqual([]);
+    expect(mocks.storeState.setPositions).not.toHaveBeenCalled();
+
+    emit({ ...second, status: 'filled', position: { ...rawPosition, ticket: 18 } });
+    expect(result.current.pendingPositions).toEqual([expect.objectContaining({
+      clientOrderId: first.clientOrderId,
+      placementState: terminalStatus,
+      placementErrorMessage: errorMessage,
+    })]);
+    expect(result.current.positions).toEqual([expect.objectContaining({
+      id: 18,
+      clientOrderId: second.clientOrderId,
+      placementState: 'filled',
+    })]);
     unmount();
   });
 

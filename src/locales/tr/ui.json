@@ -2087,5 +2087,8 @@
   "Background and grid preview": "Arka plan ve ızgara önizlemesi",
   "Close Save Picture": "Resmi Kaydet penceresini kapat",
   "Close dialog": "İletişim kutusunu kapat",
-  "Symbol unavailable": "Sembol kullanılamıyor"
+  "Symbol unavailable": "Sembol kullanılamıyor",
+  "Accepted": "Kabul edildi",
+  "Processing": "İşleniyor",
+  "Expired": "Süresi doldu"
 }

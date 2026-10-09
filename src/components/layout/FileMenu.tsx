@@ -517,7 +517,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         >
                             <span className="w-3.5" />
                             <span className="flex-1">{tr("Next")}</span>
-                            <span className="text-[11px] font-normal text-zinc-500 font-mono tracking-tight">{tr("Shift+F5")}</span>
+                            <span className="rtx-menu-row__shortcut">{tr("Shift+F5")}</span>
                         </button>
 
                         {/* Previous */}
@@ -532,7 +532,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         >
                             <span className="w-3.5" />
                             <span className="flex-1">{tr("Previous")}</span>
-                            <span className="text-[11px] font-normal text-zinc-500 font-mono tracking-tight">{tr("Ctrl+F5")}</span>
+                            <span className="rtx-menu-row__shortcut">{tr("Ctrl+F5")}</span>
                         </button>
 
                         {/* Save As... */}
@@ -639,7 +639,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <Icon name="x-close" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.close')}</span>
-                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{getTerminalShortcutHint('file.close-chart')}</span>
+                    <span className="rtx-menu-row__shortcut">{getTerminalShortcutHint('file.close-chart')}</span>
                 </button>
 
                 <div className="rtx-menu-divider" role="separator"></div>
@@ -654,7 +654,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <Icon name="save" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.save')}</span>
-                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{tr("Ctrl+S")}</span>
+                    <span className="rtx-menu-row__shortcut">{tr("Ctrl+S")}</span>
                 </button>
 
                 {/* Save As Picture */}
@@ -667,7 +667,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <Icon name="image" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.saveAsPicture')}</span>
-                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{getTerminalShortcutHint('file.save-picture')}</span>
+                    <span className="rtx-menu-row__shortcut">{getTerminalShortcutHint('file.save-picture')}</span>
                 </button>
 
                 <div className="rtx-menu-divider" role="separator"></div>
@@ -686,7 +686,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     </div>
                     <span className="flex-1">{t('menu.file.openDataFolder')}</span>
                     {onOpenDataFolder && window.electron && (
-                        <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{tr("Ctrl+Shift+D")}</span>
+                        <span className="rtx-menu-row__shortcut">{tr("Ctrl+Shift+D")}</span>
                     )}
                 </button>
 
@@ -703,7 +703,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <Icon name="print" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.print')}</span>
-                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{tr("Ctrl+P")}</span>
+                    <span className="rtx-menu-row__shortcut">{tr("Ctrl+P")}</span>
                 </button>
 
                 {/* Print Preview */}
@@ -716,7 +716,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <Icon name="file-text" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.printPreview')}</span>
-                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{getTerminalShortcutHint('file.print-preview')}</span>
+                    <span className="rtx-menu-row__shortcut">{getTerminalShortcutHint('file.print-preview')}</span>
                 </button>
 
                 {/* Print Setup */}

@@ -2087,5 +2087,8 @@
   "Background and grid preview": "배경 및 격자 미리보기",
   "Close Save Picture": "이미지 저장 닫기",
   "Close dialog": "대화 상자 닫기",
-  "Symbol unavailable": "종목을 사용할 수 없습니다"
+  "Symbol unavailable": "종목을 사용할 수 없습니다",
+  "Accepted": "접수됨",
+  "Processing": "처리 중",
+  "Expired": "만료됨"
 }

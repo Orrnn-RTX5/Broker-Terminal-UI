@@ -2087,5 +2087,8 @@
   "Background and grid preview": "Vista previa del fondo y la cuadrícula",
   "Close Save Picture": "Cerrar Guardar imagen",
   "Close dialog": "Cerrar diálogo",
-  "Symbol unavailable": "Símbolo no disponible"
+  "Symbol unavailable": "Símbolo no disponible",
+  "Accepted": "Aceptado",
+  "Processing": "En proceso",
+  "Expired": "Expirado"
 }

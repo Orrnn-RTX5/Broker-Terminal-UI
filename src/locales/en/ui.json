@@ -2087,5 +2087,8 @@
   "Background and grid preview": "Background and grid preview",
   "Close Save Picture": "Close Save Picture",
   "Close dialog": "Close dialog",
-  "Symbol unavailable": "Symbol unavailable"
+  "Symbol unavailable": "Symbol unavailable",
+  "Accepted": "Accepted",
+  "Processing": "Processing",
+  "Expired": "Expired"
 }

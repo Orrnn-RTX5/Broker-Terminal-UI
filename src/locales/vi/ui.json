@@ -2087,5 +2087,8 @@
   "Background and grid preview": "Xem trước nền và lưới",
   "Close Save Picture": "Đóng Lưu hình ảnh",
   "Close dialog": "Đóng hộp thoại",
-  "Symbol unavailable": "Mã giao dịch không khả dụng"
+  "Symbol unavailable": "Mã giao dịch không khả dụng",
+  "Accepted": "Đã chấp nhận",
+  "Processing": "Đang xử lý",
+  "Expired": "Đã hết hạn"
 }

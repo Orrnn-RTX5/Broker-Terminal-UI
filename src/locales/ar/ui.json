@@ -2087,5 +2087,8 @@
   "Background and grid preview": "معاينة الخلفية والشبكة",
   "Close Save Picture": "إغلاق حفظ الصورة",
   "Close dialog": "إغلاق مربع الحوار",
-  "Symbol unavailable": "الرمز غير متاح"
+  "Symbol unavailable": "الرمز غير متاح",
+  "Accepted": "مقبول",
+  "Processing": "قيد المعالجة",
+  "Expired": "منتهي الصلاحية"
 }

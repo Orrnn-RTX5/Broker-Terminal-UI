@@ -137,8 +137,10 @@ const createChartPanel = (symbol: string, timeframe: string, chartType: NonNulla
 const DEFAULT_RATIO = 0.5;
 const DOCK_LAYOUT_PREVIOUS_DESKTOP_DEFAULT_MIGRATION_PREFIX = 'dock-layout-desktop-mt5-v2:';
 const DOCK_LAYOUT_DESKTOP_WEB_PARITY_MIGRATION_PREFIX = 'dock-layout-desktop-web-parity-v3:';
+const DOCK_LAYOUT_COMPACT_SIDEBAR_MIGRATION_PREFIX = 'dock-layout-compact-sidebar-v1:';
 const DOCK_LAYOUT_SIX_CHART_BACKUP_PREFIX = 'dock-layout-six-chart-backup-v1:';
 const DESKTOP_WEB_PARITY_RATIOS = { sidebar: 0.20, chart: 0.75 } as const;
+const SIDEBAR_DEFAULT_RATIOS = { marketWatch: 0.38, navigator: 0.62 } as const;
 
 const getChartWorkspaceBounds = () => {
   const viewportWidth = typeof window === 'undefined' ? 1200 : window.innerWidth;
@@ -254,23 +256,23 @@ export class DockManager {
             direction: 'vertical',
             ratio: 0.20,
             children: [
-              // Market Watch (Top half of left sidebar)
+              // Compact Market Watch leaves more room for the Navigator tree.
               {
                 id: 'market-watch',
                 type: 'panel',
                 title: 'Market Watch',
                 component: 'MarketWatch',
-                ratio: 0.50,
+                ratio: SIDEBAR_DEFAULT_RATIOS.marketWatch,
                 closable: true,
                 floatable: true,
               } as any,
-              // Navigator (Bottom half of left sidebar)
+              // Navigator (Remaining height of the left sidebar)
               {
                 id: 'navigator',
                 type: 'panel',
                 title: 'Navigator',
                 component: 'Navigator',
-                ratio: 0.50,
+                ratio: SIDEBAR_DEFAULT_RATIOS.navigator,
                 closable: true,
                 floatable: true,
               } as any,
@@ -1234,6 +1236,28 @@ export class DockManager {
           }
 
           localStorage.setItem(desktopMigrationKey, '1');
+        }
+
+        const compactSidebarMigrationKey = `${DOCK_LAYOUT_COMPACT_SIDEBAR_MIGRATION_PREFIX}${key}`;
+        if (localStorage.getItem(compactSidebarMigrationKey) !== '1') {
+          const sidebar = this.layout.root.direction === 'horizontal'
+            ? this.layout.root.children.find(child => child.id === 'left-sidebar')
+            : undefined;
+          // Only upgrade the old equal split. Keep custom panel arrangements
+          // and future manual resizing, including an intentional equal split.
+          if (sidebar && 'children' in sidebar && sidebar.type === 'split'
+            && sidebar.direction === 'vertical' && sidebar.children.length === 2) {
+            const [marketWatch, navigator] = sidebar.children;
+            if (!('children' in marketWatch) && !('children' in navigator)
+              && marketWatch.id === 'market-watch' && marketWatch.component === 'MarketWatch'
+              && navigator.id === 'navigator' && navigator.component === 'Navigator'
+              && ratioMatches(marketWatch.ratio, 0.5) && ratioMatches(navigator.ratio, 0.5)) {
+              marketWatch.ratio = SIDEBAR_DEFAULT_RATIOS.marketWatch;
+              navigator.ratio = SIDEBAR_DEFAULT_RATIOS.navigator;
+              localStorage.setItem(key, JSON.stringify(this.layout));
+            }
+          }
+          localStorage.setItem(compactSidebarMigrationKey, '1');
         }
 
         if (this.getChartCount() > MAX_CHART_PANELS) {

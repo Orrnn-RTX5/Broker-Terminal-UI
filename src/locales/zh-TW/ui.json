@@ -2087,5 +2087,8 @@
   "Background and grid preview": "背景與格線預覽",
   "Close Save Picture": "關閉儲存圖片",
   "Close dialog": "關閉對話方塊",
-  "Symbol unavailable": "交易商品無法使用"
+  "Symbol unavailable": "交易商品無法使用",
+  "Accepted": "已接受",
+  "Processing": "處理中",
+  "Expired": "已過期"
 }

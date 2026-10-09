@@ -1,0 +1,55 @@
+Investigate intermittent market-order rejection in the RTX5 broker backend.
+
+Scope
+Work in the backend repository only when this prompt is explicitly assigned there.
+Diagnose and prepare the smallest justified code change with regression tests.
+Do not push, deploy, apply database migrations, modify account data, or place/close
+trades without separate explicit authorization. Do not change frontend code.
+
+Observed evidence (2026-10-09; reverify current runtime before acting)
+- Orrnn demo account 200003, BTCUSD BUY 0.01, multiple rapid deliberate clicks.
+- The frontend recorded a terminal rejection for client_order_id
+  0b9e3d5b-59c5-4b9a-a2e0-63750631e3c3 at 06:44:00.880 UTC:
+  TOO_MANY_ORDERS: Too many orders are already in flight for this account.
+- That attempt took about 4.285 seconds from intent to terminal outcome.
+  Nearby successful attempts took roughly 4.9-7.2 seconds. These are examples,
+  not a benchmark or proof of a particular queue limit.
+- A later authenticated GET of that command with account_login=200003 returned
+  HTTP 404. Establish whether admission rejections are intentionally non-durable;
+  do not infer that the order executed or was never received from 404 alone.
+- A separate frontend defect retained placementState='pending' after a rejected
+  event because a normalized camelCase field overrode its newer snake_case alias.
+  The frontend fix preserves the received rejection and displays the reason.
+  This display defect does not cause or fix the server admission rejection.
+
+Prior, separate close-failure investigation
+- A close command was rejected with DATABASE_UNAVAILABLE / Unable to lock close
+  position. Do not assume this explains the market-order admission rejection.
+- Read-only diagnostic run 37892576703 in Orrnn-RTX5/Broker-Backend-V2 showed
+  gateway SQLSTATE 40P01 deadlocks, with retained PostgreSQL deadlock reports
+  involving display-only position updates and accounts/positions contexts.
+- That inspection found migration 343_display_pnl_lock_order.sql absent from
+  the gateway database ledger and its expected trigger changes absent.
+- No production migration or backend application deployment was performed by
+  that investigation. Recheck installed metadata; do not blindly apply migration
+  343 or assume correlation with this specific rejected opening request.
+
+Required investigation and acceptance
+1. Trace this exact client_order_id through admission, account-scoped in-flight
+   accounting, queue/worker scheduling, execution, and terminal publication.
+2. Verify capacity slots are released exactly once after fill, rejection,
+   expiry, cancellation, worker failure, disconnect, and recovery. Check stale
+   reservations, contention, and slow execution before proposing a limit change.
+3. Verify broker/account isolation, server-side idempotency, and truthful
+   accepted/processing/filled/rejected status and error correlation on WebSocket
+   and command-status GET. Document the 404 contract for admission rejection.
+4. Test concurrent distinct intents and duplicate requests with the same UUID.
+   Confirm no lost orders, duplicate fills, leaked capacity, or false success.
+5. Preserve all financial, authorization, risk, and quote-freshness checks.
+   Do not bypass admission, silently increase limits, queue stale market intents,
+   or automatically resubmit uncertain/rejected orders with new UUIDs.
+6. If contention is causal, identify the actual lock cycle and test the smallest
+   lock-order repair on isolated PostgreSQL, preserving economic validations.
+7. Report the proven cause, exact files changed, test results, deployed-state
+   limitations, and any separate operational action required. Keep credentials,
+   raw customer rows, and authentication material out of diagnostic artifacts.

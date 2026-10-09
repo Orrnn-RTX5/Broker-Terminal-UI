@@ -136,7 +136,7 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-ta
   min-height: 22px;
   flex-shrink: 0;
   align-items: stretch;
-  padding-left: 5px;
+  padding-left: 1px;
   border-top: 1px solid var(--mw-desktop-grid);
   background: var(--mw-desktop-row) !important;
 }

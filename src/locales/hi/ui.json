@@ -2087,5 +2087,8 @@
   "Background and grid preview": "पृष्ठभूमि और ग्रिड का पूर्वावलोकन",
   "Close Save Picture": "चित्र सहेजने का संवाद बंद करें",
   "Close dialog": "संवाद बंद करें",
-  "Symbol unavailable": "प्रतीक उपलब्ध नहीं है"
+  "Symbol unavailable": "प्रतीक उपलब्ध नहीं है",
+  "Accepted": "स्वीकृत",
+  "Processing": "प्रक्रिया जारी",
+  "Expired": "अवधि समाप्त"
 }

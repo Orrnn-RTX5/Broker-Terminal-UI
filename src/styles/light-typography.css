@@ -31,7 +31,7 @@ html:root.rtx-skin-untitled-light.rtx-advanced-font-large {
    light roles outrank compact component tokens without altering dark density. */
 html:root.rtx-skin-untitled-light :is(
   .rtx-toolbar-action, .rtx-timeframe-option,
-  .rtx-menu-row, .rtx-application-menu__root-item,
+  .rtx-menu-row, .rtx-application-menu__root-item, .rtx-menu-row__shortcut,
   .rtx-desktop-quick-menu__item, .rtx-dock-tab,
   .rtx-history-time-btn, .rtx-history-refresh-btn, .rtx-journal-control,
   .rtx-order-dialog__label, .rtx-order-dialog__control,
@@ -48,7 +48,7 @@ html:root.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
 }
 
 html:root.rtx-skin-untitled-light :is(
-  .rtx-menu-row, .rtx-application-menu__root-item, .navigator-tree-item__label,
+  .rtx-menu-row, .rtx-application-menu__root-item, .rtx-menu-row__shortcut, .navigator-tree-item__label,
   .rtx-history-time-btn, .rtx-journal-control
 ) {
   --rtx-type-weight: var(--rtx-light-weight-body);
@@ -157,7 +157,7 @@ html:root.rtx-skin-untitled-light .rtx-journal-table thead th:first-child {
 
 /* Secondary information uses one readable caption role, never ad-hoc 10/11px. */
 html:root.rtx-skin-untitled-light :is(
-  .rtx-status-bar, .rtx-menu-row__shortcut, .rtx-context-menu__shortcut,
+  .rtx-status-bar, .rtx-context-menu__shortcut,
   .rtx-market-watch__symbol-count, .rtx-order-dialog__chart-meta,
   .rtx-order-dialog__chart-quotes, .rtx-order-dialog__margin,
   .rtx-bug-report-subtitle,

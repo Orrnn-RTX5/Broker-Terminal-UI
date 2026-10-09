@@ -428,9 +428,15 @@ export const applyMarketOrderPlacementState = (
 
     const rawPosition: Record<string, unknown> = {
       ...source,
+      // Later events reuse a normalized row. Replace both aliases so its old
+      // camelCase state cannot mask an accepted or terminal wire status.
+      clientOrderId: detail.clientOrderId,
       client_order_id: detail.clientOrderId,
+      placementState: detail.status,
       placement_state: detail.status,
+      placementErrorCode: detail.errorCode,
       placement_error_code: detail.errorCode,
+      placementErrorMessage: detail.errorMessage,
       placement_error_message: detail.errorMessage,
     };
     const ticket = getPositionTicket(rawPosition);
@@ -447,8 +453,14 @@ export const applyMarketOrderPlacementState = (
 
   const rawPosition: Record<string, unknown> = {
     ...(detail.position as Record<string, unknown>),
+    clientOrderId: detail.clientOrderId,
     client_order_id: detail.clientOrderId,
+    placementState: detail.status,
     placement_state: detail.status,
+    placementErrorCode: undefined,
+    placement_error_code: undefined,
+    placementErrorMessage: undefined,
+    placement_error_message: undefined,
   };
 
   return patchToolboxPositions(withoutProvisional, [rawPosition]);

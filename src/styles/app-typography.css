@@ -133,6 +133,16 @@ html:root :is(
   --rtx-type-weight: var(--rtx-font-weight-control);
 }
 
+/* File/Accounts and Profiles use custom buttons, so give them the same regular
+   reading role as the launcher instead of the heavier light-theme control role.
+   Nested labels, account details and shortcuts follow the chosen UI text size. */
+html:root :is(.rtx-application-menu, .rtx-file-menu),
+html:root .rtx-file-menu button,
+html:root .rtx-menu-row__shortcut {
+  --rtx-type-size: var(--rtx-ui-font-size);
+  --rtx-type-weight: var(--rtx-font-weight-body);
+}
+
 html:root :is(
   .dock-panel__title, .navigator-panel__header, .rtx-market-watch__title,
   .rtx-depth-of-market__heading, .rtx-data-window__title,

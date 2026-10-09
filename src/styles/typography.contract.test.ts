@@ -165,7 +165,7 @@ describe('enterprise typography contract', () => {
 
   it('normalizes menus, floating panels, and secondary toolbox surfaces', () => {
     expect(fileMenuSource).toMatch(/min-h-\[30px\][^"`]*text-\[14px\][^"`]*font-normal/);
-    expect(fileMenuSource).toMatch(/text-\[12px\][^"`]*font-normal/);
+    expect(fileMenuSource).toContain('className="rtx-menu-row__shortcut"');
     expect(dockPanelSource).toMatch(/text-\[14px\][^"`]*font-normal[^"`]*leading-\[30px\]/);
     expect(contextMenuSource).toMatch(/text-\[12px\][^"`]*font-normal/);
     expect(bottomDockSource).toContain('text-[13px] leading-[19.5px] font-normal');

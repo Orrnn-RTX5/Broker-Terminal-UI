@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installTestBrokerRuntime } from '../test/brokerRuntime';
 
 import { API_V2_BASE_URL } from '../config/api';
+import { formatOrderError } from '../utils/orderError';
 import { ApiError, removeToken } from './client';
 import { tradingV2Api } from './trade';
 
@@ -195,6 +196,44 @@ describe('durable closePosition intent', () => {
     expect(String((failure as ApiError).message)).toContain(SUPPLIED_CLOSE_ID);
     expect(callsTo('/positions/998877/close')).toHaveLength(1);
     expect(callsTo('/order-commands/')).toHaveLength(1);
+  });
+
+  it('preserves a retryable close-lock rejection without retrying or confirming the close', async () => {
+    const rejected = {
+      status: 'rejected',
+      client_order_id: SUPPLIED_CLOSE_ID,
+      error: {
+        code: 'DATABASE_UNAVAILABLE',
+        message: 'Unable to lock close position',
+        retryable: true,
+      },
+    };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({
+        status: 'accepted', type: 'position_close_accepted', client_order_id: SUPPLIED_CLOSE_ID,
+      }, { status: 202 }))
+      .mockResolvedValueOnce(jsonResponse(rejected));
+
+    const failure = await tradingV2Api.closePosition(998877, {
+      client_order_id: SUPPLIED_CLOSE_ID,
+      account_login: 900001,
+      closeRecoveryIntervalMs: 0,
+    }).then(() => null, (error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(formatOrderError(failure)).toBe('DATABASE_UNAVAILABLE: Unable to lock close position');
+    expect(failure).toMatchObject({
+      status: 503,
+      data: { ...rejected.error, client_order_id: SUPPLIED_CLOSE_ID, payload: rejected },
+    });
+    const posts = callsTo('/positions/998877/close');
+    const polls = callsTo('/order-commands/');
+    expect(posts).toHaveLength(1);
+    expect(postBody(posts[0]).client_order_id).toBe(SUPPLIED_CLOSE_ID);
+    expect(polls).toHaveLength(1);
+    expect(clientIdFromStatusUrl(polls[0][0])).toBe(SUPPLIED_CLOSE_ID);
+    expect(String(polls[0][0])).toContain('account_login=900001');
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('times out with an explicit unresolved error when the command never reaches terminal', async () => {

@@ -2087,5 +2087,8 @@
   "Background and grid preview": "Voorbeeld van achtergrond en raster",
   "Close Save Picture": "Afbeelding opslaan sluiten",
   "Close dialog": "Dialoogvenster sluiten",
-  "Symbol unavailable": "Symbool niet beschikbaar"
+  "Symbol unavailable": "Symbool niet beschikbaar",
+  "Accepted": "Geaccepteerd",
+  "Processing": "Wordt verwerkt",
+  "Expired": "Verlopen"
 }

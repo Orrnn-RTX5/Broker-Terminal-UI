@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe('terminal resolution', () => {
-  it.each(TERMINAL_RESOLUTION_PRESETS)('applies $id and restores Auto without remounting charts', preset => {
+  it.each(TERMINAL_RESOLUTION_PRESETS)('bounds $id to the window and restores Auto without remounting charts', preset => {
     const unmounted = vi.fn();
     const Chart = () => {
       useEffect(() => unmounted, []);
@@ -24,8 +24,10 @@ describe('terminal resolution', () => {
     const { container } = render(<TerminalViewport role="main"><Chart /></TerminalViewport>);
     expect(screen.getByRole('main')).toHaveStyle({ width: '100%', height: '100%' });
     act(() => useTerminalResolutionStore.getState().setResolution(preset.id));
-    expect(screen.getByRole('main')).toHaveStyle({ width: `${preset.width}px`, height: `${preset.height}px` });
-    expect(container.querySelector('.rtx-terminal-viewport')).toHaveStyle({ overflow: 'auto' });
+    expect(screen.getByRole('main')).toHaveStyle({
+      width: `${preset.width}px`, height: `${preset.height}px`, maxWidth: '100%', maxHeight: '100%',
+    });
+    expect(container.querySelector('.rtx-terminal-viewport')).toHaveStyle({ overflow: 'hidden' });
     expect(screen.getByRole('main').style.transform).toBe('');
     act(() => useTerminalResolutionStore.getState().setResolution('auto'));
     expect(screen.getByRole('main')).toHaveStyle({ width: '100%', height: '100%' });
