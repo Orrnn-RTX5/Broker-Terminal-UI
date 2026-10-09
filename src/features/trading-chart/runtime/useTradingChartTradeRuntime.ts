@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { TradingChartVisibleRuntime } from '../../../hooks/useTradingChartVisibleRuntime';
 import { drawingManager } from '../../../services/drawingManager';
+import { requestChartTradeOverlayRefresh } from '../../../services/tradeOverlayRefreshEvents';
 import { getTimeframeSeconds, type Timeframe as AggTimeframe } from '../../../services/candleAggregationService';
 import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import { refreshChartUiTranslations } from '../../../utils/chartTradeControls';
@@ -32,6 +33,7 @@ import {
 import { useTradingChartTradeLevelDrag } from './useTradingChartTradeLevelDrag';
 import { useTradingChartTradeOverlayRenderer } from './useTradingChartTradeOverlayRenderer';
 import { readStoredTradeLevelOverrides } from './tradeLevelOverrideStorage';
+import { readTradeControlSize, rememberTradeControlResize, type TradeControlSizeCache } from './tradeControlSizeCache';
 import type {
   ActiveTradeSnapshot,
   ClosedTradeSnapshot,
@@ -154,6 +156,8 @@ export const useTradingChartTradeRuntime = ({
 
   // Live Pips/USD refresh hooks for the on-line position control bars.
   const tradeControlLiveUpdatersRef = useRef<Array<() => void>>([]);
+  const tradeControlSizesRef = useRef<TradeControlSizeCache>(new WeakMap());
+  const tradeControlSizeObservationRef = useRef(false);
 
 
   const frozenEntryTimesRef = useRef<Map<number | string, number>>(new Map());
@@ -523,12 +527,15 @@ export const useTradingChartTradeRuntime = ({
             }
 
             const snappedY = snapCssPixel(y);
+            const isControl = el.classList.contains('rtx-trade-controls');
             // Restore the node's own display mode: flex control bars must not
             // be flattened to block or their buttons fall onto the text baseline.
             el.style.display = el.dataset.display || 'block';
-            el.style.top = node.kind === 'price-badge' && el.classList.contains('rtx-trade-level-badge--line-text')
-              ? `${snappedY - 14}px`
-              : `${snappedY + (node.pixelOffsetY ?? 0)}px`;
+            if (!isControl) {
+              el.style.top = node.kind === 'price-badge' && el.classList.contains('rtx-trade-level-badge--line-text')
+                ? `${snappedY - 14}px`
+                : `${snappedY + (node.pixelOffsetY ?? 0)}px`;
+            }
 
             if (node.kind === 'horizontal-line' || node.kind === 'price-hit-area') {
               el.style.left = '0px';
@@ -536,18 +543,19 @@ export const useTradingChartTradeRuntime = ({
             } else {
               const leftInset = Number.parseFloat(el.dataset.leftInset ?? '') || 0;
               el.style.width = 'max-content';
-              el.style.maxWidth = `${Math.max(96, chartWidth - priceScaleWidth - leftInset - 12)}px`;
-              if (el.dataset.align === 'right') {
-                el.style.left = 'auto';
-                el.style.right = `${priceScaleWidth + 16}px`;
-              }
-              if (el.classList.contains('rtx-trade-controls')) {
+              if (isControl) {
                 if (snappedY < 0 || snappedY > plotHeight) {
                   el.style.display = 'none';
                   continue;
                 }
                 el.style.maxWidth = `${Math.max(0, chartWidth - priceScaleWidth - 32)}px`;
                 controlNodes.set(`${el.dataset.tradeKey}:${el.dataset.role}`, { element: el, anchorY: snappedY });
+              } else {
+                el.style.maxWidth = `${Math.max(96, chartWidth - priceScaleWidth - leftInset - 12)}px`;
+                if (el.dataset.align === 'right') {
+                  el.style.left = 'auto';
+                  el.style.right = `${priceScaleWidth + 16}px`;
+                }
               }
             }
 
@@ -667,14 +675,16 @@ export const useTradingChartTradeRuntime = ({
       }
     }
 
-    // Measure controls together, then anchor each one to its own price. Dense
-    // trades overlap until the user expands the price scale; none are paged.
+    // Observer-provided border boxes keep quote-driven placement from forcing
+    // layout after every marker/style write. Dense trades retain their anchors.
     if (controlNodes.size && containerRef.current) {
       const plotWidth = Math.max(0, chartWidth - priceScaleWidth);
       const inputs = Array.from(controlNodes, ([key, { element, anchorY }]) => {
-        const width = element.offsetWidth;
+        const { width, height } = readTradeControlSize(
+          tradeControlSizesRef.current, element, tradeControlSizeObservationRef.current,
+        );
         return {
-          key, anchorY, width, height: element.offsetHeight,
+          key, anchorY, width, height,
           placement: element.dataset.role === 'ENTRY' ? 'above' as const : undefined,
           preferredLeft: element.dataset.align === 'right'
             ? plotWidth - width - 16
@@ -752,7 +762,15 @@ export const useTradingChartTradeRuntime = ({
       if (frame !== null) return;
       frame = window.requestAnimationFrame(() => { frame = null; updateLabelPositions(false); });
     };
-    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(entries => {
+      for (const entry of entries) {
+        if ((entry.target as HTMLElement).classList.contains('rtx-trade-controls')) {
+          rememberTradeControlResize(tradeControlSizesRef.current, entry);
+        }
+      }
+      schedule();
+    });
+    tradeControlSizeObservationRef.current = resize !== null;
     const observeControlSizes = () => {
       resize?.disconnect();
       resize?.observe(wrapper);
@@ -765,6 +783,8 @@ export const useTradingChartTradeRuntime = ({
     return () => {
       children.disconnect();
       resize?.disconnect();
+      tradeControlSizeObservationRef.current = false;
+      tradeControlSizesRef.current = new WeakMap();
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, [containerRef, updateLabelPositions]);
@@ -787,7 +807,7 @@ export const useTradingChartTradeRuntime = ({
         drawingRuntimeContextRef.current.accountScope,
         getDrawingSeriesData,
       );
-      drawingManager.renderAll();
+      drawingManager.renderContext(overlay);
     }
     updateLabelPositions();
   }, [
@@ -905,8 +925,8 @@ export const useTradingChartTradeRuntime = ({
 
   useEffect(() => {
     if (candlesLoadedRev <= 0) return;
-    window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
-  }, [candlesLoadedRev]);
+    requestChartTradeOverlayRefresh(drawingRuntimeContextRef.current.contextId, 'reconcile');
+  }, [candlesLoadedRev, drawingRuntimeContextRef]);
 
 
 

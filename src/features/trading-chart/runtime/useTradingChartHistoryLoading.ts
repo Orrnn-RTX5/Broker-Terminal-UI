@@ -19,10 +19,12 @@ import {
   type CandleCacheSource,
 } from '../../../services/candleCache';
 import { chartDataService } from '../../../services/chartDataService';
+import { captureHistoryGapRequestScope } from '../../../services/chartHistoryGapRequests';
 import {
   fetchDerivedTimeframeCandlesFromM1,
   getDerivedM1InitialTargetCandleLimit,
   isM1DerivedFallbackTimeframe,
+  prefersNativeTimeframeHistory,
 } from '../../../services/derivedTimeframeHistoryService';
 import {
   backfillRecentInteriorHistoryGaps,
@@ -206,6 +208,7 @@ export function useTradingChartHistoryLoading({
       console.log('[Chart] Cannot load history - symbol not set or chart disposed');
       return;
     }
+    const gapRequestScope = captureHistoryGapRequestScope(chartDataService.getCandleCacheScope());
 
     setApiError(null);
     resetLiveQuotePriceGuard();
@@ -232,7 +235,8 @@ export function useTradingChartHistoryLoading({
       ? { ...m1BeforeHydration } : null;
 
     try {
-      const deriveInitialHistoryFromM1 = isM1DerivedFallbackTimeframe(activeTf);
+      const deriveInitialHistoryFromM1 = isM1DerivedFallbackTimeframe(activeTf)
+        && !prefersNativeTimeframeHistory(activeTf);
       let historySource: CandleCacheSource = deriveInitialHistoryFromM1 ? 'derived-m1' : 'backend';
       let derivedInitialHistory: Awaited<ReturnType<typeof fetchDerivedTimeframeCandlesFromM1>> | null = null;
 
@@ -247,11 +251,17 @@ export function useTradingChartHistoryLoading({
       }
       const liveCandleGenerationAtRequestStart = liveCandleMutationGenerationRef.current;
       const useProgressiveInitialHistory = activeTf === 'M1' && !hydratedFromCache;
+      // Paint the calendar viewport first instead of asking the broker for
+      // hundreds of weeks/months before revealing even one candle. Older
+      // history remains available through the normal left-scroll owner.
+      const initialHistoryCount = prefersNativeTimeframeHistory(activeTf)
+        ? getTradingChartDefaultVisibleBars(activeTf)
+        : useProgressiveInitialHistory ? FIRST_PAINT_HISTORY_COUNT : getInitialHistoryCount(activeTf);
 
       const historyRequest = historyRequestCoordinatorRef.current.start({
         symbol: selectedSymbol,
         timeframe: activeTf,
-        count: useProgressiveInitialHistory ? FIRST_PAINT_HISTORY_COUNT : getInitialHistoryCount(activeTf),
+        count: initialHistoryCount,
       }, async options => {
         if (!deriveInitialHistoryFromM1) {
           return chartDataService.fetchCandles(options);
@@ -489,6 +499,10 @@ export function useTradingChartHistoryLoading({
           if (targetTf === 'M1' || targetTf === activeTf) continue;
           const { key: warmCacheKey } = buildHistoryCacheTarget(targetTf as Timeframe);
           const existingWarmCache = candleCache.getLatest(warmCacheKey);
+          // Native calendar history owns complete broker periods. A larger but
+          // shorter M1-derived cache must not replace that visited baseline.
+          if (prefersNativeTimeframeHistory(targetTf) && existingWarmCache
+            && existingWarmCache.source !== 'derived-m1') continue;
 
           const reusableAggregates = omitPartialLeadingM1Aggregate(
             candleAggregationService.getCandles(selectedSymbol, targetTf, true, false),
@@ -635,6 +649,8 @@ export function useTradingChartHistoryLoading({
             timeframe: activeTf,
             candles: candlesRef.current,
             signal: historyRequest.signal,
+            requestScope: gapRequestScope,
+            boundaryOffsetSeconds: explicitBrokerOffsetSeconds,
           });
           if (!isCurrentHistoryLoad() || gapBackfill.addedCandles === 0) return;
 
@@ -650,6 +666,7 @@ export function useTradingChartHistoryLoading({
         });
       }
     } catch (err: unknown) {
+      if (initialHistoryLoadSequenceRef.current !== initialHistoryLoadSequence || isDisposedRef.current) return;
       if (isAbortError(err)) return;
       console.warn('[Chart] Failed to load history:', err);
       // REST failed: keep the overlay up, but advance the label so users know

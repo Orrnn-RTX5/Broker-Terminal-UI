@@ -8,5 +8,7 @@ export interface ChartDataRenderRequest {
   releaseLivePaintAfterRender?: boolean;
   finishLoadingAfterRender?: boolean;
   immediate?: boolean;
+  /** Commit an owned cache baseline before paint, without a loading fade. */
+  cachedBaseline?: boolean;
   reason?: string;
 }

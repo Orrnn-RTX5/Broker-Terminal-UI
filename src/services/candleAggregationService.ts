@@ -22,6 +22,7 @@ import {
   repairPriceCandle,
   sanitizePriceCandles,
 } from './chartPriceGuards';
+import { onSessionChange } from './brokerSession';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -221,6 +222,7 @@ interface HigherTimeframeState {
 export class SymbolCandleBuilder {
   private readonly symbol: string;
   private boundaryOffsetSeconds: number;
+  private derivedM1BoundaryOffsetSeconds: number | null = null;
   private lastCloseTickTimeMs: number | null = null;
   private recentTickKeys: Map<string, true> = new Map();
 
@@ -249,6 +251,10 @@ export class SymbolCandleBuilder {
 
   setBoundaryOffsetSeconds(boundaryOffsetSeconds: number): void {
     this.boundaryOffsetSeconds = Number.isFinite(boundaryOffsetSeconds) ? boundaryOffsetSeconds : 0;
+  }
+
+  usesBoundaryOffsetSeconds(boundaryOffsetSeconds: number): boolean {
+    return this.boundaryOffsetSeconds === (Number.isFinite(boundaryOffsetSeconds) ? boundaryOffsetSeconds : 0);
   }
 
   // ─── Public: tick ingestion ──────────────────────────────────────────────
@@ -418,6 +424,7 @@ export class SymbolCandleBuilder {
     } else {
       const data = this.higherTFs.get(timeframe);
       if (data) {
+        this.derivedM1BoundaryOffsetSeconds = null;
         if (lastIsForming) {
           data.completed = sorted.slice(0, -1).map(c => ({ ...c, isComplete: true }));
           data.forming   = { ...lastCandle, isComplete: false };
@@ -454,7 +461,7 @@ export class SymbolCandleBuilder {
 
       // FIX: Backend partials own Open/Close and may extend, but never narrow,
       // extrema already observed by the raw tick stream in the same bucket.
-      this.m1Forming = this.m1Forming?.time === incoming.time
+      const nextForming = this.m1Forming?.time === incoming.time
         ? sealCandleOHLC({
           ...incoming,
           high: Math.max(this.m1Forming.high, incoming.high, incoming.open, incoming.close),
@@ -462,6 +469,10 @@ export class SymbolCandleBuilder {
           volume: Math.max(this.m1Forming.volume, incoming.volume),
         })
         : sealCandleOHLC(incoming);
+      // Shared stream consumers must not rebuild the same global M1 history.
+      if (this.m1Forming && this.hasSameCandleValues(this.m1Forming, nextForming)
+        && this.derivedM1BoundaryOffsetSeconds === this.boundaryOffsetSeconds) return;
+      this.m1Forming = nextForming;
       this.lastCloseTickTimeMs = null;
       this.rebuildHigherTimeframes();
       this.updateHigherTimeframesWithM1(this.m1Forming, new Map<Timeframe, OHLCV>(), true);
@@ -471,6 +482,7 @@ export class SymbolCandleBuilder {
     const data = this.higherTFs.get(timeframe);
     if (!data || data.completed.some(item => item.time === incoming.time)) return;
     if (data.forming && incoming.time < data.forming.time) return;
+    this.derivedM1BoundaryOffsetSeconds = null;
     // FIX: Native higher-timeframe partials follow the same authoritative-open,
     // expand-only-envelope rule as M1 without being marked completed early.
     data.forming = data.forming?.time === incoming.time
@@ -497,11 +509,14 @@ export class SymbolCandleBuilder {
       // FIX: A server-completed candle is authoritative even when its timestamp
       // already exists. Replace corrections exactly and rebuild derived frames;
       // ignoring same-time updates left M5/H1 values stale after backend repair.
+      const existingIndex = this.m1Completed.findIndex(item => item.time === completed.time);
+      if (existingIndex >= 0 && this.hasSameCandleValues(this.m1Completed[existingIndex], completed)
+        && (!this.m1Forming || this.m1Forming.time > completed.time)
+        && this.derivedM1BoundaryOffsetSeconds === this.boundaryOffsetSeconds) return;
       if (this.m1Forming && this.m1Forming.time <= completed.time) {
         this.m1Forming = null;
         this.lastCloseTickTimeMs = null;
       }
-      const existingIndex = this.m1Completed.findIndex(item => item.time === completed.time);
       if (existingIndex >= 0) this.m1Completed[existingIndex] = completed;
       else this.m1Completed.push(completed);
       this.m1Completed.sort((left, right) => left.time - right.time);
@@ -513,6 +528,7 @@ export class SymbolCandleBuilder {
     } else {
       const data = this.higherTFs.get(timeframe);
       if (data) {
+        this.derivedM1BoundaryOffsetSeconds = null;
         // FIX: Apply authoritative same-time corrections on native higher-TF
         // streams instead of silently retaining a stale completed value.
         if (data.forming && data.forming.time <= completed.time) data.forming = null;
@@ -577,6 +593,7 @@ export class SymbolCandleBuilder {
 
   /** Wipe all candle data (use on symbol switch). */
   clear(): void {
+    this.derivedM1BoundaryOffsetSeconds = null;
     this.m1Completed = [];
     this.m1Forming   = null;
     this.lastCloseTickTimeMs = null;
@@ -687,6 +704,14 @@ export class SymbolCandleBuilder {
     for (const m1 of this.m1Completed) {
       this.processCompletedM1(m1, updates);
     }
+    this.derivedM1BoundaryOffsetSeconds = this.boundaryOffsetSeconds;
+  }
+
+  private hasSameCandleValues(left: OHLCV, right: OHLCV): boolean {
+    return left.time === right.time && left.open === right.open
+      && left.high === right.high && left.low === right.low
+      && left.close === right.close && left.volume === right.volume
+      && left.isComplete === right.isComplete && left.isSynthetic === right.isSynthetic;
   }
 
   // ─── Private: helpers ────────────────────────────────────────────────────
@@ -697,6 +722,7 @@ export class SymbolCandleBuilder {
   }
 
   private _clearTimeframe(timeframe: Timeframe): void {
+    this.derivedM1BoundaryOffsetSeconds = null;
     if (timeframe === 'M1') {
       this.m1Completed = [];
       this.m1Forming   = null;
@@ -780,6 +806,20 @@ export class CandleAggregationService {
     builder.loadHistoricalCandles(timeframe, candles);
   }
 
+  /** Read the current session's retained candles only under the same boundary contract. */
+  getCandlesForHydration(symbol: string, timeframe: Timeframe, boundaryOffsetSeconds = 0): OHLCV[] {
+    const builder = this.builders.get(this.normalizeSymbolKey(symbol));
+    return builder?.usesBoundaryOffsetSeconds(boundaryOffsetSeconds)
+      ? builder.getCandles(timeframe, true, false)
+      : [];
+  }
+
+  /** A presentation cache may seed an empty runtime, never rewind a live one. */
+  hydrateHistoricalCandles(symbol: string, timeframe: Timeframe, candles: OHLCV[], boundaryOffsetSeconds = 0): void {
+    if (this.getCandlesForHydration(symbol, timeframe, boundaryOffsetSeconds).length > 0) return;
+    this.loadHistoricalCandles(symbol, timeframe, candles, boundaryOffsetSeconds);
+  }
+
   /**
    * Commit a single server-confirmed completed candle without disturbing the
    * forming state. Use this for FIX WebSocket `type:update` messages.
@@ -820,6 +860,10 @@ export class CandleAggregationService {
     this.builders.get(this.normalizeSymbolKey(symbol))?.clear();
   }
 
+  clearAll(): void {
+    this.builders.clear();
+  }
+
   /** Return all tracked symbols. */
   getSymbols(): string[] {
     return Array.from(this.builders.keys());
@@ -830,3 +874,19 @@ export class CandleAggregationService {
 // Singleton export
 // ---------------------------------------------------------------------------
 export const candleAggregationService = new CandleAggregationService();
+
+// Retained candles are reusable across panes, but never across broker/account
+// sessions. Match the presentation cache's invalidation boundaries.
+onSessionChange(reason => {
+  if (reason === 'login' || reason === 'logout' || reason === 'broker_url_change' || reason === 'account_change') {
+    candleAggregationService.clearAll();
+  }
+});
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth:token-updated', () => {
+    if (!window.localStorage.getItem('auth_token') && !window.sessionStorage.getItem('auth_token')) {
+      candleAggregationService.clearAll();
+    }
+  });
+}

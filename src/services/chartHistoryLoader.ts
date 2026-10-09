@@ -1,5 +1,6 @@
 import type { FetchCandlesOptions, OHLCData } from './chartDataService';
 import { chartDataService } from './chartDataService';
+import { captureHistoryGapRequestScope, historyGapRequests, type HistoryGapRequestScope } from './chartHistoryGapRequests';
 import {
   buildOlderHistoryRangeFallbackWindows,
   mergeBackendCandlePage,
@@ -8,6 +9,7 @@ import {
 import {
   fetchDerivedTimeframeCandlesFromM1,
   isM1DerivedFallbackTimeframe,
+  prefersNativeTimeframeHistory,
 } from './derivedTimeframeHistoryService';
 
 export const DEFAULT_HISTORY_PAGE_SIZE = 3000;
@@ -78,6 +80,8 @@ export interface BackfillRecentInteriorHistoryGapsOptions extends RecentInterior
   concurrency?: number;
   maxPasses?: number;
   fetchCandles?: FetchCandlesPage;
+  requestScope?: HistoryGapRequestScope;
+  boundaryOffsetSeconds?: number;
 }
 
 export interface BackfillRecentInteriorHistoryGapsResult {
@@ -279,6 +283,8 @@ export const findRecentInteriorHistoryGaps = (
   return selected;
 };
 
+const fetchHistoryGapCandles: FetchCandlesPage = options => chartDataService.fetchCandles(options);
+
 export const backfillRecentInteriorHistoryGaps = async ({
   symbol,
   timeframe,
@@ -286,7 +292,9 @@ export const backfillRecentInteriorHistoryGaps = async ({
   signal,
   concurrency = M1_INTERIOR_GAP_REQUEST_CONCURRENCY,
   maxPasses = M1_INTERIOR_GAP_MAX_PASSES,
-  fetchCandles = chartDataService.fetchCandles.bind(chartDataService),
+  fetchCandles = fetchHistoryGapCandles,
+  requestScope = captureHistoryGapRequestScope(chartDataService.getCandleCacheScope()),
+  boundaryOffsetSeconds = 0,
   ...gapOptions
 }: BackfillRecentInteriorHistoryGapsOptions): Promise<BackfillRecentInteriorHistoryGapsResult> => {
   let mergedCandles = normalizeCandlePageAscending(candles);
@@ -335,13 +343,19 @@ export const backfillRecentInteriorHistoryGaps = async ({
           // Ask for the exact gap first. Some broker endpoints treat `to` as
           // exclusive, so a residual pass adds one known bucket on each side.
           const includeBoundaryOverlap = pass > 0;
-          const page = await fetchCandles({
-            symbol,
-            timeframe,
-            count: gap.missingCandleCount + (includeBoundaryOverlap ? 2 : 0),
-            from: includeBoundaryOverlap ? Math.max(0, gap.from - timeframeSeconds) : gap.from,
-            to: includeBoundaryOverlap ? gap.to + timeframeSeconds : gap.to,
-            signal,
+          const page = await historyGapRequests.fetch({
+            scope: requestScope,
+            boundaryOffsetSeconds,
+            timeframeSeconds,
+            fetchCandles,
+            request: {
+              symbol,
+              timeframe,
+              count: gap.missingCandleCount + (includeBoundaryOverlap ? 2 : 0),
+              from: includeBoundaryOverlap ? Math.max(0, gap.from - timeframeSeconds) : gap.from,
+              to: includeBoundaryOverlap ? gap.to + timeframeSeconds : gap.to,
+              signal,
+            },
           });
           return normalizeCandlePageAscending(page).filter(
             candle => candle.time >= gap.from && candle.time <= gap.to,
@@ -454,7 +468,7 @@ export const fetchOlderHistoryPage = async ({
   const normalizedTimeframe = normalizeTimeframe(timeframe);
   let derivedAttempts = 0;
 
-  if (normalizedTimeframe !== 'M1' && isM1DerivedFallbackTimeframe(timeframe)) {
+  if (normalizedTimeframe !== 'M1' && isM1DerivedFallbackTimeframe(timeframe) && !prefersNativeTimeframeHistory(timeframe)) {
     const derivedCandles = await fetchDerivedTimeframeCandlesFromM1({
       symbol,
       targetTimeframe: timeframe,

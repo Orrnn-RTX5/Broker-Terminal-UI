@@ -12,7 +12,7 @@ import { useTradingChartHistoryLoading } from './useTradingChartHistoryLoading';
 const transport = vi.hoisted(() => ({ fetch: vi.fn(), derive: vi.fn(), ticks: {} as Record<string, unknown> }));
 vi.mock('../../../store/useAppStore', () => ({ useAppStore: { getState: () => ({ ticks: transport.ticks }) } }));
 vi.mock('../../../services/chartDataService', () => ({
-  chartDataService: { fetchCandles: transport.fetch },
+  chartDataService: { fetchCandles: transport.fetch, getCandleCacheScope: () => 'login-test-broker' },
 }));
 vi.mock('../../../services/derivedTimeframeHistoryService', async importOriginal => ({
   ...await importOriginal<typeof import('../../../services/derivedTimeframeHistoryService')>(),
@@ -148,6 +148,55 @@ describe('retained public canvas during account history replacement', () => {
 });
 
 describe('current-session live candle while loading initial history', () => {
+  it.each(['D1', 'W1', 'MN'] as const)('loads %s directly before any M1 derivation', async timeframe => {
+    const harness = createHarness();
+    harness.options.timeframe = timeframe;
+    harness.options.prevTimeframeRef.current = timeframe;
+    transport.fetch.mockResolvedValue(candles);
+    const view = renderHook(() => useTradingChartHistoryLoading(harness.options));
+    await act(() => view.result.current.loadHistory('XAUUSD.raw', timeframe));
+    expect(transport.derive).not.toHaveBeenCalled();
+    expect(transport.fetch).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ timeframe, symbol: 'XAUUSD.raw', count: 30 }));
+    expect(harness.options.updateChartData).toHaveBeenCalledWith(candles, undefined, expect.objectContaining({ finishLoadingAfterRender: true }));
+  });
+
+  it('paints a revisited cache while refresh is pending and retains it after a failed refresh', async () => {
+    const harness = createHarness();
+    harness.options.timeframe = 'M1';
+    harness.options.prevTimeframeRef.current = 'M1';
+    vi.mocked(harness.options.hydrateHistoryFromCache).mockImplementation(() => {
+      harness.options.candlesRef.current = candles;
+      harness.options.currentCandleRef.current = candles.at(-1)!;
+      harness.options.updateChartData(candles, undefined, { cachedBaseline: true, finishLoadingAfterRender: true });
+      return true;
+    });
+    let rejectRefresh!: (error: Error) => void;
+    transport.fetch.mockReturnValue(new Promise((_, reject) => { rejectRefresh = reject; }));
+    const view = renderHook(() => useTradingChartHistoryLoading(harness.options));
+    let loading!: Promise<void>;
+    act(() => { loading = view.result.current.loadHistory('XAUUSD.raw', 'M1'); });
+    expect(harness.options.updateChartData).toHaveBeenCalledWith(candles, undefined, expect.objectContaining({ cachedBaseline: true }));
+    expect(harness.options.setLoadingPhase).not.toHaveBeenCalled();
+    await act(async () => { rejectRefresh(new Error('HTTP 502')); await loading; });
+    expect(harness.options.candlesRef.current).toEqual(candles);
+    expect(harness.priceSetData).not.toHaveBeenCalled();
+    expect(harness.options.requestChartDataRender).toHaveBeenCalledWith(expect.objectContaining({ finishLoadingAfterRender: true }));
+  });
+
+  it('does not let a failed abandoned request reopen the new selection loader', async () => {
+    const harness = createHarness();
+    let rejectRefresh!: (error: Error) => void;
+    transport.derive.mockReturnValue(new Promise((_, reject) => { rejectRefresh = reject; }));
+    const view = renderHook(() => useTradingChartHistoryLoading(harness.options));
+    let loading!: Promise<void>;
+    act(() => { loading = view.result.current.loadHistory('XAUUSD.raw', 'H1'); });
+    harness.options.initialHistoryLoadSequenceRef.current += 1;
+    harness.coordinator.abort();
+    vi.mocked(harness.options.setLoadingPhase).mockClear();
+    await act(async () => { rejectRefresh(new Error('HTTP 502')); await loading; });
+    expect(harness.options.setLoadingPhase).not.toHaveBeenCalled();
+    expect(harness.options.requestChartDataRender).not.toHaveBeenCalled();
+  });
   it.each(['BTCUSD', 'XAUUSD.raw'].flatMap(symbol => CANDLE_TIMEFRAMES.map(timeframe => ({ symbol, timeframe }))))
     ('keeps a proven live $symbol $timeframe bucket received before the history request', async ({ symbol, timeframe }) => {
     const harness = createHarness();
@@ -167,7 +216,7 @@ describe('current-session live candle while loading initial history', () => {
     harness.options.currentCandleRef.current = forming;
     harness.options.liveCandleMutationGenerationRef.current = 1;
     harness.options.liveCandleMutationGenerationByTimeRef.current.set(forming.time, 1);
-    if (timeframe === 'M1') transport.fetch.mockResolvedValue(history);
+    if (['M1', 'D1', 'W1', 'MN'].includes(timeframe)) transport.fetch.mockResolvedValue(history);
     else transport.derive.mockResolvedValue(derivedResponse(history));
     const view = renderHook(() => useTradingChartHistoryLoading(harness.options));
 

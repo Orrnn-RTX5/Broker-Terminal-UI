@@ -142,6 +142,75 @@ describe('chart slot actions', () => {
     expect(state().getChartCount()).toBe(MAX_CHART_PANELS);
   });
 
+  it('publishes each Arrange Windows result once and keeps an unchanged six-chart grid quiet', () => {
+    const published = vi.fn();
+    const unsubscribe = useDockLayoutStore.subscribe((next, previous) => {
+      if (next.layout !== previous.layout) published(next.layout);
+    });
+    try {
+      for (let count = 2; count <= MAX_CHART_PANELS; count++) {
+        published.mockClear();
+        useDockLayoutStore.getState().stepTileWindows();
+        expect(useDockLayoutStore.getState().getChartCount()).toBe(count);
+        expect(published).toHaveBeenCalledTimes(1);
+        expect(collect(published.mock.calls[0][0].root).filter(panel => panel.component === 'Chart')).toHaveLength(count);
+      }
+      const previous = useDockLayoutStore.getState().layout;
+      published.mockClear();
+      useDockLayoutStore.getState().stepTileWindows();
+      expect(useDockLayoutStore.getState().layout).toBe(previous);
+      expect(published).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each(['tileWindows', 'arrangeCharts'] as const)('%s publishes an arrangement once and skips an identical repeat', action => {
+    useDockLayoutStore.getState().stepTileWindows();
+    const published = vi.fn();
+    const unsubscribe = useDockLayoutStore.subscribe((next, previous) => {
+      if (next.layout !== previous.layout) published(next.layout);
+    });
+    try {
+      useDockLayoutStore.getState()[action]('horizontal');
+      expect(published).toHaveBeenCalledTimes(1);
+      const layout = useDockLayoutStore.getState().layout;
+      const center = layout.root.children[1] as DockContainer;
+      expect(center.children[0]).toMatchObject({ direction: 'vertical' });
+      published.mockClear();
+      useDockLayoutStore.getState()[action]('horizontal');
+      expect(useDockLayoutStore.getState().layout).toBe(layout);
+      expect(published).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each(['theme-dark', 'rtx-advanced-view rtx-skin-untitled-light'])('publishes after leaving chart focus while preserving %s', themeClasses => {
+    const root = document.documentElement;
+    const previousClasses = root.className;
+    root.className = `${themeClasses} rtx-advanced-focus-chart`;
+    let nextFrame: FrameRequestCallback | undefined;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { nextFrame = callback; return 1; });
+    const published = vi.fn();
+    const unsubscribe = useDockLayoutStore.subscribe((next, previous) => {
+      if (next.layout !== previous.layout) published(next.layout);
+    });
+    try {
+      useDockLayoutStore.getState().stepTileWindows();
+      expect(root.className).toBe(themeClasses);
+      expect(published).not.toHaveBeenCalled();
+      expect(useDockLayoutStore.getState().getChartCount()).toBe(1);
+      nextFrame?.(0);
+      expect(published).toHaveBeenCalledTimes(1);
+      expect(useDockLayoutStore.getState().getChartCount()).toBe(2);
+      expect(root.className).toBe(themeClasses);
+    } finally {
+      unsubscribe();
+      root.className = previousClasses;
+    }
+  });
+
   it('reports count/cap state and leaves a seventh request unchanged', () => {
     fillCharts();
     expect(useDockLayoutStore.getState().getChartCount()).toBe(MAX_CHART_PANELS);

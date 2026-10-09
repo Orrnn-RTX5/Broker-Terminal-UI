@@ -25,7 +25,7 @@ import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import {
   getTimeframePeriodSeconds,
 } from '../../../utils/timeframeBoundary';
-import { mergeHistoricalCandlesWithBufferedLive, type LogicalRangeLike } from '../../../utils/candleHistory';
+import { formatHistoryForOhlcv, mergeHistoricalCandlesWithBufferedLive, type LogicalRangeLike } from '../../../utils/candleHistory';
 import type { PeriodSeparator } from '../../../utils/periodSeparators';
 import type { Candle, ChartType, Timeframe } from '../../../types/chart';
 import {
@@ -154,22 +154,22 @@ export function useTradingChartHistoryCache({
     const { key, metadata } = buildHistoryCacheTarget(activeTf);
     let cached = candleCache.getLatest(key);
 
-    if ((!cached || cached.candles.length === 0) && activeTf !== 'M1') {
-      const retainedM1Candles = candleAggregationService.getCandles(symbol, 'M1', true, false);
-      if (retainedM1Candles.length > 0) {
+    if (!cached || cached.candles.length === 0) {
+      const retainedM1Candles = candleAggregationService.getCandlesForHydration(symbol, 'M1', brokerTimeOffsetSecRef.current);
+      if (retainedM1Candles.length > (activeTf === 'M1' ? 1 : 0)) {
         const reusableWarmCandles = getValidSortedCandles(
           omitPartialLeadingM1Aggregate(
-            candleAggregationService.getCandles(symbol, activeTf as AggTimeframe, true, false),
+            activeTf === 'M1' ? retainedM1Candles : candleAggregationService.getCandlesForHydration(symbol, activeTf as AggTimeframe, brokerTimeOffsetSecRef.current),
             retainedM1Candles[0]?.time,
             activeTf as AggTimeframe,
             brokerTimeOffsetSecRef.current,
-          ).map(candle => ({ ...candle, tickVolume: candle.volume })) as Candle[],
+          ).map(candle => ({ ...candle, tickVolume: candle.volume, closed: candle.isComplete })) as Candle[],
         );
         if (reusableWarmCandles.length > 0) {
           cached = candleCache.setLatest(key, reusableWarmCandles, {
             ...metadata,
             brokerOffsetSeconds: brokerTimeOffsetSecRef.current,
-            source: 'derived-m1',
+            source: activeTf === 'M1' ? 'mixed' : 'derived-m1',
           });
         }
       }
@@ -216,12 +216,18 @@ export function useTradingChartHistoryCache({
     // contain the former wall-clock guess. Reuse only the currently explicit
     // runtime offset (zero for the present UTC backend contract).
     const explicitBrokerOffsetSeconds = brokerTimeOffsetSecRef.current;
-    reloadAggregationCandles(candles, activeTf, explicitBrokerOffsetSeconds);
+    candleAggregationService.hydrateHistoricalCandles(
+      symbol,
+      activeTf as AggTimeframe,
+      formatHistoryForOhlcv(candles).map((candle, index) => ({ ...candle, isComplete: candles[index].closed })),
+      explicitBrokerOffsetSeconds,
+    );
 
     updateChartData(candles, undefined, {
       immediate: true,
       resetVisibleRange: true,
       finishLoadingAfterRender: true,
+      cachedBaseline: true,
       reason,
     });
 
@@ -263,7 +269,6 @@ export function useTradingChartHistoryCache({
     periodSeparatorsRef,
     prevPriceRef,
     protectedDisplayedHistoryRef,
-    reloadAggregationCandles,
     renderedPriceReferenceRef,
     resetVisibleRangeOnNextDataRef,
     scheduleBoundaryTimerRef,

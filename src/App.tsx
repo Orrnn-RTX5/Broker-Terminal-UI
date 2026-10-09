@@ -121,7 +121,7 @@ import {
   type ChartSymbolPickerState,
   type PrintChartRequest,
 } from './app/ui/useTerminalCommandEvents';
-import type { IndicatorInfo } from './components/IndicatorNavigator';
+import { IndicatorNavigatorHost } from './components/IndicatorNavigatorHost';
 import { ChartModifyPositionDialogHost } from './components/ChartModifyPositionDialogHost';
 
 // Layout Components
@@ -163,23 +163,11 @@ import { ToastContainer } from './components/notifications/Toast';
 import { ActionFeedbackToast, resolveActionFeedbackDurationMs, resolveActionFeedbackTone, type ActionFeedbackNotice, type ActionFeedbackType } from './components/notifications/ActionFeedbackToast';
 import { getPositionCloseOutcome, type PositionCloseReport } from './components/notifications/positionCloseReport';
 import { useCommittedCallback } from './hooks/useCommittedCallback';
-import { LazyLastSymbolPanel, LazyIndicatorNavigator, LazyAccountPanel,
+import { LazyLastSymbolPanel, LazyAccountPanel,
   LazyChartPropertiesDialog, LazyChartObjectsDialog, LazySaveWorkspaceDialog,
   LazySymbolsDialog, useTerminalFeatureWarmup } from './startup/terminalFeatures';
 
 const TradeAuthDialog = lazy(() => import('./components/TradeAuthDialog').then(module => ({ default: module.TradeAuthDialog })));
-
-const setChartVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
-  const store = useChartSettingsStore.getState();
-  if (activeSymbol) {
-    store.updateSymbolProperty(activeSymbol, 'showTickVolumes', visible);
-    store.updateSymbolProperty(activeSymbol, 'showRealVolumes', false);
-    return;
-  }
-
-  store.updateGlobalProperty('showTickVolumes', visible);
-  store.updateGlobalProperty('showRealVolumes', false);
-};
 
 const toSettingsChartType = (chartType: ChartType) => {
   if (chartType === 'bar') return 'Bar' as const;
@@ -466,14 +454,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [chartPropsContextId, setChartPropsContextId] = useState<string | undefined>(undefined);
   const [chartObjectsTarget, setChartObjectsTarget] = useState<ChartObjectsTarget | null>(null);
 
-  // Indicator Navigator state
-  const [showIndicatorNavigator, setShowIndicatorNavigator] = useState(false);
-  const [indicatorNavCategory, setIndicatorNavCategory] = useState<string | undefined>(undefined);
-  const [indicatorTarget, setIndicatorTarget] = useState<{
-    targetContextId?: string;
-    symbol?: string;
-  }>({});
-
   const allowedSymbolNames = useMemo(
     () => getAllowedSymbolNames(marketInstrumentsSnapshot.authorizedSymbols),
     [marketInstrumentsSnapshot.authorizedSymbols],
@@ -626,16 +606,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const unsub2 = commandBus.subscribe('SET_TIMEFRAME' as any, (payload: any) => {
       applyChartTimeframeCommand(payload, setTimeframe);
     });
-    const unsub3 = commandBus.subscribe('OPEN_INDICATOR_LIST' as any, (payload: any) => {
-      const activeTarget = getActiveChartCommandTarget();
-      setIndicatorNavCategory(payload?.category ?? undefined);
-      setIndicatorTarget({
-        targetContextId: payload?.targetContextId ?? activeTarget.targetContextId,
-        symbol: payload?.symbol ?? activeTarget.symbol,
-      });
-      setShowIndicatorNavigator(true);
-    });
-    return () => { unsub1(); unsub2(); unsub3(); };
+    return () => { unsub1(); unsub2(); };
   }, []);
 
   // Order Panel State
@@ -1994,38 +1965,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           <ConfirmDialog />
 
           {/* Indicator Navigator (Insert > Indicators, toolbar button) */}
-          {showIndicatorNavigator && (
-            <Suspense fallback={null}>
-              <LazyIndicatorNavigator
-                isOpen
-                onClose={() => setShowIndicatorNavigator(false)}
-                initialCategory={indicatorNavCategory}
-                onAddIndicator={(indicator: IndicatorInfo) => {
-                  const activeTarget = getActiveChartCommandTarget(selectedSymbol, timeframe);
-                  const targetContextId = indicatorTarget.targetContextId ?? activeTarget.targetContextId;
-                  const targetSymbol = indicatorTarget.symbol ?? activeTarget.symbol ?? selectedSymbol;
-                  if (indicator.category === 'Volume' && indicator.name === 'Volume') {
-                    setChartVolumeBarsVisible(true, targetSymbol || undefined);
-                    setShowIndicatorNavigator(false);
-                    return;
-                  }
-
-                  commandBus.dispatch({
-                    type: 'ADD_INDICATOR',
-                    payload: {
-                      id: indicator.id,
-                      name: indicator.name,
-                      indicatorType: indicator.id.replace(/-\d+$/, ''),
-                      params: indicator.parameters ?? {},
-                      targetContextId,
-                      symbol: targetSymbol,
-                    }
-                  });
-                  setShowIndicatorNavigator(false);
-                }}
-              />
-            </Suspense>
-          )}
+          <IndicatorNavigatorHost selectedSymbol={selectedSymbol} timeframe={timeframe} />
 
           {/* Chart Properties Dialog (F8) */}
           {showChartProperties && (

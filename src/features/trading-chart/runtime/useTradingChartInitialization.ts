@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { type RefObject } from 'react';
 import {
   ColorType,
   CrosshairMode,
@@ -56,6 +56,7 @@ import {
   CHART_AXIS_FONT_SIZE,
   LIGHT_CHART_AXIS_FONT_FAMILY,
 } from '../presentation/chartTheme';
+import { useChartInitializationLifetime } from './useChartInitializationLifetime';
 
 interface UseTradingChartInitializationOptions {
   activeChartSourceId: string;
@@ -151,7 +152,7 @@ export const useTradingChartInitialization = (options: UseTradingChartInitializa
     timeScaleTimeframeRef, updateLegendDOM, visibleRangeHistoryUserInitiatedRef, volumeRef,
   } = options;
 
-useEffect(() => {
+useChartInitializationLifetime(() => {
     console.log(`[TradingChart] Chart init effect running`);
     // Guard against double-mount (React StrictMode) and existing chart
     if (!containerRef.current) {
@@ -745,19 +746,18 @@ useEffect(() => {
 
       // Delay cleanup to allow any pending lightweight-charts requestAnimationFrame
       // loops to finish, preventing "Object is disposed" runtime panics.
-      const chartToDispose = chartRef.current;
-      if (chartToDispose) {
-        (chartToDispose as ChartWithDrawingCleanup)._cleanupDrawings?.();
+      // This lifetime owns this exact instance. A delayed remove must never
+      // pick up a replacement chart installed by Fast Refresh or remounting.
+      (chart as ChartWithDrawingCleanup)._cleanupDrawings?.();
 
-        setTimeout(() => {
-          try {
-            chartToDispose.remove();
-            console.log(`[TradingChart] Chart explicitly removed inside setTimeout.`);
-          } catch {
-            // Ignore late disposal errors
-          }
-        }, 16); // 16ms = roughly 1 frame
-      }
+      setTimeout(() => {
+        try {
+          chart.remove();
+          console.log(`[TradingChart] Chart explicitly removed inside setTimeout.`);
+        } catch {
+          // Ignore late disposal errors
+        }
+      }, 16); // 16ms = roughly 1 frame
 
       try {
         if (squareGridHostSeriesRef.current && squareGridPrimitiveRef.current) {
@@ -776,5 +776,5 @@ useEffect(() => {
       askPriceLineRef.current = null;
       lastPriceLineRef.current = null;
     };
-  }, []);
+  }, { chartRef, containerRef, isDisposedRef });
 };

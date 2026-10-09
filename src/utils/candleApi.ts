@@ -55,6 +55,7 @@ const TIMEFRAME_ALIASES: Record<string, BackendCandleTimeframe> = {
   W1: 'W1',
   '1W': 'W1',
   MN: 'MN',
+  MN1: 'MN',
   '1MO': 'MN',
   '1MON': 'MN',
   '1MONTH': 'MN',

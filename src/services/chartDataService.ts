@@ -16,6 +16,10 @@ import {
   buildBrokerApiV2,
   buildBrokerWsV2Uri,
   getAccessToken,
+  getCommittedBrokerAccountSessionScope,
+  getCommittedBrokerAccountSessionScopeKey,
+  onCommittedBrokerAccountSessionScopeChange,
+  onSessionChange,
 } from './brokerSession';
 import { assertBrokerRequestAllowed } from '../api/brokerRequestGuard';
 import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
@@ -61,6 +65,16 @@ export interface CandleStreamSubscription {
   close: () => void;
 }
 
+interface SharedCandleStream {
+  scope: string;
+  consumers: Set<CandleStreamOptions>;
+  transport: CandleStreamSubscription | null;
+  ready: boolean;
+  readyRevision: number;
+  closed: boolean;
+  releaseScopeListeners: () => void;
+}
+
 export const CANDLE_STREAM_BASE_RECONNECT_DELAY_MS = 1_000;
 
 const candleDeploymentIdentity = (): string => {
@@ -68,6 +82,23 @@ const candleDeploymentIdentity = (): string => {
   const configuration = getRuntimeBrokerConfiguration();
   return JSON.stringify([configuration.valid, configuration.brokerId, configuration.apiHost, configuration.apiHostExt, configuration.wsHost]);
 };
+
+const resolveCandleStreamEndpoint = (): { url: string; token: string | null } => {
+  const token = getAuthToken();
+  const brokerUrl = buildBrokerWsV2Uri(token);
+  const wsBase = brokerUrl || (isDesktopBackendTarget() ? RTX5_WS_URL.replace(/\/$/, '') : '');
+  const separator = wsBase.includes('?') ? '&' : '?';
+  return {
+    url: brokerUrl || (wsBase ? `${wsBase}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}` : ''),
+    token,
+  };
+};
+
+const candleStreamScope = (): string => JSON.stringify([
+  candleDeploymentIdentity(),
+  getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()),
+  resolveCandleStreamEndpoint(),
+]);
 export const CANDLE_STREAM_OPEN_TIMEOUT_MS = 10_000;
 export const CANDLE_STREAM_SUBSCRIPTION_ACK_TIMEOUT_MS = 3_000;
 export const CANDLE_STREAM_MAX_SUBSCRIPTION_RETRIES = 3;
@@ -372,6 +403,8 @@ const messageMatchesCandleSubscription = (
 };
 
 export class ChartDataService {
+  private readonly candleStreams = new Map<string, SharedCandleStream>();
+
   normalizeTimeframe(timeframe: string): ApiTimeframe {
     return normalizeBackendCandleTimeframe(timeframe);
   }
@@ -695,6 +728,97 @@ export class ChartDataService {
   }
 
   subscribeCandles(options: CandleStreamOptions): CandleStreamSubscription {
+    const scope = candleStreamScope();
+    const symbol = normalizeSymbol(options.symbol);
+    const timeframe = this.normalizeTimeframe(options.timeframe);
+    const key = JSON.stringify([scope, symbol, timeframe]);
+    const consumer = { ...options };
+    const retire = (streamKey: string, stream: SharedCandleStream) => {
+      if (stream.closed) return;
+      stream.closed = true;
+      stream.ready = false;
+      stream.releaseScopeListeners();
+      stream.transport?.close();
+      stream.consumers.clear();
+      if (this.candleStreams.get(streamKey) === stream) this.candleStreams.delete(streamKey);
+    };
+    // A committed account/token/endpoint change must never let an old owner
+    // reconnect under the new credentials while its React cleanup is pending.
+    for (const [streamKey, stream] of this.candleStreams) {
+      if (stream.scope !== scope) retire(streamKey, stream);
+    }
+
+    let stream = this.candleStreams.get(key);
+    if (!stream) {
+      stream = { scope, consumers: new Set(), transport: null, ready: false, readyRevision: 0, closed: false, releaseScopeListeners: () => undefined };
+      this.candleStreams.set(key, stream);
+      const ownedStream = stream;
+      const isCurrent = () => {
+        if (ownedStream.closed) return false;
+        if (candleStreamScope() === ownedStream.scope) return true;
+        retire(key, ownedStream);
+        return false;
+      };
+      const notify = (deliver: (listener: CandleStreamOptions) => void) => {
+        if (!isCurrent()) return;
+        for (const listener of [...ownedStream.consumers]) {
+          if (!ownedStream.consumers.has(listener) || !isCurrent()) continue;
+          try { deliver(listener); } catch (error) {
+            try { listener.onError?.(error instanceof Error ? error : new Error('Candle listener failed')); } catch { /* Keep sibling consumers isolated. */ }
+          }
+        }
+      };
+      const releaseSession = onSessionChange(() => { isCurrent(); });
+      const releaseScope = onCommittedBrokerAccountSessionScopeChange(() => { isCurrent(); });
+      ownedStream.releaseScopeListeners = () => { releaseSession(); releaseScope(); };
+      ownedStream.consumers.add(consumer);
+      ownedStream.transport = this.createCandleStream({
+        symbol,
+        timeframe,
+        onConnected: () => {
+          ownedStream.ready = true;
+          ownedStream.readyRevision += 1;
+          notify(listener => listener.onConnected?.());
+        },
+        onSnapshot: candles => notify(listener => listener.onSnapshot?.(candles.map(candle => ({ ...candle })))),
+        onCandle: candle => notify(listener => listener.onCandle?.({ ...candle })),
+        onError: error => { ownedStream.ready = false; notify(listener => listener.onError?.(error)); },
+      }, isCurrent, () => { ownedStream.ready = false; });
+    } else {
+      stream.consumers.add(consumer);
+      const ownedStream = stream;
+      const readyRevision = ownedStream.readyRevision;
+      // Preserve readiness for late-joining panes without replaying an old
+      // snapshot as fresh data. Their own history request owns the baseline.
+      if (ownedStream.ready) void Promise.resolve().then(() => {
+        if (ownedStream.closed || !ownedStream.ready || ownedStream.readyRevision !== readyRevision || !ownedStream.consumers.has(consumer)) return;
+        if (candleStreamScope() !== ownedStream.scope) { retire(key, ownedStream); return; }
+        try { consumer.onConnected?.(); } catch (error) {
+          try { consumer.onError?.(error instanceof Error ? error : new Error('Candle listener failed')); } catch { /* Keep sibling consumers isolated. */ }
+        }
+      });
+    }
+
+    const ownedStream = stream;
+    return {
+      close: () => {
+        if (!ownedStream.consumers.delete(consumer)) return;
+        if (ownedStream.consumers.size > 0) return;
+        // React StrictMode releases and reacquires in the same turn. Remove
+        // callback ownership immediately, retaining only the physical stream
+        // until the microtask so that replay does not reopen a healthy socket.
+        void Promise.resolve().then(() => {
+          if (ownedStream.consumers.size === 0) retire(key, ownedStream);
+        });
+      },
+    };
+  }
+
+  private createCandleStream(
+    options: CandleStreamOptions,
+    isScopeCurrent: () => boolean,
+    onDisconnected: () => void,
+  ): CandleStreamSubscription {
     // Public web sessions use the same anonymous candle channel as the broker's
     // public quote stream. REST polling remains a compatibility fallback for a
     // broker that explicitly rejects or never acknowledges anonymous candles.
@@ -767,7 +891,7 @@ export class ChartDataService {
     };
 
     const retireChangedDeployment = (): boolean => {
-      if (deploymentIdentity === candleDeploymentIdentity()) return false;
+      if (deploymentIdentity === candleDeploymentIdentity() && isScopeCurrent()) return false;
       closed = true;
       clearReconnectTimer(); clearOpenTimer(); clearSubscriptionAckTimer(); clearHeartbeat();
       stopPublicPollingFallback();
@@ -782,6 +906,7 @@ export class ChartDataService {
       if (retireChangedDeployment()) return false;
       if (!allowPublicPollingFallback || closed || publicPollingFallbackActive) return false;
 
+      onDisconnected();
       publicPollingFallbackActive = true;
       clearReconnectTimer();
       clearOpenTimer();
@@ -821,21 +946,14 @@ export class ChartDataService {
     };
 
     const buildStreamUrl = (): { url: string; token: string | null } => {
-      // FIX: Re-read URL and token for every reconnect so broker/account or
-      // token rotation cannot silently reopen against stale session inputs.
-      const token = getAuthToken();
-      const brokerUrl = buildBrokerWsV2Uri(token);
-      const wsBase = brokerUrl || (isDesktopBackendTarget() ? RTX5_WS_URL.replace(/\/$/, '') : '');
-      if (!wsBase) return { url: '', token: null };
-      const separator = wsBase.includes('?') ? '&' : '?';
-      return {
-        url: brokerUrl || `${wsBase}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}`,
-        token,
-      };
+      // Scope validation runs before reconnect. A credential or endpoint
+      // change belongs to a new shared owner, never to this captured runtime.
+      return resolveCandleStreamEndpoint();
     };
 
     let connect = () => undefined;
     const scheduleReconnect = () => {
+      onDisconnected();
       if (closed || publicPollingFallbackActive || reconnectTimer !== null) return;
       if (isRuntimeSuspended()) {
         reconnectPendingWhileSuspended = true;
@@ -1038,6 +1156,7 @@ export class ChartDataService {
 
     const refreshConnection = (reason: string) => {
       if (closed) return;
+      onDisconnected();
       clearReconnectTimer();
       clearOpenTimer();
       clearSubscriptionAckTimer();
@@ -1059,6 +1178,7 @@ export class ChartDataService {
       refreshConnection('Network restored; refreshing candle stream');
     };
     const handleOffline = () => {
+      onDisconnected();
       // FIX: Suspend background/offline deadlines; online/foreground creates a
       // fresh socket and replays the exact candle subscription once.
       clearReconnectTimer();
@@ -1070,6 +1190,7 @@ export class ChartDataService {
     };
     const handleVisibilityChange = () => {
       if (isDocumentHidden()) {
+        onDisconnected();
         clearReconnectTimer();
         clearOpenTimer();
         clearSubscriptionAckTimer();

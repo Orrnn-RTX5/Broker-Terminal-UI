@@ -2,13 +2,18 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { commandBus } from '../../../services/commandBus';
+import { emitSessionChange } from '../../../services/brokerSession';
+import { chartDataService } from '../../../services/chartDataService';
+import { captureHistoryGapRequestScope } from '../../../services/chartHistoryGapRequests';
+import * as chartHistoryLoader from '../../../services/chartHistoryLoader';
+import type { OHLCData } from '../../../types/chartData';
 import type { ChartType } from '../../../types/chart';
 import { useTradingChartCommands } from './useTradingChartCommands';
 
 type Options = Parameters<typeof useTradingChartCommands>[0];
 const ref = <T,>(current: T) => ({ current });
 
-const createHarness = () => {
+const createHarness = (overrides: Partial<Options> = {}) => {
   const timeScale = { applyOptions: vi.fn(), scrollToRealTime: vi.fn() };
   const chart = { timeScale: () => timeScale };
   const options = {
@@ -19,14 +24,26 @@ const createHarness = () => {
     prevTimeframeRef: ref('M1'), timeframe: 'M1',
     scrollToLatestCandleNow: vi.fn(), autoScrollEnabledRef: ref(false),
     ctxChartShiftRef: ref(false), setCtxAutoScroll: vi.fn(), setCtxChartShift: vi.fn(),
+    ...overrides,
   } as unknown as Options;
   const view = renderHook(() => useTradingChartCommands(options));
   return { options, timeScale, chart, view };
 };
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('chart controls immediate feedback', () => {
+  it('leaves timeframe model and cache painting to the committed selection owner', () => {
+    const { options } = createHarness({
+      setActiveTimeframe: vi.fn(), hydrateHistoryFromCache: vi.fn(),
+      cancelQueuedChartRender: vi.fn(),
+    });
+    act(() => { commandBus.dispatch({ type: 'SET_TIMEFRAME', payload: { timeframe: 'M5', targetContextId: 'chart-a' } }); });
+    expect(options.setActiveTimeframe).toHaveBeenCalledExactlyOnceWith('M5');
+    expect(options.prevTimeframeRef.current).toBe('M1');
+    expect(options.hydrateHistoryFromCache).not.toHaveBeenCalled();
+    expect(options.cancelQueuedChartRender).not.toHaveBeenCalled();
+  });
   it.each(['bar', 'candlestick', 'line', 'area'] as ChartType[])('paints %s synchronously on the targeted chart', type => {
     const { options } = createHarness();
     act(() => {
@@ -72,5 +89,37 @@ describe('chart controls immediate feedback', () => {
       commandBus.dispatch({ type: 'SET_AUTO_SCROLL', payload: { enabled: true, targetContextId: 'chart-a' } });
       expect(options.scrollToLatestCandleNow).toHaveBeenCalledExactlyOnceWith(chart);
     });
+  });
+
+  it('captures the reset gap session and boundary before waiting for history', async () => {
+    vi.spyOn(chartDataService, 'getCandleCacheScope').mockReturnValue('reset-test-endpoint');
+    const initialScope = captureHistoryGapRequestScope('reset-test-endpoint');
+    let resolveHistory!: (rows: OHLCData[]) => void;
+    const history = new Promise<OHLCData[]>(resolve => { resolveHistory = resolve; });
+    const controller = new AbortController();
+    const { options } = createHarness({
+      isChartCommandTarget: () => true,
+      prevSymbolRef: ref('BTCUSD'), symbol: 'BTCUSD', brokerTimeOffsetSecRef: ref(3600),
+      protectedDisplayedHistoryRef: ref([]), lastRenderedCandlesRef: ref([]),
+      liveCandleMutationGenerationRef: ref(0), setLoadingPhase: vi.fn(),
+      historyRequestCoordinatorRef: ref({
+        start: () => ({ result: history, signal: controller.signal, isCurrent: () => true }),
+      } as unknown as Options['historyRequestCoordinatorRef']['current']),
+    });
+    const backfill = vi.spyOn(chartHistoryLoader, 'backfillRecentInteriorHistoryGaps').mockImplementation(async () => {
+      options.isDisposedRef.current = true;
+      return { candles: [], requestedGaps: 0, failedGaps: 0, addedCandles: 0 };
+    });
+    act(() => { commandBus.dispatch({ type: 'RESET_CHART_VIEWPORT', payload: {} }); });
+    options.brokerTimeOffsetSecRef.current = 7200;
+    emitSessionChange('account_change');
+    await act(async () => {
+      resolveHistory([600, 780].map(time => ({ time, open: 100, high: 101, low: 99, close: 100, volume: 1 })));
+      await history;
+    });
+    expect(backfill).toHaveBeenCalledWith(expect.objectContaining({
+      requestScope: initialScope, boundaryOffsetSeconds: 3600,
+    }));
+    expect(captureHistoryGapRequestScope('reset-test-endpoint').generation).not.toBe(initialScope.generation);
   });
 });

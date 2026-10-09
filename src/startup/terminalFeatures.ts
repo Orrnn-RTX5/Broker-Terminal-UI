@@ -3,7 +3,6 @@ import { createPreloadableFeature } from './createPreloadableFeature';
 import { scheduleFeatureWarmup } from './scheduleFeatureWarmup';
 
 export const lastSymbolFeature = createPreloadableFeature(() => import('../components/LastSymbolPanel').then(module => ({ default: module.LastSymbolPanel })));
-export const indicatorNavigatorFeature = createPreloadableFeature(() => import('../components/IndicatorNavigator').then(module => ({ default: module.IndicatorNavigator })));
 export const accountPanelFeature = createPreloadableFeature(() => import('../components/AccountPanel').then(module => ({ default: module.AccountPanel })));
 export const chartPropertiesFeature = createPreloadableFeature(() => import('../components/dialogs/ChartPropertiesDialog').then(module => ({ default: module.ChartPropertiesDialog })));
 export const chartObjectsFeature = createPreloadableFeature(() => import('../components/dialogs/ChartObjectsDialog').then(module => ({ default: module.ChartObjectsDialog })));
@@ -23,14 +22,13 @@ export const openAccountFeature = createPreloadableFeature(() => import('../comp
 export const terminalFeatureLoaders = [
   lastSymbolFeature.preload, symbolsFeature.preload, chartPropertiesFeature.preload,
   optionsFeature.preload, depthOfMarketFeature.preload, dataWindowFeature.preload,
-  saveWorkspaceFeature.preload, indicatorNavigatorFeature.preload, chartObjectsFeature.preload,
+  saveWorkspaceFeature.preload, chartObjectsFeature.preload,
   accountPanelFeature.preload, loginFeature.preload, printSetupFeature.preload,
   printPreviewFeature.preload, savePictureFeature.preload, openAccountFeature.preload,
   exitConfirmFeature.preload,
 ];
 
 export const LazyLastSymbolPanel = lastSymbolFeature.Component;
-export const LazyIndicatorNavigator = indicatorNavigatorFeature.Component;
 export const LazyAccountPanel = accountPanelFeature.Component;
 export const LazyChartPropertiesDialog = chartPropertiesFeature.Component;
 export const LazyChartObjectsDialog = chartObjectsFeature.Component;

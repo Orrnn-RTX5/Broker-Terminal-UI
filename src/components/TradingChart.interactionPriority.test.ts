@@ -78,7 +78,8 @@ describe('TradingChart interaction-priority contract', () => {
       historyLoadingSource.indexOf('// Load more historical data'),
     );
     expect(load).toContain("const useProgressiveInitialHistory = activeTf === 'M1' && !hydratedFromCache;");
-    expect(load).toContain('count: useProgressiveInitialHistory ? FIRST_PAINT_HISTORY_COUNT : getInitialHistoryCount(activeTf)');
+    expect(load).toContain('count: initialHistoryCount');
+    expect(load).toContain('useProgressiveInitialHistory ? FIRST_PAINT_HISTORY_COUNT : getInitialHistoryCount(activeTf)');
     const firstRender = load.indexOf("reason: 'initial-history'");
     const background = load.indexOf('void (async () =>');
     const expansion = load.indexOf('const extendedHistory = await chartDataService.fetchCandles(');
@@ -125,11 +126,11 @@ describe('TradingChart interaction-priority contract', () => {
     const cacheEnd = historyCacheSource.indexOf('const restoreProtectedDisplayedHistory = useCallback', cacheStart);
     const cacheHydration = historyCacheSource.slice(cacheStart, cacheEnd);
 
-    expect(cacheHydration).toContain("candleAggregationService.getCandles(symbol, 'M1', true, false)");
+    expect(cacheHydration).toContain("candleAggregationService.getCandlesForHydration(symbol, 'M1', brokerTimeOffsetSecRef.current)");
     expect(cacheHydration).toContain('omitPartialLeadingM1Aggregate(');
-    expect(cacheHydration).toContain('candleAggregationService.getCandles(symbol, activeTf as AggTimeframe, true, false)');
-    expect(cacheHydration).toContain("source: 'derived-m1'");
-    expect(cacheHydration.indexOf('candleAggregationService.getCandles('))
+    expect(cacheHydration).toContain('candleAggregationService.getCandlesForHydration(symbol, activeTf as AggTimeframe, brokerTimeOffsetSecRef.current)');
+    expect(cacheHydration).toContain("source: activeTf === 'M1' ? 'mixed' : 'derived-m1'");
+    expect(cacheHydration.indexOf('candleAggregationService.getCandlesForHydration('))
       .toBeLessThan(cacheHydration.indexOf("if (!cached || cached.candles.length === 0) return false;"));
   });
 
@@ -149,11 +150,12 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('clears stale chart-interaction ownership before a timeframe repaint', () => {
-    const commandStart = source.indexOf("const unsubTimeframe = commandBus.subscribe('SET_TIMEFRAME'");
-    const commandEnd = source.indexOf('return () => {', commandStart);
-    const timeframeCommand = source.slice(commandStart, commandEnd);
-    const hydrate = timeframeCommand.indexOf("hydrateHistoryFromCache(newTimeframe as Timeframe, 'cached-timeframe-command')");
+    const ownerStart = reconfigurationSource.indexOf('} else if (timeframeChanged && !symbolChanged)');
+    const ownerEnd = reconfigurationSource.indexOf('} else {', ownerStart);
+    const timeframeCommand = reconfigurationSource.slice(ownerStart, ownerEnd);
+    const hydrate = timeframeCommand.indexOf("hydrateHistoryFromCache(timeframe, 'cached-timeframe-change')");
 
+    expect(hydrate).toBeGreaterThan(0);
     expect(timeframeCommand.indexOf('clearLocalChartPointerStateRef.current();')).toBeLessThan(hydrate);
     expect(timeframeCommand.indexOf('isChartInteractionActiveRef.current = false;')).toBeLessThan(hydrate);
     expect(timeframeCommand.indexOf('chartInteractionOwnershipRef.current?.reset();')).toBeLessThan(hydrate);
@@ -211,7 +213,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).toContain("loadingPhase === 'connecting'");
     expect(source).toContain("? [tr('Connecting to market data…')]");
     expect(source).toContain("`${symbol} ${activeTimeframe} · ${tr('Loading…')}`");
-    expect(timeframeCommand).toContain("setLoadingPhase('receiving')");
+    expect(timeframeCommand).not.toContain('hydrateHistoryFromCache(');
     expect(timeframeCommand).not.toContain("setLoadingPhase('connecting')");
     expect(historyLoadingSource.slice(
       historyLoadingSource.indexOf('const loadHistory = useCallback'),
@@ -540,7 +542,7 @@ describe('TradingChart interaction-priority contract', () => {
     const paintEnd = livePriceOverlaySource.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
     const paint = livePriceOverlaySource.slice(paintStart, paintEnd);
     const themeSyncStart = source.indexOf('useEffect(() => {\n    livePriceColorPaletteRef.current = chartColors;');
-    const themeSyncEnd = source.indexOf('useEffect(() => {\n    chartThemeRef.current = chartTheme;', themeSyncStart);
+    const themeSyncEnd = source.indexOf('useLayoutEffect(() => {\n    chartThemeRef.current = chartTheme;', themeSyncStart);
     const themeSync = source.slice(themeSyncStart, themeSyncEnd);
 
     expect(directionStart).toBeGreaterThan(-1);
@@ -895,18 +897,19 @@ describe('TradingChart interaction-priority contract', () => {
 
   it('forces an autoSize-safe repaint after a Theme change without rebuilding chart data', () => {
     const layoutRefreshStart = source.indexOf('const refreshVisibleChartLayout = useCallback');
-    const layoutRefreshEnd = source.indexOf('const resetLiveQuotePriceGuard', layoutRefreshStart);
+    const layoutRefreshEnd = source.indexOf('const resetEmptyHistoryState', layoutRefreshStart);
     const layoutRefresh = source.slice(layoutRefreshStart, layoutRefreshEnd);
     const transitionStart = source.indexOf('if (previousAdvancedUntitledLightRef.current === isAdvancedUntitledLight) return;');
     const transitionEnd = source.indexOf('// getTimeframeSeconds is imported', transitionStart);
     const transition = source.slice(transitionStart, transitionEnd);
 
     expect(layoutRefreshStart).toBeGreaterThan(-1);
-    expect(layoutRefresh).toContain('refreshLightweightChartSurface(chart, offsetWidth, offsetHeight)');
+    expect(layoutRefreshEnd).toBeGreaterThan(layoutRefreshStart);
+    expect(layoutRefresh).toContain('refreshLightweightChartSurface(chart, offsetWidth, offsetHeight, { forceRepaint })');
     expect(layoutRefresh).not.toContain('chart.applyOptions({ width: offsetWidth, height: offsetHeight })');
     expect(transitionStart).toBeGreaterThan(-1);
     expect(transition).toContain('scheduleChartThemeTransition({');
-    expect(transition).toContain('refreshVisibleChartLayout();');
+    expect(transition).toContain('refreshVisibleChartLayout(true);');
     expect(transition).not.toContain('removeSeries(');
     expect(transition).not.toContain('setData([])');
   });

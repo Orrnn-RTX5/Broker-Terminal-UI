@@ -563,8 +563,7 @@ export class DrawingManager {
     const nextContextId = contextId || existingContext?.contextId || `legacy:${nextSymbol}:${nextTimeframe}`;
     const nextAccountScope = accountScope ?? existingContext?.accountScope;
     const nextSeriesDataProvider = seriesDataProvider ?? existingContext?.seriesDataProvider;
-    const isIdenticalActiveContext =
-      this.activeContainer === overlayContainer &&
+    const isIdenticalRegisteredContext =
       existingContext?.chart === chart &&
       existingContext.series === series &&
       existingContext.contextId === nextContextId &&
@@ -582,10 +581,10 @@ export class DrawingManager {
     this.currentTimeframe = nextTimeframe;
     this.currentAccountScope = nextAccountScope;
 
-    // Crosshair movement re-binds the active panel on every pointer event. If
-    // that binding is already current, rebuilding every SVG drawing is pure
-    // duplicate work and competes with lightweight-charts' pan frame.
-    if (isIdenticalActiveContext) return;
+    // Data and pointer callbacks alternate between registered panels. Selecting
+    // an unchanged binding only changes the active target; it must not rebuild
+    // every panel's SVG. The caller renders its own changed geometry separately.
+    if (isIdenticalRegisteredContext) return;
 
     // Get or create context
     let context = existingContext;

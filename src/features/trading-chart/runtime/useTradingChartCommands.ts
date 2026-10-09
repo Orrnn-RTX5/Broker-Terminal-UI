@@ -1,6 +1,7 @@
 import { useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { chartDataService } from '../../../services/chartDataService';
+import { captureHistoryGapRequestScope } from '../../../services/chartHistoryGapRequests';
 import {
   backfillRecentInteriorHistoryGaps,
   type SelectedTimeframeHistoryCoordinator,
@@ -198,6 +199,8 @@ useEffect(() => {
         if (activeSymbol) {
           setLoadingPhase('connecting');
           try {
+            const gapRequestScope = captureHistoryGapRequestScope(chartDataService.getCandleCacheScope());
+            const gapBoundaryOffsetSeconds = brokerTimeOffsetSecRef.current;
             const resetHistoryLiveGenerationAtRequestStart = liveCandleMutationGenerationRef.current;
             const resetHistoryRequest = historyRequestCoordinatorRef.current.start({
               symbol: activeSymbol,
@@ -219,6 +222,8 @@ useEffect(() => {
                 timeframe: activeTf,
                 candles: fetchedCandles,
                 signal: resetHistoryRequest.signal,
+                requestScope: gapRequestScope,
+                boundaryOffsetSeconds: gapBoundaryOffsetSeconds,
               });
               if (!isCurrentResetHistoryLoad()) return;
               fetchedCandles = resetGapBackfill.candles as Candle[];
@@ -384,40 +389,11 @@ useEffect(() => {
 
       const newTimeframe = payload?.timeframe as Timeframe | undefined;
       if (newTimeframe && newTimeframe !== prevTimeframeRef.current) {
-        console.log(`[Chart] Timeframe changing from ${prevTimeframeRef.current} to ${newTimeframe}`);
-        prevTimeframeRef.current = newTimeframe;
         setActiveTimeframe(newTimeframe as Timeframe);
-        // Clear existing data and reload
-        clearLocalChartPointerStateRef.current();
-        isChartUserInteractingRef.current = false;
-        isChartInteractionActiveRef.current = false;
-        chartInteractionOwnershipRef.current?.reset();
-        postInteractionCoordinatorRef.current?.clear();
-        cancelQueuedChartRender();
-        candlesRef.current = [];
-        currentCandleRef.current = null;
-        renderedPriceReferenceRef.current = createRenderedPriceReference([]);
-        periodSeparatorsRef.current = [];
-        firstRenderedCandleTimeRef.current = null;
-        lastRenderedCandlesRef.current = [];
-        hasDisplayedHistoryRef.current = false;
-        protectedDisplayedHistoryRef.current = [];
-        clearPeriodSeparators();
-        resetVisibleRangeOnNextDataRef.current = true;
-        lastVisibleLogicalRangeRef.current = null;
-        const hydratedFromCache = hydrateHistoryFromCache(newTimeframe as Timeframe, 'cached-timeframe-command');
-        if (!hydratedFromCache) {
-          if (seriesRef.current) {
-            try { seriesRef.current.setData([]); } catch { /* chart may be rebuilding */ }
-          }
-          if (volumeRef.current) {
-            try { volumeRef.current.setData([]); } catch { /* chart may be rebuilding */ }
-          }
-          setLoadingPhase('receiving');
-        }
-        // The panel-prop update above drives the dedicated symbol/timeframe
-        // history effect. Keeping that effect as the only switch owner avoids
-        // a second request from this command path.
+        // Prop commit closes the previous selection gate first. Reconfiguration
+        // then resets and paints the new selection's cache in a layout effect.
+        // Mutating prevTimeframe here bypassed that owner, and its early cached
+        // render was cancelled by the later selection-gate reset.
       }
     });
 

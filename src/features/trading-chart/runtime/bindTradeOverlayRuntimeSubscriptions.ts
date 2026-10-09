@@ -3,6 +3,7 @@ import type { IChartApi } from 'lightweight-charts';
 import { useAppStore } from '../../../store/useAppStore';
 import { useChartSettingsStore } from '../../../store/useChartSettingsStore';
 import { getChartObjectState, useChartObjectStateStore } from '../../../store/useChartObjectStateStore';
+import { TRADE_OVERLAY_REFRESH_EVENT, type TradeOverlayRefreshDetail } from '../../../services/tradeOverlayRefreshEvents';
 import {
   forgetTradeOverlayOptimisticClosedSnapshot,
   getTradeOverlayCloseSnapshots,
@@ -76,26 +77,33 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
   symbol,
   tradeLevelCrossRefreshPendingRef,
 }: BindTradeOverlayRuntimeSubscriptionsOptions): (() => void) => {
-    renderTradeOverlay();
-
     // The viewport owns history DOM membership as well as node coordinates.
-    // Coalesce range notifications before selecting and placing visible trades.
+    // Batch initial controls with range notifications. StrictMode can then
+    // dispose its first setup before constructing the same controls twice.
     let viewportFrame: number | null = null;
+    let initialRenderPending = true;
+    const renderTradeOverlayNow: RenderTradeOverlay = (...args) => {
+      if (viewportFrame !== null) window.cancelAnimationFrame(viewportFrame);
+      viewportFrame = null;
+      initialRenderPending = false;
+      renderTradeOverlay(...args);
+    };
     const timeScaleHandler = () => {
       if (viewportFrame !== null) return;
       viewportFrame = window.requestAnimationFrame(() => {
         viewportFrame = null;
-        if (isActiveRef.current) renderTradeOverlay();
+        if (initialRenderPending || isActiveRef.current) renderTradeOverlayNow();
       });
     };
     chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(timeScaleHandler);
+    timeScaleHandler();
 
     const unsubscribeAppStore = useAppStore.subscribe((state, previousState) => {
       const currentTick = resolveSymbolTick(state.ticks);
       const previousTick = resolveSymbolTick(previousState.ticks);
 
       if (state.positions !== previousState.positions || state.trades !== previousState.trades) {
-        renderTradeOverlay();
+        renderTradeOverlayNow();
         return;
       }
 
@@ -118,7 +126,7 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
         || currentProperties.showTradeHistoryArrows !== previousProperties.showTradeHistoryArrows
         || currentProperties.tradeHistoryLineOpacity !== previousProperties.tradeHistoryLineOpacity
       ) {
-        renderTradeOverlay(true);
+        renderTradeOverlayNow(true);
       }
     });
 
@@ -128,17 +136,40 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
         getChartObjectState(state.byContext, contextId).tradesHidden
         !== getChartObjectState(previousState.byContext, contextId).tradesHidden
       ) {
-        renderTradeOverlay(true);
+        renderTradeOverlayNow(true);
       }
     });
 
     const handleForceRefresh = () => {
       window.setTimeout(() => {
-        renderTradeOverlay();
+        renderTradeOverlayNow();
       }, 500);
     };
-    const handleRefreshTradeOverlay = () => renderTradeOverlay();
-    const handleFlushTradeOverlay = () => renderTradeOverlay(true);
+    const handleRefreshTradeOverlay = () => renderTradeOverlayNow();
+    const handleFlushTradeOverlay = (event: Event) => {
+      const detail = (event as CustomEvent<TradeOverlayRefreshDetail | undefined>).detail;
+      if (detail?.contextId && detail.contextId !== drawingRuntimeContextRef.current.contextId) return;
+      if (detail?.mode === 'geometry') {
+        // Keep the existing nodes and coalesce projection with the chart frame.
+        // Position/SLTP mutations still use the legacy unscoped rebuild below.
+        queueTradeOverlayRelayout();
+        return;
+      }
+      if (detail?.mode === 'reconcile') {
+        // New candles can change which history markers have coordinates. Let
+        // signatures decide membership without discarding unchanged controls.
+        if (initialRenderPending) timeScaleHandler();
+        else renderTradeOverlayNow();
+        return;
+      }
+      if (detail?.contextId && detail.mode === 'rebuild' && initialRenderPending) {
+        // Mount-time presentation effects can share the first render: there
+        // are no controls yet to invalidate. Unscoped mutations stay immediate.
+        timeScaleHandler();
+        return;
+      }
+      renderTradeOverlayNow(true);
+    };
     const handleTradeOverlayCloseState = (event: Event) => {
       const detail = (event as CustomEvent<unknown>).detail;
       const status = getTradeOverlayCloseState(detail);
@@ -201,12 +232,12 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
       }
 
       clearTradeOverlayLayer('active');
-      renderTradeOverlay({ forceActive: true, forceHistory: status !== 'failed' });
+      renderTradeOverlayNow({ forceActive: true, forceHistory: status !== 'failed' });
     };
-    const handleNewTradePlaced = () => renderTradeOverlay({ forceActive: true });
+    const handleNewTradePlaced = () => renderTradeOverlayNow({ forceActive: true });
     window.addEventListener('rtx:force-refresh-positions', handleForceRefresh);
     window.addEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
-    window.addEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
+    window.addEventListener(TRADE_OVERLAY_REFRESH_EVENT, handleFlushTradeOverlay);
     window.addEventListener('rtx:new-trade-placed', handleNewTradePlaced);
     window.addEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
 
@@ -217,7 +248,7 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
       unsubscribeChartObjectState();
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
       window.removeEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
-      window.removeEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
+      window.removeEventListener(TRADE_OVERLAY_REFRESH_EVENT, handleFlushTradeOverlay);
       window.removeEventListener('rtx:new-trade-placed', handleNewTradePlaced);
       window.removeEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
       try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(timeScaleHandler); } catch { /* chart may be disposed */ }

@@ -1,6 +1,6 @@
 /**
  * Session-only candle cache used to make chart timeframe switches render
- * immediately while broker M1 history remains the higher-timeframe source.
+ * immediately while broker history refreshes in the background.
  */
 
 import type { OHLCData } from '../types/chartData';

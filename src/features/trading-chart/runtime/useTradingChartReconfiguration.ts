@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { useEffect, useLayoutEffect, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import {
   HistogramSeries,
   type Coordinate,
@@ -129,7 +129,7 @@ export const useTradingChartReconfiguration = (options: UseTradingChartReconfigu
     setTextInputValue, symbol, timeframe, updateChartData, volumeRef,
   } = options;
 
-useEffect(() => {
+  const reconfigure = () => {
     if (isDisposedRef.current || !chartRef.current) return;
 
     // Check what changed
@@ -233,9 +233,11 @@ useEffect(() => {
           priceFormat: { type: 'price', precision: digits, minMove }
         });
 
-        // Clear existing visual data
-        seriesRef.current.setData([]);
-        if (volumeRef.current) volumeRef.current.setData([]);
+        // Reuse the exact new symbol's session cache before the next paint.
+        if (!hydrateHistoryFromCache(timeframe, 'cached-symbol-change')) {
+          seriesRef.current.setData([]);
+          if (volumeRef.current) volumeRef.current.setData([]);
+        }
 
         // Update drawing manager with new symbol context — pass overlay div directly
         drawingManager.setChart(
@@ -820,5 +822,15 @@ useEffect(() => {
     chart.timeScale().subscribeVisibleLogicalRangeChange(timeRangeHandler);
 
     isRebuildingRef.current = false; // Safe to resume ticks and resizes
+  };
+
+  // A mounted series can switch its selection and cache before the browser
+  // paints. Initial setup must run after the chart initialization effect has
+  // created chartRef; a layout-only owner would leave fresh mounts series-less.
+  useLayoutEffect(() => {
+    if (!seriesRef.current || prevChartTypeRef.current !== chartType) return;
+    reconfigure();
   }, [applyChartTypeInPlace, cancelQueuedChartRender, chartType, createPriceSeries, symbol, resetLiveQuotePriceGuard, updateChartData, clearPeriodSeparators, hydrateHistoryFromCache, timeframe]);
+
+  useEffect(reconfigure, [applyChartTypeInPlace, cancelQueuedChartRender, chartType, createPriceSeries, symbol, resetLiveQuotePriceGuard, updateChartData, clearPeriodSeparators, hydrateHistoryFromCache, timeframe]);
 };

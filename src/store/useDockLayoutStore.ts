@@ -545,13 +545,13 @@ const useDockLayoutStore = create<DockState>()(
               if (dockManager.addChartPanel().status !== 'added') break;
             }
             dockManager.arrangeCharts(mode);
-            set({ layout: dockManager.getLayout() });
+            // The manager subscription publishes each committed change.
+            // Republishing a cloned layout forces the whole dock through it twice.
           });
         },
         stepTileWindows: () => {
           runOutsideChartFocus(() => {
             dockManager.stepTileWindows();
-            set({ layout: dockManager.getLayout() });
           });
         },
         resetWindows: () => {
@@ -589,7 +589,6 @@ const useDockLayoutStore = create<DockState>()(
         arrangeCharts: (mode) => {
           runOutsideChartFocus(() => {
             dockManager.arrangeCharts(mode);
-            set({ layout: dockManager.getLayout() });
           });
         },
 

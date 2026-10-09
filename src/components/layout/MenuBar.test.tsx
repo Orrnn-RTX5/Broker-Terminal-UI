@@ -135,7 +135,7 @@ vi.mock('../LoginDialog', () => ({
 
 import { MenuBar } from './MenuBar';
 import { commandBus } from '../../services/commandBus';
-import { chartPropertiesFeature, chartObjectsFeature, indicatorNavigatorFeature, depthOfMarketFeature } from '../../startup/terminalFeatures';
+import { chartPropertiesFeature, chartObjectsFeature, depthOfMarketFeature } from '../../startup/terminalFeatures';
 import { drawingManager } from '../../services/drawingManager';
 import {
     defaultChartProperties,
@@ -187,7 +187,7 @@ afterEach(() => {
 describe('chart controls intent preload', () => {
     it.each(['web', 'desktop'])('warms chart dialogs when the %s chart menu opens', surface => {
         if (surface === 'desktop') installElectronBridge();
-        const spies = [chartPropertiesFeature, chartObjectsFeature, indicatorNavigatorFeature, depthOfMarketFeature]
+        const spies = [chartPropertiesFeature, chartObjectsFeature, depthOfMarketFeature]
             .map(feature => vi.spyOn(feature, 'preload').mockResolvedValue(undefined as never));
         render(<MenuBar />);
         spies.forEach(spy => expect(spy).not.toHaveBeenCalled());

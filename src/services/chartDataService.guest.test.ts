@@ -61,7 +61,7 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
-it('streams guest candles immediately over anonymous WebSocket without an auth frame', () => {
+it('streams guest candles immediately over anonymous WebSocket without an auth frame', async () => {
   const fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   const service = new ChartDataService();
@@ -96,6 +96,7 @@ it('streams guest candles immediately over anonymous WebSocket without an auth f
   expect(fetchMock).not.toHaveBeenCalled();
 
   stream.close();
+  await Promise.resolve();
   expect(socket.sent.map(payload => JSON.parse(payload)).at(-1)).toEqual({
     action: 'unsubscribe',
     channel: 'candles.XAUUSD.M1',
@@ -149,6 +150,7 @@ it('falls back to cancellable public REST refreshes when anonymous candles are r
   expect(fetchMock).toHaveBeenCalledTimes(2);
   const signal = fetchMock.mock.calls[0][1].signal as AbortSignal;
   stream.close();
+  await Promise.resolve();
   expect(signal.aborted).toBe(true);
   await vi.advanceTimersByTimeAsync(6000);
   expect(fetchMock).toHaveBeenCalledTimes(2);

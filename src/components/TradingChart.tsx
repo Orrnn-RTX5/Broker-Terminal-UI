@@ -35,6 +35,7 @@ import { refreshLightweightChartSurface } from '../utils/lightweightChartSurface
 import { isLikelyAlwaysOpenCryptoSymbol } from '../utils/marketStatus';
 import { setLiveMarketDataFrozen } from '../services/liveTickDispatcher';
 import { drawingManager } from '../services/drawingManager';
+import { requestChartTradeOverlayRefresh } from '../services/tradeOverlayRefreshEvents';
 import { projectDrawingTimeAtLogical } from '../drawing-tools/geometry/drawingTimeProjection';
 import { candleAggregationService, getTimeframeSeconds, type OHLCV, type Timeframe as AggTimeframe } from '../services/candleAggregationService';
 import { useAppStore } from '../store/useAppStore';
@@ -93,6 +94,7 @@ interface PendingChartDataRender {
   suppressGlobalVisibleRangeReset: boolean;
   releaseLivePaintAfterRender: boolean;
   finishLoadingAfterRender: boolean;
+  cachedBaseline: boolean;
   reason: string;
 }
 
@@ -782,12 +784,11 @@ export const TradingChart = React.memo(function TradingChart({
     timeframe,
   });
 
-  const flushTradeOverlay = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+  const refreshTradeOverlayGeometry = useCallback(() => {
+    requestChartTradeOverlayRefresh(drawingRuntimeContextRef.current.contextId, 'geometry');
   }, []);
 
-  const refreshVisibleChartLayout = useCallback(() => {
+  const refreshVisibleChartLayout = useCallback((forceRepaint = false) => {
     if (isDisposedRef.current) return;
 
     const chart = chartRef.current;
@@ -795,12 +796,12 @@ export const TradingChart = React.memo(function TradingChart({
     if (chart && container) {
       const { offsetWidth, offsetHeight } = container;
       if (offsetWidth > 0 && offsetHeight > 0) {
-        refreshLightweightChartSurface(chart, offsetWidth, offsetHeight);
+        refreshLightweightChartSurface(chart, offsetWidth, offsetHeight, { forceRepaint });
       }
     }
 
-    flushTradeOverlay();
-  }, [flushTradeOverlay]);
+    refreshTradeOverlayGeometry();
+  }, [refreshTradeOverlayGeometry]);
 
   const resetEmptyHistoryState = useCallback((activeTf: Timeframe) => {
     candlesRef.current = [];
@@ -968,7 +969,7 @@ export const TradingChart = React.memo(function TradingChart({
     useEnterpriseLightChartPalette,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     chartThemeRef.current = chartTheme;
   }, [chartTheme]);
 
@@ -1351,7 +1352,7 @@ export const TradingChart = React.memo(function TradingChart({
 
   const scheduleDrawingRenderAfterChartData = useCallback((activeSymbol: string, activeTf: Timeframe) => {
     if (typeof window === 'undefined') {
-      drawingManager.renderAll();
+      drawingManager.renderContext(overlayRef.current);
       return;
     }
 
@@ -1373,7 +1374,7 @@ export const TradingChart = React.memo(function TradingChart({
           drawingRuntimeContextRef.current.accountScope,
           getDrawingSeriesData,
         );
-        drawingManager.renderAll();
+        drawingManager.renderContext(overlayRef.current);
       });
     });
   }, [cancelScheduledDrawingRender]);
@@ -1559,6 +1560,7 @@ export const TradingChart = React.memo(function TradingChart({
           pending.selectionKey,
         );
         markCandlesReady();
+        if (pending.cachedBaseline) setLoadingPhase('hidden');
       } else if (pending.releaseLivePaintAfterRender && seriesData.length > 0) {
         // A sparse live baseline may update behind the opaque loading surface
         // while authoritative history is still in flight. Release direct live
@@ -1654,7 +1656,7 @@ export const TradingChart = React.memo(function TradingChart({
       console.warn(`[Chart] Error setting chart data for ${pending.reason}:`, e);
       return false;
     }
-  }, [applyAreaTrendColors, applyInitialVisibleLogicalRange, discardRetainedPublicChartSurface, getCandlesForFullRender, getClosedMarketRenderCandles, markCandlesReady, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
+  }, [applyAreaTrendColors, applyInitialVisibleLogicalRange, discardRetainedPublicChartSurface, getCandlesForFullRender, getClosedMarketRenderCandles, markCandlesReady, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, setLoadingPhase, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
 
   postInteractionCallbacksRef.current.paintModel = () => flushQueuedChartRender(true);
 
@@ -1708,6 +1710,7 @@ export const TradingChart = React.memo(function TradingChart({
       suppressGlobalVisibleRangeReset: request.suppressGlobalVisibleRangeReset ?? existing?.suppressGlobalVisibleRangeReset ?? false,
       releaseLivePaintAfterRender: request.releaseLivePaintAfterRender === true || existing?.releaseLivePaintAfterRender === true,
       finishLoadingAfterRender: request.finishLoadingAfterRender === true || existing?.finishLoadingAfterRender === true,
+      cachedBaseline: request.cachedBaseline === true || existing?.cachedBaseline === true,
       reason: request.reason ?? existing?.reason ?? 'chart-data',
     };
 
@@ -1716,8 +1719,13 @@ export const TradingChart = React.memo(function TradingChart({
       return;
     }
 
+    if (request.cachedBaseline) {
+      flushQueuedChartRender();
+      return;
+    }
+
     scheduleQueuedChartRenderFlush(request.immediate === true);
-  }, [scheduleQueuedChartRenderFlush]);
+  }, [flushQueuedChartRender, scheduleQueuedChartRenderFlush]);
 
   useLayoutEffect(() => {
     const nextGate = selectChartPresentation(
@@ -2527,7 +2535,7 @@ useTradingChartInitialization({
       }
     }
 
-    window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+    requestChartTradeOverlayRefresh(drawingRuntimeContextRef.current.contextId, 'rebuild');
   }, [areaTrendDirectionRef, chartAxisFontSize, chartSettings, chartTheme, chartType, requestChartDataRender, schedulePeriodSeparatorRender, symbol, timeframe, updateLegendDOM]);
 
   useLayoutEffect(() => {
@@ -2537,7 +2545,7 @@ useTradingChartInitialization({
     previousAdvancedUntitledLightRef.current = isAdvancedUntitledLight;
     return scheduleChartThemeTransition({
       refreshSurface: () => {
-        refreshVisibleChartLayout();
+        refreshVisibleChartLayout(true);
         schedulePeriodSeparatorRender();
       },
     });
@@ -2737,7 +2745,7 @@ useTradingChartLiveCandleRuntime({
             // Force chart to recompute its size
             const { offsetWidth, offsetHeight } = el;
             if (offsetWidth > 0 && offsetHeight > 0) {
-              refreshLightweightChartSurface(chartRef.current, offsetWidth, offsetHeight);
+              refreshLightweightChartSurface(chartRef.current, offsetWidth, offsetHeight, { forceRepaint: false });
               if (resetVisibleRangeOnNextDataRef.current) {
                 const totalBars = getCandlesForFullRender().length;
                 resetVisibleRangeOnNextDataRef.current = !applyInitialVisibleLogicalRange(
@@ -2747,7 +2755,7 @@ useTradingChartLiveCandleRuntime({
                 );
               }
               console.log(`[TradingChart] Tab became visible — resized to ${offsetWidth}x${offsetHeight}`);
-              flushTradeOverlay();
+              refreshTradeOverlayGeometry();
               schedulePeriodSeparatorRender();
             }
           }
@@ -2758,7 +2766,7 @@ useTradingChartLiveCandleRuntime({
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [applyInitialVisibleLogicalRange, flushTradeOverlay, getCandlesForFullRender, schedulePeriodSeparatorRender, timeframe]);
+  }, [applyInitialVisibleLogicalRange, refreshTradeOverlayGeometry, getCandlesForFullRender, schedulePeriodSeparatorRender, timeframe]);
 
   useEffect(() => {
     if (!isActive) return;

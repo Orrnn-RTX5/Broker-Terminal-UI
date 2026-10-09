@@ -7,6 +7,7 @@ describe('refreshLightweightChartSurface', () => {
       autoSizeActive: vi.fn(() => true),
       applyOptions: vi.fn(),
       resize: vi.fn(),
+      chartElement: () => ({ style: { width: '900px', height: '502px' } }),
     };
 
     expect(refreshLightweightChartSurface(chart as never, 901.8, 503.4)).toBe(true);
@@ -29,6 +30,62 @@ describe('refreshLightweightChartSurface', () => {
     expect(chart.resize).toHaveBeenCalledWith(800, 420, true);
     expect(chart.applyOptions).toHaveBeenCalledOnce();
     expect(chart.applyOptions).toHaveBeenCalledWith({});
+  });
+
+  it('leaves an already-sized surface and its ResizeObserver alone during repeated activation checks', () => {
+    const chart = {
+      autoSizeActive: vi.fn(() => true),
+      applyOptions: vi.fn(),
+      resize: vi.fn(),
+      chartElement: () => ({ style: { width: '900px', height: '502px' } }),
+    };
+
+    for (let pass = 0; pass < 5; pass++) {
+      expect(refreshLightweightChartSurface(chart as never, 901.8, 503.4, { forceRepaint: false })).toBe(true);
+    }
+    expect(chart.autoSizeActive).not.toHaveBeenCalled();
+    expect(chart.applyOptions).not.toHaveBeenCalled();
+    expect(chart.resize).not.toHaveBeenCalled();
+  });
+
+  it('repairs changed dimensions once, then skips unchanged follow-up frames', () => {
+    const style = { width: '900px', height: '502px' };
+    const chart = {
+      autoSizeActive: vi.fn(() => true),
+      applyOptions: vi.fn(),
+      resize: vi.fn((width: number, height: number) => {
+        style.width = `${width - width % 2}px`;
+        style.height = `${height - height % 2}px`;
+      }),
+      chartElement: () => ({ style }),
+    };
+
+    expect(refreshLightweightChartSurface(chart as never, 450, 300, { forceRepaint: false })).toBe(true);
+    expect(chart.resize).toHaveBeenCalledExactlyOnceWith(450, 300, true);
+    expect(chart.applyOptions).toHaveBeenLastCalledWith({ autoSize: true });
+    chart.resize.mockClear();
+    chart.applyOptions.mockClear();
+    expect(refreshLightweightChartSurface(chart as never, 450, 300, { forceRepaint: false })).toBe(true);
+    expect(chart.resize).not.toHaveBeenCalled();
+    expect(chart.applyOptions).not.toHaveBeenCalled();
+
+    // Theme changes still repaint an unchanged canvas, including after a
+    // successful ordinary resize. They must never use the dimension shortcut.
+    expect(refreshLightweightChartSurface(chart as never, 450, 300, { forceRepaint: true })).toBe(true);
+    expect(chart.resize).toHaveBeenCalledExactlyOnceWith(450, 300, true);
+    expect(chart.applyOptions).toHaveBeenCalledTimes(3);
+  });
+
+  it('retains the repair path if chart dimensions are unavailable', () => {
+    const chart = {
+      autoSizeActive: vi.fn(() => true),
+      applyOptions: vi.fn(),
+      resize: vi.fn(),
+    };
+
+    expect(refreshLightweightChartSurface(chart as never, 900, 500, { forceRepaint: false })).toBe(true);
+    expect(chart.resize).toHaveBeenCalledExactlyOnceWith(900, 500, true);
+    expect(chart.applyOptions).toHaveBeenLastCalledWith({ autoSize: true });
   });
 
   it('ignores zero-size containers without touching the chart', () => {

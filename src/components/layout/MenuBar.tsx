@@ -25,7 +25,7 @@ import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
 import { getAppVersion } from '../../config/appVersion';
 
-import { optionsFeature, symbolsFeature, loginFeature, chartPropertiesFeature, chartObjectsFeature, indicatorNavigatorFeature, depthOfMarketFeature } from '../../startup/terminalFeatures';
+import { optionsFeature, symbolsFeature, loginFeature, chartPropertiesFeature, chartObjectsFeature, depthOfMarketFeature } from '../../startup/terminalFeatures';
 const OptionsDialog = optionsFeature.Component;
 const SymbolsDialog = symbolsFeature.Component;
 const LoginDialog = loginFeature.Component;
@@ -140,7 +140,7 @@ export const MenuBar = ({
         if ((!isElectronDesktop && (!isMenuOpen || activeMenu !== 'chart-settings')) || (isElectronDesktop && activeMenu !== 'Charts')) return;
         // Opening chart controls expresses intent to use these tools. Download
         // their UI now instead of waiting for an idle warmup after the click.
-        for (const feature of [chartPropertiesFeature, chartObjectsFeature, indicatorNavigatorFeature, depthOfMarketFeature]) {
+        for (const feature of [chartPropertiesFeature, chartObjectsFeature, depthOfMarketFeature]) {
             void feature.preload().catch(() => undefined);
         }
     }, [activeMenu, isElectronDesktop, isMenuOpen]);

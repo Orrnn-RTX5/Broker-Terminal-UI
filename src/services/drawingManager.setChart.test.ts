@@ -80,6 +80,71 @@ describe('DrawingManager.setChart', () => {
     expect(container.querySelectorAll('.chart-svg-overlay')).toHaveLength(1);
   });
 
+  it('switches the active target between unchanged panes without rebuilding either SVG', async () => {
+    const manager = new DrawingManager();
+    const containerA = document.createElement('div');
+    const containerB = document.createElement('div');
+    document.body.append(containerA, containerB);
+    const bindA = () => manager.setChart(interactiveChart, interactiveSeries, 'A', 1, containerA, 'M1', 'chart-a', 'account-1');
+    const bindB = () => manager.setChart(interactiveChart, interactiveSeries, 'B', 1, containerB, 'M5', 'chart-b', 'account-1');
+    bindA();
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(1));
+    manager.startDrawing('hline');
+    manager.addPoint(1_700_000_000, 2000, undefined, 'chart-a');
+    bindB();
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(2));
+    manager.startDrawing('hline');
+    manager.addPoint(1_700_000_000, 2100, undefined, 'chart-b');
+    await Promise.resolve();
+    const nodeA = containerA.querySelector('g[data-id]');
+    const nodeB = containerB.querySelector('g[data-id]');
+    expect(nodeA).not.toBeNull();
+    expect(nodeB).not.toBeNull();
+    const renderAll = vi.spyOn(manager, 'renderAll');
+
+    for (let index = 0; index < 3; index++) {
+      bindA();
+      expect(manager.getDrawings()).toEqual(manager.getDrawings('chart-a'));
+      bindB();
+      expect(manager.getDrawings()).toEqual(manager.getDrawings('chart-b'));
+    }
+
+    expect(renderAll).not.toHaveBeenCalled();
+    expect(containerA.querySelector('g[data-id]')).toBe(nodeA);
+    expect(containerB.querySelector('g[data-id]')).toBe(nodeB);
+    expect(loadDrawings).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['symbol', 'OTHER', 'M1', 'chart-a', 'account-1'],
+    ['timeframe', 'A', 'M5', 'chart-a', 'account-1'],
+    ['context', 'A', 'M1', 'chart-new', 'account-1'],
+    ['account', 'A', 'M1', 'chart-a', 'account-2'],
+  ])('redraws an inactive pane when its %s changes, preserving the proper drawing document', async (field, symbol, timeframe, contextId, accountScope) => {
+    const manager = new DrawingManager();
+    const containerA = document.createElement('div');
+    const containerB = document.createElement('div');
+    document.body.append(containerA, containerB);
+    manager.setChart(interactiveChart, interactiveSeries, 'A', 1, containerA, 'M1', 'chart-a', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(1));
+    manager.startDrawing('hline');
+    manager.addPoint(1_700_000_000, 2000, undefined, 'chart-a');
+    manager.setChart(interactiveChart, interactiveSeries, 'B', 1, containerB, 'M1', 'chart-b', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(2));
+    await Promise.resolve();
+    expect(containerA.querySelector('g[data-id]')).not.toBeNull();
+    const renderAll = vi.spyOn(manager, 'renderAll');
+
+    manager.setChart(interactiveChart, interactiveSeries, symbol, 1, containerA, timeframe, contextId, accountScope);
+
+    expect(renderAll).toHaveBeenCalled();
+    // Pane identity is distinct from the shared account/symbol/timeframe
+    // document. A renamed pane must retain that document; other changes clear it.
+    expect(containerA.querySelectorAll('g[data-id]')).toHaveLength(field === 'context' ? 1 : 0);
+    expect(manager.getDrawings()).toHaveLength(field === 'context' ? 1 : 0);
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(field === 'context' ? 2 : 3));
+  });
+
   it('still renders for a changed chart context and active drawing previews', async () => {
     const manager = new DrawingManager();
     const container = document.createElement('div');

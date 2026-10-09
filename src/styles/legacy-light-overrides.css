@@ -247,41 +247,6 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper {
   background: #ffffff !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) {
-  background: #ffffff !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"])>div,
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"])>div>.flex-1,
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"])>div>.flex-1>div,
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"])>div>.flex-1>div>div {
-  background: #ffffff !important;
-  color: #101828 !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="background: #0d0d11"],
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="background: rgb(13, 13, 17)"] {
-  background: #ffffff !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="radial-gradient"] {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(249, 250, 251, 0.92)) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="color: #f4f4f5"],
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="color: rgb(244, 244, 245)"] {
-  color: #101828 !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) p,
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) span,
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="color: #52525b"],
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="color: #3f3f46"],
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) p[style*="color: #a1a1aa"],
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) p[style*="color: rgb(161, 161, 170)"] {
-  color: #667085 !important;
-}
-
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-text-input-popover {
   background: #ffffff !important;
   border-color: #d0d5dd !important;
@@ -754,14 +719,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper :where
   background: #fbfaf6 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft [data-dock-panel]:has(svg[viewBox="0 0 270 100"])>div,
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft [data-dock-panel]:has(svg[viewBox="0 0 270 100"])>div>.flex-1>div>div,
+/* Live chart surfaces have explicit classes. Inspecting a dock's descendants
+   with :has() invalidates its entire subtree whenever quote text changes. */
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft .rtx-chart-wrapper {
   background: #fbfcfd !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper [data-dock-panel]:has(svg[viewBox="0 0 270 100"])>div,
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper [data-dock-panel]:has(svg[viewBox="0 0 270 100"])>div>.flex-1>div>div,
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper .rtx-chart-wrapper {
   background: #fffdf7 !important;
 }

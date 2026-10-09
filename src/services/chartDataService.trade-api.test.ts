@@ -734,6 +734,20 @@ describe('trade candle normalization and websocket cleanup', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(expectedPublicCandleUrl());
   });
 
+  it('accepts broker MN1 metadata as the monthly timeframe without weakening selection validation', async () => {
+    localStorage.setItem('auth_token', 'jwt-token');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ symbol: 'EUR/USD', timeframe: 'MN1', candles: [
+        { time: utcSeconds(2026, 10, 1), open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 },
+      ] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const service = new ChartDataService();
+    await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'MN', count: 50 })).resolves.toHaveLength(1);
+    await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M1', count: 50 })).rejects.toThrow('timeframe mismatch');
+  });
+
   it('skips the protected core candle endpoint when no auth token is available', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -1094,7 +1108,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     subscription.close();
   });
 
-  it('never reconnects after an intentional candle stream close', () => {
+  it('never reconnects after an intentional candle stream close', async () => {
     vi.useFakeTimers();
     localStorage.setItem('auth_token', 'jwt-token');
     const service = new ChartDataService();
@@ -1108,6 +1122,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     socket.emit({ type: 'subscribed', channel: 'candles.EURUSD.M15' });
 
     subscription.close();
+    await Promise.resolve();
     expect(socket.closedWith).toEqual({
       code: 1000,
       reason: 'Chart candle subscription closed',
@@ -1121,7 +1136,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
-  it('unsubscribes and closes candle streams without leaking the channel', () => {
+  it('unsubscribes and closes candle streams without leaking the channel', async () => {
     localStorage.setItem('auth_token', 'jwt-token');
     localStorage.setItem('server_url', 'https://broker.example.com');
     localStorage.setItem('ws_url', 'ws://broker.example.com/ws/feed');
@@ -1142,7 +1157,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     ]);
 
     subscription.close();
-
+    await Promise.resolve();
     expect(parseSent(ws).at(-1)).toEqual({ action: 'unsubscribe', channel: 'candles.EUR/USD.M15', channels: ['candles.EUR/USD.M15'] });
     expect(ws.closedWith).toEqual({ code: 1000, reason: 'Chart candle subscription closed' });
   });
@@ -1188,7 +1203,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     subscription.close();
   });
 
-  it('preserves a dot-suffixed broker symbol in subscribe, routing, and unsubscribe channels', () => {
+  it('preserves a dot-suffixed broker symbol in subscribe, routing, and unsubscribe channels', async () => {
     localStorage.setItem('auth_token', 'jwt-token');
     const service = new ChartDataService();
     const onCandle = vi.fn();
@@ -1215,6 +1230,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     expect(onCandle).toHaveBeenCalledWith(candle);
 
     subscription.close();
+    await Promise.resolve();
     expect(parseSent(ws).at(-1)).toEqual({
       action: 'unsubscribe',
       channel: 'candles.EURUSD.R.M1',

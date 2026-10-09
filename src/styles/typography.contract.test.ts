@@ -59,6 +59,15 @@ const openAccountDialogSource = readSource('src/components/dialogs/OpenAccountDi
 const loginDialogSource = readSource('src/components/LoginDialog.tsx');
 
 describe('enterprise typography contract', () => {
+  it('styles chart surfaces without inspecting changing dock descendants', () => {
+    // Quote/legend text replacements otherwise invalidate every trade marker
+    // under each dock, even when an obsolete :has() selector never matches.
+    expect(advancedCss).not.toMatch(/\[data-dock-panel\]\s*:has\(/);
+    expect(advancedCss).toMatch(/\.rtx-chart-wrapper\s*\{[^}]*background: #ffffff !important;/);
+    expect(advancedCss).toMatch(/\.rtx-advanced-surface-soft \.rtx-chart-wrapper\s*\{\s*background: #fbfcfd !important;/);
+    expect(advancedCss).toMatch(/\.rtx-advanced-surface-paper \.rtx-chart-wrapper\s*\{\s*background: #fffdf7 !important;/);
+  });
+
   it('loads the bundled variable font, including real italic glyphs, before global CSS', () => {
     const normalFontImport = authenticatedStylesSource.indexOf("import '@fontsource-variable/plus-jakarta-sans';");
     const italicFontImport = authenticatedStylesSource.indexOf("import '@fontsource-variable/plus-jakarta-sans/wght-italic.css';");

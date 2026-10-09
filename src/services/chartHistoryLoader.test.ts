@@ -18,6 +18,7 @@ import {
   selectOlderCandlesBeforeCursor,
 } from './chartHistoryLoader';
 import { mergeBackendCandlePage } from '../utils/candleHistory';
+import { fetchDerivedTimeframeCandlesFromM1 } from './derivedTimeframeHistoryService';
 
 const candle = (time: number): OHLCData => ({
   time,
@@ -256,6 +257,15 @@ describe('chart history loader', () => {
     expect(result.usedDerivedFallback).toBe(false);
   });
 
+  it.each(['D1', 'W1', 'MN'])('requests native %s older history without paging through M1 first', async timeframe => {
+    const fetchCandles = vi.fn(async () => [candle(3600)]);
+    const result = await fetchOlderHistoryPage({ symbol: 'XAUUSD.raw', timeframe, olderThanRaw: 7200, fetchCandles });
+    expect(fetchCandles).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      symbol: 'XAUUSD.raw', timeframe, to: 7199,
+    }));
+    expect(result).toMatchObject({ source: 'backend', attempts: 1, usedDerivedFallback: false });
+  });
+
   it('finds bounded recent M1 gaps and prioritizes the newest visible holes', () => {
     const candles = [
       candle(0),
@@ -318,6 +328,19 @@ describe('chart history loader', () => {
 
     expect(result.addedCandles).toBe(0);
     expect(result.candles.map(item => item.time)).toEqual([60, 240]);
+  });
+
+  it('reuses completed empty interval checks for another pane without filling or hiding its gaps', async () => {
+    const fetchCandles = vi.fn(async () => [] as OHLCData[]);
+    const source = [candle(60), candle(240)];
+    const options = { symbol: 'XAUUSD', timeframe: 'M1', candles: source, fetchCandles };
+    const first = await backfillRecentInteriorHistoryGaps(options);
+    const repeated = await backfillRecentInteriorHistoryGaps(options);
+    expect(fetchCandles).toHaveBeenCalledTimes(2); // Exact interval plus its boundary-overlap retry.
+    expect(first.candles).toEqual(source);
+    expect(repeated.candles).toEqual(source);
+    expect(repeated.addedCandles).toBe(0);
+    expect(findRecentInteriorHistoryGaps(repeated.candles)).toHaveLength(1);
   });
 
   it('retries only residual holes when a range endpoint returns a partial page', async () => {
@@ -457,7 +480,7 @@ describe('chart history loader', () => {
     expect(result.candles.map(item => item.time)).toEqual([3600]);
   });
 
-  it.each(['M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'])(
+  it.each(['M5', 'M15', 'M30', 'H1', 'H4'])(
     'tries M1 derivation before the native %s older-history request',
     async timeframe => {
       const requestedTimeframes: string[] = [];
@@ -548,17 +571,16 @@ describe('chart history loader', () => {
     });
     const yieldBetweenPages = vi.fn(async () => undefined);
 
-    const result = await fetchOlderHistoryPage({
+    const result = await fetchDerivedTimeframeCandlesFromM1({
       symbol: 'GBPUSD',
-      timeframe: 'MN',
+      targetTimeframe: 'MN',
       olderThanRaw: juneStart,
       fetchCandles,
       yieldBetweenPages,
     });
 
-    expect(result.source).toBe('derived-m1');
     expect(result.candles.map(item => item.time)).toEqual([mayStart]);
-    expect(result.attempts).toBe(9);
+    expect(result.pagesFetched).toBe(9);
     expect(fetchCandles).toHaveBeenCalledTimes(9);
     expect(fetchCandles.mock.calls.every(([options]) => options.timeframe === 'M1')).toBe(true);
     expect(yieldBetweenPages).toHaveBeenCalled();

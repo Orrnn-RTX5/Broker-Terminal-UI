@@ -2,6 +2,8 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { candleCache } from '../../../services/candleCache';
+import { candleAggregationService } from '../../../services/candleAggregationService';
+import { emitSessionChange } from '../../../services/brokerSession';
 import { createRenderedPriceReference } from '../../../services/chartPriceGuards';
 import { defaultChartProperties } from '../../../store/useChartSettingsStore';
 import type { Candle, Timeframe } from '../../../types/chart';
@@ -52,9 +54,22 @@ const createHarness = (symbol = 'BTCUSD', timeframe: Timeframe = 'M1') => {
   return { options, view, history, live, key, metadata };
 };
 
-afterEach(() => { cleanup(); candleCache.clearAll(); });
+afterEach(() => { cleanup(); candleCache.clearAll(); candleAggregationService.clearAll(); vi.restoreAllMocks(); });
 
 describe('cache baseline arriving after a live candle on reload', () => {
+  it.each(['BTCUSD', 'XAUUSD.raw'].flatMap(symbol => CANDLE_TIMEFRAMES.map(timeframe => ({ symbol, timeframe }))))(
+    'restores the visited $symbol $timeframe after another selection cleared the model', ({ symbol, timeframe }) => {
+      const harness = createHarness(symbol, timeframe as Timeframe);
+      harness.options.candlesRef.current = [];
+      harness.options.currentCandleRef.current = null;
+      harness.options.liveCandleMutationGenerationByTimeRef.current.clear();
+      act(() => { expect(harness.view.result.current.hydrateHistoryFromCache(timeframe as Timeframe, 'cached-timeframe-change')).toBe(true); });
+      expect(harness.options.candlesRef.current).toEqual(harness.history);
+      expect(harness.options.updateChartData).toHaveBeenCalledWith(harness.history, undefined, expect.objectContaining({
+        cachedBaseline: true, finishLoadingAfterRender: true,
+      }));
+    },
+  );
   it.each(['BTCUSD', 'XAUUSD.raw'].flatMap(symbol => CANDLE_TIMEFRAMES.map(timeframe => ({ symbol, timeframe }))))(
     'keeps the proven current $symbol $timeframe candle in the first cached render', ({ symbol, timeframe }) => {
       const harness = createHarness(symbol, timeframe as Timeframe);
@@ -65,7 +80,10 @@ describe('cache baseline arriving after a live candle on reload', () => {
       }));
       expect(harness.options.candlesRef.current).toEqual(expected);
       expect(harness.options.currentCandleRef.current).toEqual(harness.live);
-      expect(harness.options.reloadAggregationCandles).toHaveBeenCalledWith(expected, timeframe, 0);
+      expect(candleAggregationService.getCandles(symbol, timeframe)).toEqual(expected.map(row => ({
+        time: row.time, open: row.open, high: row.high, low: row.low, close: row.close,
+        volume: row.volume, isComplete: row.closed,
+      })));
     },
   );
 
@@ -123,5 +141,50 @@ describe('cache baseline arriving after a live candle on reload', () => {
     candleCache.setLatest(harness.key, [...harness.history, final], harness.metadata);
     act(() => { harness.view.result.current.hydrateHistoryFromCache('M1', 'cached-history'); });
     expect(harness.options.currentCandleRef.current).toEqual(final);
+  });
+
+  it('paints retained M1 history after its presentation cache expires without reseeding the live builder', () => {
+    const harness = createHarness();
+    const retained = [...harness.history, harness.live];
+    candleAggregationService.loadHistoricalCandles('BTCUSD', 'M1', retained.map(row => ({ ...row, isComplete: row.closed })));
+    const future = Date.now() + 31 * 60 * 1000;
+    vi.spyOn(Date, 'now').mockReturnValue(future);
+    expect(candleCache.getLatest(harness.key)).toBeNull();
+    harness.options.currentCandleRef.current = null;
+    harness.options.liveCandleMutationGenerationByTimeRef.current.clear();
+    const reseed = vi.spyOn(candleAggregationService, 'loadHistoricalCandles');
+
+    act(() => { expect(harness.view.result.current.hydrateHistoryFromCache('M1', 'cached-history')).toBe(true); });
+
+    expect(harness.options.updateChartData).toHaveBeenCalledExactlyOnceWith(expect.arrayContaining([
+      expect.objectContaining({ time: harness.live.time, close: harness.live.close, closed: false }),
+    ]), undefined, expect.objectContaining({ immediate: true, finishLoadingAfterRender: true }));
+    expect(harness.options.candlesRef.current).toHaveLength(3);
+    expect(candleCache.getLatest(harness.key)?.candles).toHaveLength(3);
+    expect(reseed).not.toHaveBeenCalled();
+  });
+
+  it('does not expose a lone startup tick as a loaded M1 history page', () => {
+    const harness = createHarness();
+    candleCache.clearAll();
+    candleAggregationService.processTick({ symbol: 'BTCUSD', bid: 105, ask: 105, timestamp: harness.live.time });
+    act(() => { expect(harness.view.result.current.hydrateHistoryFromCache('M1', 'cached-history')).toBe(false); });
+    expect(harness.options.updateChartData).not.toHaveBeenCalled();
+  });
+
+  it('cannot recover old-account retained M1 candles after account invalidation', () => {
+    const harness = createHarness();
+    candleAggregationService.loadHistoricalCandles('BTCUSD', 'M1', harness.history.map(row => ({ ...row, isComplete: true })));
+    emitSessionChange('account_change');
+    act(() => { expect(harness.view.result.current.hydrateHistoryFromCache('M1', 'cached-history')).toBe(false); });
+    expect(harness.options.updateChartData).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse retained M1 under a different explicit boundary offset', () => {
+    const harness = createHarness();
+    candleCache.clearAll();
+    candleAggregationService.loadHistoricalCandles('BTCUSD', 'M1', harness.history.map(row => ({ ...row, isComplete: true })), 3600);
+    act(() => { expect(harness.view.result.current.hydrateHistoryFromCache('M1', 'cached-history')).toBe(false); });
+    expect(harness.options.updateChartData).not.toHaveBeenCalled();
   });
 });

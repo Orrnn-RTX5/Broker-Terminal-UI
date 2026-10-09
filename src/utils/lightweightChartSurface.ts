@@ -1,11 +1,13 @@
 import type { IChartApi } from 'lightweight-charts';
 
-type RefreshableChart = Pick<IChartApi, 'applyOptions' | 'autoSizeActive' | 'resize'>;
+type RefreshableChart = Pick<IChartApi, 'applyOptions' | 'autoSizeActive' | 'resize'>
+  & Partial<Pick<IChartApi, 'chartElement'>>;
 
 export const refreshLightweightChartSurface = (
   chart: RefreshableChart,
   width: number,
   height: number,
+  { forceRepaint = true }: { forceRepaint?: boolean } = {},
 ): boolean => {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     return false;
@@ -16,6 +18,18 @@ export const refreshLightweightChartSurface = (
   let restoreAutoSize = false;
 
   try {
+    if (!forceRepaint) {
+      // The public chart element holds the library's applied dimensions. Read
+      // its inline values without forcing layout; Lightweight Charts rounds
+      // both dimensions down to even pixels to keep the canvas inside its host.
+      const style = chart.chartElement?.()?.style;
+      if (style
+        && Number.parseFloat(style.width) === nextWidth - nextWidth % 2
+        && Number.parseFloat(style.height) === nextHeight - nextHeight % 2) {
+        return true;
+      }
+    }
+
     restoreAutoSize = chart.autoSizeActive();
     if (restoreAutoSize) {
       // Lightweight Charts ignores explicit dimensions while autoSize is active.
