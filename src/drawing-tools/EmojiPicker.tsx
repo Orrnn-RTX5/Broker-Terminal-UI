@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Cat, Flag, Heart, Lightbulb, Rocket, Smile, Trophy, Utensils, type LucideIcon } from 'lucide-react';
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { getPictographItems, PICTOGRAPH_CATEGORIES } from './pictographCatalog';
@@ -26,13 +26,40 @@ export function EmojiPicker({ selectedSubtype, onSelect, ready = true }: {
     ? 'stickers' : selectedSubtype?.startsWith('icon:') ? 'icons' : 'emojis');
   const [activeCategory, setActiveCategory] = useState<string>('smileys');
   const [focusedItem, setFocusedItem] = useState<string | null>(null);
+  const [renderedCategories, setRenderedCategories] = useState(() => new Set<string>());
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 400px)').matches);
   const scrollRef = useRef<HTMLDivElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
   const tabRef = useRef<HTMLDivElement>(null);
-  const categories = PICTOGRAPH_CATEGORIES.filter(category => getPictographItems(tab, category.id).length > 0);
+  const categories = useMemo(() => PICTOGRAPH_CATEGORIES.filter(category => getPictographItems(tab, category.id).length > 0), [tab]);
   const selectedCategory = categories.some(category => category.id === activeCategory)
     ? activeCategory : categories[0]?.id;
   const itemLabel = tr(TABS.find(item => item.id === tab)!.itemLabel);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 400px)');
+    const update = () => setCompact(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll || typeof IntersectionObserver === 'undefined') return;
+    // Keep section geometry, but mount artwork only near the visible viewport.
+    // Category clicks still materialize their destination synchronously.
+    const observer = new IntersectionObserver(entries => {
+      const arriving = entries.filter(entry => entry.isIntersecting)
+        .map(entry => (entry.target as HTMLElement).dataset.category!);
+      if (!arriving.length) return;
+      setRenderedCategories(current => {
+        if (arriving.every(category => current.has(category))) return current;
+        return new Set([...current, ...arriving]);
+      });
+    }, { root: scroll, rootMargin: '96px 0px' });
+    scroll.querySelectorAll('[data-category]').forEach(section => observer.observe(section));
+    return () => observer.disconnect();
+  }, [tab]);
 
   useEffect(() => {
     // The picker is a non-modal popover. Start on a category and let Escape
@@ -44,6 +71,7 @@ export function EmojiPicker({ selectedSubtype, onSelect, ready = true }: {
 
   const switchTab = (nextTab: PickerTab) => {
     setTab(nextTab);
+    setRenderedCategories(new Set());
     setActiveCategory(PICTOGRAPH_CATEGORIES.find(category => getPictographItems(nextTab, category.id).length > 0)?.id ?? 'smileys');
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   };
@@ -53,7 +81,18 @@ export function EmojiPicker({ selectedSubtype, onSelect, ready = true }: {
     const scroll = scrollRef.current;
     const section = scroll?.querySelector<HTMLElement>(`[data-category="${category}"]`);
     if (scroll && section) {
-      scroll.scrollTop += section.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+      const rootTop = scroll.getBoundingClientRect().top;
+      const nextTop = Math.max(0, Math.min(scroll.scrollHeight - scroll.clientHeight,
+        scroll.scrollTop + section.getBoundingClientRect().top - rootTop));
+      // Fill the whole destination viewport in the click commit, including
+      // preceding categories when a jump is clamped at the bottom.
+      const arriving = Array.from(scroll.querySelectorAll<HTMLElement>('[data-category]')).filter(candidate => {
+        const rect = candidate.getBoundingClientRect();
+        const top = rect.top - rootTop + scroll.scrollTop;
+        return top < nextTop + scroll.clientHeight + 96 && top + rect.height > nextTop - 96;
+      }).map(candidate => candidate.dataset.category!);
+      setRenderedCategories(current => new Set([...current, category, ...arriving]));
+      scroll.scrollTop = nextTop;
     }
   };
 
@@ -112,19 +151,28 @@ export function EmojiPicker({ selectedSubtype, onSelect, ready = true }: {
           : sections.filter(section => section.getBoundingClientRect().top <= top + 20).at(-1);
         if (current?.dataset.category) setActiveCategory(current.dataset.category);
       }}>
-      {categories.map(category => <section key={category.id} data-category={category.id}
+      {categories.map(category => {
+        const items = getPictographItems(tab, category.id);
+        const columns = tab === 'stickers' ? 5 : compact ? 6 : 8;
+        const rowHeight = tab === 'stickers' ? 60 : 37;
+        const gridHeight = Math.ceil(items.length / columns) * (rowHeight + 1) - 1;
+        const renderItems = typeof IntersectionObserver === 'undefined'
+          || categories.indexOf(category) < 2
+          || category.id === selectedCategory || renderedCategories.has(category.id);
+        return <section key={category.id} data-category={category.id}
         aria-labelledby={`${id}-${category.id}-heading`}>
         <h3 id={`${id}-${category.id}-heading`}>{tr(category.label)}</h3>
-        <div className="drawing-emoji-picker__grid" onKeyDown={navigateGrid}>
-          {getPictographItems(tab, category.id).map((item, index, items) => <button key={item.id} type="button"
+        <div className="drawing-emoji-picker__grid" style={{ minHeight: gridHeight }} onKeyDown={navigateGrid}>
+          {renderItems && items.map((item, index) => <button key={item.id} type="button"
             data-pictograph-id={item.id} aria-label={`${itemLabel} ${item.glyph}`} title={`${itemLabel} ${item.glyph}`}
             tabIndex={focusedItem === item.id || (index === 0 && !items.some(candidate => candidate.id === focusedItem)) ? 0 : -1}
             onFocus={() => setFocusedItem(item.id)}
             aria-pressed={selectedSubtype === item.id} onClick={() => onSelect(item.id)}>
-            <img src={item.assetUrl} alt="" width={28} height={28} draggable={false} />
+            <img src={item.assetUrl} alt="" width={28} height={28} draggable={false} loading="eager" decoding="async" />
           </button>)}
         </div>
-      </section>)}
+      </section>;
+      })}
     </div>
     <div className="drawing-emoji-picker__tabs" ref={tabRef} role="tablist" aria-label={tr('Emoji picker')}
       onKeyDown={event => navigateButtons(event, 'tab')}>

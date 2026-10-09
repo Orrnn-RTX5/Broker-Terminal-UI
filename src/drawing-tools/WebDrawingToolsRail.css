@@ -34,6 +34,13 @@
   transition: background-color 120ms ease, color 120ms ease;
 }
 
+/* Match the application menu's stationary press feedback. The global button
+   scale otherwise makes these triggers and their menu rows shrink on press. */
+.web-drawing-tools-rail__button:active,
+.web-drawing-tools-menu button:active {
+  transform: none;
+}
+
 .web-drawing-tools-rail__button::before {
   content: '';
   position: absolute;
@@ -327,7 +334,45 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item,
   background-image: var(--rtx-chrome-sheen);
   box-shadow: inset 0 1px 0 var(--rtx-chrome-edge), 0 10px 28px rgb(0 0 0 / 24%), 0 2px 6px rgb(0 0 0 / 16%);
   color-scheme: dark;
-  font-family: var(--font-sans);
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  transform-origin: top left;
+  will-change: transform, opacity;
+  contain: layout paint;
+}
+
+/* Use the same entry as the three-line application menu. Start only once the
+   sheet is anchored, so the first visible frame is already in its final place. */
+.web-drawing-tools-menu[data-positioned='true'] {
+  animation: rtx-application-menu-enter 120ms ease-out;
+}
+
+/* The sheet is measured while hidden, then revealed in the same commit. The
+   global button transition must not animate that inherited visibility: it
+   otherwise leaves the shell/headings visible before its action rows. Match
+   the application menu's color-only row feedback for every drawing catalog. */
+.web-drawing-tools-menu button {
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+/* Match the application menu, including the shared typography renderer's
+   inherited roles and the light theme's otherwise heavier button role. */
+html:root .web-drawing-tools-menu,
+html:root .web-drawing-tools-menu :is(
+  .web-drawing-tools-menu__item,
+  .web-drawing-tools-menu__label,
+  .web-drawing-tools-menu__toggle-row,
+  .web-drawing-tools-menu__heading,
+  kbd,
+  .drawing-emoji-picker h3,
+  .drawing-emoji-picker__tabs button
+) {
+  --rtx-type-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  --rtx-type-size: var(--rtx-ui-font-size, 13px);
+  --rtx-type-weight: var(--rtx-font-weight-body, 400);
+}
+
+html:root .web-drawing-tools-menu[data-menu='emojis'] .drawing-emoji-picker__tabs button[aria-selected='true'] {
+  --rtx-type-weight: var(--rtx-font-weight-body, 400);
 }
 
 :root[data-theme='light'] .web-drawing-tools-menu,
@@ -360,7 +405,7 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item,
 .web-drawing-tools-menu__heading {
   height: 26px;
   padding: 8px 14px 4px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 600;
   line-height: 14px;
@@ -381,13 +426,13 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item,
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
-  font: 500 14px/1 var(--font-sans);
+  font: var(--font-weight-normal, 400) var(--rtx-advanced-dense-font-size, 13px)/19.5px "Segoe UI", Tahoma, Arial, sans-serif;
   text-align: left;
 }
 
 .web-drawing-tools-menu__item svg {
   flex: 0 0 auto;
-  color: var(--text-secondary);
+  color: inherit;
 }
 
 .web-drawing-tools-menu__item:hover,
@@ -414,8 +459,8 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item,
 
 .web-drawing-tools-menu__item kbd {
   flex: 0 0 auto;
-  color: var(--text-tertiary);
-  font: 400 11px/1 var(--font-sans);
+  color: var(--text-secondary);
+  font: 400 var(--rtx-advanced-dense-font-size, 13px)/18px "Segoe UI", Tahoma, Arial, sans-serif;
 }
 
 .web-drawing-tools-menu__separator {
@@ -433,11 +478,11 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item,
   gap: 12px;
   border-radius: 4px;
   color: var(--text-primary);
-  font: 500 14px/1 var(--font-sans);
+  font: var(--font-weight-normal, 400) var(--rtx-advanced-dense-font-size, 13px)/19.5px "Segoe UI", Tahoma, Arial, sans-serif;
 }
 
 .web-drawing-tools-menu__item:disabled {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   cursor: default;
 }
 
@@ -456,6 +501,11 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .web-drawing-tools-menu[data-positioned='true'] {
+    animation: none;
+    will-change: auto;
+  }
+
   .web-drawing-tools-rail__button {
     transition: none;
   }

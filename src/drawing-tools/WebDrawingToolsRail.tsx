@@ -26,6 +26,7 @@ import { ForecastingMeasurementToolIcon } from './ForecastingMeasurementToolIcon
 import { GannFibonacciToolIcon } from './GannFibonacciToolIcon';
 import { BrushToolsIcon } from './BrushToolsIcon';
 import { DrawingRailIcon } from './DrawingRailIcon';
+import { DrawingRailTooltip, type DrawingRailTooltipHandle } from './DrawingRailTooltip';
 import { EmojiPicker } from './EmojiPicker';
 import { isPictographStamp } from './pictographCatalog';
 import { BrushShapeToolIcon } from './BrushShapeToolIcon';
@@ -63,10 +64,7 @@ import {
 
 const LAST_TOOL_STORAGE_KEY = 'rtx5:web:last-trend-line-tool';
 const MENU_TRIGGER_GAP_PX = 4;
-const TOOLTIP_TRIGGER_GAP_PX = 8;
-const TOOLTIP_HALF_HEIGHT_PX = 15;
 const VIEWPORT_EDGE_GAP_PX = 8;
-const TOOLTIP_ID = 'web-drawing-tools-tooltip';
 
 type DrawingCommandTool = PayloadFor<'SELECT_TOOL'>['tool'];
 type RailMenuId =
@@ -87,27 +85,9 @@ type RailMenuId =
 type LockScope = 'drawings' | 'indicators' | 'all';
 type HideScope = 'drawings' | 'indicators' | 'trades' | 'all';
 
-interface MenuPosition {
-  left: number;
-  top: number;
-}
-
 interface ActiveTool {
   tool: DrawingCommandTool;
   subtype?: string;
-}
-
-interface TooltipState {
-  ownerId: string;
-  label: string;
-  left: number;
-  top: number;
-}
-
-interface TooltipOwner {
-  ownerId: string;
-  label: string;
-  trigger: HTMLButtonElement;
 }
 
 interface SimpleDrawingTool {
@@ -157,8 +137,6 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
   const [activeTool, setActiveTool] = useState<ActiveTool | null>(null);
   const [activeTargetContextId, setActiveTargetContextId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState<RailMenuId | null>(null);
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
-  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const requestedMenu = useDrawingSidebarStore(state => state.requestedMenu);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const stampButtonRef = useRef<HTMLButtonElement>(null);
@@ -171,7 +149,6 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
   const setSnapToIndicators = useDrawingToolPreferencesStore((state) => state.setSnapToIndicators);
   const setKeepDrawing = useDrawingToolPreferencesStore((state) => state.setKeepDrawing);
   const [indicatorCounts, setIndicatorCounts] = useState<Record<string, number>>({});
-  const [removalCounts, setRemovalCounts] = useState<RemovalCounts>({ drawings: 0, indicators: 0 });
   const alwaysRemoveLocked = useRemoveDrawingsSettingsStore((state) => state.alwaysRemoveLocked);
   const setAlwaysRemoveLocked = useRemoveDrawingsSettingsStore((state) => state.setAlwaysRemoveLocked);
   const currentChartSourceId = useSyncExternalStore(subscribeActiveChartSource, getActiveChartSourceId, () => null);
@@ -180,17 +157,14 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     state.byContext[currentChartSourceId ?? ''] ?? defaultChartObjectState
   ));
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const railRef = useRef<HTMLElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const hoveredTooltipOwnerRef = useRef<TooltipOwner | null>(null);
-  const focusedTooltipOwnerRef = useRef<TooltipOwner | null>(null);
+  const tooltipControllerRef = useRef<DrawingRailTooltipHandle>(null);
   const pendingDrawingToolRef = useRef<ActiveTool | null>(null);
   const activeToolRef = useRef<ActiveTool | null>(null);
   useEffect(() => {
     if (canZoomOut) return;
-    if (hoveredTooltipOwnerRef.current?.ownerId === 'zoom-out') hoveredTooltipOwnerRef.current = null;
-    if (focusedTooltipOwnerRef.current?.ownerId === 'zoom-out') focusedTooltipOwnerRef.current = null;
-    setTooltip((current) => current?.ownerId === 'zoom-out' ? null : current);
+    tooltipControllerRef.current?.dismissOwner('zoom-out');
   }, [canZoomOut]);
   const visibleActiveTool = activeTargetContextId
     && currentChartSourceId
@@ -248,7 +222,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     // unable to accept drawing points.
     pendingDrawingToolRef.current = pendingTool;
     setMenuOpen(null);
-    setTooltip(null);
+    tooltipControllerRef.current?.hide();
     setActiveTool(pendingTool);
     setActiveTargetContextId(targetContextId ?? null);
     commandBus.dispatch({
@@ -268,7 +242,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     const targetContextId = getActiveChartSource()?.id;
     pendingDrawingToolRef.current = null;
     setMenuOpen(null);
-    setTooltip(null);
+    tooltipControllerRef.current?.hide();
     setActiveTool(null);
     setActiveTargetContextId(null);
     commandBus.dispatch({
@@ -284,8 +258,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
   const openRailMenu = (menuId: RailMenuId, trigger: HTMLButtonElement) => {
     triggerRef.current = trigger;
-    setTooltip(null);
-    setMenuPosition(null);
+    tooltipControllerRef.current?.hide();
     setMenuOpen((current) => current === menuId ? null : menuId);
   };
 
@@ -294,63 +267,23 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     const trigger = requestedMenu === 'emojis' ? emojiButtonRef.current : stampButtonRef.current;
     if (!trigger) return;
     triggerRef.current = trigger;
-    setTooltip(null);
-    setMenuPosition(null);
+    tooltipControllerRef.current?.hide();
     setMenuOpen(requestedMenu);
     useDrawingSidebarStore.getState().clearMenuRequest();
   }, [requestedMenu]);
 
-  const showTooltip = (ownerId: string, label: string, trigger: HTMLButtonElement) => {
-    const rect = trigger.getBoundingClientRect();
-    if (orientation === 'horizontal') {
-      setTooltip({ ownerId, label, left: Math.round(rect.left), top: Math.round(rect.bottom + TOOLTIP_TRIGGER_GAP_PX) });
-      return;
-    }
-    setTooltip({
-      ownerId,
-      label,
-      left: Math.round(Math.min(window.innerWidth - VIEWPORT_EDGE_GAP_PX, rect.right + TOOLTIP_TRIGGER_GAP_PX)),
-      top: Math.round(Math.max(
-        VIEWPORT_EDGE_GAP_PX + TOOLTIP_HALF_HEIGHT_PX,
-        Math.min(
-          window.innerHeight - VIEWPORT_EDGE_GAP_PX - TOOLTIP_HALF_HEIGHT_PX,
-          rect.top + (rect.height / 2),
-        ),
-      )),
-    });
-  };
-
-  const hideTooltip = (ownerId: string) => {
-    setTooltip((current) => current?.ownerId === ownerId ? null : current);
-  };
-
   const tooltipProps = (ownerId: string, label: string) => ({
-    'aria-describedby': tooltip?.ownerId === ownerId ? TOOLTIP_ID : undefined,
     onMouseEnter: (event: React.MouseEvent<HTMLButtonElement>) => {
-      hoveredTooltipOwnerRef.current = { ownerId, label, trigger: event.currentTarget };
-      showTooltip(ownerId, label, event.currentTarget);
+      tooltipControllerRef.current?.enter({ ownerId, label, trigger: event.currentTarget });
     },
     onMouseLeave: () => {
-      if (hoveredTooltipOwnerRef.current?.ownerId === ownerId) hoveredTooltipOwnerRef.current = null;
-      const focusedOwner = focusedTooltipOwnerRef.current;
-      if (focusedOwner) {
-        showTooltip(focusedOwner.ownerId, focusedOwner.label, focusedOwner.trigger);
-      } else {
-        hideTooltip(ownerId);
-      }
+      tooltipControllerRef.current?.leave(ownerId);
     },
     onFocus: (event: React.FocusEvent<HTMLButtonElement>) => {
-      focusedTooltipOwnerRef.current = { ownerId, label, trigger: event.currentTarget };
-      showTooltip(ownerId, label, event.currentTarget);
+      tooltipControllerRef.current?.focus({ ownerId, label, trigger: event.currentTarget });
     },
     onBlur: () => {
-      if (focusedTooltipOwnerRef.current?.ownerId === ownerId) focusedTooltipOwnerRef.current = null;
-      const hoveredOwner = hoveredTooltipOwnerRef.current;
-      if (hoveredOwner) {
-        showTooltip(hoveredOwner.ownerId, hoveredOwner.label, hoveredOwner.trigger);
-      } else {
-        hideTooltip(ownerId);
-      }
+      tooltipControllerRef.current?.blur(ownerId);
     },
   });
 
@@ -433,54 +366,65 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     return () => window.removeEventListener('indicators:changed', handleIndicatorsChanged);
   }, []);
 
-  useEffect(() => {
-    const contextId = getActiveChartSource()?.id;
+  const removalCounts = useMemo<RemovalCounts>(() => {
+    // Other flyouts never need a drawing inventory. Compute it in the same
+    // render as Remove so opening a menu does not schedule another rail render.
+    if (menuOpen !== 'remove') return { drawings: 0, indicators: 0 };
+    const contextId = currentChartSourceId;
     const drawings = contextId ? drawingManager.getDrawings(contextId) : [];
-    setRemovalCounts({
+    return {
       drawings: countRemovableDrawings(drawings, alwaysRemoveLocked),
       indicators: contextId && !chartObjectState.indicatorsLocked ? indicatorCounts[contextId] ?? 0 : 0,
-    });
-  }, [alwaysRemoveLocked, chartObjectState.indicatorsLocked, indicatorCounts, menuOpen, selectedSymbol]);
+    };
+  }, [alwaysRemoveLocked, chartObjectState.indicatorsLocked, currentChartSourceId, indicatorCounts, menuOpen, selectedSymbol]);
 
   useLayoutEffect(() => {
     if (!menuOpen) return;
 
-    const updateMenuPosition = () => {
+    const updateMenuPosition = (event?: Event) => {
       const trigger = triggerRef.current;
       const menu = menuRef.current;
       if (!trigger || !menu) return;
+      // Scrolling the flyout's own content does not move its anchor.
+      if (event?.type === 'scroll' && event.target instanceof Node && menu.contains(event.target)) return;
 
       const triggerRect = trigger.getBoundingClientRect();
       const menuRect = menu.getBoundingClientRect();
+      // Entry animation scales the visual rect. Anchor to the layout size so
+      // opening/resizing never jumps as the animation finishes.
+      const menuWidth = menu.offsetWidth || menuRect.width;
+      const menuHeight = menu.offsetHeight || menuRect.height;
       const rightCandidate = triggerRect.right + MENU_TRIGGER_GAP_PX;
-      const leftCandidate = triggerRect.left - menuRect.width - MENU_TRIGGER_GAP_PX;
+      const leftCandidate = triggerRect.left - menuWidth - MENU_TRIGGER_GAP_PX;
       const availableRight = window.innerWidth - VIEWPORT_EDGE_GAP_PX;
-      const left = rightCandidate + menuRect.width <= availableRight
+      const left = rightCandidate + menuWidth <= availableRight
         ? rightCandidate
         : Math.max(VIEWPORT_EDGE_GAP_PX, leftCandidate);
       const maximumTop = Math.max(
         VIEWPORT_EDGE_GAP_PX,
-        window.innerHeight - menuRect.height - VIEWPORT_EDGE_GAP_PX,
+        window.innerHeight - menuHeight - VIEWPORT_EDGE_GAP_PX,
       );
 
       if (orientation === 'horizontal') {
         // Desktop uses the complete shared tool catalog above the workspace.
         // Keep even tall emoji/tool menus below the row with their own scroll.
         const top = Math.min(triggerRect.bottom + MENU_TRIGGER_GAP_PX, window.innerHeight - VIEWPORT_EDGE_GAP_PX);
-        setMenuPosition({
-          left: Math.round(Math.max(VIEWPORT_EDGE_GAP_PX, Math.min(triggerRect.left, availableRight - menuRect.width))),
-          top: Math.round(Math.max(VIEWPORT_EDGE_GAP_PX, top)),
-        });
+        const positionedTop = Math.round(Math.max(VIEWPORT_EDGE_GAP_PX, top));
+        menu.style.left = `${Math.round(Math.max(VIEWPORT_EDGE_GAP_PX, Math.min(triggerRect.left, availableRight - menuWidth)))}px`;
+        menu.style.top = `${positionedTop}px`;
+        menu.style.maxHeight = `calc(100vh - ${positionedTop + VIEWPORT_EDGE_GAP_PX}px)`;
+        menu.style.visibility = 'visible';
+        menu.dataset.positioned = 'true';
         return;
       }
 
-      setMenuPosition({
-        left: Math.round(left),
-        top: Math.round(Math.max(
-          VIEWPORT_EDGE_GAP_PX,
-          Math.min(triggerRect.top, maximumTop),
-        )),
-      });
+      // Position before paint without rendering every catalog/icon a second
+      // time. React owns the content; this effect owns only popup placement.
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.top = `${Math.round(Math.max(VIEWPORT_EDGE_GAP_PX, Math.min(triggerRect.top, maximumTop)))}px`;
+      menu.style.maxHeight = '';
+      menu.style.visibility = 'visible';
+      menu.dataset.positioned = 'true';
     };
 
     updateMenuPosition();
@@ -490,15 +434,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
       window.removeEventListener('resize', updateMenuPosition);
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
-  }, [menuOpen, orientation]);
-
-  useLayoutEffect(() => {
-    if (!tooltip || orientation !== 'horizontal' || !tooltipRef.current) return;
-    const rect = tooltipRef.current.getBoundingClientRect();
-    const left = Math.round(Math.max(VIEWPORT_EDGE_GAP_PX, Math.min(tooltip.left, window.innerWidth - rect.width - VIEWPORT_EDGE_GAP_PX)));
-    const top = Math.round(Math.max(VIEWPORT_EDGE_GAP_PX, Math.min(tooltip.top, window.innerHeight - rect.height - VIEWPORT_EDGE_GAP_PX)));
-    if (left !== tooltip.left || top !== tooltip.top) setTooltip({ ...tooltip, left, top });
-  }, [tooltip, orientation]);
+  }, [menuOpen, orientation, removalCounts]);
 
   useEffect(() => {
     const armPendingToolForChart = (event: PointerEvent) => {
@@ -629,6 +565,10 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      // Switching flyouts is one click update, not a close on pointerdown
+      // followed by a second mount on click.
+      if (target instanceof Element && railRef.current?.contains(target)
+        && target.closest('button[aria-haspopup]')) return;
       setMenuOpen(null);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -692,15 +632,13 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
   const menu = menuOpen ? createPortal(
     <div
+      key={menuOpen}
       ref={menuRef}
       className="web-drawing-tools-menu"
       data-menu={menuOpen}
       role={menuOpen === 'emojis' ? 'dialog' : 'menu'}
       aria-label={tr(menuLabel)}
-      style={menuPosition
-        ? { left: menuPosition.left, top: menuPosition.top,
-          ...(orientation === 'horizontal' ? { maxHeight: `calc(100vh - ${menuPosition.top + VIEWPORT_EDGE_GAP_PX}px)` } : {}) }
-        : { left: 0, top: 0, visibility: 'hidden' }}
+      style={{ left: 0, top: 0, visibility: 'hidden' }}
     >
       {menuOpen === 'cursors' && (
         <section className="web-drawing-tools-menu__group" aria-label={tr('Cursors')}>
@@ -744,7 +682,6 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
       )}
       {menuOpen === 'emojis' && (
         <EmojiPicker
-          ready={Boolean(menuPosition)}
           selectedSubtype={visibleActiveTool?.tool === 'stamp' ? visibleActiveTool.subtype : undefined}
           onSelect={(subtype) => dispatchDrawingTool('stamp', subtype)}
         />
@@ -1067,22 +1004,9 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     document.body,
   ) : null;
 
-  const tooltipPortal = tooltip ? createPortal(
-    <div
-      ref={tooltipRef}
-      id={TOOLTIP_ID}
-      className="web-drawing-tools-tooltip"
-      data-orientation={orientation}
-      role="tooltip"
-      style={{ left: tooltip.left, top: tooltip.top }}
-    >
-      {tr(tooltip.label)}
-    </div>,
-    document.body,
-  ) : null;
-
   return (
     <aside
+      ref={railRef}
       className="web-drawing-tools-rail"
       aria-label={tr("Drawing tools for {{value0}}", { value0: selectedSymbol })}
       data-expanded="true"
@@ -1334,7 +1258,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
       </div>
 
       {menu}
-      {tooltipPortal}
+      <DrawingRailTooltip ref={tooltipControllerRef} enabled={!menuOpen} orientation={orientation} />
     </aside>
   );
 }

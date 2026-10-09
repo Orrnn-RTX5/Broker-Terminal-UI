@@ -3,6 +3,8 @@ import { CHART_PATTERN_GROUPS, CHART_PATTERN_TOOLS } from './chartPatternToolCat
 
 import '@testing-library/jest-dom';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Profiler } from 'react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,6 +53,7 @@ import { useChartZoomStore } from '../store/useChartZoomStore';
 import { useChartCursorStore } from '../store/useChartCursorStore';
 import { CURSOR_TOOLS } from './cursorToolCatalog';
 import { getPictographItems } from './pictographCatalog';
+import i18n, { i18nReady } from '../i18n';
 
 type TestWindow = Window & { electronAPI?: unknown };
 
@@ -126,6 +129,82 @@ afterEach(() => {
 });
 
 describe('WebDrawingToolsRail', () => {
+  it('keeps real hover and press-focus work out of the rail render before opening a flyout', async () => {
+    await i18nReady;
+    const user = userEvent.setup();
+    const translate = vi.spyOn(i18n, 't');
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const railRenderCalls = () => translate.mock.calls.filter(([key]) => key === 'Drawing tools for {{value0}}');
+    expect(railRenderCalls()).toHaveLength(1);
+    translate.mockClear();
+
+    const brush = screen.getByRole('button', { name: 'Brush tools' });
+    await user.hover(brush);
+    await user.pointer({ target: brush, keys: '[MouseLeft>]' });
+    expect(brush).toHaveFocus();
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Brush tools');
+    expect(brush).toHaveAttribute('aria-describedby', 'web-drawing-tools-tooltip');
+    // Unlike a Profiler around the entire subtree, this checks the rail's own
+    // render: updating the isolated tooltip is allowed to commit.
+    expect(railRenderCalls()).toHaveLength(0);
+
+    await user.pointer({ target: brush, keys: '[/MouseLeft]' });
+    expect(screen.getByRole('menu', { name: 'Brushes, arrows, and shapes' })).toBeVisible();
+    expect(railRenderCalls()).toHaveLength(1);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(brush).not.toHaveAttribute('aria-describedby');
+
+    translate.mockClear();
+    const annotations = screen.getByRole('button', { name: 'Annotation Tools' });
+    await user.hover(annotations);
+    await user.pointer({ target: annotations, keys: '[MouseLeft>]' });
+    expect(annotations).toHaveFocus();
+    expect(railRenderCalls()).toHaveLength(0);
+    expect(translate).not.toHaveBeenCalled();
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('opens and switches flyouts without layout-triggered renders or unrelated drawing scans', () => {
+    const onRender = vi.fn();
+    const getDrawings = vi.spyOn(drawingManager, 'getDrawings').mockReturnValue([]);
+    render(<Profiler id="rail" onRender={onRender}><WebDrawingToolsRail selectedSymbol="XAUUSD" /></Profiler>);
+    onRender.mockClear();
+    getDrawings.mockClear();
+
+    const trend = openTrendMenu();
+    expect(trend).toHaveStyle({ visibility: 'visible' });
+    expect(onRender.mock.calls.map(call => call[1])).not.toContain('nested-update');
+    expect(getDrawings).not.toHaveBeenCalled();
+
+    onRender.mockClear();
+    const brush = screen.getByRole('button', { name: 'Brush tools' });
+    fireEvent.pointerDown(brush);
+    expect(trend).toBeInTheDocument();
+    expect(onRender).not.toHaveBeenCalled();
+    fireEvent.click(brush);
+    expect(screen.getByRole('menu', { name: 'Brushes, arrows, and shapes' })).toHaveStyle({ visibility: 'visible' });
+    expect(onRender.mock.calls.map(call => call[1])).not.toContain('nested-update');
+    expect(getDrawings).not.toHaveBeenCalled();
+
+    onRender.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Drawings' }));
+    expect(getDrawings).toHaveBeenCalledTimes(1);
+    expect(onRender.mock.calls.map(call => call[1])).not.toContain('nested-update');
+    expect(screen.getByRole('menuitem', { name: 'No drawings or indicators to remove' })).toBeDisabled();
+  });
+
+  it('does not remeasure or rerender the catalog when its own menu scrolls', () => {
+    const onRender = vi.fn();
+    render(<Profiler id="rail" onRender={onRender}><WebDrawingToolsRail selectedSymbol="XAUUSD" /></Profiler>);
+    const menu = openTrendMenu();
+    const measure = vi.spyOn(menu, 'getBoundingClientRect');
+    onRender.mockClear();
+    fireEvent.scroll(menu);
+    expect(measure).not.toHaveBeenCalled();
+    expect(onRender).not.toHaveBeenCalled();
+    expect(menu).toHaveStyle({ visibility: 'visible' });
+  });
+
   it('keeps emojis and trading stamps in separate rail sections and arms the active chart', () => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     const emojiTrigger = screen.getByRole('button', { name: 'Emojis' });
@@ -566,6 +645,32 @@ describe('WebDrawingToolsRail', () => {
     });
   });
 
+  it('keeps hover and focus tooltips out of open flyouts when moving between rail sections', () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const brush = screen.getByRole('button', { name: 'Brush tools' });
+    const annotations = screen.getByRole('button', { name: 'Annotation Tools' });
+    fireEvent.mouseEnter(brush);
+    fireEvent.focus(brush);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Brush tools');
+    fireEvent.click(brush);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+    // These events used to restore the focused owner's tooltip above the menu.
+    fireEvent.mouseLeave(brush);
+    fireEvent.mouseEnter(annotations);
+    fireEvent.focus(annotations);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(annotations).not.toHaveAttribute('aria-describedby');
+    fireEvent.click(annotations);
+    fireEvent.mouseLeave(annotations);
+    expect(screen.getByRole('menu', { name: 'Annotation tools' })).toBeVisible();
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.mouseEnter(brush);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Brush tools');
+  });
+
   it('routes zoom utilities through the active chart command path', () => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     fireEvent.click(screen.getByRole('button', { name: 'Zoom In' }));
@@ -867,6 +972,7 @@ describe('WebDrawingToolsRail', () => {
     document.documentElement.setAttribute('data-theme', 'light');
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     expect(openTrendMenu()).toHaveClass('web-drawing-tools-menu');
+    fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.mouseEnter(screen.getByRole('button', { name: 'Brush tools' }));
     expect(screen.getByRole('tooltip')).toHaveClass('web-drawing-tools-tooltip');
 

@@ -7,6 +7,46 @@ import { getPictographItems, getPictographStamp, PICTOGRAPH_CATEGORIES } from '.
 afterEach(cleanup);
 
 describe('EmojiPicker', () => {
+  it('defers offscreen artwork while preserving category jumps and scrolling', () => {
+    const originalObserver = globalThis.IntersectionObserver;
+    let onIntersect!: IntersectionObserverCallback;
+    const disconnect = vi.fn();
+    globalThis.IntersectionObserver = class {
+      constructor(callback: IntersectionObserverCallback) { onIntersect = callback; }
+      observe() {}
+      disconnect = disconnect;
+    } as unknown as typeof IntersectionObserver;
+    try {
+      const { container, unmount } = render(<EmojiPicker onSelect={vi.fn()} />);
+      const food = container.querySelector<HTMLElement>('[data-category="food"]')!;
+      const grid = food.querySelector<HTMLElement>('.drawing-emoji-picker__grid')!;
+      expect(grid.querySelectorAll('img')).toHaveLength(0);
+      const reservedHeight = grid.style.minHeight;
+      expect(Number.parseFloat(reservedHeight)).toBeGreaterThan(0);
+      const bounds = food.getBoundingClientRect();
+      act(() => onIntersect([{
+        target: food,
+        isIntersecting: true,
+        boundingClientRect: bounds,
+        intersectionRatio: 1,
+        intersectionRect: bounds,
+        rootBounds: null,
+        time: 0,
+      }], {} as IntersectionObserver));
+      expect(grid.querySelectorAll('img')).toHaveLength(getPictographItems('emojis', 'food').length);
+      expect(grid.style.minHeight).toBe(reservedHeight);
+
+      const flags = container.querySelector('[data-category="flags"]')!;
+      expect(flags.querySelectorAll('img')).toHaveLength(0);
+      fireEvent.click(screen.getByRole('button', { name: 'Flags' }));
+      expect(flags.querySelectorAll('img')).toHaveLength(getPictographItems('emojis', 'flags').length);
+      unmount();
+      expect(disconnect).toHaveBeenCalled();
+    } finally {
+      globalThis.IntersectionObserver = originalObserver;
+    }
+  });
+
   it('waits for the positioned portal to become visible before moving focus', () => {
     const onSelect = vi.fn();
     const { rerender } = render(<EmojiPicker ready={false} onSelect={onSelect} />);

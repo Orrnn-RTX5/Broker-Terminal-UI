@@ -1761,8 +1761,34 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role="tab"] {
 
 html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-menu :is(.web-drawing-tools-menu__item,
   .web-drawing-tools-menu__label,
-  .web-drawing-tools-menu__toggle-row) {
-  line-height: 1.5 !important;
+  .web-drawing-tools-menu__toggle-row,
+  .drawing-emoji-picker__tabs button) {
+  line-height: var(--rtx-light-control-line-height) !important;
+}
+
+/* Drawing flyouts use the launcher's text contrast; generic light buttons
+   otherwise dim menuitemradio labels as if they were secondary controls. */
+html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-menu :is(
+  .web-drawing-tools-menu__item,
+  .web-drawing-tools-menu__toggle-row,
+  .drawing-emoji-picker__tabs button
+) {
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-menu :is(
+  .web-drawing-tools-menu__item[data-selected='true'],
+  .drawing-emoji-picker__tabs button[aria-selected='true']
+) {
+  color: var(--rtx-light-accent-strong) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-menu .web-drawing-tools-menu__item--danger {
+  color: var(--color-loss) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-menu .web-drawing-tools-menu__item:disabled {
+  color: var(--rtx-light-text-disabled) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-menu .web-drawing-tools-menu__heading {
