@@ -109,6 +109,10 @@ describe('Trade placement status presentation', () => {
     expect(reason).toHaveClass('truncate', 'font-normal');
     expect(reason.style.getPropertyValue('--rtx-type-size')).toBe('13px');
     expect(reason.closest('tr')).toHaveClass('text-loss');
+    expect(reason.closest('td')).toHaveClass('text-left');
+    for (const cell of within(tradeRow).getAllByRole('cell')) {
+      expect(cell).toHaveClass('text-center');
+    }
     expect(within(tradeRow).queryByText('…')).not.toBeInTheDocument();
     expect(within(tradeRow).getByRole('button', { name: label })).toBeDisabled();
     for (const button of within(tradeRow).getAllByRole('button')) {
