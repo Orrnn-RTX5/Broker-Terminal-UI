@@ -1,10 +1,11 @@
-import { getRuntimeBrokerConfiguration } from '../../config/backendTarget.js';
-import { getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
-import { DEFAULT_BROKER_SERVER, getStoredBrokerServer } from '../../services/brokerServers';
+import { getRuntimeBrokerConfiguration } from '../config/backendTarget.js';
+import type { SavedAccount } from '../store/useAppStore';
+import { getCommittedBrokerAccountSessionScope, type CommittedBrokerAccountSessionScope } from './brokerSession';
+import { DEFAULT_BROKER_SERVER, getStoredBrokerServer } from './brokerServers';
 
 // Account ownership needs full identities. The logo resolver's hostname-only
 // matching would merge servers on different ports or broker-specific paths.
-export const normalizeNavigatorAccountServer = (value: string): string => {
+export const normalizeSavedAccountServer = (value: string): string => {
     const text = value.trim();
     if (!text || text === DEFAULT_BROKER_SERVER || text === 'Broker') return '';
     try {
@@ -18,12 +19,12 @@ export const normalizeNavigatorAccountServer = (value: string): string => {
     return text;
 };
 
-export const getNavigatorAccountServerIdentities = (): Set<string> => {
+export const getSavedAccountServerIdentities = (): Set<string> => {
     const stored = (key: string) => typeof window === 'undefined' ? '' : localStorage.getItem(key) || '';
     const scope = getCommittedBrokerAccountSessionScope();
     const identities = new Set<string>();
     const add = (value: string) => {
-        const identity = normalizeNavigatorAccountServer(value);
+        const identity = normalizeSavedAccountServer(value);
         if (identity) identities.add(identity);
     };
     if (scope.authenticated) {
@@ -38,7 +39,7 @@ export const getNavigatorAccountServerIdentities = (): Set<string> => {
     const storageMatchesSession = !scope.authenticated || (
         (!scope.brokerId || storedBrokerId === scope.brokerId)
         && (!scope.serverUrl || storedServers.some(server => (
-            normalizeNavigatorAccountServer(server) === normalizeNavigatorAccountServer(scope.serverUrl)
+            normalizeSavedAccountServer(server) === normalizeSavedAccountServer(scope.serverUrl)
         )))
     );
     // Broker selection can stage new storage metadata before login succeeds.
@@ -52,8 +53,8 @@ export const getNavigatorAccountServerIdentities = (): Set<string> => {
     const config = getRuntimeBrokerConfiguration();
     const activeBrokerId = scope.authenticated ? scope.brokerId : storedBrokerId;
     const configuredEndpoints = [config.apiHost, config.apiHostExt]
-        .map(value => normalizeNavigatorAccountServer(value || '')).filter(Boolean);
-    const committedServer = scope.authenticated ? normalizeNavigatorAccountServer(scope.serverUrl) : '';
+        .map(value => normalizeSavedAccountServer(value || '')).filter(Boolean);
+    const committedServer = scope.authenticated ? normalizeSavedAccountServer(scope.serverUrl) : '';
     const matchesConfiguredServer = committedServer
         ? configuredEndpoints.includes(committedServer)
         : configuredEndpoints.some(endpoint => identities.has(endpoint)) || identities.has(config.brokerId);
@@ -63,4 +64,23 @@ export const getNavigatorAccountServerIdentities = (): Set<string> => {
         add(config.defaultMt5Server || '');
     }
     return identities;
+};
+
+export const isSavedAccountInBrokerSession = (
+    account: SavedAccount,
+    scope: CommittedBrokerAccountSessionScope,
+    serverIdentities: ReadonlySet<string>,
+): boolean => {
+    // A display label is not an ownership key: discovery and login may spell
+    // it differently. Explicit login ownership takes precedence over aliases.
+    if (account.brokerId || account.serverUrl) {
+        return scope.authenticated
+            && (!account.brokerId || account.brokerId === scope.brokerId)
+            && (!account.serverUrl || normalizeSavedAccountServer(account.serverUrl) === normalizeSavedAccountServer(scope.serverUrl))
+            && (Boolean(account.brokerId && account.serverUrl)
+                || serverIdentities.has(normalizeSavedAccountServer(account.server)));
+    }
+    // Keep legacy matching exact. Folding case could expose an unrelated
+    // opaque broker ID that differs only by case.
+    return serverIdentities.has(normalizeSavedAccountServer(account.server));
 };

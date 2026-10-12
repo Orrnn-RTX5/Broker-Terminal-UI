@@ -52,6 +52,27 @@ describe('committed broker/account chart scope', () => {
     commitBrokerAccountSessionScope({ authenticated: true, accountId: '100' });
   });
 
+  it('observes a session committed between rendering and subscribing', () => {
+    const CommitDuringMount = () => {
+      const scope = useBrokerAccountSessionScope();
+      React.useLayoutEffect(() => {
+        commitBrokerAccountSessionScope({
+          authenticated: true,
+          accountId: '200',
+          brokerId: 'broker-b',
+          serverUrl: 'https://broker-b.example',
+        });
+      }, []);
+      return <output data-testid="committed-scope">{scope}</output>;
+    };
+
+    const { getByTestId } = render(<CommitDuringMount />);
+
+    expect(getByTestId('committed-scope')).toHaveTextContent(
+      'authenticated|200|broker-b|https://broker-b.example',
+    );
+  });
+
   it('starts anonymous when legacy storage claims an unvalidated authenticated account', async () => {
     commitBrokerAccountSessionScope({
       authenticated: false,

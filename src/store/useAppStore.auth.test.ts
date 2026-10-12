@@ -18,6 +18,168 @@ describe('useAppStore authenticated login commit', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
+  });
+
+  const configureAcceptedBroker = () => {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      CONFIG_SOURCE: 'deployment',
+      API_HOST: 'https://service.orrnn.example',
+      WS_HOST: 'wss://service.orrnn.example',
+      BROKER_ID: 'Orrnn',
+      BROKER_NAME: 'Orrnn',
+      DEFAULT_MT5_SERVER: 'Orrnn',
+      DISCOVERY_BASE_URL: 'https://directory.example',
+    };
+    localStorage.setItem('broker_id', 'Orrnn');
+    localStorage.setItem('server_url', 'https://service.orrnn.example');
+  };
+
+  it('binds the successful login bookmark to its accepted broker despite a different display label', async () => {
+    configureAcceptedBroker();
+    useAppStore.getState().addSavedAccount({
+      login: 200003, name: 'Previous owner', server: 'ORRNN', isLive: true, isFavorite: true,
+    });
+    useAppStore.getState().setAuthenticated(true, '200003', 'access-secret', 'refresh-secret', undefined, {
+      login: 200003, name: 'demo acc1', server: 'ORRNN', isLive: true,
+      brokerId: 'untrusted-input', serverUrl: 'https://wrong.example',
+      password: 'password-secret', access_token: 'extra-secret',
+    } as Parameters<ReturnType<typeof useAppStore.getState>['addSavedAccount']>[0]);
+
+    const expected = {
+      login: 200003, name: 'demo acc1', server: 'ORRNN', isFavorite: true,
+      brokerId: 'Orrnn', serverUrl: 'https://service.orrnn.example',
+    };
+    expect(useAppStore.getState().savedAccounts).toEqual([expect.objectContaining(expected)]);
+    expect(getCommittedBrokerAccountSessionScope()).toMatchObject({
+      authenticated: true, accountId: '200003',
+      brokerId: expected.brokerId, serverUrl: expected.serverUrl,
+    });
+    const persisted = localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)!;
+    expect(persisted).not.toContain('secret');
+    expect(persisted).not.toContain('untrusted-input');
+    expect(persisted).not.toContain('wrong.example');
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().savedAccounts).toEqual([expect.objectContaining(expected)]);
+    expect(JSON.parse(persisted)).toEqual([expect.objectContaining(expected)]);
+  });
+
+  it.each([
+    { brokerId: 'ORRNN', serverUrl: 'https://service.orrnn.example' },
+    { brokerId: 'Orrnn', serverUrl: 'https://other.orrnn.example' },
+  ])('preserves a different canonical owner sharing the login and display label: $brokerId $serverUrl', (identity) => {
+    configureAcceptedBroker();
+    const foreignAccount = {
+      login: 200003, name: 'Other broker owner', server: 'ORRNN', isLive: true, isFavorite: true, ...identity,
+    };
+    useAppStore.getState().addSavedAccount(foreignAccount);
+    const beforeLogin = useAppStore.getState().savedAccounts[0];
+    useAppStore.getState().setAuthenticated(true, '200003', 'accepted-token', undefined, undefined, {
+      login: 200003, name: 'Current owner', server: 'ORRNN', isLive: true,
+    });
+
+    const accounts = useAppStore.getState().savedAccounts;
+    expect(accounts).toHaveLength(2);
+    expect(accounts[0]).toEqual(beforeLogin);
+    expect(accounts[1]).toMatchObject({
+      login: 200003, name: 'Current owner', server: 'ORRNN',
+      brokerId: 'Orrnn', serverUrl: 'https://service.orrnn.example',
+    });
+    expect(accounts[1].isFavorite).toBeUndefined();
+
+    useAppStore.getState().removeSavedAccount(200003, 'ORRNN', accounts[1]);
+    expect(useAppStore.getState().savedAccounts).toEqual([beforeLogin]);
+    expect(JSON.parse(localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)!)).toEqual([beforeLogin]);
+  });
+
+  it('publishes the same captured broker identity to the bookmark and session despite a storage change during store notification', () => {
+    configureAcceptedBroker();
+    const unsubscribe = useAppStore.subscribe((state, previous) => {
+      if (!previous.isAuthenticated && state.isAuthenticated) localStorage.setItem('broker_id', 'Staged next broker');
+    });
+    try {
+      useAppStore.getState().setAuthenticated(true, '200003', 'accepted-token', undefined, undefined, {
+        login: 200003, name: 'Current owner', server: 'ORRNN', isLive: true,
+      });
+      expect(useAppStore.getState().savedAccounts[0].brokerId).toBe('Orrnn');
+      expect(getCommittedBrokerAccountSessionScope().brokerId).toBe('Orrnn');
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('merges an accepted legacy display alias with the restored canonical bookmark and preserves its favorite', () => {
+    configureAcceptedBroker();
+    const legacy = {
+      login: 200003, name: 'Legacy owner', server: 'ORRNN', isLive: true, isFavorite: true,
+    };
+    const restored = {
+      login: 200003, name: 'Restored owner', server: 'https://service.orrnn.example', isLive: true,
+      brokerId: 'Orrnn', serverUrl: 'https://service.orrnn.example',
+    };
+    const foreign = {
+      login: 200003, name: 'Foreign owner', server: 'ORRNN', isLive: true, isFavorite: true,
+      brokerId: 'ORRNN', serverUrl: 'https://foreign.example',
+    };
+    useAppStore.setState({ savedAccounts: [legacy, restored, foreign] });
+
+    useAppStore.getState().setAuthenticated(true, '200003', 'accepted-token', undefined, undefined, {
+      login: 200003, name: 'Current owner', server: 'ORRNN', isLive: true,
+    });
+
+    expect(useAppStore.getState().savedAccounts).toEqual([
+      expect.objectContaining({
+        login: 200003, name: 'Current owner', server: 'ORRNN', isFavorite: true,
+        brokerId: 'Orrnn', serverUrl: 'https://service.orrnn.example',
+      }),
+      foreign,
+    ]);
+    expect(JSON.parse(localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)!)).toEqual(useAppStore.getState().savedAccounts);
+  });
+
+  it('does not merge conflicting canonical owners when an unbound legacy edit has an ambiguous label', () => {
+    const legacy = { login: 200003, name: 'Legacy owner', server: 'Shared display name', isLive: true };
+    useAppStore.getState().addSavedAccount({ ...legacy, brokerId: 'One', serverUrl: 'https://one.example' });
+    useAppStore.getState().addSavedAccount({ ...legacy, brokerId: 'Two', serverUrl: 'https://two.example' });
+    const boundAccounts = useAppStore.getState().savedAccounts;
+
+    useAppStore.getState().addSavedAccount({ ...legacy, isFavorite: true });
+    useAppStore.getState().addSavedAccount({ ...legacy, isFavorite: false });
+
+    expect(useAppStore.getState().savedAccounts).toEqual([
+      ...boundAccounts,
+      expect.objectContaining({ ...legacy, isFavorite: false }),
+    ]);
+  });
+
+  it('does not use a partial broker ID bookmark to overwrite or merge known endpoints', () => {
+    const partial = {
+      login: 200003, name: 'Partial owner', server: 'Shared display name', brokerId: 'One', isLive: true,
+    };
+    useAppStore.getState().addSavedAccount({ ...partial, serverUrl: 'https://one.example' });
+    useAppStore.getState().addSavedAccount({ ...partial, serverUrl: 'https://two.example' });
+    const boundAccounts = useAppStore.getState().savedAccounts;
+
+    useAppStore.getState().addSavedAccount({ ...partial, isFavorite: true });
+    useAppStore.getState().addSavedAccount({ ...partial, isFavorite: false });
+
+    expect(useAppStore.getState().savedAccounts).toEqual([
+      ...boundAccounts,
+      expect.objectContaining({ ...partial, isFavorite: false }),
+    ]);
+  });
+
+  it.each([undefined, 'One'])('preserves even one known owner when an incoming bookmark is only partially identified: %s', (brokerId) => {
+    const legacy = { login: 200003, name: 'Legacy owner', server: 'Shared display name', isLive: true };
+    useAppStore.getState().addSavedAccount({ ...legacy, brokerId: 'One', serverUrl: 'https://one.example' });
+    const boundAccount = useAppStore.getState().savedAccounts[0];
+
+    useAppStore.getState().addSavedAccount({ ...legacy, brokerId, isFavorite: true });
+
+    expect(useAppStore.getState().savedAccounts).toEqual([
+      boundAccount,
+      expect.objectContaining({ ...legacy, isFavorite: true }),
+    ]);
   });
 
   it('commits authentication and the active saved account in one store action', () => {

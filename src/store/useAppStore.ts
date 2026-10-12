@@ -11,6 +11,7 @@ import { hasTradeHistoryPositionLevelChanges, rememberTradeHistoryPositionLevels
 import { isOlderPositionVersion, mergePositionRecord } from '../services/positionStream';
 import {
   commitBrokerAccountSessionScope,
+  createCommittedBrokerAccountSessionScope,
   emitSessionChange,
   getCommittedBrokerAccountSessionScope,
   onCommittedBrokerAccountSessionScopeChange,
@@ -270,6 +271,8 @@ export interface SavedAccount {
   login: number;
   name: string;
   server: string;
+  brokerId?: string;
+  serverUrl?: string;
   isLive: boolean;
   lastUsed?: number;
   isFavorite?: boolean;
@@ -349,7 +352,7 @@ interface AppState {
   setTrades: (trades: Trade[]) => void;
   setAccount: (account: Account | null) => void;
   addSavedAccount: (account: SavedAccount) => void;
-  removeSavedAccount: (login: number, server?: string) => void;
+  removeSavedAccount: (login: number, server?: string, identity?: Pick<SavedAccount, 'brokerId' | 'serverUrl'>) => void;
   setActiveAccount: (login: number) => void;
   setChartMaximized: (isMaximized: boolean) => void;
   setChartType: (type: 'candlestick' | 'line' | 'area') => void;
@@ -420,12 +423,20 @@ const sanitizeSavedAccount = (account: SavedAccount | (SavedAccount & { password
   const login = Number(account.login);
   const server = typeof account.server === 'string' ? account.server.trim() : '';
   if (!Number.isSafeInteger(login) || login <= 0 || !server) return null;
+  const brokerId = typeof account.brokerId === 'string' ? account.brokerId.trim() : '';
+  const serverUrl = typeof account.serverUrl === 'string' && account.serverUrl.trim()
+    ? createCommittedBrokerAccountSessionScope({
+      authenticated: false, brokerId: '', serverUrl: account.serverUrl,
+    }).serverUrl
+    : '';
   // Only account labels and preferences belong in persistent storage.
   // Never copy credentials or arbitrary fields from a legacy saved account.
   return {
     login,
     name: pickAccountDisplayName(account.name),
     server,
+    ...(brokerId ? { brokerId } : {}),
+    ...(serverUrl ? { serverUrl } : {}),
     isLive: account.isLive === true,
     ...(typeof account.isFavorite === 'boolean' ? { isFavorite: account.isFavorite } : {}),
     ...(Number.isFinite(account.lastUsed) ? { lastUsed: account.lastUsed } : {}),
@@ -533,13 +544,34 @@ const upsertSavedAccount = (accounts: unknown, account: SavedAccount): SavedAcco
   if (!safeAccount) return retained;
 
   const nextAccount = { ...safeAccount, lastUsed: Date.now() };
-  const existingIndex = retained.findIndex((candidate) => (
-    candidate.login === safeAccount.login && candidate.server === safeAccount.server
-  ));
-  if (existingIndex < 0) return [...retained, nextAccount];
+  const hasCanonicalOwner = Boolean(safeAccount.brokerId && safeAccount.serverUrl);
+  const matchingIndices = retained.flatMap((candidate, index) => {
+    if (candidate.login !== safeAccount.login) return [];
+    const sameCanonicalOwner = Boolean(hasCanonicalOwner
+      && candidate.brokerId === safeAccount.brokerId && candidate.serverUrl === safeAccount.serverUrl);
+    const compatibleDisplayAlias = candidate.server === safeAccount.server
+      && (hasCanonicalOwner
+        ? (!candidate.brokerId || candidate.brokerId === safeAccount.brokerId)
+          && (!candidate.serverUrl || candidate.serverUrl === safeAccount.serverUrl)
+        : candidate.brokerId === safeAccount.brokerId && candidate.serverUrl === safeAccount.serverUrl);
+    return sameCanonicalOwner || compatibleDisplayAlias ? [index] : [];
+  });
+  if (matchingIndices.length === 0) return [...retained, nextAccount];
 
-  return retained.map((candidate, index) => (
-    index === existingIndex ? { ...candidate, ...nextAccount } : candidate
+  // A restored session can first bookmark its endpoint, then a later accepted
+  // login supplies the display name. Merge only proven canonical aliases (or
+  // the exact legacy label being upgraded) and retain the favorite preference.
+  const matchingAccounts = matchingIndices.map(index => retained[index]);
+  const favorite = safeAccount.isFavorite
+    ?? matchingAccounts.find(account => account.isFavorite === true)?.isFavorite
+    ?? matchingAccounts.find(account => typeof account.isFavorite === 'boolean')?.isFavorite;
+  const merged = {
+    ...matchingAccounts[0], ...nextAccount,
+    ...(favorite !== undefined ? { isFavorite: favorite } : {}),
+  };
+  const matchingSet = new Set(matchingIndices);
+  return retained.flatMap((candidate, index) => (
+    index === matchingIndices[0] ? [merged] : matchingSet.has(index) ? [] : [candidate]
   ));
 };
 
@@ -724,6 +756,20 @@ export const useAppStore = create<AppState>()(
         savedAccounts: readSavedAccounts() ?? [],
 
         setAuthenticated: (isAuth, accountId, authToken, refreshToken, expiresAt, savedAccount) => {
+          // Bind the bookmark and the published session to the same accepted
+          // broker identity. Display names may differ from opaque broker IDs.
+          const nextSessionScope = createCommittedBrokerAccountSessionScope({
+            authenticated: isAuth,
+            accountId: accountId || null,
+          });
+          const authenticatedSavedAccount = savedAccount && isAuth
+            && String(savedAccount.login) === String(accountId)
+            ? {
+              ...savedAccount,
+              brokerId: nextSessionScope.brokerId || undefined,
+              serverUrl: nextSessionScope.serverUrl || undefined,
+            }
+            : savedAccount;
           if (isAuth && accountId) {
             // Log successful login to system journal
             useSystemJournalStore.getState().addLog('System', `Login to RTX5 as account ${accountId}`);
@@ -756,13 +802,12 @@ export const useAppStore = create<AppState>()(
                 orders: [],
                 trades: [],
               } : {}),
-              ...(savedAccount ? { savedAccounts: upsertSavedAccount(state.savedAccounts, savedAccount) } : {}),
+              ...(authenticatedSavedAccount ? {
+                savedAccounts: upsertSavedAccount(state.savedAccounts, authenticatedSavedAccount),
+              } : {}),
             };
           });
-          commitBrokerAccountSessionScope({
-            authenticated: isAuth,
-            accountId: accountId || null,
-          });
+          commitBrokerAccountSessionScope(nextSessionScope);
           if (sessionChangeReason) emitSessionChange(sessionChangeReason);
         },
 
@@ -1007,10 +1052,13 @@ export const useAppStore = create<AppState>()(
         addSavedAccount: (account) =>
           set((state) => ({ savedAccounts: upsertSavedAccount(state.savedAccounts, account) })),
 
-        removeSavedAccount: (login, server) =>
+        removeSavedAccount: (login, server, identity) =>
           set((state) => ({
             savedAccounts: state.savedAccounts.filter((a) => (
               a.login !== login || (server !== undefined && a.server !== server)
+              || (identity !== undefined && (
+                a.brokerId !== identity.brokerId || a.serverUrl !== identity.serverUrl
+              ))
             ))
           })),
 

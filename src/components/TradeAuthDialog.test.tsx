@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useAppStore } from '../store/useAppStore';
+import { SAVED_ACCOUNTS_STORAGE_KEY, useAppStore } from '../store/useAppStore';
 import { TradeAuthDialog } from './TradeAuthDialog';
 import { registerRuntimeBrokerDemoAccount } from '../api/demoRegistration';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory, loadBrokerDirectory } from '../services/brokerDirectory';
@@ -135,6 +135,7 @@ describe('TradeAuthDialog', () => {
       refresh_token: 'demo-refresh',
       account_login: 123456,
       broker_id: 'runtime-broker',
+      broker_name: 'RUNTIME BROKER',
       expires_in: 86400,
       name: 'Demo User',
     });
@@ -154,9 +155,18 @@ describe('TradeAuthDialog', () => {
     await user.type(screen.getByLabelText(/^email$/i), 'demo@example.com');
     await user.type(screen.getByLabelText(/^password$/i), 'Password1');
     await user.type(screen.getByLabelText(/confirm password/i), 'Password1');
-    await user.click(screen.getByRole('button', { name: /create and continue/i }));
-
-    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith('123456'));
+    const observeAuthenticatedBookmark = vi.fn();
+    const unsubscribe = useAppStore.subscribe((state, previous) => {
+      if (state.isAuthenticated && !previous.isAuthenticated) {
+        observeAuthenticatedBookmark(state.savedAccounts);
+      }
+    });
+    try {
+      await user.click(screen.getByRole('button', { name: /create and continue/i }));
+      await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith('123456'));
+    } finally {
+      unsubscribe();
+    }
     expect(registerRuntimeBrokerDemoAccount).toHaveBeenCalledWith({
       name: 'Demo User',
       email: 'demo@example.com',
@@ -167,6 +177,19 @@ describe('TradeAuthDialog', () => {
       accountId: '123456',
       authToken: 'demo-jwt',
     });
+    const expectedBookmark = {
+      login: 123456, name: 'Demo User', server: 'RUNTIME BROKER', isLive: false,
+      brokerId: 'runtime-broker', serverUrl: 'https://runtime-broker.example',
+    };
+    expect(observeAuthenticatedBookmark).toHaveBeenCalledExactlyOnceWith([
+      expect.objectContaining(expectedBookmark),
+    ]);
+    expect(useAppStore.getState().savedAccounts).toEqual([expect.objectContaining(expectedBookmark)]);
+    const persisted = localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)!;
+    expect(JSON.parse(persisted)).toEqual([expect.objectContaining(expectedBookmark)]);
+    expect(persisted).not.toContain('demo-jwt');
+    expect(persisted).not.toContain('demo-refresh');
+    expect(persisted).not.toContain('Password1');
   });
 
   it('locks real-account login to the runtime broker', async () => {

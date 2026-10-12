@@ -164,7 +164,7 @@ describe('Navigator account context menu', () => {
         expect(mocks.logout).not.toHaveBeenCalled();
         confirm.mockReturnValue(true);
         fireEvent.click(within(rightClickAccount()).getByRole('menuitem', { name: 'DeleteDelete' }));
-        expect(mocks.removeSavedAccount).toHaveBeenCalledWith(200003, 'Orrnn');
+        expect(mocks.removeSavedAccount).toHaveBeenCalledWith(200003, 'Orrnn', mocks.savedAccounts[0]);
         expect(mocks.logout).toHaveBeenCalledOnce();
         confirm.mockRestore();
     });

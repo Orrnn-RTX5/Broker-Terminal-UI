@@ -140,17 +140,19 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
     localStorage.removeItem('rtx_saved_password');
 
     const login = Number.parseInt(accountId, 10);
+    const hasValidLogin = Number.isFinite(login) && login > 0;
     const store = useAppStore.getState();
     store.setAuthTokens(token, response.refresh_token, expiresAt);
-    store.setAuthenticated(true, accountId, token, response.refresh_token, expiresAt);
-    if (Number.isFinite(login) && login > 0) {
-      store.addSavedAccount({
+    store.setAuthenticated(true, accountId, token, response.refresh_token, expiresAt,
+      hasValidLogin ? {
         login,
         name: response.name || response.username || name.trim(),
         server: response.broker_name || response.server || response.broker_id || brokerId,
         isLive: false,
         lastUsed: Date.now(),
-      });
+      } : undefined,
+    );
+    if (hasValidLogin) {
       store.setActiveAccount(login);
     }
 

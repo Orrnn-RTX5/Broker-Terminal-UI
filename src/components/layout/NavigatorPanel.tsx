@@ -20,7 +20,8 @@ import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
 import { openWebTrader } from '../../services/webTrader';
 import type { Broker, BrokerServer } from '../../types/api';
 import type { BrokerDiscoveryItem } from '../../services/brokerDiscovery';
-import { getNavigatorAccountServerIdentities, normalizeNavigatorAccountServer } from './navigatorAccountScope';
+import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession } from '../../services/savedAccountScope';
+import { getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
 
 const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
 const OpenAccountDialog = openAccountFeature.Component;
@@ -230,18 +231,41 @@ export const NavigatorPanel: React.FC = () => {
     const sessionScope = useBrokerAccountSessionScope();
     // Capture aliases at committed login boundaries, not while another broker
     // is being selected. Same-login broker switches also change this scope.
-    const accountServerIdentities = useMemo(getNavigatorAccountServerIdentities, [sessionScope]);
+    const { brokerScope, accountServerIdentities } = useMemo(() => ({
+        brokerScope: getCommittedBrokerAccountSessionScope(),
+        accountServerIdentities: getSavedAccountServerIdentities(),
+    }), [sessionScope]);
 
     // Keep every saved account for future login; scope only the authenticated
     // tree and Favorites. Logged-out Favorites remain quick-login shortcuts.
-    const visibleAccounts = isAuthenticated ? savedAccounts.filter(account => (
-        accountServerIdentities.has(normalizeNavigatorAccountServer(account.server))
+    const visibleSavedAccounts = isAuthenticated ? savedAccounts.filter(account => (
+        isSavedAccountInBrokerSession(account, brokerScope, accountServerIdentities)
     )) : [];
-    const favoriteAccounts = (isAuthenticated ? visibleAccounts : savedAccounts).filter(account => account.isFavorite);
+    const visibleAccounts = [...visibleSavedAccounts];
+    // A validated session exists independently of its optional saved bookmark.
+    // Restored/legacy accounts must not be presented as logged out. Never use
+    // a same-login bookmark from an unproven broker to fill this row's name.
+    const activeLogin = Number(accountId);
+    if (isAuthenticated && brokerScope.authenticated && brokerScope.accountId === accountId
+        && Number.isSafeInteger(activeLogin) && activeLogin > 0
+        && !visibleAccounts.some(account => String(account.login) === accountId)) {
+        visibleAccounts.push({
+            login: activeLogin,
+            name: '',
+            server: brokerScope.serverUrl || brokerScope.brokerId,
+            brokerId: brokerScope.brokerId,
+            serverUrl: brokerScope.serverUrl,
+            isLive: true,
+        });
+    }
+    const favoriteAccounts = (isAuthenticated ? visibleSavedAccounts : savedAccounts).filter(account => account.isFavorite);
     const isAccountActive = useCallback((account: SavedAccount) => isAuthenticated
         && account.login.toString() === accountId
-        && accountServerIdentities.has(normalizeNavigatorAccountServer(account.server)),
-    [isAuthenticated, accountId, accountServerIdentities]);
+        && isSavedAccountInBrokerSession(account, brokerScope, accountServerIdentities),
+    [isAuthenticated, accountId, brokerScope, accountServerIdentities]);
+    const accountKey = (account: SavedAccount) => JSON.stringify([
+        account.brokerId || '', account.serverUrl || '', account.server, account.login,
+    ]);
 
     const [loginDialogOpen, setLoginDialogOpen] = useState(false);
     const [openAccountDialogOpen, setOpenAccountDialogOpen] = useState(false);
@@ -394,7 +418,7 @@ export const NavigatorPanel: React.FC = () => {
             shortcut: 'Delete',
             action: () => {
                 if (confirm(`Remove account ${acc.login} from saved list?`)) {
-                    removeSavedAccount(acc.login, acc.server);
+                    removeSavedAccount(acc.login, acc.server, acc);
                     // If deleting the currently active/authenticated account,
                     // log out so charts stop and show the placeholder
                     if (isAccountActive(acc)) {
@@ -451,7 +475,7 @@ export const NavigatorPanel: React.FC = () => {
                                             ? `${acc.login}: ${acc.name}`
                                             : `${acc.login}`;
                                         return (
-                                            <ContextMenu key={acc.login} items={getAccountContextMenuItems(acc)} variant="theme">
+                                            <ContextMenu key={accountKey(acc)} items={getAccountContextMenuItems(acc)} variant="theme">
                                                 <TreeItem
                                                     label={isSwitching ? tr("{{value0}} (switching...)", { value0: displayName }) : tr(displayName)}
                                                     icon={<AccountIcon isActive={isActive} isLive={isLive ?? false} />}
@@ -503,7 +527,7 @@ export const NavigatorPanel: React.FC = () => {
                         {favoriteAccounts.length === 0 ? (
                             <p className="px-5 py-2 text-[12px] text-[var(--text-secondary)]">{tr('No favorite accounts yet')}</p>
                         ) : favoriteAccounts.map((acc, index) => (
-                            <ContextMenu key={`${sessionScope}:${acc.server}:${acc.login}`} items={getAccountContextMenuItems(acc)} variant="theme">
+                            <ContextMenu key={`${sessionScope}:${accountKey(acc)}`} items={getAccountContextMenuItems(acc)} variant="theme">
                                 <TreeItem
                                     label={`${acc.login}${acc.name && acc.name !== String(acc.login) ? `: ${acc.name}` : ''} · ${brokerDisplayName(acc.server, brokerLogos[acc.server]?.brokerName)}`}
                                     icon={<AccountIcon isActive={isAccountActive(acc)} isLive={acc.isLive} />}

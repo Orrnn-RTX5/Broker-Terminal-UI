@@ -160,6 +160,19 @@ describe('Navigator authenticated broker account visibility', () => {
     expect(localStorage.getItem('market_api_url')).toBe(brokerB.url);
   });
 
+  it('does not let incomplete bookmark ownership bypass a conflicting broker or server label', () => {
+    authenticate(brokerA, [
+      saved('Allowed account', brokerA.server),
+      { ...saved('Different server with matching ID', brokerB.url, 200004), brokerId: brokerA.id },
+      { ...saved('Different broker on shared endpoint', brokerB.id, 200005), serverUrl: brokerA.url },
+    ]);
+
+    render(<NavigatorPanel />);
+
+    expect(screen.getByText('200003: Allowed account')).toBeInTheDocument();
+    expect(screen.queryByText(/Different server with matching ID|Different broker on shared endpoint/)).not.toBeInTheDocument();
+  });
+
   it('updates Accounts and Favorites when the committed broker changes without any selected store value changing', () => {
     const accounts = [saved('Alpha owner', brokerA.server), saved('Beta owner', brokerB.server)];
     authenticate(brokerA, accounts);
@@ -237,19 +250,63 @@ describe('Navigator authenticated broker account visibility', () => {
     expect(localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)).toBe(persisted);
   });
 
-  it('shows empty Accounts and Favorites when every saved account belongs to another broker', () => {
+  it('shows the authenticated account without borrowing another broker bookmark or Favorites', () => {
     const accounts = [saved('Beta owner', brokerB.server), saved('Beta other account', brokerB.name, 200004)];
     authenticate(brokerA, accounts);
     const persisted = localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY);
 
     render(<NavigatorPanel />);
 
-    expect(screen.getByText('Click to login...')).toBeInTheDocument();
+    expect(screen.getByText('200003')).toBeInTheDocument();
+    expect(screen.queryByText('Click to login...')).not.toBeInTheDocument();
     expect(favorites().getByText('No favorite accounts yet')).toBeInTheDocument();
     expect(screen.queryByText(/Beta owner/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Beta other account/)).not.toBeInTheDocument();
     expect(useAppStore.getState().savedAccounts).toEqual(accounts);
     expect(localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)).toBe(persisted);
+  });
+
+  it('shows the authenticated account after restoring a legacy bookmark with an unmatched display name', () => {
+    const accounts = [saved('Unproven legacy name', 'ORRNN')];
+    authenticate({ id: 'Orrnn', name: 'Orrnn', server: 'Orrnn', url: 'https://service.example' }, accounts);
+    const persisted = localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY);
+
+    render(<NavigatorPanel />);
+
+    expect(screen.getByText('200003')).toBeInTheDocument();
+    expect(screen.queryByText('Click to login...')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Unproven legacy name/)).not.toBeInTheDocument();
+    expect(favorites().getByText('No favorite accounts yet')).toBeInTheDocument();
+    expect(localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)).toBe(persisted);
+  });
+
+  it('shows the account and Favorites after real login when its display label differs from the broker ID', () => {
+    const broker = { id: 'Orrnn', name: 'Orrnn', server: 'Orrnn', url: 'https://service.example' };
+    const bookmark = saved('Account owner', 'ORRNN');
+    const foreign = { ...saved('Foreign same-label owner', 'ORRNN'), brokerId: 'ORRNN', serverUrl: broker.url };
+    const otherServer = { ...saved('Foreign server owner', 'ORRNN', 200004), brokerId: broker.id, serverUrl: 'https://other.example' };
+    storeBroker(broker);
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      CONFIG_SOURCE: 'deployment', API_HOST: broker.url, API_HOST_EXT: broker.url,
+      WS_HOST: 'wss://service.example', BROKER_ID: broker.id, DEFAULT_MT5_SERVER: broker.name,
+      DISCOVERY_BASE_URL: 'https://directory.example',
+    };
+    useAppStore.setState({ savedAccounts: [bookmark, foreign, otherServer] });
+    render(<NavigatorPanel />);
+    expect(screen.getByText('Click to login...')).toBeInTheDocument();
+
+    act(() => {
+      useAppStore.getState().setAuthenticated(true, '200003', 'test-token', undefined, undefined, bookmark);
+    });
+
+    expect(screen.getByText('200003: Account owner')).toBeInTheDocument();
+    expect(favorites().getByText(/Account owner/)).toBeInTheDocument();
+    expect(screen.queryByText('Click to login...')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Foreign same-label owner|Foreign server owner/)).not.toBeInTheDocument();
+    expect(useAppStore.getState().savedAccounts).toHaveLength(3);
+    expect(useAppStore.getState().savedAccounts).toContainEqual(foreign);
+    expect(useAppStore.getState().savedAccounts).toContainEqual(otherServer);
+    expect(useAppStore.getState().savedAccounts[0]).toMatchObject({ brokerId: broker.id, serverUrl: broker.url });
   });
 
   it.each([

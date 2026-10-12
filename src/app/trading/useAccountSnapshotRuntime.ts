@@ -1,6 +1,7 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../../services/brokerSession';
 import { getStoredBrokerServer } from '../../services/brokerServers';
+import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession, normalizeSavedAccountServer } from '../../services/savedAccountScope';
 import { pickAccountDisplayName } from '../../utils/accountDisplayName';
 import { applyPositionStreamUpdate, decodePositionStreamMessage } from '../../services/tradePositionStream';
 import { loadSessionTradeSnapshot } from '../../services/tradeStartupSnapshot';
@@ -74,7 +75,10 @@ export const useAccountSnapshotRuntime = ({
         try {
           const restRead = beginTradeRestRead();
           const positionsVersion = positionsStreamVersionRef.current;
-          const metricsScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+          const accountScope = getCommittedBrokerAccountSessionScope();
+          const metricsScope = getCommittedBrokerAccountSessionScopeKey(accountScope);
+          const accountServerIdentities = getSavedAccountServerIdentities();
+          const storedServer = getStoredBrokerServer();
           const isAccountSwitch = activeAccountDataRef.current !== loginId;
           if (isInitial && isAccountSwitch) {
             optimisticClosedTicketsRef.current.clear();
@@ -113,14 +117,19 @@ export const useAccountSnapshotRuntime = ({
             const accountName = pickAccountDisplayName(raw.name, raw.account_name, raw.display_name, raw.user_name);
             if (accountName) {
               const store = useAppStore.getState();
-              const existingAccount = store.savedAccounts.find((savedAccount) => savedAccount.login === loginId);
+              const existingAccount = store.savedAccounts.find((savedAccount) => savedAccount.login === loginId
+                && isSavedAccountInBrokerSession(savedAccount, accountScope, accountServerIdentities));
               const serverFromPayload = [raw.broker_server, raw.server, raw.server_name, raw.mt5_server, raw.trade_server]
                 .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
                 ?.trim();
               store.addSavedAccount({
                 login: loginId,
                 name: accountName,
-                server: existingAccount?.server || serverFromPayload || getStoredBrokerServer(),
+                server: existingAccount?.server || serverFromPayload
+                  || (accountServerIdentities.has(normalizeSavedAccountServer(storedServer)) ? storedServer : '')
+                  || accountScope.serverUrl || accountScope.brokerId,
+                brokerId: accountScope.brokerId,
+                serverUrl: accountScope.serverUrl,
                 isLive: true,
                 lastUsed: Date.now(),
               });
