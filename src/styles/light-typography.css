@@ -258,7 +258,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar {
   min-height: var(--rtx-status-strip-height) !important;
   max-height: var(--rtx-status-strip-height) !important;
   flex-shrink: 0;
-  padding: 0 2px !important;
+  padding: 0 var(--rtx-status-horizontal-padding, 12px) !important;
   border-top: 1px solid var(--rtx-light-border-strong) !important;
   border-bottom: 1px solid var(--rtx-light-border) !important;
   background: var(--rtx-light-panel-header) !important;

@@ -5,6 +5,7 @@ html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
   .rtx-bottom-dock,
   .rtx-bug-report-dialog,
   .rtx-top-chrome,
+  .rtx-status-bar,
   .navigator-panel,
   .rtx-market-watch,
   .web-drawing-tools-rail[data-orientation='vertical'],

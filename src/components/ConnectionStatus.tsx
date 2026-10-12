@@ -129,17 +129,19 @@ export function ConnectionStatus({ reconnectCallback }: ConnectionStatusProps) {
       {/* Status Indicator (Clickable) */}
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="rtx-status-bar__connection flex items-center gap-1.5 px-2 py-0.5 rounded text-zinc-200 transition-colors hover:bg-white/5 hover:text-white [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:hover:bg-zinc-300/50"
+        data-connection-state={isStale ? 'stale' : state}
+        aria-expanded={showDropdown}
+        className="rtx-status-bar__connection flex items-center gap-1.5 rounded transition-colors"
         title={tr("Click for connection details")}
       >
-        <div className={`w-2 h-2 rounded-full ${status.color} shadow-sm`} />
+        <div className={`rtx-status-bar__status-dot w-2 h-2 rounded-full ${status.color}`} />
         <span className="rtx-status-bar__metric font-normal text-[13px] leading-[19.5px]">
           {state === 'connected' ? (latencyMs !== null ? `${tr('Connected')} ${latencyMs.toFixed(0)}ms` : tr('Connected')) : tr(status.text)}
         </span>
         {isStale && (
           <span className="text-orange-400 text-[12px] font-normal ml-1 [.rtx-advanced-view_&]:text-orange-600">{tr("(Stale)")}</span>
         )}
-        <StatusIcon size={12} className={status.iconColor} />
+        <StatusIcon size={12} className={`rtx-status-bar__status-icon ${status.iconColor}`} />
       </button>
 
       {/* MT5-Style Dropdown Menu */}

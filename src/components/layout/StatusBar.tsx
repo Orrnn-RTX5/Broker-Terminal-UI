@@ -11,6 +11,7 @@ import {
 } from '../../hooks/useTerminalTitle';
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
 import { getAppVersion } from '../../config/appVersion';
+import './StatusBar.css';
 
 interface StatusBarProps {
     wsRef?: React.RefObject<WebSocket | null>;
@@ -38,47 +39,43 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
     const appVersion = getAppVersion();
     const hasUpdater = Boolean(window.electron?.updater?.isSupported);
     const { updatePhase, updateLabel, updateButtonDisabled, handleUpdateClick } = useDesktopUpdater();
-    const updateButtonTone =
-        updatePhase === 'available' ? 'text-sky-300 hover:text-sky-100 border-sky-500/50 bg-sky-500/10 [.rtx-advanced-view_&]:text-sky-700 [.rtx-advanced-view_&]:hover:text-sky-900 [.rtx-advanced-view_&]:border-sky-400/60 [.rtx-advanced-view_&]:bg-sky-100/60'
-            : updatePhase === 'downloaded' ? 'text-emerald-300 hover:text-emerald-100 border-emerald-500/50 bg-emerald-500/10 [.rtx-advanced-view_&]:text-emerald-700 [.rtx-advanced-view_&]:hover:text-emerald-900 [.rtx-advanced-view_&]:border-emerald-400/60 [.rtx-advanced-view_&]:bg-emerald-100/60'
-                : updatePhase === 'error' ? 'text-red-300 hover:text-red-100 border-red-500/50 bg-red-500/10 [.rtx-advanced-view_&]:text-red-700 [.rtx-advanced-view_&]:hover:text-red-900 [.rtx-advanced-view_&]:border-red-400/60 [.rtx-advanced-view_&]:bg-red-100/60'
-                    : 'text-zinc-400 hover:text-zinc-100 border-zinc-700 bg-zinc-900/60 [.rtx-advanced-view_&]:text-zinc-600 [.rtx-advanced-view_&]:hover:text-black [.rtx-advanced-view_&]:border-zinc-400/70 [.rtx-advanced-view_&]:bg-zinc-100/60';
 
     return (
         // Keep ConnectionStatus mounted: it also handles login requests outside the bar.
-        <div style={{ display: visible ? undefined : 'none' }} className="rtx-status-bar h-6 flex items-center justify-between border-t border-[#2a3342] bg-[#10151d] px-2 text-[13px] leading-[19.5px] font-normal font-sans text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] select-none z-50 [.rtx-advanced-view_&]:border-zinc-400 [.rtx-advanced-view_&]:bg-[#e1e1e1] [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:shadow-none">
-            <div className="flex min-w-0 flex-1 items-center">
+        <div style={{ display: visible ? undefined : 'none' }} className="rtx-status-bar h-6 flex items-center justify-between text-[13px] leading-[19.5px] font-normal font-sans select-none z-50">
+            <div className="rtx-status-bar__identity flex min-w-0 flex-1 items-center">
                 <div
-                    className="rtx-status-bar__metric flex min-w-0 max-w-full items-center gap-2 overflow-hidden whitespace-nowrap font-normal text-zinc-400 [.rtx-advanced-view_&]:text-zinc-600"
+                    className="rtx-status-bar__metric flex min-w-0 max-w-full items-center gap-2 overflow-hidden whitespace-nowrap font-normal"
                 >
                     <BrokerLogoImage
                         broker={brokerLogo}
                         alt={`${brokerInfo.brokerName} Logo`}
-                        className="h-4 w-4 shrink-0 rounded-sm object-contain"
+                        className="rtx-status-bar__logo h-4 w-4 shrink-0 rounded-sm object-contain"
                         appFallbackUrl="./favicon.png"
                     />
-                    <span className="rtx-status-bar__metric truncate whitespace-nowrap font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black">{tr(terminalTitle)}</span>
+                    <span className="rtx-status-bar__metric rtx-status-bar__title truncate whitespace-nowrap font-normal" title={tr(terminalTitle)}>{tr(terminalTitle)}</span>
                 </div>
             </div>
-            <div className="flex shrink-0 items-center gap-4">
+            <div className="rtx-status-bar__utilities flex shrink-0 items-center gap-3">
                 {/* Connection Status Indicator (Live) */}
                 {wsRef && (
                     <ConnectionStatus wsRef={wsRef} reconnectCallback={reconnectCallback} />
                 )}
                 {/* Version & Update Status */}
-                <div className="flex items-center gap-1.5 border-l border-zinc-700 pl-4 [.rtx-advanced-view_&]:border-zinc-400">
+                <div className="rtx-status-bar__version-group flex items-center gap-2 border-l pl-3">
                     {hasUpdater && updateLabel && (
                         <button
                             type="button"
                             onClick={handleUpdateClick}
                             disabled={updateButtonDisabled}
-                            className={`rtx-status-bar__action h-[18px] rounded border px-1.5 text-[12px] font-normal leading-none transition-colors disabled:cursor-default disabled:opacity-70 ${updateButtonTone}`}
+                            className="rtx-status-bar__action h-[18px] rounded border px-1.5 text-[12px] font-normal leading-none transition-colors disabled:cursor-default disabled:opacity-70"
+                            data-update-phase={updatePhase}
                             title={tr("Check for desktop app updates")}
                         >
                             {tr(updateLabel)}
                         </button>
                     )}
-                    <span className="rtx-status-bar__metric text-zinc-500 font-mono text-[13px] font-normal [.rtx-advanced-view_&]:text-zinc-500">
+                    <span className="rtx-status-bar__metric rtx-status-bar__version whitespace-nowrap font-normal">
                         v{appVersion}
                     </span>
                 </div>
