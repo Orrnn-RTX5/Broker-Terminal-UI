@@ -73,7 +73,6 @@ export const useTradingChartTradeLevelDrag = ({
   chartSettingsRef,
   containerRef,
   isActive,
-  isChartInteractionActiveRef,
   isChartSurfaceLight,
   overlayRef,
   pendingTradeLevelModifyRequestsRef,
@@ -135,9 +134,6 @@ export const useTradingChartTradeLevelDrag = ({
     let previousBodyCursor = '';
     let previousUserSelect = '';
     let dragCursorActive = false;
-    let tradeHoverCursorActive = false;
-    let tradeHoverFrame: number | null = null;
-    let pendingTradeHoverPoint: { clientX: number; clientY: number } | null = null;
 
     const getChartY = (e: PointerEvent) => {
       const rect = container.getBoundingClientRect();
@@ -321,66 +317,12 @@ export const useTradingChartTradeLevelDrag = ({
       dragCursorActive = false;
     };
 
-    const setTradeHoverCursor = (active: boolean) => {
-      if (dragCursorActive || active === tradeHoverCursorActive) return;
-      tradeHoverCursorActive = active;
-      const cursor = active ? 'grab' : 'default';
-      interactionRoot.style.cursor = active ? cursor : '';
-      container.style.cursor = active ? cursor : '';
-      container.querySelectorAll('canvas').forEach((canvas) => {
-        (canvas as HTMLElement).style.cursor = cursor;
-      });
-    };
-
-    const cancelQueuedTradeHover = () => {
-      pendingTradeHoverPoint = null;
-      if (tradeHoverFrame === null) return;
-      window.cancelAnimationFrame(tradeHoverFrame);
-      tradeHoverFrame = null;
-    };
-
-    const queueTradeHover = (e: PointerEvent) => {
-      pendingTradeHoverPoint = { clientX: e.clientX, clientY: e.clientY };
-      if (tradeHoverFrame !== null) return;
-
-      tradeHoverFrame = window.requestAnimationFrame(() => {
-        tradeHoverFrame = null;
-        const point = pendingTradeHoverPoint;
-        pendingTradeHoverPoint = null;
-
-        if (
-          !point
-          || dragState
-          || isChartInteractionActiveRef.current
-          || !seriesRef.current
-          || activeToolRef.current !== null
-          || chartSettingsRef.current.showTradeLevels === false
-        ) {
-          setTradeHoverCursor(false);
-          return;
-        }
-
-        // Read chart geometry once for this coalesced hover frame. The actual
-        // trade-level scan is deliberately outside the active pan path.
-        const rect = container.getBoundingClientRect();
-        if (!isInsideTradePlot(point, rect)) {
-          setTradeHoverCursor(false);
-          return;
-        }
-
-        const y = point.clientY - rect.top;
-        setTradeHoverCursor(Boolean(findClosestTradeLevel(y, TRADE_LEVEL_HIT_AREA_PX / 2)));
-      });
-    };
-
     const handlePointerDown = (e: PointerEvent) => {
       if (dragState) {
         if (e.pointerId !== dragState.pointerId) return;
         // A fresh down from this pointer means the previous release was lost.
         handlePointerCancel();
       }
-      cancelQueuedTradeHover();
-      setTradeHoverCursor(false);
 
       // Drawing clicks belong to the canvas, including clicks near a trade
       // level whose DOM hit target is temporarily disabled by scoped CSS.
@@ -450,7 +392,6 @@ export const useTradingChartTradeLevelDrag = ({
       if (closestTrade) {
         e.preventDefault();
         e.stopPropagation();
-        setTradeHoverCursor(false);
         if (blockPendingTradeLevelChange(closestTrade)) return;
         beginPointerCapture(e.pointerId);
         beginDragCursor();
@@ -602,24 +543,6 @@ export const useTradingChartTradeLevelDrag = ({
         dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${drawY}px))`;
         return;
       }
-
-      if (isChartInteractionActiveRef.current) {
-        cancelQueuedTradeHover();
-        setTradeHoverCursor(false);
-        return;
-      }
-
-      if (
-        !seriesRef.current
-        || activeToolRef.current !== null
-        || chartSettingsRef.current.showTradeLevels === false
-      ) {
-        cancelQueuedTradeHover();
-        setTradeHoverCursor(false);
-        return;
-      }
-
-      queueTradeHover(e);
     };
 
     const handlePointerUp = (e: PointerEvent) => {
@@ -783,7 +706,6 @@ export const useTradingChartTradeLevelDrag = ({
         restoreDraggedLevelControls();
         releasePointerCapture();
         endDragCursor();
-        setTradeHoverCursor(false);
 
         if (chartRef.current) {
           chartRef.current.applyOptions({
@@ -808,7 +730,6 @@ export const useTradingChartTradeLevelDrag = ({
       restoreDraggedLevelControls();
       releasePointerCapture();
       endDragCursor();
-      setTradeHoverCursor(false);
       if (chartRef.current) {
         chartRef.current.applyOptions({
           handleScroll: TRADING_VIEW_HANDLE_SCROLL,
@@ -838,11 +759,9 @@ export const useTradingChartTradeLevelDrag = ({
       window.removeEventListener('pointercancel', handlePointerCancel);
       window.removeEventListener('blur', handleWindowBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      cancelQueuedTradeHover();
       // A tab can deactivate mid-drag. Reuse the normal cancellation path so
       // capture, overlays, cursors, and chart scroll options are restored.
       handlePointerCancel();
-      setTradeHoverCursor(false);
     };
   }, [
     activeToolRef,
@@ -852,7 +771,6 @@ export const useTradingChartTradeLevelDrag = ({
     chartSettingsRef,
     containerRef,
     isActive,
-    isChartInteractionActiveRef,
     isChartSurfaceLight,
     overlayRef,
     pendingTradeLevelModifyRequestsRef,

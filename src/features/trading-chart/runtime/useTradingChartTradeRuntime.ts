@@ -34,6 +34,11 @@ import { useTradingChartTradeLevelDrag } from './useTradingChartTradeLevelDrag';
 import { useTradingChartTradeOverlayRenderer } from './useTradingChartTradeOverlayRenderer';
 import { readStoredTradeLevelOverrides } from './tradeLevelOverrideStorage';
 import { readTradeControlSize, rememberTradeControlResize, type TradeControlSizeCache } from './tradeControlSizeCache';
+import {
+  readTradeOverlayContainerSize,
+  rememberTradeOverlayContainerResize,
+  type TradeOverlayContainerSizeCache,
+} from './tradeOverlayContainerSizeCache';
 import type {
   ActiveTradeSnapshot,
   ClosedTradeSnapshot,
@@ -157,6 +162,7 @@ export const useTradingChartTradeRuntime = ({
   // Live Pips/USD refresh hooks for the on-line position control bars.
   const tradeControlLiveUpdatersRef = useRef<Array<() => void>>([]);
   const tradeControlSizesRef = useRef<TradeControlSizeCache>(new WeakMap());
+  const tradeOverlayContainerSizesRef = useRef<TradeOverlayContainerSizeCache>(new WeakMap());
   const tradeControlSizeObservationRef = useRef(false);
 
 
@@ -415,8 +421,9 @@ export const useTradingChartTradeRuntime = ({
       { nodes: historyOverlayNodesRef.current, data: historyOverlayNodeDataRef.current },
       { nodes: activeOverlayNodesRef.current, data: activeOverlayNodeDataRef.current },
     ];
-    const chartWidth = containerRef.current?.offsetWidth || 0;
-    const chartHeight = containerRef.current?.offsetHeight || 0;
+    const { width: chartWidth, height: chartHeight } = readTradeOverlayContainerSize(
+      tradeOverlayContainerSizesRef.current, containerRef.current, tradeControlSizeObservationRef.current,
+    );
     // A collapsed/zero-size container has no valid geometry; leave nodes as
     // they are rather than culling the entire overlay against height 0.
     if (chartWidth <= 0 || chartHeight <= 0) return;
@@ -755,8 +762,9 @@ export const useTradingChartTradeRuntime = ({
   }, [repaintTradeOverlayGeometryRef, updateLabelPositions]);
 
   useEffect(() => {
-    const wrapper = containerRef.current?.parentElement;
-    if (!wrapper) return;
+    const container = containerRef.current;
+    const wrapper = container?.parentElement;
+    if (!container || !wrapper) return;
     let frame: number | null = null;
     const schedule = () => {
       if (frame !== null) return;
@@ -764,7 +772,9 @@ export const useTradingChartTradeRuntime = ({
     };
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(entries => {
       for (const entry of entries) {
-        if ((entry.target as HTMLElement).classList.contains('rtx-trade-controls')) {
+        if (entry.target === container) {
+          rememberTradeOverlayContainerResize(tradeOverlayContainerSizesRef.current, entry);
+        } else if ((entry.target as HTMLElement).classList.contains('rtx-trade-controls')) {
           rememberTradeControlResize(tradeControlSizesRef.current, entry);
         }
       }
@@ -774,6 +784,7 @@ export const useTradingChartTradeRuntime = ({
     const observeControlSizes = () => {
       resize?.disconnect();
       resize?.observe(wrapper);
+      resize?.observe(container, { box: 'border-box' });
       wrapper.querySelectorAll('.rtx-trade-controls').forEach(element => resize?.observe(element));
       schedule();
     };
@@ -785,6 +796,7 @@ export const useTradingChartTradeRuntime = ({
       resize?.disconnect();
       tradeControlSizeObservationRef.current = false;
       tradeControlSizesRef.current = new WeakMap();
+      tradeOverlayContainerSizesRef.current = new WeakMap();
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, [containerRef, updateLabelPositions]);

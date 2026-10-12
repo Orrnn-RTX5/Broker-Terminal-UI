@@ -271,25 +271,33 @@ export const DARK_CHART_TRADE_COLORS = {
   border: '#404048',
   divider: '#34343b',
   action: '#b9bcc6',
+  text: '#f4f4f5',
   actionIcon: '#f4f4f6',
   actionHover: '#292a30',
-  buy: '#0078d4',
-  sell: '#ce4b55',
+  buy: '#dbeafe',
+  sell: '#fee2e2',
+  buyBackground: '#233143',
+  sellBackground: '#38292e',
   tp: '#9dd2c8',
   sl: '#e9c18a',
-  profit: '#4597ff',
-  loss: '#ff4d4f',
+  profit: '#72b0ff',
+  loss: '#ff8589',
 } as const;
 
-// Small overlay labels need text contrast on the neutral light chart as well as
-// white labels on filled BUY/SELL chips. Chart backgrounds remain authoritative.
+// Small overlay labels need readable side colors on softly tinted surfaces.
+// Chart backgrounds remain authoritative when choosing the light palette.
 export const LIGHT_CHART_TRADE_COLORS = {
-  buy: '#1746bc',
-  sell: '#a51f26',
-  tp: '#04685e',
-  sl: '#795000',
-  profit: '#1746bc',
-  loss: '#a51f26',
+  surface: '#f3f6fa',
+  border: '#7d8da3',
+  divider: '#cbd5e1',
+  action: '#334155',
+  actionHover: '#e2e8f0',
+  buy: '#153eaa',
+  sell: '#981b24',
+  tp: '#05564f',
+  sl: '#664300',
+  profit: '#153eaa',
+  loss: '#981b24',
 } as const;
 
 interface TradeControlSurface {
@@ -340,7 +348,7 @@ const closeSvg = '<svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="t
 
 // Web action glyphs share one grid and stroke, so the compact controls read
 // as a single toolbar alongside the position capsule.
-const webActionSvg = (path: string): string => `<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+const webActionSvg = (path: string): string => `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
 const webShareSvg = webActionSvg('M8 10V2.5M5.5 5 8 2.5 10.5 5M3 8v5h10V8');
 const webDoubleSvg = webActionSvg('M4.5 12.5v-9M2 6l2.5-2.5L7 6M11.5 12.5v-9M9 6l2.5-2.5L14 6');
 const webReverseSvg = webActionSvg('M2.5 5h11M10.5 2l3 3-3 3M13.5 11h-11M5.5 8l-3 3 3 3');
@@ -459,12 +467,13 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   const plainSideColor = isLightSurface
     ? (side === 'BUY' ? LIGHT_CHART_TRADE_COLORS.buy : LIGHT_CHART_TRADE_COLORS.sell)
     : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buy : DARK_CHART_TRADE_COLORS.sell);
-  const plainNeutralColor = isLightSurface ? '#131722' : '#d1d4dc';
+  const plainNeutralColor = isLightSurface ? '#131722' : DARK_CHART_TRADE_COLORS.text;
   const plainBackground = isLightSurface
-    ? (options.chartBackground ?? '#fafbfc')
+    ? LIGHT_CHART_TRADE_COLORS.surface
     : DARK_CHART_TRADE_COLORS.surface;
-  const plainBorderColor = isLightSurface ? plainSideColor : DARK_CHART_TRADE_COLORS.border;
-  const plainActionColor = isLightSurface ? plainSideColor : DARK_CHART_TRADE_COLORS.action;
+  const plainBorderColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.border : DARK_CHART_TRADE_COLORS.divider;
+  const plainDividerColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.divider : DARK_CHART_TRADE_COLORS.divider;
+  const plainActionColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.action : DARK_CHART_TRADE_COLORS.action;
 
   const root = document.createElement('div');
   root.className = 'rtx-trade-level-badge rtx-trade-controls rtx-trade-controls--entry';
@@ -474,7 +483,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   // The overlay relayout restores this display mode when unhiding the node.
   root.dataset.display = 'inline-flex';
   if (title) root.title = title;
-  root.style.cssText = `position:absolute;left:${leftInset}px;display:none;align-items:center;z-index:22;pointer-events:auto;cursor:grab;transform:translateY(-50%);width:max-content;box-sizing:border-box;overflow:hidden;user-select:none;touch-action:none;filter:drop-shadow(0 1px 3px rgba(0,0,0,${isLightSurface ? '0.18' : '0.4'}));`;
+  root.style.cssText = `position:absolute;left:${leftInset}px;display:none;align-items:center;z-index:22;pointer-events:auto;cursor:default;transform:translateY(-50%);width:max-content;box-sizing:border-box;overflow:hidden;user-select:none;touch-action:none;filter:drop-shadow(0 1px 3px rgba(0,0,0,${isLightSurface ? '0.18' : '0.4'}));`;
 
   const chipGroup = document.createElement('span');
   chipGroup.style.cssText = 'display:inline-flex;align-items:stretch;';
@@ -485,7 +494,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   if (options.plainLabel) {
     const sideText = document.createElement('span');
     sideText.className = 'rtx-trade-side-label';
-    sideText.style.color = '#ffffff';
+    sideText.style.color = 'inherit';
     bindChartUiTranslation(sideText, () => {
       sideText.textContent = `${tr(side)} `;
     });
@@ -514,26 +523,31 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
 
   if (options.plainLabel) {
     root.classList.add('rtx-trade-controls--plain');
-    root.style.setProperty('--rtx-type-size', '11px');
+    root.style.setProperty('--rtx-type-size', 'var(--rtx-ui-font-size, 14px)');
     root.style.setProperty('--rtx-type-weight', '400');
-    root.style.setProperty('--rtx-type-family', 'Arial, sans-serif');
+    root.style.setProperty('--rtx-type-family', 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)');
+    root.style.lineHeight = '20px';
     root.style.filter = 'none';
     root.style.overflow = 'hidden';
     root.style.transform = 'translateY(-50%)';
     root.style.height = 'auto';
     root.style.minHeight = '26px';
     root.style.flexWrap = 'wrap';
-    root.style.gap = '4px';
+    root.style.gap = '2px';
     // Keep the active-position strip beside the chart's left edge. The chart
     // relayout only overrides controls explicitly marked as right-aligned.
     root.dataset.align = 'left';
     root.tabIndex = 0;
-    root.style.backgroundColor = 'transparent';
-    root.style.borderRadius = '0';
+    // One opaque surface keeps chart lines out of the gaps between controls.
+    // A flat one-pixel stroke supplies the border without changing drag geometry.
+    root.style.backgroundColor = plainBackground;
+    root.style.borderRadius = '5px';
+    root.style.boxShadow = `0 0 0 1px ${plainBorderColor}`;
     root.style.textShadow = 'none';
     chipGroup.className = 'rtx-trade-primary';
-    chipGroup.style.border = `1px solid ${plainBorderColor}`;
-    chipGroup.style.borderRadius = '3px';
+    chipGroup.style.border = '1px solid transparent';
+    chipGroup.style.borderLeftColor = plainDividerColor;
+    chipGroup.style.borderRadius = '0';
     chipGroup.style.height = '26px';
     chipGroup.style.boxSizing = 'border-box';
     chipGroup.style.overflow = 'hidden';
@@ -544,12 +558,13 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       chip.style.backgroundColor = 'transparent';
       chip.style.border = '0';
       chip.style.color = plainNeutralColor;
-      chip.style.fontFamily = 'Arial, sans-serif';
-      chip.style.fontSize = '11px';
+      chip.style.fontFamily = 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)';
+      chip.style.fontSize = 'var(--rtx-ui-font-size, 14px)';
       chip.style.fontWeight = '400';
-      chip.style.lineHeight = '18px';
+      chip.style.lineHeight = '20px';
+      chip.style.letterSpacing = 'normal';
       chip.style.fontVariantNumeric = 'tabular-nums';
-      chip.style.padding = '0 6px';
+      chip.style.padding = '0 2px';
       chip.style.marginLeft = '0';
       chip.style.height = '24px';
     }
@@ -560,12 +575,24 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     }
     // Compact entry information, with the account currency after the P/L.
     pips.chip.style.display = 'none';
-    volumeChip.style.backgroundColor = plainSideColor;
-    volumeChip.style.color = '#ffffff';
-    volumeChip.style.gap = '3px';
-    money.chip.style.gap = '3px';
+    volumeChip.style.backgroundColor = isLightSurface
+      ? (side === 'BUY' ? '#edf3ff' : '#fff0f1')
+      : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buyBackground : DARK_CHART_TRADE_COLORS.sellBackground);
+    volumeChip.style.color = plainSideColor;
+    volumeChip.style.fontWeight = 'inherit';
+    volumeChip.style.setProperty('--rtx-type-weight', 'inherit');
+    // Separate each reading unit without adding padding around the toolbar.
+    volumeChip.style.gap = '4px';
+    volumeText.style.color = plainNeutralColor;
+    money.chip.style.gap = '4px';
+    money.valueEl.style.fontWeight = 'inherit';
+    money.valueEl.style.setProperty('--rtx-type-weight', 'inherit');
     const currencySuffix = money.chip.firstElementChild as HTMLElement;
     currencySuffix.textContent = ` ${currencyLabel}`;
+    currencySuffix.style.color = plainNeutralColor;
+    currencySuffix.style.fontSize = 'inherit';
+    currencySuffix.style.setProperty('--rtx-type-size', 'inherit');
+    currencySuffix.style.setProperty('--rtx-type-weight', 'inherit');
     money.chip.appendChild(currencySuffix);
     volumeArrow.style.display = 'none';
   }
@@ -574,7 +601,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   buttonGroup.className = 'rtx-trade-control-actions';
   buttonGroup.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin-left:6px;flex:0 0 auto;';
   if (options.plainLabel) {
-    buttonGroup.style.gap = '4px';
+    buttonGroup.style.gap = '2px';
     buttonGroup.style.marginLeft = '0';
   }
   const emitAction = (action: ChartPositionActionType) => {
@@ -601,14 +628,14 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       button.style.borderRadius = '0';
       button.style.backgroundColor = restingBackground;
       if (isClose) {
-        button.style.borderLeft = `1px solid ${plainBorderColor}`;
+        button.style.borderLeft = `1px solid ${plainDividerColor}`;
         button.style.borderRadius = '0';
       }
       button.addEventListener('mouseenter', () => {
         button.style.backgroundColor = isLightSurface
-          ? `${plainSideColor}26`
+          ? (isClose ? '#fff0f1' : LIGHT_CHART_TRADE_COLORS.actionHover)
           : isClose ? '#3b2529' : DARK_CHART_TRADE_COLORS.actionHover;
-        if (!isLightSurface && isClose) button.style.color = DARK_CHART_TRADE_COLORS.loss;
+        if (isClose) button.style.color = isLightSurface ? LIGHT_CHART_TRADE_COLORS.loss : DARK_CHART_TRADE_COLORS.loss;
       });
       button.addEventListener('mouseleave', () => {
         button.style.backgroundColor = restingBackground;
@@ -616,25 +643,24 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       });
     }
     const closeIcon = buttonGroup.querySelector('.rtx-trade-control-btn--close svg')!;
-    closeIcon.setAttribute('width', '11');
-    closeIcon.setAttribute('height', '11');
-    closeIcon.setAttribute('stroke-width', '1.2');
+    closeIcon.setAttribute('width', '12');
+    closeIcon.setAttribute('height', '12');
+    closeIcon.setAttribute('stroke-width', '1.5');
     const reverseButton = buttonGroup.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--reverse')!;
     const doubleButton = buttonGroup.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--double')!;
     const closeButton = buttonGroup.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--close')!;
     buttonGroup.insertBefore(doubleButton, reverseButton);
     const secondaryGroup = document.createElement('span');
     secondaryGroup.className = 'rtx-trade-secondary';
-    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;height:26px;box-sizing:border-box;border:1px solid ${plainBorderColor};border-radius:3px;background-color:${plainBackground};overflow:hidden;`;
+    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;height:26px;box-sizing:border-box;border:1px solid transparent;background-color:${plainBackground};overflow:hidden;`;
     for (const button of Array.from(buttonGroup.querySelectorAll<HTMLButtonElement>('button'))) {
       if (button === closeButton) continue;
-      if (secondaryGroup.childElementCount > 0) button.style.borderLeft = `1px solid ${isLightSurface ? `${plainSideColor}66` : DARK_CHART_TRADE_COLORS.divider}`;
       secondaryGroup.appendChild(button);
     }
     buttonGroup.prepend(secondaryGroup);
     const brackets = document.createElement('span');
     brackets.className = 'rtx-trade-brackets';
-    brackets.style.cssText = 'display:inline-flex;align-items:center;gap:4px;';
+    brackets.style.cssText = 'display:inline-flex;align-items:center;gap:2px;';
     buttonGroup.appendChild(brackets);
     chipGroup.appendChild(closeButton);
     root.appendChild(buttonGroup);
@@ -736,12 +762,14 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
   root.dataset.leftInset = String(leftInset);
   root.dataset.display = 'inline-flex';
   if (title) root.title = title;
-  root.style.cssText = `position:absolute;left:${leftInset}px;display:none;align-items:center;z-index:21;pointer-events:auto;cursor:grab;transform:translateY(-50%);width:max-content;box-sizing:border-box;overflow:hidden;user-select:none;touch-action:none;filter:drop-shadow(0 1px 3px rgba(0,0,0,${isLightSurface ? '0.18' : '0.4'}));`;
+  root.style.cssText = `position:absolute;left:${leftInset}px;display:none;align-items:center;z-index:21;pointer-events:auto;cursor:default;transform:translateY(-50%);width:max-content;box-sizing:border-box;overflow:hidden;user-select:none;touch-action:none;filter:drop-shadow(0 1px 3px rgba(0,0,0,${isLightSurface ? '0.18' : '0.4'}));`;
 
   const roleChip = document.createElement('span');
   roleChip.className = 'rtx-trade-chip rtx-trade-chip--role';
   roleChip.style.cssText = `display:inline-flex;align-items:center;padding:2px 6px;background-color:${surface.chipBackground};border:1px solid ${sideColor};color:${surface.chipText};${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
   const roleText = document.createElement('span');
+  roleText.className = 'rtx-trade-level-drag-label';
+  roleText.style.cursor = 'grab';
   bindChartUiTranslation(roleText, () => { roleText.textContent = tr(label); });
   roleChip.appendChild(roleText);
 
@@ -895,13 +923,15 @@ export const createDockedLevelChip = (options: DockedLevelChipOptions): HTMLDivE
   bindChartUiTranslation(root, () => {
     root.title = title ?? `${tr('Add')} · ${tr(role === 'SL' ? 'Stop loss' : 'Take profit')}`;
   });
-  root.style.cssText = `position:absolute;left:${leftInset}px;display:none;align-items:center;padding:1px 7px;background-color:${surface.dockBackground};border:1px solid ${surface.dockBorder};color:${surface.dockText};${CHIP_FONT}white-space:nowrap;z-index:21;pointer-events:auto;cursor:grab;transform:translateY(-50%);width:max-content;box-sizing:border-box;user-select:none;touch-action:none;`;
+  root.style.cssText = `position:absolute;left:${leftInset}px;display:none;align-items:center;padding:1px 7px;background-color:${surface.dockBackground};border:1px solid ${surface.dockBorder};color:${surface.dockText};${CHIP_FONT}white-space:nowrap;z-index:21;pointer-events:auto;cursor:default;transform:translateY(-50%);width:max-content;box-sizing:border-box;user-select:none;touch-action:none;`;
   if (isLightSurface) {
     root.addEventListener('mouseenter', () => { root.style.borderColor = '#64748b'; });
     root.addEventListener('mouseleave', () => { root.style.borderColor = surface.dockBorder; });
   }
 
   const text = document.createElement('span');
+  text.className = 'rtx-trade-level-drag-label';
+  text.style.cursor = 'grab';
   bindChartUiTranslation(text, () => { text.textContent = label.replace(role, tr(role)); });
   root.appendChild(text);
   return root;

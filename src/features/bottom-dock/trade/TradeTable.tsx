@@ -1,5 +1,7 @@
 import {
   Fragment,
+  memo,
+  useMemo,
   type CSSProperties,
   type Dispatch,
   type MouseEvent as ReactMouseEvent,
@@ -76,6 +78,352 @@ type TradeTableProps = {
   visibleTradeColumns: TradeColumnDef[];
   visibleTradeTableWidth: number;
 };
+
+type TradeTableRowProps = Pick<TradeTableProps,
+  | 'formatMoney'
+  | 'formatTradeLevel'
+  | 'formatTradePoints'
+  | 'formatTradePrice'
+  | 'formatTradeTime'
+  | 'formatTradeVolume'
+  | 'getPositionKey'
+  | 'getTradePointsValue'
+  | 'handleTradeContextMenu'
+  | 'isColumnVisible'
+  | 'onClosePosition'
+  | 'openModifyPosition'
+  | 'profitMode'
+  | 'selectedPositionKey'
+  | 'setSelectedPositionKey'
+  | 'visibleOptionalColumnCount'
+> & {
+  position: ToolboxTradePosition;
+  tr: ReturnType<typeof useUiTranslation>;
+  modifyPositionLabel: string;
+  contextMenuLabel: string;
+};
+
+const TradeTableRow = memo(function TradeTableRow({
+  position,
+  tr,
+  modifyPositionLabel,
+  contextMenuLabel,
+  formatMoney,
+  formatTradeLevel,
+  formatTradePoints,
+  formatTradePrice,
+  formatTradeTime,
+  formatTradeVolume,
+  getPositionKey,
+  getTradePointsValue,
+  handleTradeContextMenu,
+  isColumnVisible,
+  onClosePosition,
+  openModifyPosition,
+  profitMode,
+  selectedPositionKey,
+  setSelectedPositionKey,
+  visibleOptionalColumnCount,
+}: TradeTableRowProps) {
+  const placementState = position.placementState;
+  const isPendingPlacement = Boolean(placementState && !['filled', 'confirmed'].includes(placementState));
+  const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
+  const placementPlaceholder = isTerminalPlacementFailure ? '-' : '…';
+  const positionId = position.id;
+  const ticket = position.ticket ?? position.id;
+  const positionKey = getPositionKey(position);
+  const isSelected = selectedPositionKey === positionKey;
+  const symbolLabel = position.symbol ?? '-';
+  const openTime = position.time_create
+    ?? position.openTime ?? position.open_time ?? position.time_open ?? position.time ?? position.chartEntryTime;
+  const sideLabel = String(position.side ?? '').toLowerCase() || '-';
+  const volumeLabel = String(formatTradeVolume(position));
+  const rawOpenPrice = Number(
+    position.price_open ?? position.open_price ?? position.openPrice ?? position.entryPrice
+    ?? position.chartEntryPrice ?? position.price,
+  );
+  const rawStopLoss = position.price_sl ?? position.sl;
+  const rawTakeProfit = position.price_tp ?? position.tp;
+  const accountLoginLabel = String(position.account_login ?? '-');
+  const placementError = [position.placementErrorCode, position.placementErrorMessage].filter(Boolean).join(': ');
+  const commentLabel = String(placementError || position.comment || '-');
+
+  // Quotes change current price and P/L far more often than position identity,
+  // entry details or protection levels. Preserve that presentation per row.
+  const {
+    placementLabel, ticketLabel, timeLabel, openPriceLabel, stopLossLabel, takeProfitLabel,
+    placementSummary, rowComment, stopLossTitle, takeProfitTitle,
+    stopLossActionLabel, takeProfitActionLabel, closeActionLabel, closeTitle,
+  } = useMemo(() => {
+    const placementLabel = placementState === 'accepted' ? tr('Accepted')
+      : placementState === 'processing' ? tr('Processing')
+        : placementState === 'rejected' ? tr('Rejected')
+          : placementState === 'expired' ? tr('Expired') : tr('Pending');
+    const ticketLabel = isPendingPlacement ? placementLabel : String(ticket ?? '-');
+    const timeLabel = formatTradeTime(openTime);
+    const openPriceLabel = isPendingPlacement ? placementPlaceholder : formatTradePrice(rawOpenPrice, symbolLabel);
+    const stopLossLabel = formatTradeLevel(rawStopLoss, symbolLabel);
+    const takeProfitLabel = formatTradeLevel(rawTakeProfit, symbolLabel);
+    const rowSummary = [symbolLabel, tr(sideLabel), tr('{{value0}} lots', { value0: volumeLabel })].join(' · ');
+    const placementSummary = `${placementLabel} · ${rowSummary}${isTerminalPlacementFailure ? `: ${placementError || tr('Order failed')}` : ''}`;
+    const rowComment = isPendingPlacement
+      ? placementSummary
+      : `${rowSummary}\n${tr('Ticket: {{value0}}', { value0: ticketLabel })}\n${modifyPositionLabel} · ${contextMenuLabel}`;
+    return {
+      placementLabel, ticketLabel, timeLabel, openPriceLabel, stopLossLabel, takeProfitLabel, placementSummary, rowComment,
+      stopLossTitle: `${tr('Stop Loss: {{value0}}', { value0: stopLossLabel })} · ${modifyPositionLabel}`,
+      takeProfitTitle: `${tr('Take Profit: {{value0}}', { value0: takeProfitLabel })} · ${modifyPositionLabel}`,
+      stopLossActionLabel: `${modifyPositionLabel} · ${tr('Stop Loss:')} #${positionId}`,
+      takeProfitActionLabel: `${modifyPositionLabel} · ${tr('Take Profit:')} #${positionId}`,
+      closeActionLabel: isPendingPlacement ? placementLabel : tr('Close position {{value0}}', { value0: ticket }),
+      closeTitle: isPendingPlacement ? rowComment : tr('Close position {{value0}}', { value0: ticketLabel }),
+    };
+  }, [
+    contextMenuLabel, formatTradeLevel, formatTradePrice, formatTradeTime, isPendingPlacement,
+    isTerminalPlacementFailure, modifyPositionLabel, openTime, placementError, placementPlaceholder,
+    placementState, positionId, rawOpenPrice, rawStopLoss, rawTakeProfit, sideLabel, symbolLabel, ticket, tr, volumeLabel,
+  ]);
+
+  const profitValue = resolveTradeProfit(position).value;
+  const pointsValue = getTradePointsValue(position);
+  const profitIsPositive = profitMode === 'points'
+    ? pointsValue !== null && pointsValue >= 0 : profitValue !== null && profitValue >= 0;
+  const profitIsAvailable = profitMode === 'points' ? pointsValue !== null : profitValue !== null;
+  const rawCurrentPrice = position.hasBackendCurrentPrice === false
+    ? null : toBackendFinancialNumber(position.price_current ?? position.current_price ?? position.currentPrice);
+  const currentPriceLabel = isPendingPlacement ? placementPlaceholder
+    : rawCurrentPrice === null ? METRIC_UNAVAILABLE : formatTradePrice(rawCurrentPrice, symbolLabel);
+  const profitLabel = isPendingPlacement ? placementPlaceholder
+    : profitMode === 'points' ? formatTradePoints(position)
+      : profitValue === null || Number.isNaN(profitValue) ? METRIC_UNAVAILABLE : formatPositionProfit(profitValue);
+  const profitTitleLabel = useMemo(() => tr(profitMode === 'points' ? 'Profit Points' : 'Profit'), [profitMode, tr]);
+  const swap = position.swap;
+  const swapLabel = useMemo(() => formatMoney(swap), [formatMoney, swap]);
+  const updateTime = position.time_update;
+  const timeUpdateLabel = useMemo(() => formatTradeTime(updateTime), [formatTradeTime, updateTime]);
+
+  const leadingCells = useMemo(() => (
+    <Fragment>
+      {/* symbol */}
+      <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={tr('Symbol: {{value0}}', { value0: symbolLabel })}>
+        {isPendingPlacement && !isColumnVisible('ticket') ? (
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate">{symbolLabel}</span>
+            <span className={`truncate ${isTerminalPlacementFailure ? 'text-loss' : 'text-zinc-400'}`}>{placementLabel}</span>
+          </span>
+        ) : <span>{symbolLabel}</span>}
+      </td>
+
+      {/* ticket */}
+      {isColumnVisible('ticket') && (
+        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums truncate" title={isPendingPlacement ? placementSummary : tr('Ticket: {{value0}}', { value0: ticketLabel })}>{ticketLabel}</td>
+      )}
+
+      {/* time_create */}
+      {isColumnVisible('time') && (
+        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap" title={tr('Open time: {{value0}}', { value0: timeLabel })}>
+          {timeLabel}
+        </td>
+      )}
+
+      {/* side */}
+      {isColumnVisible('side') && (
+        <td className="rtx-trade-side-cell px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px] text-zinc-100" title={tr('Type: {{value0}}', { value0: tr(sideLabel) })}>
+          <div className="flex items-center justify-center">
+            <span>{tr(sideLabel)}</span>
+          </div>
+        </td>
+      )}
+
+      {/* volume */}
+      {isColumnVisible('volume') && (
+        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={tr('Volume: {{value0}} lots', { value0: volumeLabel })}>
+          {volumeLabel}
+        </td>
+      )}
+
+      {/* price_open */}
+      {isColumnVisible('priceOpen') && (
+        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr('Open price: {{value0}}', { value0: openPriceLabel })}>
+          {openPriceLabel}
+        </td>
+      )}
+    </Fragment>
+  ), [isColumnVisible, isPendingPlacement, isTerminalPlacementFailure, openPriceLabel, placementLabel, placementSummary, sideLabel, symbolLabel, ticketLabel, timeLabel, tr, volumeLabel]);
+
+  const accountCells = useMemo(() => (
+    <Fragment>
+      {/* swap */}
+      {isColumnVisible('swap') && (
+        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr('Swap: {{value0}}', { value0: swapLabel })}>{swapLabel}</td>
+      )}
+
+      {/* account_login */}
+      {isColumnVisible('accountLogin') && (
+        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={tr('Account login: {{value0}}', { value0: accountLoginLabel })}>
+          {accountLoginLabel}
+        </td>
+      )}
+    </Fragment>
+  ), [accountLoginLabel, isColumnVisible, swapLabel, tr]);
+
+  const updatedTimeCell = useMemo(() => (
+    <Fragment>
+      {/* time_update */}
+      {isColumnVisible('timeUpdate') && (
+        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={tr('Last update: {{value0}}', { value0: timeUpdateLabel })}>
+          {timeUpdateLabel}
+        </td>
+      )}
+    </Fragment>
+  ), [isColumnVisible, timeUpdateLabel, tr]);
+
+  const commentCell = useMemo(() => (
+    <Fragment>
+      {/* comment */}
+      {isColumnVisible('comment') && (
+        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 truncate" title={tr('Comment: {{value0}}', { value0: commentLabel })}>
+          {commentLabel}
+        </td>
+      )}
+    </Fragment>
+  ), [commentLabel, isColumnVisible, tr]);
+
+  return (
+    <Fragment>
+    <tr
+      title={rowComment}
+      data-placement-state={isPendingPlacement ? placementState : undefined}
+      aria-selected={isSelected}
+      className={`rtx-trade-row h-[30px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-default`}
+      onClick={() => {
+        if (!isPendingPlacement) setSelectedPositionKey(positionKey);
+      }}
+      onDoubleClick={() => {
+        if (isPendingPlacement) return;
+        setSelectedPositionKey(positionKey);
+        openModifyPosition(position);
+      }}
+      onContextMenu={(event) => {
+        if (isPendingPlacement) return;
+        handleTradeContextMenu(event, position);
+      }}
+    >
+      {leadingCells}
+
+      {/* price_sl */}
+      {isColumnVisible('sl') && (
+        <td
+          className="rtx-trade-sl-cell px-0 py-[2px] border-r border-zinc-800 text-center tabular-nums"
+          title={stopLossTitle}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (isPendingPlacement) return;
+            setSelectedPositionKey(positionKey);
+            if (event.detail === 0) openModifyPosition(position);
+          }}
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            if (isPendingPlacement) return;
+            setSelectedPositionKey(positionKey);
+            openModifyPosition(position);
+          }}
+        >
+          <button
+            type="button"
+            className={`rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_sl ?? position.sl) > 0 ? 'text-[#ff7676]' : 'text-zinc-100'}`}
+            disabled={isPendingPlacement}
+            aria-label={stopLossActionLabel}
+          >
+            {stopLossLabel}
+          </button>
+        </td>
+      )}
+
+      {/* price_tp */}
+      {isColumnVisible('tp') && (
+        <td
+          className="rtx-trade-tp-cell px-0 py-[2px] border-r border-zinc-800 text-center tabular-nums"
+          title={takeProfitTitle}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (isPendingPlacement) return;
+            setSelectedPositionKey(positionKey);
+            if (event.detail === 0) openModifyPosition(position);
+          }}
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            if (isPendingPlacement) return;
+            setSelectedPositionKey(positionKey);
+            openModifyPosition(position);
+          }}
+        >
+          <button
+            type="button"
+            className={`rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_tp ?? position.tp) > 0 ? 'text-profit' : 'text-zinc-100'}`}
+            disabled={isPendingPlacement}
+            aria-label={takeProfitActionLabel}
+          >
+            {takeProfitLabel}
+          </button>
+        </td>
+      )}
+
+      {/* price_current */}
+      {isColumnVisible('priceCurrent') && (
+        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums" title={tr('Current price: {{value0}}', { value0: currentPriceLabel })}>
+          {currentPriceLabel}
+        </td>
+      )}
+
+      {accountCells}
+
+      {updatedTimeCell}
+
+      {commentCell}
+
+      {/* profit */}
+      {isColumnVisible('profit') && (
+        <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${!profitIsAvailable ? 'text-zinc-500' : profitIsPositive ? 'rtx-trade-profit-value--positive text-profit' : 'rtx-trade-profit-value--negative text-loss'}`} title={`${profitTitleLabel}: ${profitLabel}`}>
+          {profitLabel}
+        </td>
+      )}
+
+      {/* Close Button */}
+      <td className="px-0.5 py-[2px] text-center">
+        <button
+          type="button"
+          aria-label={closeActionLabel}
+          title={closeTitle}
+          disabled={isPendingPlacement}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (isPendingPlacement) return;
+            onClosePosition(position.id);
+          }}
+          className="rtx-trade-close-button mx-auto flex h-6 w-6 cursor-default items-center justify-center rounded-sm border border-transparent text-[12px] font-normal leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:cursor-default disabled:text-zinc-600 disabled:hover:border-transparent disabled:hover:bg-transparent"
+        >
+          {isPendingPlacement ? (isTerminalPlacementFailure ? '!' : '…') : 'x'}
+        </button>
+      </td>
+    </tr>
+    {isTerminalPlacementFailure && (
+      <tr className="rtx-trade-placement-message text-loss" data-placement-state={placementState}>
+        <td colSpan={visibleOptionalColumnCount + 2} className="px-1.5 py-[2px] text-left">
+          <div
+            role="status"
+            className="truncate font-normal"
+            style={{ '--rtx-type-size': '13px', '--rtx-type-weight': 400 } as CSSProperties}
+            title={placementSummary}
+          >
+            {placementSummary}
+          </div>
+        </td>
+      </tr>
+    )}
+    </Fragment>
+  );
+});
 
 export function TradeTable({
   account,
@@ -178,6 +526,53 @@ export function TradeTable({
     </th>
   );
 
+  // Account publications update the footer without reformatting every trade row.
+  const tableBody = useMemo(() => {
+    const modifyPositionLabel = tr('Modify Position');
+    const contextMenuLabel = tr('Context menu');
+    return (
+      <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[13px] leading-[19.5px] font-normal">
+        {displayedLivePositions.length === 0 && (loading || error) && (
+          <tr>
+            <td colSpan={visibleOptionalColumnCount + 2} className="h-16 text-center text-zinc-600 text-xs italic">
+              {loading ? tr('Loading open positions...') : error}
+            </td>
+          </tr>
+        )}
+        {displayedLivePositions.map((position, index) => (
+          <TradeTableRow
+            key={position.id ?? index}
+            position={position}
+            tr={tr}
+            modifyPositionLabel={modifyPositionLabel}
+            contextMenuLabel={contextMenuLabel}
+            formatMoney={formatMoney}
+            formatTradeLevel={formatTradeLevel}
+            formatTradePoints={formatTradePoints}
+            formatTradePrice={formatTradePrice}
+            formatTradeTime={formatTradeTime}
+            formatTradeVolume={formatTradeVolume}
+            getPositionKey={getPositionKey}
+            getTradePointsValue={getTradePointsValue}
+            handleTradeContextMenu={handleTradeContextMenu}
+            isColumnVisible={isColumnVisible}
+            onClosePosition={onClosePosition}
+            openModifyPosition={openModifyPosition}
+            profitMode={profitMode}
+            selectedPositionKey={selectedPositionKey}
+            setSelectedPositionKey={setSelectedPositionKey}
+            visibleOptionalColumnCount={visibleOptionalColumnCount}
+          />
+        ))}
+      </tbody>
+    );
+  }, [
+    displayedLivePositions, error, formatMoney, formatTradeLevel, formatTradePoints,
+    formatTradePrice, formatTradeTime, formatTradeVolume, getPositionKey, getTradePointsValue,
+    handleTradeContextMenu, isColumnVisible, loading, onClosePosition, openModifyPosition,
+    profitMode, selectedPositionKey, setSelectedPositionKey, tr, visibleOptionalColumnCount,
+  ]);
+
   return (
     <div className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
       <table
@@ -208,291 +603,7 @@ export function TradeTable({
             />
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[13px] leading-[19.5px] font-normal">
-          {displayedLivePositions.length === 0 && (loading || error) && (
-            <tr>
-              <td colSpan={visibleOptionalColumnCount + 2} className="h-16 text-center text-zinc-600 text-xs italic">
-                {loading ? tr('Loading open positions...') : error}
-              </td>
-            </tr>
-          )}
-          {displayedLivePositions.map((position, index) => {
-            const placementState = position.placementState;
-            const isPendingPlacement = Boolean(
-              placementState && !['filled', 'confirmed'].includes(placementState),
-            );
-            const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
-            const placementLabel = placementState === 'accepted' ? tr('Accepted')
-              : placementState === 'processing' ? tr('Processing')
-                : placementState === 'rejected' ? tr('Rejected')
-                  : placementState === 'expired' ? tr('Expired')
-                    : tr('Pending');
-            const placementPlaceholder = isTerminalPlacementFailure ? '-' : '…';
-            const profitValue = resolveTradeProfit(position).value;
-            const pointsValue = getTradePointsValue(position);
-            const profitIsPositive = profitMode === 'points'
-              ? pointsValue !== null && pointsValue >= 0
-              : profitValue !== null && profitValue >= 0;
-            const profitIsAvailable = profitMode === 'points'
-              ? pointsValue !== null
-              : profitValue !== null;
-            const positionKey = getPositionKey(position);
-            const isSelected = selectedPositionKey === positionKey;
-            const symbolLabel = position.symbol ?? '-';
-            const ticketLabel = isPendingPlacement ? placementLabel : String(position.ticket ?? position.id ?? '-');
-            const openTime = position.time_create
-              ?? position.openTime
-              ?? position.open_time
-              ?? position.time_open
-              ?? position.time
-              ?? position.chartEntryTime;
-            const timeLabel = formatTradeTime(openTime);
-            const sideLabel = String(position.side ?? '').toLowerCase() || '-';
-            const volumeLabel = String(formatTradeVolume(position));
-            const rawOpenPrice = Number(
-              position.price_open
-              ?? position.open_price
-              ?? position.openPrice
-              ?? position.entryPrice
-              ?? position.chartEntryPrice
-              ?? position.price,
-            );
-            const openPriceLabel = isPendingPlacement
-              ? placementPlaceholder
-              : formatTradePrice(rawOpenPrice, symbolLabel);
-            const stopLossLabel = formatTradeLevel(position.price_sl ?? position.sl, symbolLabel);
-            const takeProfitLabel = formatTradeLevel(position.price_tp ?? position.tp, symbolLabel);
-            const rawCurrentPrice = position.hasBackendCurrentPrice === false
-              ? null
-              : toBackendFinancialNumber(position.price_current ?? position.current_price ?? position.currentPrice);
-            const currentPriceLabel = isPendingPlacement
-              ? placementPlaceholder
-              : rawCurrentPrice === null
-                ? METRIC_UNAVAILABLE
-                : formatTradePrice(rawCurrentPrice, symbolLabel);
-            const swapLabel = formatMoney(position.swap);
-            const accountLoginLabel = String(position.account_login ?? '-');
-            const timeUpdateLabel = formatTradeTime(position.time_update);
-            const placementError = [position.placementErrorCode, position.placementErrorMessage]
-              .filter(Boolean)
-              .join(': ');
-            const commentLabel = String(placementError || position.comment || '-');
-            const profitLabel = isPendingPlacement
-              ? placementPlaceholder
-              : profitMode === 'points'
-                ? formatTradePoints(position)
-                : profitValue === null || Number.isNaN(profitValue)
-                  ? METRIC_UNAVAILABLE
-                  : formatPositionProfit(profitValue);
-            const rowSummary = [
-              symbolLabel,
-              tr(sideLabel),
-              tr('{{value0}} lots', { value0: volumeLabel }),
-            ].join(' · ');
-            const placementSummary = `${placementLabel} · ${rowSummary}${isTerminalPlacementFailure ? `: ${placementError || tr('Order failed')}` : ''}`;
-            const rowComment = isPendingPlacement
-              ? placementSummary
-              : `${rowSummary}\n${tr('Ticket: {{value0}}', { value0: ticketLabel })}\n${tr('Modify Position')} · ${tr('Context menu')}`;
-
-            return (
-              <Fragment key={position.id ?? index}>
-              <tr
-                title={rowComment}
-                data-placement-state={isPendingPlacement ? placementState : undefined}
-                aria-selected={isSelected}
-                className={`rtx-trade-row h-[30px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-default`}
-                onClick={() => {
-                  if (!isPendingPlacement) setSelectedPositionKey(positionKey);
-                }}
-                onDoubleClick={() => {
-                  if (isPendingPlacement) return;
-                  setSelectedPositionKey(positionKey);
-                  openModifyPosition(position);
-                }}
-                onContextMenu={(event) => {
-                  if (isPendingPlacement) return;
-                  handleTradeContextMenu(event, position);
-                }}
-              >
-                {/* symbol */}
-                <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={tr('Symbol: {{value0}}', { value0: symbolLabel })}>
-                  {isPendingPlacement && !isColumnVisible('ticket') ? (
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate">{symbolLabel}</span>
-                      <span className={`truncate ${isTerminalPlacementFailure ? 'text-loss' : 'text-zinc-400'}`}>{placementLabel}</span>
-                    </span>
-                  ) : <span>{symbolLabel}</span>}
-                </td>
-
-                {/* ticket */}
-                {isColumnVisible('ticket') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums truncate" title={isPendingPlacement ? placementSummary : tr('Ticket: {{value0}}', { value0: ticketLabel })}>{ticketLabel}</td>
-                )}
-
-                {/* time_create */}
-                {isColumnVisible('time') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap" title={tr('Open time: {{value0}}', { value0: timeLabel })}>
-                    {timeLabel}
-                  </td>
-                )}
-
-                {/* side */}
-                {isColumnVisible('side') && (
-                  <td className="rtx-trade-side-cell px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px] text-zinc-100" title={tr('Type: {{value0}}', { value0: tr(sideLabel) })}>
-                    <div className="flex items-center justify-center">
-                      <span>{tr(sideLabel)}</span>
-                    </div>
-                  </td>
-                )}
-
-                {/* volume */}
-                {isColumnVisible('volume') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={tr('Volume: {{value0}} lots', { value0: volumeLabel })}>
-                    {volumeLabel}
-                  </td>
-                )}
-
-                {/* price_open */}
-                {isColumnVisible('priceOpen') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr('Open price: {{value0}}', { value0: openPriceLabel })}>
-                    {openPriceLabel}
-                  </td>
-                )}
-
-                {/* price_sl */}
-                {isColumnVisible('sl') && (
-                  <td
-                    className="rtx-trade-sl-cell px-0 py-[2px] border-r border-zinc-800 text-center tabular-nums"
-                    title={`${tr('Stop Loss: {{value0}}', { value0: stopLossLabel })} · ${tr('Modify Position')}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (isPendingPlacement) return;
-                      setSelectedPositionKey(positionKey);
-                      if (event.detail === 0) openModifyPosition(position);
-                    }}
-                    onDoubleClick={(event) => {
-                      event.stopPropagation();
-                      if (isPendingPlacement) return;
-                      setSelectedPositionKey(positionKey);
-                      openModifyPosition(position);
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className={`rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_sl ?? position.sl) > 0 ? 'text-[#ff7676]' : 'text-zinc-100'}`}
-                      disabled={isPendingPlacement}
-                      aria-label={`${tr('Modify Position')} · ${tr('Stop Loss:')} #${position.id}`}
-                    >
-                      {stopLossLabel}
-                    </button>
-                  </td>
-                )}
-
-                {/* price_tp */}
-                {isColumnVisible('tp') && (
-                  <td
-                    className="rtx-trade-tp-cell px-0 py-[2px] border-r border-zinc-800 text-center tabular-nums"
-                    title={`${tr('Take Profit: {{value0}}', { value0: takeProfitLabel })} · ${tr('Modify Position')}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (isPendingPlacement) return;
-                      setSelectedPositionKey(positionKey);
-                      if (event.detail === 0) openModifyPosition(position);
-                    }}
-                    onDoubleClick={(event) => {
-                      event.stopPropagation();
-                      if (isPendingPlacement) return;
-                      setSelectedPositionKey(positionKey);
-                      openModifyPosition(position);
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className={`rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center font-normal ${(position.price_tp ?? position.tp) > 0 ? 'text-profit' : 'text-zinc-100'}`}
-                      disabled={isPendingPlacement}
-                      aria-label={`${tr('Modify Position')} · ${tr('Take Profit:')} #${position.id}`}
-                    >
-                      {takeProfitLabel}
-                    </button>
-                  </td>
-                )}
-
-                {/* price_current */}
-                {isColumnVisible('priceCurrent') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums" title={tr('Current price: {{value0}}', { value0: currentPriceLabel })}>
-                    {currentPriceLabel}
-                  </td>
-                )}
-
-                {/* swap */}
-                {isColumnVisible('swap') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr('Swap: {{value0}}', { value0: swapLabel })}>{swapLabel}</td>
-                )}
-
-                {/* account_login */}
-                {isColumnVisible('accountLogin') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={tr('Account login: {{value0}}', { value0: accountLoginLabel })}>
-                    {accountLoginLabel}
-                  </td>
-                )}
-
-                {/* time_update */}
-                {isColumnVisible('timeUpdate') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={tr('Last update: {{value0}}', { value0: timeUpdateLabel })}>
-                    {timeUpdateLabel}
-                  </td>
-                )}
-
-                {/* comment */}
-                {isColumnVisible('comment') && (
-                  <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 truncate" title={tr('Comment: {{value0}}', { value0: commentLabel })}>
-                    {commentLabel}
-                  </td>
-                )}
-
-                {/* profit */}
-                {isColumnVisible('profit') && (
-                  <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${!profitIsAvailable ? 'text-zinc-500' : profitIsPositive ? 'rtx-trade-profit-value--positive text-profit' : 'rtx-trade-profit-value--negative text-loss'}`} title={`${tr(profitMode === 'points' ? 'Profit Points' : 'Profit')}: ${profitLabel}`}>
-                    {profitLabel}
-                  </td>
-                )}
-
-                {/* Close Button */}
-                <td className="px-0.5 py-[2px] text-center">
-                  <button
-                    type="button"
-                    aria-label={isPendingPlacement ? placementLabel : tr('Close position {{value0}}', { value0: position.ticket ?? position.id })}
-                    title={isPendingPlacement ? rowComment : tr('Close position {{value0}}', { value0: ticketLabel })}
-                    disabled={isPendingPlacement}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (isPendingPlacement) return;
-                      onClosePosition(position.id);
-                    }}
-                    className="rtx-trade-close-button mx-auto flex h-6 w-6 cursor-default items-center justify-center rounded-sm border border-transparent text-[12px] font-normal leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:cursor-default disabled:text-zinc-600 disabled:hover:border-transparent disabled:hover:bg-transparent"
-                  >
-                    {isPendingPlacement ? (isTerminalPlacementFailure ? '!' : '…') : 'x'}
-                  </button>
-                </td>
-              </tr>
-              {isTerminalPlacementFailure && (
-                <tr className="rtx-trade-placement-message text-loss" data-placement-state={placementState}>
-                  <td colSpan={visibleOptionalColumnCount + 2} className="px-1.5 py-[2px] text-left">
-                    <div
-                      role="status"
-                      className="truncate font-normal"
-                      style={{ '--rtx-type-size': '13px', '--rtx-type-weight': 400 } as CSSProperties}
-                      title={placementSummary}
-                    >
-                      {placementSummary}
-                    </div>
-                  </td>
-                </tr>
-              )}
-              </Fragment>
-            );
-          })}
-        </tbody>
+        {tableBody}
       </table>
 
       {/* Account summary follows the last trade and scrolls with the list. */}

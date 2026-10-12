@@ -1,16 +1,22 @@
 import type { ComponentProps } from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolboxTradePosition } from '../../../hooks/useToolboxTradeData';
 import { TradeTable } from './TradeTable';
 import { DEFAULT_TRADE_COLUMN_WIDTHS, TRADE_COLUMN_DEFS } from './tradeTabModel';
 
-vi.mock('../../../hooks/useUiTranslation', () => ({
-  useUiTranslation: () => (source: string, values?: Record<string, unknown>) => source.replace(
+const translation = vi.hoisted(() => {
+  const translate = (source: string, values?: Record<string, unknown>) => source.replace(
     /\{\{(\w+)\}\}/g, (_, key: string) => String(values?.[key] ?? ''),
-  ),
+  );
+  return { translate, current: translate };
+});
+vi.mock('../../../hooks/useUiTranslation', () => ({
+  useUiTranslation: () => translation.current,
 }));
 vi.mock('../../../components/ui/Icon', () => ({ Icon: () => null }));
+
+beforeEach(() => { translation.current = translation.translate; });
 
 const confirmedPosition = (ticket: number): ToolboxTradePosition => ({
   id: ticket, ticket, symbol: 'BTCUSD', side: 'BUY', volume: 0.01,
@@ -152,5 +158,173 @@ describe('Trade placement status presentation', () => {
     }
     fireEvent.click(screen.getByRole('button', { name: 'Close position 100' }));
     expect(props.onClosePosition).toHaveBeenCalledExactlyOnceWith(100);
+  });
+});
+
+describe('Trade row updates', () => {
+  it('updates quote values without reformatting or translating static cells', () => {
+    const translate = vi.fn(translation.translate);
+    translation.current = translate;
+    const position = confirmedPosition(100);
+    const props = createProps([position]);
+    const formatTradeTime = vi.fn(props.formatTradeTime);
+    const formatTradePrice = vi.fn(props.formatTradePrice);
+    const formatTradeLevel = vi.fn(props.formatTradeLevel);
+    Object.assign(props, { formatTradeTime, formatTradePrice, formatTradeLevel });
+    const view = render(<TradeTable {...props} />);
+    formatTradeTime.mockClear();
+    formatTradePrice.mockClear();
+    formatTradeLevel.mockClear();
+    translate.mockClear();
+
+    for (let update = 1; update <= 20; update += 1) {
+      view.rerender(<TradeTable {...props} displayedLivePositions={[{
+        ...position, price_current: 75010 + update, profit: update,
+        time_update: `2026-10-09T10:00:${String(update).padStart(2, '0')}Z`,
+      }]} />);
+    }
+
+    expect(screen.getByTitle('Current price: 75030')).toHaveTextContent('75030');
+    expect(screen.getByTitle('Profit: 20.000')).toHaveTextContent('20.000');
+    expect(screen.getByTitle('Last update: 2026-10-09T10:00:20Z')).toHaveTextContent('2026-10-09T10:00:20Z');
+    expect(formatTradeTime).toHaveBeenCalledTimes(20);
+    expect(formatTradeTime).not.toHaveBeenCalledWith(position.time_create);
+    expect(formatTradePrice).toHaveBeenCalledTimes(20);
+    expect(formatTradePrice).not.toHaveBeenCalledWith(position.price_open, position.symbol);
+    expect(formatTradeLevel).not.toHaveBeenCalled();
+    const staticSources = new Set([
+      'Symbol: {{value0}}', 'Ticket: {{value0}}', 'Open time: {{value0}}',
+      'Type: {{value0}}', 'Volume: {{value0}} lots', 'Open price: {{value0}}',
+      'Stop Loss: {{value0}}', 'Take Profit: {{value0}}', 'Swap: {{value0}}',
+      'Account login: {{value0}}', 'Comment: {{value0}}', 'Close position {{value0}}',
+    ]);
+    expect(translate.mock.calls.filter(([source]) => staticSources.has(source))).toEqual([]);
+  });
+
+  it('refreshes changed static details and sends the latest quoted position to row actions', () => {
+    const props = createProps([confirmedPosition(100)]);
+    const view = render(<TradeTable {...props} />);
+    const updated: ToolboxTradePosition = {
+      ...props.displayedLivePositions[0], symbol: 'ETHUSD', side: 'SELL', volume: 0.25,
+      price_open: 3500, price_sl: 3600, price_tp: 3400, swap: 2, account_login: 200002,
+      time_create: '2026-10-09T11:00:00Z', comment: 'Updated protection',
+    };
+    view.rerender(<TradeTable {...props} displayedLivePositions={[updated]} />);
+    expect(screen.getByTitle('Symbol: ETHUSD')).toHaveTextContent('ETHUSD');
+    expect(screen.getByTitle('Type: sell')).toHaveTextContent('sell');
+    expect(screen.getByTitle('Volume: 0.25 lots')).toHaveTextContent('0.25');
+    expect(screen.getByTitle('Open price: 3500')).toHaveTextContent('3500');
+    expect(screen.getByTitle('Open time: 2026-10-09T11:00:00Z')).toHaveTextContent('2026-10-09T11:00:00Z');
+    expect(view.container.querySelector('.rtx-trade-sl-value')).toHaveTextContent('3600');
+    expect(view.container.querySelector('.rtx-trade-tp-value')).toHaveTextContent('3400');
+    expect(screen.getByTitle('Swap: 2.00')).toHaveTextContent('2.00');
+    expect(screen.getByTitle('Account login: 200002')).toHaveTextContent('200002');
+    expect(screen.getByTitle('Comment: Updated protection')).toHaveTextContent('Updated protection');
+
+    const latest = { ...updated, price_current: 3490, profit: 25 };
+    view.rerender(<TradeTable {...props} displayedLivePositions={[latest]} />);
+    const row = view.container.querySelector('tbody tr')!;
+    fireEvent.doubleClick(row);
+    expect(props.openModifyPosition).toHaveBeenLastCalledWith(latest);
+    fireEvent.click(view.container.querySelector('.rtx-trade-sl-value')!);
+    expect(props.openModifyPosition).toHaveBeenLastCalledWith(latest);
+    fireEvent.contextMenu(row);
+    expect(props.handleTradeContextMenu).toHaveBeenLastCalledWith(expect.anything(), latest);
+  });
+
+  it('updates cached placement labels and failure details through an order lifecycle', () => {
+    const pending = provisionalPosition('pending');
+    const props = createProps([pending]);
+    const view = render(<TradeTable {...props} />);
+    view.rerender(<TradeTable {...props} displayedLivePositions={[{ ...pending, placementState: 'accepted' }]} />);
+    expect(screen.getByRole('button', { name: 'Accepted' })).toBeDisabled();
+    expect(screen.queryByText('Pending')).not.toBeInTheDocument();
+    view.rerender(<TradeTable {...props} displayedLivePositions={[{
+      ...pending, placementState: 'rejected', placementErrorMessage: 'Volume limit',
+    }]} />);
+    expect(screen.getByRole('button', { name: 'Rejected' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Volume limit');
+    view.rerender(<TradeTable {...props} displayedLivePositions={[confirmedPosition(100)]} />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close position 100' })).toBeEnabled();
+  });
+
+  it('updates account publications and totals without repeating row formatting', () => {
+    const props = createProps([confirmedPosition(100), confirmedPosition(101)]);
+    const formatTradeTime = vi.fn(props.formatTradeTime);
+    props.formatTradeTime = formatTradeTime;
+    const view = render(<TradeTable {...props} />);
+    expect(formatTradeTime).toHaveBeenCalledTimes(4);
+    formatTradeTime.mockClear();
+
+    view.rerender(<TradeTable
+      {...props}
+      account={{ currency: 'EUR', publicationToken: 'publication-two' } as NonNullable<typeof props.account>}
+      floatingProfitLabel="12.00"
+      totalLivePnL={12}
+      liveEquity={1012}
+    />);
+
+    expect(formatTradeTime).not.toHaveBeenCalled();
+    expect(view.container.querySelector('.rtx-trade-footer')).toHaveAttribute('data-metrics-publication-token', 'publication-two');
+    expect(view.container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('12.00EUR');
+    expect(screen.getByRole('button', { name: 'Close position 100' })).toBeEnabled();
+  });
+
+  it('refreshes changed positions, selection, column visibility and profit mode', () => {
+    const position = confirmedPosition(100);
+    const props = createProps([position]);
+    const view = render(<TradeTable {...props} />);
+    view.rerender(<TradeTable {...props} displayedLivePositions={[{ ...position, price_current: 75042, profit: 5 }]} />);
+    expect(screen.getByTitle('Current price: 75042')).toHaveTextContent('75042');
+    expect(screen.getByTitle('Profit: 5.0000')).toHaveTextContent('5.0000');
+
+    view.rerender(<TradeTable {...props} selectedPositionKey="100" />);
+    expect(view.container.querySelector('tbody tr')).toHaveAttribute('aria-selected', 'true');
+
+    view.rerender(<TradeTable {...props} isColumnVisible={key => key !== 'swap'} />);
+    expect(screen.queryByTitle('Swap: 0.00')).not.toBeInTheDocument();
+
+    view.rerender(<TradeTable {...props} profitMode="points" />);
+    expect(screen.getByTitle('Profit Points: 10')).toHaveTextContent('10');
+  });
+
+  it('refreshes translated row labels when the language changes', () => {
+    const props = createProps([confirmedPosition(100)]);
+    const view = render(<TradeTable {...props} />);
+    translation.current = (source, values) => `translated: ${translation.translate(source, values)}`;
+    view.rerender(<TradeTable {...props} />);
+
+    expect(screen.getByRole('button', { name: 'translated: Close position 100' })).toBeEnabled();
+    expect(view.container.querySelector('tbody tr')?.getAttribute('title')).toContain('translated: Modify Position');
+    expect(screen.getByTitle('translated: Current price: 75010')).toHaveTextContent('75010');
+  });
+
+  it('uses current trade actions and formatters after they change', () => {
+    const position = confirmedPosition(100);
+    const props = createProps([position]);
+    const view = render(<TradeTable {...props} />);
+    const current = {
+      onClosePosition: vi.fn(),
+      openModifyPosition: vi.fn(),
+      handleTradeContextMenu: vi.fn(),
+      setSelectedPositionKey: vi.fn(),
+      formatTradePrice: (value: unknown) => `${value} updated`,
+    };
+    view.rerender(<TradeTable {...props} {...current} />);
+    const row = view.container.querySelector('tbody tr')!;
+
+    expect(screen.getByTitle('Current price: 75010 updated')).toHaveTextContent('75010 updated');
+    fireEvent.click(screen.getByRole('button', { name: 'Close position 100' }));
+    fireEvent.doubleClick(row);
+    fireEvent.contextMenu(row);
+    expect(current.onClosePosition).toHaveBeenCalledExactlyOnceWith(100);
+    expect(current.openModifyPosition).toHaveBeenCalledExactlyOnceWith(position);
+    expect(current.setSelectedPositionKey).toHaveBeenCalledWith('100');
+    expect(current.handleTradeContextMenu).toHaveBeenCalledWith(expect.anything(), position);
+    expect(props.onClosePosition).not.toHaveBeenCalled();
+    expect(props.openModifyPosition).not.toHaveBeenCalled();
+    expect(props.handleTradeContextMenu).not.toHaveBeenCalled();
+    expect(props.setSelectedPositionKey).not.toHaveBeenCalled();
   });
 });

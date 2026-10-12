@@ -303,7 +303,8 @@ export const createTradeOverlayDomRuntime = ({
             hitArea.setAttribute('aria-label', title);
           } else hitArea.title = title;
         });
-        hitArea.style.cssText = `position:absolute;display:none;height:${TRADE_LEVEL_HIT_AREA_PX}px;transform:translateY(-50%);z-index:15;pointer-events:auto;cursor:grab;background:transparent;touch-action:none;`;
+        hitArea.style.cssText = `position:absolute;display:none;height:${TRADE_LEVEL_HIT_AREA_PX}px;transform:translateY(-50%);z-index:15;pointer-events:auto;background:transparent;touch-action:none;`;
+        hitArea.style.cursor = 'default';
         appendActiveInteractionNode(hitArea, { kind: 'price-hit-area', price });
       }
 
@@ -313,7 +314,17 @@ export const createTradeOverlayDomRuntime = ({
 
       const badge = document.createElement('div');
       bindChartUiTranslation(badge, () => {
-        badge.textContent = options.getLabel?.() ?? labelText;
+        const text = options.getLabel?.() ?? labelText;
+        const roleLabel = options.role === 'SL' || options.role === 'TP' ? tr(options.role) : '';
+        if (options.tradeKey && roleLabel && text.startsWith(roleLabel)) {
+          const dragLabel = document.createElement('span');
+          dragLabel.className = 'rtx-trade-level-drag-label';
+          dragLabel.style.cursor = 'grab';
+          dragLabel.textContent = roleLabel;
+          badge.replaceChildren(dragLabel, document.createTextNode(text.slice(roleLabel.length)));
+        } else {
+          badge.textContent = text;
+        }
         badge.title = options.getTitle?.() ?? options.title ?? '';
       });
       badge.className = 'rtx-trade-level-badge';
@@ -339,8 +350,9 @@ export const createTradeOverlayDomRuntime = ({
       badge.dataset.leftInset = String(leftInset);
       badge.dataset.display = isLineTextLabel ? 'block' : 'inline-flex';
       badge.style.cssText = isLineTextLabel
-        ? `position:absolute;left:${leftInset}px;display:none;padding:0 2px;background:transparent;border:0;color:${color};font-size:var(--rtx-ui-font-size, 14px);font-family:Consolas,'Courier New',monospace;font-weight:var(--rtx-font-weight-control, 400);line-height:14px;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:0;transform:none;width:max-content;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:left;touch-action:none;letter-spacing:0;text-shadow:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;`
-        : `position:absolute;left:${leftInset}px;display:none;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:var(--rtx-ui-font-size, 14px);font-family:Consolas,'Courier New',monospace;font-weight:var(--rtx-font-weight-control, 400);white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;${palette.shadow}`;
+        ? `position:absolute;left:${leftInset}px;display:none;padding:0 2px;background:transparent;border:0;color:${color};font-size:var(--rtx-ui-font-size, 14px);font-family:Consolas,'Courier New',monospace;font-weight:var(--rtx-font-weight-control, 400);line-height:14px;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};border-radius:0;transform:none;width:max-content;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:left;touch-action:none;letter-spacing:0;text-shadow:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;`
+        : `position:absolute;left:${leftInset}px;display:none;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:var(--rtx-ui-font-size, 14px);font-family:Consolas,'Courier New',monospace;font-weight:var(--rtx-font-weight-control, 400);white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;${palette.shadow}`;
+      badge.style.cursor = 'default';
       appendOverlayNode(badge, { kind: 'price-badge', price }, 'active');
     };
 
@@ -631,21 +643,22 @@ export const createTradeOverlayDomRuntime = ({
           : (lightSurface ? LIGHT_CHART_TRADE_COLORS.sl : DARK_CHART_TRADE_COLORS.sl);
         Object.assign(chip.style, {
           position: 'static', display: 'inline-flex', transform: 'none',
-          fontWeight: lightSurface ? '400' : '600', fontFamily: 'Arial, sans-serif', fontSize: '10px',
-          color: accent, padding: '0 5px', height: '24px', lineHeight: '20px', boxSizing: 'border-box',
+          fontWeight: 'inherit', fontFamily: 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)', fontSize: 'inherit', letterSpacing: 'normal',
+          color: accent, padding: '0 2px', height: '20px', lineHeight: '18px', boxSizing: 'border-box',
           minWidth: '24px', justifyContent: 'center', flex: '0 0 auto',
           backgroundColor: lightSurface
-            ? (chartThemeRef.current.background ?? '#fafbfc')
-            : DARK_CHART_TRADE_COLORS.surface,
-          border: `1px ${lightSurface ? 'dotted' : 'solid'} ${accent}`, borderRadius: '3px', textShadow: 'none',
+            ? (role === 'TP' ? '#edf7f4' : '#fff7e8')
+            : (role === 'TP' ? '#21332f' : '#362f24'),
+          border: `1px solid ${accent}40`, borderRadius: '3px', textShadow: 'none',
         });
+        chip.style.setProperty('--rtx-type-size', 'inherit');
+        chip.style.setProperty('--rtx-type-weight', 'inherit');
         chip.addEventListener('mouseenter', () => {
           chip.style.borderColor = accent;
           chip.style.borderStyle = 'solid';
         });
         chip.addEventListener('mouseleave', () => {
-          chip.style.borderColor = accent;
-          chip.style.borderStyle = lightSurface ? 'dotted' : 'solid';
+          chip.style.borderColor = `${accent}40`;
         });
         const brackets = controlBar.root.querySelector<HTMLElement>('.rtx-trade-brackets')
           ?? controlBar.root.querySelector<HTMLElement>('.rtx-trade-control-actions')

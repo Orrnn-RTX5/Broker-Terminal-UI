@@ -44,7 +44,7 @@ html:root.rtx-skin-untitled-light :is(
 
 html:root.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
   --rtx-type-size: var(--rtx-light-type-body);
-  --rtx-type-weight: var(--rtx-light-weight-body);
+  --rtx-type-weight: var(--rtx-light-weight-control);
 }
 
 html:root.rtx-skin-untitled-light :is(
@@ -198,6 +198,18 @@ html:root.rtx-skin-untitled-light :is(
   --rtx-type-family: var(--rtx-ui-font-family) !important;
 }
 
+/* Trade labels use the full reading size, including the user's size preference. */
+html:root.rtx-skin-untitled-light .rtx-trade-controls--entry.rtx-trade-controls--plain {
+  --rtx-type-size: var(--rtx-light-type-body) !important;
+  --rtx-type-weight: var(--rtx-light-weight-body) !important;
+}
+
+/* Keep TP/SL and side labels on the entry toolbar's shared text role. */
+html:root.rtx-skin-untitled-light .rtx-trade-controls--entry :is(.rtx-trade-dock-chip, .rtx-trade-side-label) {
+  --rtx-type-size: inherit !important;
+  --rtx-type-weight: inherit !important;
+}
+
 html:root.rtx-skin-untitled-light .rtx-trade-marker__tooltip-header {
   --rtx-type-weight: var(--rtx-light-weight-heading);
 }
@@ -333,7 +345,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs::befo
   left: 0;
   right: 0;
   height: 1px;
-  background: var(--rtx-light-border-strong);
+  background: var(--rtx-light-control-border);
   pointer-events: none;
 }
 
@@ -378,7 +390,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
   right: 0;
   bottom: 4px;
   width: 1px;
-  background: var(--rtx-light-border-strong);
+  background: var(--rtx-light-control-border);
   pointer-events: none;
 }
 
@@ -733,6 +745,10 @@ html:root.rtx-skin-untitled-light .rtx-market-watch-trading__symbol {
 
 html:root.rtx-skin-untitled-light .rtx-trade-controls :is(.rtx-trade-chip--role, .rtx-trade-side-label) {
   --rtx-type-weight: var(--rtx-light-weight-control);
+}
+
+html:root.rtx-skin-untitled-light .rtx-trade-controls--entry :is(.rtx-trade-chip--volume, .rtx-trade-chip-value) {
+  --rtx-type-weight: inherit;
 }
 
 html:root.rtx-skin-untitled-light .rtx-history-downloader__identity h2 {

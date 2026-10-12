@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, renderHook } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
@@ -9,24 +10,43 @@ const mocks = vi.hoisted(() => {
     accountId: '200001',
     authToken: 'access-token',
     account: null as any,
-    setAccount: vi.fn((account: any) => { storeState.account = account; }),
+    setAccount: vi.fn((account: any) => updateStore({ account })),
     positions: [] as any[],
-    setPositions: vi.fn((positions: any[]) => {
-      storeState.positions = positions;
-    }),
+    setPositions: vi.fn((positions: any[]) => updateStore({ positions })),
+  };
+  const storeSubscribers = new Set<(state: typeof storeState, previous: typeof storeState) => void>();
+  const updateStore = (patch: Partial<typeof storeState>) => {
+    const previous = { ...storeState };
+    Object.assign(storeState, patch);
+    storeSubscribers.forEach(listener => listener(storeState, previous));
   };
 
   return {
     storeState,
+    storeSubscribers,
+    updateStore,
+    scopeSubscribers: new Set<(scope: any) => void>(),
+    sessionScope: 'authenticated|200001|test|https://test.example.com',
     getSessionTradeSnapshotRequests: vi.fn(),
   };
 });
 
-vi.mock('../store/useAppStore', () => {
+vi.mock('../store/useAppStore', async () => {
+  const { useSyncExternalStore } = await import('react');
   const useAppStore = Object.assign(
-    (selector: (state: typeof mocks.storeState) => unknown) => selector(mocks.storeState),
+    (selector: (state: typeof mocks.storeState) => unknown) => useSyncExternalStore(
+      (listener) => {
+        mocks.storeSubscribers.add(listener);
+        return () => { mocks.storeSubscribers.delete(listener); };
+      },
+      () => selector(mocks.storeState),
+    ),
     {
       getState: () => mocks.storeState,
+      subscribe: (listener: (state: typeof mocks.storeState, previous: typeof mocks.storeState) => void) => {
+        mocks.storeSubscribers.add(listener);
+        return () => { mocks.storeSubscribers.delete(listener); };
+      },
     },
   );
   return { useAppStore, isConfirmedClosedPosition: () => false };
@@ -59,7 +79,11 @@ vi.mock('../services/brokerSession', () => ({
     brokerId: 'test',
     serverUrl: 'https://test.example.com',
   }),
-  getCommittedBrokerAccountSessionScopeKey: () => 'authenticated|200001|test|https://test.example.com',
+  getCommittedBrokerAccountSessionScopeKey: () => mocks.sessionScope,
+  onCommittedBrokerAccountSessionScopeChange: (listener: (scope: any) => void) => {
+    mocks.scopeSubscribers.add(listener);
+    return () => { mocks.scopeSubscribers.delete(listener); };
+  },
   getServerUrl: () => 'https://test.example.com',
 }));
 
@@ -107,6 +131,9 @@ describe('useToolboxTradeData display lifecycle', () => {
     mocks.storeState.authToken = 'access-token';
     mocks.storeState.account = null;
     mocks.storeState.positions = [];
+    mocks.storeSubscribers.clear();
+    mocks.scopeSubscribers.clear();
+    mocks.sessionScope = 'authenticated|200001|test|https://test.example.com';
     mocks.storeState.setPositions.mockClear();
     mocks.getSessionTradeSnapshotRequests.mockReset();
     vi.stubGlobal('WebSocket', IdleWebSocket);
@@ -166,6 +193,102 @@ describe('useToolboxTradeData display lifecycle', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(webSocketSpy).not.toHaveBeenCalled();
     unmount();
+  });
+
+  it('renders one authoritative account/position update once without first painting old rows', () => {
+    mocks.storeState.positions = [rawPosition];
+    const visibleRenders: { equity: number | undefined; profit: number | undefined }[] = [];
+    const { result, unmount } = renderHook(() => {
+      const trade = useToolboxTradeData();
+      visibleRenders.push({ equity: trade.account?.equity, profit: trade.positions[0]?.profit });
+      return trade;
+    });
+    visibleRenders.length = 0;
+
+    act(() => mocks.updateStore({
+      account: { equity: 1022, publicationToken: 'snapshot-2' },
+      positions: [{ ...rawPosition, profit: 22 }],
+    }));
+
+    expect(visibleRenders).toEqual([{ equity: 1022, profit: 22 }]);
+    expect(result.current.positions[0]).toMatchObject({ id: 17, profit: 22 });
+    unmount();
+  });
+
+  it('keeps row identities for account-only packets and ignores identical displayed snapshots', () => {
+    mocks.storeState.positions = [rawPosition];
+    mocks.storeState.account = { equity: 1010, publicationToken: 'snapshot-1' };
+    const committed = vi.fn();
+    const { result, unmount } = renderHook(() => {
+      const trade = useToolboxTradeData();
+      useLayoutEffect(() => { committed(); });
+      return trade;
+    });
+    const positions = result.current.positions;
+    committed.mockClear();
+    act(() => mocks.updateStore({ account: { equity: 1020, publicationToken: 'snapshot-2' } }));
+    expect(committed).toHaveBeenCalledOnce();
+    expect(result.current.account).toMatchObject({ equity: 1020, publicationToken: 'snapshot-2' });
+    expect(result.current.positions).toBe(positions);
+
+    committed.mockClear();
+    act(() => mocks.updateStore({ account: { ...mocks.storeState.account }, positions: [{ ...rawPosition }] }));
+    expect(committed).not.toHaveBeenCalled();
+    expect(result.current.positions).toBe(positions);
+    unmount();
+  });
+
+  it('does not normalize rows again for account-only packets', () => {
+    const readSymbol = vi.fn(() => 'EURUSD');
+    mocks.storeState.positions = [{ ...rawPosition, get symbol() { return readSymbol(); } }];
+    const { unmount } = renderHook(() => useToolboxTradeData());
+    readSymbol.mockClear();
+
+    act(() => mocks.updateStore({ account: { equity: 1050, publicationToken: 'snapshot-2' } }));
+
+    expect(readSymbol).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('rejects old broker callbacks and disposes the direct stream subscription', () => {
+    mocks.storeState.positions = [rawPosition];
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    const positions = result.current.positions;
+    const callbacks = [...mocks.storeSubscribers];
+    mocks.sessionScope = 'authenticated|200001|other|https://other.example.com';
+
+    act(() => mocks.updateStore({ positions: [{ ...rawPosition, ticket: 18 }] }));
+    expect(result.current.positions).toBe(positions);
+    unmount();
+    expect(mocks.storeSubscribers.size).toBe(0);
+    act(() => callbacks.forEach(callback => callback(mocks.storeState, mocks.storeState)));
+    expect(result.current.positions).toBe(positions);
+  });
+
+  it('rebinds a broker scope change with the same login and token and clears old pending rows', () => {
+    const { result, unmount } = renderHook(() => useToolboxTradeData());
+    act(() => window.dispatchEvent(new CustomEvent('rtx:market-order-placement-state', {
+      detail: {
+        login: 200001, sessionScope: mocks.sessionScope, clientOrderId: 'old-broker-order',
+        provisionalTicket: -101, status: 'pending', position: { ...rawPosition, ticket: -101 },
+      },
+    })));
+    expect(result.current.pendingPositions).toHaveLength(1);
+
+    act(() => {
+      mocks.sessionScope = 'authenticated|200001|other|https://other.example.com';
+      mocks.updateStore({ account: null, positions: [] });
+      mocks.scopeSubscribers.forEach(listener => listener({}));
+    });
+    expect(result.current.pendingPositions).toEqual([]);
+    act(() => mocks.updateStore({
+      account: { equity: 2000, publicationToken: 'other-broker-snapshot' },
+      positions: [{ ...rawPosition, ticket: 18 }],
+    }));
+    expect(result.current.account).toMatchObject({ equity: 2000, publicationToken: 'other-broker-snapshot' });
+    expect(result.current.positions.map(position => position.id)).toEqual([18]);
+    unmount();
+    expect(mocks.scopeSubscribers.size).toBe(0);
   });
 
   it.each(['rejected', 'expired'] as const)('updates normalized pending rows through %s without affecting another order', (terminalStatus) => {

@@ -837,33 +837,27 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).not.toContain('const createExecutionPin =');
   });
 
-  it('keeps captured trade drags synchronous and moves idle hover scans off the pan path', () => {
+  it('keeps captured trade drags synchronous without scanning trade levels on idle pointer moves', () => {
     const effectStart = source.indexOf('const interactionRoot = container.parentElement ?? container;');
     const effectEnd = source.indexOf('\n  ]);', effectStart);
     const effect = source.slice(effectStart, effectEnd);
-    const hoverStart = effect.indexOf('const queueTradeHover =');
-    const hoverEnd = effect.indexOf('const handlePointerDown =', hoverStart);
-    const hover = effect.slice(hoverStart, hoverEnd);
     const moveStart = effect.indexOf('const handlePointerMove =');
     const moveEnd = effect.indexOf('const handlePointerUp =', moveStart);
     const move = effect.slice(moveStart, moveEnd);
 
     expect(effectStart).toBeGreaterThan(-1);
     expect(effectEnd).toBeGreaterThan(effectStart);
-    expect(hoverStart).toBeGreaterThan(-1);
-    expect(hoverEnd).toBeGreaterThan(hoverStart);
     expect(moveStart).toBeGreaterThan(-1);
     expect(moveEnd).toBeGreaterThan(moveStart);
 
-    expect(effect).toContain('if (dragCursorActive || active === tradeHoverCursorActive) return;');
-    expect(hover).toContain('window.requestAnimationFrame(');
-    expect(hover.match(/container\.getBoundingClientRect\(\)/g)).toHaveLength(1);
-    expect(hover).toContain('isChartInteractionActiveRef.current');
-    expect(hover).toContain('findClosestTradeLevel(y, TRADE_LEVEL_HIT_AREA_PX / 2)');
-    expect(move.indexOf('if (dragState)')).toBeLessThan(move.indexOf('if (isChartInteractionActiveRef.current)'));
-    expect(move.indexOf('if (isChartInteractionActiveRef.current)')).toBeLessThan(move.indexOf('queueTradeHover(e)'));
+    expect(move).toContain('if (dragState)');
+    expect(move).toContain('hasChartTradeLevelGestureDragged(');
+    expect(move).toContain('getTradeControlDragY(getChartY(e), dragState.controlOffsetY)');
+    expect(move).toContain('seriesRef.current.coordinateToPrice(y as Coordinate)');
+    expect(move).not.toContain('window.requestAnimationFrame(');
     expect(move).not.toContain('findClosestTradeLevel(');
-    expect(effect).toContain('cancelQueuedTradeHover();');
+    expect(effect).not.toContain('queueTradeHover');
+    expect(effect).not.toContain('setTradeHoverCursor');
   });
 
   it('deduplicates an exact raw quote before price compatibility validation', () => {

@@ -105,6 +105,9 @@ html:not(.rtx-skin-untitled-light) :is(.rtx-bottom-dock, .rtx-bottom-dock__conte
 
 .rtx-chart-panel {
   border-radius: 0 !important;
+  /* The chart has its own opaque canvas; keep its overlay text unfiltered. */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* A restrained blue edge identifies the chart receiving window commands. */
@@ -659,7 +662,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
   right: 0;
   bottom: 4px;
   width: 1px;
-  background: #b7b7b7;
+  background: var(--rtx-light-control-border);
   pointer-events: none;
 }
 

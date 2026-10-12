@@ -123,6 +123,9 @@ export const buildChartTheme = (
   const rawGrid = colors.grid || 'rgba(120, 144, 156, 0.28)';
   const backgroundLuminance = getColorLuminance(colors.background) ?? 0;
   const backgroundIsDark = backgroundLuminance < 0.45;
+  // A pale canvas needs less tint; dark canvases need enough fill to separate
+  // the area from the grid. Follow the configured chart surface, not app chrome.
+  const areaFillOpacity = backgroundIsDark ? 0.32 : 0.16;
   const gridLines = getChartGridLineColors({
     background: colors.background || '#0e0e12',
     grid: rawGrid,
@@ -154,13 +157,13 @@ export const buildChartTheme = (
     wickUp: barUp,
     wickDown: barDown,
     line,
-    areaTop: colorWithAlpha(line, 0.22, 'rgba(41, 98, 255, 0.22)'),
+    areaTop: colorWithAlpha(line, areaFillOpacity, `rgba(41, 98, 255, ${areaFillOpacity})`),
     areaBottom: colorWithAlpha(line, 0, 'rgba(41, 98, 255, 0)'),
     areaUpLine: areaUp,
-    areaUpTop: colorWithAlpha(areaUp, 0.28, 'rgba(8, 153, 129, 0.28)'),
+    areaUpTop: colorWithAlpha(areaUp, areaFillOpacity, `rgba(8, 153, 129, ${areaFillOpacity})`),
     areaUpBottom: colorWithAlpha(areaUp, 0, 'rgba(8, 153, 129, 0)'),
     areaDownLine: candleDown,
-    areaDownTop: colorWithAlpha(candleDown, 0.28, 'rgba(242, 54, 69, 0.28)'),
+    areaDownTop: colorWithAlpha(candleDown, areaFillOpacity, `rgba(242, 54, 69, ${areaFillOpacity})`),
     areaDownBottom: colorWithAlpha(candleDown, 0, 'rgba(242, 54, 69, 0)'),
     volumeUp: colorScheme === 'Green and White' ? colors.volumes : useReferenceLightSurface
       ? barUp

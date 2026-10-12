@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useBrokerAccountSessionScope } from './useBrokerAccountSessionScope';
 import { normalizeAccountMetrics } from '../services/accountMetrics';
 import type { Account, Position } from '../store/useAppStore';
 import type { TradeProfitSource } from '../components/BottomDock.trade';
@@ -655,8 +656,7 @@ async function requestBrokerJson<T>(
 export function useToolboxTradeData() {
   const storeAccountId = useAppStore((state) => state.accountId);
   const storeAuthToken = useAppStore((state) => state.authToken);
-  const centralAccount = useAppStore((state) => state.account);
-  const centralPositions = useAppStore((state) => state.positions);
+  const brokerAccountScope = useBrokerAccountSessionScope();
   const [state, setState] = useState<ToolboxTradeState>(createInitialToolboxTradeState);
 
   const accountRef = useRef<Account | null>(state.account);
@@ -674,11 +674,12 @@ export function useToolboxTradeData() {
     return [
       storeAccountId ?? '',
       storeAuthToken ?? '',
+      brokerAccountScope,
       getServerUrl(),
       getAccessToken() ?? '',
       readLogin() ?? '',
     ].join('|');
-  }, [storeAccountId, storeAuthToken]);
+  }, [brokerAccountScope, storeAccountId, storeAuthToken]);
   const stateSessionKeyRef = useRef(sessionKey);
 
   const pushDebug = useCallback((event: ToolboxTradeDebugEvent) => {
@@ -911,39 +912,73 @@ export function useToolboxTradeData() {
   }, [sessionKey]);
 
   useEffect(() => {
-    const login = readLogin();
-    const storeLogin = Number.parseInt(String(storeAccountId ?? ''), 10);
-    if (!login || storeLogin !== login) return;
+    const sessionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+    let observedAccount: Account | null | undefined;
+    let observedPositions: Position[] | undefined;
+    let disposed = false;
+    const syncStore = (snapshot: ReturnType<typeof useAppStore.getState>) => {
+      if (
+        disposed
+        || snapshot.accountId !== storeAccountId
+        || snapshot.authToken !== storeAuthToken
+        || sessionScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())
+      ) return;
+      const login = readLogin();
+      const storeLogin = Number.parseInt(String(snapshot.accountId ?? ''), 10);
+      if (!login || storeLogin !== login) return;
+      const accountChanged = observedAccount !== snapshot.account;
+      const positionsChanged = observedPositions !== snapshot.positions;
+      if (!accountChanged && !positionsChanged) return;
+      observedAccount = snapshot.account;
+      observedPositions = snapshot.positions;
 
-    commitAccount(centralAccount);
-    const nextPositions = mergeRetainedImmediateToolboxPositions(
-      replaceToolboxPositions(
-        positionsRef.current,
-        Array.isArray(centralPositions) ? centralPositions : [],
-      ),
-      Array.from(retainedImmediatePositionsRef.current.values()),
-    ).filter((position) => !isConfirmedClosedPosition(position.id));
-    if (shouldDeferEmptyPositionSnapshot(positionsRef.current.filter((position) => !isConfirmedClosedPosition(position.id)), nextPositions)) {
-      // Preserve the last REST-confirmed rows while a stale shared-store/WS
-      // update is reconciled. The hook's own REST refresh can still clear the
-      // list once the account is genuinely flat.
-      requestPositionSnapshotRevalidation();
-      return;
-    }
-    const previousSig = positionsSignature(positionsRef.current);
-    const nextSig = positionsSignature(nextPositions);
-    positionsRef.current = nextPositions;
-    setState((prev) => ({
-      ...prev,
-      account: centralAccount,
-      positions: previousSig === nextSig ? prev.positions : nextPositions,
-      loading: false,
-      error: null,
-      login,
-      restBaseUrl: getBrokerRestBaseUrl(),
-      wsState: 'connected',
-    }));
-  }, [centralAccount, centralPositions, commitAccount, storeAccountId]);
+      // Apply the stream directly once. A React store selector followed by a
+      // copying effect first painted the old rows, then scheduled a nested
+      // render for every account/position packet.
+      if (accountChanged && accountSignature(accountRef.current) !== accountSignature(snapshot.account)) {
+        accountRef.current = snapshot.account;
+      }
+      let deferSnapshot = false;
+      if (positionsChanged) {
+        const nextPositions = mergeRetainedImmediateToolboxPositions(
+          replaceToolboxPositions(
+            positionsRef.current,
+            Array.isArray(snapshot.positions) ? snapshot.positions : [],
+          ),
+          Array.from(retainedImmediatePositionsRef.current.values()),
+        ).filter((position) => !isConfirmedClosedPosition(position.id));
+        deferSnapshot = shouldDeferEmptyPositionSnapshot(
+          positionsRef.current.filter((position) => !isConfirmedClosedPosition(position.id)),
+          nextPositions,
+        );
+        if (deferSnapshot) {
+          // A lagging empty stream snapshot must not remove confirmed rows.
+          // Account metrics can still advance while REST revalidates them.
+          requestPositionSnapshotRevalidation();
+        } else if (positionsSignature(positionsRef.current) !== positionsSignature(nextPositions)) {
+          positionsRef.current = nextPositions;
+        }
+      }
+      const account = accountRef.current;
+      const positions = positionsRef.current;
+      const restBaseUrl = getBrokerRestBaseUrl();
+      setState((prev) => {
+        if (deferSnapshot) return prev.account === account ? prev : { ...prev, account };
+        if (
+          prev.account === account && prev.positions === positions
+          && !prev.loading && prev.error === null && prev.login === login
+          && prev.restBaseUrl === restBaseUrl && prev.wsState === 'connected'
+        ) return prev;
+        return { ...prev, account, positions, loading: false, error: null, login, restBaseUrl, wsState: 'connected' };
+      });
+    };
+    const unsubscribe = useAppStore.subscribe(syncStore);
+    syncStore(useAppStore.getState());
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, [sessionKey, storeAccountId, storeAuthToken]);
 
   useEffect(() => {
     const handleManualRefresh = () => void refresh();

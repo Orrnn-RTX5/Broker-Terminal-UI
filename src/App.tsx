@@ -235,7 +235,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [selectedSymbol, setSelectedSymbol] = useState<string>(DEFAULT_CHART_SYMBOL);
   const [positions, setPositions] = useState<Position[]>([]);
   const [, setAccount] = useState<Account | null>(null);
-  const [, setOrders] = useState<unknown[]>([]);
   const [, setLedger] = useState<any[]>([]);
   const [volume, setVolume] = useState(0.01);
   const [chartType, setChartType] = useState<ChartType>(() => {
@@ -293,7 +292,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     serverClosedTicketsRef.current.clear();
     setAccount(null);
     setPositions([]);
-    setOrders([]);
     setLedger([]);
   }, []);
 
@@ -766,7 +764,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     accountIdRef,
     isAuthenticatedRef,
     positionsStreamVersionRef,
-    setOrders,
   });
 
 
@@ -973,7 +970,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const ordersPayload = await api.orders.getPendingOrders(loginId).catch(() => []);
       if (!isAuthenticatedRef.current || getLiveTradingLogin() !== loginId) return;
 
-      setOrders(ordersPayload);
       useAppStore.getState().setOrders(ordersPayload as any);
     } catch (err) {
       console.error('Failed to cancel order:', err);

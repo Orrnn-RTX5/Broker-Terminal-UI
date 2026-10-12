@@ -32,7 +32,8 @@ vi.mock('../../services/api', () => ({
   api: { auth: { logout: vi.fn() } },
 }));
 
-vi.mock('../../services/brokerServers', () => ({
+vi.mock('../../services/brokerServers', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../services/brokerServers')>(),
   getStoredBrokerServer: () => mockStoredBrokerServer,
 }));
 

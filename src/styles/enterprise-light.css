@@ -19,6 +19,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
   --rtx-light-hover: #e8eef6;
   --rtx-light-pressed: #d6e3f3;
   --rtx-light-selected: #dce9fa;
+  --rtx-light-dock-selected: #c9ddf7;
   --rtx-light-border: #c5ced9;
   --rtx-light-border-strong: #9eacbd;
   --rtx-light-control-border: #697b91;
@@ -601,28 +602,33 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar :is(.rt
   color: var(--rtx-light-accent-strong) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
   background: transparent !important;
   border-color: transparent !important;
-  color: var(--rtx-light-text-secondary) !important;
+  color: var(--rtx-light-text) !important;
   line-height: var(--rtx-light-control-line-height) !important;
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:not(:disabled):hover {
-  background: var(--rtx-light-hover) !important;
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:not(:disabled):not(.active-tab):hover {
+  background: var(--rtx-light-pressed) !important;
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
-  background: var(--rtx-light-selected) !important;
-  color: var(--rtx-light-accent-strong) !important;
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
+  background: var(--rtx-light-dock-selected) !important;
+  color: var(--rtx-light-accent-pressed) !important;
   box-shadow: inset 0 -2px 0 var(--rtx-light-accent) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:disabled {
-  color: var(--rtx-light-text-disabled) !important;
+/* Keep locked tabs readable while distinguishing them from available actions. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs :is(.rtx-dock-tab-scroller, .rtx-dock-tab-actions) .rtx-dock-tab:disabled {
+  color: var(--rtx-light-text-muted) !important;
   opacity: 1 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:focus-visible {
+  outline: 2px solid var(--rtx-light-accent);
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab-indicator {

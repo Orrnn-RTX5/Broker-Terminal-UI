@@ -22,7 +22,10 @@ vi.mock('../../api/trade', () => ({
 }));
 vi.mock('../../services/api', () => ({ api: { auth: { logout: mocks.logout } } }));
 vi.mock('../../services/webTrader', () => ({ openWebTrader: mocks.openWebTrader }));
-vi.mock('../../services/brokerServers', () => ({ getStoredBrokerServer: () => 'Orrnn' }));
+vi.mock('../../services/brokerServers', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../services/brokerServers')>(),
+    getStoredBrokerServer: () => 'Orrnn',
+}));
 vi.mock('../../startup/runAfterTerminalReady', () => ({ runAfterTerminalReady: () => () => undefined }));
 vi.mock('../../startup/terminalFeatures', () => ({
     openAccountFeature: {

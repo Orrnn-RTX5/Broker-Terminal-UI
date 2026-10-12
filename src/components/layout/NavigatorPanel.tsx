@@ -1,5 +1,6 @@
 import { brokerDisplayName } from '../../services/brokerDisplayName';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
+import { useBrokerAccountSessionScope } from '../../hooks/useBrokerAccountSessionScope';
 import { Icon } from '../ui/Icon';
 import React, { lazy, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore, type SavedAccount } from '../../store/useAppStore';
@@ -19,6 +20,7 @@ import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
 import { openWebTrader } from '../../services/webTrader';
 import type { Broker, BrokerServer } from '../../types/api';
 import type { BrokerDiscoveryItem } from '../../services/brokerDiscovery';
+import { getNavigatorAccountServerIdentities, normalizeNavigatorAccountServer } from './navigatorAccountScope';
 
 const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
 const OpenAccountDialog = openAccountFeature.Component;
@@ -225,15 +227,21 @@ export const NavigatorPanel: React.FC = () => {
     const removeSavedAccount = useAppStore(state => state.removeSavedAccount);
     const addSavedAccount = useAppStore(state => state.addSavedAccount);
     const isAuthenticated = useAppStore(state => state.isAuthenticated);
+    const sessionScope = useBrokerAccountSessionScope();
+    // Capture aliases at committed login boundaries, not while another broker
+    // is being selected. Same-login broker switches also change this scope.
+    const accountServerIdentities = useMemo(getNavigatorAccountServerIdentities, [sessionScope]);
 
-    // Saved accounts persist across logout for quick re-login, but the tree
-    // must not present them as an active session. Once the user logs out the
-    // Navigator returns to its logged-out placeholder ("Click to login...").
-    const visibleAccounts = isAuthenticated ? savedAccounts : [];
-    const favoriteAccounts = savedAccounts.filter(account => account.isFavorite);
-    const isAccountActive = (account: SavedAccount) => isAuthenticated
+    // Keep every saved account for future login; scope only the authenticated
+    // tree and Favorites. Logged-out Favorites remain quick-login shortcuts.
+    const visibleAccounts = isAuthenticated ? savedAccounts.filter(account => (
+        accountServerIdentities.has(normalizeNavigatorAccountServer(account.server))
+    )) : [];
+    const favoriteAccounts = (isAuthenticated ? visibleAccounts : savedAccounts).filter(account => account.isFavorite);
+    const isAccountActive = useCallback((account: SavedAccount) => isAuthenticated
         && account.login.toString() === accountId
-        && account.server === getStoredBrokerServer();
+        && accountServerIdentities.has(normalizeNavigatorAccountServer(account.server)),
+    [isAuthenticated, accountId, accountServerIdentities]);
 
     const [loginDialogOpen, setLoginDialogOpen] = useState(false);
     const [openAccountDialogOpen, setOpenAccountDialogOpen] = useState(false);
@@ -331,14 +339,14 @@ export const NavigatorPanel: React.FC = () => {
 
     // Switch account: require interactive login unless this account is already active.
     const handleSwitchAccount = useCallback(async (acc: SavedAccount) => {
-        if (isAuthenticated && acc.login.toString() === accountId && acc.server === getStoredBrokerServer()) return;
+        if (isAccountActive(acc)) return;
 
         localStorage.setItem('rtx_saved_username', String(acc.login));
         localStorage.setItem('rtx_last_login', String(acc.login));
         localStorage.removeItem('rtx_saved_password');
         addSavedAccount({ ...acc, lastUsed: Date.now() });
         handleLoginToAccount(acc);
-    }, [accountId, isAuthenticated, addSavedAccount]);
+    }, [isAccountActive, addSavedAccount]);
 
     const openAccountMenuItem: ContextMenuItemConfig = {
         label: 'Open an Account',
@@ -420,7 +428,7 @@ export const NavigatorPanel: React.FC = () => {
         <div className="navigator-panel flex flex-col h-full bg-[#131316] text-zinc-100 select-none border-r border-zinc-700">
             <div className="navigator-panel__body flex-1 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-zinc-700">
                 {/* Accounts */}
-                <ContextMenu key={`${isAuthenticated}:${accountId}`} items={getGeneralAccountContextMenuItems()} variant="theme">
+                <ContextMenu key={`${sessionScope}:${isAuthenticated}:${accountId}`} items={getGeneralAccountContextMenuItems()} variant="theme">
                     <TreeItem label={tr("Accounts")} icon={<Icon name="user" size="sm" />} defaultOpen>
                         {servers.map((serverName, sIdx) => {
                             const accountsInServer = visibleAccounts.filter(a => a.server === serverName);
@@ -495,7 +503,7 @@ export const NavigatorPanel: React.FC = () => {
                         {favoriteAccounts.length === 0 ? (
                             <p className="px-5 py-2 text-[12px] text-[var(--text-secondary)]">{tr('No favorite accounts yet')}</p>
                         ) : favoriteAccounts.map((acc, index) => (
-                            <ContextMenu key={`${acc.server}:${acc.login}`} items={getAccountContextMenuItems(acc)} variant="theme">
+                            <ContextMenu key={`${sessionScope}:${acc.server}:${acc.login}`} items={getAccountContextMenuItems(acc)} variant="theme">
                                 <TreeItem
                                     label={`${acc.login}${acc.name && acc.name !== String(acc.login) ? `: ${acc.name}` : ''} · ${brokerDisplayName(acc.server, brokerLogos[acc.server]?.brokerName)}`}
                                     icon={<AccountIcon isActive={isAccountActive(acc)} isLive={acc.isLive} />}

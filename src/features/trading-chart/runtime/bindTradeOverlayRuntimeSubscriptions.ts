@@ -77,24 +77,34 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
   symbol,
   tradeLevelCrossRefreshPendingRef,
 }: BindTradeOverlayRuntimeSubscriptionsOptions): (() => void) => {
-    // The viewport owns history DOM membership as well as node coordinates.
-    // Batch initial controls with range notifications. StrictMode can then
-    // dispose its first setup before constructing the same controls twice.
-    let viewportFrame: number | null = null;
+    // A fill publishes store, Toolbox and new-trade notifications together.
+    // Reconcile their latest state once before paint, alongside viewport work,
+    // instead of rebuilding every active control several times in that task.
+    let renderFrame: number | null = null;
+    let forceRefreshTimer: number | null = null;
+    let tradeReconcilePending = false;
     let initialRenderPending = true;
+    let disposed = false;
     const renderTradeOverlayNow: RenderTradeOverlay = (...args) => {
-      if (viewportFrame !== null) window.cancelAnimationFrame(viewportFrame);
-      viewportFrame = null;
+      if (disposed) return;
+      if (renderFrame !== null) window.cancelAnimationFrame(renderFrame);
+      renderFrame = null;
+      tradeReconcilePending = false;
       initialRenderPending = false;
       renderTradeOverlay(...args);
     };
-    const timeScaleHandler = () => {
-      if (viewportFrame !== null) return;
-      viewportFrame = window.requestAnimationFrame(() => {
-        viewportFrame = null;
-        if (initialRenderPending || isActiveRef.current) renderTradeOverlayNow();
+    const queueTradeOverlayRender = (tradeChanged = false) => {
+      if (disposed) return;
+      tradeReconcilePending ||= tradeChanged;
+      if (renderFrame !== null) return;
+      renderFrame = window.requestAnimationFrame(() => {
+        renderFrame = null;
+        // Retained inactive panes still receive trade state. Only viewport-only
+        // work is skipped while a pane is inactive, as before.
+        if (initialRenderPending || tradeReconcilePending || isActiveRef.current) renderTradeOverlayNow();
       });
     };
+    const timeScaleHandler = () => queueTradeOverlayRender();
     chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(timeScaleHandler);
     timeScaleHandler();
 
@@ -103,7 +113,7 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
       const previousTick = resolveSymbolTick(previousState.ticks);
 
       if (state.positions !== previousState.positions || state.trades !== previousState.trades) {
-        renderTradeOverlayNow();
+        queueTradeOverlayRender(true);
         return;
       }
 
@@ -141,11 +151,13 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
     });
 
     const handleForceRefresh = () => {
-      window.setTimeout(() => {
-        renderTradeOverlayNow();
+      if (forceRefreshTimer !== null) window.clearTimeout(forceRefreshTimer);
+      forceRefreshTimer = window.setTimeout(() => {
+        forceRefreshTimer = null;
+        queueTradeOverlayRender(true);
       }, 500);
     };
-    const handleRefreshTradeOverlay = () => renderTradeOverlayNow();
+    const handleRefreshTradeOverlay = () => queueTradeOverlayRender(true);
     const handleFlushTradeOverlay = (event: Event) => {
       const detail = (event as CustomEvent<TradeOverlayRefreshDetail | undefined>).detail;
       if (detail?.contextId && detail.contextId !== drawingRuntimeContextRef.current.contextId) return;
@@ -234,7 +246,9 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
       clearTradeOverlayLayer('active');
       renderTradeOverlayNow({ forceActive: true, forceHistory: status !== 'failed' });
     };
-    const handleNewTradePlaced = () => renderTradeOverlayNow({ forceActive: true });
+    // Filled positions change the active signature themselves. Forcing a
+    // rebuild here would discard controls the store notification just created.
+    const handleNewTradePlaced = () => queueTradeOverlayRender(true);
     window.addEventListener('rtx:force-refresh-positions', handleForceRefresh);
     window.addEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
     window.addEventListener(TRADE_OVERLAY_REFRESH_EVENT, handleFlushTradeOverlay);
@@ -242,7 +256,9 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
     window.addEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
 
     return () => {
-      if (viewportFrame !== null) window.cancelAnimationFrame(viewportFrame);
+      disposed = true;
+      if (renderFrame !== null) window.cancelAnimationFrame(renderFrame);
+      if (forceRefreshTimer !== null) window.clearTimeout(forceRefreshTimer);
       unsubscribeAppStore();
       unsubscribeChartSettings();
       unsubscribeChartObjectState();

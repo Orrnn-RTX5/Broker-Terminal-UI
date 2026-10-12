@@ -56,6 +56,7 @@ import {
 } from './tradeTabModel';
 
 const ModifyPositionDialog = lazy(() => import('../../../components/ModifyPositionDialog').then(module => ({ default: module.ModifyPositionDialog })));
+const EMPTY_PENDING_POSITIONS: ToolboxTradePosition[] = [];
 
 type ModifyPositionContext = {
   position: ToolboxTradePosition;
@@ -78,7 +79,7 @@ type TradeTabProps = {
 // defeat memo() and repaint the entire table when no trade values changed.
 export const TradeTab = memo(function TradeTab({
     positions,
-    pendingPositions = [],
+    pendingPositions = EMPTY_PENDING_POSITIONS,
     account,
     onClosePosition,
     onCloseBulk,
@@ -327,7 +328,7 @@ export const TradeTab = memo(function TradeTab({
         return `${value.toFixed(2)}%`;
     };
 
-    const formatTradeTime = (value?: number | string | null) => {
+    const formatTradeTime = useCallback((value?: number | string | null) => {
         if (value === undefined || value === null || value === '' || value === 0) return '-';
         const textValue = String(value).trim();
         const numericValue = Number(textValue);
@@ -337,17 +338,17 @@ export const TradeTab = memo(function TradeTab({
         if (Number.isNaN(date.getTime())) return '-';
         const pad = (n: number) => String(n).padStart(2, '0');
         return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-    };
+    }, []);
 
-    const formatTradePrice = (value: unknown, symbol: string) => {
+    const formatTradePrice = useCallback((value: unknown, symbol: string) => {
         const price = Number(value);
         return Number.isFinite(price) && price > 0 ? formatPrice(price, symbol) : '-';
-    };
+    }, []);
 
-    const formatTradeLevel = (value: unknown, symbol: string) => {
+    const formatTradeLevel = useCallback((value: unknown, symbol: string) => {
         const price = Number(value);
         return Number.isFinite(price) && price > 0 ? formatPrice(price, symbol) : '0.00';
-    };
+    }, []);
 
     const getTradeTimeValue = useCallback((value?: number | string | null) => {
         if (value === undefined || value === null || value === '' || value === 0) return 0;
@@ -616,9 +617,9 @@ export const TradeTab = memo(function TradeTab({
         }).replace(/,/g, ' ');
     }, [getTradePointsValue]);
 
-    const formatTradeVolume = (pos: ToolboxTradePosition) => (
+    const formatTradeVolume = useCallback((pos: ToolboxTradePosition) => (
         typeof pos.volume === 'number' ? pos.volume.toFixed(2) : pos.volume ?? '0.00'
-    );
+    ), []);
 
     const downloadTextFile = useCallback((content: string, filename: string, type: string) => {
         const url = URL.createObjectURL(new Blob([content], { type }));
@@ -744,12 +745,12 @@ ${rows}
         });
     }, []);
 
-    const handleTradeContextMenu = (event: React.MouseEvent<HTMLTableRowElement>, position: ToolboxTradePosition) => {
+    const handleTradeContextMenu = useCallback((event: React.MouseEvent<HTMLTableRowElement>, position: ToolboxTradePosition) => {
         event.preventDefault();
         event.stopPropagation();
         setSelectedPositionKey(getPositionKey(position));
         setTradeContextMenu({ x: event.clientX, y: event.clientY, position });
-    };
+    }, [getPositionKey]);
 
     const buildTradeContextMenuItems = (position: ToolboxTradePosition): ContextMenuItemConfig[] => {
         const symbol = String(position.symbol ?? '');

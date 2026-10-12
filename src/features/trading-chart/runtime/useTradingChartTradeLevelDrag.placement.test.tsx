@@ -96,21 +96,22 @@ describe('displaced trade control gestures', () => {
     expect(h.overlay.children).toHaveLength(0);
   });
 
-  it('clears implicit trade hover on the right price axis instead of advertising a level drag', () => {
-    const h = harness('ENTRY', 0);
-    let hoverFrame: FrameRequestCallback | undefined;
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
-      hoverFrame = callback;
-      return 1;
-    });
-    h.send('pointermove', 100, h.container, 1, 739);
-    act(() => { hoverFrame?.(0); });
-    expect(h.container.style.cursor).toBe('grab');
+  it.each([
+    ['ENTRY', 100], ['SL', 150], ['TP', 50],
+  ] as const)('keeps the normal cursor across the %s line and price axis', (role, levelY) => {
+    const h = harness(role, 0);
+    const canvas = document.createElement('canvas');
+    h.container.appendChild(canvas);
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame');
 
-    h.send('pointermove', 100, h.container, 1, 740);
-    act(() => { hoverFrame?.(16); });
-    expect(h.container.style.cursor).not.toBe('grab');
-    expect(h.wrapper.style.cursor).not.toBe('grab');
+    for (const x of [10, 300, 739, 740, 780]) {
+      h.send('pointermove', levelY, canvas, 1, x);
+      expect(h.container.style.cursor).not.toBe('grab');
+      expect(h.wrapper.style.cursor).not.toBe('grab');
+      expect(canvas.style.cursor).not.toBe('grab');
+      expect(document.body.style.cursor).not.toBe('grab');
+    }
+    expect(requestFrame).not.toHaveBeenCalled();
     expect(modifyPosition).not.toHaveBeenCalled();
   });
 

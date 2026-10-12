@@ -2,9 +2,7 @@ import {
   useCallback,
   useEffect,
   useRef,
-  type Dispatch,
   type MutableRefObject,
-  type SetStateAction,
 } from 'react';
 import { api } from '../../services/api';
 import { applyPositionStreamUpdate, decodePositionStreamMessage } from '../../services/tradePositionStream';
@@ -33,7 +31,6 @@ interface UseTradeRefreshControllerOptions {
   accountIdRef: MutableRefObject<string>;
   isAuthenticatedRef: MutableRefObject<boolean>;
   positionsStreamVersionRef: MutableRefObject<number>;
-  setOrders: Dispatch<SetStateAction<unknown[]>>;
 }
 
 interface TradeRefreshController {
@@ -49,7 +46,6 @@ export const useTradeRefreshController = ({
   accountIdRef,
   isAuthenticatedRef,
   positionsStreamVersionRef,
-  setOrders,
 }: UseTradeRefreshControllerOptions): TradeRefreshController => {
   const refreshPositionsInFlightRef = useRef<Promise<void> | null>(null);
   const refreshPositionsPendingRef = useRef<PendingPositionsRefresh | null>(null);
@@ -137,7 +133,6 @@ export const useTradeRefreshController = ({
         const pendingOrders = pendingOrdersResult.status === 'fulfilled'
           ? pendingOrdersResult.value
           : [];
-        setOrders(pendingOrders);
         useAppStore.getState().setOrders(pendingOrders as unknown as Order[]);
 
         if (orderHistoryResult.status === 'fulfilled') {
@@ -181,7 +176,7 @@ export const useTradeRefreshController = ({
 
     refreshHistoryInFlightRef.current = request;
     await request;
-  }, [getLiveTradingLogin, isAuthenticatedRef, setOrders]);
+  }, [getLiveTradingLogin, isAuthenticatedRef]);
 
   useEffect(() => {
     let refreshTimer: number | null = null;

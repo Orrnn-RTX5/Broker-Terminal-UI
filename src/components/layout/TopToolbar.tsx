@@ -694,9 +694,6 @@ const MainToolbar = ({
                                     }));
                                 }}
                             >
-                                <span className="rtx-toolbar-action__icon" aria-hidden="true">
-                                    <Icon name="new-order" size={20} />
-                                </span>
                                 <span className="rtx-toolbar-action__label">New Order</span>
                             </button>
 

@@ -245,12 +245,12 @@ describe('createEntryTradeControlBar', () => {
     const action = root.querySelector<HTMLElement>('.rtx-trade-control-btn--reverse')!;
     const money = root.querySelector<HTMLElement>('.rtx-trade-chip--money')!;
     expect(textContrast(volume.style.color, volume.style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
-    expect(textContrast(action.style.color, background)).toBeGreaterThanOrEqual(4.5);
+    expect(textContrast(action.style.color, root.style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
     for (const profit of [-1, 1]) {
       setLiveMetrics(profit, profit);
-      expect(textContrast(money.style.color, background)).toBeGreaterThanOrEqual(4.5);
+      expect(textContrast(money.style.color, root.style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
     }
-    expect(root.querySelector('.rtx-trade-primary')).toHaveStyle({ backgroundColor: background });
+    expect(root.querySelector('.rtx-trade-primary')).toHaveStyle({ backgroundColor: '#f3f6fa' });
   });
 
   it('preserves every action with close grouped beside the live profit', () => {
@@ -305,8 +305,8 @@ describe('createEntryTradeControlBar', () => {
     const pips = root.querySelector<HTMLElement>('.rtx-trade-chip--pips')!;
     const money = root.querySelector<HTMLElement>('.rtx-trade-chip--money')!;
     const neutral = money.style.color;
-    const profit = isLightSurface ? '#1746bc' : '#4597ff';
-    const loss = isLightSurface ? '#a51f26' : '#ff4d4f';
+    const profit = isLightSurface ? '#153eaa' : '#72b0ff';
+    const loss = isLightSurface ? '#981b24' : '#ff8589';
     setLiveMetrics(12, 4.5);
     expect(pips).toHaveStyle({ color: profit });
     expect(money).toHaveStyle({ color: profit });
@@ -322,7 +322,7 @@ describe('createEntryTradeControlBar', () => {
     setLiveMetrics(null, Number.NaN);
     expect(pips.style.color).toBe(neutral);
     expect(money.style.color).toBe(neutral);
-    expect(root.style.backgroundColor).toBe('transparent');
+    expect(root).toHaveStyle({ backgroundColor: isLightSurface ? '#f3f6fa' : '#191a1e' });
   });
 
   it('uses neutral dark surfaces and actions while keeping BUY as the trade accent', () => {
@@ -336,9 +336,9 @@ describe('createEntryTradeControlBar', () => {
     const reverse = root.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--reverse')!;
     const close = root.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--close')!;
 
-    expect(primary).toHaveStyle({ borderColor: '#404048', backgroundColor: '#191a1e' });
-    expect(secondary).toHaveStyle({ borderColor: '#404048', backgroundColor: '#191a1e' });
-    expect(volume).toHaveStyle({ backgroundColor: '#0078d4' });
+    expect(primary).toHaveStyle({ borderTopColor: 'rgba(0, 0, 0, 0)', borderLeftColor: '#34343b', backgroundColor: '#191a1e' });
+    expect(secondary).toHaveStyle({ borderTopColor: 'rgba(0, 0, 0, 0)', backgroundColor: '#191a1e' });
+    expect(volume).toHaveStyle({ backgroundColor: '#233143', color: '#dbeafe' });
     expect(reverse).toHaveStyle({ color: '#f4f4f6' });
     expect(close).toHaveStyle({ color: '#b9bcc6' });
     reverse.dispatchEvent(new MouseEvent('mouseenter'));
@@ -392,6 +392,8 @@ describe('createEntryTradeControlBar', () => {
     expect(root.dataset.tradeKey).toBe('trade:987');
     expect(root.dataset.role).toBe('ENTRY');
     expect(root.dataset.leftInset).toBe('10');
+    expect(root).toHaveStyle({ cursor: 'default' });
+    expect(root.querySelector('[style*="cursor: grab"]')).toBeNull();
   });
 
   it('renders volume, pips and money chips plus the three action buttons', () => {
@@ -522,6 +524,11 @@ describe('createTradeLevelControlBar', () => {
     });
     expect(bar.querySelector('.rtx-trade-chip--pips')).toBeNull();
     expect(bar.querySelector('.rtx-trade-chip--money')?.textContent).toBe('USD:5.00');
+    expect(bar).toHaveStyle({ cursor: 'default' });
+    const dragLabels = bar.querySelectorAll<HTMLElement>('[style*="cursor: grab"]');
+    expect(dragLabels).toHaveLength(1);
+    expect(dragLabels[0]).toHaveTextContent(role);
+    expect(dragLabels[0].className).toBe('rtx-trade-level-drag-label');
     const remove = bar.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--remove')!;
     expect(remove).toHaveStyle({ width: '24px', height: '24px' });
     expect(remove).not.toBeNull();
@@ -635,5 +642,7 @@ describe('createDockedLevelChip', () => {
     expect(chip.dataset.tradeKey).toBe('trade:987');
     expect(chip.textContent).toContain('TP 2');
     expect(chip.title).toMatch(/take profit/i);
+    expect(chip).toHaveStyle({ cursor: 'default' });
+    expect(chip.querySelector('.rtx-trade-level-drag-label')).toHaveStyle({ cursor: 'grab' });
   });
 });

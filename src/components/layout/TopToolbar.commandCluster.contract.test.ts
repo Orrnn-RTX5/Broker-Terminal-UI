@@ -18,9 +18,8 @@ const markedCluster = toolbarSource.slice(
 );
 
 describe('TopToolbar primary command cluster', () => {
-  it('uses dedicated outline command icons alongside the labeled action icons', () => {
+  it('uses dedicated outline command icons and a text-only New Order action', () => {
     for (const icon of [
-      'new-order',
       'bar-chart',
       'candlestick',
       'line-chart',
@@ -39,7 +38,8 @@ describe('TopToolbar primary command cluster', () => {
     }
 
     expect(markedCluster).not.toMatch(/<(?:FileText|TrendingUp|BarChart2|CandlestickChart|LineChart|AreaChart|ZoomIn|ZoomOut|LayoutPanelTop|RefreshCw)\b/);
-    expect(markedCluster).toContain('<Icon name="new-order" size={20} />');
+    expect(markedCluster).not.toContain('<Icon name="new-order"');
+    expect(markedCluster).toContain('<span className="rtx-toolbar-action__label">New Order</span>');
     expect(markedCluster).not.toContain('<Icon name="activity" size={20} />');
     expect(markedCluster).toContain('label={tr("Chart capture and overlays")}');
     expect(markedCluster).toContain('className="rtx-period-separator-toggle"');

@@ -28,7 +28,10 @@ beforeEach(() => {
   });
   vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 function harness(contextId = 'chart-a') {
   let onRangeChange: () => void = () => undefined;
@@ -39,22 +42,38 @@ function harness(contextId = 'chart-a') {
   const renderTradeOverlay = vi.fn();
   const queueTradeOverlayRelayout = vi.fn();
   const isActiveRef = { current: true };
+  const closeSuppressedTradeKeysRef = { current: new Map<string, number>() };
+  const activeTradeSnapshotsRef = { current: new Map() };
+  const pendingMissingActiveTradesRef = { current: new Map() };
+  const clearTradeOverlayLayer = vi.fn();
+  const scheduleHistoryRefresh = vi.fn();
   const cleanup = bindTradeOverlayRuntimeSubscriptions({
     chartRef: { current: { timeScale: () => timeScale } },
     drawingRuntimeContextRef: { current: { contextId } },
     resolveSymbolTick: () => undefined,
-    closeSuppressedTradeKeysRef: { current: new Map() },
+    closeSuppressedTradeKeysRef,
+    activeTradeSnapshotsRef,
+    pendingMissingActiveTradesRef,
     pendingClosedTradeSnapshotsRef: { current: new Map() },
     optimisticClosedTradeSnapshotsRef: { current: new Map() },
     tradeLevelCrossRefreshPendingRef: { current: new Set() },
-    clearTradeOverlayLayer: vi.fn(),
+    frozenEntryPricesRef: { current: new Map() },
+    clearTradeLevelRuntimeStateByKey: vi.fn(() => false),
+    clearFrozenEntryTime: vi.fn(),
+    clearStableActiveMarkerTime: vi.fn(),
+    scheduleHistoryRefresh,
+    clearTradeOverlayLayer,
     renderTradeOverlay, queueTradeOverlayRelayout, isActiveRef, clearTradeOverlayVisualRuntime: vi.fn(),
   } as unknown as Parameters<typeof bindTradeOverlayRuntimeSubscriptions>[0]);
   const flush = () => {
     const pending = [...frames.values()]; frames.clear();
     for (const callback of pending) callback(0);
   };
-  return { frames, onRangeChange: () => onRangeChange(), renderTradeOverlay, queueTradeOverlayRelayout, isActiveRef, cleanup, flush, timeScale };
+  return {
+    frames, onRangeChange: () => onRangeChange(), renderTradeOverlay, queueTradeOverlayRelayout,
+    isActiveRef, cleanup, flush, timeScale, closeSuppressedTradeKeysRef, clearTradeOverlayLayer,
+    scheduleHistoryRefresh,
+  };
 }
 
 describe('viewport-driven trade history DOM', () => {
@@ -177,16 +196,21 @@ describe('viewport-driven trade history DOM', () => {
     appSubscribers.forEach(listener => listener(next, previous));
 
     expect(h.queueTradeOverlayRelayout).toHaveBeenCalledOnce();
+    expect(h.renderTradeOverlay).not.toHaveBeenCalled();
+    expect(frames.size).toBe(1);
+    h.flush();
     expect(h.renderTradeOverlay).toHaveBeenCalledExactlyOnceWith();
     expect(frames.size).toBe(0);
     h.cleanup();
   });
 
-  it('renders a new trade and close rollback immediately even before the initial frame', () => {
+  it('batches a new trade with initial rendering and keeps close rollback immediate', () => {
     const placed = harness();
     window.dispatchEvent(new Event('rtx:new-trade-placed'));
-    expect(placed.renderTradeOverlay).toHaveBeenCalledExactlyOnceWith({ forceActive: true });
-    expect(frames.size).toBe(0);
+    expect(placed.renderTradeOverlay).not.toHaveBeenCalled();
+    expect(frames.size).toBe(1);
+    placed.flush();
+    expect(placed.renderTradeOverlay).toHaveBeenCalledExactlyOnceWith();
     placed.cleanup();
 
     const rollback = harness();
@@ -196,6 +220,120 @@ describe('viewport-driven trade history DOM', () => {
     expect(rollback.renderTradeOverlay).toHaveBeenCalledExactlyOnceWith({ forceActive: true, forceHistory: false });
     expect(frames.size).toBe(0);
     rollback.cleanup();
+  });
+
+  it('reconciles every filled ticket from the latest state once per frame across redundant notifications', () => {
+    const h = harness();
+    h.flush();
+    h.renderTradeOverlay.mockClear();
+    let current = { ticks: {}, positions: [] as { ticket: number }[], trades: [] as { ticket: number }[] };
+    const renderedTickets: number[][] = [];
+    h.renderTradeOverlay.mockImplementation(() => {
+      renderedTickets.push(current.positions.map(position => position.ticket));
+    });
+
+    for (let ticket = 1; ticket <= 20; ticket++) {
+      const previous = current;
+      current = { ...current, positions: [...current.positions, { ticket }] };
+      appSubscribers.forEach(listener => listener(current, previous));
+      window.dispatchEvent(new Event('rtx:refresh-trade-overlay'));
+      window.dispatchEvent(new Event('rtx:new-trade-placed'));
+      h.onRangeChange();
+    }
+    const previous = current;
+    current = { ...current, trades: [{ ticket: 30 }] };
+    appSubscribers.forEach(listener => listener(current, previous));
+
+    expect(h.renderTradeOverlay).not.toHaveBeenCalled();
+    expect(frames.size).toBe(1);
+    h.flush();
+    expect(h.renderTradeOverlay).toHaveBeenCalledExactlyOnceWith();
+    expect(renderedTickets).toEqual([Array.from({ length: 20 }, (_, index) => index + 1)]);
+
+    window.dispatchEvent(new Event('rtx:refresh-trade-overlay'));
+    h.flush();
+    expect(h.renderTradeOverlay).toHaveBeenCalledTimes(2);
+    h.cleanup();
+  });
+
+  it('keeps retained inactive panes current when trade state changes', () => {
+    const h = harness();
+    h.flush();
+    h.renderTradeOverlay.mockClear();
+    h.isActiveRef.current = false;
+    h.onRangeChange();
+    const previous = { ticks: {}, positions: [], trades: [] };
+    appSubscribers.forEach(listener => listener({ ...previous, positions: [{ ticket: 17 }] }, previous));
+
+    h.flush();
+    expect(h.renderTradeOverlay).toHaveBeenCalledExactlyOnceWith();
+    h.cleanup();
+  });
+
+  it('applies SL/TP rebuilds immediately and consumes a pending fill reconciliation', () => {
+    const h = harness();
+    h.flush();
+    h.renderTradeOverlay.mockClear();
+    window.dispatchEvent(new Event('rtx:new-trade-placed'));
+    window.dispatchEvent(new CustomEvent(TRADE_OVERLAY_REFRESH_EVENT));
+
+    expect(h.renderTradeOverlay).toHaveBeenCalledExactlyOnceWith(true);
+    expect(frames.size).toBe(0);
+    h.flush();
+    expect(h.renderTradeOverlay).toHaveBeenCalledOnce();
+    h.cleanup();
+  });
+
+  it('suppresses a closed ticket and restores a failed close before any queued fill repaint', () => {
+    const h = harness();
+    h.flush();
+    h.renderTradeOverlay.mockClear();
+    window.dispatchEvent(new Event('rtx:new-trade-placed'));
+    window.dispatchEvent(new CustomEvent(TRADE_OVERLAY_CLOSE_STATE_EVENT, {
+      detail: { status: 'confirmed', ticket: 17 },
+    }));
+
+    expect(h.closeSuppressedTradeKeysRef.current.has('trade:17')).toBe(true);
+    expect(h.clearTradeOverlayLayer).toHaveBeenCalledExactlyOnceWith('active');
+    expect(h.renderTradeOverlay).toHaveBeenCalledExactlyOnceWith({ forceActive: true, forceHistory: true });
+    expect(h.scheduleHistoryRefresh).toHaveBeenCalledOnce();
+    expect(frames.size).toBe(0);
+
+    window.dispatchEvent(new Event('rtx:refresh-trade-overlay'));
+    window.dispatchEvent(new CustomEvent(TRADE_OVERLAY_CLOSE_STATE_EVENT, {
+      detail: { status: 'failed', ticket: 17 },
+    }));
+    expect(h.closeSuppressedTradeKeysRef.current.has('trade:17')).toBe(false);
+    expect(h.renderTradeOverlay).toHaveBeenLastCalledWith({ forceActive: true, forceHistory: false });
+    expect(frames.size).toBe(0);
+    h.flush();
+    expect(h.renderTradeOverlay).toHaveBeenCalledTimes(2);
+    h.cleanup();
+  });
+
+  it('coalesces delayed position refreshes and cancels their timer and frame on disposal', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const h = harness();
+    h.flush();
+    h.renderTradeOverlay.mockClear();
+    for (let i = 0; i < 10; i++) window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(500);
+    expect(h.renderTradeOverlay).not.toHaveBeenCalled();
+    expect(frames.size).toBe(1);
+    h.flush();
+    expect(h.renderTradeOverlay).toHaveBeenCalledExactlyOnceWith();
+
+    window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+    window.dispatchEvent(new Event('rtx:new-trade-placed'));
+    const queuedFrame = [...frames.values()][0];
+    h.cleanup();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(frames.size).toBe(0);
+    queuedFrame(0);
+    vi.advanceTimersByTime(500);
+    expect(h.renderTradeOverlay).toHaveBeenCalledOnce();
+    expect(frames.size).toBe(0);
   });
 
   it('ignores scoped refresh events after the chart is disposed', () => {

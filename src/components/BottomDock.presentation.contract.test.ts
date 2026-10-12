@@ -46,15 +46,20 @@ describe('BottomDock trade type presentation', () => {
     it('centers every trade header and row value without offsetting sortable labels', () => {
         const headerHelpers = tradeTableSource.match(/const renderSortableHeader[\s\S]*?return \(/)?.[0] ?? '';
         const tradeTable = tradeTableSource.match(/<table\s+className="rtx-trade-table[\s\S]*?<\/table>/)?.[0] ?? '';
+        const tradeRow = tradeTableSource.slice(
+            tradeTableSource.indexOf('const TradeTableRow = memo('),
+            tradeTableSource.indexOf('export function TradeTable('),
+        );
         // Rejection reasons span the columns as a separate, left-aligned message.
-        const tradeValues = tradeTable.slice(0, tradeTable.indexOf('{isTerminalPlacementFailure && ('));
+        const tradeValues = tradeRow.slice(0, tradeRow.indexOf('{isTerminalPlacementFailure && ('));
 
         expect(headerHelpers).toContain('text-center border-r');
         expect(headerHelpers).toContain('items-center justify-center px-2 text-center');
         expect(tradeTable).toContain('rtx-trade-table w-full text-center');
-        expect(tradeTable).toContain('flex items-center justify-center');
-        expect(tradeTable).toContain('rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center');
-        expect(tradeTable).toContain('rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center');
+        expect(tradeTable).toContain('{tableBody}');
+        expect(tradeValues).toContain('flex items-center justify-center');
+        expect(tradeValues).toContain('rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center');
+        expect(tradeValues).toContain('rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center');
         expect(tradeValues).toContain('rtx-trade-row');
         expect(tradeValues).not.toContain('text-right');
         expect(tradeValues).not.toContain('text-left');

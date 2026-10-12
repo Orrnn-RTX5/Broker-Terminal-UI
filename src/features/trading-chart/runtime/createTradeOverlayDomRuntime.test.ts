@@ -239,8 +239,8 @@ describe('SL/TP chart controls', () => {
     runtime.createEntryControlsForTrade(trade, { sl: 0, tp: 0 });
     for (const role of ['SL', 'TP'] as const) {
       const color = role === 'SL'
-        ? (lightSurface ? '#795000' : '#e9c18a')
-        : (lightSurface ? '#04685e' : '#9dd2c8');
+        ? (lightSurface ? '#664300' : '#e9c18a')
+        : (lightSurface ? '#05564f' : '#9dd2c8');
       runtime.createLevelControlsForTrade(trade, role, { sl: 87000, tp: 85118.19 });
       expect(host.querySelector(`.rtx-trade-dock-chip--${role.toLowerCase()}`)).toHaveStyle({ color });
       expect(host.querySelector(`.rtx-trade-controls--${role.toLowerCase()} .rtx-trade-chip--role`)).toHaveStyle({ color });
@@ -258,7 +258,7 @@ describe('SL/TP chart controls', () => {
     const axisBadge = host.querySelector<HTMLElement>(`[data-trade-axis-key='${trade.key}:entry']`)!;
     expect(axisBadge).toHaveStyle({
       backgroundColor: '#fafbfc',
-      color: side === 'BUY' ? '#1746bc' : '#a51f26',
+      color: side === 'BUY' ? '#153eaa' : '#981b24',
     });
   });
 
@@ -272,6 +272,9 @@ describe('SL/TP chart controls', () => {
     const hitArea = host.querySelector<HTMLElement>('.rtx-trade-level-hit-area')!;
     const bar = host.querySelector<HTMLElement>('.rtx-trade-controls--level')!;
     const button = bar.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--remove')!;
+    expect(hitArea.style.cursor).toBe('default');
+    expect(bar.style.cursor).toBe('default');
+    expect(bar.querySelector('.rtx-trade-level-drag-label')).toHaveStyle({ cursor: 'grab' });
     // Compare sibling stacking levels, since a child's z-index cannot escape
     // the lower drawing-overlay stacking context that caused the blocked click.
     expect(bar.parentElement).toBe(hitArea.parentElement);
@@ -285,6 +288,21 @@ describe('SL/TP chart controls', () => {
       role === 'SL' ? { sl: 0, tp: levels.tp } : { sl: levels.sl, tp: 0 },
     );
     await Promise.resolve();
+  });
+
+  it.each(['SL', 'TP'] as const)('limits the grab cursor to the %s word in a plain level label', role => {
+    const { host, runtime } = createRuntime();
+    const label = `${role} #9302300 87000.00`;
+    runtime.createPriceLevel(label, 87000, '#999999', {
+      tradeKey: trade.key, role, labelVariant: 'lineText',
+    });
+    const badge = host.querySelector<HTMLElement>('.rtx-trade-level-badge')!;
+    expect(badge.textContent).toBe(label);
+    expect(badge.style.cursor).toBe('default');
+    expect(host.querySelector<HTMLElement>('.rtx-trade-level-hit-area')!.style.cursor).toBe('default');
+    const dragLabels = badge.querySelectorAll<HTMLElement>('[style*="cursor: grab"]');
+    expect(dragLabels).toHaveLength(1);
+    expect(dragLabels[0].textContent).toBe(role);
   });
 
   it.each(['SL', 'TP'] as const)('restores chart and table levels after the broker rejects removing %s', async role => {

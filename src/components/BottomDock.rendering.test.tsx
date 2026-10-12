@@ -5,9 +5,11 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BottomDock } from './BottomDock';
 import { useLiveAccountMetrics } from '../hooks/useLiveAccountMetrics';
+import { formatPrice } from '../utils/symbolUtils';
+import type { Account } from '../store/useAppStore';
 
 const trade = vi.hoisted(() => ({
-  account: null,
+  account: null as Account | null,
   positions: [] as any[],
   pendingPositions: [] as any[],
   loading: false,
@@ -29,6 +31,10 @@ vi.mock('../hooks/useLiveAccountMetrics', async importOriginal => {
   const actual = await importOriginal<typeof import('../hooks/useLiveAccountMetrics')>();
   return { ...actual, useLiveAccountMetrics: vi.fn(actual.useLiveAccountMetrics) };
 });
+vi.mock('../utils/symbolUtils', async importOriginal => {
+  const actual = await importOriginal<typeof import('../utils/symbolUtils')>();
+  return { ...actual, formatPrice: vi.fn(actual.formatPrice) };
+});
 
 const makePosition = (id: number) => ({
   id, symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 80000,
@@ -42,6 +48,7 @@ describe('Trade rendering latency', () => {
     vi.useFakeTimers();
     localStorage.clear();
     trade.positions = [makePosition(71)];
+    trade.account = null;
     trade.pendingPositions = [];
     trade.wsState = 'connected';
     trade.lastRestAt = null;
@@ -90,6 +97,32 @@ describe('Trade rendering latency', () => {
     expect(screen.queryByText('71')).not.toBeInTheDocument();
     expect(screen.getByText('72')).toBeInTheDocument();
     expect(Date.now()).toBe(startedAt);
+  });
+
+  it('publishes changed account metrics without reformatting unchanged trade rows', () => {
+    const props = { height: 300, onClosePosition: vi.fn(), onModifyPosition: vi.fn() };
+    const { container, rerender } = render(<BottomDock {...props} />);
+    expect(screen.getByText('71')).toBeInTheDocument();
+    expect(formatPrice).toHaveBeenCalled();
+    vi.mocked(formatPrice).mockClear();
+
+    for (let update = 1; update <= 20; update += 1) {
+      trade.account = {
+        balance: 1000, equity: 1000 + update, margin: 20, freeMargin: 980 + update,
+        unrealizedPL: update, marginLevel: 5000, currency: 'USD', leverage: 100,
+        publicationToken: `publication-${update}`,
+      };
+      rerender(<BottomDock {...props} />);
+    }
+
+    expect(container.querySelector('.rtx-trade-footer')).toHaveAttribute('data-metrics-publication-token', 'publication-20');
+    expect(formatPrice).not.toHaveBeenCalled();
+    expect(screen.getByTitle('Current price: 81000.00')).toBeInTheDocument();
+
+    trade.positions = [{ ...trade.positions[0], currentPrice: 81042 }];
+    rerender(<BottomDock {...props} />);
+    expect(formatPrice).toHaveBeenCalled();
+    expect(screen.getByTitle('Current price: 81042.00')).toBeInTheDocument();
   });
 
   it('shows an in-progress order immediately and replaces it with its confirmed ticket', () => {

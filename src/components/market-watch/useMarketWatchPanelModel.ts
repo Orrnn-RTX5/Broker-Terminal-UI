@@ -46,6 +46,35 @@ import {
 } from './marketWatchPanelModel';
 
 type Watchlist = ReturnType<typeof useWatchlistStore.getState>['watchlists'][number];
+type TradeProtectionState = Pick<ReturnType<typeof useAppStore.getState>, 'positions' | 'orders'>;
+
+const createProtectedTradeSymbolSelector = () => {
+  let previousPositions: TradeProtectionState['positions'] | undefined;
+  let previousOrders: TradeProtectionState['orders'] | undefined;
+  let protectedSymbols = new Set<string>();
+  return ({ positions, orders }: TradeProtectionState): ReadonlySet<string> => {
+    if (positions === previousPositions && orders === previousOrders) return protectedSymbols;
+    previousPositions = positions;
+    previousOrders = orders;
+    const next = new Set<string>();
+    positions.forEach((position) => {
+      if (Number(position.volume ?? position.quantity ?? 0) <= 0) return;
+      const symbol = normalizeSymbol(position.symbol);
+      if (symbol) next.add(symbol);
+    });
+    orders.forEach((order) => {
+      if (order.status !== 'PENDING' && order.status !== 'TRIGGERED') return;
+      const symbol = normalizeSymbol(order.symbol);
+      if (symbol) next.add(symbol);
+    });
+    // Hiding protection depends on symbol membership, not tickets, live P&L,
+    // prices or the number of positions sharing an already protected symbol.
+    if (next.size !== protectedSymbols.size || [...next].some((symbol) => !protectedSymbols.has(symbol))) {
+      protectedSymbols = next;
+    }
+    return protectedSymbols;
+  };
+};
 
 interface UseMarketWatchPanelModelOptions {
   accountCatalogStatus: AccountCatalogStatus | undefined;
@@ -98,8 +127,8 @@ export const useMarketWatchPanelModel = ({
   const liveTickCount = useAppStore(selectTickCount);
   const sortsDailyValues = sortMode === 'gainers' || sortMode === 'losers' || sortMode === 'change-asc' || sortMode === 'change-desc';
   const liveDisplayMetadataRevision = useMarketWatchDisplayMetadataRevision(sortsDailyValues);
-  const positions = useAppStore((state) => state.positions);
-  const pendingOrders = useAppStore((state) => state.orders);
+  const selectProtectedTradeSymbols = useMemo(createProtectedTradeSymbolSelector, []);
+  const protectedTradeSymbols = useAppStore(selectProtectedTradeSymbols);
   const dockLayout = useDockLayoutStore((state) => state.layout);
   const accountUniverseActive = isAccountSymbolUniverseActive(isAuthenticated, accountCatalogStatus);
   const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols([...disabledSymbols])), [disabledSymbols]);
@@ -267,7 +296,7 @@ export const useMarketWatchPanelModel = ({
     activeSymbolsCurrent ? quoteEligibleSymbols.filter((symbol) => activeSymbolSet.has(symbol)) : [],
   ), [activeSymbolSet, activeSymbolsCurrent, quoteEligibleSymbols]);
   const protectedSymbolSet = useMemo(() => {
-    const protectedSymbols = new Set<string>();
+    const protectedSymbols = new Set(protectedTradeSymbols);
     getChartPanels(dockLayout).forEach((panel) => {
       const chartSymbol = normalizeSymbol(panel.props?.symbol ?? panel.title?.split(',')[0]);
       if (chartSymbol) protectedSymbols.add(chartSymbol);
@@ -276,18 +305,8 @@ export const useMarketWatchPanelModel = ({
         if (tabSymbol) protectedSymbols.add(tabSymbol);
       });
     });
-    positions.forEach((position) => {
-      if (Number(position.volume ?? position.quantity ?? 0) <= 0) return;
-      const positionSymbol = normalizeSymbol(position.symbol);
-      if (positionSymbol) protectedSymbols.add(positionSymbol);
-    });
-    pendingOrders.forEach((order) => {
-      if (order.status !== 'PENDING' && order.status !== 'TRIGGERED') return;
-      const orderSymbol = normalizeSymbol(order.symbol);
-      if (orderSymbol) protectedSymbols.add(orderSymbol);
-    });
     return protectedSymbols;
-  }, [dockLayout, pendingOrders, positions]);
+  }, [dockLayout, protectedTradeSymbols]);
   const searchUniverse = quoteEligibleSymbols;
   const symbolDescriptionByName = useMemo(() => {
     const descriptions = new Map<string, string>();
