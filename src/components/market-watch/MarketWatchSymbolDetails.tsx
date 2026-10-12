@@ -113,11 +113,7 @@ const DirectionMarker = ({ direction }: { direction: DetailRow['direction'] }) =
           ? <path d="M2 8L8 2M4 2h4v4" />
           : <path d="M2 2l6 6M8 4v4H4" />}
       </svg>
-    ) : (
-      <svg width="10" height="10" viewBox="0 0 10 10">
-        <circle cx="5" cy="5" r="1.6" fill="currentColor" />
-      </svg>
-    )}
+    ) : null}
   </span>
 );
 
