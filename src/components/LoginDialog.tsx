@@ -1,5 +1,6 @@
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import { getAuthenticatedAccountName } from '../utils/accountDisplayName';
+import { resolveTradingAccountType } from '../services/tradingAccountType';
 /**
  * Account login dialog shared by the web and desktop terminals.
  */
@@ -473,6 +474,7 @@ export function LoginDialog({
 
             markPostAuthenticationPhase('auth-session-persist');
             const loginNum = parseInt(String(accountId), 10);
+            const tradingAccountType = resolveTradingAccountType(data);
             useAppStore.getState().setAuthenticated(
                 true,
                 String(accountId),
@@ -483,7 +485,7 @@ export function LoginDialog({
                     login: loginNum,
                     name: getAuthenticatedAccountName(data),
                     server: submitBroker.broker_name || '',
-                    isLive: true,
+                    ...(tradingAccountType ? { accountType: tradingAccountType, isLive: tradingAccountType === 'real' } : {}),
                     lastUsed: Date.now(),
                 } : undefined,
             );

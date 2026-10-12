@@ -1,5 +1,6 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { getAuthenticatedAccountName } from '../../utils/accountDisplayName';
+import { resolveTradingAccountType } from '../../services/tradingAccountType';
 import React, { useState, useEffect, useRef } from 'react';
 import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
 import { createPortal } from 'react-dom';
@@ -346,13 +347,14 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         updateDynamicUrls();
 
         const expiresAt = parseTokenExpiresAt(data.expires_at) ?? undefined;
+        const tradingAccountType = resolveTradingAccountType(data);
         const store = useAppStore.getState();
         store.setAuthTokens(token, data.refresh_token, expiresAt);
         store.setAuthenticated(true, accountId, token, data.refresh_token, expiresAt, {
             login: loginNumber,
             name: getAuthenticatedAccountName(data),
             server: submitBroker.broker_name || submitBroker.broker_id,
-            isLive: true,
+            ...(tradingAccountType ? { accountType: tradingAccountType, isLive: tradingAccountType === 'real' } : {}),
             lastUsed: Date.now(),
         });
         localStorage.setItem('rtx_last_login', accountId);

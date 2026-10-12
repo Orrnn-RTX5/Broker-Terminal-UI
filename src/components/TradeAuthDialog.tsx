@@ -148,6 +148,7 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
         login,
         name: response.name || response.username || name.trim(),
         server: response.broker_name || response.server || response.broker_id || brokerId,
+        accountType: 'demo',
         isLive: false,
         lastUsed: Date.now(),
       } : undefined,

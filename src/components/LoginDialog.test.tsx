@@ -74,6 +74,47 @@ describe('LoginDialog', () => {
     expect(localStorage.getItem('logo_url')).toBe('/branding/active-broker.svg');
   });
 
+  it.each(['demo', 'real', 'contest'] as const)('saves the backend %s classification at login', async accountType => {
+    vi.mocked(authV2Api.login).mockResolvedValue({
+      access_token: 'type-token', account_login: 200003, broker_id: 'runtime-broker',
+      account_type: accountType,
+    });
+    render(<LoginDialog isOpen onClose={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText('Account ID'), { target: { value: '200003' } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'test-password' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+    await waitFor(() => expect(useAppStore.getState().authToken).toBe('type-token'));
+    expect(useAppStore.getState().savedAccounts).toContainEqual(expect.objectContaining({
+      login: 200003, accountType, isLive: accountType === 'real', brokerId: 'runtime-broker',
+    }));
+  });
+
+  it('preserves a proven account type for the same broker when login omits type metadata', async () => {
+    useAppStore.setState({ savedAccounts: [
+      { login: 200003, name: 'Current owner', server: 'Runtime Broker', brokerId: 'runtime-broker',
+        serverUrl: 'https://broker.example', accountType: 'demo', isLive: false, lastUsed: 1 },
+      { login: 200003, name: 'Foreign owner', server: 'Runtime Broker', brokerId: 'foreign-broker',
+        serverUrl: 'https://foreign.example', accountType: 'contest', isLive: false, lastUsed: 1 },
+    ] });
+    vi.mocked(authV2Api.login).mockResolvedValue({
+      access_token: 'type-token', account_login: 200003, broker_id: 'runtime-broker',
+    });
+    render(<LoginDialog isOpen onClose={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText('Account ID'), { target: { value: '200003' } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'test-password' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+    await waitFor(() => expect(useAppStore.getState().authToken).toBe('type-token'));
+    expect(useAppStore.getState().savedAccounts).toHaveLength(2);
+    expect(useAppStore.getState().savedAccounts).toContainEqual(expect.objectContaining({
+      login: 200003, accountType: 'demo', isLive: false, brokerId: 'runtime-broker',
+    }));
+    expect(useAppStore.getState().savedAccounts).toContainEqual(expect.objectContaining({
+      login: 200003, accountType: 'contest', brokerId: 'foreign-broker', name: 'Foreign owner',
+    }));
+  });
+
   it('clears stale optional tokens omitted by a successful real login', async () => {
     const user = userEvent.setup();
     localStorage.setItem('refresh_token', 'stale-local-refresh');

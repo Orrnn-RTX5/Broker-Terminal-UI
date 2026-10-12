@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SAVED_ACCOUNTS_STORAGE_KEY, useAppStore } from './useAppStore';
+import { SAVED_ACCOUNTS_STORAGE_KEY, useAppStore, type SavedAccount } from './useAppStore';
 import {
   getCommittedBrokerAccountSessionScope,
   onSessionChange,
@@ -34,6 +34,72 @@ describe('useAppStore authenticated login commit', () => {
     localStorage.setItem('broker_id', 'Orrnn');
     localStorage.setItem('server_url', 'https://service.orrnn.example');
   };
+
+  it.each(['demo', 'real', 'contest'] as const)('persists the proven %s type through login and reload', async (accountType) => {
+    configureAcceptedBroker();
+    useAppStore.getState().setAuthenticated(true, '200003', 'accepted-token', undefined, undefined, {
+      login: 200003, name: 'Owner', server: 'ORRNN', accountType,
+      // Known type corrects a stale legacy flag.
+      isLive: accountType !== 'real',
+    });
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().savedAccounts).toEqual([expect.objectContaining({
+      accountType, isLive: accountType === 'real', brokerId: 'Orrnn',
+    })]);
+  });
+
+  it('does not classify legacy bookmarks from their live flag or display name', async () => {
+    localStorage.setItem(SAVED_ACCOUNTS_STORAGE_KEY, JSON.stringify([
+      { login: 200003, name: 'demo acc1', server: 'Contest Broker', isLive: true },
+      { login: 200004, name: 'Demo owner', server: 'Live Broker', isLive: false },
+      { login: 200005, name: 'Owner', server: 'Broker', accountType: 'invalid' },
+    ]));
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().savedAccounts.map(account => account.accountType)).toEqual([undefined, undefined, undefined]);
+    expect(useAppStore.getState().savedAccounts[0].isLive).toBe(true);
+    expect(useAppStore.getState().savedAccounts[1].isLive).toBe(false);
+    expect(useAppStore.getState().savedAccounts[2].isLive).toBeUndefined();
+  });
+
+  it('retains a known type across partial metadata and favorite updates, and accepts a new proven type', () => {
+    const account = { login: 200003, name: 'Owner', server: 'Broker', brokerId: 'One', serverUrl: 'https://one.example' };
+    useAppStore.getState().addSavedAccount({ ...account, accountType: 'demo' });
+    useAppStore.getState().addSavedAccount({ ...account, isLive: true, isFavorite: true });
+    expect(useAppStore.getState().savedAccounts[0]).toMatchObject({ accountType: 'demo', isLive: false, isFavorite: true });
+    useAppStore.getState().addSavedAccount({ ...account, accountType: 'contest' });
+    expect(useAppStore.getState().savedAccounts[0]).toMatchObject({ accountType: 'contest', isLive: false });
+  });
+
+  it('preserves known canonical account type when merging its legacy display alias', () => {
+    configureAcceptedBroker();
+    useAppStore.setState({ savedAccounts: [
+      { login: 200003, name: 'Owner', server: 'ORRNN', isLive: true },
+      { login: 200003, name: 'Owner', server: 'https://service.orrnn.example', accountType: 'contest',
+        brokerId: 'Orrnn', serverUrl: 'https://service.orrnn.example' },
+    ] });
+    useAppStore.getState().setAuthenticated(true, '200003', 'accepted-token', undefined, undefined, {
+      login: 200003, name: 'Owner', server: 'ORRNN',
+    });
+    expect(useAppStore.getState().savedAccounts).toEqual([expect.objectContaining({ accountType: 'contest', isLive: false })]);
+  });
+
+  it('does not borrow a type from another broker sharing the login and label', () => {
+    const account = { login: 200003, name: 'Owner', server: 'Shared broker label' };
+    useAppStore.getState().addSavedAccount({ ...account, brokerId: 'One', serverUrl: 'https://one.example', accountType: 'demo' });
+    useAppStore.getState().addSavedAccount({ ...account, brokerId: 'Two', serverUrl: 'https://two.example' });
+    expect(useAppStore.getState().savedAccounts.map(candidate => candidate.accountType)).toEqual(['demo', undefined]);
+  });
+
+  it('persists only the whitelisted type and strips unrelated incoming classification fields', () => {
+    useAppStore.getState().addSavedAccount({
+      login: 200003, name: 'Owner', server: 'Broker', accountType: 'contest',
+      group: 'contest\\USD', password: 'private-secret',
+    } as SavedAccount);
+    const persisted = JSON.parse(localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)!);
+    expect(persisted[0]).toMatchObject({ accountType: 'contest' });
+    expect(persisted[0]).not.toHaveProperty('group');
+    expect(persisted[0]).not.toHaveProperty('password');
+  });
 
   it('binds the successful login bookmark to its accepted broker despite a different display label', async () => {
     configureAcceptedBroker();

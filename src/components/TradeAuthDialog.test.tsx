@@ -178,7 +178,7 @@ describe('TradeAuthDialog', () => {
       authToken: 'demo-jwt',
     });
     const expectedBookmark = {
-      login: 123456, name: 'Demo User', server: 'RUNTIME BROKER', isLive: false,
+      login: 123456, name: 'Demo User', server: 'RUNTIME BROKER', accountType: 'demo', isLive: false,
       brokerId: 'runtime-broker', serverUrl: 'https://runtime-broker.example',
     };
     expect(observeAuthenticatedBookmark).toHaveBeenCalledExactlyOnceWith([

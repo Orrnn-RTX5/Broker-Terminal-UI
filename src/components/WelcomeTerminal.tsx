@@ -2,6 +2,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useDesktopStartupReady } from '../startup/useDesktopStartupReady';
 import { useSavedLogin } from '../hooks/useSavedLogin';
 import { getAuthenticatedAccountName } from '../utils/accountDisplayName';
+import { resolveTradingAccountType } from '../services/tradingAccountType';
 /**
  * WelcomeTerminal renders the lightweight pre-authentication webterminal.
  * Authenticated chart, data, and WebSocket modules are loaded separately.
@@ -923,6 +924,7 @@ export function WelcomeTerminal({
             markPostAuthenticationPhase('auth-store-runtime');
             const appStore = useAppStore.getState();
             const loginNum = parseInt(String(accountId), 10);
+            const tradingAccountType = resolveTradingAccountType(data);
             appStore.setAuthenticated(
                 true,
                 String(accountId),
@@ -933,7 +935,7 @@ export function WelcomeTerminal({
                     login: loginNum,
                     name: getAuthenticatedAccountName(data),
                     server: submitBroker.broker_name || '',
-                    isLive: true,
+                    ...(tradingAccountType ? { accountType: tradingAccountType, isLive: tradingAccountType === 'real' } : {}),
                     lastUsed: Date.now(),
                 } : undefined,
             );

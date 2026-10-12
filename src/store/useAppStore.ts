@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { pickAccountDisplayName } from '../utils/accountDisplayName';
+import type { TradingAccountType } from '../services/tradingAccountType';
 import { devtools, persist } from 'zustand/middleware';
 import { useSystemJournalStore } from './useSystemJournalStore';
 import { hasTradeHistoryPositionLevelChanges, rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
@@ -273,7 +274,9 @@ export interface SavedAccount {
   server: string;
   brokerId?: string;
   serverUrl?: string;
-  isLive: boolean;
+  accountType?: TradingAccountType;
+  /** Legacy compatibility only; old logins defaulted this to true. */
+  isLive?: boolean;
   lastUsed?: number;
   isFavorite?: boolean;
 }
@@ -424,6 +427,8 @@ const sanitizeSavedAccount = (account: SavedAccount | (SavedAccount & { password
   const server = typeof account.server === 'string' ? account.server.trim() : '';
   if (!Number.isSafeInteger(login) || login <= 0 || !server) return null;
   const brokerId = typeof account.brokerId === 'string' ? account.brokerId.trim() : '';
+  const accountType = account.accountType === 'demo' || account.accountType === 'real' || account.accountType === 'contest'
+    ? account.accountType : undefined;
   const serverUrl = typeof account.serverUrl === 'string' && account.serverUrl.trim()
     ? createCommittedBrokerAccountSessionScope({
       authenticated: false, brokerId: '', serverUrl: account.serverUrl,
@@ -437,7 +442,8 @@ const sanitizeSavedAccount = (account: SavedAccount | (SavedAccount & { password
     server,
     ...(brokerId ? { brokerId } : {}),
     ...(serverUrl ? { serverUrl } : {}),
-    isLive: account.isLive === true,
+    ...(accountType ? { accountType, isLive: accountType === 'real' }
+      : typeof account.isLive === 'boolean' ? { isLive: account.isLive } : {}),
     ...(typeof account.isFavorite === 'boolean' ? { isFavorite: account.isFavorite } : {}),
     ...(Number.isFinite(account.lastUsed) ? { lastUsed: account.lastUsed } : {}),
   };
@@ -565,9 +571,12 @@ const upsertSavedAccount = (accounts: unknown, account: SavedAccount): SavedAcco
   const favorite = safeAccount.isFavorite
     ?? matchingAccounts.find(account => account.isFavorite === true)?.isFavorite
     ?? matchingAccounts.find(account => typeof account.isFavorite === 'boolean')?.isFavorite;
+  const accountType = safeAccount.accountType
+    ?? matchingAccounts.find(account => account.accountType !== undefined)?.accountType;
   const merged = {
     ...matchingAccounts[0], ...nextAccount,
     ...(favorite !== undefined ? { isFavorite: favorite } : {}),
+    ...(accountType ? { accountType, isLive: accountType === 'real' } : {}),
   };
   const matchingSet = new Set(matchingIndices);
   return retained.flatMap((candidate, index) => (

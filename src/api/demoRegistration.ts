@@ -1,6 +1,7 @@
 import { API_V2_BASE_URL } from '../config/api';
 import { getRuntimeBrokerConfiguration, isDesktopBackendTarget } from '../config/backendTarget.js';
 import { apiClient } from './client';
+import type { AccountClassificationFields } from '../types/api';
 
 export interface DemoRegistrationInput {
   name: string;
@@ -8,7 +9,7 @@ export interface DemoRegistrationInput {
   password: string;
 }
 
-export interface DemoRegistrationResponse {
+export interface DemoRegistrationResponse extends AccountClassificationFields {
   access_token?: string;
   token?: string;
   refresh_token?: string;

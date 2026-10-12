@@ -12,7 +12,6 @@ import { ChangePasswordDialog } from '../ChangePasswordDialog';
 import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
 import { brokerV2Api } from '../../api/trade';
-import { RTX5_API_URL, normalizeServerUrl } from '../../config/api';
 import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
 import { buildBrokerDirectoryLogoUrl } from '../BrokerLogoImage';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
@@ -20,18 +19,23 @@ import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
 import { openWebTrader } from '../../services/webTrader';
 import type { Broker, BrokerServer } from '../../types/api';
 import type { BrokerDiscoveryItem } from '../../services/brokerDiscovery';
-import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession } from '../../services/savedAccountScope';
+import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession, normalizeSavedAccountServer } from '../../services/savedAccountScope';
 import { getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
+import type { TradingAccountType } from '../../services/tradingAccountType';
+import './NavigatorPanel.css';
 
 const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
 const OpenAccountDialog = openAccountFeature.Component;
 
 type BrokerLogoInfo = {
-    logoUrl: string;
-    baseCandidates: string[];
+    candidates: string[];
     brokerName: string;
-    brokerId?: string;
 };
+
+type BrokerLogoTarget = { serverName: string; brokerId: string; serverUrl: string };
+type StoredBrokerLogo = BrokerLogoTarget & { logoUrl: string; brokerName: string };
+
+const brokerLogoKey = (target: BrokerLogoTarget) => JSON.stringify(target);
 
 const normalizeNavigatorText = (value: unknown): string => String(value || '').trim();
 
@@ -40,185 +44,75 @@ const getStoredNavigatorValue = (key: string): string => {
     return normalizeNavigatorText(localStorage.getItem(key));
 };
 
-const normalizeLogoBaseUrl = (value: unknown): string => {
-    const normalized = normalizeServerUrl(normalizeNavigatorText(value));
-    return normalized.replace(/\/api\/v\d+\/?$/i, '').replace(/\/$/, '');
-};
-
-const extractHost = (value: unknown): string => {
-    const raw = normalizeNavigatorText(value);
-    if (!raw) return '';
-    try {
-        const withProto = raw.includes('://') ? raw : `https://${raw}`;
-        return new URL(withProto).hostname.toLowerCase();
-    } catch {
-        return raw.toLowerCase();
-    }
-};
-
 const resolveNavigatorLogoUrl = (url: string, baseCandidates: string[]): string => {
     const rawUrl = normalizeNavigatorText(url);
     if (!rawUrl) return '';
-    if (/^(?:https?:|data:|blob:)/i.test(rawUrl) || rawUrl.startsWith('./')) {
+    if (/^(?:https?:|data:|blob:)/i.test(rawUrl)) {
         return rawUrl;
     }
 
     if (rawUrl.startsWith('/api/v1/brokers/')) {
-        const discoveryBase = normalizeLogoBaseUrl(getRuntimeDiscoveryBaseUrl());
+        const discoveryBase = normalizeSavedAccountServer(getRuntimeDiscoveryBaseUrl());
         if (discoveryBase) return `${discoveryBase}${rawUrl}`;
+        return '';
     }
 
-    const base = [
-        ...baseCandidates,
-        getStoredNavigatorValue('server_url'),
-        getStoredNavigatorValue('backend_url'),
-        RTX5_API_URL,
-    ].map(normalizeLogoBaseUrl).find(Boolean);
-    if (!base) return rawUrl;
-
-    const path = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
-    return `${base}${path}`;
+    for (const base of baseCandidates) {
+        if (!/^https?:\/\//i.test(base)) continue;
+        try { return new URL(rawUrl, `${base.replace(/\/+$/, '')}/`).toString(); } catch { /* Try the next owned endpoint. */ }
+    }
+    return '';
 };
 
 const matchesBrokerServer = (
     server: BrokerServer | BrokerDiscoveryItem,
-    serverName: string,
+    target: BrokerLogoTarget,
 ): boolean => {
-    const target = normalizeNavigatorText(serverName).toLowerCase();
-    if (!target) return false;
-    const targetTrimmed = target.replace(/\/+$/, '');
-    const targetHost = extractHost(target);
-
-    const candidates = [
-        server.server,
-        server.server_url,
-        server.backend_url,
-        server.market_api_url,
-        server.broker_id,
-        server.broker_name,
-        (server as any).name,
-        (server as any).domain_name,
-        (server as any).server_domain,
-    ].map(normalizeNavigatorText).filter(Boolean);
-
-    for (const candidate of candidates) {
-        const candLower = candidate.toLowerCase();
-        const candTrimmed = candLower.replace(/\/+$/, '');
-        if (target === candLower || targetTrimmed === candTrimmed) return true;
-
-        const candHost = extractHost(candidate);
-        if (targetHost && candHost && targetHost === candHost) return true;
+    const brokerId = normalizeNavigatorText(server.broker_id);
+    // Broker IDs are opaque; hostnames, shared labels, ports and paths do not
+    // establish ownership. A known ID and endpoint must both be compatible.
+    if (target.brokerId && brokerId !== target.brokerId) return false;
+    const endpoints = [server.server_url, server.backend_url, server.server]
+        .map(normalizeNavigatorText).filter(value => /^https?:\/\//i.test(value))
+        .map(normalizeSavedAccountServer);
+    if (target.serverUrl && endpoints.length > 0) {
+        return endpoints.includes(normalizeSavedAccountServer(target.serverUrl));
     }
-
-    return false;
-};
-
-const matchesCurrentStoredBroker = (serverName: string): boolean => {
-    const target = normalizeNavigatorText(serverName).toLowerCase();
-    if (!target) return false;
-    const targetTrimmed = target.replace(/\/+$/, '');
-    const targetHost = extractHost(target);
-
-    const keys = [
-        'rtx_broker_server',
-        'server_url',
-        'backend_url',
-        'market_api_url',
-        'broker_id',
-        'rtx_broker_id',
-        'broker_name',
-    ];
-
-    for (const key of keys) {
-        const val = getStoredNavigatorValue(key).toLowerCase();
-        if (!val) continue;
-        const valTrimmed = val.replace(/\/+$/, '');
-        if (target === val || targetTrimmed === valTrimmed) return true;
-        const valHost = extractHost(val);
-        if (targetHost && valHost && targetHost === valHost) return true;
-    }
-
-    return false;
-};
-
-const getStoredBrokerLogoInfo = (serverName: string): BrokerLogoInfo | null => {
-    if (!matchesCurrentStoredBroker(serverName)) return null;
-
-    const storedLogoUrl = getStoredNavigatorValue('logo_url');
-    const brokerId = getStoredNavigatorValue('broker_id')
-        || getStoredNavigatorValue('rtx_broker_id');
-
-    let logoUrl = storedLogoUrl;
-    if (!logoUrl && brokerId) {
-        logoUrl = buildBrokerDirectoryLogoUrl(brokerId);
-    }
-
-    return {
-        logoUrl,
-        brokerName: brokerDisplayName(serverName),
-        brokerId,
-        baseCandidates: [
-            getStoredNavigatorValue('server_url'),
-            getStoredNavigatorValue('backend_url'),
-            getStoredNavigatorValue('market_api_url'),
-        ],
-    };
+    if (target.brokerId) return true;
+    const identity = normalizeSavedAccountServer(target.serverName);
+    return Boolean(identity) && [server.server, server.server_url, server.backend_url,
+        server.broker_id, server.broker_name, 'name' in server ? server.name : '']
+        .map(value => normalizeSavedAccountServer(normalizeNavigatorText(value))).includes(identity);
 };
 
 const buildBrokerLogoInfo = (
-    serverName: string,
+    target: BrokerLogoTarget,
     directoryBrokers: BrokerDiscoveryItem[],
     servers: BrokerServer[],
     brokers: Broker[],
-): BrokerLogoInfo | null => {
-    const matchedDirectory = directoryBrokers.find((broker) => matchesBrokerServer(broker, serverName));
-    const matchedServer = servers.find((server) => matchesBrokerServer(server, serverName));
-    const matchedBroker = (matchedServer?.broker_id || matchedDirectory?.broker_id)
-        ? brokers.find((broker) => broker.broker_id === (matchedServer?.broker_id || matchedDirectory?.broker_id))
-        : undefined;
-
-    const brokerId = normalizeNavigatorText(
-        matchedDirectory?.broker_id
-        || matchedServer?.broker_id
-        || matchedBroker?.broker_id
-    );
-
-    const brokerName = brokerDisplayName(
-        serverName,
-        matchedDirectory?.broker_name,
-        matchedDirectory?.name,
-        matchedServer?.broker_name,
-        matchedBroker?.name,
-        brokerId,
-    );
-
-    let logoUrl = normalizeNavigatorText(matchedDirectory?.logo_url)
-        || normalizeNavigatorText(matchedServer?.logo_url)
-        || normalizeNavigatorText(matchedBroker?.logo_url);
-
-    if (!logoUrl && brokerId) {
-        logoUrl = buildBrokerDirectoryLogoUrl(brokerId);
-    }
-
-    if (!logoUrl && !brokerName && !matchedServer && !matchedDirectory) {
-        return getStoredBrokerLogoInfo(serverName);
-    }
-
-    const baseCandidates = [
-        matchedDirectory?.server_url || '',
-        matchedDirectory?.backend_url || '',
-        matchedDirectory?.market_api_url || '',
-        matchedServer?.server_url || '',
-        matchedServer?.backend_url || '',
-        matchedServer?.market_api_url || '',
-    ];
-
-    return {
-        logoUrl: logoUrl || getStoredNavigatorValue('logo_url'),
-        brokerName,
-        brokerId,
-        baseCandidates,
+    stored?: StoredBrokerLogo,
+): BrokerLogoInfo => {
+    const matches = [...directoryBrokers, ...servers].filter(server => matchesBrokerServer(server, target));
+    const matchedIds = new Set(matches.map(server => normalizeNavigatorText(server.broker_id)).filter(Boolean));
+    // An unbound legacy label shared by multiple brokers is ambiguous.
+    const owned = !target.brokerId && matchedIds.size > 1 ? [] : matches;
+    const brokerId = target.brokerId || normalizeNavigatorText(owned[0]?.broker_id);
+    const broker = brokerId ? brokers.find(item => item.broker_id === brokerId) : undefined;
+    const storedMatches = Boolean(stored && brokerId && brokerId === stored.brokerId
+        && target.serverUrl && normalizeSavedAccountServer(target.serverUrl) === normalizeSavedAccountServer(stored.serverUrl));
+    const bases = [target.serverUrl, ...owned.flatMap(source => [source.server_url || '', source.backend_url || ''])];
+    const candidates: string[] = [];
+    const add = (value: string, sourceBases = bases) => {
+        const url = resolveNavigatorLogoUrl(value, sourceBases);
+        if (url && !candidates.includes(url)) candidates.push(url);
     };
+    owned.forEach(source => add(source.logo_url || '', [source.server_url || '', source.backend_url || '', ...bases]));
+    add(broker?.logo_url || '');
+    if (storedMatches) add(stored?.logoUrl || '');
+    add(buildBrokerDirectoryLogoUrl(brokerId));
+    return { candidates, brokerName: brokerDisplayName(target.serverName,
+        ...owned.flatMap(source => [source.broker_name, 'name' in source ? source.name : '']),
+        broker?.name, storedMatches ? stored?.brokerName : '', brokerId) };
 };
 
 export const NavigatorPanel: React.FC = () => {
@@ -231,10 +125,23 @@ export const NavigatorPanel: React.FC = () => {
     const sessionScope = useBrokerAccountSessionScope();
     // Capture aliases at committed login boundaries, not while another broker
     // is being selected. Same-login broker switches also change this scope.
-    const { brokerScope, accountServerIdentities } = useMemo(() => ({
-        brokerScope: getCommittedBrokerAccountSessionScope(),
-        accountServerIdentities: getSavedAccountServerIdentities(),
-    }), [sessionScope]);
+    const { brokerScope, accountServerIdentities, storedBrokerLogo } = useMemo(() => {
+        const scope = getCommittedBrokerAccountSessionScope();
+        const stored: StoredBrokerLogo = {
+            serverName: getStoredBrokerServer(),
+            brokerId: getStoredNavigatorValue('broker_id') || getStoredNavigatorValue('rtx_broker_id'),
+            serverUrl: getStoredNavigatorValue('server_url') || getStoredNavigatorValue('backend_url'),
+            logoUrl: getStoredNavigatorValue('logo_url'),
+            brokerName: getStoredNavigatorValue('broker_name'),
+        };
+        const storageMatches = !scope.authenticated || (stored.brokerId === scope.brokerId
+            && normalizeSavedAccountServer(stored.serverUrl) === normalizeSavedAccountServer(scope.serverUrl));
+        return {
+            brokerScope: scope,
+            accountServerIdentities: getSavedAccountServerIdentities(),
+            storedBrokerLogo: storageMatches ? stored : undefined,
+        };
+    }, [sessionScope]);
 
     // Keep every saved account for future login; scope only the authenticated
     // tree and Favorites. Logged-out Favorites remain quick-login shortcuts.
@@ -255,7 +162,6 @@ export const NavigatorPanel: React.FC = () => {
             server: brokerScope.serverUrl || brokerScope.brokerId,
             brokerId: brokerScope.brokerId,
             serverUrl: brokerScope.serverUrl,
-            isLive: true,
         });
     }
     const favoriteAccounts = (isAuthenticated ? visibleSavedAccounts : savedAccounts).filter(account => account.isFavorite);
@@ -273,7 +179,7 @@ export const NavigatorPanel: React.FC = () => {
     const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
     const [selectedAccountForPassword, setSelectedAccountForPassword] = useState<SavedAccount | null>(null);
     const [switchingLogin] = useState<number | null>(null);
-    const [brokerLogos, setBrokerLogos] = useState<Record<string, BrokerLogoInfo>>({});
+    const [brokerLogoState, setBrokerLogoState] = useState<{ scope: string; logos: Record<string, BrokerLogoInfo> }>({ scope: '', logos: {} });
 
     useEffect(() => {
         localStorage.removeItem('rtx_saved_password');
@@ -285,22 +191,41 @@ export const NavigatorPanel: React.FC = () => {
 
     // Group accounts by server
     const servers = Array.from(new Set(visibleAccounts.map(a => a.server)));
-    const serverNamesForLogos = servers.length > 0 ? servers : [getStoredBrokerServer()];
-    const serverLogoKey = serverNamesForLogos.join('\u001f');
+    const getLogoTarget = (serverName: string, account?: SavedAccount): BrokerLogoTarget => {
+        if (isAuthenticated && brokerScope.authenticated) {
+            return { serverName, brokerId: brokerScope.brokerId, serverUrl: brokerScope.serverUrl };
+        }
+        if (account?.brokerId || account?.serverUrl) {
+            return { serverName, brokerId: account.brokerId || '', serverUrl: account.serverUrl || '' };
+        }
+        if (storedBrokerLogo && accountServerIdentities.has(normalizeSavedAccountServer(serverName))) {
+            return { serverName, brokerId: storedBrokerLogo.brokerId, serverUrl: storedBrokerLogo.serverUrl };
+        }
+        return { serverName, brokerId: '', serverUrl: /^https?:\/\//i.test(serverName) ? serverName : '' };
+    };
+    const placeholderServer = getStoredBrokerServer();
+    const logoTargets = [...visibleAccounts, ...favoriteAccounts].map(account => getLogoTarget(account.server, account));
+    if (servers.length === 0) logoTargets.push(getLogoTarget(placeholderServer));
+    const serverLogoKey = JSON.stringify([...new Map(logoTargets.map(target => [brokerLogoKey(target), target])).values()]);
+    const logoScopeKey = `${sessionScope}:${serverLogoKey}`;
+    // Clear old broker images during render, before effects or pending
+    // discovery responses have a chance to run.
+    const brokerLogos = brokerLogoState.scope === logoScopeKey ? brokerLogoState.logos : {};
+    const logoFor = (serverName: string, account?: SavedAccount) => {
+        const target = getLogoTarget(serverName, account);
+        return brokerLogos[brokerLogoKey(target)] || buildBrokerLogoInfo(target, getCachedBrokerDirectory() || [], [], [], storedBrokerLogo);
+    };
 
     useEffect(() => {
         let active = true;
-        const serverNames = serverNamesForLogos.map(normalizeNavigatorText).filter(Boolean);
-
-        setBrokerLogos((current) => {
-            const next = { ...current };
-            const cachedDirectory = getCachedBrokerDirectory() || [];
-            serverNames.forEach((serverName) => {
-                const logoInfo = buildBrokerLogoInfo(serverName, cachedDirectory, [], []);
-                if (logoInfo) next[serverName] = logoInfo;
-            });
-            return next;
-        });
+        const targets = JSON.parse(serverLogoKey) as BrokerLogoTarget[];
+        const update = (directory: BrokerDiscoveryItem[], brokerServers: BrokerServer[], brokers: Broker[]) => {
+            if (!active) return;
+            const logos = Object.fromEntries(targets.map(target => [brokerLogoKey(target),
+                buildBrokerLogoInfo(target, directory, brokerServers, brokers, storedBrokerLogo)]));
+            setBrokerLogoState({ scope: logoScopeKey, logos });
+        };
+        update(getCachedBrokerDirectory() || [], [], []);
 
         const loadBrokerLogos = async () => {
             try {
@@ -312,27 +237,13 @@ export const NavigatorPanel: React.FC = () => {
                 if (!active) return;
 
                 const brokers = brokersData?.brokers || [];
-                setBrokerLogos((current) => {
-                    const next = { ...current };
-                    serverNames.forEach((serverName) => {
-                        const logoInfo = buildBrokerLogoInfo(serverName, cachedDirectory, brokerServers, brokers);
-                        if (logoInfo) next[serverName] = logoInfo;
-                    });
-                    return next;
-                });
+                update(cachedDirectory, brokerServers, brokers);
 
                 if (cachedDirectory.length === 0) {
                     loadAppBrokerDirectory({ desktop: isDesktopBackendTarget() })
                         .then((directoryBrokers) => {
                             if (!active || !directoryBrokers?.length) return;
-                            setBrokerLogos((current) => {
-                                const next = { ...current };
-                                serverNames.forEach((serverName) => {
-                                    const logoInfo = buildBrokerLogoInfo(serverName, directoryBrokers, brokerServers, brokers);
-                                    if (logoInfo) next[serverName] = logoInfo;
-                                });
-                                return next;
-                            });
+                            update(directoryBrokers, brokerServers, brokers);
                         })
                         .catch(() => undefined);
                 }
@@ -347,7 +258,7 @@ export const NavigatorPanel: React.FC = () => {
             active = false;
             cancelScheduledLogos();
         };
-    }, [serverLogoKey]);
+    }, [serverLogoKey, logoScopeKey, storedBrokerLogo]);
 
     const handleLoginToAccount = (acc?: SavedAccount) => {
         if (acc) {
@@ -456,13 +367,13 @@ export const NavigatorPanel: React.FC = () => {
                     <TreeItem label={tr("Accounts")} icon={<Icon name="user" size="sm" />} defaultOpen>
                         {servers.map((serverName, sIdx) => {
                             const accountsInServer = visibleAccounts.filter(a => a.server === serverName);
-                            const isLive = accountsInServer[0]?.isLive; // Restore original logic checking if the server represents live accounts
+                            const logoInfo = logoFor(serverName, accountsInServer[0]);
                             const isLastServer = sIdx === servers.length - 1 && visibleAccounts.length > 0;
                             return (
                                 <TreeItem
                                     key={serverName}
-                                    label={brokerDisplayName(serverName, brokerLogos[serverName]?.brokerName)}
-                                    icon={<BrokerServerIcon serverName={serverName} logoInfo={brokerLogos[serverName]} />}
+                                    label={brokerDisplayName(serverName, logoInfo.brokerName)}
+                                    icon={<BrokerServerIcon serverName={serverName} logoInfo={logoInfo} />}
                                     defaultOpen
                                     isLast={isLastServer && visibleAccounts.length > 0}
                                 >
@@ -478,7 +389,7 @@ export const NavigatorPanel: React.FC = () => {
                                             <ContextMenu key={accountKey(acc)} items={getAccountContextMenuItems(acc)} variant="theme">
                                                 <TreeItem
                                                     label={isSwitching ? tr("{{value0}} (switching...)", { value0: displayName }) : tr(displayName)}
-                                                    icon={<AccountIcon isActive={isActive} isLive={isLive ?? false} />}
+                                                    icon={<AccountIcon isActive={isActive} accountType={acc.accountType} />}
                                                     isLast={isLastAccount}
                                                     isFavorite={acc.isFavorite}
                                                     onItemClick={() => {
@@ -495,11 +406,11 @@ export const NavigatorPanel: React.FC = () => {
                         {/* Add Account Placeholder if empty */}
                         {visibleAccounts.length === 0 && (
                             <TreeItem
-                                label={brokerDisplayName(getStoredBrokerServer(), brokerLogos[getStoredBrokerServer()]?.brokerName)}
+                                label={brokerDisplayName(placeholderServer, logoFor(placeholderServer).brokerName)}
                                 icon={
                                     <BrokerServerIcon
-                                        serverName={getStoredBrokerServer()}
-                                        logoInfo={brokerLogos[getStoredBrokerServer()]}
+                                        serverName={placeholderServer}
+                                        logoInfo={logoFor(placeholderServer)}
                                         muted
                                     />
                                 }
@@ -529,8 +440,8 @@ export const NavigatorPanel: React.FC = () => {
                         ) : favoriteAccounts.map((acc, index) => (
                             <ContextMenu key={`${sessionScope}:${accountKey(acc)}`} items={getAccountContextMenuItems(acc)} variant="theme">
                                 <TreeItem
-                                    label={`${acc.login}${acc.name && acc.name !== String(acc.login) ? `: ${acc.name}` : ''} · ${brokerDisplayName(acc.server, brokerLogos[acc.server]?.brokerName)}`}
-                                    icon={<AccountIcon isActive={isAccountActive(acc)} isLive={acc.isLive} />}
+                                    label={`${acc.login}${acc.name && acc.name !== String(acc.login) ? `: ${acc.name}` : ''} · ${brokerDisplayName(acc.server, logoFor(acc.server, acc).brokerName)}`}
+                                    icon={<AccountIcon isActive={isAccountActive(acc)} accountType={acc.accountType} />}
                                     isFavorite
                                     isLast={index === favoriteAccounts.length - 1}
                                     onItemClick={() => handleLoginToAccount(acc)}
@@ -612,29 +523,7 @@ function BrokerServerIcon({
     logoInfo?: BrokerLogoInfo;
     muted?: boolean;
 }) {
-    const candidates = useMemo(() => {
-        const list: string[] = [];
-        const add = (url: unknown) => {
-            const raw = normalizeNavigatorText(url);
-            if (raw && !list.includes(raw)) list.push(raw);
-        };
-
-        if (logoInfo?.logoUrl) {
-            const resolved = resolveNavigatorLogoUrl(logoInfo.logoUrl, logoInfo.baseCandidates);
-            add(resolved);
-        }
-
-        const brokerId = logoInfo?.brokerId;
-        if (brokerId) {
-            add(buildBrokerDirectoryLogoUrl(brokerId));
-        }
-
-        if (matchesCurrentStoredBroker(serverName)) {
-            add(getStoredNavigatorValue('logo_url'));
-        }
-
-        return list;
-    }, [serverName, logoInfo]);
+    const candidates = logoInfo?.candidates || [];
 
     const candidateSignature = JSON.stringify([serverName, candidates]);
     const [attempt, setAttempt] = useState({ signature: candidateSignature, index: 0 });
@@ -655,16 +544,21 @@ function BrokerServerIcon({
         );
     }
 
-    return <Icon name="server" size="sm" className={muted ? 'text-zinc-400' : 'text-amber-400'} />;
+    return <Icon name="server" size="sm" className="text-zinc-400" />;
 }
 
 /** MT5-style account icon - person silhouette with color */
-function AccountIcon({ isActive }: { isActive: boolean; isLive: boolean }) {
-    const color = isActive ? 'var(--rtx-light-accent, #fbbf24)' : 'var(--rtx-light-text-muted, #fbbf24)';
+function AccountIcon({ isActive, accountType }: { isActive: boolean; accountType?: TradingAccountType }) {
+    const tr = useUiTranslation();
+    const label = accountType === 'demo' ? tr('Demo account') : accountType === 'real' ? tr('Real account')
+        : accountType === 'contest' ? tr('Contest account') : tr('Account type unavailable');
     return (
-        <svg width={14} height={14} viewBox="0 0 16 16" fill="none" className="navigator-account-icon inline-block flex-shrink-0" style={{ opacity: isActive ? 1 : 'var(--rtx-light-icon-opacity, 0.6)' }}>
-            <circle cx="8" cy="5" r="3" fill={color} stroke="none" />
-            <path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" fill={color} stroke="none" />
+        <svg width={14} height={14} viewBox="0 0 16 16" fill="none" role="img" aria-label={label}
+            data-account-type={accountType || 'unknown'} data-active={isActive}
+            className="navigator-account-icon inline-block flex-shrink-0">
+            <title>{label}</title>
+            <circle cx="8" cy="5" r="3" fill="currentColor" stroke="none" />
+            <path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" fill="currentColor" stroke="none" />
         </svg>
     );
 }

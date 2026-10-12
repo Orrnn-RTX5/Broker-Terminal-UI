@@ -18,9 +18,9 @@ const storeBroker = (broker: typeof brokerA) => {
   localStorage.setItem('backend_url', broker.serverUrl);
   localStorage.setItem('rtx_broker_server', broker.server);
 };
-const snapshot = (name = 'Current owner'): SessionTradeSnapshot => ({
+const snapshot = (name = 'Current owner', metadata: Record<string, unknown> = {}): SessionTradeSnapshot => ({
   accountResult: { status: 'fulfilled', value: {
-    id: '200003', balance: 1000, equity: 1000, currency: 'USD', leverage: 100, ...{ name },
+    id: '200003', balance: 1000, equity: 1000, currency: 'USD', leverage: 100, ...{ name, ...metadata },
   } },
   positionsResult: { status: 'fulfilled', value: [] },
 });
@@ -117,6 +117,82 @@ describe('account summary saved-account ownership', () => {
     expect(useAppStore.getState().savedAccounts).toHaveLength(2);
   });
 
+  it.each([
+    { broker: brokerA, accountType: 'demo' },
+    { broker: brokerB, accountType: 'real' },
+    { broker: { brokerId: 'any-new-broker', serverUrl: 'https://new.example/trading', server: 'Live' }, accountType: 'contest' },
+  ] as const)('updates $accountType metadata without an owner name for $broker.brokerId', async ({ broker, accountType }) => {
+    storeBroker(broker);
+    commitBrokerAccountSessionScope({ authenticated: true, accountId: '200003', ...broker });
+    const own = bookmark('Known owner', broker.server, broker);
+    const foreign = bookmark('Foreign demo owner', broker.server, {
+      brokerId: 'unrelated-broker', serverUrl: 'https://unrelated.example',
+    });
+    useAppStore.setState({ savedAccounts: [foreign, own] });
+    vi.mocked(loadSessionTradeSnapshot).mockResolvedValue(snapshot('', { account_type: accountType }));
+
+    mountSnapshotRuntime();
+    await flushSnapshot();
+
+    expect(useAppStore.getState().savedAccounts).toHaveLength(2);
+    expect(useAppStore.getState().savedAccounts).toContainEqual(foreign);
+    expect(useAppStore.getState().savedAccounts).toContainEqual(expect.objectContaining({
+      login: 200003, name: 'Known owner', brokerId: broker.brokerId,
+      serverUrl: broker.serverUrl, accountType, isLive: accountType === 'real',
+    }));
+  });
+
+  it('creates a classified active bookmark even when the summary omits the owner name', async () => {
+    vi.mocked(loadSessionTradeSnapshot).mockResolvedValue(snapshot('', { account_type: 'contest' }));
+
+    mountSnapshotRuntime();
+    await flushSnapshot();
+
+    expect(useAppStore.getState().savedAccounts).toEqual([expect.objectContaining({
+      login: 200003, name: '', brokerId: brokerA.brokerId, serverUrl: brokerA.serverUrl,
+      accountType: 'contest', isLive: false,
+    })]);
+  });
+
+  it('preserves known classification when subsequent summaries omit metadata', async () => {
+    useAppStore.setState({ savedAccounts: [{ ...bookmark('Known owner', brokerA.server, brokerA), accountType: 'demo', isLive: false }] });
+    vi.mocked(loadSessionTradeSnapshot).mockResolvedValue(snapshot('Updated owner'));
+
+    mountSnapshotRuntime();
+    await flushSnapshot();
+
+    expect(useAppStore.getState().savedAccounts).toEqual([expect.objectContaining({
+      name: 'Updated owner', accountType: 'demo', isLive: false, brokerId: brokerA.brokerId,
+    })]);
+  });
+
+  it('corrects a legacy live bookmark from the broker demo group returned by account summary', async () => {
+    useAppStore.setState({ savedAccounts: [bookmark('Known owner', brokerA.server, brokerA)] });
+    vi.mocked(loadSessionTradeSnapshot).mockResolvedValue(snapshot('', { group: 'orrnn/demo-std' }));
+
+    mountSnapshotRuntime();
+    await flushSnapshot();
+
+    expect(useAppStore.getState().savedAccounts).toEqual([expect.objectContaining({
+      name: 'Known owner', accountType: 'demo', isLive: false, brokerId: brokerA.brokerId,
+    })]);
+  });
+
+  it('does not copy classification from a different broker or infer it from an owner or server label', async () => {
+    const foreign = { ...bookmark('Foreign owner', brokerB.server, brokerB), accountType: 'contest' as const, isLive: false };
+    useAppStore.setState({ savedAccounts: [foreign] });
+    vi.mocked(loadSessionTradeSnapshot).mockResolvedValue(snapshot('Demo Contest Real Owner', { server: 'Demo Contest Real' }));
+
+    mountSnapshotRuntime();
+    await flushSnapshot();
+
+    expect(useAppStore.getState().savedAccounts).toContainEqual(foreign);
+    const own = useAppStore.getState().savedAccounts.find(account => account.brokerId === brokerA.brokerId);
+    expect(own).toBeDefined();
+    expect(own).not.toHaveProperty('accountType');
+    expect(own).not.toHaveProperty('isLive');
+  });
+
   it('retains the committed broker metadata when broker selection changes during hydration', async () => {
     let resolve!: (value: SessionTradeSnapshot) => void;
     vi.mocked(loadSessionTradeSnapshot).mockReturnValue(new Promise(done => { resolve = done; }));
@@ -135,6 +211,26 @@ describe('account summary saved-account ownership', () => {
     }));
   });
 
+  it.each([
+    { login: 200004 },
+    { account_login: 200004 },
+    { broker_id: brokerB.brokerId },
+    { broker_id: brokerA.brokerId.toLowerCase() },
+    { account: { login: 200004 } },
+    { user: { account: { broker_id: brokerB.brokerId } } },
+  ])('does not overwrite saved account metadata when the response names another owner: %j', async conflictingIdentity => {
+    const own = { ...bookmark('Known owner', brokerA.server, brokerA), accountType: 'demo' as const, isLive: false };
+    useAppStore.setState({ savedAccounts: [own] });
+    vi.mocked(loadSessionTradeSnapshot).mockResolvedValue(snapshot('Wrong owner', {
+      account_type: 'contest', ...conflictingIdentity,
+    }));
+
+    mountSnapshotRuntime();
+    await flushSnapshot();
+
+    expect(useAppStore.getState().savedAccounts).toEqual([own]);
+  });
+
   it('rejects a previous broker summary after a same-login session switch', async () => {
     let resolve!: (value: SessionTradeSnapshot) => void;
     vi.mocked(loadSessionTradeSnapshot).mockReturnValue(new Promise(done => { resolve = done; }));
@@ -145,9 +241,19 @@ describe('account summary saved-account ownership', () => {
 
     storeBroker(brokerB);
     commitBrokerAccountSessionScope({ authenticated: true, accountId: '200003', ...brokerB });
-    await act(async () => { resolve(snapshot('Stale owner')); });
+    await act(async () => { resolve(snapshot('Stale owner', { account_type: 'contest' })); });
 
     expect(useAppStore.getState().savedAccounts).toEqual(accounts);
     expect(useAppStore.getState().account).toBeNull();
+  });
+
+  it('does not read or save metadata for an account not matching the committed session', async () => {
+    commitBrokerAccountSessionScope({ authenticated: true, accountId: '200004', ...brokerA });
+
+    mountSnapshotRuntime();
+    await flushSnapshot();
+
+    expect(loadSessionTradeSnapshot).not.toHaveBeenCalled();
+    expect(useAppStore.getState().savedAccounts).toEqual([]);
   });
 });

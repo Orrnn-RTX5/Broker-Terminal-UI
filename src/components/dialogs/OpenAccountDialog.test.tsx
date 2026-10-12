@@ -335,7 +335,7 @@ describe('OpenAccountDialog account flows', () => {
         expect(mocks.login).not.toHaveBeenCalled();
     });
 
-    it('connects an existing account through broker auth and commits the returned session', async () => {
+    it.each(['demo', 'real', 'contest'])('connects an existing %s account through broker auth with the returned classification', async accountType => {
         const onClose = vi.fn();
         mocks.login.mockResolvedValue({
             access_token: 'account-token',
@@ -343,7 +343,7 @@ describe('OpenAccountDialog account flows', () => {
             expires_at: 1_900_000_000,
             account_login: 200009,
             broker_id: 'broker-two',
-            user: { username: 'Existing Trader' },
+            user: { username: 'Existing Trader', account_type: accountType },
         });
         await renderDialog(onClose);
         await selectSecondBrokerAndContinue();
@@ -374,7 +374,7 @@ describe('OpenAccountDialog account flows', () => {
             'account-token',
             'refresh-token',
             1_900_000_000_000,
-            expect.objectContaining({ login: 200009, server: 'Broker Two' }),
+            expect.objectContaining({ login: 200009, server: 'Broker Two', accountType, isLive: accountType === 'real' }),
         );
         expect(localStorage.getItem('rtx_saved_password')).toBeNull();
         expect(mocks.createAccount).not.toHaveBeenCalled();

@@ -3,12 +3,32 @@ import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSession
 import { getStoredBrokerServer } from '../../services/brokerServers';
 import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession, normalizeSavedAccountServer } from '../../services/savedAccountScope';
 import { pickAccountDisplayName } from '../../utils/accountDisplayName';
+import { resolveTradingAccountType } from '../../services/tradingAccountType';
 import { applyPositionStreamUpdate, decodePositionStreamMessage } from '../../services/tradePositionStream';
 import { loadSessionTradeSnapshot } from '../../services/tradeStartupSnapshot';
 import { useAppStore, type Position } from '../../store/useAppStore';
 import { parsePositiveLogin } from '../session/sessionIdentity';
 import type { RefreshPositionsOptions, TradeRestRead } from './tradeRuntimeContracts';
 import { applyOpenPositionSnapshot, normalizeAccountSummary, normalizePositions } from './positionRuntime';
+
+// Account metadata can be wrapped by an endpoint envelope or user record. Reject
+// explicit conflicting identities before updating the saved account bookmark.
+const isAccountMetadataForSession = (value: unknown, login: number, brokerId: string, depth = 0): boolean => {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 6) return false;
+  const record = value as Record<string, unknown>;
+  for (const key of ['login', 'account_login']) {
+    if (record[key] !== undefined && String(record[key]) !== String(login)) return false;
+  }
+  for (const key of ['broker_id', 'brokerId']) {
+    if (record[key] !== undefined && String(record[key]).trim() !== brokerId) return false;
+  }
+  for (const key of ['account', 'data', 'user']) {
+    const nested = record[key];
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)
+      && !isAccountMetadataForSession(nested, login, brokerId, depth + 1)) return false;
+  }
+  return true;
+};
 
 interface UseAccountSnapshotRuntimeOptions {
   isAuthenticated: boolean;
@@ -76,6 +96,7 @@ export const useAccountSnapshotRuntime = ({
           const restRead = beginTradeRestRead();
           const positionsVersion = positionsStreamVersionRef.current;
           const accountScope = getCommittedBrokerAccountSessionScope();
+          if (!accountScope.authenticated || accountScope.accountId !== String(loginId)) return;
           const metricsScope = getCommittedBrokerAccountSessionScopeKey(accountScope);
           const accountServerIdentities = getSavedAccountServerIdentities();
           const storedServer = getStoredBrokerServer();
@@ -114,23 +135,24 @@ export const useAccountSnapshotRuntime = ({
             useAppStore.getState().setAccount(normalizedAccount);
 
             const raw = accountPayload as unknown as Record<string, unknown>;
+            const store = useAppStore.getState();
+            const existingAccount = store.savedAccounts.find((savedAccount) => savedAccount.login === loginId
+              && isSavedAccountInBrokerSession(savedAccount, accountScope, accountServerIdentities));
             const accountName = pickAccountDisplayName(raw.name, raw.account_name, raw.display_name, raw.user_name);
-            if (accountName) {
-              const store = useAppStore.getState();
-              const existingAccount = store.savedAccounts.find((savedAccount) => savedAccount.login === loginId
-                && isSavedAccountInBrokerSession(savedAccount, accountScope, accountServerIdentities));
+            const accountType = resolveTradingAccountType(accountPayload) ?? existingAccount?.accountType;
+            if ((accountName || accountType) && isAccountMetadataForSession(accountPayload, loginId, accountScope.brokerId)) {
               const serverFromPayload = [raw.broker_server, raw.server, raw.server_name, raw.mt5_server, raw.trade_server]
                 .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
                 ?.trim();
               store.addSavedAccount({
                 login: loginId,
-                name: accountName,
+                name: accountName || existingAccount?.name || '',
                 server: existingAccount?.server || serverFromPayload
                   || (accountServerIdentities.has(normalizeSavedAccountServer(storedServer)) ? storedServer : '')
                   || accountScope.serverUrl || accountScope.brokerId,
                 brokerId: accountScope.brokerId,
                 serverUrl: accountScope.serverUrl,
-                isLive: true,
+                ...(accountType ? { accountType, isLive: accountType === 'real' } : {}),
                 lastUsed: Date.now(),
               });
             }

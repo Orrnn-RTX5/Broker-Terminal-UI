@@ -8,6 +8,7 @@ import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLoggin
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
 import { createTradeOrderUuid, isTradeOrderUuidV4 } from './tradeSocket';
 import { tradingV2Api, type ClosePositionRequestOptions } from './trade';
+import type { AccountClassificationFields } from '../types/api';
 
 const resolveV2BaseUrl = (baseUrl?: string): string => {
   if (!baseUrl) return API_V2_BASE_URL;
@@ -168,7 +169,8 @@ export interface LoginCredentials {
   server?: string;
 }
 
-export interface LoginResponse {
+export interface LoginResponse extends AccountClassificationFields {
+  account?: AccountClassificationFields;
   token?: string;
   access_token?: string;
   refresh_token?: string;
@@ -190,14 +192,15 @@ export interface LoginResponse {
   feed_status_url?: string;
 }
 
-export interface User {
+export interface User extends AccountClassificationFields {
+  account?: AccountClassificationFields;
   id: string;
   username: string;
   email: string;
   role: string;
 }
 
-export interface AccountSummary {
+export interface AccountSummary extends AccountClassificationFields {
   id?: string;
   balance: number;
   equity: number;

@@ -3,6 +3,30 @@ export type TradeSide = 'buy' | 'sell';
 export type PendingOrderType = 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop';
 export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
 
+/** Optional backend account environment metadata; absence is not evidence of a real account. */
+export interface AccountClassificationFields {
+  account_type?: string;
+  accountType?: string;
+  account_kind?: string;
+  accountKind?: string;
+  type?: string;
+  kind?: string;
+  mode?: string;
+  account_trade_mode?: number | string;
+  accountTradeMode?: number | string;
+  ACCOUNT_TRADE_MODE?: number | string;
+  is_demo?: boolean;
+  isDemo?: boolean;
+  demo?: boolean;
+  is_contest?: boolean;
+  isContest?: boolean;
+  contest?: boolean;
+  group?: string;
+  Group?: string;
+  account_group?: string;
+  accountGroup?: string;
+}
+
 export interface ApiErrorResponse {
   error?: string;
   message?: string;
@@ -27,7 +51,8 @@ export interface AuthRegisterRequest {
   referral_code?: string;
 }
 
-export interface ApiUser {
+export interface ApiUser extends AccountClassificationFields {
+  account?: AccountClassificationFields;
   id?: number | string;
   user_id?: number;
   username?: string;
@@ -40,7 +65,8 @@ export interface ApiUser {
   updated_at?: number;
 }
 
-export interface AuthTokenResponse {
+export interface AuthTokenResponse extends AccountClassificationFields {
+  account?: AccountClassificationFields;
   name?: string;
   logo_url?: string | null;
   token?: string;
@@ -429,7 +455,7 @@ export interface ProfitCalcResponse {
   pips?: number;
 }
 
-export interface Account {
+export interface Account extends AccountClassificationFields {
   login: number;
   name?: string;
   currency?: string;

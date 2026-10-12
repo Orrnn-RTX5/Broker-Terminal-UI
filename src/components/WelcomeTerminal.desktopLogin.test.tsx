@@ -89,6 +89,39 @@ afterEach(() => {
 });
 
 describe('desktop broker directory login', () => {
+  it.each([
+    { broker: achiever, accountType: 'demo' },
+    { broker: gta, accountType: 'real' },
+    { broker: myprop, accountType: 'contest' },
+  ])('commits $accountType metadata returned by $broker.broker_id', async ({ broker, accountType }) => {
+    runtime.login.mockResolvedValue({ access_token: 'type-token', account_login: 12345,
+      account: { account_type: accountType }, broker_id: broker.broker_id });
+    const onLogin = vi.fn();
+    render(<WelcomeTerminal onLogin={onLogin} />);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    selectBroker(broker.broker_name);
+    fillCredentials();
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    submit();
+    await waitFor(() => expect(onLogin).toHaveBeenCalledOnce());
+    expect(runtime.setAuthenticated).toHaveBeenCalledWith(
+      true, '12345', 'type-token', undefined, undefined,
+      expect.objectContaining({ login: 12345, accountType, isLive: accountType === 'real', server: broker.broker_name }),
+    );
+  });
+
+  it('leaves missing type metadata unclassified instead of assuming a real account', async () => {
+    const onLogin = vi.fn();
+    render(<WelcomeTerminal onLogin={onLogin} />);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    fillCredentials();
+    submit();
+    await waitFor(() => expect(onLogin).toHaveBeenCalledOnce());
+    const bookmark = runtime.setAuthenticated.mock.calls[0][5];
+    expect(bookmark).not.toHaveProperty('accountType');
+    expect(bookmark).not.toHaveProperty('isLive');
+  });
+
   it('preserves the logo returned by authentication instead of the empty directory logo', async () => {
     runtime.login.mockResolvedValue({
       access_token: 'test-token', account_login: 200003, logo_url: '/branding/active-broker.svg',
