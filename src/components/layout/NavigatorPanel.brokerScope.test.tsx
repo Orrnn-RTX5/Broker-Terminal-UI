@@ -347,6 +347,65 @@ describe('Navigator authenticated broker account visibility', () => {
     expect(localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)).toBe(persisted);
   });
 
+  it('keeps an already authenticated Favorite selected without reopening login', async () => {
+    const accounts = [saved('Alpha owner', brokerA.server), saved('Beta owner', brokerB.server)];
+    authenticate(brokerA, accounts);
+    const persisted = localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY);
+    render(<NavigatorPanel />);
+
+    await act(async () => {
+      fireEvent.click(favorites().getByText(/Alpha owner/));
+    });
+
+    expect(screen.queryByRole('dialog', { name: 'Account login' })).not.toBeInTheDocument();
+    expect(useAppStore.getState()).toMatchObject({ isAuthenticated: true, accountId: '200003' });
+    expect(localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)).toBe(persisted);
+  });
+
+  it('opens a prefilled login for an inactive Favorite from the authenticated broker', async () => {
+    authenticate(brokerA, [saved('Alpha owner', brokerA.server), saved('Alpha other', brokerA.server, 200004)]);
+    render(<NavigatorPanel />);
+
+    fireEvent.click(favorites().getByText(/Alpha other/));
+
+    expect(await screen.findByRole('dialog', { name: 'Account login' })).toHaveTextContent('200004 Alpha-Live');
+    expect(useAppStore.getState()).toMatchObject({ isAuthenticated: true, accountId: '200003' });
+  });
+
+  it('adds and removes Favorites with the real store, retaining the preference on reload and across brokers', async () => {
+    const foreign = { ...saved('Beta owner', 'Shared label'), brokerId: brokerB.id, serverUrl: brokerB.url };
+    const local = { ...saved('Alpha owner', 'Shared label', 200003, false), brokerId: brokerA.id, serverUrl: brokerA.url };
+    authenticate(brokerA, [local, foreign]);
+    const firstRender = render(<NavigatorPanel />);
+
+    fireEvent.contextMenu(screen.getByText('200003: Alpha owner'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to Favorites' }));
+    expect(favorites().getByText(/Alpha owner/)).toBeInTheDocument();
+    expect(screen.queryByText(/Beta owner/)).not.toBeInTheDocument();
+    firstRender.unmount();
+    await act(async () => { await useAppStore.persist.rehydrate(); });
+    const secondRender = render(<NavigatorPanel />);
+    expect(favorites().getByText(/Alpha owner/)).toBeInTheDocument();
+
+    fireEvent.contextMenu(favorites().getByText(/Alpha owner/));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from Favorites' }));
+    expect(favorites().getByText('No favorite accounts yet')).toBeInTheDocument();
+    secondRender.unmount();
+    await act(async () => { await useAppStore.persist.rehydrate(); });
+    render(<NavigatorPanel />);
+    expect(favorites().getByText('No favorite accounts yet')).toBeInTheDocument();
+    expect(useAppStore.getState().savedAccounts).toEqual([
+      expect.objectContaining({ ...local, isFavorite: false, lastUsed: expect.any(Number) }), foreign,
+    ]);
+
+    act(() => {
+      storeBroker(brokerB);
+      commitBrokerAccountSessionScope({ authenticated: true, accountId: '200003', brokerId: brokerB.id, serverUrl: brokerB.url });
+    });
+    expect(favorites().getByText(/Beta owner/)).toBeInTheDocument();
+    expect(screen.queryByText(/Alpha owner/)).not.toBeInTheDocument();
+  });
+
   it('keeps saved Favorites available for interactive login after logout and hides the Accounts list', async () => {
     const accounts = [saved('Alpha owner', brokerA.server), saved('Beta owner', brokerB.server)];
     authenticate(brokerA, accounts);

@@ -444,7 +444,9 @@ export const NavigatorPanel: React.FC = () => {
                                     icon={<AccountIcon isActive={isAccountActive(acc)} accountType={acc.accountType} />}
                                     isFavorite
                                     isLast={index === favoriteAccounts.length - 1}
-                                    onItemClick={() => handleLoginToAccount(acc)}
+                                    onItemClick={() => {
+                                        if (!isAccountActive(acc)) handleLoginToAccount(acc);
+                                    }}
                                 />
                             </ContextMenu>
                         ))}
