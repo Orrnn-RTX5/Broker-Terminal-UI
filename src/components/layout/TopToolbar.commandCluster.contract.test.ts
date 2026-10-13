@@ -90,10 +90,12 @@ describe('TopToolbar primary command cluster', () => {
   });
 
   it('uses equal control widths and consistent spacing within and between groups', () => {
-    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster \{[^}]*--rtx-toolbar-control-width: 40px;[^}]*--rtx-toolbar-item-gap: 8px;[^}]*--rtx-toolbar-group-gap: 16px;[^}]*gap: var\(--rtx-toolbar-group-gap\);/);
+    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster \{[^}]*--rtx-toolbar-control-width: 36px;[^}]*--rtx-toolbar-item-gap: 8px;[^}]*--rtx-toolbar-group-gap: 20px;[^}]*gap: var\(--rtx-toolbar-group-gap\);/);
     expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster > \.rtx-mt5-divider \{\s*display: none;/);
     expect(themeCss).toMatch(/\.rtx-toolbar-group,\s*\.rtx-timeframe-strip \{[^}]*gap: var\(--rtx-toolbar-item-gap, 8px\);/);
-    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster \.rtx-toolbar-icon-button,\s*\.rtx-timeframe-strip \.rtx-timeframe-option \{[^}]*flex: 0 0 var\(--rtx-toolbar-control-width, 40px\);[^}]*min-width: var\(--rtx-toolbar-control-width, 40px\);[^}]*width: var\(--rtx-toolbar-control-width, 40px\);/);
+    expect(themeCss).toMatch(/\.rtx-toolbar-group--trading \{[^}]*gap: var\(--rtx-toolbar-item-gap, 8px\);/);
+    expect(markedCluster).toContain('className="rtx-toolbar-group--trading"');
+    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster \.rtx-toolbar-icon-button,\s*\.rtx-timeframe-strip \.rtx-timeframe-option \{[^}]*flex: 0 0 var\(--rtx-toolbar-control-width, 36px\);[^}]*min-width: var\(--rtx-toolbar-control-width, 36px\);[^}]*width: var\(--rtx-toolbar-control-width, 36px\);/);
     expect(themeCss).not.toMatch(/html\.rtx-desktop-shell-active \.rtx-toolbar-command-cluster \{[^}]*column-gap: var\(--rtx-toolbar-item-gap\);/);
     expect(themeCss).toMatch(/@media \(max-width: 1280px\) \{\s*\.rtx-toolbar-command-cluster \{[^}]*--rtx-toolbar-item-gap: 4px;[^}]*--rtx-toolbar-group-gap: 12px;/);
     expect(toolbarSource).toContain('rtx-chart-toolbar-scroll');

@@ -681,7 +681,7 @@ const MainToolbar = ({
                         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     >
                         {/* New Order & Last Symbol */}
-                        <MT5Group label="Trading shortcuts">
+                        <MT5Group label="Trading shortcuts" className="rtx-toolbar-group--trading">
 
                             <button
                                 type="button"
@@ -931,8 +931,8 @@ const TradeHistoryOverlayOption = ({
 );
 
 
-const MT5Group = ({ children, label, role }: { children: React.ReactNode; label?: string; role?: 'group' | 'radiogroup' }) => (
-    <div className="rtx-toolbar-group flex items-center" role={role || (label ? 'group' : undefined)} aria-label={label}>
+const MT5Group = ({ children, label, role, className }: { children: React.ReactNode; label?: string; role?: 'group' | 'radiogroup'; className?: string }) => (
+    <div className={['rtx-toolbar-group', className, 'flex items-center'].filter(Boolean).join(' ')} role={role || (label ? 'group' : undefined)} aria-label={label}>
         {children}
     </div>
 );

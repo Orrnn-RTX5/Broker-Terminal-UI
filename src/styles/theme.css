@@ -229,14 +229,15 @@ body {
 
 /* === Primary chart command strip === */
 .rtx-toolbar-command-cluster {
-  --rtx-toolbar-control-width: 40px;
+  --rtx-toolbar-control-width: 36px;
   --rtx-toolbar-item-gap: 8px;
-  --rtx-toolbar-group-gap: 16px;
+  --rtx-toolbar-group-gap: 20px;
   gap: var(--rtx-toolbar-group-gap);
-  padding-inline: 8px;
+  padding-inline: 12px;
 }
 
-/* Group spacing has one owner; invisible divider margins must not add to it. */
+/* Padding and group gaps own spacing; invisible dividers must not add to it. */
+.rtx-main-toolbar:not(.rtx-desktop-main-toolbar) > .rtx-mt5-divider,
 .rtx-toolbar-command-cluster > .rtx-mt5-divider {
   display: none;
 }
@@ -247,11 +248,15 @@ body {
   gap: var(--rtx-toolbar-item-gap, 8px);
 }
 
+.rtx-toolbar-group--trading {
+  gap: var(--rtx-toolbar-item-gap, 8px);
+}
+
 .rtx-toolbar-command-cluster .rtx-toolbar-icon-button,
 .rtx-timeframe-strip .rtx-timeframe-option {
-  flex: 0 0 var(--rtx-toolbar-control-width, 40px);
-  min-width: var(--rtx-toolbar-control-width, 40px);
-  width: var(--rtx-toolbar-control-width, 40px);
+  flex: 0 0 var(--rtx-toolbar-control-width, 36px);
+  min-width: var(--rtx-toolbar-control-width, 36px);
+  width: var(--rtx-toolbar-control-width, 36px);
   padding-inline: 0;
 }
 
@@ -335,6 +340,7 @@ body {
    of centering their one-pixel artwork at a blurred half-pixel offset. */
 .rtx-main-toolbar:not(.rtx-desktop-main-toolbar) .rtx-chart-toolbar-scroll {
   align-items: flex-start;
+  padding-inline: 0;
   padding-top: 4px;
 }
 
