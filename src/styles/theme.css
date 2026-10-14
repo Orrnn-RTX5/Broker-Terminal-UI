@@ -905,6 +905,30 @@ textarea {
   stroke-width: 1.75;
 }
 
+/* 16x16 registry icons render 1:1 at 16px with a 1.35 stroke so they match the optical weight of 24x24 Lucide icons without subpixel blur. */
+.rtx-application-menu :is(
+  .rtx-application-menu__root-icon svg[viewBox="0 0 16 16"],
+  .rtx-menu-row__icon svg[viewBox="0 0 16 16"]
+),
+.rtx-desktop-menu-bar .rtx-menu-row__icon svg[viewBox="0 0 16 16"],
+[data-rtx-desktop-submenu='true'] .rtx-menu-row__icon svg[viewBox="0 0 16 16"],
+.rtx-context-menu__glyph svg[viewBox="0 0 16 16"] {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.35;
+  shape-rendering: geometricPrecision;
+}
+
+.rtx-application-menu :is(
+  .rtx-application-menu__chevron[viewBox="0 0 16 16"],
+  .rtx-menu-row__chevron[viewBox="0 0 16 16"],
+  .rtx-menu-row__check[viewBox="0 0 16 16"],
+  .rtx-menu-row__lock svg[viewBox="0 0 16 16"]
+) {
+  stroke-width: 1.45;
+  shape-rendering: geometricPrecision;
+}
+
 .rtx-application-menu__chevron,
 .rtx-menu-row__chevron {
   color: var(--text-secondary);

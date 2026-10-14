@@ -955,7 +955,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                     className="rtx-journal-toolbar__latency min-w-[196px] border-l border-zinc-700/50 pl-3 text-[13px] font-normal text-zinc-400 whitespace-nowrap"
                     title={hasLocalTradeLatency
                         ? tr("Latest locally measured total order-attempt time for this broker and account")
-                        : tr("Latest server-recorded trade execution time for this broker and account")}
+                        : "Latest server-recorded trade execution time for this broker and account"}
                 >
                     {tr("Last trade latency: ")}{formatLatencyMs(scopedLastTradeLatency)}
                 </span>

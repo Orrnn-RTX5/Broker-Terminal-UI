@@ -6,6 +6,8 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 
 import { useState } from 'react';
 import { Info, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Icon } from './ui/Icon';
+
 export type AlertSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export type Alert = {
@@ -27,46 +29,50 @@ type AlertCardProps = {
 const SEVERITY_CONFIG = {
   LOW: {
     icon: Info,
-    bgColor: 'bg-zinc-700/20',
-    borderColor: 'border-zinc-600/30',
+    accentColor: '#3b82f6',
+    badgeBg: 'rgba(59, 130, 246, 0.12)',
+    badgeBorder: 'rgba(59, 130, 246, 0.28)',
     textColor: 'text-blue-400',
-    dotColor: 'bg-zinc-600',
+    dotColor: 'bg-blue-500',
   },
   MEDIUM: {
     icon: AlertCircle,
-    bgColor: 'bg-yellow-500/10',
-    borderColor: 'border-yellow-500/30',
+    accentColor: '#eab308',
+    badgeBg: 'rgba(234, 179, 8, 0.12)',
+    badgeBorder: 'rgba(234, 179, 8, 0.3)',
     textColor: 'text-yellow-400',
     dotColor: 'bg-yellow-500',
   },
   HIGH: {
     icon: AlertTriangle,
-    bgColor: 'bg-orange-500/10',
-    borderColor: 'border-orange-500/30',
+    accentColor: '#f97316',
+    badgeBg: 'rgba(249, 115, 22, 0.12)',
+    badgeBorder: 'rgba(249, 115, 22, 0.3)',
     textColor: 'text-orange-400',
     dotColor: 'bg-orange-500',
   },
   CRITICAL: {
     icon: AlertTriangle,
-    bgColor: 'bg-red-500/10',
-    borderColor: 'border-red-500/30',
+    accentColor: '#ef4444',
+    badgeBg: 'rgba(239, 68, 68, 0.14)',
+    badgeBorder: 'rgba(239, 68, 68, 0.35)',
     textColor: 'text-red-400',
     dotColor: 'bg-red-500',
   },
 };
 
 export function AlertCard({ alert, onAcknowledge, onSnooze, onDismiss }: AlertCardProps) {
-    const tr = useUiTranslation();
+  const tr = useUiTranslation();
   const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
   const config = SEVERITY_CONFIG[alert.severity];
-  const Icon = config.icon;
+  const SeverityIcon = config.icon;
 
   const formatTimestamp = (timestamp: number) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     });
   };
 
@@ -77,75 +83,110 @@ export function AlertCard({ alert, onAcknowledge, onSnooze, onDismiss }: AlertCa
 
   return (
     <div
-      className={`${config.bgColor} ${config.borderColor} border rounded-lg p-3 shadow-lg backdrop-blur-sm animate-slide-in`}
+      className="rtx-alert-card rounded-md p-3 shadow-lg animate-slide-in"
       style={{
         minWidth: '320px',
         maxWidth: '400px',
+        background: 'var(--bg-elevated, #191a1e)',
+        border: '1px solid var(--border-primary, #28282e)',
+        borderLeft: `3px solid ${config.accentColor}`,
+        color: 'var(--text-primary, #e2e2e8)',
+        boxShadow: 'var(--shadow-lg, 0 10px 28px rgba(0, 0, 0, 0.45))',
       }}
     >
       {/* Header */}
-      <div className="flex items-start gap-2 mb-2">
-        <div className={`${config.dotColor} w-2 h-2 rounded-full mt-1.5 animate-pulse`} />
-        <Icon className={`${config.textColor} w-4 h-4 mt-0.5`} />
+      <div className="flex items-start gap-2.5 mb-2">
+        <div className={`${config.dotColor} w-2 h-2 rounded-full mt-1.5 shrink-0 animate-pulse`} />
+        <SeverityIcon className={`${config.textColor} w-4 h-4 mt-0.5 shrink-0`} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`${config.textColor} text-xs font-bold uppercase tracking-wide`}>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span
+              className={`${config.textColor} text-[11px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded`}
+              style={{
+                background: config.badgeBg,
+                border: `1px solid ${config.badgeBorder}`,
+              }}
+            >
               {alert.severity}
             </span>
-            <span className="text-[10px] text-zinc-500">
+            <span
+              className="text-[11px] font-mono tabular-nums"
+              style={{ color: 'var(--text-tertiary, #808088)' }}
+            >
               {formatTimestamp(alert.timestamp)}
             </span>
           </div>
-          <p className="text-sm text-zinc-200 leading-snug break-words">
+          <p
+            className="text-[13px] leading-[19.5px] font-normal break-words"
+            style={{ color: 'var(--text-primary, #e2e2e8)' }}
+          >
             {alert.message}
           </p>
         </div>
         <button
+          type="button"
           onClick={() => onDismiss(alert.id)}
-          className="text-zinc-500 hover:text-zinc-300 transition-colors p-0.5"
+          className="rounded p-1 transition-colors hover:bg-zinc-500/15"
+          style={{ color: 'var(--text-tertiary, #808088)' }}
           title={tr("Dismiss")}
+          aria-label={tr("Dismiss")}
         >
-          <Icon name="x-close" size="sm" className="w-4 h-4" />
+          <Icon name="x-close" size="sm" className="w-3.5 h-3.5" />
         </button>
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-zinc-800/50">
+      <div
+        className="flex items-center justify-end gap-2 mt-2.5 pt-2"
+        style={{ borderTop: '1px solid var(--border-primary, #28282e)' }}
+      >
         <button
+          type="button"
           onClick={() => onAcknowledge(alert.id)}
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded text-xs font-medium transition-colors border border-emerald-500/20"
+          className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded text-[12px] font-medium transition-colors border border-emerald-500/25"
         >
-          <Icon name="check-circle" size="sm" className="w-3 h-3" />
-          {tr("Acknowledge")}</button>
+          <Icon name="check-circle" size="sm" className="w-3.5 h-3.5" />
+          {tr("Acknowledge")}
+        </button>
 
         <div className="relative">
           <button
+            type="button"
             onClick={() => setShowSnoozeMenu(!showSnoozeMenu)}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800/50 hover:bg-zinc-800 text-zinc-400 rounded text-xs font-medium transition-colors border border-zinc-700/50"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[12px] font-medium transition-colors hover:opacity-90"
+            style={{
+              background: 'var(--bg-tertiary, #222226)',
+              color: 'var(--text-secondary, #a0a0ab)',
+              border: '1px solid var(--border-secondary, #333338)',
+            }}
           >
-            <Icon name="clock" size="sm" className="w-3 h-3" />
-            {tr("Snooze")}</button>
+            <Icon name="clock" size="sm" className="w-3.5 h-3.5" />
+            {tr("Snooze")}
+          </button>
 
           {showSnoozeMenu && (
-            <div className="absolute bottom-full left-0 mb-1 bg-zinc-900 border border-zinc-800 rounded shadow-lg overflow-hidden z-10">
-              <button
-                onClick={() => handleSnooze(5)}
-                className="block w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 transition-colors whitespace-nowrap"
-              >
-                5 minutes
-              </button>
-              <button
-                onClick={() => handleSnooze(15)}
-                className="block w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 transition-colors whitespace-nowrap"
-              >
-                15 minutes
-              </button>
-              <button
-                onClick={() => handleSnooze(60)}
-                className="block w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 transition-colors whitespace-nowrap"
-              >
-                1 hour
-              </button>
+            <div
+              className="rtx-menu-surface absolute bottom-full right-0 mb-1 rounded shadow-lg overflow-hidden z-10 min-w-[110px]"
+              style={{
+                background: 'var(--bg-elevated, #191a1e)',
+                border: '1px solid var(--border-secondary, #333338)',
+              }}
+            >
+              {[
+                { minutes: 5, label: '5 minutes' },
+                { minutes: 15, label: '15 minutes' },
+                { minutes: 60, label: '1 hour' },
+              ].map((option) => (
+                <button
+                  key={option.minutes}
+                  type="button"
+                  onClick={() => handleSnooze(option.minutes)}
+                  className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-blue-500/15 transition-colors whitespace-nowrap"
+                  style={{ color: 'var(--text-primary, #e2e2e8)' }}
+                >
+                  {tr(option.label)}
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -164,10 +205,11 @@ export function AlertCard({ alert, onAcknowledge, onSnooze, onDismiss }: AlertCa
             }
           }
           .animate-slide-in {
-            animation: slide-in 0.3s ease-out;
+            animation: slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
           }
         `}
       </style>
     </div>
   );
 }
+

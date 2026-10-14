@@ -199,6 +199,10 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch-details_
   background: var(--mw-desktop-row-alt);
 }
 
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch-details__row[aria-selected='true'] {
+  background: var(--mw-desktop-selection);
+}
+
 html:root .rtx-market-watch.rtx-market-watch--desktop :is(.rtx-market-watch-details__label, .rtx-market-watch-details__value) {
   --rtx-type-size: 12px;
   --rtx-type-weight: 400;

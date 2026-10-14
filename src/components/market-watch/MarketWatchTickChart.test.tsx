@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAppStore } from '../../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../../store/useMarketDataStore';
@@ -153,4 +153,48 @@ describe('MarketWatchTickChart', () => {
     expect(tagLabel('ask')).toBe('4127.82');
     expect(container.querySelector('.rtx-market-tick-chart__axis')?.textContent).not.toMatch(/9999/);
   });
+
+  it('renders MT5 crosshair lines, Bid / Ask quote pill, and axis tags on hover', () => {
+    setTickBuffer('EURUSD', [
+      {
+        symbol: 'EURUSD',
+        bid: 1.11915,
+        ask: 1.11916,
+        spread: 0.00001,
+        timestamp: Date.UTC(2026, 9, 14, 13, 12, 20),
+      },
+      {
+        symbol: 'EURUSD',
+        bid: 1.11920,
+        ask: 1.11921,
+        spread: 0.00001,
+        timestamp: Date.UTC(2026, 9, 14, 13, 12, 21),
+      },
+      {
+        symbol: 'EURUSD',
+        bid: 1.11925,
+        ask: 1.11927,
+        spread: 0.00002,
+        timestamp: Date.UTC(2026, 9, 14, 13, 12, 22),
+      },
+    ]);
+
+    const { container } = render(
+      <MarketWatchTickChart symbol="EURUSD" instrumentSources={[{ symbol: 'EURUSD', digits: 5 }]} />,
+    );
+    const svg = container.querySelector('svg[data-tick-count]')!;
+    expect(screen.queryByTestId('market-tick-crosshair')).not.toBeInTheDocument();
+
+    fireEvent.mouseMove(svg, { clientX: 120, clientY: 110 });
+    expect(screen.getByTestId('market-tick-crosshair')).toBeInTheDocument();
+    expect(screen.getByTestId('market-tick-crosshair-x')).toBeInTheDocument();
+    expect(screen.getByTestId('market-tick-crosshair-y')).toBeInTheDocument();
+    expect(screen.getByTestId('market-tick-crosshair-pill').textContent).toBe('1.11920 / 1.11921');
+    expect(screen.getByTestId('market-tick-crosshair-price-tag').textContent).toMatch(/^1\.119\d\d$/);
+    expect(screen.getByTestId('market-tick-crosshair-time-tag').textContent).toMatch(/^2026\.10\.14 \d{2}:\d{2}:21$/);
+
+    fireEvent.mouseLeave(svg);
+    expect(screen.queryByTestId('market-tick-crosshair')).not.toBeInTheDocument();
+  });
 });
+

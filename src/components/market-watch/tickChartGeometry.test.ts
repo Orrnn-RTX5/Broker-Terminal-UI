@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildTickChartCrosshair,
   buildTickChartGeometry,
   formatTickChartPrice,
   type TickChartLayoutOptions,
@@ -102,4 +103,34 @@ describe('buildTickChartGeometry', () => {
     expect(geometry.askTag.label).toBe('150.01');
     expect(geometry.bidTag.label).toBe('150.00');
   });
+
+  it('builds MT5 crosshair coordinates, Bid / Ask quote pill, and axis tags inside the plot', () => {
+    const opts = layout({ digits: 5 });
+    const geometry = buildTickChartGeometry([
+      { timestamp: Date.UTC(2026, 9, 14, 13, 12, 20), bid: 1.11915, ask: 1.11916 },
+      { timestamp: Date.UTC(2026, 9, 14, 13, 12, 21), bid: 1.11920, ask: 1.11921 },
+      { timestamp: Date.UTC(2026, 9, 14, 13, 12, 22), bid: 1.11925, ask: 1.11927 },
+    ], opts)!;
+
+    expect(buildTickChartCrosshair(geometry, null, opts)).toBeNull();
+    expect(buildTickChartCrosshair(geometry, { x: geometry.plot.right + 5, y: 100 }, opts)).toBeNull();
+
+    const midX = geometry.plot.left + ((geometry.plot.right - geometry.plot.left) * 0.95) / 2;
+    const crosshair = buildTickChartCrosshair(geometry, { x: midX, y: 200 }, opts)!;
+    expect(crosshair).not.toBeNull();
+    expect(crosshair.index).toBe(1);
+    expect(crosshair.quotePill.label).toBe('1.11920 / 1.11921');
+    expect(crosshair.timeTag.label).toBe('2026.10.14 13:12:21');
+    expect(crosshair.priceTag.label).toMatch(/^1\.119\d\d$/);
+
+    // Clamps pill inside plot when hovering near the top-right corner
+    const corner = buildTickChartCrosshair(
+      geometry,
+      { x: geometry.plot.right - 1, y: geometry.plot.top + 1 },
+      opts,
+    )!;
+    expect(corner.quotePill.x + corner.quotePill.width).toBeLessThanOrEqual(geometry.plot.right - 2);
+    expect(corner.quotePill.y).toBeGreaterThanOrEqual(geometry.plot.top + 2);
+  });
 });
+

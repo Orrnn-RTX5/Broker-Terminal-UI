@@ -476,7 +476,7 @@ describe('SymbolSpecificationDialog', () => {
     expect(labels.slice(0, 5)).toEqual(['ISIN', 'Exchange', 'Sector', 'Industry', 'Country']);
   });
 
-  it('omits trade-only controls for a disabled symbol while keeping broker swaps', () => {
+  it('resets trade-only controls to 0 for a disabled symbol while keeping broker swaps', () => {
     render(
       <SymbolSpecificationDialog
         isOpen
@@ -501,9 +501,9 @@ describe('SymbolSpecificationDialog', () => {
 
     expect(screen.getByText('Disabled')).toBeInTheDocument();
     expect(screen.getByText('Swap type').closest('div')).toHaveTextContent('USD');
-    expect(screen.queryByText('Execution')).not.toBeInTheDocument();
-    expect(screen.queryByText('Orders')).not.toBeInTheDocument();
-    expect(screen.queryByText('Minimal volume')).not.toBeInTheDocument();
+    expect(screen.getByText('Execution').closest('div')).toHaveTextContent('0');
+    expect(screen.getByText('Orders').closest('div')).toHaveTextContent('0');
+    expect(screen.getByText('Minimal volume').closest('div')).toHaveTextContent('0');
   });
 
   it('keeps fresh nested broker values authoritative and uses fallback only for identity', () => {
@@ -566,7 +566,7 @@ describe('SymbolSpecificationDialog', () => {
     expect(within(spreads).getByText('Value: 2000 / 1800 / USD')).toBeInTheDocument();
   });
 
-  it('shows explicit current-request loading and unavailable states', () => {
+  it('shows explicit current-request loading state and falls back to 0 rows when unavailable', () => {
     const rendered = render(
       <SymbolSpecificationDialog
         isOpen
@@ -588,10 +588,14 @@ describe('SymbolSpecificationDialog', () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText('The current specification is not available from this broker.')).toBeInTheDocument();
+    expect(screen.getByText('Exchange').closest('div')).toHaveTextContent('0');
+    expect(screen.getByText('Digits').closest('div')).toHaveTextContent('0');
+    expect(screen.getByRole('region', { name: 'Swap rates' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Sessions' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Margin rates' })).toBeInTheDocument();
   });
 
-  it('shows compact truthful states instead of rows of missing values', () => {
+  it('keeps all MT5 specification rows and sections with hardcoded 0 when values do not come from the backend', () => {
     render(
       <SymbolSpecificationDialog
         isOpen
@@ -601,7 +605,13 @@ describe('SymbolSpecificationDialog', () => {
       />,
     );
 
-    expect(screen.getByText('Contract details were not provided by this broker.')).toBeInTheDocument();
+    expect(screen.getByText('Exchange').closest('div')).toHaveTextContent('0');
+    expect(screen.getByText('Sector').closest('div')).toHaveTextContent('0');
+    expect(screen.getByText('Contract size').closest('div')).toHaveTextContent('0');
+    expect(screen.getByText('Spread').closest('div')).toHaveTextContent('0');
+    expect(screen.getByRole('region', { name: 'Swap rates' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Sessions' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Margin rates' })).toBeInTheDocument();
     expect(screen.queryByText('—')).not.toBeInTheDocument();
     expect(screen.queryByText('Bid')).not.toBeInTheDocument();
     expect(screen.queryByText('24/5')).not.toBeInTheDocument();
@@ -647,5 +657,53 @@ describe('SymbolSpecificationDialog', () => {
       key: 'ArrowRight',
     });
     expect(dialog).toHaveStyle({ width: '460px', height: '438px' });
+  });
+
+  it('renders MT5 In points swap type, derives weekday swap rates from rollover day, and highlights clicked rows', () => {
+    render(
+      <SymbolSpecificationDialog
+        isOpen
+        symbol="EURUSD"
+        instrument={{
+          description: 'Euro vs US Dollar',
+          exchange: 'XCCY',
+          sector: 'Currency',
+          digits: 5,
+          contract_size: 100000,
+          currency_base: 'EUR',
+          currency_margin: 'EUR',
+          currency_profit: 'USD',
+          calc_mode: 0,
+          is_spread_floating: true,
+          stops_level: 0,
+          margin_hedged: 100000,
+          chart_mode: 0,
+          trade_mode: 4,
+          trade_exemode: 2,
+          order_gtc_mode: 0,
+          filling_mode: 1,
+          expiration_mode: 15,
+          order_mode: 127,
+          volume_min: 0.01,
+          volume_max: 500,
+          volume_step: 0.01,
+          swap_mode: 1,
+          swap_long: -0.7,
+          swap_short: -1,
+          swap_rollover3days: 3,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const swapTypeRow = screen.getByText('Swap type').closest('.rtx-spec-row') as HTMLElement;
+    expect(swapTypeRow).toHaveTextContent('In points');
+
+    const swapRatesRegion = screen.getByRole('region', { name: 'Swap rates' });
+    expect(within(swapRatesRegion).getByText('Monday').closest('.rtx-spec-row')).toHaveTextContent('1');
+    expect(within(swapRatesRegion).getByText('Wednesday').closest('.rtx-spec-row')).toHaveTextContent('3');
+
+    fireEvent.click(swapTypeRow);
+    expect(swapTypeRow).toHaveAttribute('data-selected', 'true');
   });
 });

@@ -1240,6 +1240,64 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(getDetailValue('Tick Size')).toBe('0.01');
   });
 
+  it('opens the MT5 Details context menu on right-click across Details rows and toggles Grid', () => {
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+    setMarketCatalog(CORE_DEFAULT_SYMBOLS, CORE_DEFAULT_SYMBOLS);
+    marketHooks.activeSymbols = [...CORE_DEFAULT_SYMBOLS];
+
+    render(
+      <MarketWatchPanel
+        allSymbols={CORE_DEFAULT_SYMBOLS}
+        chartSymbols={CORE_DEFAULT_SYMBOLS}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    const detailsRegion = screen.getByRole('region', { name: 'XAUUSD Details' });
+    expect(detailsRegion).toHaveAttribute('data-grid', 'true');
+
+    const bidRow = screen.getByText('Bid', { selector: 'dt' }).closest('.rtx-market-watch-details__row')!;
+    const askRow = screen.getByText('Ask', { selector: 'dt' }).closest('.rtx-market-watch-details__row')!;
+    const openRow = screen.getByText('Open Price', { selector: 'dt' }).closest('.rtx-market-watch-details__row')!;
+
+    fireEvent.contextMenu(bidRow);
+    expect(bidRow).toHaveAttribute('aria-selected', 'true');
+
+    const menu = screen.getByRole('menu');
+    const labels = within(menu).getAllByRole('menuitem').map((item) => (
+      item.querySelector('.flex-1')?.textContent
+    ));
+    expect(labels).toEqual([
+      'New Order',
+      'Chart Window',
+      'Tick Chart',
+      'Depth Of Market',
+      'Specification',
+      'Grid',
+    ]);
+
+    // Toggle Grid off and back on from the Details context menu
+    fireEvent.click(within(menu).getByText('Grid'));
+    expect(detailsRegion).toHaveAttribute('data-grid', 'false');
+    fireEvent.click(within(menu).getByText('Grid'));
+    expect(detailsRegion).toHaveAttribute('data-grid', 'true');
+
+    // Right-clicking another section row selects it and keeps the Details context menu working
+    fireEvent.contextMenu(askRow);
+    expect(askRow).toHaveAttribute('aria-selected', 'true');
+    expect(bidRow).toHaveAttribute('aria-selected', 'false');
+
+    fireEvent.contextMenu(openRow);
+    expect(openRow).toHaveAttribute('aria-selected', 'true');
+    expect(askRow).toHaveAttribute('aria-selected', 'false');
+
+    // Selecting Tick Chart from the Details context menu switches to the Ticks tab
+    fireEvent.click(within(screen.getByRole('menu')).getByText('Tick Chart'));
+    expect(screen.getByRole('tab', { name: 'Ticks' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('sorts and renders isolated Last-only display metadata without creating quotes', () => {
     const symbols = ['XAUUSD', 'EURUSD', 'GBPUSD'];
     setMarketCatalog(symbols);
@@ -2570,8 +2628,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     fireEvent.click(screen.getByText('Specification'));
     await act(async () => { await vi.dynamicImportSettled(); });
 
-    expect(screen.getByText('Contract details were not provided by this broker.')).toBeInTheDocument();
-    expect(screen.queryByText('Spread')).not.toBeInTheDocument();
+    expect(screen.getByText('Spread').parentElement?.parentElement).toHaveTextContent('0');
     expect(screen.queryByText('0.8')).not.toBeInTheDocument();
   });
 
@@ -2701,8 +2758,8 @@ describe('MarketWatchPanel symbol visibility', () => {
       resolveSpecification?.(null);
       await Promise.resolve();
     });
-    expect(screen.getByText('The current specification is not available from this broker.')).toBeInTheDocument();
-    expect(screen.queryByText('Contract size')).not.toBeInTheDocument();
+    expect(screen.getByText('Contract size').parentElement?.parentElement).toHaveTextContent('0');
+    expect(screen.getByText('Contract size').parentElement?.parentElement).not.toHaveTextContent('100');
   });
 
   it('aborts an in-flight specification refresh when the dialog closes', async () => {

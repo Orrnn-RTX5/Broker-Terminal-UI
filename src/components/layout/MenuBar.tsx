@@ -286,6 +286,7 @@ export const MenuBar = ({
 
     const fontSizeMenuItem: MenuItem = {
         label: 'Font Size',
+        icon: <Icon name="text" size="sm" />,
         children: (['small', 'normal', 'large'] as const).map((fontSize) => ({
             label: fontSize.charAt(0).toUpperCase() + fontSize.slice(1),
             checked: advancedFontSize === fontSize,
@@ -296,6 +297,7 @@ export const MenuBar = ({
 
     const focusChartMenuItem: MenuItem = {
         label: 'Focus Chart',
+        icon: <Icon name="crosshair" size="sm" />,
         checked: focusChart,
         checkRole: 'checkbox',
         action: () => onSetFocusChart?.(!focusChart),
@@ -323,11 +325,12 @@ export const MenuBar = ({
                 ],
             },
             { divider: true, label: '' },
-            { label: t('menu.view.languages'), children: languageList, scrollableChildren: true },
+            { label: t('menu.view.languages'), icon: <Icon name="globe" size="sm" />, children: languageList, scrollableChildren: true },
 
             { divider: true, label: '' },
             {
                 label: t('menu.view.toolbars'),
+                icon: <Icon name="sliders-horizontal" size="sm" />,
                 children: [
                     { label: 'Standard', icon: <Icon name="box" size="xs" /> },
                     { label: 'Line Studies', checked: drawingSidebarVisible, checkRole: 'checkbox', action: () => useDrawingSidebarStore.getState().toggle() },
@@ -338,14 +341,14 @@ export const MenuBar = ({
             { label: t('menu.view.chartsBar'), icon: <Icon name="layers" size="sm" />, checked: chartsBarVisible, checkRole: 'checkbox', action: () => useTerminalBarsStore.getState().toggleChartsBar() },
             { divider: true, label: '' },
             { label: 'Search Symbols', shortcut: 'Alt+U', icon: <Icon name="search" size="sm" />, action: () => { setIsSymbolsOpen(true); setActiveMenu(null); } },
-            { label: t('menu.view.depthOfMarket'), ...terminalShortcut('view.depth-of-market') },
+            { label: t('menu.view.depthOfMarket'), icon: <Icon name="box" size="sm" />, ...terminalShortcut('view.depth-of-market') },
             { label: t('menu.view.marketWatch'), icon: <Icon name="monitor" size="sm" />, ...terminalShortcut('view.market-watch') },
-            { label: t('menu.view.dataWindow'), ...terminalShortcut('view.data-window') },
-            { label: t('menu.view.navigator'), ...terminalShortcut('view.navigator') },
-            { label: t('menu.view.toolbox'), ...terminalShortcut('view.terminal') },
-            { label: t('menu.view.strategyTester'), ...lockedTerminalTool('strategyTester') },
+            { label: t('menu.view.dataWindow'), icon: <Icon name="data-window" size="sm" />, ...terminalShortcut('view.data-window') },
+            { label: t('menu.view.navigator'), icon: <Icon name="compass" size="sm" />, ...terminalShortcut('view.navigator') },
+            { label: t('menu.view.toolbox'), icon: <Icon name="terminal" size="sm" />, ...terminalShortcut('view.terminal') },
+            { label: t('menu.view.strategyTester'), icon: <Icon name="strategy-tester" size="sm" />, ...lockedTerminalTool('strategyTester') },
             { divider: true, label: '' },
-            { label: t('menu.view.fullScreen'), shortcut: 'F11', action: () => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => { }); } else { document.exitFullscreen().catch(() => { }); } setActiveMenu(null); } }
+            { label: t('menu.view.fullScreen'), shortcut: 'F11', icon: <Icon name="layout-template" size="sm" />, action: () => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => { }); } else { document.exitFullscreen().catch(() => { }); } setActiveMenu(null); } }
         ],
         Insert: [
             {
@@ -366,6 +369,7 @@ export const MenuBar = ({
                 children: [
                     {
                         label: 'Lines',
+                        icon: <Icon name="trend-line" size="sm" />,
                         children: [
                             { label: 'Trend Line', shortcut: 'Alt+T', icon: <Icon name="trend-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'trendline' } }); setActiveMenu(null); } },
                             { label: 'Horizontal Line', shortcut: 'Alt+H', icon: <Icon name="minus" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'hline' } }); setActiveMenu(null); } },
@@ -374,12 +378,14 @@ export const MenuBar = ({
                     },
                     {
                         label: 'Channels',
+                        icon: <Icon name="parallel-channel" size="sm" />,
                         children: [
                             { label: 'Equidistant Channel', icon: <Icon name="layers" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'channel' } }); setActiveMenu(null); } },
                         ]
                     },
                     {
                         label: 'Fibonacci',
+                        icon: <Icon name="fibonacci" size="sm" />,
                         children: [
                             { label: 'Fibonacci Retracement', icon: <Icon name="fibonacci" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'fibonacci' } }); setActiveMenu(null); } },
                             { label: 'Fibonacci Extension', icon: <Icon name="fib-extension" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'fib_extension' } }); setActiveMenu(null); } },
@@ -387,6 +393,7 @@ export const MenuBar = ({
                     },
                     {
                         label: 'Shapes',
+                        icon: <Icon name="shapes" size="sm" />,
                         children: [
                             { label: 'Rectangle', icon: <Icon name="rectangle" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'rectangle' } }); setActiveMenu(null); } },
                             { label: 'Ellipse', icon: <Icon name="ellipse" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'ellipse' } }); setActiveMenu(null); } },
@@ -428,6 +435,7 @@ export const MenuBar = ({
             },
             {
                 label: t('menu.charts.objects'),
+                icon: <Icon name="shapes" size="sm" />,
                 children: [
                     // Management
                     { label: 'Object List', icon: <Icon name="layout-list" size="sm" />, ...terminalShortcut('charts.object-list') },
@@ -457,8 +465,8 @@ export const MenuBar = ({
             { label: t('menu.charts.volumes'), shortcut: 'Ctrl+K', icon: <Icon name="bar-chart-3" size="sm" />, checked: menuChartProperties.showTickVolumes || menuChartProperties.showRealVolumes, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const visible = !(current.showTickVolumes || current.showRealVolumes); updateActiveChartProperty('showTickVolumes', visible, target.symbol); updateActiveChartProperty('showRealVolumes', false, target.symbol); setActiveMenu(null); } },
             { label: t('menu.charts.ohlc', 'Show OHLC'), shortcut: 'Alt+Shift+L', icon: <Icon name="activity" size="sm" />, checked: menuChartProperties.showOHLC, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; updateActiveChartProperty('showOHLC', !current.showOHLC, target.symbol); setActiveMenu(null); } },
             { divider: true, label: '' },
-            { label: t('menu.charts.zoomIn'), shortcut: '+', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_IN', payload: { targetContextId } }); setActiveMenu(null); } },
-            { label: t('menu.charts.zoomOut'), shortcut: '-', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_OUT', payload: { targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.zoomIn'), shortcut: '+', icon: <Icon name="zoom-in" size="sm" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_IN', payload: { targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.zoomOut'), shortcut: '-', icon: <Icon name="zoom-out" size="sm" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_OUT', payload: { targetContextId } }); setActiveMenu(null); } },
             { divider: true, label: '' },
             { label: t('menu.charts.properties'), shortcut: 'F8', icon: <Icon name="settings" size="sm" />, action: () => { const target = resolveChartTarget(); window.dispatchEvent(new CustomEvent('openChartProperties', { detail: target })); setActiveMenu(null); } }
         ],

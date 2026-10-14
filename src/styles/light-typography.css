@@ -197,10 +197,10 @@ html:root.rtx-skin-untitled-light :is(
   --rtx-type-family: var(--rtx-ui-font-family) !important;
 }
 
-/* Compact entry labels still follow the user's size preference. */
+/* Small entry labels need stronger strokes against the light chart. */
 html:root.rtx-skin-untitled-light .rtx-trade-controls--entry.rtx-trade-controls--plain {
-  --rtx-type-size: max(11.5px, calc(var(--rtx-light-type-body) - 2.5px)) !important;
-  --rtx-type-weight: var(--rtx-light-weight-body) !important;
+  --rtx-type-size: max(12.5px, calc(var(--rtx-light-type-body) - 1.5px)) !important;
+  --rtx-type-weight: var(--rtx-trade-entry-weight, var(--rtx-light-weight-body)) !important;
 }
 
 /* Keep TP/SL and side labels on the entry toolbar's shared text role. */

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { type MouseEvent, useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { formatBrokerServerDate, formatBrokerServerTime } from '../../services/brokerServerClock';
 import { type Tick, useMarketDataStore } from '../../store/useMarketDataStore';
@@ -7,6 +7,7 @@ import { readMarketWatchSymbolSpecification } from './marketWatchSymbolDetailsMo
 import './market-watch-views.css';
 
 import {
+  buildTickChartCrosshair,
   buildTickChartGeometry,
   MARKET_WATCH_TICK_CHART_LIMIT,
   type TickChartPoint,
@@ -93,6 +94,11 @@ export function MarketWatchTickChart({
   const descriptionId = useId();
   const normalizedSymbol = normalizeSymbol(symbol);
   const [setCanvas, size] = useChartSize();
+  const [hoverState, setHoverState] = useState<{
+    symbol: string;
+    pointer: { x: number; y: number };
+  } | null>(null);
+  const pointer = hoverState?.symbol === normalizedSymbol ? hoverState.pointer : null;
   const tickBuffer = useMarketDataStore(state => (
     state.symbolData[normalizedSymbol]?.tickBuffer ?? EMPTY_TICKS
   ));
@@ -116,8 +122,33 @@ export function MarketWatchTickChart({
     formatDate: formatServerDate,
     formatTime: formatServerTime,
   }), [digits, points, size]);
+  const crosshair = useMemo(() => (
+    geometry
+      ? buildTickChartCrosshair(geometry, pointer, {
+        fontSize: size.fontSize,
+        digits,
+        formatDate: formatServerDate,
+        formatTime: formatServerTime,
+      })
+      : null
+  ), [digits, geometry, pointer, size.fontSize]);
+
+  const handleMouseMove = useCallback((event: MouseEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? size.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? size.height / rect.height : 1;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+    setHoverState({ symbol: normalizedSymbol, pointer: { x, y } });
+  }, [normalizedSymbol, size.height, size.width]);
+
+  const handleMouseLeave = useCallback(() => {
+    setHoverState(null);
+  }, []);
+
   const chartName = normalizedSymbol || tr('Selected symbol');
   const rootClassName = ['rtx-market-tick-chart', className].filter(Boolean).join(' ');
+  const tagLeadPx = Math.max(0, geometry ? geometry.tickLength - 1 : 0);
 
   return (
     <section className={rootClassName} aria-label={chartName}>
@@ -131,6 +162,8 @@ export function MarketWatchTickChart({
             aria-labelledby={`${titleId} ${descriptionId}`}
             data-tick-count={geometry.visibleCount}
             style={{ fontSize: size.fontSize }}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
           >
             <title id={titleId}>{chartName}</title>
             <desc id={descriptionId}>
@@ -163,6 +196,39 @@ export function MarketWatchTickChart({
             </g>
             <path data-testid="market-tick-ask-line" className="rtx-market-tick-chart__line rtx-market-tick-chart__line--ask" d={geometry.askPath} />
             <path data-testid="market-tick-bid-line" className="rtx-market-tick-chart__line rtx-market-tick-chart__line--bid" d={geometry.bidPath} />
+            {crosshair && (
+              <g className="rtx-market-tick-chart__crosshair" data-testid="market-tick-crosshair" aria-hidden="true">
+                <line
+                  data-testid="market-tick-crosshair-x"
+                  x1={crosshair.x}
+                  x2={crosshair.x}
+                  y1={geometry.plot.top}
+                  y2={geometry.plot.bottom}
+                />
+                <line
+                  data-testid="market-tick-crosshair-y"
+                  x1={geometry.plot.left}
+                  x2={geometry.plot.right}
+                  y1={crosshair.y}
+                  y2={crosshair.y}
+                />
+                <g className="rtx-market-tick-chart__quote-pill" data-testid="market-tick-crosshair-pill">
+                  <rect
+                    x={crosshair.quotePill.x}
+                    y={crosshair.quotePill.y}
+                    width={crosshair.quotePill.width}
+                    height={crosshair.quotePill.height}
+                  />
+                  <text
+                    x={crosshair.quotePill.x + crosshair.quotePill.width / 2}
+                    y={crosshair.quotePill.y + crosshair.quotePill.height / 2 + size.fontSize * 0.35}
+                    textAnchor="middle"
+                  >
+                    {crosshair.quotePill.label}
+                  </text>
+                </g>
+              </g>
+            )}
             <rect
               className="rtx-market-tick-chart__frame"
               x={geometry.plot.left}
@@ -191,15 +257,68 @@ export function MarketWatchTickChart({
             </g>
             {([['ask', geometry.askTag], ['bid', geometry.bidTag]] as const).map(([side, tag]) => (
               <g key={side} className={`rtx-market-tick-chart__tag rtx-market-tick-chart__tag--${side}`} data-testid={`market-tick-${side}-tag`}>
+                <line
+                  x1={geometry.plot.right}
+                  x2={geometry.plot.right + tagLeadPx}
+                  y1={tag.y}
+                  y2={tag.y}
+                />
                 <rect
-                  x={geometry.plot.right}
+                  x={geometry.plot.right + tagLeadPx}
                   y={tag.y - geometry.tagHeight / 2}
-                  width={geometry.axisWidth}
+                  width={Math.max(0, geometry.axisWidth - tagLeadPx)}
                   height={geometry.tagHeight}
                 />
                 <text x={geometry.plot.right + geometry.tickLength + 3} y={tag.y + size.fontSize * 0.35}>{tag.label}</text>
               </g>
             ))}
+            {crosshair && (
+              <>
+                <g
+                  className="rtx-market-tick-chart__tag rtx-market-tick-chart__tag--crosshair"
+                  data-testid="market-tick-crosshair-price-tag"
+                  aria-hidden="true"
+                >
+                  <line
+                    x1={geometry.plot.right}
+                    x2={geometry.plot.right + tagLeadPx}
+                    y1={crosshair.priceTag.y}
+                    y2={crosshair.priceTag.y}
+                  />
+                  <rect
+                    x={geometry.plot.right + tagLeadPx}
+                    y={crosshair.priceTag.y - geometry.tagHeight / 2}
+                    width={Math.max(0, geometry.axisWidth - tagLeadPx)}
+                    height={geometry.tagHeight}
+                  />
+                  <text
+                    x={geometry.plot.right + geometry.tickLength + 3}
+                    y={crosshair.priceTag.y + size.fontSize * 0.35}
+                  >
+                    {crosshair.priceTag.label}
+                  </text>
+                </g>
+                <g
+                  className="rtx-market-tick-chart__tag rtx-market-tick-chart__tag--crosshair"
+                  data-testid="market-tick-crosshair-time-tag"
+                  aria-hidden="true"
+                >
+                  <rect
+                    x={crosshair.timeTag.x}
+                    y={crosshair.timeTag.y}
+                    width={crosshair.timeTag.width}
+                    height={crosshair.timeTag.height}
+                  />
+                  <text
+                    x={crosshair.timeTag.x + crosshair.timeTag.width / 2}
+                    y={crosshair.timeTag.y + crosshair.timeTag.height / 2 + size.fontSize * 0.35}
+                    textAnchor="middle"
+                  >
+                    {crosshair.timeTag.label}
+                  </text>
+                </g>
+              </>
+            )}
           </svg>
         ) : (
           <div className="rtx-market-tick-chart__empty" role="status">

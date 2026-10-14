@@ -1,5 +1,5 @@
 import { resolveDailyChangeDisplayDigits } from '../../services/dailyChangePriceModeRegistry';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useTick } from '../../store/useAppStore';
@@ -12,6 +12,7 @@ import { getMarketWatchSymbolLabel } from '../../utils/marketWatchSource';
 import { formatDailyChange } from '../../utils/dailyChange';
 import { dailyChangeDescription } from '../../utils/dailyChangeSession';
 import { readCurrentMarketWatchDailyChangePrice, describeCurrentMarketWatchDailyChange } from '../../services/marketWatchDailyChangeCache';
+import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
 import { formatLastPriceTime, hasMarketWatchQuote } from './marketWatchPanelModel';
 import {
   buildMarketWatchSymbolDetails,
@@ -50,6 +51,9 @@ export interface MarketWatchSymbolDetailsProps {
   specificationScopeKey: string;
   loadSpecification?: LoadSymbolSpecification;
   onSymbolChange: (symbol: string) => void;
+  showGrid?: boolean;
+  contextMenuItems?: ContextMenuItemConfig[];
+  onRowDoubleClick?: () => void;
 }
 
 /** Direction of the most recent change of a value, held until it changes again. */
@@ -113,7 +117,11 @@ const DirectionMarker = ({ direction }: { direction: DetailRow['direction'] }) =
           ? <path d="M2 8L8 2M4 2h4v4" />
           : <path d="M2 2l6 6M8 4v4H4" />}
       </svg>
-    ) : null}
+    ) : (
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+        <circle cx="5" cy="5" r="1.75" />
+      </svg>
+    )}
   </span>
 );
 
@@ -130,8 +138,14 @@ export function MarketWatchSymbolDetails({
   specificationScopeKey,
   loadSpecification,
   onSymbolChange,
+  showGrid = true,
+  contextMenuItems,
+  onRowDoubleClick,
 }: MarketWatchSymbolDetailsProps) {
   const tr = useUiTranslation();
+  const [selectedField, setSelectedField] = useState<string | null>(null);
+  const [isLightSkin, setIsLightSkin] = useState(false);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const tick = useTick(symbol);
   const displayMetadata = useMarketWatchDisplayMetadata(symbol);
   const dailyDisplay = resolveMarketWatchDisplayMetadata(tick, displayMetadata);
@@ -168,6 +182,15 @@ export function MarketWatchSymbolDetails({
   const askHighDirection = useLastChangeDirection(quoteIdentity, details.askHigh);
   const askLowDirection = useLastChangeDirection(quoteIdentity, details.askLow);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => setIsLightSkin(root.classList.contains('rtx-skin-untitled-light'));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   if (!symbol) {
     return (
       <section className="rtx-market-watch-details rtx-market-watch-details--empty" role="status">
@@ -200,11 +223,77 @@ export function MarketWatchSymbolDetails({
     { field: 'close', label: tr('Close Price'), value: price(details.close), direction: 'static' },
   ];
 
+  const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>, index: number) => {
+    let targetIndex: number | null = null;
+    if (event.key === 'ArrowDown') {
+      targetIndex = Math.min(index + 1, rows.length - 1);
+    } else if (event.key === 'ArrowUp') {
+      targetIndex = Math.max(index - 1, 0);
+    } else if (event.key === 'Home') {
+      targetIndex = 0;
+    } else if (event.key === 'End') {
+      targetIndex = rows.length - 1;
+    }
+    if (targetIndex !== null) {
+      event.preventDefault();
+      const nextField = rows[targetIndex].field;
+      setSelectedField(nextField);
+      rowRefs.current.get(nextField)?.focus();
+    }
+  };
+
+  const scrollContent = (
+    <div className="rtx-market-watch-details__scroll mw-scrollbar">
+      <dl className="rtx-market-watch-details__list">
+        {rows.map((row, index) => {
+          const isRowSelected = selectedField === row.field;
+          return (
+            <div
+              key={row.field}
+              ref={(node) => {
+                if (node) rowRefs.current.set(row.field, node);
+                else rowRefs.current.delete(row.field);
+              }}
+              className="rtx-market-watch-details__row"
+              data-field={row.field}
+              data-selected={isRowSelected ? 'true' : undefined}
+              aria-selected={isRowSelected}
+              tabIndex={isRowSelected || (selectedField === null && index === 0) ? 0 : -1}
+              onClick={(event) => {
+                setSelectedField(row.field);
+                event.currentTarget.focus();
+              }}
+              onContextMenu={(event) => {
+                setSelectedField(row.field);
+                event.currentTarget.focus();
+              }}
+              onDoubleClick={onRowDoubleClick}
+              onKeyDown={(event) => handleRowKeyDown(event, index)}
+            >
+              <dt className="rtx-market-watch-details__label">
+                <DirectionMarker direction={row.direction} />
+                {row.label}
+              </dt>
+              <dd
+                className="rtx-market-watch-details__value"
+                data-tone={row.value === null || row.direction === 'static' ? undefined : row.direction}
+                title={row.value === null ? undefined : row.title}
+              >
+                {row.value ?? '—'}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+    </div>
+  );
+
   return (
     <section
       className="rtx-market-watch-details"
       aria-label={`${displaySymbol} ${tr('Details')}`}
       data-live={isLive}
+      data-grid={showGrid}
     >
       <div className="rtx-market-watch-details__header">
         <select
@@ -231,25 +320,15 @@ export function MarketWatchSymbolDetails({
       </div>
       {/* A description list, not a table: both skins restyle every Market
           Watch td/th with !important for the quote grid. */}
-      <div className="rtx-market-watch-details__scroll mw-scrollbar">
-        <dl className="rtx-market-watch-details__list">
-          {rows.map((row) => (
-            <div key={row.field} className="rtx-market-watch-details__row" data-field={row.field}>
-              <dt className="rtx-market-watch-details__label">
-                <DirectionMarker direction={row.direction} />
-                {row.label}
-              </dt>
-              <dd
-                className="rtx-market-watch-details__value"
-                data-tone={row.value === null || row.direction === 'static' ? undefined : row.direction}
-                title={row.value === null ? undefined : row.title}
-              >
-                {row.value ?? '—'}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
+      {contextMenuItems && contextMenuItems.length > 0 ? (
+        <ContextMenu
+          items={contextMenuItems}
+          variant={isLightSkin ? 'mt5-light' : 'mt5-dark'}
+          density="compact"
+        >
+          {scrollContent}
+        </ContextMenu>
+      ) : scrollContent}
     </section>
   );
 }

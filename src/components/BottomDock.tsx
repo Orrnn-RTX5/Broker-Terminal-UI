@@ -443,10 +443,34 @@ export function BottomDock({
 function PlaceholderTab({ title }: { title: string }) {
     const tr = useUiTranslation();
     return (
-        <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 bg-[#131316]">
-            <Icon name="briefcase" size="xl" className="mb-2 opacity-20" />
-            <div className="text-[12px] font-normal">{tr("RTX5 ")}{tr(title)}</div>
-            <div className="text-[12px] font-normal">{tr("No active items to display")}</div>
+        <div
+            className="rtx-placeholder-tab flex-1 h-full flex flex-col items-center justify-center select-none px-4"
+            style={{
+                background: 'var(--bg-secondary, #131316)',
+                color: 'var(--text-tertiary, #808088)',
+            }}
+        >
+            <div
+                className="flex flex-col items-center justify-center rounded-md px-6 py-4 text-center"
+                style={{
+                    background: 'var(--bg-tertiary, #191a1e)',
+                    border: '1px solid var(--border-primary, #28282e)',
+                }}
+            >
+                <Icon name="briefcase" size="lg" className="mb-2 opacity-35" />
+                <div
+                    className="text-[13px] leading-[19.5px] font-normal mb-0.5"
+                    style={{ color: 'var(--text-primary, #e2e2e8)' }}
+                >
+                    {tr("RTX5 ")}{tr(title)}
+                </div>
+                <div
+                    className="text-[12px] leading-[18px] font-normal"
+                    style={{ color: 'var(--text-tertiary, #808088)' }}
+                >
+                    {tr("No active items to display")}
+                </div>
+            </div>
         </div>
     );
 }

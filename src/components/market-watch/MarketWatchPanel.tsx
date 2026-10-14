@@ -9,7 +9,7 @@ import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { MarketWatchTickChart, PopupPricesDialog } from './index';
 import { MarketWatchSaveSetDialog } from './MarketWatchSaveSetDialog';
 import { useMarketWatchExport } from './useMarketWatchExport';
-import { useMarketWatchContextMenu } from './useMarketWatchContextMenu';
+import { useMarketWatchContextMenu, useMarketWatchDetailsContextMenu } from './useMarketWatchContextMenu';
 import { useMarketWatchPanelModel } from './useMarketWatchPanelModel';
 import { MarketWatchSymbolExplorer } from './MarketWatchSymbolExplorer';
 import { MarketWatchGrid } from './MarketWatchGrid';
@@ -555,6 +555,23 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       toggleColumn,
     });
 
+    const getDetailsContextMenuItems = useMarketWatchDetailsContextMenu({
+      actionableSymbolSet,
+      brokerAccountScopeKey,
+      canLoadBrokerSpecification: isAuthenticated && Boolean(loadSymbolSpecification),
+      chartOpenableSymbolSet,
+      marketWatchOptions,
+      quoteEligibleSymbolSet,
+      setMarketWatchOptions,
+      setMarketWatchView,
+      setRefreshedSpecification,
+      setShowSymbolsPanel,
+      setSpecificationRequestKey,
+      setSpecificationRequestStatus,
+      setSpecificationSymbol,
+      setTickChartSymbol,
+    });
+
     const specificationAuthorizedInstrument = useMemo(() => (
       specificationSymbol
         ? findInstrumentBySymbol(authenticatedMarketInstruments, specificationSymbol)
@@ -618,12 +635,13 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       const handleKeyDown = (e: KeyboardEvent) => {
         if (shouldIgnoreShortcutEvent(e) || isShortcutInput(e) || isShortcutLocalScope(e) || isShortcutOverlay(e)) return;
         if (!containerRef.current?.contains(getShortcutEventTarget(e))) return;
+        const shortcutSymbol = marketWatchView === 'details' ? detailsSymbol : normalizeSymbol(selectedSymbol);
         // The global manager owns these commands. This scoped fallback serves
         // a standalone Market Watch only when the event was not already used.
         if (e.key === 'F9' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
           e.preventDefault();
-          if (actionableSymbolSet.has(normalizeSymbol(selectedSymbol))) {
-            window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol: selectedSymbol } }));
+          if (actionableSymbolSet.has(shortcutSymbol)) {
+            window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol: shortcutSymbol } }));
           }
         }
         if (e.key === 'F10' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
@@ -632,8 +650,8 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
         }
         if (e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'b') {
           e.preventDefault();
-          if (actionableSymbolSet.has(normalizeSymbol(selectedSymbol))) {
-            window.dispatchEvent(new CustomEvent('openDepthOfMarket', { detail: { symbol: selectedSymbol } }));
+          if (actionableSymbolSet.has(shortcutSymbol)) {
+            window.dispatchEvent(new CustomEvent('openDepthOfMarket', { detail: { symbol: shortcutSymbol } }));
           }
         }
         if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'a') {
@@ -647,7 +665,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       };
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [actionableSymbolSet, selectedSymbol]);
+    }, [actionableSymbolSet, detailsSymbol, marketWatchView, selectedSymbol]);
 
     const closeSymbolExplorer = useCallback(() => {
       setSearch('');
@@ -867,6 +885,13 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               instrumentSources={detailsInstrumentSources}
               specificationScopeKey={brokerAccountScopeKey}
               loadSpecification={isAuthenticated ? loadSymbolSpecification : undefined}
+              showGrid={marketWatchOptions.showGrid}
+              contextMenuItems={getDetailsContextMenuItems(detailsSymbol)}
+              onRowDoubleClick={() => {
+                if (actionableSymbolSet.has(detailsSymbol)) {
+                  window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol: detailsSymbol } }));
+                }
+              }}
               onSymbolChange={(symbol) => setDetailsSelection({
                 ownerSymbol: marketWatchSelectionSymbol,
                 symbol,

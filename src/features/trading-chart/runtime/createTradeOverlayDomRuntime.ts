@@ -641,15 +641,16 @@ export const createTradeOverlayDomRuntime = ({
         const accent = role === 'TP'
           ? (lightSurface ? LIGHT_CHART_TRADE_COLORS.tp : DARK_CHART_TRADE_COLORS.tp)
           : (lightSurface ? LIGHT_CHART_TRADE_COLORS.sl : DARK_CHART_TRADE_COLORS.sl);
+        const restingBorderColor = `${accent}80`;
         Object.assign(chip.style, {
           position: 'static', display: 'inline-flex', transform: 'none',
           fontWeight: 'inherit', fontFamily: 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)', fontSize: 'inherit', letterSpacing: 'normal',
-          color: accent, padding: '0 1px', height: '15px', lineHeight: '13px', boxSizing: 'border-box',
-          minWidth: '18px', justifyContent: 'center', flex: '0 0 auto',
+          color: accent, padding: '0 1px', height: '17px', lineHeight: '15px', boxSizing: 'border-box',
+          minWidth: '20px', justifyContent: 'center', flex: '0 0 auto',
           backgroundColor: lightSurface
-            ? (role === 'TP' ? '#edf7f4' : '#fff7e8')
+            ? (role === 'TP' ? '#e1f2ed' : '#fff0cc')
             : (role === 'TP' ? '#21332f' : '#362f24'),
-          border: `1px solid ${accent}40`, borderRadius: '3px', textShadow: 'none',
+          border: `1px solid ${restingBorderColor}`, borderRadius: '3px', textShadow: 'none',
         });
         chip.style.setProperty('--rtx-type-size', 'inherit');
         chip.style.setProperty('--rtx-type-weight', 'inherit');
@@ -658,7 +659,7 @@ export const createTradeOverlayDomRuntime = ({
           chip.style.borderStyle = 'solid';
         });
         chip.addEventListener('mouseleave', () => {
-          chip.style.borderColor = `${accent}40`;
+          chip.style.borderColor = restingBorderColor;
         });
         const brackets = controlBar.root.querySelector<HTMLElement>('.rtx-trade-brackets')
           ?? controlBar.root.querySelector<HTMLElement>('.rtx-trade-control-actions')

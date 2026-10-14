@@ -7,6 +7,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  */
 
 import React, { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 
 import { getActiveChartSource, subscribeActiveChartSource } from '../services/activeChartSource';
 import type { ChartDataSnapshot } from '../services/chartDataSnapshot';
@@ -24,43 +25,54 @@ const fmt = (n: number, digits = 5): string => {
   return n.toFixed(digits);
 };
 
-const DataRow = ({ label, value }: { label: string; value: string }) => { const tr = useUiTranslation(); return ((
-  <div
-    className="rtx-data-window__row"
-    style={{
-      display: 'grid',
-      gridTemplateColumns: '1fr auto',
-      alignItems: 'center',
-      minHeight: 24,
-      padding: '1px 8px',
-      borderBottom: '1px solid rgba(255,255,255,0.04)',
-    }}
-  >
-    <span className="rtx-data-window__label" style={{ color: '#999', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
-      {tr(label)}
-    </span>
-    <span
-      className="rtx-data-window__value"
+const DataRow = ({ label, value }: { label: string; value: string }) => {
+  const tr = useUiTranslation();
+  return (
+    <div
+      className="rtx-data-window__row"
       style={{
-        color: '#e0e0e0',
-        fontSize: 14,
-        fontWeight: 400,
-        lineHeight: '21px',
-        fontFamily: 'var(--font-mono)',
-        textAlign: 'right',
-        minWidth: 78,
+        display: 'grid',
+        gridTemplateColumns: '1fr auto',
+        alignItems: 'center',
+        minHeight: 24,
+        padding: '2px 10px',
+        borderBottom: '1px solid var(--border-primary, rgba(255,255,255,0.06))',
       }}
     >
-      {value}
-    </span>
-  </div>
-)); };
+      <span
+        className="rtx-data-window__label"
+        style={{
+          color: 'var(--text-secondary, #999)',
+          fontSize: 14, fontWeight: 400, lineHeight: '21px',
+          fontFamily: 'var(--font-sans)',
+        }}
+      >
+        {tr(label)}
+      </span>
+      <span
+        className="rtx-data-window__value font-mono tabular-nums"
+        style={{
+          color: 'var(--text-primary, #e0e0e0)',
+          fontSize: 14,
+          fontWeight: 400,
+          lineHeight: '21px',
+          fontFamily: 'var(--font-mono)',
+          fontVariantNumeric: 'tabular-nums',
+          textAlign: 'right',
+          minWidth: 78,
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+};
 
 export const DataWindow: React.FC<DataWindowProps> = ({
   onClose,
   onDragHandleMouseDown,
 }) => {
-    const tr = useUiTranslation();
+  const tr = useUiTranslation();
   const [data, setData] = useState<CrosshairData | null>(null);
 
   // Pull only while the panel is open. The registered reader uses current candle
@@ -81,9 +93,9 @@ export const DataWindow: React.FC<DataWindowProps> = ({
     <div
       className="rtx-data-window"
       style={{
-        background: '#131316',
-        border: '1px solid #2a2e39',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05)',
+        background: 'var(--bg-secondary, #131316)',
+        border: '1px solid var(--border-primary, #2a2e39)',
+        boxShadow: 'var(--shadow-lg, 0 8px 32px rgba(0,0,0,0.7))',
         borderRadius: 4,
         width: '100%',
         height: '100%',
@@ -103,31 +115,34 @@ export const DataWindow: React.FC<DataWindowProps> = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           minHeight: 30,
-          padding: '0 8px',
-          background: '#1a1d26',
-          cursor: 'move',
-          borderBottom: '1px solid #2a2e39',
+          padding: '0 8px 0 10px',
+          background: 'var(--bg-tertiary, #1a1d26)',
+          cursor: onDragHandleMouseDown ? 'move' : 'default',
+          borderBottom: '1px solid var(--border-primary, #2a2e39)',
         }}
       >
-        <span className="rtx-data-window__title" style={{ color: '#c0c0c0', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
-          {tr("Data Window")}</span>
+        <span
+          className="rtx-data-window__title"
+          style={{
+            color: 'var(--text-primary, #c0c0c0)',
+            fontSize: 14, fontWeight: 400, lineHeight: '21px',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          {tr("Data Window")}
+        </span>
         <button
-          className="rtx-data-window__close"
+          type="button"
+          className="rtx-data-window__close dock-panel__action dock-panel__action--close flex h-5 w-5 shrink-0 items-center justify-center rounded-sm transition-colors hover:bg-red-500/80 hover:text-white"
           onClick={onClose}
           style={{
-            background: 'none',
-            border: 'none',
-            color: '#888',
+            color: 'var(--text-secondary, #888)',
             cursor: 'pointer',
-            fontSize: 13,
-            lineHeight: 1,
-            padding: '0 2px',
-            display: 'flex',
-            alignItems: 'center',
           }}
           title={tr("Close")}
+          aria-label={tr("Close")}
         >
-          ✕
+          <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </div>
 
@@ -139,22 +154,39 @@ export const DataWindow: React.FC<DataWindowProps> = ({
           alignItems: 'center',
           gap: 6,
           minHeight: 30,
-          padding: '4px 8px',
-          borderBottom: '1px solid #2a2e39',
-          background: '#131316',
+          padding: '4px 10px',
+          borderBottom: '1px solid var(--border-primary, #2a2e39)',
+          background: 'var(--bg-secondary, #131316)',
         }}
       >
         {/* Small line-chart icon */}
-        <svg width="12" height="10" viewBox="0 0 12 10" fill="none" stroke="#5a9f7a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="12" height="10" viewBox="0 0 12 10" fill="none" stroke="var(--color-profit, #5a9f7a)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="1,9 4,5 7,7 11,1" />
         </svg>
-        <span className="rtx-data-window__symbol-label" style={{ color: '#c8c8c8', fontSize: 14, lineHeight: '21px', fontFamily: 'var(--font-mono)', fontWeight: 400 }}>
+        <span
+          className="rtx-data-window__symbol-label font-mono tabular-nums"
+          style={{
+            color: 'var(--text-primary, #c8c8c8)',
+            fontSize: 14,
+            lineHeight: '21px',
+            fontFamily: 'var(--font-mono)',
+            fontWeight: 400,
+          }}
+        >
           {tr(header)}
         </span>
       </div>
 
       {/* Data Rows */}
-      <div className="rtx-data-window__body" style={{ background: '#131316', paddingBottom: 2, overflowY: 'auto', flex: 1 }}>
+      <div
+        className="rtx-data-window__body custom-scrollbar"
+        style={{
+          background: 'var(--bg-secondary, #131316)',
+          paddingBottom: 2,
+          overflowY: 'auto',
+          flex: 1,
+        }}
+      >
         <DataRow label={tr("Date")} value={data?.date ?? '—'} />
         <DataRow label={tr("Time")} value={data?.time ?? '—'} />
         <DataRow label={tr("Open")}  value={data ? fmt(data.open, digits)  : '—'} />
@@ -170,3 +202,4 @@ export const DataWindow: React.FC<DataWindowProps> = ({
 };
 
 export default DataWindow;
+

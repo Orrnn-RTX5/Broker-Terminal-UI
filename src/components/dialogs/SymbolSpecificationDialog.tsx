@@ -437,6 +437,24 @@ const buildSwapRates = (records: readonly Record<string, unknown>[]): Partial<Re
     else if (typeof value === 'string' && value.trim()) rates[day.key] = value.trim();
   });
 
+  if (Object.keys(rates).length === 0) {
+    const rawRollover = readRaw(records, [
+      'swap_rollover3days', 'swapRollover3Days', 'swap_rollover_day', 'swapRolloverDay',
+      'swap_rollover_3days', 'swapRollover_3Days', 'swap_rollover3_days',
+      'swap_3day', 'swap3Day', 'swap_3days', 'swap3Days',
+      'triple_swap_day', 'tripleSwapDay', 'three_day_swap_day', 'threeDaySwapDay',
+    ]);
+    const rolloverDay = normalizeWeekday(rawRollover);
+    if (rolloverDay) {
+      (['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as const).forEach((dayKey) => {
+        rates[dayKey] = dayKey === rolloverDay ? 3 : 1;
+      });
+      if (rolloverDay === 'sunday' || rolloverDay === 'saturday') {
+        rates[rolloverDay] = 3;
+      }
+    }
+  }
+
   return rates;
 };
 
@@ -889,7 +907,7 @@ const CALCULATION_MODES: Readonly<Record<number, string>> = {
 
 const SWAP_MODES: Readonly<Record<number, string>> = {
   0: 'Disabled',
-  1: 'Points',
+  1: 'In points',
   2: 'Base currency',
   3: 'Margin currency',
   4: 'Deposit currency',
@@ -913,6 +931,7 @@ const readSwapMode = (
       ? Number(raw)
       : null;
   const enumName = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
+  if (enumName === 'POINTS' || enumName === 'IN_POINTS' || enumName === 'IN POINTS' || enumName.endsWith('_POINTS')) return 'In points';
   if (enumName.includes('CURRENCY_SYMBOL') && currencies.base) return currencies.base;
   if (enumName.includes('CURRENCY_MARGIN') && currencies.margin) return currencies.margin;
   if (enumName.includes('CURRENCY_DEPOSIT') && currencies.deposit) return currencies.deposit;
@@ -1128,26 +1147,35 @@ const safeWebUrl = (value: string | null): string | null => {
   }
 };
 
-const PropertyMarker = ({ kind = 'text' }: { kind?: DisplayRow['kind'] }) => {
+const PropertyMarker = ({ kind = 'text', selected = false }: { kind?: DisplayRow['kind']; selected?: boolean }) => {
   if (kind === 'enum') {
     return (
-      <span className="flex h-3 w-3 shrink-0 flex-col justify-center gap-px" aria-hidden="true">
-        <span className="h-px w-3 bg-[#ef5350]" />
-        <span className="h-px w-3 bg-[#42a5f5]" />
-        <span className="h-px w-3 bg-[#66bb6a]" />
+      <span className="flex h-3 w-3 shrink-0 flex-col justify-center gap-[1.5px]" aria-hidden="true">
+        <span className={`h-[1.5px] w-3 ${selected ? 'bg-white/90' : 'bg-[#2d8ceb]'}`} />
+        <span className={`h-[1.5px] w-3 ${selected ? 'bg-[#ff9b9b]' : 'bg-[#e04b4b]'}`} />
+        <span className={`h-[1.5px] w-3 ${selected ? 'bg-white/90' : 'bg-[#2d8ceb]'}`} />
       </span>
     );
   }
   if (kind === 'calendar') {
     return (
-      <span className="relative h-3 w-3 shrink-0 border border-[#42a5f5]" aria-hidden="true">
-        <span className="absolute left-0 top-[2px] h-px w-full bg-[#42a5f5]" />
+      <span
+        className={`relative h-[11px] w-3 shrink-0 border ${selected ? 'border-white/90' : 'border-[#2d8ceb]'}`}
+        aria-hidden="true"
+      >
+        <span className={`absolute left-0 top-[2px] h-px w-full ${selected ? 'bg-white/90' : 'bg-[#2d8ceb]'}`} />
       </span>
     );
   }
   return (
     <span
-      className={`w-3 shrink-0 text-center font-sans text-[8px] font-semibold leading-3 ${kind === 'text' ? 'text-[#d79a62]' : 'text-[#42a5f5]'}`}
+      className={`w-3 shrink-0 text-center font-sans text-[9px] font-semibold leading-3 ${
+        selected
+          ? 'text-white'
+          : kind === 'text'
+            ? 'text-[#d49b38]'
+            : 'text-[#2d8ceb]'
+      }`}
       aria-hidden="true"
     >
       {kind === 'integer' ? '01' : kind === 'decimal' ? '½' : 'ab'}
@@ -1155,110 +1183,203 @@ const PropertyMarker = ({ kind = 'text' }: { kind?: DisplayRow['kind'] }) => {
   );
 };
 
-const PropertyRows = ({ rows }: { rows: DisplayRow[] }) => {
+const PropertyRows = ({
+  rows,
+  rowKeyPrefix = 'prop',
+  selectedRowKey = null,
+  onSelectRow,
+  startStripeIndex = 0,
+}: {
+  rows: DisplayRow[];
+  rowKeyPrefix?: string;
+  selectedRowKey?: string | null;
+  onSelectRow?: (key: string) => void;
+  startStripeIndex?: number;
+}) => {
   const tr = useUiTranslation();
   const availableRows = rows.filter((row): row is DisplayRow & { value: string } => row.value !== null);
   if (availableRows.length === 0) return null;
 
   return (
     <dl className="rtx-symbol-specification__rows m-0">
-      {availableRows.map((row) => (
-        <div
-          key={row.label}
-          className="grid min-h-[24px] grid-cols-[minmax(136px,44%)_minmax(0,1fr)] items-center border-b border-[var(--border-primary)] last:border-b-0"
-        >
-          <dt className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px] leading-[15px] text-[var(--text-secondary)]">
-            <PropertyMarker kind={row.kind} />
-            <span className="truncate">{tr(row.label)}</span>
-          </dt>
-          <dd
-            className={`m-0 truncate border-l border-[var(--border-primary)] px-2 py-1 text-right font-mono text-[11px] font-medium leading-[15px] tabular-nums ${
-              row.tone === 'positive'
-                ? 'text-[var(--color-profit)]'
-                : row.tone === 'negative'
-                  ? 'text-[var(--color-loss)]'
-                  : 'text-[var(--text-primary)]'
+      {availableRows.map((row, index) => {
+        const rowKey = `${rowKeyPrefix}:${row.label}`;
+        const isSelected = selectedRowKey === rowKey;
+        const isEven = (startStripeIndex + index) % 2 === 0;
+        return (
+          <div
+            key={row.label}
+            data-selected={isSelected ? 'true' : undefined}
+            data-stripe={isEven ? 'even' : 'odd'}
+            onClick={() => onSelectRow?.(rowKey)}
+            className={`rtx-spec-row grid min-h-[20px] grid-cols-[40%_60%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
+              isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : ''
             }`}
-            title={row.value}
           >
-            {row.value}
-          </dd>
-        </div>
-      ))}
+            <dt
+              className={`flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 text-[12px] leading-[16px] ${
+                isSelected ? 'text-white' : 'text-[var(--text-primary)]'
+              }`}
+            >
+              <PropertyMarker kind={row.kind} selected={isSelected} />
+              <span className="truncate">{tr(row.label)}</span>
+            </dt>
+            <dd
+              className={`m-0 truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right text-[12px] font-normal leading-[16px] tabular-nums ${
+                isSelected
+                  ? 'text-white'
+                  : row.tone === 'positive'
+                    ? 'text-[var(--color-profit)]'
+                    : row.tone === 'negative'
+                      ? 'text-[var(--color-loss)]'
+                      : 'text-[var(--text-primary)]'
+              }`}
+              title={row.value}
+            >
+              {row.value}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
   );
 };
 
-const SectionHeading = ({ children }: { children: React.ReactNode }) => (
-  <div className="border-y border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-2 py-1 text-[11px] font-semibold leading-4 text-[var(--text-primary)] first:border-t-0">
-    {children}
-  </div>
-);
+const SectionHeading = ({
+  children,
+  rowKey,
+  selectedRowKey,
+  onSelectRow,
+}: {
+  children: React.ReactNode;
+  rowKey?: string;
+  selectedRowKey?: string | null;
+  onSelectRow?: (key: string) => void;
+}) => {
+  const isSelected = Boolean(rowKey && selectedRowKey === rowKey);
+  return (
+    <div
+      data-selected={isSelected ? 'true' : undefined}
+      onClick={rowKey ? () => onSelectRow?.(rowKey) : undefined}
+      className={`rtx-spec-row rtx-spec-row--heading grid min-h-[20px] grid-cols-[40%_60%] items-center border-y border-[var(--mw-spec-grid,var(--border-primary))] text-[12px] font-semibold leading-4 first:border-t-0 ${
+        isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+      }`}
+    >
+      <div className="truncate px-1.5 py-0.5">{children}</div>
+      <div className="h-full border-l border-[var(--mw-spec-grid,var(--border-primary))]" aria-hidden="true" />
+    </div>
+  );
+};
 
 const SessionTable = ({
   sessions,
   timeZone,
+  selectedRowKey,
+  onSelectRow,
 }: {
   sessions: SymbolSpecificationSession[];
   timeZone: string | null;
+  selectedRowKey?: string | null;
+  onSelectRow?: (key: string) => void;
 }) => {
   const tr = useUiTranslation();
-  if (!sessions.some((session) => session.quotes.length > 0 || session.trade.length > 0)) return null;
+  const headerKey = 'sessions:header';
+  const isHeaderSelected = selectedRowKey === headerKey;
   return (
     <section aria-label={tr('Sessions')} title={timeZone ? `${tr('Broker server time')}: ${timeZone}` : undefined}>
-      <table className="w-full table-fixed border-collapse text-[11px]">
+      <table className="w-full table-fixed border-collapse text-[12px]">
         <thead>
-          <tr className="border-y border-[var(--border-primary)] bg-[var(--bg-quaternary)] text-[var(--text-secondary)]">
-            <th className="w-[34%] px-2 py-1 text-left font-semibold text-[var(--text-primary)]" scope="col">
-              {tr('Sessions')}{timeZone ? <span className="ml-1 font-normal text-[var(--text-tertiary)]">({timeZone})</span> : null}
+          <tr
+            data-selected={isHeaderSelected ? 'true' : undefined}
+            onClick={() => onSelectRow?.(headerKey)}
+            className={`rtx-spec-row rtx-spec-row--heading h-[20px] border-y border-[var(--mw-spec-grid,var(--border-primary))] ${
+              isHeaderSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+            }`}
+          >
+            <th className="w-[40%] px-1.5 py-0.5 text-left font-semibold" scope="col">
+              {tr('Sessions')}{timeZone ? <span className={`ml-1 font-normal ${isHeaderSelected ? 'text-white/80' : 'text-[var(--text-tertiary)]'}`}>({timeZone})</span> : null}
             </th>
-            <th className="w-[33%] border-l border-[var(--border-primary)] px-2 py-1 text-right font-medium" scope="col">{tr('Quotes')}</th>
-            <th className="w-[33%] border-l border-[var(--border-primary)] px-2 py-1 text-right font-medium" scope="col">{tr('Trade')}</th>
+            <th className="w-[30%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Quotes')}</th>
+            <th className="w-[30%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Trade')}</th>
           </tr>
         </thead>
         <tbody>
-          {sessions.map((session) => (
-            <tr key={session.day} className="border-b border-[var(--border-primary)] last:border-b-0">
-              <th className="px-2 py-1 text-left font-normal text-[var(--text-secondary)]" scope="row">
-                <span className="flex items-center gap-1.5"><PropertyMarker kind="calendar" />{tr(session.label)}</span>
-              </th>
-              <td className="border-l border-[var(--border-primary)] px-2 py-1 text-right font-mono tabular-nums text-[var(--text-primary)]">
-                {session.quotes.join(', ')}
-              </td>
-              <td className="border-l border-[var(--border-primary)] px-2 py-1 text-right font-mono tabular-nums text-[var(--text-primary)]">
-                {session.trade.join(', ')}
-              </td>
-            </tr>
-          ))}
+          {sessions.map((session, index) => {
+            const rowKey = `session:${session.day}`;
+            const isSelected = selectedRowKey === rowKey;
+            return (
+              <tr
+                key={session.day}
+                data-selected={isSelected ? 'true' : undefined}
+                data-stripe={index % 2 === 0 ? 'even' : 'odd'}
+                onClick={() => onSelectRow?.(rowKey)}
+                className={`rtx-spec-row h-[20px] border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
+                  isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                }`}
+              >
+                <th className="px-1.5 py-0.5 text-left font-normal" scope="row">
+                  <span className="flex items-center gap-1.5">
+                    <PropertyMarker kind="calendar" selected={isSelected} />
+                    {tr(session.label)}
+                  </span>
+                </th>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">
+                  {session.quotes.length > 0 ? session.quotes.join(', ') : '0'}
+                </td>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">
+                  {session.trade.length > 0 ? session.trade.join(', ') : '0'}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </section>
   );
 };
 
-const CommissionTable = ({ schedules }: { schedules: SymbolSpecificationCommissionSchedule[] }) => {
+const CommissionTable = ({
+  schedules,
+  selectedRowKey,
+  onSelectRow,
+}: {
+  schedules: SymbolSpecificationCommissionSchedule[];
+  selectedRowKey?: string | null;
+  onSelectRow?: (key: string) => void;
+}) => {
   const tr = useUiTranslation();
   if (schedules.length === 0) return null;
   return (
     <section aria-label={tr('Commission')}>
       {schedules.map((schedule, scheduleIndex) => (
         <div key={`${schedule.title}-${scheduleIndex}`}>
-          <SectionHeading>
+          <SectionHeading
+            rowKey={`commission-heading:${scheduleIndex}`}
+            selectedRowKey={selectedRowKey}
+            onSelectRow={onSelectRow}
+          >
             {tr(schedule.title)}{schedule.description ? ` | ${schedule.description}` : ''}
           </SectionHeading>
           <dl className="m-0">
             {schedule.tiers.map((tier, tierIndex) => {
               const label = tier.range ?? tier.label ?? tr('Commission');
+              const rowKey = `commission:${scheduleIndex}:${tierIndex}`;
+              const isSelected = selectedRowKey === rowKey;
               return (
                 <div
                   key={`${label}-${tierIndex}`}
-                  className="grid min-h-[24px] grid-cols-[minmax(136px,44%)_minmax(0,1fr)] items-center border-b border-[var(--border-primary)] last:border-b-0"
+                  data-selected={isSelected ? 'true' : undefined}
+                  data-stripe={tierIndex % 2 === 0 ? 'even' : 'odd'}
+                  onClick={() => onSelectRow?.(rowKey)}
+                  className={`rtx-spec-row grid min-h-[20px] grid-cols-[40%_60%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
+                    isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                  }`}
                 >
-                  <dt className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px] text-[var(--text-secondary)]">
-                    <PropertyMarker kind="decimal" />
+                  <dt className="flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 text-[12px]">
+                    <PropertyMarker kind="decimal" selected={isSelected} />
                     <span className="truncate">{label}</span>
                   </dt>
-                  <dd className="m-0 truncate border-l border-[var(--border-primary)] px-2 py-1 text-right font-mono text-[11px] font-medium tabular-nums" title={tier.value}>
+                  <dd className="m-0 truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right text-[12px] font-normal tabular-nums" title={tier.value}>
                     {tier.value}
                   </dd>
                 </div>
@@ -1271,29 +1392,49 @@ const CommissionTable = ({ schedules }: { schedules: SymbolSpecificationCommissi
   );
 };
 
-const MarginSpreadsTable = ({ spreads }: { spreads: SymbolSpecificationMarginSpread[] }) => {
+const MarginSpreadsTable = ({
+  spreads,
+  selectedRowKey,
+  onSelectRow,
+}: {
+  spreads: SymbolSpecificationMarginSpread[];
+  selectedRowKey?: string | null;
+  onSelectRow?: (key: string) => void;
+}) => {
   const tr = useUiTranslation();
   if (spreads.length === 0) return null;
   return (
     <section aria-label={tr('Spreads')}>
-      <table className="w-full table-fixed border-collapse text-[10px]">
+      <table className="w-full table-fixed border-collapse text-[12px]">
         <thead>
-          <tr className="border-y border-[var(--border-primary)] bg-[var(--bg-quaternary)] text-[var(--text-secondary)]">
-            <th className="w-[25%] px-2 py-1 text-left font-semibold text-[var(--text-primary)]" scope="col">{tr('Spreads')}</th>
-            <th className="w-[25%] border-l border-[var(--border-primary)] px-1 py-1 text-left font-medium" scope="col">{tr('Leg A')}</th>
-            <th className="w-[25%] border-l border-[var(--border-primary)] px-1 py-1 text-left font-medium" scope="col">{tr('Leg B')}</th>
-            <th className="w-[25%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{tr('Margin')}</th>
+          <tr className="rtx-spec-row rtx-spec-row--heading h-[20px] border-y border-[var(--mw-spec-grid,var(--border-primary))] text-[var(--text-primary)]">
+            <th className="w-[40%] px-1.5 py-0.5 text-left font-semibold" scope="col">{tr('Spreads')}</th>
+            <th className="w-[20%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-left font-semibold" scope="col">{tr('Leg A')}</th>
+            <th className="w-[20%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-left font-semibold" scope="col">{tr('Leg B')}</th>
+            <th className="w-[20%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Margin')}</th>
           </tr>
         </thead>
         <tbody>
-          {spreads.map((spread, index) => (
-            <tr key={`${spread.name}-${index}`} className="border-b border-[var(--border-primary)] last:border-b-0">
-              <th className="px-2 py-1 text-left font-normal text-[var(--text-secondary)]" scope="row">{spread.name}</th>
-              <td className="border-l border-[var(--border-primary)] px-1 py-1 text-left">{spread.legA}</td>
-              <td className="border-l border-[var(--border-primary)] px-1 py-1 text-left">{spread.legB}</td>
-              <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{spread.margin ?? ''}</td>
-            </tr>
-          ))}
+          {spreads.map((spread, index) => {
+            const rowKey = `spread:${index}`;
+            const isSelected = selectedRowKey === rowKey;
+            return (
+              <tr
+                key={`${spread.name}-${index}`}
+                data-selected={isSelected ? 'true' : undefined}
+                data-stripe={index % 2 === 0 ? 'even' : 'odd'}
+                onClick={() => onSelectRow?.(rowKey)}
+                className={`rtx-spec-row h-[20px] border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
+                  isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                }`}
+              >
+                <th className="px-1.5 py-0.5 text-left font-normal" scope="row">{spread.name}</th>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-left">{spread.legA}</td>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-left">{spread.legB}</td>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{spread.margin ?? '0'}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </section>
@@ -1307,21 +1448,50 @@ const formatMarginHeadingPart = (value: string): string => value
   .trim()
   .toLowerCase();
 
+const DEFAULT_FALLBACK_MARGIN_RATES: readonly SymbolSpecificationMarginRate[] = [
+  {
+    label: 'Market Buy',
+    range: null,
+    initial: null,
+    maintenance: null,
+    initialPerLot: null,
+    maintenancePerLot: null,
+    initialPerLotApproximate: false,
+    maintenancePerLotApproximate: false,
+    currency: null,
+  },
+  {
+    label: 'Market Sell',
+    range: null,
+    initial: null,
+    maintenance: null,
+    initialPerLot: null,
+    maintenancePerLot: null,
+    initialPerLotApproximate: false,
+    maintenancePerLotApproximate: false,
+    currency: null,
+  },
+];
+
 const MarginRatesTable = ({
   rates,
   mode,
   basis,
   currency,
   asOf,
+  selectedRowKey,
+  onSelectRow,
 }: {
   rates: SymbolSpecificationMarginRate[];
   mode: string | null;
   basis: string | null;
   currency: string | null;
   asOf: number | string | null;
+  selectedRowKey?: string | null;
+  onSelectRow?: (key: string) => void;
 }) => {
   const tr = useUiTranslation();
-  if (rates.length === 0) return null;
+  const effectiveRates = rates.length > 0 ? rates : DEFAULT_FALLBACK_MARGIN_RATES;
   const headingDetails = [mode, basis]
     .filter((value): value is string => Boolean(value))
     .map(formatMarginHeadingPart);
@@ -1330,50 +1500,94 @@ const MarginRatesTable = ({
     ? `${tr('Margin rates')}: ${headingDetails.join(', ')}`
     : tr('Margin rates');
   const asOfText = formatDate(asOf);
-  const perLotHeading = currency ? `${currency.toLowerCase()} / lot` : tr('Per lot');
+  const perLotHeading = currency ? `${currency.toLowerCase()} / lot` : 'usd / lot';
   const formatPerLot = (value: number | null, rowCurrency: string | null, approximate: boolean): string => {
-    const formatted = formatGroupedNumber(value, 2, 2) ?? '';
-    const prefixed = value === null ? '' : `${approximate ? '~' : ''}${formatted}`;
-    if (value === null || !rowCurrency || rowCurrency.toUpperCase() === currency?.toUpperCase()) return prefixed;
+    if (value === null) return '0';
+    const formatted = formatGroupedNumber(value, 2, 2) ?? '0';
+    const prefixed = `${approximate ? '~' : ''}${formatted}`;
+    if (!rowCurrency || rowCurrency.toUpperCase() === currency?.toUpperCase()) return prefixed;
     return `${prefixed} ${rowCurrency}`;
   };
+  const headerKey = 'margin-rates:header';
+  const isHeaderSelected = selectedRowKey === headerKey;
 
   return (
     <section aria-label={tr('Margin rates')}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[430px] table-fixed border-collapse text-[10px]">
+        <table className="w-full min-w-[420px] table-fixed border-collapse text-[12px]">
           <thead>
-            <tr className="border-b border-[var(--border-primary)] text-[var(--text-secondary)]">
-              <th className="w-[30%] px-2 py-1 text-left font-semibold text-[var(--text-primary)]" scope="col" title={heading}>
+            <tr
+              data-selected={isHeaderSelected ? 'true' : undefined}
+              onClick={() => onSelectRow?.(headerKey)}
+              className={`rtx-spec-row rtx-spec-row--heading min-h-[20px] border-y border-[var(--mw-spec-grid,var(--border-primary))] ${
+                isHeaderSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+              }`}
+            >
+              <th className="w-[40%] px-1.5 py-0.5 text-left font-semibold" scope="col" title={heading}>
                 <span className="block truncate">{heading}</span>
-                {asOfText && <span className="block truncate text-[9px] font-normal text-[var(--text-tertiary)]">{tr('As of')} {asOfText}</span>}
+                {asOfText && (
+                  <span className={`block truncate text-[10px] font-normal ${isHeaderSelected ? 'text-white/80' : 'text-[var(--text-tertiary)]'}`}>
+                    {tr('As of')} {asOfText}
+                  </span>
+                )}
               </th>
-              <th className="w-[17%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{tr('Initial')}</th>
-              <th className="w-[18%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{perLotHeading}</th>
-              <th className="w-[17%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{tr('Maintenance')}</th>
-              <th className="w-[18%] border-l border-[var(--border-primary)] px-1 py-1 text-right font-medium" scope="col">{perLotHeading}</th>
+              <th className="w-[15%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Initial')}</th>
+              <th className="w-[15%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{perLotHeading}</th>
+              <th className="w-[15%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Maintenance')}</th>
+              <th className="w-[15%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{perLotHeading}</th>
             </tr>
           </thead>
           <tbody>
-            {rates.map((rate, index) => {
-              const groupStart = Boolean(rate.range) && (index === 0 || rates[index - 1]?.label !== rate.label);
+            {effectiveRates.map((rate, index) => {
+              const groupStart = Boolean(rate.range) && (index === 0 || effectiveRates[index - 1]?.label !== rate.label);
+              const groupKey = `margin-group:${rate.label}:${index}`;
+              const isGroupSelected = selectedRowKey === groupKey;
+              const rowKey = `margin-rate:${rate.label}:${rate.range ?? 'all'}:${index}`;
+              const isRowSelected = selectedRowKey === rowKey;
               return (
                 <React.Fragment key={`${rate.label}-${rate.range ?? 'all'}-${index}`}>
                   {groupStart && (
-                    <tr className="border-b border-[var(--border-primary)] bg-[var(--bg-quaternary)]">
-                      <th className="px-2 py-1 text-left font-normal text-[var(--text-secondary)]" colSpan={5} scope="rowgroup">
-                        <span className="flex items-center gap-1.5"><PropertyMarker kind="decimal" />{tr(rate.label)}</span>
+                    <tr
+                      data-selected={isGroupSelected ? 'true' : undefined}
+                      onClick={() => onSelectRow?.(groupKey)}
+                      className={`rtx-spec-row h-[20px] border-b border-[var(--mw-spec-grid,var(--border-primary))] ${
+                        isGroupSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <th className="px-1.5 py-0.5 text-left font-normal" scope="rowgroup">
+                        <span className="flex items-center gap-1.5">
+                          <PropertyMarker kind="decimal" selected={isGroupSelected} />
+                          {tr(rate.label)}
+                        </span>
                       </th>
+                      <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))]" aria-hidden="true" />
+                      <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))]" aria-hidden="true" />
+                      <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))]" aria-hidden="true" />
+                      <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))]" aria-hidden="true" />
                     </tr>
                   )}
-                  <tr className="border-b border-[var(--border-primary)] last:border-b-0">
-                    <th className={`px-2 py-1 text-left font-normal text-[var(--text-secondary)] ${rate.range ? 'pl-5 font-mono text-[9px] tabular-nums' : ''}`} scope="row">
-                      {rate.range ?? tr(rate.label)}
+                  <tr
+                    data-selected={isRowSelected ? 'true' : undefined}
+                    data-stripe={index % 2 === 0 ? 'even' : 'odd'}
+                    onClick={() => onSelectRow?.(rowKey)}
+                    className={`rtx-spec-row h-[20px] border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
+                      isRowSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                    }`}
+                  >
+                    <th className={`px-1.5 py-0.5 text-left font-normal ${rate.range ? 'pl-5 tabular-nums' : ''}`} scope="row">
+                      {rate.range ? (
+                        rate.range
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <PropertyMarker kind="decimal" selected={isRowSelected} />
+                          {tr(rate.label)}
+                        </span>
+                      )}
                     </th>
-                    <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{formatGroupedNumber(rate.initial, 7, 7) ?? ''}</td>
-                    <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{formatPerLot(rate.initialPerLot, rate.currency, rate.initialPerLotApproximate)}</td>
-                    <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{formatGroupedNumber(rate.maintenance, 7, 7) ?? ''}</td>
-                    <td className="border-l border-[var(--border-primary)] px-1 py-1 text-right font-mono tabular-nums">{formatPerLot(rate.maintenancePerLot, rate.currency, rate.maintenancePerLotApproximate)}</td>
+                    <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{formatGroupedNumber(rate.initial, 7, 7) ?? '0'}</td>
+                    <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{formatPerLot(rate.initialPerLot, rate.currency, rate.initialPerLotApproximate)}</td>
+                    <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{formatGroupedNumber(rate.maintenance, 7, 7) ?? '0'}</td>
+                    <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{formatPerLot(rate.maintenancePerLot, rate.currency, rate.maintenancePerLotApproximate)}</td>
                   </tr>
                 </React.Fragment>
               );
@@ -1384,6 +1598,14 @@ const MarginRatesTable = ({
     </section>
   );
 };
+
+const SpecificationTitleIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+    <rect x="1.5" y="2.5" width="10" height="11" rx="1" fill="#1b2838" stroke="#42a5f5" strokeWidth="1" />
+    <rect x="3.5" y="1.5" width="11" height="12" rx="1" fill="#2b2112" stroke="#d49b38" strokeWidth="1.1" />
+    <text x="9" y="10.5" textAnchor="middle" fill="#f5b942" fontSize="8.5" fontWeight="700" fontFamily="Segoe UI, Arial, sans-serif">$</text>
+  </svg>
+);
 
 export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps> = ({
   isOpen,
@@ -1400,6 +1622,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
   const resizeRef = useRef<ResizeGesture | null>(null);
   const [rect, setRect] = useState<DialogRect>(centeredDialogRect);
   const [isResizing, setIsResizing] = useState(false);
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const snapshot = useMemo(
     () => buildSymbolSpecificationSnapshot(instrument, fallbackInstrument),
     [fallbackInstrument, instrument],
@@ -1512,40 +1735,40 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
   const mainRows: DisplayRow[] = [
     { label: 'ISIN', value: snapshot.isin, kind: 'text' },
     { label: 'Category', value: snapshot.category, kind: 'text' },
-    { label: 'Exchange', value: snapshot.exchange, kind: 'text' },
+    { label: 'Exchange', value: snapshot.exchange ?? '0', kind: 'text' },
     { label: 'CFI', value: snapshot.cfi, kind: 'text' },
-    { label: 'Sector', value: snapshot.sector, kind: 'enum' },
+    { label: 'Sector', value: snapshot.sector ?? '0', kind: 'enum' },
     { label: 'Industry', value: snapshot.industry, kind: 'enum' },
     { label: 'Country', value: snapshot.country, kind: 'text' },
-    { label: 'Digits', value: formatNumber(snapshot.digits, 0), kind: 'integer' },
-    { label: 'Contract size', value: formatContractSize(snapshot), kind: 'decimal' },
-    { label: 'Spread', value: formatSpread(snapshot), kind: 'integer' },
-    { label: 'Stops level', value: formatNumber(snapshot.stopsLevel), kind: 'integer' },
-    { label: 'Margin currency', value: snapshot.marginCurrency, kind: 'text' },
-    { label: 'Profit currency', value: snapshot.profitCurrency, kind: 'text' },
-    { label: 'Calculation', value: snapshot.calculationMode, kind: 'enum' },
+    { label: 'Digits', value: formatNumber(snapshot.digits, 0) ?? '0', kind: 'integer' },
+    { label: 'Contract size', value: formatContractSize(snapshot) ?? '0', kind: 'decimal' },
+    { label: 'Spread', value: formatSpread(snapshot) ?? '0', kind: 'integer' },
+    { label: 'Stops level', value: formatNumber(snapshot.stopsLevel) ?? '0', kind: 'integer' },
+    { label: 'Margin currency', value: snapshot.marginCurrency ?? '0', kind: 'text' },
+    { label: 'Profit currency', value: snapshot.profitCurrency ?? '0', kind: 'text' },
+    { label: 'Calculation', value: snapshot.calculationMode ?? '0', kind: 'enum' },
     { label: 'Tick size', value: formatNumber(snapshot.tickSize), kind: 'decimal' },
     { label: 'Tick value', value: formatNumber(snapshot.tickValue), kind: 'decimal' },
     { label: 'Initial margin', value: formatNumber(snapshot.marginInitial), kind: 'decimal' },
     { label: 'Maintenance margin', value: formatNumber(snapshot.marginMaintenance), kind: 'decimal' },
-    { label: 'Hedged margin', value: hedgedMargin, kind: 'decimal' },
-    { label: 'Chart mode', value: snapshot.chartMode, kind: 'enum' },
+    { label: 'Hedged margin', value: hedgedMargin ?? '0', kind: 'decimal' },
+    { label: 'Chart mode', value: snapshot.chartMode ?? '0', kind: 'enum' },
     { label: 'Subscription', value: snapshot.subscription, kind: 'enum' },
     { label: 'Ticks history', value: snapshot.ticksHistory, kind: 'enum' },
     { label: 'Liquidity rate', value: formatGroupedNumber(snapshot.liquidityRate, 3, 3), kind: 'decimal' },
-    { label: 'Trade', value: snapshot.tradeMode, kind: 'enum' },
-    { label: 'Execution', value: isTradeDisabled ? null : snapshot.executionMode, kind: 'enum' },
-    { label: 'GTC mode', value: isTradeDisabled ? null : snapshot.gtcMode, kind: 'enum' },
-    { label: 'Filling', value: isTradeDisabled ? null : snapshot.fillingMode, kind: 'enum' },
-    { label: 'Expiration', value: isTradeDisabled ? null : snapshot.expirationMode, kind: 'enum' },
-    { label: 'Orders', value: isTradeDisabled ? null : snapshot.orderMode, kind: 'enum' },
-    { label: 'Minimal volume', value: isTradeDisabled ? null : formatNumber(snapshot.minVolume), kind: 'decimal' },
-    { label: 'Maximal volume', value: isTradeDisabled ? null : formatNumber(snapshot.maxVolume), kind: 'decimal' },
-    { label: 'Volume step', value: isTradeDisabled ? null : formatNumber(snapshot.volumeStep), kind: 'decimal' },
+    { label: 'Trade', value: snapshot.tradeMode ?? '0', kind: 'enum' },
+    { label: 'Execution', value: (isTradeDisabled ? null : snapshot.executionMode) ?? '0', kind: 'enum' },
+    { label: 'GTC mode', value: (isTradeDisabled ? null : snapshot.gtcMode) ?? '0', kind: 'enum' },
+    { label: 'Filling', value: (isTradeDisabled ? null : snapshot.fillingMode) ?? '0', kind: 'enum' },
+    { label: 'Expiration', value: (isTradeDisabled ? null : snapshot.expirationMode) ?? '0', kind: 'enum' },
+    { label: 'Orders', value: (isTradeDisabled ? null : snapshot.orderMode) ?? '0', kind: 'enum' },
+    { label: 'Minimal volume', value: (isTradeDisabled ? null : formatNumber(snapshot.minVolume)) ?? '0', kind: 'decimal' },
+    { label: 'Maximal volume', value: (isTradeDisabled ? null : formatNumber(snapshot.maxVolume)) ?? '0', kind: 'decimal' },
+    { label: 'Volume step', value: (isTradeDisabled ? null : formatNumber(snapshot.volumeStep)) ?? '0', kind: 'decimal' },
     { label: 'Volume limit', value: isTradeDisabled ? null : formatNumber(snapshot.volumeLimit), kind: 'decimal' },
-    { label: 'Swap type', value: snapshot.swapMode, kind: 'enum' },
-    { label: 'Swap long', value: formatNumber(snapshot.swapLong), kind: 'decimal', tone: snapshot.swapLong === null || snapshot.swapLong === 0 ? 'default' : snapshot.swapLong > 0 ? 'positive' : 'negative' },
-    { label: 'Swap short', value: formatNumber(snapshot.swapShort), kind: 'decimal', tone: snapshot.swapShort === null || snapshot.swapShort === 0 ? 'default' : snapshot.swapShort > 0 ? 'positive' : 'negative' },
+    { label: 'Swap type', value: snapshot.swapMode ?? '0', kind: 'enum' },
+    { label: 'Swap long', value: formatNumber(snapshot.swapLong) ?? '0', kind: 'decimal' },
+    { label: 'Swap short', value: formatNumber(snapshot.swapShort) ?? '0', kind: 'decimal' },
     { label: 'First trade', value: formatDate(snapshot.startTime), kind: 'calendar' },
     { label: 'Last trade', value: formatDate(snapshot.expirationTime), kind: 'calendar' },
     { label: 'Face value', value: formatNumber(snapshot.faceValue), kind: 'decimal' },
@@ -1557,53 +1780,64 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
   ];
   const swapRateRows: DisplayRow[] = WEEKDAYS.map((day) => {
     const value = snapshot.swapRates[day.key];
+    const isStandardWeekday = day.key !== 'sunday' && day.key !== 'saturday';
     return {
       label: day.label,
-      value: typeof value === 'number' ? formatNumber(value) : value ?? null,
+      value: typeof value === 'number'
+        ? formatNumber(value)
+        : value ?? (isStandardWeekday ? '0' : null),
       kind: 'calendar',
     };
   });
-  const hasMainRows = mainRows.some((row) => row.value !== null);
-  const hasSwapRates = swapRateRows.some((row) => row.value !== null);
-  const hasSessions = snapshot.sessions.some((session) => session.quotes.length > 0 || session.trade.length > 0);
-  const hasAnySpecification = hasMainRows
-    || hasSwapRates
-    || hasSessions
-    || snapshot.marginRates.length > 0
-    || snapshot.commissionSchedules.length > 0
-    || snapshot.marginSpreads.length > 0;
   const pageUrl = safeWebUrl(snapshot.pageUrl);
   const displayDescription = snapshot.description
     && snapshot.description.trim().toUpperCase() !== symbol.trim().toUpperCase()
     ? snapshot.description.trim()
     : null;
   const isRequestPending = requestStatus === 'loading' || requestStatus === 'idle';
-  const emptyStateMessage = requestStatus === 'error'
-    ? 'The current specification could not be loaded.'
-    : requestStatus === 'unavailable'
-      ? 'The current specification is not available from this broker.'
-      : 'Contract details were not provided by this broker.';
+  const isSymbolBannerSelected = selectedRowKey === 'symbol-banner';
 
   return createPortal(
     <div
       className="fixed inset-0 z-[10020] bg-transparent"
     >
+      <style>{`
+        .rtx-symbol-specification-dialog {
+          --mw-spec-grid: #3c3c3c;
+          --mw-spec-row-even: #262626;
+          --mw-spec-row-odd: #1f1f1f;
+          font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+        }
+        .theme-light .rtx-symbol-specification-dialog,
+        .rtx-skin-untitled-light .rtx-symbol-specification-dialog {
+          --mw-spec-grid: #d4dbe3;
+          --mw-spec-row-even: #ffffff;
+          --mw-spec-row-odd: #f6f8fb;
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-row[data-stripe="even"]:not([data-selected="true"]) {
+          background-color: var(--mw-spec-row-even);
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-row[data-stripe="odd"]:not([data-selected="true"]),
+        .rtx-symbol-specification-dialog .rtx-spec-row--heading:not([data-selected="true"]) {
+          background-color: var(--mw-spec-row-odd);
+        }
+      `}</style>
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={`${symbol} ${tr('Specification')}`}
         data-testid="symbol-specification-dialog"
-        className={`rtx-symbol-specification-dialog absolute flex min-w-0 flex-col overflow-hidden border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-2xl ${isDragging ? 'select-none' : ''} ${isResizing ? 'select-none' : ''}`}
+        className={`rtx-symbol-specification-dialog absolute flex min-w-0 flex-col overflow-hidden border border-[var(--mw-spec-grid,var(--border-secondary))] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-2xl ${isDragging ? 'select-none' : ''} ${isResizing ? 'select-none' : ''}`}
         style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header
-          className={`flex h-9 shrink-0 items-center gap-2 border-b border-[var(--border-secondary)] bg-[var(--bg-tertiary)] px-2.5 ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
+          className={`flex h-[30px] shrink-0 items-center gap-2 border-b border-[var(--mw-spec-grid,var(--border-secondary))] bg-[var(--bg-primary)] px-2 ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
           {...dragHandleProps}
         >
-          <span className="text-amber-500" aria-hidden="true"><Icon name="file-text" size="xs" /></span>
-          <h2 className="min-w-0 flex-1 truncate text-[12px] font-semibold">{tr('Specification')}</h2>
+          <SpecificationTitleIcon />
+          <h2 className="min-w-0 flex-1 truncate text-[12px] font-normal">{tr('Specification')}</h2>
           <a
             href="https://www.metatrader5.com/en/terminal/help/trading/market_watch#specification"
             target="_blank"
@@ -1611,7 +1845,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
             aria-label={tr('Symbol specification help')}
             title={tr('Symbol specification help')}
             onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-7 w-7 items-center justify-center text-[12px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="flex h-6 w-6 items-center justify-center text-[12px] font-normal text-[var(--text-secondary)] hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
             ?
           </a>
@@ -1621,68 +1855,105 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
             aria-label={tr('Close symbol specification')}
             onClick={onClose}
             onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-7 w-7 items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="flex h-6 w-6 items-center justify-center text-[var(--text-secondary)] hover:bg-red-600 hover:text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
             <Icon name="x-close" size="xs" />
           </button>
         </header>
 
-        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto p-2">
-          <div className="overflow-hidden border border-[var(--border-secondary)] bg-[var(--bg-tertiary)]">
+        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto p-[6px] pb-0">
+          <div className="overflow-hidden border border-[var(--mw-spec-grid,var(--border-secondary))] bg-[var(--bg-secondary)]">
             {pageUrl ? (
               <a
                 href={pageUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block truncate border-b border-[var(--border-primary)] px-2 py-1.5 text-[11px] font-medium text-[var(--color-info)] hover:underline"
+                data-selected={isSymbolBannerSelected ? 'true' : undefined}
+                data-stripe="odd"
+                onClick={() => setSelectedRowKey('symbol-banner')}
+                className={`rtx-spec-row flex min-h-[20px] items-center truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-[12px] font-normal hover:underline ${
+                  isSymbolBannerSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[#4597ff]'
+                }`}
                 title={pageUrl}
               >
                 {symbol}{displayDescription ? `, ${displayDescription}` : ''}
               </a>
             ) : (
-              <div className="truncate border-b border-[var(--border-primary)] px-2 py-1.5 text-[11px] font-medium text-[var(--color-info)]" title={`${symbol}${displayDescription ? `, ${displayDescription}` : ''}`}>
+              <div
+                data-selected={isSymbolBannerSelected ? 'true' : undefined}
+                data-stripe="odd"
+                onClick={() => setSelectedRowKey('symbol-banner')}
+                className={`rtx-spec-row flex min-h-[20px] items-center truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-[12px] font-normal ${
+                  isSymbolBannerSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[#4597ff]'
+                }`}
+                title={`${symbol}${displayDescription ? `, ${displayDescription}` : ''}`}
+              >
                 {symbol}{displayDescription ? `, ${displayDescription}` : ''}
               </div>
             )}
             {isRequestPending ? (
-              <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 px-6 py-8 text-center text-[11px] text-[var(--text-secondary)]" role="status">
+              <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 px-6 py-8 text-center text-[12px] text-[var(--text-secondary)]" role="status">
                 <Icon name="refresh" size="sm" className="animate-spin" />
                 <span>{tr('Loading current specification...')}</span>
               </div>
-            ) : hasAnySpecification ? (
+            ) : (
               <>
-                <PropertyRows rows={mainRows} />
-                {hasSwapRates && (
-                  <section aria-label={tr('Swap rates')}>
-                    <SectionHeading>{tr('Swap rates')}</SectionHeading>
-                    <PropertyRows rows={swapRateRows} />
-                  </section>
-                )}
-                <CommissionTable schedules={snapshot.commissionSchedules} />
-                <SessionTable sessions={snapshot.sessions} timeZone={snapshot.sessionTimeZone} />
-                <MarginSpreadsTable spreads={snapshot.marginSpreads} />
+                <PropertyRows
+                  rows={mainRows}
+                  rowKeyPrefix="main"
+                  selectedRowKey={selectedRowKey}
+                  onSelectRow={setSelectedRowKey}
+                />
+                <section aria-label={tr('Swap rates')}>
+                  <SectionHeading
+                    rowKey="swap-rates:header"
+                    selectedRowKey={selectedRowKey}
+                    onSelectRow={setSelectedRowKey}
+                  >
+                    {tr('Swap rates')}
+                  </SectionHeading>
+                  <PropertyRows
+                    rows={swapRateRows}
+                    rowKeyPrefix="swap"
+                    selectedRowKey={selectedRowKey}
+                    onSelectRow={setSelectedRowKey}
+                  />
+                </section>
+                <CommissionTable
+                  schedules={snapshot.commissionSchedules}
+                  selectedRowKey={selectedRowKey}
+                  onSelectRow={setSelectedRowKey}
+                />
+                <SessionTable
+                  sessions={snapshot.sessions}
+                  timeZone={snapshot.sessionTimeZone}
+                  selectedRowKey={selectedRowKey}
+                  onSelectRow={setSelectedRowKey}
+                />
+                <MarginSpreadsTable
+                  spreads={snapshot.marginSpreads}
+                  selectedRowKey={selectedRowKey}
+                  onSelectRow={setSelectedRowKey}
+                />
                 <MarginRatesTable
                   rates={snapshot.marginRates}
                   mode={snapshot.marginRatesMode}
                   basis={snapshot.marginRatesBasis}
                   currency={snapshot.marginRatesCurrency}
                   asOf={snapshot.marginRatesAsOf}
+                  selectedRowKey={selectedRowKey}
+                  onSelectRow={setSelectedRowKey}
                 />
               </>
-            ) : (
-              <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 px-6 py-8 text-center text-[11px] text-[var(--text-secondary)]">
-                <Icon name="info" size="sm" />
-                <span>{tr(emptyStateMessage)}</span>
-              </div>
             )}
           </div>
         </div>
 
-        <footer className="flex h-11 shrink-0 items-center justify-center border-t border-[var(--border-secondary)] bg-[var(--bg-tertiary)] px-3">
+        <footer className="flex h-[38px] shrink-0 items-center justify-center bg-[var(--bg-secondary)] px-3">
           <button
             type="button"
             onClick={onClose}
-            className="h-7 min-w-[88px] border border-[var(--border-secondary)] bg-[var(--bg-quaternary)] px-4 text-[11px] font-medium text-[var(--text-primary)] hover:border-[var(--color-info)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="h-[23px] w-[90px] border border-[#8a8a8a] bg-[var(--bg-tertiary)] px-3 text-[12px] font-normal text-[var(--text-primary)] hover:border-[var(--color-info)] hover:bg-[var(--bg-quaternary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
             {tr('Close')}
           </button>
@@ -1700,7 +1971,21 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
           onLostPointerCapture={stopResize}
           onKeyDown={resizeFromKeyboard}
         >
-          <span className="pointer-events-none absolute bottom-1 right-1 h-2 w-2 border-b border-r border-[var(--text-tertiary)]" aria-hidden="true" />
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-[2px] right-[2px] text-[var(--text-tertiary)]"
+          >
+            <circle cx="8" cy="2" r="0.9" fill="currentColor" />
+            <circle cx="5" cy="5" r="0.9" fill="currentColor" />
+            <circle cx="8" cy="5" r="0.9" fill="currentColor" />
+            <circle cx="2" cy="8" r="0.9" fill="currentColor" />
+            <circle cx="5" cy="8" r="0.9" fill="currentColor" />
+            <circle cx="8" cy="8" r="0.9" fill="currentColor" />
+          </svg>
         </button>
       </div>
     </div>,

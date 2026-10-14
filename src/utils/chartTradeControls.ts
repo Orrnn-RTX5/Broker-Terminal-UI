@@ -268,9 +268,9 @@ const TRADE_CONTROL_SHARE_HOVER_COLOR = '#6f7a8a';
 // not show through the labels, and reserve color for trade meaning.
 export const DARK_CHART_TRADE_COLORS = {
   surface: '#191a1e',
-  border: '#404048',
-  divider: '#34343b',
-  action: '#b9bcc6',
+  border: '#707b8f',
+  divider: '#4b5563',
+  action: '#e5e7eb',
   text: '#f4f4f5',
   actionIcon: '#f4f4f6',
   actionHover: '#292a30',
@@ -287,10 +287,10 @@ export const DARK_CHART_TRADE_COLORS = {
 // Small overlay labels need readable side colors on softly tinted surfaces.
 // Chart backgrounds remain authoritative when choosing the light palette.
 export const LIGHT_CHART_TRADE_COLORS = {
-  surface: '#f3f6fa',
-  border: '#7d8da3',
-  divider: '#cbd5e1',
-  action: '#334155',
+  surface: '#ffffff',
+  border: '#52647b',
+  divider: '#b0bdce',
+  action: '#172033',
   actionHover: '#e2e8f0',
   buy: '#153eaa',
   sell: '#981b24',
@@ -346,12 +346,13 @@ const reverseSvg = '<svg width="13" height="13" viewBox="0 0 14 14" aria-hidden=
 const doubleSvg = '<svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 11.6V3.4"/><path d="M2.1 5.7 4.4 3.4l2.3 2.3"/><path d="M9.6 11.6V3.4"/><path d="M7.3 5.7 9.6 3.4l2.3 2.3"/></svg>';
 const closeSvg = '<svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M3.6 3.6l6.8 6.8M10.4 3.6l-6.8 6.8"/></svg>';
 
-// Web action glyphs share one grid and stroke, so the compact controls read
-// as a single toolbar alongside the position capsule.
-const webActionSvg = (path: string): string => `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
-const webShareSvg = webActionSvg('M8 10V2.5M5.5 5 8 2.5 10.5 5M3 8v5h10V8');
-const webDoubleSvg = webActionSvg('M4.5 12.5v-9M2 6l2.5-2.5L7 6M11.5 12.5v-9M9 6l2.5-2.5L14 6');
-const webReverseSvg = webActionSvg('M2.5 5h11M10.5 2l3 3-3 3M13.5 11h-11M5.5 8l-3 3 3 3');
+// Use the terminal's 16-unit outline grid at a legible optical size inside
+// the compact buttons. Keep all four actions on the same stroke and baseline.
+const webActionSvg = (path: string): string => `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex:none"><path d="${path}"/></svg>`;
+const webShareSvg = webActionSvg('M6 5.5H4.5a2.5 2.5 0 0 0 0 5H6M10 5.5h1.5a2.5 2.5 0 0 1 0 5H10M5.5 8h5');
+const webDoubleSvg = webActionSvg('M11 2H3a1 1 0 0 0-1 1v8M6 5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z');
+const webReverseSvg = webActionSvg('M3 5h10l-2.5-2.5M13 11H3l2.5 2.5');
+const webCloseSvg = webActionSvg('M4 4l8 8M12 4l-8 8');
 
 // ---------------------------------------------------------------------------
 // DOM builders
@@ -467,11 +468,11 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   const plainSideColor = isLightSurface
     ? (side === 'BUY' ? LIGHT_CHART_TRADE_COLORS.buy : LIGHT_CHART_TRADE_COLORS.sell)
     : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buy : DARK_CHART_TRADE_COLORS.sell);
-  const plainNeutralColor = isLightSurface ? '#131722' : DARK_CHART_TRADE_COLORS.text;
+  const plainNeutralColor = isLightSurface ? '#111827' : DARK_CHART_TRADE_COLORS.text;
   const plainBackground = isLightSurface
     ? LIGHT_CHART_TRADE_COLORS.surface
     : DARK_CHART_TRADE_COLORS.surface;
-  const plainBorderColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.border : DARK_CHART_TRADE_COLORS.divider;
+  const plainBorderColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.border : DARK_CHART_TRADE_COLORS.border;
   const plainDividerColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.divider : DARK_CHART_TRADE_COLORS.divider;
   const plainActionColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.action : DARK_CHART_TRADE_COLORS.action;
 
@@ -523,17 +524,19 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
 
   if (options.plainLabel) {
     root.classList.add('rtx-trade-controls--plain');
-    root.style.setProperty('--rtx-type-size', 'max(11.5px, calc(var(--rtx-ui-font-size, 14px) - 2.5px))');
-    root.style.setProperty('--rtx-type-weight', '400');
+    root.style.setProperty('--rtx-type-size', 'max(12.5px, calc(var(--rtx-ui-font-size, 14px) - 1.5px))');
+    root.style.setProperty('--rtx-trade-entry-weight', '600');
+    root.style.setProperty('--rtx-type-weight', 'var(--rtx-trade-entry-weight)');
+    root.style.fontWeight = '600';
     root.style.setProperty('--rtx-type-family', 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)');
-    root.style.lineHeight = '15px';
+    root.style.lineHeight = '17px';
     root.style.filter = 'none';
     root.style.overflow = 'hidden';
     root.style.transform = 'translateY(-50%)';
     root.style.height = 'auto';
-    root.style.minHeight = '19px';
+    root.style.minHeight = '21px';
     root.style.flexWrap = 'wrap';
-    root.style.gap = '0';
+    root.style.gap = '0 3px';
     // Keep the active-position strip beside the chart's left edge. The chart
     // relayout only overrides controls explicitly marked as right-aligned.
     root.dataset.align = 'left';
@@ -548,11 +551,11 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     chipGroup.style.border = '1px solid transparent';
     chipGroup.style.borderLeftColor = plainDividerColor;
     chipGroup.style.borderRadius = '0';
-    chipGroup.style.height = '19px';
+    chipGroup.style.height = '21px';
     chipGroup.style.boxSizing = 'border-box';
     chipGroup.style.overflow = 'hidden';
     chipGroup.style.minWidth = '0';
-    chipGroup.style.gap = '0';
+    chipGroup.style.gap = '3px';
     chipGroup.style.backgroundColor = plainBackground;
     for (const chip of [volumeChip, pips.chip, money.chip]) {
       chip.style.backgroundColor = 'transparent';
@@ -560,13 +563,13 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       chip.style.color = plainNeutralColor;
       chip.style.fontFamily = 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)';
       chip.style.fontSize = 'inherit';
-      chip.style.fontWeight = '400';
-      chip.style.lineHeight = '15px';
+      chip.style.fontWeight = 'inherit';
+      chip.style.lineHeight = '17px';
       chip.style.letterSpacing = 'normal';
       chip.style.fontVariantNumeric = 'tabular-nums';
       chip.style.padding = '0 1px';
       chip.style.marginLeft = '0';
-      chip.style.height = '17px';
+      chip.style.height = '19px';
     }
     for (const metric of [pips.chip, money.chip]) {
       const label = metric.firstElementChild as HTMLElement;
@@ -582,9 +585,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     volumeChip.style.fontWeight = 'inherit';
     volumeChip.style.setProperty('--rtx-type-weight', 'inherit');
     // Separate each reading unit without adding padding around the toolbar.
-    volumeChip.style.gap = '2px';
+    volumeChip.style.gap = '3px';
     volumeText.style.color = plainNeutralColor;
-    money.chip.style.gap = '2px';
+    money.chip.style.gap = '3px';
     money.valueEl.style.fontWeight = 'inherit';
     money.valueEl.style.setProperty('--rtx-type-weight', 'inherit');
     const currencySuffix = money.chip.firstElementChild as HTMLElement;
@@ -601,7 +604,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   buttonGroup.className = 'rtx-trade-control-actions';
   buttonGroup.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin-left:6px;flex:0 0 auto;';
   if (options.plainLabel) {
-    buttonGroup.style.gap = '1px';
+    buttonGroup.style.gap = '3px';
     buttonGroup.style.marginLeft = '0';
   }
   const emitAction = (action: ChartPositionActionType) => {
@@ -614,22 +617,20 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   }
   buttonGroup.appendChild(createControlButton('reverse', 'Reverse position (open the opposite side)', options.plainLabel ? webReverseSvg : reverseSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('reverse'), plainTextColor));
   buttonGroup.appendChild(createControlButton('double', 'Double position (open the same trade again)', options.plainLabel ? webDoubleSvg : doubleSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('double'), plainTextColor));
-  buttonGroup.appendChild(createControlButton('close', 'Close position', closeSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('close'), plainTextColor));
+  buttonGroup.appendChild(createControlButton('close', 'Close position', options.plainLabel ? webCloseSvg : closeSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('close'), plainTextColor));
 
   if (options.plainLabel) {
     for (const button of buttonGroup.querySelectorAll('button')) {
       const isClose = button.classList.contains('rtx-trade-control-btn--close');
       const restingBackground = 'transparent';
       const restingColor = isLightSurface || isClose ? plainActionColor : DARK_CHART_TRADE_COLORS.actionIcon;
-      button.style.width = '17px';
-      button.style.height = '17px';
-      const icon = button.querySelector('svg');
-      icon?.setAttribute('width', '11');
-      icon?.setAttribute('height', '11');
+      button.style.width = '19px';
+      button.style.height = '19px';
       button.style.color = restingColor;
       button.style.border = '0';
       button.style.borderRadius = '0';
       button.style.backgroundColor = restingBackground;
+      button.querySelector('svg')?.setAttribute('stroke-width', '1.75');
       if (isClose) {
         button.style.borderLeft = `1px solid ${plainDividerColor}`;
         button.style.borderRadius = '0';
@@ -645,17 +646,13 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
         button.style.color = restingColor;
       });
     }
-    const closeIcon = buttonGroup.querySelector('.rtx-trade-control-btn--close svg')!;
-    closeIcon.setAttribute('width', '10');
-    closeIcon.setAttribute('height', '10');
-    closeIcon.setAttribute('stroke-width', '1.5');
     const reverseButton = buttonGroup.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--reverse')!;
     const doubleButton = buttonGroup.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--double')!;
     const closeButton = buttonGroup.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--close')!;
     buttonGroup.insertBefore(doubleButton, reverseButton);
     const secondaryGroup = document.createElement('span');
     secondaryGroup.className = 'rtx-trade-secondary';
-    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;height:19px;box-sizing:border-box;border:1px solid transparent;background-color:${plainBackground};overflow:hidden;`;
+    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;gap:3px;height:21px;box-sizing:border-box;border:1px solid transparent;background-color:${plainBackground};overflow:hidden;`;
     for (const button of Array.from(buttonGroup.querySelectorAll<HTMLButtonElement>('button'))) {
       if (button === closeButton) continue;
       secondaryGroup.appendChild(button);
@@ -663,7 +660,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     buttonGroup.prepend(secondaryGroup);
     const brackets = document.createElement('span');
     brackets.className = 'rtx-trade-brackets';
-    brackets.style.cssText = 'display:inline-flex;align-items:center;gap:1px;';
+    brackets.style.cssText = 'display:inline-flex;align-items:center;gap:3px;';
     buttonGroup.appendChild(brackets);
     chipGroup.appendChild(closeButton);
     root.appendChild(buttonGroup);

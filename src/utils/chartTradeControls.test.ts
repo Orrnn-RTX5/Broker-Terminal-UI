@@ -244,13 +244,13 @@ describe('createEntryTradeControlBar', () => {
     const volume = root.querySelector<HTMLElement>('.rtx-trade-chip--volume')!;
     const action = root.querySelector<HTMLElement>('.rtx-trade-control-btn--reverse')!;
     const money = root.querySelector<HTMLElement>('.rtx-trade-chip--money')!;
-    expect(textContrast(volume.style.color, volume.style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
-    expect(textContrast(action.style.color, root.style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
+    expect(textContrast(volume.style.color, volume.style.backgroundColor)).toBeGreaterThanOrEqual(7);
+    expect(textContrast(action.style.color, root.style.backgroundColor)).toBeGreaterThanOrEqual(7);
     for (const profit of [-1, 1]) {
       setLiveMetrics(profit, profit);
-      expect(textContrast(money.style.color, root.style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
+      expect(textContrast(money.style.color, root.style.backgroundColor)).toBeGreaterThanOrEqual(7);
     }
-    expect(root.querySelector('.rtx-trade-primary')).toHaveStyle({ backgroundColor: '#f3f6fa' });
+    expect(root.querySelector('.rtx-trade-primary')).toHaveStyle({ backgroundColor: '#ffffff' });
   });
 
   it('preserves every action with close grouped beside the live profit', () => {
@@ -263,15 +263,15 @@ describe('createEntryTradeControlBar', () => {
     for (const action of ['share', 'reverse', 'double', 'close']) {
       const button = root.querySelector<HTMLButtonElement>(`.rtx-trade-control-btn--${action}`)!;
       expect(button.querySelector('svg')?.getAttribute('stroke')).toBe('currentColor');
-      expect(button).toHaveStyle({ width: '17px', height: '17px' });
+      expect(button).toHaveStyle({ width: '19px', height: '19px' });
       button.click();
     }
     const capsule = root.querySelector('.rtx-trade-primary')!;
     expect(capsule.querySelector('.rtx-trade-chip--volume')).not.toBeNull();
     expect(capsule.querySelector('.rtx-trade-chip--money')).not.toBeNull();
     expect(capsule.lastElementChild).toBe(root.querySelector('.rtx-trade-control-btn--close'));
-    expect(capsule).toHaveStyle({ height: '19px' });
-    expect(root).toHaveStyle({ minHeight: '19px', flexWrap: 'wrap' });
+    expect(capsule).toHaveStyle({ height: '21px' });
+    expect(root).toHaveStyle({ minHeight: '21px', flexWrap: 'wrap' });
     expect(root.querySelector('.rtx-trade-brackets')).not.toBeNull();
     expect(onShare).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls.map(([action]) => action)).toEqual(['reverse', 'double', 'close']);
@@ -322,7 +322,7 @@ describe('createEntryTradeControlBar', () => {
     setLiveMetrics(null, Number.NaN);
     expect(pips.style.color).toBe(neutral);
     expect(money.style.color).toBe(neutral);
-    expect(root).toHaveStyle({ backgroundColor: isLightSurface ? '#f3f6fa' : '#191a1e' });
+    expect(root).toHaveStyle({ backgroundColor: isLightSurface ? '#ffffff' : '#191a1e' });
   });
 
   it('uses neutral dark surfaces and actions while keeping BUY as the trade accent', () => {
@@ -336,11 +336,11 @@ describe('createEntryTradeControlBar', () => {
     const reverse = root.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--reverse')!;
     const close = root.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--close')!;
 
-    expect(primary).toHaveStyle({ borderTopColor: 'rgba(0, 0, 0, 0)', borderLeftColor: '#34343b', backgroundColor: '#191a1e' });
+    expect(primary).toHaveStyle({ borderTopColor: 'rgba(0, 0, 0, 0)', borderLeftColor: '#4b5563', backgroundColor: '#191a1e' });
     expect(secondary).toHaveStyle({ borderTopColor: 'rgba(0, 0, 0, 0)', backgroundColor: '#191a1e' });
     expect(volume).toHaveStyle({ backgroundColor: '#233143', color: '#dbeafe' });
     expect(reverse).toHaveStyle({ color: '#f4f4f6' });
-    expect(close).toHaveStyle({ color: '#b9bcc6' });
+    expect(close).toHaveStyle({ color: '#e5e7eb' });
     reverse.dispatchEvent(new MouseEvent('mouseenter'));
     expect(reverse.style.backgroundColor).toBe('rgb(41, 42, 48)');
     reverse.dispatchEvent(new MouseEvent('mouseleave'));

@@ -299,3 +299,111 @@ export const useMarketWatchContextMenu = ({
   symbolGroups,
   toggleColumn,
 ]);
+
+interface UseMarketWatchDetailsContextMenuOptions {
+  actionableSymbolSet: ReadonlySet<string>;
+  brokerAccountScopeKey: string;
+  canLoadBrokerSpecification: boolean;
+  chartOpenableSymbolSet: ReadonlySet<string>;
+  marketWatchOptions: MarketWatchOptions;
+  quoteEligibleSymbolSet: ReadonlySet<string>;
+  setMarketWatchOptions: Dispatch<SetStateAction<MarketWatchOptions>>;
+  setMarketWatchView: Dispatch<SetStateAction<MarketWatchViewId>>;
+  setRefreshedSpecification: Dispatch<SetStateAction<{
+    scopeKey: string;
+    symbol: string;
+    instrument: Readonly<Record<string, unknown>>;
+  } | null>>;
+  setShowSymbolsPanel: Dispatch<SetStateAction<boolean>>;
+  setSpecificationRequestKey: Dispatch<SetStateAction<string | null>>;
+  setSpecificationRequestStatus: Dispatch<SetStateAction<'idle' | 'loading' | 'ready' | 'unavailable' | 'error'>>;
+  setSpecificationSymbol: Dispatch<SetStateAction<string | null>>;
+  setTickChartSymbol: (symbol: string) => void;
+}
+
+/** Builds the MT5 Market Watch "Details" tab right-click context menu. */
+export const useMarketWatchDetailsContextMenu = ({
+  actionableSymbolSet,
+  brokerAccountScopeKey,
+  canLoadBrokerSpecification,
+  chartOpenableSymbolSet,
+  marketWatchOptions,
+  quoteEligibleSymbolSet,
+  setMarketWatchOptions,
+  setMarketWatchView,
+  setRefreshedSpecification,
+  setShowSymbolsPanel,
+  setSpecificationRequestKey,
+  setSpecificationRequestStatus,
+  setSpecificationSymbol,
+  setTickChartSymbol,
+}: UseMarketWatchDetailsContextMenuOptions): ((symbol: string) => ContextMenuItemConfig[]) => useCallback((symbol: string) => {
+  if (!symbol) return [];
+  const tradeDisabled = !actionableSymbolSet.has(symbol);
+  const chartDisabled = !chartOpenableSymbolSet.has(symbol);
+
+  return [
+    {
+      label: 'New Order',
+      icon: <Icon name="new-order" size="xs" />,
+      disabled: tradeDisabled,
+      action: () => window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol } })),
+    },
+    {
+      label: 'Chart Window',
+      icon: <Icon name="new-chart" size="xs" />,
+      disabled: chartDisabled,
+      action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol, newWindow: true } })),
+    },
+    {
+      label: 'Tick Chart',
+      icon: <Icon name="line-chart" size="xs" />,
+      disabled: !quoteEligibleSymbolSet.has(symbol),
+      action: () => {
+        setTickChartSymbol(symbol);
+        setMarketWatchView('ticks');
+        setShowSymbolsPanel(false);
+      },
+    },
+    {
+      label: 'Depth Of Market',
+      icon: <Icon name="grid-3x3" size="xs" />,
+      disabled: tradeDisabled,
+      action: () => window.dispatchEvent(new CustomEvent('openDepthOfMarket', { detail: { symbol } })),
+    },
+    {
+      label: 'Specification',
+      icon: <Icon name="file-text" size="xs" />,
+      action: () => {
+        setRefreshedSpecification(null);
+        setSpecificationRequestKey(`${brokerAccountScopeKey}\u0000${symbol}`);
+        setSpecificationRequestStatus(canLoadBrokerSpecification ? 'loading' : 'ready');
+        setSpecificationSymbol(symbol);
+      },
+    },
+    { divider: true },
+    {
+      label: 'Grid',
+      shortcut: 'G',
+      checked: marketWatchOptions.showGrid,
+      action: () => setMarketWatchOptions((current) => ({ ...current, showGrid: !current.showGrid })),
+      autoClose: false,
+    },
+  ];
+}, [
+  actionableSymbolSet,
+  brokerAccountScopeKey,
+  canLoadBrokerSpecification,
+  chartOpenableSymbolSet,
+  marketWatchOptions.showGrid,
+  quoteEligibleSymbolSet,
+  setMarketWatchOptions,
+  setMarketWatchView,
+  setRefreshedSpecification,
+  setShowSymbolsPanel,
+  setSpecificationRequestKey,
+  setSpecificationRequestStatus,
+  setSpecificationSymbol,
+  setTickChartSymbol,
+]);
+

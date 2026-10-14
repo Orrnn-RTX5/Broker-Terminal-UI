@@ -174,12 +174,19 @@ export function AlertsContainer({ wsConnection }: AlertsContainerProps) {
 
   return (
     <>
-      {/* Badge Counter (fixed position in top-right) */}
+      {/* Badge Counter (positioned below top toolbar so it never overlaps window controls) */}
       {unacknowledgedCount > 0 && (
-        <div className="fixed top-4 right-4 z-50 pointer-events-none">
-          <div className="relative">
-            <Icon name="bell" size="sm" className="w-6 h-6 text-zinc-400" />
-            <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+        <div className="rtx-alerts-badge fixed top-11 right-3 z-50 pointer-events-none">
+          <div
+            className="relative flex items-center justify-center w-8 h-8 rounded-md shadow-md"
+            style={{
+              background: 'var(--bg-elevated, #191a1e)',
+              border: '1px solid var(--border-primary, #28282e)',
+              color: 'var(--text-secondary, #a0a0ab)',
+            }}
+          >
+            <Icon name="bell" size="sm" className="w-4 h-4" />
+            <div className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[10px] font-semibold font-mono tabular-nums rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center shadow-sm">
               {unacknowledgedCount > 9 ? '9+' : unacknowledgedCount}
             </div>
           </div>
@@ -187,7 +194,7 @@ export function AlertsContainer({ wsConnection }: AlertsContainerProps) {
       )}
 
       {/* Alert Stack (fixed position in top-right, below badge) */}
-      <div className="fixed top-16 right-4 z-40 flex flex-col gap-2 max-h-[80vh] overflow-y-auto pointer-events-none">
+      <div className="rtx-alerts-stack fixed top-20 right-3 z-40 flex flex-col gap-2 max-h-[calc(100vh-6rem)] overflow-y-auto pointer-events-none">
         <div className="flex flex-col gap-2 pointer-events-auto">
           {displayAlerts.map(alert => (
             <AlertCard

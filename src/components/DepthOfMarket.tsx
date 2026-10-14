@@ -445,14 +445,14 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
       }
 
       // Border between chart and volume
-      ctx.strokeStyle = C.borderPrimary;
+      ctx.strokeStyle = isLight ? lightColor('--rtx-light-border', '#c5ced9') : C.borderPrimary;
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, chartH + 1); ctx.lineTo(width, chartH + 1); ctx.stroke();
 
       // === CROSSHAIR ===
       if (crosshair && mouseRef.current) {
         const { x: mx, y: my } = mouseRef.current;
-        ctx.strokeStyle = 'rgba(130, 130, 140, 0.6)';
+        ctx.strokeStyle = isLight ? 'rgba(71, 85, 105, 0.55)' : 'rgba(130, 130, 140, 0.6)';
         ctx.lineWidth = 0.8;
         ctx.setLineDash([4, 3]);
         // Vertical
@@ -461,16 +461,19 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
         ctx.beginPath(); ctx.moveTo(0, my); ctx.lineTo(width, my); ctx.stroke();
         ctx.setLineDash([]);
 
+        const badgeBg = isLight ? lightColor('--rtx-light-accent', '#2457a7') : '#333338';
+        const badgeFg = isLight ? '#ffffff' : C.textPrimary;
+
         // Price label at crosshair Y
         if (my <= chartH) {
           const price = maxP - (my / chartH) * totalRange;
           const labelText = price.toFixed(digits);
           ctx.font = bodyFont;
-          ctx.fillStyle = '#333338';
+          ctx.fillStyle = badgeBg;
           const tw = ctx.measureText(labelText).width + 8;
           const labelY = Math.max(0, Math.min(chartH - labelHeight, my - labelHeight / 2));
           ctx.fillRect(width - tw - 2, labelY, tw + 2, labelHeight);
-          ctx.fillStyle = C.textPrimary;
+          ctx.fillStyle = badgeFg;
           ctx.textAlign = 'right';
           ctx.fillText(labelText, width - 5, labelY + labelHeight / 2);
         }
@@ -484,9 +487,9 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
           ctx.font = bodyFont;
           const tw = ctx.measureText(timeStr).width + 8;
           const labelX = Math.max(0, Math.min(width - tw, mx - tw / 2));
-          ctx.fillStyle = '#333338';
+          ctx.fillStyle = badgeBg;
           ctx.fillRect(labelX, height - labelHeight, tw, labelHeight);
-          ctx.fillStyle = C.textPrimary;
+          ctx.fillStyle = badgeFg;
           ctx.textAlign = 'center';
           ctx.fillText(timeStr, labelX + tw / 2, height - labelHeight / 2);
         }
@@ -506,8 +509,8 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
             const tw = Math.max(...tooltipLines.map(line => ctx.measureText(line).width)) + 12;
             const th = tooltipLines.length * typography.lineHeight + 8;
             const tooltipY = Math.max(0, Math.min(my, chartH - th));
-            ctx.fillStyle = 'rgba(25, 26, 30, 0.92)';
-            ctx.strokeStyle = C.borderSecondary;
+            ctx.fillStyle = isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(25, 26, 30, 0.92)';
+            ctx.strokeStyle = isLight ? lightColor('--rtx-light-border-strong', '#9eacbd') : C.borderSecondary;
             ctx.lineWidth = 1;
             // Rounded rect
             const rx = Math.max(0, Math.min(tooltipX, width - tw - 4));
@@ -515,7 +518,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
             ctx.roundRect(rx, tooltipY, tw, th, 4);
             ctx.fill();
             ctx.stroke();
-            ctx.fillStyle = C.textPrimary;
+            ctx.fillStyle = isLight ? lightColor('--rtx-light-text', '#182230') : C.textPrimary;
             ctx.textAlign = 'left';
             tooltipLines.forEach((line, li) => {
               ctx.fillText(line, rx + 6, tooltipY + 4 + typography.lineHeight * (li + 0.5));
@@ -575,8 +578,8 @@ interface DOMToolbarProps {
 
 function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair, onZoomIn, onZoomOut }: DOMToolbarProps) {
     const tr = useUiTranslation();
-  const iconColor = '#9898a8';
-  const activeColor = '#f0f0f8';
+  const iconColor = 'var(--text-secondary, #9898a8)';
+  const activeColor = 'var(--text-primary, #f0f0f8)';
 
   const iconBtn = (active: boolean) => `rtx-dom-toolbar-btn ${active ? 'is-active' : ''}`;
 
@@ -587,6 +590,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
     >
       {/* Bar Chart */}
       <button
+        type="button"
         className={iconBtn(chartMode === 'bar')}
         onClick={() => onChartModeChange('bar')}
         title={tr("Bar Chart (OHLC)")}
@@ -600,6 +604,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
 
       {/* Candlestick */}
       <button
+        type="button"
         className={iconBtn(chartMode === 'candlestick')}
         onClick={() => onChartModeChange('candlestick')}
         title={tr("Candlestick Chart")}
@@ -620,22 +625,24 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
 
       {/* Line Chart */}
       <button
+        type="button"
         className={iconBtn(chartMode === 'line')}
         onClick={() => onChartModeChange('line')}
         title={tr("Line Chart")}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <polyline points="1,12 5,6 9,9 15,3"
-            stroke={chartMode === 'line' ? '#7aacca' : iconColor}
+            stroke={chartMode === 'line' ? '#3b82f6' : iconColor}
             fill="none" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"/>
         </svg>
       </button>
 
       {/* Separator */}
-      <div className="w-px h-4 mx-[3px]" style={{ background: C.borderSecondary }} />
+      <div className="w-px h-4 mx-[3px]" style={{ background: 'var(--border-primary, #333338)' }} />
 
       {/* Tick Chart */}
       <button
+        type="button"
         className={iconBtn(chartMode === 'tick')}
         onClick={() => onChartModeChange('tick')}
         title={tr("Tick Chart")}
@@ -649,6 +656,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
 
       {/* Crosshair */}
       <button
+        type="button"
         className={iconBtn(crosshair)}
         onClick={onToggleCrosshair}
         title={crosshair ? tr("Crosshair: ON") : tr("Crosshair: OFF")}
@@ -664,10 +672,11 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
       </button>
 
       {/* Separator */}
-      <div className="w-px h-4 mx-[3px]" style={{ background: C.borderSecondary }} />
+      <div className="w-px h-4 mx-[3px]" style={{ background: 'var(--border-primary, #333338)' }} />
 
       {/* Zoom In */}
       <button
+        type="button"
         className="rtx-dom-toolbar-btn"
         onClick={onZoomIn}
         title={tr("Zoom In")}
@@ -682,6 +691,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
 
       {/* Zoom Out */}
       <button
+        type="button"
         className="rtx-dom-toolbar-btn"
         onClick={onZoomOut}
         title={tr("Zoom Out")}

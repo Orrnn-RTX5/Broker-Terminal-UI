@@ -40,12 +40,50 @@ export interface TickChartPriceTag {
   label: string;
 }
 
+export interface TickChartCrosshair {
+  /** Snapped tick index within `geometry.visiblePoints` (`0 .. visibleCount - 1`). */
+  index: number;
+  /** The inspected tick data point at `index`. */
+  point: TickChartPoint;
+  /** X coordinate of the vertical crosshair line, snapped to the inspected tick. */
+  x: number;
+  /** Y coordinate of the horizontal crosshair line, clamped to the plot. */
+  y: number;
+  /** Price corresponding to `y` on the vertical price scale. */
+  price: number;
+  /** Right-axis gray price badge at the crosshair Y level. */
+  priceTag: {
+    y: number;
+    label: string;
+  };
+  /** Bottom-axis gray timestamp badge (`YYYY.MM.DD HH:MM:SS`) centered on `x`. */
+  timeTag: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    label: string;
+  };
+  /** Floating `Bid / Ask` quote pill inside the plot near the crosshair intersection. */
+  quotePill: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    label: string;
+  };
+}
+
 export interface TickChartGeometry {
   plot: { left: number; top: number; right: number; bottom: number };
   axisWidth: number;
   axisHeight: number;
   tickLength: number;
   visibleCount: number;
+  visiblePoints: readonly TickChartPoint[];
+  minimumPrice: number;
+  maximumPrice: number;
+  labelDigits: number;
   bidPath: string;
   askPath: string;
   priceTicks: { y: number; label: string }[];
@@ -176,8 +214,9 @@ export function buildTickChartGeometry(
     for (let x = plot.left + spacing; x < lastX; x += spacing) {
       const index = indexStep > 0 ? Math.round((x - plot.left) / indexStep) : 0;
       const tickX = xAt(index);
+      const previousX = timeTicks[timeTicks.length - 1]?.x ?? Number.NEGATIVE_INFINITY;
       const label = formatTime(visible[index].timestamp).slice(0, 5);
-      if (tickX < firstEnd || tickX + textWidth(label) + TIME_LABEL_GAP_PX > lastX) continue;
+      if (tickX <= previousX || tickX < firstEnd || tickX + textWidth(label) + TIME_LABEL_GAP_PX > lastX) continue;
       timeTicks.push({ x: tickX, label });
     }
     if (lastX >= firstEnd) timeTicks.push({ x: lastX, label: lastLabel });
@@ -201,6 +240,10 @@ export function buildTickChartGeometry(
     axisHeight,
     tickLength: AXIS_TICK_PX,
     visibleCount,
+    visiblePoints: visible,
+    minimumPrice: minimum,
+    maximumPrice: maximum,
+    labelDigits,
     bidPath: stepPath('bid'),
     askPath: stepPath('ask'),
     priceTicks,
@@ -212,3 +255,114 @@ export function buildTickChartGeometry(
     latest,
   };
 }
+
+const CROSSHAIR_PILL_GAP_PX = 5;
+const CROSSHAIR_PILL_INSET_PX = 2;
+
+/**
+ * Computes MT5 Market Watch tick chart crosshair lines, right-axis price badge,
+ * bottom-axis `YYYY.MM.DD HH:MM:SS` timestamp badge, and in-plot `Bid / Ask`
+ * quote pill for a pointer position inside the plot area.
+ */
+export function buildTickChartCrosshair(
+  geometry: TickChartGeometry,
+  pointer: { x: number; y: number } | null,
+  {
+    fontSize,
+    digits,
+    formatDate,
+    formatTime,
+  }: Pick<TickChartLayoutOptions, 'fontSize' | 'digits' | 'formatDate' | 'formatTime'>,
+): TickChartCrosshair | null {
+  if (!pointer || geometry.visiblePoints.length === 0) return null;
+  const { plot, visibleCount, visiblePoints, minimumPrice, maximumPrice, labelDigits, tagHeight } = geometry;
+  if (
+    pointer.x < plot.left
+    || pointer.x > plot.right
+    || pointer.y < plot.top
+    || pointer.y > plot.bottom
+  ) {
+    return null;
+  }
+
+  const plotWidth = Math.max(1, plot.right - plot.left);
+  const plotHeight = Math.max(1, plot.bottom - plot.top);
+  const drawWidth = plotWidth * (1 - RIGHT_GAP_RATIO);
+  const ratio = drawWidth > 0 ? clamp((pointer.x - plot.left) / drawWidth, 0, 1) : 0;
+  const index = visibleCount <= 1
+    ? 0
+    : clamp(Math.round(ratio * (visibleCount - 1)), 0, visibleCount - 1);
+  const point = visiblePoints[index];
+  const x = visibleCount <= 1
+    ? plot.left + drawWidth
+    : plot.left + (index / (visibleCount - 1)) * drawWidth;
+  const y = clamp(pointer.y, plot.top, plot.bottom);
+
+  const priceRange = maximumPrice - minimumPrice;
+  const price = minimumPrice + (1 - (y - plot.top) / plotHeight) * priceRange;
+  const halfTag = tagHeight / 2;
+  const priceTagY = clamp(y, plot.top + halfTag, plot.bottom - halfTag);
+  const priceTagLabel = formatTickChartPrice(price, digits ?? labelDigits);
+
+  const characterWidth = fontSize * CHARACTER_WIDTH_RATIO;
+  const textWidth = (text: string): number => text.length * characterWidth;
+
+  const timeLabel = `${formatDate(point.timestamp)} ${formatTime(point.timestamp)}`;
+  const timeTagWidth = Math.min(plotWidth, Math.ceil(textWidth(timeLabel) + LABEL_PADDING_PX * 2));
+  const timeTagX = clamp(
+    x - timeTagWidth / 2,
+    plot.left,
+    Math.max(plot.left, plot.right - timeTagWidth),
+  );
+  const timeTagY = plot.bottom + 1;
+
+  const pillLabel = `${formatTickChartPrice(point.bid, digits)} / ${formatTickChartPrice(point.ask, digits)}`;
+  const pillWidth = Math.min(
+    Math.max(1, plotWidth - CROSSHAIR_PILL_INSET_PX * 2),
+    Math.ceil(textWidth(pillLabel) + LABEL_PADDING_PX * 2),
+  );
+  const pillHeight = tagHeight;
+  const rawPillX = x + pillWidth <= plot.right - CROSSHAIR_PILL_INSET_PX
+    ? x
+    : x - pillWidth;
+  const pillX = clamp(
+    rawPillX,
+    plot.left + CROSSHAIR_PILL_INSET_PX,
+    Math.max(plot.left + CROSSHAIR_PILL_INSET_PX, plot.right - pillWidth - CROSSHAIR_PILL_INSET_PX),
+  );
+  const rawPillY = y - pillHeight - CROSSHAIR_PILL_GAP_PX >= plot.top + CROSSHAIR_PILL_INSET_PX
+    ? y - pillHeight - CROSSHAIR_PILL_GAP_PX
+    : y + CROSSHAIR_PILL_GAP_PX;
+  const pillY = clamp(
+    rawPillY,
+    plot.top + CROSSHAIR_PILL_INSET_PX,
+    Math.max(plot.top + CROSSHAIR_PILL_INSET_PX, plot.bottom - pillHeight - CROSSHAIR_PILL_INSET_PX),
+  );
+
+  return {
+    index,
+    point,
+    x,
+    y,
+    price,
+    priceTag: {
+      y: priceTagY,
+      label: priceTagLabel,
+    },
+    timeTag: {
+      x: timeTagX,
+      y: timeTagY,
+      width: timeTagWidth,
+      height: tagHeight,
+      label: timeLabel,
+    },
+    quotePill: {
+      x: pillX,
+      y: pillY,
+      width: pillWidth,
+      height: pillHeight,
+      label: pillLabel,
+    },
+  };
+}
+
