@@ -1,0 +1,77 @@
+# Engineering Rules for Humans and AI Agents (Claude, Codex, Gemini, Copilot, Cursor, …)
+
+These rules are mandatory for every contributor and every AI coding agent working in this
+repository. They apply to every branch. If a task conflicts with these rules, stop and say so.
+
+## 1. White-label / multi-broker product: hardcode NOTHING
+
+This platform is trading technology delivered to many brokers (white-label and main-label
+tenants). It is never built for one broker.
+
+- Do not hardcode broker/tenant IDs, broker names or branding, group names, account logins,
+  manager/service actor logins, symbols, commission/swap/margin/stop-out rates, leverage,
+  feed IDs or feed versions, hostnames, IPs, URLs, ports of external services, or business
+  thresholds in code, SQL migrations, scripts, tools or UI.
+- Everything business-related is configurable per tenant from the Admin / Manager
+  applications (or per-tenant database configuration / environment), with safe, generic
+  defaults.
+- Every feature and fix must work on a fresh install for any new broker, for every group,
+  and for every current AND future account. No per-account, per-group or canary workarounds.
+- Tools and one-off scripts take tenant, logins, symbols and dates as explicit parameters.
+- Code-version pins (schema/body hashes, migration checksums) are not tenant data and are allowed.
+- When you touch code that contains such a hardcoded value, move it to configuration.
+- Reviewers reject any change that introduces tenant-specific hardcoding.
+
+## 2. This is a trading engine: latency and correctness come first
+
+- Hot paths (order admission, execution, quotes, triggers, stop-out) are RAM-first. No
+  blocking database, disk or network round-trips on the hot path unless they are part of
+  the designed durability step. Target: every client trading action completes server-side
+  in well under 50 ms; measure, do not assume.
+- Never hold a mutex/RWMutex across I/O (network publish, socket write, DB call, fsync).
+  Snapshot state under the lock, release it, then do the I/O.
+- Every queue and buffer is bounded, with an explicit fail-closed overflow policy.
+  Every wait has a timeout. No unbounded goroutines, retries or backoffs (cap them).
+- Avoid allocations and reflection on hot paths; reuse buffers; prefer pre-computed lookups.
+- Money and prices use exact decimal arithmetic (big.Rat / fixed-point / NUMERIC).
+  Never use float for balances, P/L, commission, swap or margin. Round once, at account scale.
+- Fail closed: when state, prices or policy are missing, stale or ambiguous, refuse with a
+  typed, retryable error. Never trade on stale quotes; never guess.
+- Every command is idempotent (client order id / Msg-Id / journal key). Retries must never
+  double-charge, double-fill or double-close.
+- Every monetary change is journaled in the canonical ledger. No direct balance writes.
+- Services must survive dependency blips: reconnect forever with backoff (e.g. NATS
+  MaxReconnects(-1)), never exit on a transient error, and recover state after restart.
+- Benchmark latency-sensitive changes and include the numbers (p50/p95/p99) in the PR.
+
+## 3. Database and migrations
+
+- Migrations are numbered, idempotent, guarded (expected-state checks before and after),
+  use lock_timeout/statement_timeout, and ship with a rollback file.
+- Never edit an already-applied migration; write a forward fix.
+- A fresh install must reach exactly the same safe state as an upgraded install.
+- Least privilege: runtime roles get only the column/table/function privileges they need;
+  prefer SECURITY DEFINER wrappers with pinned search_path over broad grants.
+- Never run apply/rollback SQL against a live database as a "dry run".
+
+## 4. Quality bar (work like a senior engineer)
+
+- Find and fix the root cause, globally. Explain the cause with evidence (file:line, logs,
+  queries). Do not paper over symptoms.
+- Every behaviour change has tests (unit + integration where it touches the DB), including
+  negative/refusal cases. Never weaken an assertion to make a test pass.
+- Keep changes minimal and focused; do not mix unrelated refactors into a fix.
+- Report results honestly: distinguish code written, compiled, tested, and live-verified.
+- Use structured logs with reasons on every refusal path; no bare sentinel errors.
+- No secrets, passwords, tokens or private keys in the repository, logs or commit messages.
+  Use environment/secret stores. If you find one, report it for rotation.
+- Do not create extra branches/worktrees or push without the maintainers' instruction;
+  CI/CD YAML changes need explicit maintainer confirmation.
+
+## 5. Before you finish any change, check
+
+1. No new hardcoded tenant/broker/group/login/symbol/rate/host values.
+2. Works for all tenants, groups and future accounts; fresh install covered.
+3. Hot-path latency not regressed (measured); no lock held across I/O; bounded queues.
+4. Money math exact; idempotent; journaled; fail-closed with typed errors.
+5. Tests added/updated and passing; results reported truthfully.
