@@ -9,7 +9,7 @@ import { RTX5_API_URL, normalizeServerUrl } from '../config/api';
 import { runAfterTerminalReady } from '../startup/runAfterTerminalReady';
 import { setBrokerServerTimeZoneFromConfig } from '../services/brokerServerClock';
 import { onSessionChange } from '../services/brokerSession';
-import { buildBrokerDirectoryLogoUrl } from '../components/BrokerLogoImage';
+import { buildBrokerDirectoryLogoUrl, getConfiguredBrokerLogoUrl } from '../components/BrokerLogoImage';
 
 export const WEB_TERMINAL_TITLE = 'RTX 5 Web Terminal';
 export const DEFAULT_BROKER_SERVER = WEB_TERMINAL_TITLE;
@@ -22,7 +22,8 @@ const getStoredHeaderValue = (key: string): string => {
 };
 
 const getStoredBrokerId = (): string => getStoredHeaderValue('broker_id') || getStoredHeaderValue('rtx_broker_id');
-const getStoredLogoUrl = (): string => getStoredHeaderValue('logo_url') || buildBrokerDirectoryLogoUrl(getStoredBrokerId());
+const getStoredLogoUrl = (): string => getConfiguredBrokerLogoUrl(getStoredBrokerId())
+    || getStoredHeaderValue('logo_url') || buildBrokerDirectoryLogoUrl(getStoredBrokerId());
 
 const normalizeLogoBaseUrl = (value: unknown): string => {
     const normalized = normalizeServerUrl(normalizeHeaderText(value));
@@ -165,7 +166,7 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
                 const brokersList = brokersData?.brokers || [];
                 const matchedBroker = brokersList.find(broker => String(broker.broker_id) === (brokerId || String(matchedServer?.broker_id || '')));
 
-                const finalLogoUrl = matchedServer?.logo_url || matchedBroker?.logo_url
+                const finalLogoUrl = getConfiguredBrokerLogoUrl(brokerId) || matchedServer?.logo_url || matchedBroker?.logo_url
                     || config?.logo_url || getStoredHeaderValue('logo_url') || getStoredLogoUrl();
                 let nextLogoBaseCandidates: string[] = [];
                 if (matchedServer) {

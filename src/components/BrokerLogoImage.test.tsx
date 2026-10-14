@@ -12,6 +12,34 @@ const testBroker = {
 describe('BrokerLogoImage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('uses explicit deployment branding before stale broker metadata and keeps retries', () => {
+    vi.stubGlobal('__RTX_RUNTIME_CONFIG__', {
+      CONFIG_SOURCE: 'deployment', API_HOST: testBroker.server_url,
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com', BROKER_ID: testBroker.broker_id,
+      DEFAULT_MT5_SERVER: 'TEST-Live', DISCOVERY_BASE_URL: 'https://directory.example',
+      BROKER_LOGO_URL: 'https://branding.example/current-logo.png',
+    });
+    render(<BrokerLogoImage broker={testBroker} alt="TEST broker logo" />);
+    expect(screen.getByRole('img', { name: 'TEST broker logo' }))
+      .toHaveAttribute('src', 'https://branding.example/current-logo.png');
+    fireEvent.error(screen.getByRole('img', { name: 'TEST broker logo' }));
+    expect(screen.getByRole('img', { name: 'TEST broker logo' }))
+      .toHaveAttribute('src', `${testBroker.server_url}/assets/logo.png`);
+  });
+
+  it('never applies deployment branding to another broker or a desktop selection', () => {
+    vi.stubGlobal('__RTX_RUNTIME_CONFIG__', {
+      CONFIG_SOURCE: 'deployment', API_HOST: testBroker.server_url,
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com', BROKER_ID: testBroker.broker_id,
+      DEFAULT_MT5_SERVER: 'TEST-Live', DISCOVERY_BASE_URL: 'https://directory.example',
+      BROKER_LOGO_URL: 'https://branding.example/current-logo.png',
+    });
+    expect(buildBrokerLogoCandidates({ broker_id: 'OTHER', logo_url: 'https://other.example/logo.png' }))
+      .not.toContain('https://branding.example/current-logo.png');
+    vi.stubGlobal('electron', { window: {} });
+    expect(buildBrokerLogoCandidates(testBroker)).not.toContain('https://branding.example/current-logo.png');
+  });
+
   it('resolves a relative broker logo and retains the discovery logo as its next source', () => {
     expect(buildBrokerLogoCandidates(
       testBroker,

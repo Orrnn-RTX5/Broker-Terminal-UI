@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearTradeOrderLatencySamples,
   getTradeOrderLatencySamples,
+  getJournalTradeOrderLatencySamples,
   recordTradeOrderLatency,
   summarizeTradeOrderLatency,
   TRADE_ORDER_LATENCY_EVENT,
@@ -65,5 +66,34 @@ describe('order latency telemetry', () => {
     } finally {
       window.removeEventListener(TRADE_ORDER_LATENCY_EVENT, listener);
     }
+  });
+
+  it('retains bounded terminal timings independently of busy transport diagnostics', () => {
+    for (let index = 0; index < 205; index += 1) {
+      recordTradeOrderLatency({
+        phase: 'placement_terminal',
+        transport: 'websocket',
+        traceId: `terminal-${index}`,
+        sessionScope: 'broker-a:account-a',
+        terminalStatus: 'filled',
+        totalMs: index,
+      });
+    }
+    for (let index = 0; index < 250; index += 1) {
+      recordTradeOrderLatency({
+        phase: 'ws_enqueued',
+        transport: 'websocket',
+        traceId: `enqueue-${index}`,
+        sessionScope: 'broker-a:account-a',
+      });
+    }
+
+    expect(getTradeOrderLatencySamples().every(sample => sample.phase === 'ws_enqueued')).toBe(true);
+    const journalSamples = getJournalTradeOrderLatencySamples();
+    expect(journalSamples).toHaveLength(200);
+    expect(journalSamples[0].traceId).toBe('terminal-5');
+    expect(journalSamples.at(-1)?.totalMs).toBe(204);
+    clearTradeOrderLatencySamples();
+    expect(getJournalTradeOrderLatencySamples()).toEqual([]);
   });
 });

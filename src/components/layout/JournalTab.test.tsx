@@ -219,6 +219,76 @@ describe('JournalTab', () => {
         });
     });
 
+    it('restores server timing without local samples and retains it across filters', async () => {
+        const now = nowSeconds();
+        journalHarness.getLogs
+            .mockResolvedValueOnce({ count: 5, logs: [
+                makeLog({ id: 'older-fill', type: 6, type_text: 'Trade', datetime: now - 30,
+                    message: 'Order buy BTCUSD 0.01 filled', latency_ms: 12 }),
+                makeLog({ id: 'history', type: 4, type_text: 'History', datetime: now,
+                    message: 'Position history loaded', latency_ms: 900 }),
+                makeLog({ id: 'latest-fill', type: 6, type_text: 'Trade', datetime: now - 20,
+                    message: 'Order sell BTCUSD 0.01 filled', latency_ms: 37.5 }),
+                makeLog({ id: 'accepted', type: 6, type_text: 'Trade', datetime: now - 10,
+                    message: 'Order buy BTCUSD 0.01 accepted', latency_ms: 99 }),
+                makeLog({ id: 'invalid-fill', type: 6, type_text: 'Trade', datetime: now - 5,
+                    message: 'Order buy BTCUSD 0.01 filled', latency_ms: -1 }),
+            ] })
+            .mockResolvedValueOnce({ count: 1, logs: [makeLog({
+                id: 'filtered-history', type: 4, type_text: 'History', message: 'Filtered history response',
+            })] });
+
+        render(<JournalTab />);
+        const indicator = screen.getByTestId('last-trade-latency');
+        await waitFor(() => expect(indicator).toHaveTextContent('Last trade latency: 37.5 ms'));
+        expect(indicator).toHaveAttribute('title', 'Latest server-recorded trade execution time for this broker and account');
+        fireEvent.change(screen.getByLabelText('Journal type'), { target: { value: '4' } });
+        await screen.findByText('Filtered history response');
+        expect(indicator).toHaveTextContent('Last trade latency: 37.5 ms');
+    });
+
+    it('prefers a newly measured local attempt over server timing', async () => {
+        journalHarness.getLogs.mockResolvedValue({ count: 1, logs: [makeLog({
+            id: 'server-fill', type: 6, type_text: 'Trade', message: 'Order buy BTCUSD 0.01 filled',
+            latency_ms: 133,
+        })] });
+        render(<JournalTab />);
+        const indicator = screen.getByTestId('last-trade-latency');
+        await waitFor(() => expect(indicator).toHaveTextContent('Last trade latency: 133 ms'));
+        act(() => {
+            recordTradeOrderLatency({
+                phase: 'placement_terminal', transport: 'rest', traceId: 'local-new-fill',
+                sessionScope: journalHarness.sessionScope, terminalStatus: 'filled', totalMs: 42,
+            });
+        });
+        await waitFor(() => expect(indicator).toHaveTextContent('Last trade latency: 42 ms'));
+        expect(indicator).toHaveAttribute('title', 'Latest locally measured total order-attempt time for this broker and account');
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh journal' }));
+        await waitFor(() => expect(journalHarness.getLogs).toHaveBeenCalledTimes(2));
+        expect(indicator).toHaveTextContent('Last trade latency: 42 ms');
+    });
+
+    it('does not expose the previous account server timing while the new account loads', async () => {
+        const nextAccountLoad = deferred<JournalResponse>();
+        journalHarness.getLogs
+            .mockResolvedValueOnce({ count: 1, logs: [makeLog({
+                id: 'account-a-fill', type: 6, type_text: 'Trade',
+                message: 'Order buy BTCUSD 0.01 filled', latency_ms: 133,
+            })] })
+            .mockReturnValueOnce(nextAccountLoad.promise);
+        const view = render(<JournalTab />);
+        const indicator = screen.getByTestId('last-trade-latency');
+        await waitFor(() => expect(indicator).toHaveTextContent('Last trade latency: 133 ms'));
+        journalHarness.sessionScope = 'broker-b:account-b';
+        view.rerender(<JournalTab />);
+        expect(indicator).toHaveTextContent('Last trade latency: \u2014');
+        await act(async () => {
+            nextAccountLoad.resolve({ count: 0, logs: [] });
+            await nextAccountLoad.promise;
+        });
+        expect(indicator).toHaveTextContent('Last trade latency: \u2014');
+    });
+
     it('renders a correlated local Journal row for an executed order', async () => {
         journalHarness.getLogs.mockResolvedValue({ count: 0, logs: [] });
         recordTradeOrderLatency({
@@ -233,6 +303,14 @@ describe('JournalTab', () => {
             terminalStatus: 'filled',
             totalMs: 14.625,
         });
+        // Opening Journal after a burst must preserve the completed attempt
+        // even when its transport sample has left the general diagnostics ring.
+        for (let index = 0; index < 250; index += 1) {
+            recordTradeOrderLatency({
+                phase: 'ws_enqueued', transport: 'websocket', traceId: `queued-${index}`,
+                sessionScope: journalHarness.sessionScope,
+            });
+        }
 
         render(<JournalTab />);
 

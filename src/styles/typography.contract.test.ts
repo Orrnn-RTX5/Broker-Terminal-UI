@@ -184,7 +184,7 @@ describe('enterprise typography contract', () => {
     expect(researchSource).toMatch(/text-\[13px\][^"`]*font-normal[^"`]*leading-\[19\.5px\]/);
     expect(historyDownloaderSource).toMatch(/text-\[14px\][^"`]*font-normal/);
     expect(historyDownloaderSource).toContain('rtx-history-field-label');
-    expect(historyDownloaderCss).toMatch(/\.rtx-history-field-label\s*\{[^}]*font-size: 10px;[^}]*font-weight: 600;/);
+    expect(historyDownloaderCss).toMatch(/\.rtx-history-field-label\s*\{[^}]*font-size: 13px;[^}]*font-weight: 400;/);
     expect(bottomDockSource).toContain('rtx-exposure-tab');
     expect(calendarSource).toContain('rtx-calendar-tab');
     expect(researchSource).toContain('rtx-research-tab');

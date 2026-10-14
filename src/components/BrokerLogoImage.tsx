@@ -3,6 +3,8 @@ import { normalizeBrokerServerUrl } from '../config/api';
 import {
   getBackendTarget,
   getRuntimeDiscoveryBaseUrl,
+  getRuntimeBrokerConfiguration,
+  isDesktopBackendTarget,
 } from '../config/backendTarget.js';
 import { toPublicAssetPath } from './welcomeHeroAssets';
 
@@ -36,6 +38,14 @@ const normalizeLogoBaseUrl = (value: unknown): string => {
   return normalized.replace(/\/+$/, '');
 };
 
+/** Deployment branding belongs only to its configured web broker. */
+export const getConfiguredBrokerLogoUrl = (brokerId: string | number | null | undefined): string => {
+  if (isDesktopBackendTarget()) return '';
+  const config = getRuntimeBrokerConfiguration();
+  return config.valid && String(brokerId || '').trim() === config.brokerId
+    ? config.brokerLogoUrl : '';
+};
+
 export const buildBrokerDirectoryLogoUrl = (
   brokerId: string | number | null | undefined,
   discoveryBaseUrl = getRuntimeDiscoveryBaseUrl(),
@@ -54,6 +64,7 @@ export const buildBrokerLogoCandidates = (
   if (!broker) return appFallbackUrl ? [appFallbackUrl] : [];
 
   const candidates: string[] = [];
+  appendUnique(candidates, getConfiguredBrokerLogoUrl(broker.broker_id));
   const rawLogoUrl = String(broker.logo_url || '').trim();
 
   if (ABSOLUTE_IMAGE_URL.test(rawLogoUrl)) {

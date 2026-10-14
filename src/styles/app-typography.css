@@ -125,6 +125,44 @@ html:root .rtx-journal-table thead th {
   --rtx-type-weight: var(--rtx-font-weight-body);
 }
 
+/* Toolbox categories and command rows use the same regular reading weight.
+   Nested command labels and shortcut hints inherit the button's role. */
+html:root .rtx-toolbox-tab :is(h3, button) {
+  --rtx-type-weight: var(--rtx-font-weight-body);
+}
+
+/* Historical Data keeps regular controls and quiet supporting text in both
+   themes. Explicit roles also respect the shared font-size preference. */
+html:root body .rtx-history-downloader :is(button, input, select, label, strong) {
+  --rtx-type-size: var(--rtx-ui-font-size);
+  --rtx-type-weight: 400;
+}
+
+html:root body .rtx-history-downloader :is(
+  .rtx-history-downloader__identity h2, .rtx-history-tasks__header h3,
+  .rtx-history-empty strong, .rtx-history-task__identity strong
+) {
+  --rtx-type-size: var(--rtx-ui-font-size);
+  --rtx-type-weight: 500;
+}
+
+html:root body .rtx-history-downloader .rtx-history-downloader__identity h2 {
+  --rtx-type-size: calc(var(--rtx-ui-font-size) + 1px);
+}
+
+html:root body .rtx-history-downloader :is(
+  .rtx-history-downloader__identity p, .rtx-history-downloader__metrics dt,
+  .rtx-history-symbol-label, .rtx-history-field-label,
+  .rtx-history-seg-btn, .rtx-history-clear-btn, .rtx-history-duration-badge,
+  .rtx-history-coverage-banner, .rtx-history-coverage-banner span,
+  .rtx-history-coverage-banner strong, .rtx-history-tasks__header span,
+  .rtx-history-empty > span:last-child, .rtx-history-task__identity span,
+  .rtx-history-task__progress-label, .rtx-history-task__detail
+) {
+  --rtx-type-size: max(12px, calc(var(--rtx-ui-font-size) - 1px));
+  --rtx-type-weight: 400;
+}
+
 html:root :is(
   .rtx-order-dialog__label,
   .rtx-trade-metric-value, .rtx-menu-row, .rtx-application-menu__root-item,

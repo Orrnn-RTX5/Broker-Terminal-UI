@@ -457,6 +457,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-file-menu button.rtx-file-me
   color: var(--color-loss) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-file-menu button.rtx-file-menu__profile[aria-pressed='true'] {
+  background: var(--rtx-light-selected) !important;
+  color: var(--rtx-light-accent-strong) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-desktop-quick-menu .rtx-desktop-quick-menu__item--danger[role="menuitem"],
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-desktop-quick-menu .rtx-desktop-quick-menu__item--danger[role="menuitem"]:is(:hover, :focus-visible) {
   color: var(--color-loss) !important;

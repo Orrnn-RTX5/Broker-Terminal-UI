@@ -523,17 +523,17 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
 
   if (options.plainLabel) {
     root.classList.add('rtx-trade-controls--plain');
-    root.style.setProperty('--rtx-type-size', 'var(--rtx-ui-font-size, 14px)');
+    root.style.setProperty('--rtx-type-size', 'max(11.5px, calc(var(--rtx-ui-font-size, 14px) - 2.5px))');
     root.style.setProperty('--rtx-type-weight', '400');
     root.style.setProperty('--rtx-type-family', 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)');
-    root.style.lineHeight = '20px';
+    root.style.lineHeight = '15px';
     root.style.filter = 'none';
     root.style.overflow = 'hidden';
     root.style.transform = 'translateY(-50%)';
     root.style.height = 'auto';
-    root.style.minHeight = '26px';
+    root.style.minHeight = '19px';
     root.style.flexWrap = 'wrap';
-    root.style.gap = '2px';
+    root.style.gap = '0';
     // Keep the active-position strip beside the chart's left edge. The chart
     // relayout only overrides controls explicitly marked as right-aligned.
     root.dataset.align = 'left';
@@ -541,14 +541,14 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     // One opaque surface keeps chart lines out of the gaps between controls.
     // A flat one-pixel stroke supplies the border without changing drag geometry.
     root.style.backgroundColor = plainBackground;
-    root.style.borderRadius = '5px';
+    root.style.borderRadius = '4px';
     root.style.boxShadow = `0 0 0 1px ${plainBorderColor}`;
     root.style.textShadow = 'none';
     chipGroup.className = 'rtx-trade-primary';
     chipGroup.style.border = '1px solid transparent';
     chipGroup.style.borderLeftColor = plainDividerColor;
     chipGroup.style.borderRadius = '0';
-    chipGroup.style.height = '26px';
+    chipGroup.style.height = '19px';
     chipGroup.style.boxSizing = 'border-box';
     chipGroup.style.overflow = 'hidden';
     chipGroup.style.minWidth = '0';
@@ -559,14 +559,14 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       chip.style.border = '0';
       chip.style.color = plainNeutralColor;
       chip.style.fontFamily = 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)';
-      chip.style.fontSize = 'var(--rtx-ui-font-size, 14px)';
+      chip.style.fontSize = 'inherit';
       chip.style.fontWeight = '400';
-      chip.style.lineHeight = '20px';
+      chip.style.lineHeight = '15px';
       chip.style.letterSpacing = 'normal';
       chip.style.fontVariantNumeric = 'tabular-nums';
-      chip.style.padding = '0 2px';
+      chip.style.padding = '0 1px';
       chip.style.marginLeft = '0';
-      chip.style.height = '24px';
+      chip.style.height = '17px';
     }
     for (const metric of [pips.chip, money.chip]) {
       const label = metric.firstElementChild as HTMLElement;
@@ -582,9 +582,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     volumeChip.style.fontWeight = 'inherit';
     volumeChip.style.setProperty('--rtx-type-weight', 'inherit');
     // Separate each reading unit without adding padding around the toolbar.
-    volumeChip.style.gap = '4px';
+    volumeChip.style.gap = '2px';
     volumeText.style.color = plainNeutralColor;
-    money.chip.style.gap = '4px';
+    money.chip.style.gap = '2px';
     money.valueEl.style.fontWeight = 'inherit';
     money.valueEl.style.setProperty('--rtx-type-weight', 'inherit');
     const currencySuffix = money.chip.firstElementChild as HTMLElement;
@@ -601,7 +601,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   buttonGroup.className = 'rtx-trade-control-actions';
   buttonGroup.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin-left:6px;flex:0 0 auto;';
   if (options.plainLabel) {
-    buttonGroup.style.gap = '2px';
+    buttonGroup.style.gap = '1px';
     buttonGroup.style.marginLeft = '0';
   }
   const emitAction = (action: ChartPositionActionType) => {
@@ -621,8 +621,11 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       const isClose = button.classList.contains('rtx-trade-control-btn--close');
       const restingBackground = 'transparent';
       const restingColor = isLightSurface || isClose ? plainActionColor : DARK_CHART_TRADE_COLORS.actionIcon;
-      button.style.width = '24px';
-      button.style.height = '24px';
+      button.style.width = '17px';
+      button.style.height = '17px';
+      const icon = button.querySelector('svg');
+      icon?.setAttribute('width', '11');
+      icon?.setAttribute('height', '11');
       button.style.color = restingColor;
       button.style.border = '0';
       button.style.borderRadius = '0';
@@ -643,8 +646,8 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       });
     }
     const closeIcon = buttonGroup.querySelector('.rtx-trade-control-btn--close svg')!;
-    closeIcon.setAttribute('width', '12');
-    closeIcon.setAttribute('height', '12');
+    closeIcon.setAttribute('width', '10');
+    closeIcon.setAttribute('height', '10');
     closeIcon.setAttribute('stroke-width', '1.5');
     const reverseButton = buttonGroup.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--reverse')!;
     const doubleButton = buttonGroup.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--double')!;
@@ -652,7 +655,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     buttonGroup.insertBefore(doubleButton, reverseButton);
     const secondaryGroup = document.createElement('span');
     secondaryGroup.className = 'rtx-trade-secondary';
-    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;height:26px;box-sizing:border-box;border:1px solid transparent;background-color:${plainBackground};overflow:hidden;`;
+    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;height:19px;box-sizing:border-box;border:1px solid transparent;background-color:${plainBackground};overflow:hidden;`;
     for (const button of Array.from(buttonGroup.querySelectorAll<HTMLButtonElement>('button'))) {
       if (button === closeButton) continue;
       secondaryGroup.appendChild(button);
@@ -660,7 +663,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     buttonGroup.prepend(secondaryGroup);
     const brackets = document.createElement('span');
     brackets.className = 'rtx-trade-brackets';
-    brackets.style.cssText = 'display:inline-flex;align-items:center;gap:2px;';
+    brackets.style.cssText = 'display:inline-flex;align-items:center;gap:1px;';
     buttonGroup.appendChild(brackets);
     chipGroup.appendChild(closeButton);
     root.appendChild(buttonGroup);

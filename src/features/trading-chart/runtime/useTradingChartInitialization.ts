@@ -108,6 +108,7 @@ interface UseTradingChartInitializationOptions {
   postInteractionCoordinatorRef: RefObject<ChartPostInteractionCoordinator | null>;
   priceLineRef: RefObject<unknown>;
   repaintTradeOverlayGeometryRef: RefObject<() => void>;
+  resolvedPriceDigitsRef: RefObject<number>;
   resolvedPricePointRef: RefObject<number>;
   scheduleDrawingRenderAfterChartData: (activeSymbol: string, activeTimeframe: Timeframe) => void;
   scheduleQueuedChartRenderFlush: (immediate?: boolean) => void;
@@ -146,7 +147,7 @@ export const useTradingChartInitialization = (options: UseTradingChartInitializa
     isVisibleRangeHistoryLoadSuppressed, lastPriceLineRef, latestCandleJumpPendingRef,
     livePriceBadgeRef, livePriceLineRef, livePriceRef, loadedIndicatorStorageScopeRef,
     loadMoreHistoryRef, localIndicatorManager, overlayRef, postInteractionCoordinatorRef,
-    priceLineRef, repaintTradeOverlayGeometryRef, resolvedPricePointRef,
+    priceLineRef, repaintTradeOverlayGeometryRef, resolvedPriceDigitsRef, resolvedPricePointRef,
     scheduleDrawingRenderAfterChartData, scheduleQueuedChartRenderFlush, seriesRef,
     settleAutoScrollPolicyRef, squareGridHostSeriesRef, squareGridPrimitiveRef, symbol, timeframe,
     timeScaleTimeframeRef, updateLegendDOM, visibleRangeHistoryUserInitiatedRef, volumeRef,
@@ -232,6 +233,13 @@ useChartInitializationLifetime(() => {
       visible: true,
       color: 'rgba(0, 0, 0, 0)',
       priceScaleId: 'right',
+      // The first series on a price scale supplies its tick increment, even
+      // when that series is transparent and contains only whitespace.
+      priceFormat: {
+        type: 'price',
+        precision: resolvedPriceDigitsRef.current,
+        minMove: resolvedPricePointRef.current,
+      },
       priceLineVisible: false,
       lastValueVisible: false,
       crosshairMarkerVisible: false,

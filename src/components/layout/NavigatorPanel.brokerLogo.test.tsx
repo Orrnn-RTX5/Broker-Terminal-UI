@@ -72,6 +72,24 @@ describe('Navigator broker logo ownership', () => {
       .toHaveAttribute('src', `https://images.example/${file}.png`);
   });
 
+  it('honors deployment branding after login without exposing it to a different broker', async () => {
+    const runtime = (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__!;
+    runtime.BROKER_LOGO_URL = 'https://branding.example/nexa.png';
+    authenticate();
+    brokerApiMocks.getServers.mockResolvedValue([{ ...nexa, logo_url: 'https://broken.example/old.png' }]);
+    const { rerender } = render(<NavigatorPanel />);
+    expect(await screen.findByRole('img', { name: 'Nexa Logo' }))
+      .toHaveAttribute('src', 'https://branding.example/nexa.png');
+    await act(async () => {});
+    expect(screen.getByRole('img', { name: 'Nexa Logo' }))
+      .toHaveAttribute('src', 'https://branding.example/nexa.png');
+    act(() => { authenticate(alpha); });
+    rerender(<NavigatorPanel />);
+    expect(document.querySelector('img[src="https://branding.example/nexa.png"]')).toBeNull();
+    expect(await screen.findByRole('img', { name: 'Alpha Trading Logo' }))
+      .toHaveAttribute('src', 'https://directory.example/api/v1/brokers/Broker-A/logo');
+  });
+
   it('resolves the broker directory logo path against the discovery service', async () => {
     authenticate();
     brokerApiMocks.getServers.mockResolvedValue([{ ...nexa, server: 'Nexa-Live' }]);

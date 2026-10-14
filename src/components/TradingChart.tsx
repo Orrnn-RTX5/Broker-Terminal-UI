@@ -70,6 +70,7 @@ import { useTradingChartLiveCandleRuntime } from '../features/trading-chart/runt
 import { useTradingChartInitialization } from '../features/trading-chart/runtime/useTradingChartInitialization';
 import { useTradingChartReconfiguration } from '../features/trading-chart/runtime/useTradingChartReconfiguration';
 import { useTradingChartPriceScaleSettings } from '../features/trading-chart/runtime/useTradingChartPriceScaleSettings';
+import { useTradingChartPriceFormat } from '../features/trading-chart/runtime/useTradingChartPriceFormat';
 import { useTradingChartCommands } from '../features/trading-chart/runtime/useTradingChartCommands';
 import { useTradingChartDrawingCommands } from '../features/trading-chart/runtime/useTradingChartDrawingCommands';
 import { useTradingChartHistoryCache } from '../features/trading-chart/runtime/useTradingChartHistoryCache';
@@ -1865,6 +1866,7 @@ useTradingChartInitialization({
     postInteractionCoordinatorRef,
     priceLineRef,
     repaintTradeOverlayGeometryRef,
+    resolvedPriceDigitsRef,
     resolvedPricePointRef,
     scheduleDrawingRenderAfterChartData,
     scheduleQueuedChartRenderFlush,
@@ -2336,18 +2338,15 @@ useTradingChartInitialization({
   }, [chartSettings.showGrid, chartSettings.gridType, brokerTimeOffsetSec]);
 
 
- // The authorized instrument catalog can resolve after the chart mounts.
+  // The authorized instrument catalog can resolve after the chart mounts.
   // Hot-apply its precision without rebuilding the series or resetting data.
+  useTradingChartPriceFormat({
+    seriesRef, squareGridHostSeriesRef, isDisposedRef,
+    digits: resolvedPriceDigits, point: resolvedPricePoint,
+  });
   useEffect(() => {
     if (isDisposedRef.current || !seriesRef.current) return;
     try {
-      seriesRef.current.applyOptions({
-        priceFormat: {
-          type: 'price',
-          precision: resolvedPriceDigits,
-          minMove: resolvedPricePoint,
-        },
-      });
       const currentCandle = currentCandleRef.current;
       if (currentCandle) {
         updateLegendDOM(

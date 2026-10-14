@@ -86,6 +86,9 @@ type RecordedTradeOrderLatencyInput = Omit<
 
 const MAX_RETAINED_SAMPLES = 200;
 const samples: TradeOrderLatencySample[] = [];
+// Journal needs completed attempts even when a burst of enqueue/acknowledgement
+// diagnostics has displaced them from the general-purpose sample ring.
+const journalSamples: TradeOrderLatencySample[] = [];
 let sampleSequence = 0;
 
 /** Monotonic clock for durations; wall-clock time is never used for subtraction. */
@@ -113,8 +116,12 @@ const percentile = (sorted: number[], value: number): number => {
 export const getTradeOrderLatencySamples = (): readonly TradeOrderLatencySample[] =>
   samples.slice();
 
+export const getJournalTradeOrderLatencySamples = (): readonly TradeOrderLatencySample[] =>
+  journalSamples.slice();
+
 export const clearTradeOrderLatencySamples = (): void => {
   samples.length = 0;
+  journalSamples.length = 0;
 };
 
 export const summarizeTradeOrderLatency = (
@@ -156,6 +163,18 @@ export const recordTradeOrderLatency = (
   samples.push(sample);
   if (samples.length > MAX_RETAINED_SAMPLES) {
     samples.splice(0, samples.length - MAX_RETAINED_SAMPLES);
+  }
+
+  const isTerminal = sample.phase === 'placement_terminal'
+    || (sample.transport === 'websocket'
+      && (sample.phase === 'order_filled' || sample.phase === 'order_rejected'))
+    || (sample.transport === 'rest'
+      && (sample.phase === 'rest_completed' || sample.phase === 'rest_failed'));
+  if (isTerminal && sample.sessionScope) {
+    journalSamples.push(sample);
+    if (journalSamples.length > MAX_RETAINED_SAMPLES) {
+      journalSamples.splice(0, journalSamples.length - MAX_RETAINED_SAMPLES);
+    }
   }
 
   // Notify observers in a later task. In particular, a terminal fill/rejection

@@ -30,7 +30,7 @@ describe('historical data manager presentation contract', () => {
 
   it('adapts the manager to narrow dock and floating-panel widths', () => {
     expect(historyCss).toContain('container-type: inline-size;');
-    expect(historyCss).toContain('@container (max-width: 920px)');
+    expect(historyCss).toContain('@container (max-width: 1000px)');
     expect(historyCss).toContain('@container (max-width: 710px)');
     expect(historyCss).toContain('@container (max-width: 520px)');
   });

@@ -607,9 +607,9 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                     type="button"
                                     aria-pressed={isActive}
                                     onClick={() => handleRestoreProfile(profileName)}
-                                    className={`w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left cursor-default transition-colors duration-75 ${
+                                    className={`rtx-file-menu__profile w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left cursor-default transition-colors duration-75 ${
                                         isActive
-                                            ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600 bg-emerald-500/10 [.rtx-advanced-view_&]:bg-emerald-50 font-medium'
+                                            ? 'font-medium'
                                             : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
                                     }`}
                                     title={tr("Restore workspace {{value0}}", { value0: profileName })}
@@ -617,7 +617,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                     <span
                                         aria-hidden="true"
                                         className={`w-3.5 text-center font-bold text-[11px] flex-none ${
-                                            isActive ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600' : 'text-transparent'
+                                            isActive ? 'text-current' : 'text-transparent'
                                         }`}
                                     >
                                         ✓

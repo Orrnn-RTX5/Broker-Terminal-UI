@@ -15,10 +15,16 @@ const toLocalDateInputValue = (date: Date) => {
   return new Date(date.getTime() - timezoneOffset).toISOString().split('T')[0];
 };
 
+const inclusiveRangeStart = (today: Date, days: number) => {
+  const start = new Date(today);
+  start.setDate(start.getDate() - (days - 1));
+  return toLocalDateInputValue(start);
+};
+
 const createDefaultDateRange = () => {
   const today = new Date();
   return {
-    from: toLocalDateInputValue(new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)),
+    from: inclusiveRangeStart(today, 7),
     to: toLocalDateInputValue(today),
   };
 };
@@ -123,7 +129,7 @@ export const HistoryDownloader: React.FC = () => {
     setActivePreset(preset.id);
     if ('days' in preset && preset.days) {
       setDateRange({
-        from: toLocalDateInputValue(new Date(today.getTime() - preset.days * 24 * 60 * 60 * 1000)),
+        from: inclusiveRangeStart(today, preset.days),
         to: toLocalDateInputValue(today),
       });
     } else if ('isYtd' in preset && preset.isYtd) {
@@ -139,7 +145,7 @@ export const HistoryDownloader: React.FC = () => {
         });
       } else {
         setDateRange({
-          from: toLocalDateInputValue(new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000)),
+          from: inclusiveRangeStart(today, 365),
           to: toLocalDateInputValue(today),
         });
       }
@@ -302,16 +308,17 @@ export const HistoryDownloader: React.FC = () => {
       <div className="rtx-history-downloader__workspace">
         <main className="rtx-history-main">
           <div className="rtx-history-download-panel">
-            {/* Row 1: Symbol Dropdown, Status & Clear Action */}
+            {/* Aligned instrument, date fields, and primary action. */}
             <div className="rtx-history-panel-row1">
               <div className="rtx-history-symbol-picker-group">
                 <label htmlFor="history-symbol-select" className="rtx-history-symbol-label">
-                  {tr("Symbol:")}</label>
+                  {tr("Symbol")}</label>
                 <div className="rtx-history-symbol-dropdown-wrapper">
                   <select
                     id="history-symbol-select"
                     className="rtx-history-symbol-select"
                     value={selectedSymbol}
+                    disabled={isLoading || symbols.length === 0}
                     onChange={(event) => setSelectedSymbol(event.target.value)}
                     aria-label={tr("Select instrument")}
                   >
@@ -324,6 +331,54 @@ export const HistoryDownloader: React.FC = () => {
                   <Icon name="chevron-down" size="xs" className="rtx-history-dropdown-chevron" />
                 </div>
               </div>
+
+              <div className="rtx-history-date-inputs">
+                <label className="rtx-history-field">
+                  <span className="rtx-history-field-label">{tr("From")}</span>
+                  <input
+                    type="date"
+                    className="rtx-history-date-input"
+                    aria-label={tr("From date")}
+                    aria-invalid={Boolean(dateRangeError) || undefined}
+                    aria-describedby="history-range-status"
+                    value={dateRange.from}
+                    max={dateRange.to || undefined}
+                    onChange={(event) => {
+                      setActivePreset(null);
+                      setDateRange((current) => ({ ...current, from: event.target.value }));
+                    }}
+                  />
+                </label>
+
+                <label className="rtx-history-field">
+                  <span className="rtx-history-field-label">{tr("To")}</span>
+                  <input
+                    type="date"
+                    className="rtx-history-date-input"
+                    aria-label={tr("To date")}
+                    aria-invalid={Boolean(dateRangeError) || undefined}
+                    aria-describedby="history-range-status"
+                    value={dateRange.to}
+                    min={dateRange.from || undefined}
+                    onChange={(event) => {
+                      setActivePreset(null);
+                      setDateRange((current) => ({ ...current, to: event.target.value }));
+                    }}
+                  />
+                </label>
+
+              </div>
+
+              <button
+                type="button"
+                className="rtx-history-primary-button"
+                aria-label={tr("Download history")}
+                onClick={() => void handleDownload()}
+                disabled={!selectedSymbol || isLoading || Boolean(dateRangeError)}
+              >
+                <Icon name="download" size="sm" />
+                <span>{tr("Download History")}</span>
+              </button>
 
               <div className="rtx-history-panel-row1-actions">
                 <button
@@ -340,7 +395,6 @@ export const HistoryDownloader: React.FC = () => {
               </div>
             </div>
 
-            {/* Row 2: Presets + Dual Date Field + Download Button */}
             <div className="rtx-history-controls-row">
               <div className="rtx-history-segmented-presets" role="group" aria-label={tr("Quick date range selection")}>
                 {DATE_PRESETS.map((preset) => (
@@ -348,67 +402,21 @@ export const HistoryDownloader: React.FC = () => {
                     key={preset.id}
                     type="button"
                     className={`rtx-history-seg-btn ${activePreset === preset.id ? 'is-active' : ''}`}
+                    aria-pressed={activePreset === preset.id}
                     onClick={() => handleApplyPreset(preset)}
                   >
                     {tr(preset.label)}
                   </button>
                 ))}
               </div>
-
-              <div className="rtx-history-date-inputs">
-                <label className="rtx-history-field">
-                  <span className="rtx-history-field-label">{tr("From")}</span>
-                  <input
-                    type="date"
-                    className="rtx-history-date-input"
-                    aria-label={tr("From date")}
-                    value={dateRange.from}
-                    max={dateRange.to || undefined}
-                    onChange={(event) => {
-                      setActivePreset(null);
-                      setDateRange((current) => ({ ...current, from: event.target.value }));
-                    }}
-                  />
-                </label>
-
-                <span className="rtx-history-arrow">→</span>
-
-                <label className="rtx-history-field">
-                  <span className="rtx-history-field-label">{tr("To")}</span>
-                  <input
-                    type="date"
-                    className="rtx-history-date-input"
-                    aria-label={tr("To date")}
-                    value={dateRange.to}
-                    min={dateRange.from || undefined}
-                    onChange={(event) => {
-                      setActivePreset(null);
-                      setDateRange((current) => ({ ...current, to: event.target.value }));
-                    }}
-                  />
-                </label>
-
-                {selectedDayCount > 0 && (
-                  <span className="rtx-history-duration-badge">
-                    {selectedDayCount} {selectedDayCount === 1 ? tr("Day") : tr("Days")}
-                  </span>
-                )}
-              </div>
-
-              <button
-                type="button"
-                className="rtx-history-primary-button"
-                aria-label={tr("Download history")}
-                onClick={() => void handleDownload()}
-                disabled={!selectedSymbol || isLoading || Boolean(dateRangeError)}
-              >
-                <Icon name="download" size="sm" />
-                <span>{tr("Download History")}</span>
-              </button>
+              {selectedDayCount > 0 && (
+                <span className="rtx-history-duration-badge">
+                  {selectedDayCount} {selectedDayCount === 1 ? tr("Day") : tr("Days")}
+                </span>
+              )}
             </div>
 
-            {/* Row 3: Coverage Status Banner (Without server range) */}
-            <div className="rtx-history-coverage-banner" data-error={Boolean(dateRangeError) || undefined}>
+            <div id="history-range-status" className="rtx-history-coverage-banner" role={dateRangeError ? 'alert' : 'status'} data-error={Boolean(dateRangeError) || undefined}>
               <div className="rtx-history-coverage-left">
                 {dateRangeError ? (
                   <>

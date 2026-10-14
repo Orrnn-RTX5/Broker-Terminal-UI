@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DownloadTask } from '../types/history';
 
 const mocks = vi.hoisted(() => ({
   getAvailableSymbols: vi.fn(),
@@ -85,6 +86,81 @@ describe('HistoryDownloader', () => {
     mocks.clearSymbol.mockResolvedValue(undefined);
     mocks.clearAll.mockResolvedValue(undefined);
     mocks.showConfirm.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('uses inclusive calendar days for presets and clears the selection for custom dates', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 13, 12));
+    await renderLoadedDownloader();
+
+    const presets = screen.getByRole('group', { name: 'Quick date range selection' });
+    const fromDate = screen.getByLabelText('From date');
+    const toDate = screen.getByLabelText('To date');
+
+    expect(fromDate).toHaveValue('2026-10-07');
+    expect(toDate).toHaveValue('2026-10-13');
+    expect(within(presets).getByRole('button', { name: '7 Days' })).toHaveAttribute('aria-pressed', 'true');
+
+    for (const [label, from] of [
+      ['14 Days', '2026-09-30'],
+      ['30 Days', '2026-09-14'],
+      ['7 Days', '2026-10-07'],
+    ]) {
+      fireEvent.click(within(presets).getByRole('button', { name: label }));
+
+      expect(fromDate).toHaveValue(from);
+      expect(toDate).toHaveValue('2026-10-13');
+      expect(within(presets).getByRole('button', { pressed: true })).toHaveTextContent(label);
+      expect(screen.getByText(label, { selector: '.rtx-history-duration-badge' })).toBeInTheDocument();
+    }
+
+    fireEvent.change(fromDate, { target: { value: '2026-10-10' } });
+
+    expect(within(presets).queryByRole('button', { pressed: true })).not.toBeInTheDocument();
+    expect(screen.getByText('4 Days', { selector: '.rtx-history-duration-badge' })).toBeInTheDocument();
+  });
+
+  it('shows populated queue states and routes pause, resume, cancel, and dismiss actions', async () => {
+    const taskBase = {
+      dateRange: { from: '2026-08-01', to: '2026-08-03' },
+      totalTicks: 1_000,
+      startTime: 1_000,
+    };
+    const tasks: DownloadTask[] = [
+      { ...taskBase, id: 'downloading', symbol: 'EURUSD', status: 'downloading', progress: 40, downloadedTicks: 400 },
+      { ...taskBase, id: 'paused', symbol: 'XAUUSD', status: 'paused', progress: 25, downloadedTicks: 250 },
+      { ...taskBase, id: 'completed', symbol: 'GBPUSD', status: 'completed', progress: 100, downloadedTicks: 1_000, endTime: 91_000 },
+      { ...taskBase, id: 'failed', symbol: 'USDJPY', status: 'failed', progress: 10, downloadedTicks: 100, error: 'Connection interrupted' },
+    ];
+    mocks.getDownloadTasks.mockReturnValue(tasks);
+    await renderLoadedDownloader();
+
+    const queue = screen.getByRole('region', { name: 'Download queue' });
+    expect(within(queue).getByText('2 active')).toBeInTheDocument();
+    expect(within(queue).getByText('4 total')).toBeInTheDocument();
+    expect(within(queue).getByRole('progressbar', { name: 'EURUSD Downloading' })).toHaveAttribute('aria-valuenow', '40');
+    expect(within(queue).getByRole('progressbar', { name: 'XAUUSD Paused' })).toHaveAttribute('aria-valuenow', '25');
+    expect(within(queue).getByRole('progressbar', { name: 'GBPUSD Completed' })).toHaveAttribute('aria-valuenow', '100');
+    expect(within(queue).getByRole('progressbar', { name: 'USDJPY Failed' })).toHaveAttribute('aria-valuenow', '10');
+    expect(within(queue).getByText('Completed in 1m 30s')).toBeInTheDocument();
+    expect(within(queue).getByText('Connection interrupted')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear cached data for EURUSD' })).toBeDisabled();
+    expect(within(queue).getByRole('button', { name: 'Pause GBPUSD download' })).toBeDisabled();
+    expect(within(queue).getByRole('button', { name: 'Pause USDJPY download' })).toBeDisabled();
+
+    fireEvent.click(within(queue).getByRole('button', { name: 'Pause EURUSD download' }));
+    fireEvent.click(within(queue).getByRole('button', { name: 'Resume XAUUSD download' }));
+    fireEvent.click(within(queue).getByRole('button', { name: 'Cancel EURUSD download' }));
+    fireEvent.click(within(queue).getByRole('button', { name: 'Dismiss GBPUSD download' }));
+    fireEvent.click(within(queue).getByRole('button', { name: 'Dismiss USDJPY download' }));
+
+    expect(mocks.pauseDownload).toHaveBeenCalledWith('downloading');
+    expect(mocks.resumeDownload).toHaveBeenCalledWith('paused');
+    expect(mocks.cancelDownload.mock.calls).toEqual([['downloading'], ['completed'], ['failed']]);
   });
 
   it('selects instruments from the symbol dropdown', async () => {

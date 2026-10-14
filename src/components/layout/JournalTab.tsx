@@ -1,5 +1,6 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import './journal-status.css';
+import './journal-toolbar.css';
 /**
  * JournalTab — MT5-style server journal panel
  * Fetches broker/account-scoped logs from GET /api/v2/journal.
@@ -27,7 +28,7 @@ import { journalApi, type JournalLogEntry } from '../../services/api';
 import { useBrokerAccountSessionScope } from '../../hooks/useBrokerAccountSessionScope';
 import { useAppStore } from '../../store/useAppStore';
 import {
-    getTradeOrderLatencySamples,
+    getJournalTradeOrderLatencySamples,
     TRADE_ORDER_LATENCY_EVENT,
     type TradeOrderLatencySample,
     type TradeOrderTerminalStatus,
@@ -251,7 +252,7 @@ const getServerTerminalStatus = (
 ): TradeOrderTerminalStatus | null => {
     if (log.type !== 6 && log.type_text.trim().toLowerCase() !== 'trade') return null;
     const terminalText = `${log.code_text} ${log.message}`.toLowerCase();
-    if (/\b(filled|executed|completed)\b/.test(terminalText)) return 'filled';
+    if (/\b(filled|executed|completed|succeeded)\b/.test(terminalText)) return 'filled';
     if (/\b(rejected|denied)\b/.test(terminalText)) return 'rejected';
     if (/\b(expired|timed out|timeout)\b/.test(terminalText)) return 'expired';
     if (/\b(failed|error)\b/.test(terminalText)) return 'failed';
@@ -307,6 +308,25 @@ const mergeTerminalTradeJournalLogs = (
 
     return [...localRows, ...mergedServerLogs].sort((left, right) => right.datetime - left.datetime);
 };
+
+type ServerTradeLatency = {
+    latencyMs: number;
+    datetime: number;
+    sessionScope: string;
+};
+
+const getLatestServerTradeLatency = (
+    logs: readonly JournalLogEntry[],
+    sessionScope: string,
+): ServerTradeLatency | null => logs.reduce<ServerTradeLatency | null>((latest, log) => {
+    if (getServerTerminalStatus(log) === null
+        || typeof log.latency_ms !== 'number'
+        || !Number.isFinite(log.latency_ms)
+        || log.latency_ms < 0
+        || !Number.isFinite(log.datetime)
+        || (latest && latest.datetime >= log.datetime)) return latest;
+    return { latencyMs: log.latency_ms, datetime: log.datetime, sessionScope };
+}, null);
 
 const sanitizeClipboardCell = (value: unknown): string => String(value ?? '')
     .replace(/[\t\r\n]+/g, ' ')
@@ -543,11 +563,12 @@ type JournalTabSurfaceProps = {
 function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceProps) {
     const tr = useUiTranslation();
     const [lastTradeLatency, setLastTradeLatency] = useState<ScopedTradeLatency | null>(() => (
-        getLatestTerminalTradeLatency(getTradeOrderLatencySamples(), sessionScope)
+        getLatestTerminalTradeLatency(getJournalTradeOrderLatencySamples(), sessionScope)
     ));
+    const [serverTradeLatency, setServerTradeLatency] = useState<ServerTradeLatency | null>(null);
     const [serverLogs, setServerLogs] = useState<JournalLogEntry[]>([]);
     const [terminalTradeSamples, setTerminalTradeSamples] = useState<PlacementTerminalSample[]>(() => (
-        getScopedPlacementTerminalSamples(getTradeOrderLatencySamples(), sessionScope)
+        getScopedPlacementTerminalSamples(getJournalTradeOrderLatencySamples(), sessionScope)
     ));
     const [hasLoaded, setHasLoaded] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -607,7 +628,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
         };
 
         window.addEventListener(TRADE_ORDER_LATENCY_EVENT, handleLatency);
-        const retainedSamples = getTradeOrderLatencySamples();
+        const retainedSamples = getJournalTradeOrderLatencySamples();
         setLastTradeLatency(getLatestTerminalTradeLatency(retainedSamples, sessionScope));
         setTerminalTradeSamples(getScopedPlacementTerminalSamples(retainedSamples, sessionScope));
 
@@ -658,6 +679,14 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                 cachedResponsesRef.current.set(requestKey, data.logs);
                 loadedSessionScopeRef.current = sessionScope;
                 setServerLogs(data.logs);
+                const candidate = getLatestServerTradeLatency(data.logs, sessionScope);
+                if (candidate) {
+                    setServerTradeLatency(current => (
+                        current?.sessionScope === sessionScope && current.datetime >= candidate.datetime
+                            ? current
+                            : candidate
+                    ));
+                }
                 setHasLoaded(true);
                 setLoadedRequestKey(requestKey);
                 setLoadedSessionScope(sessionScope);
@@ -807,9 +836,12 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
         setAutoScroll(current => current === enabled ? current : enabled);
     }, []);
 
-    const scopedLastTradeLatency = lastTradeLatency?.sessionScope === sessionScope
-        ? lastTradeLatency.latencyMs
-        : undefined;
+    const hasLocalTradeLatency = lastTradeLatency?.sessionScope === sessionScope;
+    const scopedLastTradeLatency = hasLocalTradeLatency
+        ? lastTradeLatency?.latencyMs
+        : serverTradeLatency?.sessionScope === sessionScope
+            ? serverTradeLatency.latencyMs
+            : undefined;
 
     // ── Render ─────────────────────────────────────────────────────────────
     return (
@@ -898,7 +930,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                     {tr("Filters")}</button>
 
                 {/* Text search */}
-                <div className="rtx-journal-advanced-control relative h-7 min-w-[220px] max-w-[400px] flex-[1_1_260px]">
+                <div className="rtx-journal-advanced-control rtx-journal-toolbar__search relative h-7 min-w-[220px] max-w-[400px] flex-[1_1_260px]">
                     <Icon name="search" size="sm" className="pointer-events-none absolute left-2 top-1/2 z-[1] -translate-y-1/2 text-zinc-500" />
                     <input
                         type="text"
@@ -910,18 +942,20 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                     />
                 </div>
 
-                <div className="ml-auto flex max-w-full shrink-0 flex-nowrap items-center justify-end gap-2">
+                <div className="rtx-journal-toolbar__summary ml-auto flex max-w-full shrink-0 flex-nowrap items-center justify-end gap-2">
 
                 {/* Log count */}
-                <span className="min-w-[88px] text-right text-[13px] font-normal text-zinc-400 whitespace-nowrap">
+                <span className="rtx-journal-toolbar__count min-w-[88px] text-right text-[13px] font-normal text-zinc-400 whitespace-nowrap">
                     {filteredLogs.length} {tr(" records")}</span>
 
                 <span
                     data-testid="last-trade-latency"
                     role="status"
                     aria-live="polite"
-                    className="rtx-journal-advanced-control min-w-[196px] border-l border-zinc-700/50 pl-3 text-[13px] font-normal text-zinc-400 whitespace-nowrap"
-                    title={tr("Latest locally measured total order-attempt time for this broker and account")}
+                    className="rtx-journal-toolbar__latency min-w-[196px] border-l border-zinc-700/50 pl-3 text-[13px] font-normal text-zinc-400 whitespace-nowrap"
+                    title={hasLocalTradeLatency
+                        ? tr("Latest locally measured total order-attempt time for this broker and account")
+                        : tr("Latest server-recorded trade execution time for this broker and account")}
                 >
                     {tr("Last trade latency: ")}{formatLatencyMs(scopedLastTradeLatency)}
                 </span>

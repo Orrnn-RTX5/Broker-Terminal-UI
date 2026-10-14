@@ -644,8 +644,8 @@ export const createTradeOverlayDomRuntime = ({
         Object.assign(chip.style, {
           position: 'static', display: 'inline-flex', transform: 'none',
           fontWeight: 'inherit', fontFamily: 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)', fontSize: 'inherit', letterSpacing: 'normal',
-          color: accent, padding: '0 2px', height: '20px', lineHeight: '18px', boxSizing: 'border-box',
-          minWidth: '24px', justifyContent: 'center', flex: '0 0 auto',
+          color: accent, padding: '0 1px', height: '15px', lineHeight: '13px', boxSizing: 'border-box',
+          minWidth: '18px', justifyContent: 'center', flex: '0 0 auto',
           backgroundColor: lightSurface
             ? (role === 'TP' ? '#edf7f4' : '#fff7e8')
             : (role === 'TP' ? '#21332f' : '#362f24'),

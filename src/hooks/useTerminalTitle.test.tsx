@@ -40,6 +40,21 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
+it('retains explicit deployment branding after login metadata arrives', async () => {
+    vi.stubGlobal('__RTX_RUNTIME_CONFIG__', {
+        CONFIG_SOURCE: 'deployment', API_HOST: 'https://selected.example', WS_HOST: 'wss://selected.example',
+        BROKER_ID: 'selected-broker', DEFAULT_MT5_SERVER: 'Selected-Live',
+        DISCOVERY_BASE_URL: 'https://directory.example', BROKER_LOGO_URL: 'https://branding.example/selected.png',
+    });
+    localStorage.setItem('broker_id', 'selected-broker');
+    localStorage.setItem('logo_url', 'https://selected.example/stale.png');
+    vi.mocked(configApi.getConfig).mockResolvedValue({ logo_url: '/assets/missing.png' } as Awaited<ReturnType<typeof configApi.getConfig>>);
+    const { result } = renderHook(useTerminalBrokerInfo);
+    expect(result.current.logoUrl).toBe('https://branding.example/selected.png');
+    await act(async () => {});
+    expect(result.current.logoUrl).toBe('https://branding.example/selected.png');
+});
+
 it('replaces a cached discovery logo with fresh broker configuration branding', async () => {
     localStorage.setItem('broker_id', 'selected-broker');
     localStorage.setItem('logo_url', 'https://directory.example/api/v1/brokers/selected-broker/logo');

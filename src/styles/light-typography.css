@@ -44,7 +44,7 @@ html:root.rtx-skin-untitled-light :is(
 
 html:root.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
   --rtx-type-size: var(--rtx-light-type-body);
-  --rtx-type-weight: var(--rtx-light-weight-control);
+  --rtx-type-weight: var(--rtx-light-weight-body);
 }
 
 html:root.rtx-skin-untitled-light :is(
@@ -87,7 +87,6 @@ html:root.rtx-skin-untitled-light :is(
 }
 
 html:root.rtx-skin-untitled-light :is(
-  .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab,
   [role='tab'][aria-selected='true'],
   .rtx-timeframe-option[aria-checked='true'],
   .rtx-history-time-btn[aria-pressed='true'],
@@ -198,9 +197,9 @@ html:root.rtx-skin-untitled-light :is(
   --rtx-type-family: var(--rtx-ui-font-family) !important;
 }
 
-/* Trade labels use the full reading size, including the user's size preference. */
+/* Compact entry labels still follow the user's size preference. */
 html:root.rtx-skin-untitled-light .rtx-trade-controls--entry.rtx-trade-controls--plain {
-  --rtx-type-size: var(--rtx-light-type-body) !important;
+  --rtx-type-size: max(11.5px, calc(var(--rtx-light-type-body) - 2.5px)) !important;
   --rtx-type-weight: var(--rtx-light-weight-body) !important;
 }
 

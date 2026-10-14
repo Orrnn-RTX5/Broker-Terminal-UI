@@ -1,0 +1,117 @@
+/* Keep the latency summary reachable when filters are collapsed or space is short. */
+html .rtx-journal-tab .rtx-journal-toolbar {
+  height: auto;
+  flex-wrap: wrap;
+}
+
+html .rtx-journal-tab .rtx-journal-toolbar__summary {
+  flex-wrap: wrap;
+}
+
+/* Journal chrome uses the light panel palette. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-toolbar {
+  height: auto !important;
+  min-height: 36px;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 3px 6px;
+  background-color: var(--rtx-light-panel) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-toolbar :is(
+  .rtx-journal-control, .rtx-journal-toolbar__label, .rtx-journal-toolbar__count, .rtx-journal-toolbar__latency
+) {
+  --rtx-type-size: var(--rtx-light-type-caption);
+  --rtx-type-weight: 400;
+  letter-spacing: normal !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-toolbar__label {
+  text-transform: none;
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-control {
+  height: 28px;
+  min-height: 28px;
+  border-radius: 3px !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  background-color: var(--rtx-light-elevated) !important;
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab button.rtx-journal-control:not(:disabled):hover {
+  background-color: var(--rtx-light-hover) !important;
+  border-color: var(--rtx-light-control-border-hover) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-control:is(:focus, :focus-visible) {
+  border-color: var(--rtx-light-accent-border) !important;
+  box-shadow: inset 0 0 0 1px var(--rtx-light-focus-ring) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-primary-action.text-emerald-400 {
+  border-color: #15803d !important;
+  color: #15803d !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-primary-action.text-red-400 {
+  border-color: var(--color-loss) !important;
+  color: var(--color-loss) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-periods {
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid var(--rtx-light-border);
+  border-radius: 4px;
+  background-color: var(--rtx-light-panel-subtle);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-time-btn {
+  height: 26px;
+  min-height: 26px;
+  min-width: 36px;
+  border-color: transparent !important;
+  background-color: transparent !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab :is(
+  .rtx-journal-time-btn[aria-pressed='true'], .rtx-journal-auto[aria-pressed='true']
+) {
+  --rtx-type-weight: 500;
+  background-color: var(--rtx-light-accent-soft) !important;
+  border-color: var(--rtx-light-accent-border) !important;
+  color: var(--rtx-light-accent-pressed) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-toolbar__search {
+  min-width: 180px;
+  height: 28px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-toolbar__summary {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-toolbar__count {
+  min-width: 0;
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-toolbar__latency {
+  min-width: 0;
+  padding-left: 6px;
+  border-color: var(--rtx-light-border);
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-tab .rtx-journal-table thead th {
+  --rtx-type-size: var(--rtx-light-type-caption);
+  --rtx-type-weight: 500;
+  background-color: var(--rtx-light-panel-subtle) !important;
+  color: var(--rtx-light-text-secondary) !important;
+  border-bottom: 1px solid var(--rtx-light-border);
+}

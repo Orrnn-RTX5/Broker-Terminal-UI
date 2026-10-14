@@ -104,7 +104,7 @@ const profileButton = (name: string) => screen.getByTitle(`Restore workspace ${n
 
 const expectSelectedProfile = (name: string) => {
     const restoreButtons = screen.getAllByTitle(/^Restore workspace /);
-    const selected = restoreButtons.filter(button => button.classList.contains('bg-emerald-500/10'));
+    const selected = restoreButtons.filter(button => button.getAttribute('aria-pressed') === 'true');
     expect(selected).toHaveLength(1);
     expect(selected[0]).toHaveAttribute('title', `Restore workspace ${name}`);
 };

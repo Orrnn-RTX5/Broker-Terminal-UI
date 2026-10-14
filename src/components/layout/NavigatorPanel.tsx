@@ -13,7 +13,7 @@ import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
 import { brokerV2Api } from '../../api/trade';
 import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
-import { buildBrokerDirectoryLogoUrl } from '../BrokerLogoImage';
+import { buildBrokerDirectoryLogoUrl, getConfiguredBrokerLogoUrl } from '../BrokerLogoImage';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
 import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
 import { openWebTrader } from '../../services/webTrader';
@@ -106,6 +106,7 @@ const buildBrokerLogoInfo = (
         const url = resolveNavigatorLogoUrl(value, sourceBases);
         if (url && !candidates.includes(url)) candidates.push(url);
     };
+    add(getConfiguredBrokerLogoUrl(brokerId));
     owned.forEach(source => add(source.logo_url || '', [source.server_url || '', source.backend_url || '', ...bases]));
     add(broker?.logo_url || '');
     if (storedMatches) add(stored?.logoUrl || '');

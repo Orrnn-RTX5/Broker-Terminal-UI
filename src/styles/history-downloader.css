@@ -1,25 +1,26 @@
 .rtx-history-downloader {
-  --history-accent: var(--color-info);
-  --history-accent-soft: var(--color-info-dim);
+  --history-accent: var(--color-blue-400, #60a5fa);
+  --history-accent-soft: color-mix(in srgb, var(--history-accent) 16%, transparent);
+  --history-action: var(--color-blue-600, #2563eb);
   --history-bg: var(--bg-primary);
   --history-panel: var(--bg-secondary);
   --history-panel-subtle: var(--bg-tertiary);
   --history-raised: var(--bg-quaternary);
   --history-border: var(--border-primary);
-  --history-border-strong: var(--border-secondary);
+  --history-border-strong: color-mix(in srgb, var(--text-primary) 38%, var(--history-panel));
   --history-text: var(--text-primary);
-  --history-text-secondary: var(--text-secondary);
-  --history-text-muted: var(--text-tertiary);
+  --history-text-secondary: color-mix(in srgb, var(--text-primary) 80%, var(--history-panel));
+  --history-text-muted: color-mix(in srgb, var(--text-primary) 68%, var(--history-panel));
 
   background: var(--history-bg);
   color: var(--history-text);
   color-scheme: dark;
   container-type: inline-size;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   width: 100%;
 }
 
@@ -48,8 +49,9 @@ html.theme-light .rtx-history-downloader {
   background: var(--history-panel);
   border-bottom: 1px solid var(--history-border);
   display: flex;
-  gap: 16px;
-  min-height: 40px;
+  gap: 12px;
+  flex-shrink: 0;
+  min-height: 52px;
   padding: 6px 12px;
 }
 
@@ -57,29 +59,28 @@ html.theme-light .rtx-history-downloader {
   align-items: center;
   display: flex;
   flex: 1 1 260px;
-  gap: 10px;
-  min-width: 190px;
+  gap: 8px;
+  min-width: 0;
 }
 
-.rtx-history-downloader__identity-icon,
-.rtx-history-empty__icon {
+.rtx-history-downloader__identity-icon {
   align-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
+  background: var(--history-panel-subtle);
+  border: 1px solid var(--history-border);
+  border-radius: 6px;
   color: var(--history-text-secondary);
   display: inline-flex;
   flex: 0 0 auto;
-  height: 18px;
+  height: 32px;
   justify-content: center;
-  width: 18px;
+  width: 32px;
 }
 
 .rtx-history-downloader__identity h2 {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
   letter-spacing: 0;
-  line-height: 16px;
+  line-height: 22px;
   margin: 0;
 }
 
@@ -87,7 +88,7 @@ html.theme-light .rtx-history-downloader {
   color: var(--history-text-muted);
   font-size: 11px;
   line-height: 14px;
-  margin: 1px 0 0;
+  margin: 2px 0 0;
 }
 
 .rtx-history-downloader__metrics {
@@ -101,8 +102,8 @@ html.theme-light .rtx-history-downloader {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-width: 96px;
-  padding: 2px 14px;
+  min-width: 80px;
+  padding: 0 10px;
 }
 
 .rtx-history-downloader__metrics dt {
@@ -116,10 +117,10 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-downloader__metrics dd {
-  color: #ffffff;
+  color: var(--history-text);
   font-family: var(--font-mono);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   line-height: 17px;
@@ -127,23 +128,19 @@ html.theme-light .rtx-history-downloader {
   white-space: nowrap;
 }
 
-.rtx-history-downloader__metric-wide {
-  min-width: 124px !important;
-}
-
 .rtx-history-icon-button {
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: 4px;
   color: var(--history-text-secondary);
   cursor: pointer;
   display: inline-flex;
   flex: 0 0 auto;
-  height: 30px;
+  height: 32px;
   justify-content: center;
   padding: 0;
-  width: 30px;
+  width: 32px;
 }
 
 .rtx-history-icon-button:hover:not(:disabled) {
@@ -163,6 +160,7 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-downloader__error {
+  flex-shrink: 0;
   align-items: center;
   background: var(--color-loss-dimmer);
   border-bottom: 1px solid var(--color-loss-dim);
@@ -192,10 +190,10 @@ html.theme-light .rtx-history-downloader {
 
 .rtx-history-downloader__workspace {
   display: flex;
-  flex: 1;
+  flex: 1 0 auto;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .rtx-history-symbols__toolbar {
@@ -465,6 +463,7 @@ html.theme-light .rtx-history-downloader {
 .rtx-history-main {
   background: var(--history-bg);
   display: flex;
+  flex: 1 0 auto;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
@@ -474,35 +473,42 @@ html.theme-light .rtx-history-downloader {
   background: var(--history-panel);
   border-bottom: 1px solid var(--history-border);
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   gap: 12px;
-  padding: 14px 18px;
+  padding: 16px;
 }
 
 .rtx-history-panel-row1 {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: space-between;
+  align-items: end;
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(280px, 340px) auto minmax(0, 1fr);
+  gap: 16px;
+}
+
+.rtx-history-panel-row1-actions {
+  justify-self: end;
 }
 
 .rtx-history-symbol-picker-group {
-  align-items: center;
+  align-items: stretch;
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
 .rtx-history-symbol-label {
-  color: var(--history-text-muted);
-  font-size: 11px;
-  font-weight: 500;
+  color: var(--history-text-secondary);
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .rtx-history-symbol-dropdown-wrapper {
   align-items: center;
   display: inline-flex;
   position: relative;
+  min-width: 0;
 }
 
 .rtx-history-symbol-select {
@@ -510,13 +516,15 @@ html.theme-light .rtx-history-downloader {
   background: var(--history-bg);
   border: 1px solid var(--history-border-strong);
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--history-text);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.03em;
-  min-width: 140px;
+  height: 36px;
+  min-width: 0;
+  width: 100%;
   outline: none;
   padding: 5px 30px 5px 12px;
   transition: border-color 150ms ease;
@@ -529,7 +537,7 @@ html.theme-light .rtx-history-downloader {
 
 .rtx-history-symbol-select option {
   background: var(--history-panel);
-  color: #ffffff;
+  color: var(--history-text);
   font-family: var(--font-mono);
 }
 
@@ -548,9 +556,11 @@ html.theme-light .rtx-history-downloader {
   color: var(--history-text-muted);
   cursor: pointer;
   display: inline-flex;
-  font-size: 11px;
-  gap: 5px;
-  padding: 4px 8px;
+  font-size: 13px;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px;
+  white-space: nowrap;
   transition: all 150ms ease;
 }
 
@@ -562,7 +572,7 @@ html.theme-light .rtx-history-downloader {
 
 .rtx-history-clear-btn:disabled {
   cursor: not-allowed;
-  opacity: 0.35;
+  opacity: 0.5;
 }
 
 .rtx-history-status-tag {
@@ -600,102 +610,95 @@ html.theme-light .rtx-history-downloader {
 .rtx-history-controls-row {
   align-items: center;
   display: flex;
-  flex-wrap: nowrap;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .rtx-history-segmented-presets {
-  background: var(--history-bg);
+  background: var(--history-panel-subtle);
   border: 1px solid var(--history-border);
   border-radius: 4px;
   display: inline-flex;
-  flex-shrink: 0;
-  gap: 1px;
+  flex-wrap: wrap;
+  max-width: 100%;
+  gap: 2px;
   padding: 2px;
 }
 
 .rtx-history-seg-btn {
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 3px;
   color: var(--history-text-secondary);
   cursor: pointer;
   flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 400;
+  min-height: 28px;
   line-height: 1.2;
-  padding: 5px 9px;
+  padding: 3px 10px;
   transition: all 120ms ease;
   white-space: nowrap;
 }
 
 .rtx-history-seg-btn:hover:not(.is-active) {
-  background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
+  background: var(--history-raised);
+  color: var(--history-text);
 }
 
 .rtx-history-seg-btn.is-active {
-  background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);
-  border: 1px solid #0284c7;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  color: #ffffff;
-  font-weight: 600;
+  background: var(--history-accent-soft);
+  border-color: var(--history-accent);
+  box-shadow: none;
+  color: var(--history-accent);
 }
 
 .rtx-history-seg-btn.is-active:hover {
-  background: linear-gradient(180deg, #0369a1 0%, #075985 100%);
-  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+  background: var(--history-accent-soft);
 }
 
 .rtx-history-date-inputs {
-  align-items: center;
-  background: var(--history-bg);
-  border: 1px solid var(--history-border);
-  border-radius: 4px;
-  display: inline-flex;
-  flex-shrink: 0;
-  gap: 8px;
-  padding: 2px 8px;
-}
-
-.rtx-history-date-inputs:focus-within {
-  border-color: var(--history-accent);
+  align-items: end;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  gap: 12px;
 }
 
 .rtx-history-field {
-  align-items: center;
-  color: var(--history-text-muted);
-  display: inline-flex;
-  flex-shrink: 0;
+  color: var(--history-text-secondary);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   gap: 6px;
 }
 
 .rtx-history-field-label {
-  color: var(--history-text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  color: var(--history-text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
 }
 
 .rtx-history-date-input {
-  background: transparent !important;
-  border: 0 !important;
-  color: #ffffff !important;
+  background: var(--history-bg);
+  border: 1px solid var(--history-border-strong);
+  border-radius: 4px;
+  color: var(--history-text);
   color-scheme: dark;
   cursor: pointer;
-  flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: 12px;
-  min-width: 120px;
-  outline: none !important;
-  padding: 3px 2px !important;
+  height: 36px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 10px;
 }
 
 .rtx-history-date-input::-webkit-calendar-picker-indicator {
   cursor: pointer;
-  filter: invert(0.8);
-  opacity: 0.6;
+  filter: none;
+  opacity: 0.8;
 }
 
 .rtx-history-date-input::-webkit-calendar-picker-indicator:hover {
@@ -710,14 +713,11 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-duration-badge {
-  background: var(--history-raised);
-  border: 1px solid var(--history-border-strong);
-  border-radius: 3px;
-  color: #38bdf8;
+  color: var(--history-text-muted);
   flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 400;
   min-width: 52px;
   padding: 2px 7px;
   text-align: center;
@@ -726,18 +726,18 @@ html.theme-light .rtx-history-downloader {
 
 .rtx-history-primary-button {
   align-items: center;
-  background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);
-  border: 1px solid #0284c7;
+  background: var(--history-action);
+  border: 1px solid var(--history-action);
   border-radius: 4px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: none;
   color: #ffffff !important;
   cursor: pointer;
   display: inline-flex;
   flex-shrink: 0;
-  font-size: 12px !important;
-  font-weight: 600 !important;
+  font-size: 14px;
+  font-weight: 400;
   gap: 7px;
-  height: 30px;
+  height: 36px;
   justify-content: center;
   padding: 0 14px;
   transition: all 150ms ease;
@@ -745,8 +745,7 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-primary-button:hover:not(:disabled) {
-  background: linear-gradient(180deg, #0369a1 0%, #075985 100%);
-  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+  background: color-mix(in srgb, var(--history-action) 85%, black);
 }
 
 .rtx-history-primary-button:disabled {
@@ -759,16 +758,23 @@ html.theme-light .rtx-history-downloader {
 
 .rtx-history-coverage-banner {
   align-items: center;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  border: 0;
   border-radius: 4px;
-  color: #c9d1d9;
+  color: var(--history-text-secondary);
   display: flex;
   flex-wrap: wrap;
   font-size: 12px;
   gap: 12px;
   justify-content: space-between;
-  padding: 8px 14px;
+  min-height: 20px;
+  padding: 0;
+}
+
+.rtx-history-coverage-banner[data-error='true'] {
+  background: var(--color-loss-dimmer);
+  color: var(--color-loss);
+  padding: 8px 10px;
 }
 
 .rtx-history-coverage-left {
@@ -776,11 +782,12 @@ html.theme-light .rtx-history-downloader {
   display: flex;
   font-size: 12px;
   font-weight: 400;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .rtx-history-coverage-left svg {
-  color: #34d399;
+  color: currentColor;
   flex-shrink: 0;
 }
 
@@ -792,15 +799,15 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-coverage-title {
-  color: #c9d1d9;
-  font-weight: 500;
+  color: var(--history-text-secondary);
+  font-weight: 400;
 }
 
 .rtx-history-coverage-date {
-  color: #ffffff;
+  color: var(--history-text);
   font-family: var(--font-mono);
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.02em;
 }
 
@@ -818,7 +825,7 @@ html.theme-light .rtx-history-downloader {
 
 .rtx-history-coverage-bar {
   align-items: center;
-  color: #c9d1d9;
+  color: var(--history-text-secondary);
   display: flex;
   font-size: 12px;
   font-weight: 500;
@@ -826,8 +833,8 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-bar-track {
-  background: #1e2029;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--history-border);
+  border: 0;
   border-radius: 3px;
   height: 6px;
   overflow: hidden;
@@ -835,9 +842,9 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-bar-fill {
-  background: linear-gradient(90deg, #10b981, #34d399);
+  background: var(--color-profit);
   border-radius: 3px;
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
+  box-shadow: none;
   height: 100%;
 }
 
@@ -850,7 +857,7 @@ html.theme-light .rtx-history-downloader {
   display: flex;
   flex: 1;
   flex-direction: column;
-  min-height: 0;
+  min-height: 190px;
 }
 
 .rtx-history-tasks__header {
@@ -859,16 +866,27 @@ html.theme-light .rtx-history-downloader {
   border-bottom: 1px solid var(--history-border);
   display: flex;
   justify-content: space-between;
-  min-height: 32px;
-  padding: 4px 12px;
+  flex-shrink: 0;
+  gap: 12px;
+  min-height: 42px;
+  padding: 8px 16px;
 }
 
 .rtx-history-task-count {
+  background: var(--history-panel-subtle);
+  border: 1px solid var(--history-border);
+  border-radius: 4px;
+  color: var(--history-text-secondary);
   line-height: 18px;
+  padding: 1px 7px;
+  white-space: nowrap;
 }
 
 .rtx-history-tasks__list {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  overflow: visible;
   padding: 0;
 }
 
@@ -876,12 +894,12 @@ html.theme-light .rtx-history-downloader {
   align-items: center;
   color: var(--history-text-muted);
   display: flex;
+  flex: 1;
   flex-direction: column;
   font-size: 10px;
-  height: 100%;
   justify-content: center;
-  min-height: 94px;
-  padding: 16px;
+  min-height: 150px;
+  padding: 24px 16px;
   text-align: center;
 }
 
@@ -889,13 +907,13 @@ html.theme-light .rtx-history-downloader {
   color: var(--history-text-secondary);
   font-size: 12px;
   font-weight: 500;
-  margin-top: 7px;
+  margin-top: 12px;
 }
 
 .rtx-history-empty > span:last-child {
   line-height: 15px;
-  margin-top: 2px;
-  max-width: 300px;
+  margin-top: 4px;
+  max-width: 420px;
 }
 
 .rtx-history-empty--compact {
@@ -909,8 +927,14 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-empty__icon {
-  height: 28px;
-  width: 28px;
+  align-items: center;
+  background: var(--history-panel-subtle);
+  border: 1px solid var(--history-border);
+  border-radius: 8px;
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
 }
 
 .rtx-history-task {
@@ -923,8 +947,9 @@ html.theme-light .rtx-history-downloader {
   gap: 12px;
   grid-template-columns: minmax(160px, 0.7fr) minmax(190px, 1.3fr) auto;
   margin-bottom: 0;
-  min-height: 48px;
-  padding: 8px 12px;
+  flex-shrink: 0;
+  min-height: 64px;
+  padding: 12px 16px;
 }
 
 .rtx-history-task:last-child {
@@ -946,7 +971,7 @@ html.theme-light .rtx-history-downloader {
 .rtx-history-task__status-dot {
   background: var(--status-pending);
   border-radius: 999px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-pending) 13%, transparent);
+  box-shadow: none;
   flex: 0 0 auto;
   height: 7px;
   width: 7px;
@@ -1023,27 +1048,30 @@ html.theme-light .rtx-history-downloader {
   gap: 2px;
 }
 
-/* Historical Data uses the shared light palette for controls and status as
-   well as surfaces; legacy gradient and white-text rules above remain dark. */
+/* The same restrained surfaces and controls follow the light palette. */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-downloader {
+  --history-accent: var(--rtx-light-accent);
+  --history-accent-soft: var(--rtx-light-selected);
+  --history-text-secondary: var(--rtx-light-text-secondary);
+  --history-text-muted: var(--rtx-light-text-muted);
   --history-bg: var(--rtx-light-panel);
   --history-panel-subtle: var(--rtx-light-hover);
   --history-raised: var(--rtx-light-hover);
 
   & :is(.rtx-history-downloader__header, .rtx-history-symbols__toolbar, .rtx-history-tasks__header) {
-    background: var(--rtx-light-panel-header);
+    background: var(--rtx-light-panel);
   }
 
-  & :is(.rtx-history-search, .rtx-history-date-inputs, .rtx-history-symbol-select) {
+  & :is(.rtx-history-search, .rtx-history-date-input, .rtx-history-symbol-select) {
     background: var(--rtx-light-field);
     border-color: var(--rtx-light-control-border) !important;
   }
 
-  & :is(.rtx-history-search, .rtx-history-date-inputs, .rtx-history-symbol-select):hover {
+  & :is(.rtx-history-search, .rtx-history-date-input, .rtx-history-symbol-select):hover {
     border-color: var(--rtx-light-control-border-hover) !important;
   }
 
-  & :is(.rtx-history-search, .rtx-history-date-inputs):focus-within {
+  & .rtx-history-search:focus-within {
     border-color: var(--rtx-light-accent) !important;
     outline: 2px solid var(--rtx-light-accent);
     outline-offset: 1px;
@@ -1055,8 +1083,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-downloader {
     box-shadow: 0 0 0 2px var(--rtx-light-elevated) !important;
   }
 
-  & .rtx-history-search input:focus-visible,
-  & .rtx-history-date-input:focus-visible {
+  & .rtx-history-search input:focus-visible {
     outline: none !important;
     box-shadow: none !important;
   }
@@ -1081,7 +1108,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-downloader {
   }
 
   & :is(.rtx-history-segmented-presets, .rtx-history-status-tag--muted) {
-    background: var(--rtx-light-panel-header);
+    background: var(--rtx-light-hover);
     border-color: var(--rtx-light-border);
   }
 
@@ -1126,9 +1153,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-downloader {
   }
 
   & .rtx-history-duration-badge {
-    background: var(--rtx-light-selected);
-    border-color: var(--rtx-light-border);
-    color: var(--rtx-light-accent-strong);
+    color: var(--rtx-light-text-muted);
   }
 
   & .rtx-history-status-tag--success {
@@ -1138,8 +1163,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-downloader {
   }
 
   & .rtx-history-coverage-banner {
-    background: var(--rtx-light-panel-header);
-    border-color: var(--rtx-light-border);
+    background: transparent;
     color: var(--rtx-light-text-secondary);
   }
 
@@ -1196,37 +1220,45 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-downloader {
   }
 }
 
-@container (max-width: 920px) {
-  .rtx-history-downloader__metric-wide {
-    display: none;
-  }
-
-  .rtx-history-downloader__workspace {
-    grid-template-columns: minmax(200px, 232px) minmax(0, 1fr);
-  }
-
-  .rtx-history-task {
+@container (max-width: 1000px) {
+  .rtx-history-downloader__header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
-    grid-template-columns: minmax(130px, 0.65fr) minmax(160px, 1.35fr) auto;
+  }
+
+  .rtx-history-downloader__metrics {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .rtx-history-downloader__metrics > div {
+    min-width: 0;
+    padding: 0 10px;
+  }
+
+  .rtx-history-downloader__metrics > div:first-child {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .rtx-history-panel-row1 {
+    grid-template-columns: minmax(140px, 1fr) minmax(280px, 2fr);
+    gap: 12px;
+  }
+
+  .rtx-history-primary-button {
+    justify-self: start;
   }
 }
 
 @container (max-width: 710px) {
-  .rtx-history-downloader__identity p,
-  .rtx-history-downloader__metrics > div:nth-child(2) {
-    display: none;
-  }
-
-  .rtx-history-downloader__workspace {
-    grid-template-columns: minmax(180px, 210px) minmax(0, 1fr);
-  }
-
-  .rtx-history-download-form {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .rtx-history-primary-button {
-    grid-column: 1 / -1;
+  .rtx-history-tasks__header > div {
+    align-items: start;
+    flex-direction: column;
+    gap: 2px;
   }
 
   .rtx-history-task {
@@ -1246,22 +1278,53 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-downloader {
 }
 
 @container (max-width: 520px) {
-  .rtx-history-downloader__header {
-    min-height: 50px;
-  }
-
   .rtx-history-downloader__metrics {
-    display: none;
+    gap: 8px 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .rtx-history-downloader__workspace {
+  .rtx-history-downloader__metrics > div:nth-child(3) {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .rtx-history-panel-row1 {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(150px, 42%) minmax(0, 1fr);
-    overflow: auto;
   }
 
-  .rtx-history-symbols {
-    border-bottom: 1px solid var(--history-border);
-    border-right: 0;
+  .rtx-history-primary-button,
+  .rtx-history-panel-row1-actions {
+    justify-self: stretch;
+  }
+
+  .rtx-history-clear-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@container (max-width: 360px) {
+  .rtx-history-downloader__metrics,
+  .rtx-history-date-inputs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rtx-history-downloader__metrics > div {
+    border-left: 0;
+    padding: 0;
+  }
+
+  .rtx-history-primary-button,
+  .rtx-history-clear-btn {
+    height: auto;
+    min-height: 36px;
+    min-width: 0;
+    padding: 8px;
+    white-space: normal;
+  }
+
+  .rtx-history-tasks__header {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }

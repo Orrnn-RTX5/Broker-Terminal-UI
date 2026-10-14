@@ -263,15 +263,15 @@ describe('createEntryTradeControlBar', () => {
     for (const action of ['share', 'reverse', 'double', 'close']) {
       const button = root.querySelector<HTMLButtonElement>(`.rtx-trade-control-btn--${action}`)!;
       expect(button.querySelector('svg')?.getAttribute('stroke')).toBe('currentColor');
-      expect(button).toHaveStyle({ width: '24px', height: '24px' });
+      expect(button).toHaveStyle({ width: '17px', height: '17px' });
       button.click();
     }
     const capsule = root.querySelector('.rtx-trade-primary')!;
     expect(capsule.querySelector('.rtx-trade-chip--volume')).not.toBeNull();
     expect(capsule.querySelector('.rtx-trade-chip--money')).not.toBeNull();
     expect(capsule.lastElementChild).toBe(root.querySelector('.rtx-trade-control-btn--close'));
-    expect(capsule).toHaveStyle({ height: '26px' });
-    expect(root).toHaveStyle({ minHeight: '26px', flexWrap: 'wrap' });
+    expect(capsule).toHaveStyle({ height: '19px' });
+    expect(root).toHaveStyle({ minHeight: '19px', flexWrap: 'wrap' });
     expect(root.querySelector('.rtx-trade-brackets')).not.toBeNull();
     expect(onShare).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls.map(([action]) => action)).toEqual(['reverse', 'double', 'close']);

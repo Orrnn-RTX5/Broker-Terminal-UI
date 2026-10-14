@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { StrictMode } from 'react';
 import { cleanup, renderHook } from '@testing-library/react';
-import { createChartEx, type IChartApi } from 'lightweight-charts';
+import { createChartEx, LineSeries, type IChartApi } from 'lightweight-charts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drawingManager } from '../../../services/drawingManager';
 import { useTradingChartInitialization } from './useTradingChartInitialization';
@@ -22,6 +22,7 @@ const createOptions = (): Options => ({
   brokerTimeOffsetSecRef: ref(0), chartSettings: { showGrid: false }, chartSettingsRef: ref({}),
   chartTheme: {}, isAdvancedUntitledLight: false, chartAxisFontSize: 12, ctxChartShift: false,
   squareGridHostSeriesRef: ref(null), squareGridPrimitiveRef: ref(null), seriesRef: ref(null),
+  resolvedPriceDigitsRef: ref(2), resolvedPricePointRef: ref(0.01),
   localIndicatorManager: { setChart: vi.fn(), saveToStorage: vi.fn(), clearAll: vi.fn() },
   chartInteractionOwnershipRef: ref(null), settleAutoScrollPolicyRef: ref(() => undefined),
   clearLocalChartPointerStateRef: ref(() => undefined), loadedIndicatorStorageScopeRef: ref('account-a:chart-test'),
@@ -44,6 +45,32 @@ afterEach(async () => {
 });
 
 describe('imperative chart resources during effect replay', () => {
+  it.each([
+    ['EURUSD', 5, 0.00001],
+    ['USDJPY', 3, 0.001],
+    ['BTCUSD', 2, 0.01],
+  ] as const)('initializes the axis-owning helper with %s instrument precision', (symbol, digits, point) => {
+    const hostSeries = { attachPrimitive: vi.fn(), detachPrimitive: vi.fn() };
+    const scale = {
+      subscribeSizeChange: vi.fn(), subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeSizeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(),
+    };
+    const chart = {
+      addSeries: vi.fn(() => hostSeries), timeScale: () => scale,
+      subscribeCrosshairMove: vi.fn(), unsubscribeCrosshairMove: vi.fn(), remove: vi.fn(),
+    };
+    vi.mocked(createChartEx).mockReturnValue(chart as unknown as ReturnType<typeof createChartEx>);
+    const options = createOptions();
+    options.symbol = symbol;
+    options.resolvedPriceDigitsRef.current = digits;
+    options.resolvedPricePointRef.current = point;
+    renderHook(() => useTradingChartInitialization(options));
+    expect(chart.addSeries).toHaveBeenCalledWith(LineSeries, expect.objectContaining({
+      priceScaleId: 'right',
+      priceFormat: { type: 'price', precision: digits, minMove: point },
+    }));
+  });
+
   it('creates one canvas owner and retains indicators and subscriptions until actual unmount', async () => {
     const scale = {
       subscribeSizeChange: vi.fn(), subscribeVisibleLogicalRangeChange: vi.fn(),

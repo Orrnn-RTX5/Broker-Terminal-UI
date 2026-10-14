@@ -1035,6 +1035,12 @@ textarea {
   color: var(--text-primary);
 }
 
+/* The current workspace is a blue selection state in both menu surfaces. */
+html .rtx-file-menu button.rtx-file-menu__profile[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--color-blue-500, #3b82f6) 14%, transparent);
+  color: var(--color-blue-400, #60a5fa);
+}
+
 .rtx-file-menu button:disabled {
   color: var(--text-quaternary);
 }
