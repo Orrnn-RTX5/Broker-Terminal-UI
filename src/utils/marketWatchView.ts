@@ -3,6 +3,7 @@ import { formatBrokerServerTime } from '../services/brokerServerClock';
 
 export const MARKET_WATCH_COLUMNS_STORAGE_KEY = 'rtx5_marketwatch_cols';
 export const MARKET_WATCH_OPTIONS_STORAGE_KEY = 'rtx5_marketwatch_options';
+export const MARKET_WATCH_TICK_CHART_OPTIONS_STORAGE_KEY = 'rtx5_marketwatch_tick_chart_options';
 export const MARKET_WATCH_SYMBOL_SETS_STORAGE_KEY = 'rtx5_symbol_sets';
 export const MARKET_WATCH_SYMBOL_SET_COLUMNS_STORAGE_KEY = 'rtx5_symbol_set_columns';
 
@@ -32,6 +33,15 @@ export interface MarketWatchOptions {
   showGrid: boolean;
 }
 
+export interface MarketWatchTickChartOptions {
+  autoScroll: boolean;
+  crosshair: boolean;
+  bidLine: boolean;
+  askLine: boolean;
+  lastLine: boolean;
+  grid: boolean;
+}
+
 export interface MarketWatchSavedSet {
   symbols: string[];
   columns: MarketWatchColumnId[];
@@ -55,6 +65,15 @@ export const DEFAULT_MARKET_WATCH_OPTIONS: MarketWatchOptions = {
   autoRemoveExpired: false,
   autoArrange: true,
   showGrid: true,
+};
+
+export const DEFAULT_MARKET_WATCH_TICK_CHART_OPTIONS: MarketWatchTickChartOptions = {
+  autoScroll: true,
+  crosshair: true,
+  bidLine: true,
+  askLine: true,
+  lastLine: true,
+  grid: true,
 };
 
 const normalizeSymbol = (value: unknown): string => String(value ?? '').trim().toUpperCase();
@@ -123,6 +142,38 @@ export const loadMarketWatchOptions = (): MarketWatchOptions => (
 
 export const saveMarketWatchOptions = (options: MarketWatchOptions): void => {
   writeJson(MARKET_WATCH_OPTIONS_STORAGE_KEY, normalizeMarketWatchOptions(options));
+};
+
+export const normalizeMarketWatchTickChartOptions = (value: unknown): MarketWatchTickChartOptions => {
+  const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return {
+    autoScroll: typeof record.autoScroll === 'boolean'
+      ? record.autoScroll
+      : DEFAULT_MARKET_WATCH_TICK_CHART_OPTIONS.autoScroll,
+    crosshair: typeof record.crosshair === 'boolean'
+      ? record.crosshair
+      : DEFAULT_MARKET_WATCH_TICK_CHART_OPTIONS.crosshair,
+    bidLine: typeof record.bidLine === 'boolean'
+      ? record.bidLine
+      : DEFAULT_MARKET_WATCH_TICK_CHART_OPTIONS.bidLine,
+    askLine: typeof record.askLine === 'boolean'
+      ? record.askLine
+      : DEFAULT_MARKET_WATCH_TICK_CHART_OPTIONS.askLine,
+    lastLine: typeof record.lastLine === 'boolean'
+      ? record.lastLine
+      : DEFAULT_MARKET_WATCH_TICK_CHART_OPTIONS.lastLine,
+    grid: typeof record.grid === 'boolean'
+      ? record.grid
+      : DEFAULT_MARKET_WATCH_TICK_CHART_OPTIONS.grid,
+  };
+};
+
+export const loadMarketWatchTickChartOptions = (): MarketWatchTickChartOptions => (
+  normalizeMarketWatchTickChartOptions(readJson(MARKET_WATCH_TICK_CHART_OPTIONS_STORAGE_KEY))
+);
+
+export const saveMarketWatchTickChartOptions = (options: MarketWatchTickChartOptions): void => {
+  writeJson(MARKET_WATCH_TICK_CHART_OPTIONS_STORAGE_KEY, normalizeMarketWatchTickChartOptions(options));
 };
 
 const normalizeSymbolList = (value: unknown): string[] => {

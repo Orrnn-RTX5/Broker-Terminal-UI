@@ -19,6 +19,7 @@ export interface TickChartPoint {
   timestamp: number;
   bid: number;
   ask: number;
+  last?: number;
 }
 
 export interface TickChartLayoutOptions {
@@ -86,12 +87,14 @@ export interface TickChartGeometry {
   labelDigits: number;
   bidPath: string;
   askPath: string;
+  lastPath: string | null;
   priceTicks: { y: number; label: string }[];
   timeTicks: { x: number; label: string }[];
   /** Broker-day boundaries, drawn as dashed separators. */
   separators: number[];
   askTag: TickChartPriceTag;
   bidTag: TickChartPriceTag;
+  lastTag: TickChartPriceTag | null;
   tagHeight: number;
   latest: TickChartPoint;
 }
@@ -139,6 +142,9 @@ export function buildTickChartGeometry(
     widest,
     textWidth(formatTickChartPrice(point.ask, digits)),
     textWidth(formatTickChartPrice(point.bid, digits)),
+    point.last !== undefined && Number.isFinite(point.last) && point.last > 0
+      ? textWidth(formatTickChartPrice(point.last, digits))
+      : 0,
   ), 0);
   const axisWidth = Math.ceil(widestPrice + LABEL_PADDING_PX * 2 + AXIS_TICK_PX);
   const axisHeight = Math.ceil(fontSize + LABEL_PADDING_PX + AXIS_TICK_PX);
@@ -155,8 +161,16 @@ export function buildTickChartGeometry(
   const visible = candidates.slice(-visibleCount);
   const latest = visible[visible.length - 1];
 
-  let minimum = Math.min(...visible.map(point => Math.min(point.bid, point.ask)));
-  let maximum = Math.max(...visible.map(point => Math.max(point.bid, point.ask)));
+  let minimum = Math.min(...visible.map(point => (
+    point.last !== undefined && Number.isFinite(point.last) && point.last > 0
+      ? Math.min(point.bid, point.ask, point.last)
+      : Math.min(point.bid, point.ask)
+  )));
+  let maximum = Math.max(...visible.map(point => (
+    point.last !== undefined && Number.isFinite(point.last) && point.last > 0
+      ? Math.max(point.bid, point.ask, point.last)
+      : Math.max(point.bid, point.ask)
+  )));
   const brokerStep = digits === null ? 0 : 10 ** -digits;
   const observedRange = maximum - minimum;
   const padding = observedRange > 0
@@ -192,6 +206,24 @@ export function buildTickChartGeometry(
     segments.push(`H${coordinate(plot.right)}`);
     return segments.join('');
   };
+
+  const lastPoints = visible
+    .map((point, index) => (
+      point.last !== undefined && Number.isFinite(point.last) && point.last > 0
+        ? { index, price: point.last }
+        : null
+    ))
+    .filter((entry): entry is { index: number; price: number } => entry !== null);
+  let lastPath: string | null = null;
+  let lastTag: TickChartPriceTag | null = null;
+  if (lastPoints.length > 0) {
+    const segments = [`M${coordinate(xAt(lastPoints[0].index))} ${coordinate(yAt(lastPoints[0].price))}`];
+    for (let index = 1; index < lastPoints.length; index += 1) {
+      segments.push(`H${coordinate(xAt(lastPoints[index].index))}V${coordinate(yAt(lastPoints[index].price))}`);
+    }
+    segments.push(`H${coordinate(plot.right)}`);
+    lastPath = segments.join('');
+  }
 
   const separators: number[] = [];
   for (let index = 1; index < visible.length; index += 1) {
@@ -233,6 +265,11 @@ export function buildTickChartGeometry(
   }
   askY = clamp(askY, plot.top + halfTag, plot.bottom - halfTag * 3);
   bidY = clamp(Math.max(bidY, askY + tagHeight), plot.top + halfTag * 3, plot.bottom - halfTag);
+  if (lastPoints.length > 0) {
+    const latestLast = lastPoints[lastPoints.length - 1].price;
+    const lastY = clamp(yAt(latestLast), plot.top + halfTag, plot.bottom - halfTag);
+    lastTag = { y: lastY, label: formatTickChartPrice(latestLast, digits) };
+  }
 
   return {
     plot,
@@ -246,11 +283,13 @@ export function buildTickChartGeometry(
     labelDigits,
     bidPath: stepPath('bid'),
     askPath: stepPath('ask'),
+    lastPath,
     priceTicks,
     timeTicks,
     separators,
     askTag: { y: askY, label: formatTickChartPrice(latest.ask, digits) },
     bidTag: { y: bidY, label: formatTickChartPrice(latest.bid, digits) },
+    lastTag,
     tagHeight,
     latest,
   };

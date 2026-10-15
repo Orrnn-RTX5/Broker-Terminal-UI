@@ -34,6 +34,7 @@ const tagLabel = (side: 'bid' | 'ask'): string | null | undefined => (
 
 describe('MarketWatchTickChart', () => {
   beforeEach(() => {
+    localStorage.clear();
     apiGet.mockReset();
     apiGet.mockResolvedValue([]);
     useMarketDataStore.getState().clearAllData();
@@ -42,6 +43,7 @@ describe('MarketWatchTickChart', () => {
 
   afterEach(() => {
     cleanup();
+    localStorage.clear();
     useMarketDataStore.getState().clearAllData();
     useAppStore.getState().setTicks({});
   });
@@ -195,6 +197,126 @@ describe('MarketWatchTickChart', () => {
 
     fireEvent.mouseLeave(svg);
     expect(screen.queryByTestId('market-tick-crosshair')).not.toBeInTheDocument();
+  });
+
+  it('opens the MT5 right-click context menu and executes New Order, Chart Window, and chart toggles', () => {
+    const initialTicks: Tick[] = [
+      {
+        symbol: 'EURUSD',
+        bid: 1.11915,
+        ask: 1.11916,
+        last: 1.11915,
+        spread: 0.00001,
+        timestamp: Date.UTC(2026, 9, 14, 13, 12, 20),
+      },
+      {
+        symbol: 'EURUSD',
+        bid: 1.11920,
+        ask: 1.11921,
+        last: 1.11920,
+        spread: 0.00001,
+        timestamp: Date.UTC(2026, 9, 14, 13, 12, 21),
+      },
+    ];
+    setTickBuffer('EURUSD', initialTicks);
+
+    const orderListener = vi.fn();
+    const chartListener = vi.fn();
+    window.addEventListener('openOrderDialog', orderListener);
+    window.addEventListener('openChart', chartListener);
+
+    try {
+      const { container } = render(
+        <MarketWatchTickChart symbol="EURUSD" instrumentSources={[{ symbol: 'EURUSD', digits: 5 }]} />,
+      );
+      const svg = container.querySelector('svg[data-tick-count]')!;
+
+      fireEvent.contextMenu(svg, { clientX: 80, clientY: 80 });
+      const menu = screen.getByRole('menu');
+      expect(menu).toHaveTextContent('New Order');
+      expect(menu).toHaveTextContent('Chart Window');
+      expect(menu).toHaveTextContent('Auto Scroll');
+      expect(menu).toHaveTextContent('Crosshair');
+      expect(menu).toHaveTextContent('Bid Line');
+      expect(menu).toHaveTextContent('Ask Line');
+      expect(menu).toHaveTextContent('Last Line');
+      expect(menu).toHaveTextContent('Grid');
+
+      fireEvent.click(screen.getByRole('menuitem', { name: /New Order/i }));
+      expect(orderListener).toHaveBeenCalledTimes(1);
+      expect((orderListener.mock.calls[0][0] as CustomEvent).detail).toEqual({ symbol: 'EURUSD' });
+
+      fireEvent.contextMenu(svg, { clientX: 80, clientY: 80 });
+      fireEvent.click(screen.getByRole('menuitem', { name: /Chart Window/i }));
+      expect(chartListener).toHaveBeenCalledTimes(1);
+      expect((chartListener.mock.calls[0][0] as CustomEvent).detail).toEqual({ symbol: 'EURUSD', newWindow: true });
+
+      // Bid Line toggle
+      expect(screen.getByTestId('market-tick-bid-line')).toBeInTheDocument();
+      expect(screen.getByTestId('market-tick-bid-tag')).toBeInTheDocument();
+      fireEvent.contextMenu(svg, { clientX: 80, clientY: 80 });
+      fireEvent.click(screen.getByRole('menuitem', { name: /Bid Line/i }));
+      expect(screen.queryByTestId('market-tick-bid-line')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('market-tick-bid-tag')).not.toBeInTheDocument();
+
+      // Ask Line toggle via shortcut 'A'
+      expect(screen.getByTestId('market-tick-ask-line')).toBeInTheDocument();
+      fireEvent.keyDown(svg, { key: 'a' });
+      expect(screen.queryByTestId('market-tick-ask-line')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('market-tick-ask-tag')).not.toBeInTheDocument();
+
+      // Re-enable Bid and Ask via shortcuts 'B' and 'A'
+      fireEvent.keyDown(svg, { key: 'b' });
+      fireEvent.keyDown(svg, { key: 'a' });
+      expect(screen.getByTestId('market-tick-bid-line')).toBeInTheDocument();
+      expect(screen.getByTestId('market-tick-ask-line')).toBeInTheDocument();
+
+      // Last Line toggle via context menu
+      expect(screen.getByTestId('market-tick-last-line')).toBeInTheDocument();
+      expect(screen.getByTestId('market-tick-last-tag')).toBeInTheDocument();
+      fireEvent.contextMenu(svg, { clientX: 80, clientY: 80 });
+      fireEvent.click(screen.getByRole('menuitem', { name: /Last Line/i }));
+      expect(screen.queryByTestId('market-tick-last-line')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('market-tick-last-tag')).not.toBeInTheDocument();
+
+      // Grid toggle via context menu
+      expect(screen.getByTestId('market-tick-grid')).toBeInTheDocument();
+      fireEvent.contextMenu(svg, { clientX: 80, clientY: 80 });
+      fireEvent.click(screen.getByRole('menuitem', { name: /Grid/i }));
+      expect(screen.queryByTestId('market-tick-grid')).not.toBeInTheDocument();
+
+      // Crosshair toggle via context menu
+      fireEvent.mouseMove(svg, { clientX: 120, clientY: 110 });
+      expect(screen.getByTestId('market-tick-crosshair')).toBeInTheDocument();
+      fireEvent.contextMenu(svg, { clientX: 80, clientY: 80 });
+      fireEvent.click(screen.getByRole('menuitem', { name: /Crosshair/i }));
+      expect(screen.queryByTestId('market-tick-crosshair')).not.toBeInTheDocument();
+
+      // Auto Scroll toggle freezes incoming ticks until re-enabled
+      expect(tagLabel('bid')).toBe('1.11920');
+      fireEvent.contextMenu(svg, { clientX: 80, clientY: 80 });
+      fireEvent.click(screen.getByRole('menuitem', { name: /Auto Scroll/i }));
+      act(() => {
+        setTickBuffer('EURUSD', [
+          ...initialTicks,
+          {
+            symbol: 'EURUSD',
+            bid: 1.12500,
+            ask: 1.12502,
+            last: 1.12500,
+            spread: 0.00002,
+            timestamp: Date.UTC(2026, 9, 14, 13, 12, 25),
+          },
+        ]);
+      });
+      expect(tagLabel('bid')).toBe('1.11920');
+
+      fireEvent.keyDown(svg, { key: 's' });
+      expect(tagLabel('bid')).toBe('1.12500');
+    } finally {
+      window.removeEventListener('openOrderDialog', orderListener);
+      window.removeEventListener('openChart', chartListener);
+    }
   });
 });
 

@@ -5,6 +5,7 @@ export interface Tick extends QuoteTradingStatusFields {
   symbol: string;
   bid: number;
   ask: number;
+  last?: number;
   spread: number;
   timestamp: number;
   /** Upstream event time, distinct from a local receipt-time fallback. */

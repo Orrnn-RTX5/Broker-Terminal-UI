@@ -35,11 +35,17 @@ export const parseMarketWatchTickHistory = (
     const timestamp = readBrokerTimestampMs([row]);
     const rawBid = positivePrice(row.bid);
     const rawAsk = positivePrice(row.ask);
+    const rawLast = positivePrice(row.last);
     if (timestamp === undefined || rawBid === null || rawAsk === null) return;
     // History arrives on the raw feed basis; live ticks carry the account's
     // spread markup, so both are shown on the same basis.
     const { bid, ask } = applyAccountSpreadMarkup(exactSymbol, { bid: rawBid, ask: rawAsk, spread: rawAsk - rawBid });
-    points.push({ timestamp, bid: Number(bid), ask: Number(ask) });
+    points.push({
+      timestamp,
+      bid: Number(bid),
+      ask: Number(ask),
+      ...(rawLast !== null ? { last: rawLast } : {}),
+    });
   });
   return points.sort((left, right) => left.timestamp - right.timestamp);
 };

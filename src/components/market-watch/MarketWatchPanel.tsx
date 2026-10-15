@@ -635,7 +635,11 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       const handleKeyDown = (e: KeyboardEvent) => {
         if (shouldIgnoreShortcutEvent(e) || isShortcutInput(e) || isShortcutLocalScope(e) || isShortcutOverlay(e)) return;
         if (!containerRef.current?.contains(getShortcutEventTarget(e))) return;
-        const shortcutSymbol = marketWatchView === 'details' ? detailsSymbol : normalizeSymbol(selectedSymbol);
+        const shortcutSymbol = marketWatchView === 'details'
+          ? detailsSymbol
+          : marketWatchView === 'ticks'
+            ? tickChartSymbolForView
+            : normalizeSymbol(selectedSymbol);
         // The global manager owns these commands. This scoped fallback serves
         // a standalone Market Watch only when the event was not already used.
         if (e.key === 'F9' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
@@ -654,18 +658,18 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
             window.dispatchEvent(new CustomEvent('openDepthOfMarket', { detail: { symbol: shortcutSymbol } }));
           }
         }
-        if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'a') {
+        if (marketWatchView !== 'ticks' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'a') {
           e.preventDefault();
           setMarketWatchOptions((current) => ({ ...current, autoArrange: !current.autoArrange }));
         }
-        if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'g') {
+        if (marketWatchView !== 'ticks' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'g') {
           e.preventDefault();
           setMarketWatchOptions((current) => ({ ...current, showGrid: !current.showGrid }));
         }
       };
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [actionableSymbolSet, detailsSymbol, marketWatchView, selectedSymbol]);
+    }, [actionableSymbolSet, detailsSymbol, marketWatchView, selectedSymbol, tickChartSymbolForView]);
 
     const closeSymbolExplorer = useCallback(() => {
       setSearch('');
@@ -904,6 +908,8 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               symbol={tickChartSymbolForView}
               instrumentSources={tickChartInstrumentSources}
               historyScopeKey={dailyChangeScopeKey}
+              canTrade={actionableSymbolSet.has(tickChartSymbolForView)}
+              canOpenChart={chartOpenableSymbolSet.has(tickChartSymbolForView)}
             />
           )}
 

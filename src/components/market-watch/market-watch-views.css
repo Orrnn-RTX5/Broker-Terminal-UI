@@ -1,6 +1,7 @@
 .rtx-market-tick-chart {
   --rtx-tick-chart-bid: #0060ff;
   --rtx-tick-chart-ask: #ff6060;
+  --rtx-tick-chart-last: #22c55e;
   --rtx-tick-chart-plot: #1f1f1f;
   --rtx-tick-chart-grid: #454545;
   --rtx-tick-chart-frame: #ffffff;
@@ -25,6 +26,7 @@ html.rtx-skin-untitled-light .rtx-market-tick-chart,
 html.theme-light .rtx-market-tick-chart {
   --rtx-tick-chart-bid: var(--rtx-light-quote-up, #1d4ed8);
   --rtx-tick-chart-ask: var(--rtx-light-quote-down, #b91c1c);
+  --rtx-tick-chart-last: var(--color-profit, #15803d);
   --rtx-tick-chart-plot: #ffffff;
   --rtx-tick-chart-grid: #d0d5dd;
   --rtx-tick-chart-frame: var(--rtx-light-text, #101828);
@@ -41,6 +43,7 @@ html.theme-light .rtx-market-tick-chart {
   min-height: 120px;
   flex: 1 1 auto;
   overflow: hidden;
+  outline: none;
 }
 
 /* Absolute so the measured SVG never feeds back into its container's size. */
@@ -50,6 +53,10 @@ html.theme-light .rtx-market-tick-chart {
   display: block;
   font-variant-numeric: tabular-nums;
   cursor: crosshair;
+}
+
+.rtx-market-tick-chart[data-crosshair='false'] .rtx-market-tick-chart__canvas > svg {
+  cursor: default;
 }
 
 .rtx-market-tick-chart__plot {
@@ -80,6 +87,10 @@ html.theme-light .rtx-market-tick-chart {
 
 .rtx-market-tick-chart__line--ask {
   stroke: var(--rtx-tick-chart-ask);
+}
+
+.rtx-market-tick-chart__line--last {
+  stroke: var(--rtx-tick-chart-last);
 }
 
 .rtx-market-tick-chart__crosshair {
@@ -133,6 +144,11 @@ html.theme-light .rtx-market-tick-chart {
   shape-rendering: crispEdges;
 }
 
+.rtx-market-tick-chart__tag--last line {
+  stroke: var(--rtx-tick-chart-last);
+  shape-rendering: crispEdges;
+}
+
 .rtx-market-tick-chart__tag--crosshair line {
   stroke: var(--rtx-tick-chart-crosshair);
   shape-rendering: crispEdges;
@@ -146,8 +162,13 @@ html.theme-light .rtx-market-tick-chart {
   fill: var(--rtx-tick-chart-ask);
 }
 
+.rtx-market-tick-chart__tag--last rect {
+  fill: var(--rtx-tick-chart-last);
+}
+
 .rtx-market-tick-chart__tag--bid text,
-.rtx-market-tick-chart__tag--ask text {
+.rtx-market-tick-chart__tag--ask text,
+.rtx-market-tick-chart__tag--last text {
   fill: var(--rtx-tick-chart-tag-text);
 }
 
