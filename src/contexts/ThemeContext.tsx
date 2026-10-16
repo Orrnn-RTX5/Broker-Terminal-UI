@@ -51,7 +51,7 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             root.style.setProperty('--color-primary', accentColor);
             root.style.setProperty('--color-primary-dim', `${accentColor}40`);
             root.style.setProperty('--color-primary-dimmer', `${accentColor}20`);
-        } else {
+        } else if (root.getAttribute('data-rtx-theme-configured') !== 'true') {
             // Reset to default primary color
             root.style.removeProperty('--color-primary');
             root.style.removeProperty('--color-primary-dim');

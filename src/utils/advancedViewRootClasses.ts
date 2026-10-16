@@ -1,3 +1,10 @@
+import {
+  applyThemeAppearanceToRoot,
+  clearThemeAppearanceFromRoot,
+  loadStoredThemeAppearance,
+  RTX_THEME_APPEARANCE_STORAGE_KEY,
+} from './themePresets';
+
 export type AdvancedViewFontSize = 'small' | 'normal' | 'large';
 export type AdvancedViewDensity = 'comfortable' | 'compact';
 export type AdvancedViewAccent = 'purple' | 'blue' | 'green' | 'amber';
@@ -105,6 +112,7 @@ export const clearAdvancedViewRootClasses = (root: HTMLElement) => {
     ...ADVANCED_VIEW_ONLY_CLASSES,
     'rtx-advanced-focus-chart',
   );
+  clearThemeAppearanceFromRoot(root);
 };
 
 export const isSavedThemeLight = (): boolean => {
@@ -129,6 +137,13 @@ export const initRootTheme = (root: HTMLElement = document.documentElement) => {
   root.classList.toggle('rtx-advanced-focus-chart', readChartFocusPreference());
 
   try {
+    if (localStorage.getItem(RTX_THEME_APPEARANCE_STORAGE_KEY)) {
+      const appearance = loadStoredThemeAppearance();
+      applyThemeAppearanceToRoot(root, {
+        ...appearance,
+        themeMode: isLight ? 'light' : 'dark',
+      });
+    }
     const rawOptions = localStorage.getItem('rtx5-advanced-view-options');
     if (rawOptions) {
       const opts = JSON.parse(rawOptions);

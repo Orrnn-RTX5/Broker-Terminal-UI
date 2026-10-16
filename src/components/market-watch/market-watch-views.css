@@ -2,14 +2,14 @@
   --rtx-tick-chart-bid: #0060ff;
   --rtx-tick-chart-ask: #ff6060;
   --rtx-tick-chart-last: #22c55e;
-  --rtx-tick-chart-plot: #1f1f1f;
-  --rtx-tick-chart-grid: #454545;
-  --rtx-tick-chart-frame: #ffffff;
-  --rtx-tick-chart-separator: #696969;
+  --rtx-tick-chart-plot: var(--bg-secondary, #1f1f1f);
+  --rtx-tick-chart-grid: var(--border-primary, #454545);
+  --rtx-tick-chart-frame: var(--text-primary, #ffffff);
+  --rtx-tick-chart-separator: var(--text-tertiary, #696969);
   --rtx-tick-chart-text: var(--text-primary, #e2e2e8);
-  --rtx-tick-chart-tag-text: #1f1f1f;
-  --rtx-tick-chart-crosshair: #696969;
-  --rtx-tick-chart-crosshair-text: #1f1f1f;
+  --rtx-tick-chart-tag-text: var(--bg-secondary, #1f1f1f);
+  --rtx-tick-chart-crosshair: var(--text-secondary, #696969);
+  --rtx-tick-chart-crosshair-text: var(--bg-secondary, #1f1f1f);
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -27,13 +27,13 @@ html.theme-light .rtx-market-tick-chart {
   --rtx-tick-chart-bid: var(--rtx-light-quote-up, #1d4ed8);
   --rtx-tick-chart-ask: var(--rtx-light-quote-down, #b91c1c);
   --rtx-tick-chart-last: var(--color-profit, #15803d);
-  --rtx-tick-chart-plot: #ffffff;
-  --rtx-tick-chart-grid: #d0d5dd;
+  --rtx-tick-chart-plot: var(--rtx-light-chart, var(--rtx-light-panel, #ffffff));
+  --rtx-tick-chart-grid: var(--rtx-light-border, #d0d5dd);
   --rtx-tick-chart-frame: var(--rtx-light-text, #101828);
-  --rtx-tick-chart-separator: #98a2b3;
+  --rtx-tick-chart-separator: var(--rtx-light-border-strong, #98a2b3);
   --rtx-tick-chart-text: var(--rtx-light-text, #101828);
   --rtx-tick-chart-tag-text: #ffffff;
-  --rtx-tick-chart-crosshair: #667085;
+  --rtx-tick-chart-crosshair: var(--rtx-light-text-muted, #667085);
   --rtx-tick-chart-crosshair-text: #ffffff;
 }
 

@@ -66,6 +66,13 @@ import {
     type AdvancedViewFontSize,
     type AdvancedViewRootOptions,
 } from '../../utils/advancedViewRootClasses';
+import {
+    applyThemeAppearanceToRoot,
+    resolveEffectiveThemeMode,
+    RTX_THEME_APPEARANCE_CHANGE_EVENT,
+    RTX_THEME_APPEARANCE_STORAGE_KEY,
+} from '../../utils/themePresets';
+import { useThemeAppearanceStore } from '../../store/useThemeAppearanceStore';
 import { suppressThemeTransitions } from '../../utils/themeTransitionSuppression';
 
 const subscribeToolbarActiveChartSource = (listener: () => void): (() => void) => {
@@ -468,6 +475,36 @@ const MainToolbar = ({
         clearAdvancedViewRootClasses(document.documentElement);
     }, []);
 
+    useEffect(() => {
+        const handleThemeAppearanceChange = (event: Event) => {
+            const detail = (event as CustomEvent<{ effectiveMode?: 'light' | 'dark' }>).detail;
+            if (detail?.effectiveMode) {
+                const nextEnabled = detail.effectiveMode === 'light';
+                setAdvancedViewEnabled((prev) => (prev === nextEnabled ? prev : nextEnabled));
+            }
+        };
+        window.addEventListener(RTX_THEME_APPEARANCE_CHANGE_EVENT, handleThemeAppearanceChange);
+
+        const mediaQuery = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-color-scheme: light)')
+            : null;
+        const handleMediaChange = () => {
+            const store = useThemeAppearanceStore.getState();
+            if (store.themeMode === 'system') {
+                store.setThemeMode('system');
+            }
+        };
+        mediaQuery?.addEventListener?.('change', handleMediaChange);
+
+        return () => {
+            window.removeEventListener(RTX_THEME_APPEARANCE_CHANGE_EVENT, handleThemeAppearanceChange);
+            mediaQuery?.removeEventListener?.('change', handleMediaChange);
+        };
+    }, []);
+
+    useLayoutEffect(() => () => {
+    }, []);
+
     useLayoutEffect(() => {
         // Suppress CSS transitions before flipping the theme classes so every
         // color snaps in the same paint (see themeTransitionSuppression.ts).
@@ -480,6 +517,20 @@ const MainToolbar = ({
         document.documentElement.classList.toggle('theme-light', advancedViewEnabled);
         document.documentElement.classList.toggle('theme-dark', !advancedViewEnabled);
         document.documentElement.setAttribute('data-theme', advancedViewEnabled ? 'light' : 'dark');
+        try {
+            if (localStorage.getItem(RTX_THEME_APPEARANCE_STORAGE_KEY)) {
+                const snapshot = useThemeAppearanceStore.getState().getSnapshot();
+                const effectiveMode = resolveEffectiveThemeMode(snapshot.themeMode);
+                applyThemeAppearanceToRoot(document.documentElement, {
+                    ...snapshot,
+                    themeMode: effectiveMode === (advancedViewEnabled ? 'light' : 'dark')
+                        ? snapshot.themeMode
+                        : (advancedViewEnabled ? 'light' : 'dark'),
+                });
+            }
+        } catch {
+            // Storage access is optional
+        }
         window.dispatchEvent(new CustomEvent(RTX_ADVANCED_VIEW_CHANGE_EVENT, {
             detail: { isAdvancedUntitledLight: advancedViewEnabled },
         }));

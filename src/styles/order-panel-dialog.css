@@ -220,10 +220,15 @@
 
 .rtx-order-dialog__label {
   color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 400;
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
   text-align: right;
   white-space: nowrap;
+}
+
+.rtx-order-dialog__margin {
+  color: var(--order-supporting-text);
+  font-size: 11px;
 }
 
 .rtx-order-dialog__label::after {

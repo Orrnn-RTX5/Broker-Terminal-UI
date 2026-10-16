@@ -34,6 +34,8 @@ export interface DockContainerProps {
 const dockIntent = {
   targetPanelId: null as string | null,
   direction: null as string | null,
+  grabOffsetX: 80,
+  grabOffsetY: 15,
 };
 
 const CHART_FOCUS_COMPONENTS = new Set(['Chart', 'EmptyChartArea']);
@@ -320,7 +322,35 @@ const DockContainerContent: React.FC<DockContainerProps> = ({
 
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    startDrag(panel.id, panel.title, clientX, clientY, isFloating);
+    if (panel.floatable === false) return;
+    if ('button' in e && e.button !== 0) return;
+    const panelEl = target.closest('[data-dock-panel]') as HTMLElement | null;
+    const rect = panelEl?.getBoundingClientRect();
+    dockIntent.grabOffsetX = rect && rect.width > 0 ? Math.max(12, Math.min(clientX - rect.left, 220)) : 80;
+    dockIntent.grabOffsetY = rect && rect.height > 0 ? Math.max(8, Math.min(clientY - rect.top, 26)) : 15;
+
+    if ('touches' in e) {
+      startDrag(panel.id, panel.title, clientX, clientY, isFloating);
+      return;
+    }
+
+    let started = false;
+    const onMove = (me: MouseEvent) => {
+      if (started) return;
+      if (Math.hypot(me.clientX - clientX, me.clientY - clientY) >= 4) {
+        started = true;
+        cleanup();
+        startDrag(panel.id, panel.title, clientX, clientY, isFloating);
+        useDockLayoutStore.getState().updateDrag(me.clientX, me.clientY);
+      }
+    };
+    const onUp = () => cleanup();
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   }, [startDrag]);
 
   // Global drag handling — only attach on root container
@@ -409,7 +439,7 @@ const DockContainerContent: React.FC<DockContainerProps> = ({
         let newY = e.clientY - 50;
         newX = Math.max(20, Math.min(newX, window.innerWidth - 200));
         newY = Math.max(20, Math.min(newY, window.innerHeight - 200));
-        updateFloatingPosition(dragInfo.panelId, { x: newX, y: newY });
+        void newX; void newY;
         endDrag();
       } else {
         // Float the panel
@@ -417,7 +447,12 @@ const DockContainerContent: React.FC<DockContainerProps> = ({
         let newY = e.clientY - 50;
         newX = Math.max(20, Math.min(newX, window.innerWidth - 200));
         newY = Math.max(20, Math.min(newY, window.innerHeight - 200));
-        floatPanel(dragInfo.panelId, { x: newX, y: newY });
+        const floatX = Math.max(8, Math.min(e.clientX - dockIntent.grabOffsetX, window.innerWidth - 160));
+        const floatY = Math.max(8, Math.min(e.clientY - dockIntent.grabOffsetY, window.innerHeight - 120));
+        floatPanel(dragInfo.panelId, { x: floatX, y: floatY });
+        cancelDrag();
+      }
+      if (false) {
         endDrag();
       }
 
@@ -847,6 +882,7 @@ const FloatingPanelsContent: React.FC<{
     layout,
     removePanel,
     dockPanel,
+    redockPanel,
     updateFloatingPosition,
     updateFloatingSize,
     startDrag,
@@ -904,9 +940,19 @@ const FloatingPanelsContent: React.FC<{
     const startPX = floating.position?.x ?? 100;
     const startPY = floating.position?.y ?? 100;
 
-    startDrag(panel.id, panel.title, startMX, startMY, true);
-
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button')) return;
+    let dragStarted = false;
     const onMove = (me: MouseEvent) => {
+      const dx = me.clientX - startMX;
+      const dy = me.clientY - startMY;
+      if (!dragStarted) {
+        if (Math.hypot(dx, dy) < 3) return;
+        dragStarted = true;
+        startDrag(panel.id, panel.title, startMX, startMY, true);
+      }
+
+      // Move floating panel 1:1 with cursor
       updateFloatingPosition(floating.id, {
         x: startPX + (me.clientX - startMX),
         y: startPY + (me.clientY - startMY),
@@ -954,7 +1000,7 @@ const FloatingPanelsContent: React.FC<{
               isFloating={true}
               showHeader={true}
               onClose={() => removePanel(panel.id)}
-              onFloat={() => dockPanel(panel.id, 'root', 'center')}
+              onFloat={() => redockPanel(panel.id)}
               onDragStart={handleFloatingDrag(floating, panel)}
               onMinimizedChange={minimized => setPanelMinimized(panel.id, minimized)}
               onActivate={panel.component === 'Chart' ? () => activateActiveChartSource(`trading-chart:${panel.id}`) : undefined}

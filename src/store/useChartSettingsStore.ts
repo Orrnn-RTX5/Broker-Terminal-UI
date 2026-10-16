@@ -516,11 +516,38 @@ export const getPresetSchemeColors = (
   return { ...fallbackColors };
 };
 
+const readConfiguredThemeChartSurface = (
+  expectedMode: "light" | "dark",
+): { background?: string; foreground?: string; grid?: string } | null => {
+  if (typeof document === "undefined" || !document.documentElement) return null;
+  const root = document.documentElement;
+  if (root.getAttribute("data-rtx-theme-configured") !== "true") return null;
+  const preset = root.getAttribute("data-rtx-theme-preset") || root.getAttribute("data-rtx-preset") || "";
+  if (expectedMode === "light" && preset === "default-light") return null;
+  if (expectedMode === "dark" && preset === "default-dark") return null;
+  const bg = root.style.getPropertyValue("--rtx-theme-chart-bg").trim();
+  const fg = root.style.getPropertyValue("--rtx-theme-chart-fg").trim();
+  const grid = root.style.getPropertyValue("--rtx-theme-chart-grid").trim();
+  if (!bg && !fg && !grid) return null;
+  return {
+    ...(bg ? { background: bg } : {}),
+    ...(fg ? { foreground: fg } : {}),
+    ...(grid ? { grid } : {}),
+  };
+};
+
 export const getEffectiveChartColors = (
   properties: Pick<ChartProperties, "colorScheme" | "colors">,
   options: { isAdvancedUntitledLight?: boolean } = {},
 ): ChartProperties["colors"] => {
-  if (!options.isAdvancedUntitledLight) return properties.colors;
+  if (!options.isAdvancedUntitledLight) {
+    const darkThemeSurface = properties.colorScheme !== "Custom"
+      ? readConfiguredThemeChartSurface("dark")
+      : null;
+    return darkThemeSurface
+      ? { ...properties.colors, ...darkThemeSurface }
+      : properties.colors;
+  }
 
   // Apply the shared light palette at render time so switching back to dark
   // restores the saved template and custom chart colors remain authoritative.
@@ -528,6 +555,7 @@ export const getEffectiveChartColors = (
     background: "#fafbfc",
     foreground: "#334155",
     grid: "rgba(71, 85, 105, 0.07)",
+    ...(readConfiguredThemeChartSurface("light") ?? {}),
   };
 
   if (properties.colorScheme === "Green on Black" || properties.colorScheme === "Blue on Black") {

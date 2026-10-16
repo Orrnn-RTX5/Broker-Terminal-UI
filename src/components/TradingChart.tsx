@@ -883,27 +883,36 @@ export const TradingChart = React.memo(function TradingChart({
   });
 
   const [chartAxisFontSize, setChartAxisFontSize] = useState(readChartAxisFontSize);
+  const [themeAppearanceSignature, setThemeAppearanceSignature] = useState(() => {
+    if (typeof document === 'undefined') return '';
+    const root = document.documentElement;
+    return `${root.getAttribute('data-rtx-theme-preset') ?? ''}|${root.getAttribute('data-rtx-contrast') ?? ''}|${root.style.getPropertyValue('--rtx-theme-chart-bg')}|${root.style.getPropertyValue('--rtx-theme-chart-fg')}|${root.style.getPropertyValue('--rtx-theme-chart-grid')}`;
+  });
 
   useLayoutEffect(() => {
     const root = document.documentElement;
+    const readSignature = () =>
+      `${root.getAttribute('data-rtx-theme-preset') ?? ''}|${root.getAttribute('data-rtx-contrast') ?? ''}|${root.style.getPropertyValue('--rtx-theme-chart-bg')}|${root.style.getPropertyValue('--rtx-theme-chart-fg')}|${root.style.getPropertyValue('--rtx-theme-chart-grid')}`;
     const syncSkinState = () => {
       setChartAxisFontSize(readChartAxisFontSize());
       setIsAdvancedUntitledLight(
         root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light')
       );
+      setThemeAppearanceSignature(readSignature());
     };
     const handleAdvancedViewChange = (event: Event) => {
       const detail = (event as CustomEvent<{ isAdvancedUntitledLight?: boolean }>).detail;
       if (typeof detail?.isAdvancedUntitledLight === 'boolean') {
         setIsAdvancedUntitledLight(detail.isAdvancedUntitledLight);
         setChartAxisFontSize(readChartAxisFontSize());
+        setThemeAppearanceSignature(readSignature());
         return;
       }
       syncSkinState();
     };
     syncSkinState();
     const observer = new MutationObserver(syncSkinState);
-    observer.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
+    observer.observe(root, { attributes: true, attributeFilter: ['class', 'style', 'data-rtx-theme-preset', 'data-rtx-contrast'] });
     window.addEventListener(RTX_ADVANCED_VIEW_CHANGE_EVENT, handleAdvancedViewChange);
     return () => {
       observer.disconnect();
@@ -925,7 +934,7 @@ export const TradingChart = React.memo(function TradingChart({
 
   const chartColors = useMemo(
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
-    [chartSettings, isAdvancedUntitledLight],
+    [chartSettings, isAdvancedUntitledLight, themeAppearanceSignature],
   );
   const isLimeOutlineBlackPreset = chartSettings.colorScheme === 'Green and White'
     || chartSettings.colorScheme === 'Green and Blue';

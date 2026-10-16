@@ -12,15 +12,15 @@ html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
   [data-dock-panel-component='navigator'],
   [data-dock-panel-component='marketwatch']
 ) {
-  --bg-primary: #1f1f1f;
-  --bg-secondary: #1f1f1f;
-  --bg-tertiary: #1f1f1f;
-  --bg-quaternary: #2a2a2a;
-  --border-primary: #444444;
-  --border-secondary: #444444;
-  --rtx-toolbox-tabs: #2f2f2f;
-  --rtx-toolbox-summary: #444444;
-  --rtx-toolbox-selected: #0078d7;
+  --bg-primary: var(--rtx-dark-bg-primary, #1f1f1f);
+  --bg-secondary: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --bg-tertiary: var(--rtx-dark-bg-tertiary, #1f1f1f);
+  --bg-quaternary: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --border-primary: var(--rtx-dark-border-primary, #444444);
+  --border-secondary: var(--rtx-dark-border-secondary, #444444);
+  --rtx-toolbox-tabs: var(--rtx-dark-toolbox-tabs, #2f2f2f);
+  --rtx-toolbox-summary: var(--rtx-dark-toolbox-summary, #444444);
+  --rtx-toolbox-selected: var(--rtx-dark-accent, #0078d7);
   --rtx-panel-sheen: none;
   --rtx-chrome-sheen: none;
   --rtx-control-sheen: none;
@@ -217,53 +217,53 @@ html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
   .rtx-connection-dropdown,
   .rtx-drawing-operations__menu
 ) {
-  --bg-primary: #1f1f1f;
-  --bg-secondary: #1f1f1f;
-  --bg-tertiary: #1f1f1f;
-  --bg-quaternary: #2a2a2a;
-  --bg-elevated: #2a2a2a;
-  --border-primary: #444444;
-  --border-secondary: #444444;
-  --border-tertiary: #555555;
-  --rtx-toolbox-selected: #0078d7;
+  --bg-primary: var(--rtx-dark-bg-primary, #1f1f1f);
+  --bg-secondary: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --bg-tertiary: var(--rtx-dark-bg-tertiary, #1f1f1f);
+  --bg-quaternary: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --bg-elevated: var(--rtx-dark-bg-elevated, #2a2a2a);
+  --border-primary: var(--rtx-dark-border-primary, #444444);
+  --border-secondary: var(--rtx-dark-border-secondary, #444444);
+  --border-tertiary: var(--rtx-dark-border-tertiary, #555555);
+  --rtx-toolbox-selected: var(--rtx-dark-accent, #0078d7);
   --rtx-panel-sheen: none;
   --rtx-chrome-sheen: none;
   --rtx-control-sheen: none;
   --rtx-finish-edge: transparent;
 
   /* Component-owned neutral tokens share the same underlying surfaces. */
-  --login-surface: #1f1f1f;
-  --login-field: #2a2a2a;
-  --login-surface-border: #444444;
-  --login-border: #444444;
-  --login-divider: #444444;
-  --login-button-secondary-bg: #2a2a2a;
-  --login-button-secondary-border: #444444;
-  --login-button-secondary-bg-hover: #333333;
-  --login-button-secondary-border-hover: #555555;
-  --login-button-disabled-bg: #2a2a2a;
-  --login-button-disabled-border: #444444;
-  --auth-surface: #1f1f1f;
-  --auth-subtle: #1f1f1f;
-  --auth-control: #2a2a2a;
-  --auth-hover: #2a2a2a;
-  --auth-border: #444444;
-  --auth-border-strong: #555555;
-  --account-surface: #1f1f1f;
-  --account-subtle: #2a2a2a;
-  --account-field: #2a2a2a;
-  --account-hover: #2a2a2a;
-  --account-border: #444444;
-  --account-footer: #1f1f1f;
-  --options-bg: #1f1f1f;
-  --options-sidebar: #1f1f1f;
-  --options-panel: #1f1f1f;
-  --options-field: #2a2a2a;
-  --options-hover: #2a2a2a;
-  --options-border: #444444;
-  --options-divider: #444444;
-  --options-active: #2a2a2a;
-  --order-control-bg: #2a2a2a;
+  --login-surface: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --login-field: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --login-surface-border: var(--rtx-dark-border-primary, #444444);
+  --login-border: var(--rtx-dark-border-primary, #444444);
+  --login-divider: var(--rtx-dark-border-primary, #444444);
+  --login-button-secondary-bg: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --login-button-secondary-border: var(--rtx-dark-border-primary, #444444);
+  --login-button-secondary-bg-hover: var(--rtx-dark-bg-elevated, #333333);
+  --login-button-secondary-border-hover: var(--rtx-dark-border-tertiary, #555555);
+  --login-button-disabled-bg: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --login-button-disabled-border: var(--rtx-dark-border-primary, #444444);
+  --auth-surface: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --auth-subtle: var(--rtx-dark-bg-tertiary, #1f1f1f);
+  --auth-control: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --auth-hover: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --auth-border: var(--rtx-dark-border-primary, #444444);
+  --auth-border-strong: var(--rtx-dark-border-tertiary, #555555);
+  --account-surface: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --account-subtle: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --account-field: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --account-hover: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --account-border: var(--rtx-dark-border-primary, #444444);
+  --account-footer: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --options-bg: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --options-sidebar: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --options-panel: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --options-field: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --options-hover: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --options-border: var(--rtx-dark-border-primary, #444444);
+  --options-divider: var(--rtx-dark-border-primary, #444444);
+  --options-active: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --order-control-bg: var(--rtx-dark-bg-quaternary, #2a2a2a);
 
   background-color: var(--bg-secondary) !important;
   background-image: none !important;
@@ -365,3 +365,176 @@ html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
 ) {
   background-color: rgb(0 0 0 / 60%) !important;
 }
+
+/* Preset-aware dark workspace surfaces when a Dark Theme preset or custom palette is active */
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) body,
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) #root,
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) :is(
+  .rtx-app-shell,
+  .trading-terminal,
+  .rtx-dock-workspace,
+  .dock-container,
+  .dock-container--split,
+  [data-dock-container-kind='split'],
+  .rtx-empty-chart-area
+) {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) :is(
+  .rtx-panel-shell,
+  .dock-container--tabs,
+  [data-dock-container-kind='tabs'],
+  .dock-panel,
+  .rtx-chart-panel,
+  .rtx-chart-panel__canvas,
+  .rtx-chart-wrapper,
+  [data-dock-panel] > div,
+  .navigator-panel,
+  .navigator-panel__body,
+  .rtx-market-watch,
+  .rtx-market-watch__table,
+  .rtx-market-watch__search,
+  .rtx-market-watch__symbol-explorer
+) {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) :is(
+  .dock-panel__header,
+  .dock-panel__header--active,
+  .dock-panel__header--inactive,
+  .dock-tabs,
+  [data-dock-tab-bar],
+  .navigator-panel__header,
+  .rtx-market-watch__header,
+  .rtx-market-watch__column-heading,
+  .rtx-status-bar,
+  .web-drawing-tools-rail
+) {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) [data-dock-tab-bar='true'] > div {
+  border-color: var(--border-primary) !important;
+  color: var(--text-secondary) !important;
+}
+
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) [data-dock-tab-bar='true'] > div.bg-\[\#131316\] {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  box-shadow: inset 0 -2px 0 var(--rtx-dark-accent, #007acc) !important;
+}
+
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) .dock-panel__title {
+  color: var(--text-primary) !important;
+}
+
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) .dock-resize-handle {
+  background: var(--border-primary) !important;
+}
+
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) .dock-resize-handle:is(:hover, .dock-resize-handle--dragging) {
+  background: var(--rtx-dark-accent, #007acc) !important;
+}
+
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-bottom-dock .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
+  border-top-color: var(--rtx-dark-accent, #007acc) !important;
+}
+
+html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch .rtx-market-watch__row--selected {
+  box-shadow: inset 2px 0 0 var(--rtx-dark-accent, #007acc) !important;
+}
+
+/* Preset-aware light workspace surfaces when a Light Theme preset or custom palette is active */
+html:root.rtx-advanced-view.rtx-skin-untitled-light[data-rtx-theme-configured='true']:not([data-rtx-theme-preset='default-light']) :is(
+  body,
+  #root,
+  .rtx-app-shell,
+  .trading-terminal,
+  .rtx-dock-workspace,
+  .dock-container,
+  .dock-container--split,
+  [data-dock-container-kind='split'],
+  .rtx-empty-chart-area
+) {
+  background: var(--rtx-light-canvas) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light[data-rtx-theme-configured='true']:not([data-rtx-theme-preset='default-light']) :is(
+  .rtx-panel-shell,
+  .dock-container--tabs,
+  [data-dock-container-kind='tabs'],
+  .dock-panel,
+  .rtx-chart-panel,
+  [data-dock-panel] > div,
+  .rtx-market-watch,
+  .rtx-market-watch__table,
+  .rtx-market-watch__search,
+  .rtx-market-watch__symbol-explorer,
+  .navigator-panel,
+  .navigator-panel__body,
+  .rtx-bottom-dock,
+  .rtx-bottom-dock__content,
+  .rtx-bottom-dock__content > [aria-hidden] > div,
+  .rtx-bottom-dock .virtualized-list,
+  .rtx-bottom-dock .rtx-trade-scroll,
+  .rtx-bottom-dock .rtx-history-tab,
+  .rtx-bottom-dock .rtx-exposure-tab,
+  .rtx-bottom-dock .rtx-journal-tab,
+  .rtx-bottom-dock :where(.bg-\[\#131316\], .bg-\[\#191a1e\], .bg-\[\#1a1a1a\], .bg-\[\#0f0f12\])
+) {
+  background: var(--rtx-light-panel) !important;
+  border-color: var(--rtx-light-border) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light[data-rtx-theme-configured='true']:not([data-rtx-theme-preset='default-light']) :is(
+  .dock-panel__header,
+  .dock-panel__header--active,
+  .dock-panel__header--inactive,
+  .dock-tabs,
+  [data-dock-tab-bar],
+  .rtx-market-watch__header,
+  .rtx-market-watch__column-heading,
+  .rtx-market-watch__view-tabs,
+  .navigator-panel__header,
+  .rtx-bottom-dock__tabs,
+  .rtx-trade-footer,
+  .rtx-status-bar,
+  .rtx-top-chrome,
+  .rtx-main-toolbar,
+  .web-drawing-tools-rail
+) {
+  background: var(--rtx-light-panel-header) !important;
+  border-color: var(--rtx-light-border) !important;
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light[data-rtx-theme-configured='true']:not([data-rtx-theme-preset='default-light']) :is(
+  .rtx-chart-panel__canvas,
+  .rtx-chart-wrapper,
+  .rtx-oct .rtx-oct-volume-control
+) {
+  background: var(--rtx-light-chart, var(--rtx-light-panel)) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light[data-rtx-theme-configured='true'] :where(
+  .text-zinc-100,
+  .text-zinc-200,
+  .text-zinc-300,
+  .text-gray-100,
+  .text-gray-200,
+  .text-white
+) {
+  color: var(--rtx-light-text) !important;
+}
+
+
+

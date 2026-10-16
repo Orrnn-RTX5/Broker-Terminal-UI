@@ -806,7 +806,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
             flexDirection: 'column',
             height: '100%',
             background: 'var(--bg-secondary)',
-            color: '#e2e2e8',
+            color: 'var(--text-primary)',
             fontFamily: 'Segoe UI, Tahoma, Arial, sans-serif',
             fontSize: 12,
             userSelect: 'none',

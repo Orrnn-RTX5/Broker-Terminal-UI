@@ -4,20 +4,33 @@ html:root .rtx-market-watch.rtx-market-watch--desktop {
   font-family: "Segoe UI", Tahoma, Arial, sans-serif;
   font-size: 12px;
   --mw-desktop-row: var(--bg-secondary);
-  --mw-desktop-row-alt: var(--bg-quaternary);
+  --mw-desktop-row-alt: var(--bg-tertiary, var(--bg-quaternary));
+  --mw-desktop-row-hover: var(--bg-quaternary);
   --mw-desktop-grid: var(--border-primary);
-  --mw-desktop-selection: #0078d7;
+  --mw-desktop-selection: var(--color-primary, #0078d7);
 }
 
 html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop {
-  --mw-desktop-row: #1f1f1f;
-  --mw-desktop-row-alt: #262626;
-  --mw-desktop-grid: #404040;
+  --mw-desktop-row: var(--rtx-dark-bg-secondary, #1f1f1f);
+  --mw-desktop-row-alt: var(--rtx-dark-bg-tertiary, #262626);
+  --mw-desktop-row-hover: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --mw-desktop-grid: var(--rtx-dark-border-primary, #404040);
+  --mw-desktop-selection: var(--rtx-dark-accent, #0078d7);
 }
 
 /* The focused light row must retain contrast for both blue and red quotes. */
 html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop {
+  --mw-desktop-row: var(--rtx-light-panel, #f8fafc);
+  --mw-desktop-row-alt: var(--rtx-light-panel-subtle, #f1f4f8);
+  --mw-desktop-row-hover: var(--rtx-light-hover, #e8eef6);
+  --mw-desktop-grid: var(--rtx-light-border, #c5ced9);
   --mw-desktop-selection: var(--rtx-light-selected, #d1dced);
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__header {
+  background: var(--mw-desktop-row-alt);
+  border-bottom-color: var(--mw-desktop-grid) !important;
+  color: var(--text-primary);
 }
 
 /* The shared typography stylesheet reads these tokens on each text element.
@@ -104,22 +117,32 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tb
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr:hover td {
-  background: var(--mw-desktop-row-alt) !important;
+  background: var(--mw-desktop-row-hover, var(--mw-desktop-row-alt)) !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true'],
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true'] td {
+  background: var(--mw-desktop-row-hover, var(--mw-desktop-row-alt)) !important;
   box-shadow: none !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true'] td:first-child {
+  box-shadow: inset 2px 0 0 var(--mw-desktop-selection) !important;
+}
+
+html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true'],
+html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true'] td {
+  background: var(--mw-desktop-selection) !important;
+}
+
+html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true'] td:first-child {
+  box-shadow: inset 2px 0 0 var(--rtx-light-accent, #355786) !important;
 }
 
 /* Keep the chosen symbol; the stronger selection belongs to its focused row. */
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true']:focus-within,
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true']:focus-within td {
   background: var(--mw-desktop-selection) !important;
-}
-
-html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true']:focus-within td:first-child {
-  box-shadow: inset 2px 0 0 var(--rtx-light-accent, #355786) !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid--lines tbody td {
@@ -138,7 +161,7 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-ta
   align-items: stretch;
   padding-left: 1px;
   border-top: 1px solid var(--mw-desktop-grid);
-  background: var(--mw-desktop-row) !important;
+  background: var(--mw-desktop-row-alt) !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button {
@@ -158,7 +181,7 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-ta
   height: 22px;
   border-color: var(--text-secondary);
   border-top-color: var(--mw-desktop-row);
-  border-bottom-color: var(--mw-desktop-row);
+  border-bottom-color: var(--mw-desktop-selection);
   background: var(--mw-desktop-row) !important;
 }
 

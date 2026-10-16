@@ -24,7 +24,7 @@
 .rtx-market-watch-trading__card {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--border-color, #444444);
+  border: 1px solid var(--border-primary, #444444);
   background: var(--bg-secondary, #1f1f1f);
 }
 
@@ -80,7 +80,7 @@ html:root body .rtx-market-watch-trading__controls .rtx-oct > [data-testid='one-
   gap: 1px;
   border: 0 !important;
   border-radius: 0 !important;
-  background: var(--border-color, #444444) !important;
+  background: var(--border-primary, #444444) !important;
   box-shadow: none !important;
 }
 
@@ -150,7 +150,7 @@ html:root body .rtx-market-watch-trading__controls .rtx-oct .rtx-oct-volume-cont
   max-height: 21px !important;
   gap: 0 !important;
   padding: 0 !important;
-  border: 1px solid var(--border-color, #444444) !important;
+  border: 1px solid var(--border-primary, #444444) !important;
   background: var(--bg-tertiary, #2a2a2a) !important;
 }
 
@@ -196,7 +196,7 @@ html:root body .rtx-market-watch-trading__card[data-has-quote='false'] .rtx-oct-
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
   margin: 0;
-  border-top: 1px solid var(--border-color, #444444);
+  border-top: 1px solid var(--border-primary, #444444);
   font-size: 10px;
   text-align: center;
 }
@@ -206,7 +206,7 @@ html:root body .rtx-market-watch-trading__card[data-has-quote='false'] .rtx-oct-
   padding: 3px 1px;
 }
 
-.rtx-market-watch-trading__stats > div + div { border-left: 1px solid var(--border-color, #444444); }
+.rtx-market-watch-trading__stats > div + div { border-left: 1px solid var(--border-primary, #444444); }
 .rtx-market-watch-trading__stats :is(dt, dd) { --rtx-type-size: 10px; }
 .rtx-market-watch-trading__stats dt { color: var(--text-secondary, #b7b7b7); line-height: 13px; }
 .rtx-market-watch-trading__stats dd { margin: 0; line-height: 14px; overflow-wrap: anywhere; }

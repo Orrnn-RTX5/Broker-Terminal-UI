@@ -1,0 +1,483 @@
+.rtx-theme-appearance {
+  --rtx-ta-card-bg: var(--bg-secondary, #141519);
+  --rtx-ta-card-border: var(--border-primary, rgba(255, 255, 255, 0.09));
+  --rtx-ta-row-divider: var(--border-secondary, rgba(255, 255, 255, 0.06));
+  --rtx-ta-control-bg: var(--bg-tertiary, #1f2127);
+  --rtx-ta-control-border: var(--border-primary, rgba(255, 255, 255, 0.1));
+  --rtx-ta-control-hover-bg: var(--bg-quaternary, #272a32);
+  --rtx-ta-control-active-bg: var(--bg-elevated, #2e323b);
+  --rtx-ta-menu-bg: var(--bg-elevated, #1c1e24);
+  --rtx-ta-text: var(--text-primary, #f3f4f6);
+  --rtx-ta-text-muted: var(--text-secondary, #9ca3af);
+  --rtx-ta-accent: var(--color-primary, #007acc);
+  --rtx-ta-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.28);
+
+  --rtx-type-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Inter, Roboto, Tahoma, Arial, sans-serif;
+  --rtx-type-size: 13px;
+  --rtx-type-weight: 400;
+
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  color: var(--rtx-ta-text);
+  font-family: var(--rtx-type-family) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1.4 !important;
+  letter-spacing: 0 !important;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Beat html:root :where(button, label, h1..h6) in app-typography.css (0,1,1) */
+html:root body .rtx-theme-appearance :where(div, span, p, a, button, input, select, textarea, label, h1, h2, h3, h4, h5, h6),
+html:root body .rtx-theme-dialog :where(div, span, p, a, button, input, select, textarea, label, h1, h2, h3, h4, h5, h6) {
+  --rtx-type-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Inter, Roboto, Tahoma, Arial, sans-serif;
+  --rtx-type-size: 13px;
+  --rtx-type-weight: 400;
+  letter-spacing: 0;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-appearance,
+html.theme-light .rtx-theme-appearance {
+  --rtx-ta-card-bg: var(--rtx-light-elevated, #ffffff);
+  --rtx-ta-card-border: var(--rtx-light-border, #e5e7eb);
+  --rtx-ta-row-divider: var(--rtx-light-row-border, #eef1f5);
+  --rtx-ta-control-bg: var(--rtx-light-panel-subtle, #f3f4f6);
+  --rtx-ta-control-border: var(--rtx-light-border, #e2e8f0);
+  --rtx-ta-control-hover-bg: var(--rtx-light-hover, #e8ecf2);
+  --rtx-ta-control-active-bg: #e2e6ed;
+  --rtx-ta-menu-bg: var(--rtx-light-elevated, #ffffff);
+  --rtx-ta-text: var(--rtx-light-text, #111827);
+  --rtx-ta-text-muted: var(--rtx-light-text-secondary, #6b7280);
+  --rtx-ta-accent: var(--rtx-light-accent, #007acc);
+  --rtx-ta-shadow: 0 12px 28px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+/* Section Groups & Headings */
+.rtx-theme-appearance__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+html:root body .rtx-theme-appearance__heading,
+.rtx-theme-appearance__heading {
+  --rtx-type-size: 13px;
+  --rtx-type-weight: 600;
+  margin: 0;
+  padding: 0 2px;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0 !important;
+  color: var(--rtx-ta-text) !important;
+}
+
+/* Card & Rows */
+html:root body .rtx-theme-appearance__card,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-appearance__card,
+.rtx-theme-appearance__card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: var(--rtx-ta-card-bg) !important;
+  border: 1px solid var(--rtx-ta-card-border) !important;
+  overflow: visible;
+}
+
+.rtx-theme-appearance__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 46px;
+  padding: 6px 16px;
+}
+
+.rtx-theme-appearance__row + .rtx-theme-appearance__row {
+  border-top: 1px solid var(--rtx-ta-row-divider);
+}
+
+html:root body .rtx-theme-appearance__label,
+.rtx-theme-appearance__label {
+  --rtx-type-size: 13px;
+  --rtx-type-weight: 400;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1.35 !important;
+  color: var(--rtx-ta-text) !important;
+  user-select: none;
+}
+
+/* Segmented controls (Theme mode & Contrast) */
+html:root body .rtx-theme-segmented,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-segmented,
+.rtx-theme-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--rtx-ta-control-bg) !important;
+  border: 1px solid var(--rtx-ta-control-border) !important;
+  flex-shrink: 0;
+}
+
+html:root body .rtx-theme-segmented__btn,
+html:root body .rtx-theme-segmented__btn span,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-segmented__btn,
+.rtx-theme-segmented__btn,
+.rtx-theme-segmented__btn span {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 400;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  line-height: 1.25 !important;
+}
+
+html:root body .rtx-theme-segmented__btn,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-segmented__btn,
+.rtx-theme-segmented__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 12px;
+  border: 1px solid transparent !important;
+  border-radius: 6px;
+  background: transparent !important;
+  color: var(--rtx-ta-text-muted) !important;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+html:root body .rtx-theme-segmented__btn--icon,
+.rtx-theme-segmented__btn--icon {
+  width: 30px;
+  padding: 0;
+}
+
+html:root body .rtx-theme-segmented__btn:hover:not(.is-active),
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-segmented__btn:hover:not(.is-active),
+.rtx-theme-segmented__btn:hover:not(.is-active) {
+  color: var(--rtx-ta-text) !important;
+  background: var(--rtx-ta-control-hover-bg) !important;
+}
+
+html:root body .rtx-theme-segmented__btn.is-active,
+html:root body .rtx-theme-segmented__btn.is-active:hover,
+html:root body .rtx-theme-segmented__btn.is-active span,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-segmented__btn.is-active,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-segmented__btn.is-active:hover,
+.rtx-theme-segmented__btn.is-active,
+.rtx-theme-segmented__btn.is-active:hover,
+.rtx-theme-segmented__btn.is-active span {
+  --rtx-type-weight: 500;
+  font-weight: 500 !important;
+  background: var(--rtx-ta-control-active-bg) !important;
+  border-color: transparent !important;
+  color: var(--rtx-ta-text) !important;
+}
+
+/* Preset dropdown */
+.rtx-theme-preset-dropdown {
+  position: relative;
+  min-width: 152px;
+  flex-shrink: 0;
+}
+
+html:root body .rtx-theme-preset-trigger,
+html:root body .rtx-theme-preset-trigger span,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-preset-trigger,
+.rtx-theme-preset-trigger,
+.rtx-theme-preset-trigger span {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 400;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  line-height: 1.3 !important;
+}
+
+html:root body .rtx-theme-preset-trigger,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-preset-trigger,
+.rtx-theme-preset-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 7px;
+  border: 1px solid var(--rtx-ta-control-border) !important;
+  background: var(--rtx-ta-control-bg) !important;
+  color: var(--rtx-ta-text-muted) !important;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.rtx-theme-preset-trigger__label {
+  color: var(--rtx-ta-text) !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtx-theme-preset-trigger__chevron {
+  color: var(--rtx-ta-text-muted);
+  flex-shrink: 0;
+}
+
+html:root body .rtx-theme-preset-trigger:hover,
+html:root body .rtx-theme-preset-trigger[aria-expanded="true"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-preset-trigger:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-preset-trigger[aria-expanded="true"],
+.rtx-theme-preset-trigger:hover,
+.rtx-theme-preset-trigger[aria-expanded="true"] {
+  background: var(--rtx-ta-control-hover-bg) !important;
+  color: var(--rtx-ta-text) !important;
+}
+
+html:root body .rtx-theme-preset-menu,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-preset-menu,
+.rtx-theme-preset-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  min-width: 190px;
+  max-width: 240px;
+  padding: 5px;
+  border-radius: 9px;
+  background: var(--rtx-ta-menu-bg) !important;
+  border: 1px solid var(--rtx-ta-card-border) !important;
+  box-shadow: var(--rtx-ta-shadow) !important;
+}
+
+.rtx-theme-preset-menu__list {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+html:root body .rtx-theme-preset-option,
+html:root body .rtx-theme-preset-option__label,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-preset-option,
+.rtx-theme-preset-option,
+.rtx-theme-preset-option__label {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 400;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  line-height: 1.35 !important;
+}
+
+html:root body .rtx-theme-preset-option,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-preset-option,
+.rtx-theme-preset-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 0 !important;
+  border-radius: 6px;
+  background: transparent !important;
+  color: var(--rtx-ta-text-muted) !important;
+  text-align: left;
+  cursor: pointer;
+}
+
+html:root body .rtx-theme-preset-option:hover,
+html:root body .rtx-theme-preset-option.is-selected,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-preset-option:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-preset-option.is-selected,
+.rtx-theme-preset-option:hover,
+.rtx-theme-preset-option.is-selected {
+  background: var(--rtx-ta-control-hover-bg) !important;
+  color: var(--rtx-ta-text) !important;
+}
+
+html:root body .rtx-theme-preset-option.is-selected,
+html:root body .rtx-theme-preset-option.is-selected .rtx-theme-preset-option__label,
+.rtx-theme-preset-option.is-selected,
+.rtx-theme-preset-option.is-selected .rtx-theme-preset-option__label {
+  --rtx-type-weight: 500;
+  font-weight: 500 !important;
+}
+
+.rtx-theme-preset-option__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtx-theme-preset-option__check {
+  color: var(--rtx-ta-text);
+  flex-shrink: 0;
+}
+
+/* Color swatch + Hex input pill */
+html:root body .rtx-theme-color-control,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-color-control,
+.rtx-theme-color-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px 0 7px;
+  border-radius: 7px;
+  border: 1px solid var(--rtx-ta-control-border) !important;
+  background: var(--rtx-ta-control-bg) !important;
+  transition: border-color 120ms ease;
+  flex-shrink: 0;
+}
+
+.rtx-theme-color-control:focus-within {
+  border-color: var(--rtx-ta-accent) !important;
+}
+
+.rtx-theme-color-swatch-label {
+  position: relative;
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  cursor: pointer;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-color-native-input,
+.rtx-theme-color-native-input {
+  position: absolute;
+  inset: -4px;
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+html:root body .rtx-theme-color-hash,
+.rtx-theme-color-hash {
+  --rtx-type-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Inter, Roboto, sans-serif;
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 400;
+  font-family: var(--rtx-type-family) !important;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  color: var(--rtx-ta-text-muted) !important;
+  user-select: none;
+}
+
+/* Override global legacy-light-overrides.css input background/border rules */
+html:root body .rtx-theme-color-control input.rtx-theme-color-hex-input,
+html:root body .rtx-theme-color-control input.rtx-theme-color-hex-input:focus,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-color-control input.rtx-theme-color-hex-input,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-color-control input.rtx-theme-color-hex-input:focus,
+.rtx-theme-color-control input.rtx-theme-color-hex-input,
+.rtx-theme-color-control input.rtx-theme-color-hex-input:focus {
+  --rtx-type-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Inter, Roboto, sans-serif;
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 400;
+  width: 58px;
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--rtx-ta-text) !important;
+  font-family: var(--rtx-type-family) !important;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  padding: 0 !important;
+}
+
+/* Standalone Theme Modal Dialog */
+.rtx-theme-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.52);
+}
+
+.rtx-theme-dialog {
+  --rtx-type-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Inter, Roboto, Tahoma, Arial, sans-serif;
+  --rtx-type-size: 13px;
+  --rtx-type-weight: 400;
+
+  width: min(560px, 95vw);
+  max-height: min(88vh, 800px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--bg-primary, #0f1014) !important;
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.1)) !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  color: var(--text-primary, #f3f4f6) !important;
+  font-family: var(--rtx-type-family) !important;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-dialog,
+html.theme-light .rtx-theme-dialog {
+  background: #f9fafb !important;
+  border-color: var(--rtx-light-border-strong, #d1d5db) !important;
+  color: var(--rtx-light-text, #111827) !important;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.06) !important;
+}
+
+.rtx-theme-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-primary, rgba(255, 255, 255, 0.08));
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-dialog__header,
+html.theme-light .rtx-theme-dialog__header {
+  background: #ffffff !important;
+  border-bottom-color: #e5e7eb !important;
+}
+
+.rtx-theme-dialog__title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+html:root body .rtx-theme-dialog__title,
+.rtx-theme-dialog__title {
+  --rtx-type-size: 14.5px;
+  --rtx-type-weight: 600;
+  margin: 0;
+  font-size: 14.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0 !important;
+  color: inherit;
+}
+
+.rtx-theme-dialog__body {
+  padding: 18px 20px 22px;
+  overflow-y: auto;
+}

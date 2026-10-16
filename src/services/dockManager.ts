@@ -213,12 +213,28 @@ const getPreviousDesktopDefaultParts = (root: any): {
   return matchesPreviousDefault ? { leftSidebar, chartArea, toolbox } : null;
 };
 
+interface DockOrigin {
+  parentId: string;
+  parentType: DockContainerType;
+  parentDirection?: 'horizontal' | 'vertical';
+  index: number;
+  ratio?: number;
+  siblingRatios: Array<{ id: string; ratio?: number }>;
+}
+
+interface FloatingBounds {
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+}
+
 export class DockManager {
   private layout: DockLayout;
   private listeners: Set<(layout: DockLayout) => void> = new Set();
   private windowUndoLayouts: DockLayout[] = [];
   private windowRedoLayouts: DockLayout[] = [];
   private overflowCharts: DockPanelConfig[] = [];
+  private dockOrigins: Map<string, DockOrigin> = new Map();
+  private lastFloatingBounds: Map<string, FloatingBounds> = new Map();
 
   constructor(initialLayout?: DockLayout) {
     this.layout = this.applyChartLimit(initialLayout || this.createDefaultLayout());
@@ -429,6 +445,8 @@ export class DockManager {
 
   resetToDefaultLayout(): void {
     this.clearWindowHistory();
+    this.dockOrigins.clear();
+    this.lastFloatingBounds.clear();
     this.layout = this.createDefaultLayout();
     this.notify();
   }
@@ -473,6 +491,8 @@ export class DockManager {
     // Reset closes the other chart panes. Older arrangement history must not
     // resurrect those panes after the workspace has returned to one chart.
     this.clearWindowHistory();
+    this.dockOrigins.clear();
+    this.lastFloatingBounds.clear();
     this.setLayout(restored);
   }
 
@@ -827,23 +847,56 @@ export class DockManager {
   /**
    * Float a docked panel
    */
-  floatPanel(panelId: string, position?: { x: number; y: number }): void {
+  floatPanel(
+    panelId: string,
+    position?: { x: number; y: number },
+    size?: { width: number; height: number }
+  ): void {
     const layout = this.getLayout();
+
+    // Record docked origin before removing from root so double-clicking the
+    // floating title bar can redock the panel back into its exact slot.
+    const originMatch = this.findPanelAndParent(layout.root, panelId);
+    if (originMatch) {
+      const siblingRatios = originMatch.parent.children
+        .filter((child) => child.id !== panelId)
+        .map((child) => ({ id: child.id, ratio: child.ratio }));
+      this.dockOrigins.set(panelId, {
+        parentId: originMatch.parent.id,
+        parentType: originMatch.parent.type,
+        parentDirection: originMatch.parent.direction,
+        index: originMatch.panelIndex,
+        ratio: originMatch.panel.ratio,
+        siblingRatios,
+      });
+    }
+
     const panel = this.removePanelFromLayout(layout, panelId);
     if (!panel) return;
 
     // Clamp position to viewport
     const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
     const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const panelWidth = 400;
-    const panelHeight = 300;
+    const savedBounds = this.lastFloatingBounds.get(panelId);
+    const isSidebarUtility = panel.component === 'Navigator' || panel.component === 'MarketWatch';
+    const defaultWidth = panel.preferredWidth ?? (isSidebarUtility ? 280 : 400);
+    const defaultHeight = panel.preferredHeight ?? (isSidebarUtility ? 320 : 300);
+    const panelWidth = Math.max(200, size?.width ?? savedBounds?.size.width ?? defaultWidth);
+    const panelHeight = Math.max(150, size?.height ?? savedBounds?.size.height ?? defaultHeight);
 
-    let posX = position?.x ?? 100;
-    let posY = position?.y ?? 100;
+    const defaultPos = isSidebarUtility ? { x: 16, y: 64 } : { x: 100, y: 100 };
+    let posX = position?.x ?? savedBounds?.position.x ?? defaultPos.x;
+    let posY = position?.y ?? savedBounds?.position.y ?? defaultPos.y;
 
-    // Ensure panel stays within viewport
-    posX = Math.max(50, Math.min(posX, viewportWidth - panelWidth + 100));
-    posY = Math.max(50, Math.min(posY, viewportHeight - panelHeight + 100));
+    // Ensure panel stays within viewport while allowing MT5-style left/top edge placement
+    posX = Math.max(8, Math.min(posX, Math.max(8, viewportWidth - Math.min(panelWidth, 160))));
+    posY = Math.max(8, Math.min(posY, Math.max(8, viewportHeight - Math.min(panelHeight, 120))));
+
+    const floatingBounds: FloatingBounds = {
+      position: { x: posX, y: posY },
+      size: { width: panelWidth, height: panelHeight },
+    };
+    this.lastFloatingBounds.set(panelId, floatingBounds);
 
     const floatingContainer: DockContainer = {
       id: `floating-${Date.now()}`,
@@ -851,47 +904,70 @@ export class DockManager {
       ratio: 1,
       children: [panel],
       isFloating: true,
-      position: { x: posX, y: posY },
-      size: { width: panelWidth, height: panelHeight },
+      position: floatingBounds.position,
+      size: floatingBounds.size,
     };
 
     layout.floatingPanels.push(floatingContainer);
-    this.cleanupEmptyContainers(layout.root);
+    this.cleanupEmptyContainers(layout.root, new Set(['center-main', 'left-sidebar']));
     this.setLayout(layout);
   }
 
   /**
-   * Update floating panel position
+   * Update floating panel position (accepts either floating container ID or child panel ID)
    */
   updateFloatingPosition(panelId: string, position: { x: number; y: number }): void {
     const layout = this.getLayout();
-    const floating = layout.floatingPanels.find((p) => p.id === panelId);
+    const floating = layout.floatingPanels.find(
+      (p) => p.id === panelId || p.children.some((c: any) => c.id === panelId)
+    );
     if (floating) {
-      // Clamp to viewport
       const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
       const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-      const width = floating.size?.width || 400;
+      const width = floating.size?.width || 280;
       const height = floating.size?.height || 300;
 
-      floating.position = {
-        x: Math.max(50, Math.min(position.x, viewportWidth - width + 100)),
-        y: Math.max(50, Math.min(position.y, viewportHeight - height + 100)),
+      const clampedPosition = {
+        x: Math.max(4, Math.min(position.x, Math.max(4, viewportWidth - Math.min(width, 120)))),
+        y: Math.max(4, Math.min(position.y, Math.max(4, viewportHeight - Math.min(height, 80)))),
       };
+      floating.position = clampedPosition;
+
+      const childPanel = floating.children[0] as DockPanelConfig | undefined;
+      if (childPanel?.id) {
+        const prev = this.lastFloatingBounds.get(childPanel.id);
+        this.lastFloatingBounds.set(childPanel.id, {
+          position: clampedPosition,
+          size: prev?.size ?? floating.size ?? { width, height },
+        });
+      }
       this.setLayout(layout, true);
     }
   }
 
   /**
-   * Update floating panel size
+   * Update floating panel size (accepts either floating container ID or child panel ID)
    */
   updateFloatingSize(panelId: string, size: { width: number; height: number }): void {
     const layout = this.getLayout();
-    const floating = layout.floatingPanels.find((p) => p.id === panelId);
+    const floating = layout.floatingPanels.find(
+      (p) => p.id === panelId || p.children.some((c: any) => c.id === panelId)
+    );
     if (floating) {
-      floating.size = {
+      const clampedSize = {
         width: Math.max(200, size.width),
         height: Math.max(150, size.height),
       };
+      floating.size = clampedSize;
+
+      const childPanel = floating.children[0] as DockPanelConfig | undefined;
+      if (childPanel?.id) {
+        const prev = this.lastFloatingBounds.get(childPanel.id);
+        this.lastFloatingBounds.set(childPanel.id, {
+          position: prev?.position ?? floating.position ?? { x: 16, y: 64 },
+          size: clampedSize,
+        });
+      }
       this.setLayout(layout, true);
     }
   }
@@ -996,20 +1072,148 @@ export class DockManager {
     const panel = floating.children.find((c: any) => c.id === panelId) as DockPanelConfig;
     if (!panel) return;
 
+    if (floating.position && floating.size) {
+      this.lastFloatingBounds.set(panelId, {
+        position: { ...floating.position },
+        size: { ...floating.size },
+      });
+    }
+
     // Remove from floating
     floating.children = floating.children.filter((c: any) => c.id !== panelId);
     if (floating.children.length === 0) {
       layout.floatingPanels.splice(floatingIndex, 1);
     }
 
-    // Find target and dock
+    // Find target as container first, or as a panel ID next to which we dock
     const target = this.findContainer(layout.root, targetId);
     if (target) {
       this.dockToTarget(layout, panel, target, direction);
+    } else {
+      const result = this.findPanelAndParent(layout.root, targetId);
+      if (result) {
+        this.dockPanelNextTo(result.parent, result.panelIndex, panel, direction);
+      } else {
+        this.addToContainer(layout.root, panel, direction);
+      }
+    }
+
+    if (panel.component === 'Chart') {
+      const removePlaceholders = (container: DockContainer) => {
+        for (let i = container.children.length - 1; i >= 0; i--) {
+          const child = container.children[i];
+          if ('children' in child) removePlaceholders(child as DockContainer);
+          else if ((child as DockPanelConfig).component === 'EmptyChartArea') {
+            container.children.splice(i, 1);
+          }
+        }
+      };
+      removePlaceholders(layout.root);
     }
 
     this.cleanupEmptyContainers(layout.root);
     this.setLayout(layout);
+  }
+
+  /**
+   * Redock a floating panel back to its previous docked slot (MT5 title-bar double-click)
+   */
+  redockPanel(panelId: string): boolean {
+    const layout = this.getLayout();
+    const floatingIndex = layout.floatingPanels.findIndex((p) =>
+      p.children.some((c: any) => c.id === panelId)
+    );
+    if (floatingIndex === -1) return false;
+
+    const floating = layout.floatingPanels[floatingIndex];
+    const panel = floating.children.find((c: any) => c.id === panelId) as DockPanelConfig;
+    if (!panel) return false;
+
+    if (floating.position && floating.size) {
+      this.lastFloatingBounds.set(panelId, {
+        position: { ...floating.position },
+        size: { ...floating.size },
+      });
+    }
+
+    delete panel.minimized;
+    floating.children = floating.children.filter((c: any) => c.id !== panelId);
+    if (floating.children.length === 0) {
+      layout.floatingPanels.splice(floatingIndex, 1);
+    }
+
+    const origin = this.dockOrigins.get(panelId);
+    const originParent = origin ? this.findContainer(layout.root, origin.parentId) : null;
+
+    if (origin && originParent) {
+      if (originParent.type === 'tabs') {
+        const insertAt = Math.min(Math.max(0, origin.index), originParent.children.length);
+        originParent.children.splice(insertAt, 0, { ...panel, ratio: 1 });
+        originParent.activeTab = panel.id;
+      } else {
+        origin.siblingRatios.forEach(({ id, ratio }) => {
+          const sibling = originParent.children.find((child) => child.id === id);
+          if (sibling && typeof ratio === 'number' && ratio > 0) {
+            sibling.ratio = ratio;
+          }
+        });
+        const restoredPanel: DockPanelConfig = {
+          ...panel,
+          ratio: origin.ratio ?? DEFAULT_RATIO,
+        };
+        const insertAt = Math.min(Math.max(0, origin.index), originParent.children.length);
+        originParent.children.splice(insertAt, 0, restoredPanel);
+        this.normalizeRatios(originParent);
+      }
+    } else if (panel.component === 'Navigator' || panel.component === 'MarketWatch') {
+      let leftSidebar = this.findContainer(layout.root, 'left-sidebar');
+      if (!leftSidebar) {
+        leftSidebar = {
+          id: 'left-sidebar',
+          type: 'split',
+          direction: 'vertical',
+          ratio: DESKTOP_WEB_PARITY_RATIOS.sidebar,
+          children: [],
+        };
+        layout.root.children.unshift(leftSidebar);
+        this.normalizeRatios(layout.root);
+      }
+      if (panel.component === 'MarketWatch') {
+        leftSidebar.children.unshift({ ...panel, ratio: SIDEBAR_DEFAULT_RATIOS.marketWatch });
+      } else {
+        leftSidebar.children.forEach((child) => {
+          if (!('children' in child) && child.component === 'MarketWatch') {
+            child.ratio = SIDEBAR_DEFAULT_RATIOS.marketWatch;
+          }
+        });
+        leftSidebar.children.push({ ...panel, ratio: SIDEBAR_DEFAULT_RATIOS.navigator });
+      }
+      this.normalizeRatios(leftSidebar);
+    } else if (panel.component === 'Terminal') {
+      const centerMain = this.findContainer(layout.root, 'center-main') || layout.root;
+      centerMain.children.push({ ...panel, ratio: 0.25 });
+      this.normalizeRatios(centerMain);
+    } else {
+      const centerMain = this.findContainer(layout.root, 'center-main') || layout.root;
+      this.dockToTarget(layout, panel, centerMain, 'center');
+    }
+
+    if (panel.component === 'Chart') {
+      const removePlaceholders = (container: DockContainer) => {
+        for (let i = container.children.length - 1; i >= 0; i--) {
+          const child = container.children[i];
+          if ('children' in child) removePlaceholders(child as DockContainer);
+          else if ((child as DockPanelConfig).component === 'EmptyChartArea') {
+            container.children.splice(i, 1);
+          }
+        }
+      };
+      removePlaceholders(layout.root);
+    }
+
+    this.cleanupEmptyContainers(layout.root);
+    this.setLayout(layout);
+    return true;
   }
 
   /**

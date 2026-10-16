@@ -88,7 +88,8 @@ export interface DockState {
   closeActiveChart: (symbol?: string, panelId?: string) => boolean;
   restoreClosedChart: (panelId?: string) => boolean;
   dockPanel: (panelId: string, targetId: string, direction: DockDirection) => void;
-  floatPanel: (panelId: string, position?: { x: number; y: number }) => void;
+  redockPanel: (panelId: string) => boolean;
+  floatPanel: (panelId: string, position?: { x: number; y: number }, size?: { width: number; height: number }) => void;
   updateFloatingPosition: (panelId: string, position: { x: number; y: number }) => void;
   updateFloatingSize: (panelId: string, size: { width: number; height: number }) => void;
   moveToTab: (panelId: string, tabContainerId: string, insertIndex?: number) => void;
@@ -460,8 +461,13 @@ const useDockLayoutStore = create<DockState>()(
           set({ layout: dockManager.getLayout() });
         },
 
-        floatPanel: (panelId, position) => {
-          dockManager.floatPanel(panelId, position);
+        redockPanel: (panelId) => {
+          const redocked = dockManager.redockPanel(panelId);
+          if (redocked) set({ layout: dockManager.getLayout() });
+          return redocked;
+        },
+        floatPanel: (panelId, position, size) => {
+          dockManager.floatPanel(panelId, position, size);
           set({ layout: dockManager.getLayout() });
         },
 

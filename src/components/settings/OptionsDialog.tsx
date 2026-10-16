@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon, type IconName } from '../ui/Icon';
 import { useSettingsStore, type SettingsState } from '../../store/useSettingsStore';
+import { useThemeAppearanceStore } from '../../store/useThemeAppearanceStore';
 import { useAppStore } from '../../store/useAppStore';
 import { NotificationPreferences } from './NotificationPreferences';
+import { ThemeAppearanceSettings } from './ThemeAppearanceSettings';
 import { SettingsField, SettingsNotice, SettingsSection, SettingsToggle } from './OptionsControls';
 import './options-dialog.css';
 
@@ -33,16 +35,24 @@ function OpenOptionsDialog({ onClose, activeTab, setActiveTab }: {
 }) {
     const tr = useUiTranslation();
     const settings = useSettingsStore();
+    const themeAppearance = useThemeAppearanceStore();
     const [baseline, setBaseline] = useState<SettingsState>(() => useSettingsStore.getState().getSnapshot());
+    const [themeBaseline, setThemeBaseline] = useState(() => useThemeAppearanceStore.getState().getSnapshot());
     const dialogRef = useRef<HTMLDivElement>(null);
     const currentTab = TABS.find((tab) => tab.id === activeTab)!;
-    const dirty = JSON.stringify(settings.getSnapshot()) !== JSON.stringify(baseline);
+    const dirty =
+        JSON.stringify(settings.getSnapshot()) !== JSON.stringify(baseline) ||
+        JSON.stringify(themeAppearance.getSnapshot()) !== JSON.stringify(themeBaseline);
     const handleCancel = useCallback(() => {
         useSettingsStore.getState().restoreSnapshot(baseline);
+        if (JSON.stringify(useThemeAppearanceStore.getState().getSnapshot()) !== JSON.stringify(themeBaseline)) {
+            useThemeAppearanceStore.getState().restoreSnapshot(themeBaseline);
+        }
         onClose();
-    }, [baseline, onClose]);
+    }, [baseline, themeBaseline, onClose]);
     const handleApply = () => {
         setBaseline(settings.getSnapshot());
+        setThemeBaseline(themeAppearance.getSnapshot());
     };
     const cancelFromKeyboard = useEffectEvent(handleCancel);
     useEffect(() => {
@@ -145,6 +155,7 @@ function ChartsTab() {
     const charts = useSettingsStore((state) => state.charts);
     const update = useSettingsStore((state) => state.updateChartsSettings);
     return <div className="options-stack">
+        <ThemeAppearanceSettings />
         <SettingsSection title="Trade display">
             <SettingsToggle label="Show trade history" description="Display previous trades on the chart." checked={charts.showTradeHistory} onChange={(showTradeHistory) => update({ showTradeHistory })} />
             <SettingsToggle label="Show trade levels" description="Display price levels for positions and orders." checked={charts.showTradeLevels} onChange={(showTradeLevels) => update({ showTradeLevels })} />

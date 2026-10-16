@@ -224,19 +224,19 @@ export const DockWorkspace = React.memo(function DockWorkspace({
                     data-chart-panel-active={isActive ? 'true' : 'false'}
                     data-chart-panel-symbol={diagnosticPanelSymbol}
                     data-chart-rendered-symbol={chartSymbol}
-                    style={{ background: '#0e0e12', border: '1px solid #28282e', borderRadius: 0, overflow: 'hidden', transition: 'border-color 0.15s, background 0.15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#5a5a65')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#28282e')}
+                    style={{ background: 'var(--bg-secondary, #0e0e12)', border: '1px solid var(--border-primary, #28282e)', borderRadius: 0, overflow: 'hidden', transition: 'border-color 0.15s, background 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-tertiary, #5a5a65)')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-primary, #28282e)')}
                     onDragOver={e => {
                         e.preventDefault();
                         e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
                     }}
                     onDragLeave={e => {
-                        e.currentTarget.style.background = '#0e0e12';
+                        e.currentTarget.style.background = 'var(--bg-secondary, #0e0e12)';
                     }}
                     onDrop={e => {
                         e.preventDefault();
-                        e.currentTarget.style.background = '#0e0e12';
+                        e.currentTarget.style.background = 'var(--bg-secondary, #0e0e12)';
                         const draggedSymbol = resolveChartSymbol(e.dataTransfer.getData('text/plain'));
                         if (draggedSymbol && draggedSymbol !== chartSymbol) {
                             changeChartPanelSymbol(panel.id, draggedSymbol, authorizedChartSymbols, globalTimeframe);

@@ -24,6 +24,9 @@ import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
 import { getAppVersion } from '../../config/appVersion';
+import { useThemeAppearanceStore } from '../../store/useThemeAppearanceStore';
+import { DARK_THEME_PRESETS, LIGHT_THEME_PRESETS } from '../../utils/themePresets';
+import { OPEN_THEME_SETTINGS_EVENT, ThemeSettingsDialog } from '../settings/ThemeAppearanceSettings';
 
 import { optionsFeature, symbolsFeature, loginFeature, chartPropertiesFeature, chartObjectsFeature, depthOfMarketFeature } from '../../startup/terminalFeatures';
 const OptionsDialog = optionsFeature.Component;
@@ -108,6 +111,7 @@ export const MenuBar = ({
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+    const [isThemeSettingsOpen, setIsThemeSettingsOpen] = useState(false);
     const [isSymbolsOpen, setIsSymbolsOpen] = useState(false);
     const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
     const [tradeLoginRequested, setTradeLoginRequested] = useState(false);
@@ -152,8 +156,13 @@ export const MenuBar = ({
 
     useEffect(() => {
         const openOptions = () => { closeMenu(); setIsOptionsOpen(true); };
+        const openThemeSettings = () => { closeMenu(); setIsThemeSettingsOpen(true); };
         window.addEventListener('open-terminal-options', openOptions);
-        return () => window.removeEventListener('open-terminal-options', openOptions);
+        window.addEventListener(OPEN_THEME_SETTINGS_EVENT, openThemeSettings);
+        return () => {
+            window.removeEventListener('open-terminal-options', openOptions);
+            window.removeEventListener(OPEN_THEME_SETTINGS_EVENT, openThemeSettings);
+        };
     }, [closeMenu]);
 
     // Shared shortcuts and desktop quick actions open the same Symbols dialog.
@@ -303,6 +312,35 @@ export const MenuBar = ({
         action: () => onSetFocusChart?.(!focusChart),
     };
 
+    const lightPresetId = useThemeAppearanceStore((state) => state.light.preset);
+    const darkPresetId = useThemeAppearanceStore((state) => state.dark.preset);
+
+    const lightThemePresetMenuItems: MenuItem[] = LIGHT_THEME_PRESETS.map((preset) => ({
+        label: preset.label,
+        translateLabel: false,
+        checked: lightPresetId === preset.id,
+        checkRole: 'radio',
+        action: () => {
+            useThemeAppearanceStore.getState().setLightPreset(preset.id);
+            useThemeAppearanceStore.getState().setThemeMode('light');
+            onSetAdvancedViewEnabled?.(true);
+            closeMenu();
+        },
+    }));
+
+    const darkThemePresetMenuItems: MenuItem[] = DARK_THEME_PRESETS.map((preset) => ({
+        label: preset.label,
+        translateLabel: false,
+        checked: darkPresetId === preset.id,
+        checkRole: 'radio',
+        action: () => {
+            useThemeAppearanceStore.getState().setDarkPreset(preset.id);
+            useThemeAppearanceStore.getState().setThemeMode('dark');
+            onSetAdvancedViewEnabled?.(false);
+            closeMenu();
+        },
+    }));
+
     const menuItems: { [key: string]: MenuItem[] } = {
         File: [], // FileMenu owns file actions in both terminal shells.
         View: [
@@ -314,13 +352,39 @@ export const MenuBar = ({
                         label: 'Dark Theme',
                         checked: !advancedViewEnabled,
                         checkRole: 'radio',
-                        action: () => onSetAdvancedViewEnabled?.(false),
+                        action: () => {
+                            useThemeAppearanceStore.getState().setThemeMode('dark');
+                            onSetAdvancedViewEnabled?.(false);
+                        },
                     },
                     {
                         label: 'Light Theme',
                         checked: advancedViewEnabled,
                         checkRole: 'radio',
-                        action: () => onSetAdvancedViewEnabled?.(true),
+                        action: () => {
+                            useThemeAppearanceStore.getState().setThemeMode('light');
+                            onSetAdvancedViewEnabled?.(true);
+                        },
+                    },
+                    { divider: true, label: '' },
+                    {
+                        label: 'Light Theme Presets',
+                        icon: <Icon name="palette" size="sm" />,
+                        children: lightThemePresetMenuItems,
+                    },
+                    {
+                        label: 'Dark Theme Presets',
+                        icon: <Icon name="palette" size="sm" />,
+                        children: darkThemePresetMenuItems,
+                    },
+                    { divider: true, label: '' },
+                    {
+                        label: 'Appearance & Themes...',
+                        icon: <Icon name="settings" size="sm" />,
+                        action: () => {
+                            closeMenu();
+                            setIsThemeSettingsOpen(true);
+                        },
                     },
                 ],
             },
@@ -595,6 +659,7 @@ export const MenuBar = ({
     };
 
     const hamburgerViewItems: MenuItem[] = [
+        menuItems.View[0],
         fontSizeMenuItem,
         focusChartMenuItem,
         ...menuItems.View.slice(1),
@@ -813,6 +878,15 @@ export const MenuBar = ({
             label: 'Color Templates',
             icon: 'palette',
             children: colorTemplateItems,
+        },
+        {
+            id: 'appearance-themes',
+            label: 'Appearance & Themes...',
+            icon: 'palette',
+            action: () => {
+                closeMenu();
+                setIsThemeSettingsOpen(true);
+            },
         },
         {
             id: 'algo-trading',
@@ -1140,6 +1214,11 @@ export const MenuBar = ({
             <RetainedLazyFeature active={isOptionsOpen}>
             <OptionsDialog isOpen={isOptionsOpen} onClose={() => setIsOptionsOpen(false)} />
             </RetainedLazyFeature>
+
+            <ThemeSettingsDialog
+                isOpen={isThemeSettingsOpen}
+                onClose={() => setIsThemeSettingsOpen(false)}
+            />
 
             {/* Keep account login available when the desktop status bar is absent. */}
             <RetainedLazyFeature active={isLoginDialogOpen}>

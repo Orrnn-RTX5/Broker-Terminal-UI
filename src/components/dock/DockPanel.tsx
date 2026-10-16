@@ -46,6 +46,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
   className,
   children,
   onClose,
+  onFloat,
   onActivate,
   onMinimizedChange,
   onDragStart,
@@ -99,6 +100,14 @@ export const DockPanel: React.FC<DockPanelProps> = ({
             }
             onDragStart?.(e);
           }}
+          onDoubleClick={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest('button')) return;
+            if (panel.floatable === false) return;
+            e.preventDefault();
+            e.stopPropagation();
+            onFloat?.();
+          }}
           title={minimized ? tr("Click to restore {{value0}}", { value0: panel.title }) : undefined}
         >
           {/* Title */}
@@ -110,7 +119,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
           </span>
 
           {/* ── Minimize button ── */}
-          {panel.component !== 'EmptyChartArea' && (
+          {panel.component !== 'EmptyChartArea' && panel.component !== 'Navigator' && (
             <button
               type="button"
               aria-label={isChart ? tr(minimized ? 'Restore chart {{symbol}}' : 'Minimize chart {{symbol}}', { symbol: chartSymbol }) : `${tr(minimized ? 'Restore' : 'Minimize')} ${tr(panel.title)}`}
