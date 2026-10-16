@@ -1012,14 +1012,14 @@ const FloatingPanelsContent: React.FC<{
 
             {/* 8 resize handles */}
             {!panel.minimized && <>
-            <div data-dock-floating-resize-handle="true" className="absolute top-0 left-6 right-6 h-2 cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 'n')} />
-            <div data-dock-floating-resize-handle="true" className="absolute bottom-0 left-6 right-6 h-2 cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 's')} />
-            <div data-dock-floating-resize-handle="true" className="absolute top-6 bottom-6 left-0 w-2 cursor-ew-resize z-20" onMouseDown={(e) => startResize(e, floating, 'w')} />
-            <div data-dock-floating-resize-handle="true" className="absolute top-6 bottom-6 right-0 w-2 cursor-ew-resize z-20" onMouseDown={(e) => startResize(e, floating, 'e')} />
-            <div data-dock-floating-resize-handle="true" className="absolute top-0 left-0 w-5 h-5 cursor-nwse-resize z-30" onMouseDown={(e) => startResize(e, floating, 'nw')} />
-            <div data-dock-floating-resize-handle="true" className="absolute top-0 right-0 w-5 h-5 cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'ne')} />
-            <div data-dock-floating-resize-handle="true" className="absolute bottom-0 left-0 w-5 h-5 cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'sw')} />
-            <div data-dock-floating-resize-handle="true" className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-30" onMouseDown={(e) => startResize(e, floating, 'se')} />
+            <div data-dock-floating-resize-handle="true" className="absolute -top-1 left-2.5 right-2.5 h-2 bg-transparent cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 'n')} />
+            <div data-dock-floating-resize-handle="true" className="absolute -bottom-1 left-2.5 right-2.5 h-2 bg-transparent cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 's')} />
+            <div data-dock-floating-resize-handle="true" className="absolute top-2.5 bottom-2.5 -left-1 w-2 bg-transparent cursor-ew-resize z-20" onMouseDown={(e) => startResize(e, floating, 'w')} />
+            <div data-dock-floating-resize-handle="true" className="absolute top-2.5 bottom-2.5 -right-1 w-2 bg-transparent cursor-ew-resize z-20" onMouseDown={(e) => startResize(e, floating, 'e')} />
+            <div data-dock-floating-resize-handle="true" className="absolute -top-1 -left-1 w-3 h-3 bg-transparent cursor-nwse-resize z-30" onMouseDown={(e) => startResize(e, floating, 'nw')} />
+            <div data-dock-floating-resize-handle="true" className="absolute -top-1 -right-1 w-3 h-3 bg-transparent cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'ne')} />
+            <div data-dock-floating-resize-handle="true" className="absolute -bottom-1 -left-1 w-3 h-3 bg-transparent cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'sw')} />
+            <div data-dock-floating-resize-handle="true" className="absolute -bottom-1 -right-1 w-3 h-3 bg-transparent cursor-nwse-resize z-30" onMouseDown={(e) => startResize(e, floating, 'se')} />
             </>}
           </div>
         );

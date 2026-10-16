@@ -182,7 +182,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-panel-shell,
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]>div {
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel] > div:first-child {
   background: var(--rtx-light-panel) !important;
   border-color: var(--rtx-light-border) !important;
   color: var(--rtx-light-text) !important;

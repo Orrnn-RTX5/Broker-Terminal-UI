@@ -390,7 +390,7 @@ html:root[data-rtx-theme-configured='true']:not(.rtx-skin-untitled-light):not(.t
   .rtx-chart-panel,
   .rtx-chart-panel__canvas,
   .rtx-chart-wrapper,
-  [data-dock-panel] > div,
+  [data-dock-panel] > div:first-child,
   .navigator-panel,
   .navigator-panel__body,
   .rtx-market-watch,
@@ -473,7 +473,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light[data-rtx-theme-configured='t
   [data-dock-container-kind='tabs'],
   .dock-panel,
   .rtx-chart-panel,
-  [data-dock-panel] > div,
+  [data-dock-panel] > div:first-child,
   .rtx-market-watch,
   .rtx-market-watch__table,
   .rtx-market-watch__search,
@@ -534,6 +534,13 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light[data-rtx-theme-configured='t
   .text-white
 ) {
   color: var(--rtx-light-text) !important;
+}
+
+/* Floating resize handles must remain completely transparent in all themes */
+html:root [data-dock-floating-resize-handle='true'] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 

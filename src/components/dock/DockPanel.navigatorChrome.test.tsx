@@ -180,5 +180,11 @@ describe('Navigator dock chrome and MT5 double-click undock/move/redock', () => 
     const refloatedNav = container.querySelector<HTMLElement>('[data-dock-floating-panel="true"][data-dock-panel="navigator"]');
     expect(refloatedNav?.style.left).toBe('316px');
     expect(refloatedNav?.style.top).toBe('224px');
+
+    const resizeHandles = refloatedNav!.querySelectorAll<HTMLElement>('[data-dock-floating-resize-handle="true"]');
+    expect(resizeHandles.length).toBe(8);
+    resizeHandles.forEach((handle) => {
+      expect(handle.className).toContain('bg-transparent');
+    });
   });
 });

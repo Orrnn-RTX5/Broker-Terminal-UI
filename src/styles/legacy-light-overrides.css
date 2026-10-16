@@ -214,7 +214,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-empty-chart-area {
   color: #101828 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]>div {
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel] > div:first-child {
   background: var(--rtx-light-panel) !important;
   border-color: var(--rtx-light-border) !important;
   color: #101828 !important;
