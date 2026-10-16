@@ -21,7 +21,31 @@ import { getCurrentBrokerAccountSessionScopeKey } from '../features/bottom-dock/
 import { ToolboxTab } from '../features/bottom-dock/toolbox/ToolboxTab';
 import { TradeTab } from '../features/bottom-dock/trade/TradeTab';
 import { useBottomDockStoreBridge } from '../features/bottom-dock/useBottomDockStoreBridge';
+import { useDockLayoutStore } from '../store/useDockLayoutStore';
 import { resolveTradeAccountMetrics } from './BottomDock.trade';
+
+const findTerminalPanelId = (node: unknown): string | null => {
+  if (!node || typeof node !== 'object') return null;
+  const record = node as { id?: string; component?: string; children?: unknown[] };
+  if (record.component === 'Terminal' && record.id) return record.id;
+  if (!Array.isArray(record.children)) return null;
+  for (const child of record.children) {
+    const nestedId = findTerminalPanelId(child);
+    if (nestedId) return nestedId;
+  }
+  return null;
+};
+
+export const toggleFloatToolboxDockPanel = (): void => {
+  const { layout, floatPanel, redockPanel } = useDockLayoutStore.getState();
+  const floatingId = layout.floatingPanels.map((panel) => findTerminalPanelId(panel)).find(Boolean) ?? null;
+  if (floatingId) {
+    redockPanel(floatingId);
+    return;
+  }
+  const dockedId = findTerminalPanelId(layout.root);
+  if (dockedId) floatPanel(dockedId);
+};
 
 const LazyHistoryDownloader = lazy(async () => {
   const module = await import('./HistoryDownloader');
@@ -50,6 +74,7 @@ interface BottomDockProps {
   height?: number | string;
   onHeightChange?: (height: number) => void;
   onClose?: () => void;
+  onFloat?: () => void;
   onClosePosition: ClosePositionAction;
   onModifyPosition: ModifyPositionAction;
   onCancelOrder?: CancelOrderAction;
@@ -97,6 +122,7 @@ export function BottomDock({
     height,
     onHeightChange,
     onClose,
+    onFloat,
     onClosePosition,
     onModifyPosition,
     onCloseBulk,
@@ -248,6 +274,13 @@ export function BottomDock({
                 <div
                     className="rtx-bottom-dock__header dock-panel__header flex h-6 shrink-0 items-center px-1.5 border-b"
                     style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-primary)' }}
+                    onDoubleClick={(e) => {
+                        if ((e.target as HTMLElement).closest('button')) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (onFloat) onFloat();
+                        else toggleFloatToolboxDockPanel();
+                    }}
                 >
                     <span className="dock-panel__title flex-1 min-w-0 truncate text-xs" style={{ color: 'var(--text-secondary)' }}>{tr("Toolbox")}</span>
                     <button

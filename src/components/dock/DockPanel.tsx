@@ -15,11 +15,14 @@ import type { DockPanelConfig } from '../../services/dockManager';
 import { X, Minus } from 'lucide-react';
 import { ChartSymbolTabs } from './ChartSymbolTabs';
 import { ActiveChartWindowBorder } from './ActiveChartWindowBorder';
+import { MarketWatchServerClock } from '../layout/MarketWatchServerClock';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const NON_MINIMIZABLE_COMPONENTS = new Set(['EmptyChartArea', 'Navigator', 'MarketWatch', 'Terminal']);
 
 export interface DockPanelProps {
   panel: DockPanelConfig;
@@ -76,7 +79,32 @@ export const DockPanel: React.FC<DockPanelProps> = ({
         className
       )}
       style={style}
-      onMouseDown={onActivate}
+      onMouseDown={(e) => {
+        onActivate?.();
+        if (!showHeader) {
+          const target = e.target as HTMLElement | null;
+          if (
+            target?.closest('.rtx-market-watch__header, .rtx-bottom-dock__header, [data-dock-inner-header="true"]') &&
+            !target.closest('button:not([role="tab"])')
+          ) {
+            onDragStart?.(e);
+          }
+        }
+      }}
+      onDoubleClick={(e) => {
+        if (!showHeader) {
+          const target = e.target as HTMLElement | null;
+          if (
+            target?.closest('.rtx-market-watch__header, .rtx-bottom-dock__header, [data-dock-inner-header="true"]') &&
+            !target.closest('button:not([role="tab"])')
+          ) {
+            if (panel.floatable === false) return;
+            e.preventDefault();
+            e.stopPropagation();
+            onFloat?.();
+          }
+        }
+      }}
     >
       {isChart && isActive && !minimized && <ActiveChartWindowBorder panelId={panel.id} />}
       {/* ── MT5-style thin title bar ── */}
@@ -93,7 +121,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
           onMouseDown={(e) => {
             // Click on empty header area while minimized → restore
             const target = e.target as HTMLElement;
-            if (target.closest('button')) return;
+            if (target.closest('button:not([role="tab"])')) return;
             if (minimized) {
               setMinimized(false);
               return;
@@ -102,7 +130,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
           }}
           onDoubleClick={(e) => {
             const target = e.target as HTMLElement;
-            if (target.closest('button')) return;
+            if (target.closest('button:not([role="tab"])')) return;
             if (panel.floatable === false) return;
             e.preventDefault();
             e.stopPropagation();
@@ -112,14 +140,20 @@ export const DockPanel: React.FC<DockPanelProps> = ({
         >
           {/* Title */}
           <span className="dock-panel__title flex-1 min-w-0 flex items-center gap-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]">
-            {isChart && chartsBarVisible ? <ChartSymbolTabs panel={panel} /> : tr(panel.title)}
+            {isChart && chartsBarVisible ? (
+              <ChartSymbolTabs panel={panel} />
+            ) : panel.component === 'MarketWatch' ? (
+              <MarketWatchServerClock variant="header" />
+            ) : (
+              tr(panel.title)
+            )}
             {minimized && (
               <span className="ml-1 text-[12px] font-normal text-zinc-600 italic">{tr("(minimized)")}</span>
             )}
           </span>
 
           {/* ── Minimize button ── */}
-          {panel.component !== 'EmptyChartArea' && panel.component !== 'Navigator' && (
+          {!NON_MINIMIZABLE_COMPONENTS.has(panel.component) && (
             <button
               type="button"
               aria-label={isChart ? tr(minimized ? 'Restore chart {{symbol}}' : 'Minimize chart {{symbol}}', { symbol: chartSymbol }) : `${tr(minimized ? 'Restore' : 'Minimize')} ${tr(panel.title)}`}

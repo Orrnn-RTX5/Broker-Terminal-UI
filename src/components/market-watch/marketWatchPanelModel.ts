@@ -88,6 +88,17 @@ export const closeMarketWatchDockPanel = (): void => {
   if (panelId) removePanel(panelId);
 };
 
+export const toggleFloatMarketWatchDockPanel = (): void => {
+  const { layout, floatPanel, redockPanel } = useDockLayoutStore.getState();
+  const floatingId = layout.floatingPanels.map((panel) => findMarketWatchPanelId(panel)).find(Boolean) ?? null;
+  if (floatingId) {
+    redockPanel(floatingId);
+    return;
+  }
+  const dockedId = findMarketWatchPanelId(layout.root);
+  if (dockedId) floatPanel(dockedId);
+};
+
 export const getFundamentalLinks = (symbol: string, groupKey: string): FundamentalLink[] => {
   const ticker = normalizeSymbol(symbol);
   if (groupKey !== 'stocks' || !/^[A-Z]{1,5}$/.test(ticker)) return [];

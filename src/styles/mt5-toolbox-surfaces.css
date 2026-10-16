@@ -10,7 +10,8 @@ html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
   .rtx-market-watch,
   .web-drawing-tools-rail[data-orientation='vertical'],
   [data-dock-panel-component='navigator'],
-  [data-dock-panel-component='marketwatch']
+  [data-dock-panel-component='marketwatch'],
+  [data-dock-panel-component='terminal']
 ) {
   --bg-primary: var(--rtx-dark-bg-primary, #1f1f1f);
   --bg-secondary: var(--rtx-dark-bg-secondary, #1f1f1f);
@@ -32,7 +33,11 @@ html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(.rtx-top-chrome, .
   box-shadow: none !important;
 }
 
-html:root:not(.rtx-skin-untitled-light):not(.theme-light) [data-dock-panel-component='navigator'] .dock-panel__header {
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
+  [data-dock-panel-component='navigator'],
+  [data-dock-panel-component='marketwatch'],
+  [data-dock-panel-component='terminal']
+) .dock-panel__header {
   background: var(--bg-secondary) !important;
   border-color: var(--border-primary) !important;
   box-shadow: none !important;

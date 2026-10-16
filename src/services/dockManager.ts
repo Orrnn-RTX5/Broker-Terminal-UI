@@ -879,12 +879,17 @@ export class DockManager {
     const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
     const savedBounds = this.lastFloatingBounds.get(panelId);
     const isSidebarUtility = panel.component === 'Navigator' || panel.component === 'MarketWatch';
-    const defaultWidth = panel.preferredWidth ?? (isSidebarUtility ? 280 : 400);
-    const defaultHeight = panel.preferredHeight ?? (isSidebarUtility ? 320 : 300);
+    const isBottomUtility = panel.component === 'Terminal';
+    const defaultWidth = panel.preferredWidth ?? (isSidebarUtility ? 280 : isBottomUtility ? 680 : 400);
+    const defaultHeight = panel.preferredHeight ?? (isSidebarUtility ? 320 : isBottomUtility ? 240 : 300);
     const panelWidth = Math.max(200, size?.width ?? savedBounds?.size.width ?? defaultWidth);
     const panelHeight = Math.max(150, size?.height ?? savedBounds?.size.height ?? defaultHeight);
 
-    const defaultPos = isSidebarUtility ? { x: 16, y: 64 } : { x: 100, y: 100 };
+    const defaultPos = isSidebarUtility
+      ? { x: 16, y: 64 }
+      : isBottomUtility
+        ? { x: 220, y: 360 }
+        : { x: 100, y: 100 };
     let posX = position?.x ?? savedBounds?.position.x ?? defaultPos.x;
     let posY = position?.y ?? savedBounds?.position.y ?? defaultPos.y;
 
@@ -909,7 +914,32 @@ export class DockManager {
     };
 
     layout.floatingPanels.push(floatingContainer);
-    this.cleanupEmptyContainers(layout.root, new Set(['center-main', 'left-sidebar']));
+    this.cleanupEmptyContainers(layout.root, new Set(['center-main']));
+
+    // Guard: if center-main lost all its charts when floating a chart, keep
+    // Toolbox locked at its bottom position with an EmptyChartArea placeholder.
+    const centerMain = this.findContainer(layout.root, 'center-main');
+    if (centerMain && centerMain.type === 'split' && centerMain.direction === 'vertical') {
+      const containsChartArea = (container: DockContainer): boolean => container.children.some(child => (
+        'children' in child ? containsChartArea(child)
+          : child.component === 'Chart' || child.component === 'EmptyChartArea'
+      ));
+      const hasChart = containsChartArea(centerMain);
+      const hasToolbox = centerMain.children.some(child => !('children' in child) && child.component === 'Terminal');
+
+      if (!hasChart && hasToolbox) {
+        const placeholder: DockPanelConfig = {
+          id: `charts-area-${Date.now()}`,
+          title: '',
+          component: 'EmptyChartArea',
+          ratio: Math.max(0.05, 1 - centerMain.children.reduce((sum, child) => sum + (child.ratio ?? 0), 0)),
+          closable: false,
+          floatable: false,
+        };
+        centerMain.children.unshift(placeholder);
+      }
+    }
+
     this.setLayout(layout);
   }
 
@@ -1142,6 +1172,19 @@ export class DockManager {
       layout.floatingPanels.splice(floatingIndex, 1);
     }
 
+    if (panel.component === 'Chart') {
+      const removePlaceholders = (container: DockContainer) => {
+        for (let i = container.children.length - 1; i >= 0; i--) {
+          const child = container.children[i];
+          if ('children' in child) removePlaceholders(child as DockContainer);
+          else if ((child as DockPanelConfig).component === 'EmptyChartArea') {
+            container.children.splice(i, 1);
+          }
+        }
+      };
+      removePlaceholders(layout.root);
+    }
+
     const origin = this.dockOrigins.get(panelId);
     const originParent = origin ? this.findContainer(layout.root, origin.parentId) : null;
 
@@ -1161,7 +1204,19 @@ export class DockManager {
           ...panel,
           ratio: origin.ratio ?? DEFAULT_RATIO,
         };
-        const insertAt = Math.min(Math.max(0, origin.index), originParent.children.length);
+        let insertAt = Math.min(Math.max(0, origin.index), originParent.children.length);
+        if (originParent.id === 'left-sidebar') {
+          if (panel.component === 'MarketWatch') {
+            insertAt = 0;
+          } else if (panel.component === 'Navigator') {
+            const mwIndex = originParent.children.findIndex(
+              (c) => !('children' in c) && (c as DockPanelConfig).component === 'MarketWatch'
+            );
+            if (mwIndex >= 0 && insertAt <= mwIndex) {
+              insertAt = mwIndex + 1;
+            }
+          }
+        }
         originParent.children.splice(insertAt, 0, restoredPanel);
         this.normalizeRatios(originParent);
       }
@@ -1178,37 +1233,55 @@ export class DockManager {
         layout.root.children.unshift(leftSidebar);
         this.normalizeRatios(layout.root);
       }
+      const restoredRatio = origin?.ratio ?? (
+        panel.component === 'MarketWatch'
+          ? SIDEBAR_DEFAULT_RATIOS.marketWatch
+          : SIDEBAR_DEFAULT_RATIOS.navigator
+      );
       if (panel.component === 'MarketWatch') {
-        leftSidebar.children.unshift({ ...panel, ratio: SIDEBAR_DEFAULT_RATIOS.marketWatch });
+        leftSidebar.children.forEach((child) => {
+          if (!('children' in child) && child.component === 'Navigator') {
+            child.ratio = this.dockOrigins.get(child.id)?.ratio ?? SIDEBAR_DEFAULT_RATIOS.navigator;
+          }
+        });
+        leftSidebar.children.unshift({ ...panel, ratio: restoredRatio });
       } else {
         leftSidebar.children.forEach((child) => {
           if (!('children' in child) && child.component === 'MarketWatch') {
-            child.ratio = SIDEBAR_DEFAULT_RATIOS.marketWatch;
+            child.ratio = this.dockOrigins.get(child.id)?.ratio ?? SIDEBAR_DEFAULT_RATIOS.marketWatch;
           }
         });
-        leftSidebar.children.push({ ...panel, ratio: SIDEBAR_DEFAULT_RATIOS.navigator });
+        leftSidebar.children.push({ ...panel, ratio: restoredRatio });
       }
       this.normalizeRatios(leftSidebar);
     } else if (panel.component === 'Terminal') {
       const centerMain = this.findContainer(layout.root, 'center-main') || layout.root;
-      centerMain.children.push({ ...panel, ratio: 0.25 });
+      const toolboxRatio = origin?.ratio ?? (1 - DESKTOP_WEB_PARITY_RATIOS.chart);
+      centerMain.children.push({ ...panel, ratio: toolboxRatio });
       this.normalizeRatios(centerMain);
+    } else if (panel.component === 'Chart') {
+      const centerMain = this.findContainer(layout.root, 'center-main') || layout.root;
+      const existingTabs = centerMain.children.find(
+        (c): c is DockContainer => 'children' in c && c.type === 'tabs'
+      );
+      const existingChartIndex = centerMain.children.findIndex(
+        (c) => !('children' in c) && (c as DockPanelConfig).component === 'Chart'
+      );
+      if (existingTabs) {
+        existingTabs.children.push({ ...panel, ratio: 1 });
+        existingTabs.activeTab = panel.id;
+      } else if (existingChartIndex >= 0) {
+        this.dockPanelNextTo(centerMain, existingChartIndex, panel, 'center');
+      } else {
+        centerMain.children.unshift({
+          ...panel,
+          ratio: origin?.ratio ?? DESKTOP_WEB_PARITY_RATIOS.chart,
+        });
+        this.normalizeRatios(centerMain);
+      }
     } else {
       const centerMain = this.findContainer(layout.root, 'center-main') || layout.root;
       this.dockToTarget(layout, panel, centerMain, 'center');
-    }
-
-    if (panel.component === 'Chart') {
-      const removePlaceholders = (container: DockContainer) => {
-        for (let i = container.children.length - 1; i >= 0; i--) {
-          const child = container.children[i];
-          if ('children' in child) removePlaceholders(child as DockContainer);
-          else if ((child as DockPanelConfig).component === 'EmptyChartArea') {
-            container.children.splice(i, 1);
-          }
-        }
-      };
-      removePlaceholders(layout.root);
     }
 
     this.cleanupEmptyContainers(layout.root);

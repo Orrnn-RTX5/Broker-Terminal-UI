@@ -318,7 +318,7 @@ const DockContainerContent: React.FC<DockContainerProps> = ({
   // Handle panel drag start
   const handlePanelDragStart = useCallback((panel: DockPanelConfig, isFloating: boolean) => (e: React.MouseEvent | React.TouchEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('button')) return;
+    if (target.closest('button:not([role="tab"])')) return;
 
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
@@ -633,6 +633,14 @@ const DockContainerContent: React.FC<DockContainerProps> = ({
             return (
               <div
                 key={panel.id}
+                onDoubleClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.closest('button')) return;
+                  if (panel.floatable === false) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  floatPanel(panel.id);
+                }}
                 className={cn(
                   'group flex items-center gap-1 px-2 h-full text-[14px] font-normal cursor-pointer select-none border-r border-zinc-700/30',
                   isActive
@@ -941,7 +949,7 @@ const FloatingPanelsContent: React.FC<{
     const startPY = floating.position?.y ?? 100;
 
     const target = e.target as HTMLElement | null;
-    if (target?.closest('button')) return;
+    if (target?.closest('button:not([role="tab"])')) return;
     let dragStarted = false;
     const onMove = (me: MouseEvent) => {
       const dx = me.clientX - startMX;

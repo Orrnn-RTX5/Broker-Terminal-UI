@@ -273,6 +273,7 @@ export const DockWorkspace = React.memo(function DockWorkspace({
                     <ErrorBoundary>
                         <MarketWatchPanel
                             className="flex-1 min-h-0 min-w-0 w-full h-full"
+                            showHeader={!isFloating}
                             allSymbols={allSymbols}
                             chartSymbols={authorizedChartSymbols}
                             activeMarketSnapshot={activeMarketSnapshot}
@@ -300,6 +301,7 @@ export const DockWorkspace = React.memo(function DockWorkspace({
                         <BottomDock
                             height="100%"
                             onClose={isFloating || panel.closable === false ? undefined : () => useDockLayoutStore.getState().removePanel(panel.id)}
+                            onFloat={isFloating || panel.floatable === false ? undefined : () => useDockLayoutStore.getState().floatPanel(panel.id)}
                             onClosePosition={onClosePosition as any}
                             onModifyPosition={onModifyPosition}
                             onCancelOrder={onCancelOrder as any}

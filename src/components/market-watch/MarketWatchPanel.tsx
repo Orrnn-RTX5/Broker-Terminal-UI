@@ -26,6 +26,7 @@ import {
   getBrokerSpecificationSource,
   getPublicSpecificationSource,
   normalizeSymbol,
+  toggleFloatMarketWatchDockPanel,
   uniqueSymbols,
   type MarketWatchViewId,
   type ScopedManualSymbols,
@@ -88,6 +89,7 @@ interface MarketWatchPanelBaseProps {
   selectedSymbol: string;
   onSymbolSelect: (symbol: string) => void;
   className?: string;
+  showHeader?: boolean;
 }
 
 interface MarketWatchPanelProps extends MarketWatchPanelBaseProps {
@@ -106,6 +108,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
   selectedSymbol,
   onSymbolSelect,
   className,
+  showHeader = true,
   activeMarketSnapshot,
   marketInstrumentsSnapshot,
 }) => {
@@ -814,18 +817,29 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
           }}
         >
           {/* ── Search / Add Symbol ──────────────────────────────── */}
-          <div className="rtx-market-watch__header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, height: 20, padding: '0 5px', borderBottom: '1px solid var(--border-primary)' }}>
-            <MarketWatchServerClock variant="header" />
-            <button
-              type="button"
-              title={tr('Close')}
-              aria-label={tr('Close Market Watch')}
-              onClick={closeMarketWatchDockPanel}
-              className="dock-panel__action dock-panel__action--close flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-zinc-400 transition-colors hover:bg-red-500/80 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-current"
+          {showHeader && (
+            <div
+              className="rtx-market-watch__header"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, height: 20, padding: '0 5px', borderBottom: '1px solid var(--border-primary)' }}
+              onDoubleClick={(e) => {
+                if ((e.target as HTMLElement).closest('button')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                toggleFloatMarketWatchDockPanel();
+              }}
             >
-              <X className="h-3 w-3" aria-hidden="true" />
-            </button>
-          </div>
+              <MarketWatchServerClock variant="header" />
+              <button
+                type="button"
+                title={tr('Close')}
+                aria-label={tr('Close Market Watch')}
+                onClick={closeMarketWatchDockPanel}
+                className="dock-panel__action dock-panel__action--close flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-zinc-400 transition-colors hover:bg-red-500/80 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-current"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </div>
+          )}
 
           {(showSymbolsPanel || marketWatchView === 'symbols') && (
             <MarketWatchGrid
