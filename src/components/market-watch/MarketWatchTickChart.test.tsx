@@ -185,9 +185,11 @@ describe('MarketWatchTickChart', () => {
       <MarketWatchTickChart symbol="EURUSD" instrumentSources={[{ symbol: 'EURUSD', digits: 5 }]} />,
     );
     const svg = container.querySelector('svg[data-tick-count]')!;
+    expect(svg).toHaveAttribute('data-cursor', 'default');
     expect(screen.queryByTestId('market-tick-crosshair')).not.toBeInTheDocument();
 
     fireEvent.mouseMove(svg, { clientX: 120, clientY: 110 });
+    expect(svg).toHaveAttribute('data-cursor', 'crosshair');
     expect(screen.getByTestId('market-tick-crosshair')).toBeInTheDocument();
     expect(screen.getByTestId('market-tick-crosshair-x')).toBeInTheDocument();
     expect(screen.getByTestId('market-tick-crosshair-y')).toBeInTheDocument();
@@ -195,7 +197,23 @@ describe('MarketWatchTickChart', () => {
     expect(screen.getByTestId('market-tick-crosshair-price-tag').textContent).toMatch(/^1\.119\d\d$/);
     expect(screen.getByTestId('market-tick-crosshair-time-tag').textContent).toMatch(/^2026\.10\.14 \d{2}:\d{2}:21$/);
 
-    fireEvent.mouseLeave(svg);
+    // Moving onto the right price scale or bottom time scale clears crosshair and resets cursor to default
+    fireEvent.mouseMove(svg, { clientX: 310, clientY: 110 });
+    expect(svg).toHaveAttribute('data-cursor', 'default');
+    expect(screen.queryByTestId('market-tick-crosshair')).not.toBeInTheDocument();
+
+    fireEvent.mouseMove(svg, { clientX: 120, clientY: 110 });
+    expect(svg).toHaveAttribute('data-cursor', 'crosshair');
+    expect(screen.getByTestId('market-tick-crosshair')).toBeInTheDocument();
+
+    fireEvent.mouseMove(svg, { clientX: 120, clientY: 235 });
+    expect(svg).toHaveAttribute('data-cursor', 'default');
+    expect(screen.queryByTestId('market-tick-crosshair')).not.toBeInTheDocument();
+
+    fireEvent.mouseMove(svg, { clientX: 120, clientY: 110 });
+    expect(svg).toHaveAttribute('data-cursor', 'crosshair');
+    fireEvent.mouseLeave(screen.getByTestId('market-tick-plot'));
+    expect(svg).toHaveAttribute('data-cursor', 'default');
     expect(screen.queryByTestId('market-tick-crosshair')).not.toBeInTheDocument();
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTradingAccountType } from './tradingAccountType';
+import { resolveDisplayAccountType, resolveTradingAccountType } from './tradingAccountType';
 
 describe('resolveTradingAccountType', () => {
   it.each([
@@ -27,6 +27,8 @@ describe('resolveTradingAccountType', () => {
     [{ ACCOUNT_TRADE_MODE: 2 }, 'real'],
     [{ account_trade_mode: '1' }, 'contest'],
     [{ account_trade_mode: 'ACCOUNT_TRADE_MODE_REAL' }, 'real'],
+    [{ name: 'demo acc1', server: 'ORRNN' }, 'demo'],
+    [{ name: 'Abishek Sharma', server: 'MetaQuotes-Demo' }, 'demo'],
   ])('uses the account metadata in %j', (payload, expected) => {
     expect(resolveTradingAccountType(payload)).toBe(expected);
   });
@@ -70,5 +72,13 @@ describe('resolveTradingAccountType', () => {
     { account_trade_mode: 4 },
   ])('keeps unrelated or absent metadata unknown: %j', (payload) => {
     expect(resolveTradingAccountType(payload)).toBeUndefined();
+  });
+
+  it('resolves display account types for demo, real, and contest bookmarks', () => {
+    expect(resolveDisplayAccountType({ login: 200003, name: 'demo acc1', server: 'ORRNN', isLive: true })).toBe('demo');
+    expect(resolveDisplayAccountType({ login: 200004, name: 'Trader', server: 'ORRNN', isLive: false })).toBe('demo');
+    expect(resolveDisplayAccountType({ login: 200005, name: 'Trader', server: 'ORRNN', isLive: true })).toBe('real');
+    expect(resolveDisplayAccountType({ login: 200006, name: 'Trader', server: 'ORRNN' })).toBe('real');
+    expect(resolveDisplayAccountType({ login: 200007, name: 'Trader', server: 'ORRNN', accountType: 'contest' })).toBe('contest');
   });
 });

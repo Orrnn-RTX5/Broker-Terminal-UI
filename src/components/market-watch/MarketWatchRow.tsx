@@ -23,9 +23,24 @@ import {
   hasMarketWatchQuote,
   readFiniteDailyChange,
 } from './marketWatchPanelModel';
+import { resolveMarketWatchExtendedColumn } from './marketWatchSymbolDetailsModel';
 
 const MARKET_WATCH_QUOTE_UP_COLOR = 'var(--color-quote-up)';
 const MARKET_WATCH_QUOTE_DOWN_COLOR = '#ff5858';
+const CORE_MARKET_WATCH_COLUMN_SET = new Set<MarketWatchColumnId>([
+  'symbol',
+  'bid',
+  'ask',
+  'last',
+  'high',
+  'low',
+  'volume',
+  'spread',
+  'time',
+  'dailyChangePrice',
+  'dailyChange',
+  'source',
+]);
 
 function usePriceFlash(value: number): 'up' | 'down' | null {
   const [flashState, setFlashState] = useState<{
@@ -69,6 +84,7 @@ interface MarketWatchRowProps {
   isLightSkin: boolean;
   closedDailyChange?: number | null;
   lastPrice?: MarketWatchLastPrice;
+  instrumentSources?: readonly unknown[];
   symbolUniverse: readonly string[];
   rowRef?: (node: HTMLTableRowElement | null) => void;
 }
@@ -87,6 +103,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   isLightSkin,
   closedDailyChange,
   lastPrice,
+  instrumentSources,
   symbolUniverse,
   rowRef,
 }) => {
@@ -132,6 +149,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   const showTime = columns.includes('time');
   const showDailyChange = columns.includes('dailyChange');
   const showSource = columns.includes('source');
+  const extendedColumns = columns.filter((col) => !CORE_MARKET_WATCH_COLUMN_SET.has(col));
   const renderNumber = (value: unknown, digits = priceDigits): ReactNode => {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed !== 0
@@ -335,6 +353,33 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
             </span>
           </td>
         )}
+        {extendedColumns.map((column) => {
+          const resolved = resolveMarketWatchExtendedColumn({
+            column,
+            tick,
+            lastPrice,
+            displayLast: resolvedDisplayMetadata.last,
+            instrumentSources,
+            priceDigits,
+          });
+          return (
+            <td
+              key={column}
+              data-field={column}
+              style={{ padding: '3px 5px', textAlign: 'right', opacity: isLive ? 1 : 0.72 }}
+            >
+              <span className={`rtx-market-watch__${column}`} style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+                {resolved.kind === 'price' && resolved.numericValue !== null && resolved.numericValue !== 0 ? (
+                  <PriceDisplay price={resolved.numericValue} symbol={symbol} digits={priceDigits} />
+                ) : resolved.formatted !== null ? (
+                  resolved.formatted
+                ) : (
+                  <span style={{ color: '#50505a' }}>—</span>
+                )}
+              </span>
+            </td>
+          );
+        })}
       </tr>
     </ContextMenu>
   );

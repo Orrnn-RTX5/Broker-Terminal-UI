@@ -98,4 +98,60 @@ describe('useOrderExecution', () => {
     expect(controller.refreshPositions).not.toHaveBeenCalled();
     expect(controller.refreshOrdersAndHistory).not.toHaveBeenCalled();
   });
+
+  it('forwards SL/TP and comment from OrderPanelDialog market submissions', async () => {
+    const context = createTradeOperationContext('broker:123', 123, 4);
+    const controller = createController(() => context);
+
+    await act(() => controller.result.current.handleOrderPanelSubmit({
+      type: 'buy',
+      symbol: 'EURUSD',
+      volume: 0.25,
+      priceSl: 1.08,
+      priceTp: 1.11,
+      comment: 'mt5-market',
+    }));
+
+    expect(api.orders.placeMarketOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        login: 123,
+        side: 'BUY',
+        symbol: 'EURUSD',
+        volume: 0.25,
+        price_sl: 1.08,
+        price_tp: 1.11,
+        comment: 'mt5-market',
+      }),
+      expect.objectContaining({ intentAtMs: expect.any(Number) }),
+    );
+  });
+
+  it('routes Limit and Stop OrderPanelDialog submissions to placePendingOrder', async () => {
+    const context = createTradeOperationContext('broker:123', 123, 4);
+    const controller = createController(() => context);
+
+    await act(() => controller.result.current.handleOrderPanelSubmit({
+      type: 'sell',
+      symbol: 'EURUSD',
+      volume: 0.5,
+      orderType: 'Limit Order',
+      price: 1.095,
+      priceSl: 1.10,
+      priceTp: 1.085,
+      comment: 'mt5-limit',
+    }));
+
+    expect(api.orders.placePendingOrder).toHaveBeenCalledWith({
+      login: 123,
+      symbol: 'EURUSD',
+      side: 'sell',
+      volume: 0.5,
+      type: 'sell_limit',
+      price: 1.095,
+      price_sl: 1.10,
+      price_tp: 1.085,
+      comment: 'mt5-limit',
+    });
+    expect(controller.refreshOrdersAndHistory).toHaveBeenCalledWith(123);
+  });
 });

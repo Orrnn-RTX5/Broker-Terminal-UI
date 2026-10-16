@@ -63,7 +63,7 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(arrowBuilder).toContain("'M3 7 7 3l4 4M3 11l4-4 4 4M7 8v9'");
     expect(arrowBuilder).toContain("'M3 13l4 4 4-4M3 9l4 4 4-4M7 3v9'");
     expect(markerBuilder).toContain('marker.innerHTML = createArrowSvg(side);');
-    expect(markerBuilder).toContain("markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? 3 : -3");
+    expect(markerBuilder).toContain("markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? -3 : 3");
     expect(chartSource).toContain('getTradeHistoryMarkerPrice(node.markerSide, node.price, tradeMarkerCandles.get(markerTime))');
     expect(chartSource).toContain('markerTime = fallbackTime;');
     expect(chartSource).toContain("getTradeHistoryExecutionSide(trade.side, 'CLOSE')");

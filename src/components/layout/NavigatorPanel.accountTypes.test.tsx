@@ -59,17 +59,21 @@ describe('Navigator account type icons', () => {
     }
   });
 
-  it('keeps old hardcoded isLive bookmarks and an unknown restored session neutral', () => {
+  it('renders demo bookmarks as green Demo account icons and real bookmarks as yellow Real account icons', () => {
     const brokerId = 'Unknown-type-broker';
     const serverUrl = 'https://unknown.example';
-    useAppStore.setState({ isAuthenticated: true, accountId: '200001', savedAccounts: [{
-      login: 200002, name: 'Legacy', server: 'Server', brokerId, serverUrl, isLive: true, lastUsed: 1,
-    }] });
+    useAppStore.setState({ isAuthenticated: true, accountId: '200001', savedAccounts: [
+      { login: 200002, name: 'Real Trader', server: 'Server', brokerId, serverUrl, isLive: true, isFavorite: true, lastUsed: 1 },
+      { login: 200003, name: 'demo acc1', server: 'Server', brokerId, serverUrl, isLive: true, isFavorite: true, lastUsed: 2 },
+    ] });
     commitBrokerAccountSessionScope({ authenticated: true, accountId: '200001', brokerId, serverUrl });
     render(<NavigatorPanel />);
-    expect(screen.getAllByRole('img', { name: 'Account type unavailable' })).toHaveLength(2);
-    expect(screen.queryByRole('img', { name: 'Real account' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('img', { name: 'Demo account' })).not.toBeInTheDocument();
+    const realIcons = screen.getAllByRole('img', { name: 'Real account' });
+    const demoIcons = screen.getAllByRole('img', { name: 'Demo account' });
+    expect(realIcons).toHaveLength(3);
+    expect(demoIcons).toHaveLength(2);
+    for (const icon of realIcons) expect(icon).toHaveAttribute('data-account-type', 'real');
+    for (const icon of demoIcons) expect(icon).toHaveAttribute('data-account-type', 'demo');
   });
 
   it.each([

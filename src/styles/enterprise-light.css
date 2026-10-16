@@ -1280,11 +1280,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>span>span {
   padding: 0 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>span:first-child {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>span:first-child,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>.rtx-chart-hud__symbol {
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>span:not(:first-child) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>span:not(:first-child):not(.rtx-chart-hud__symbol) {
   color: var(--rtx-light-text-muted) !important;
 }
 

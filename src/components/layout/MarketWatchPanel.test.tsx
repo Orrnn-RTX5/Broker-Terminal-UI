@@ -1142,7 +1142,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(screen.queryByRole('region', { name: 'Market Watch Trading test view' })).not.toBeInTheDocument();
   });
 
-  it('shows the MT5 Details tab from the live feed tick and the instrument catalog', () => {
+  it('shows the MT5 Details tab from the live feed tick and the instrument catalog', async () => {
     setMarketCatalog([
       { symbol: 'XAUUSD', description: 'Gold vs US Dollar', digits: 2, tick_size: 0.01, tick_value: 0.1 },
       'BTCUSD',
@@ -1169,7 +1169,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       });
     });
 
-    render(
+    const { rerender } = render(
       <MarketWatchPanel
         allSymbols={DEFAULT_SYMBOLS}
         chartSymbols={DEFAULT_SYMBOLS}
@@ -1180,8 +1180,9 @@ describe('MarketWatchPanel symbol visibility', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
 
     expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('combobox', { name: 'Symbol' })).toHaveValue('XAUUSD');
-    expect(screen.getByRole('option', { name: 'XAUUSD, Gold vs US Dollar' })).toBeInTheDocument();
+    const symbolLink = screen.getByRole('button', { name: 'XAUUSD, Gold vs US Dollar' });
+    expect(symbolLink).toBeInTheDocument();
+    expect(symbolLink).not.toHaveAttribute('data-active', 'true');
     expect(screen.getByRole('region', { name: 'XAUUSD Details' })).toBeInTheDocument();
     expect(screen.queryByText('Symbol unavailable')).not.toBeInTheDocument();
     const labels = [
@@ -1202,14 +1203,29 @@ describe('MarketWatchPanel symbol visibility', () => {
       'Close Price': '4272.74',
     });
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Symbol' }), { target: { value: 'EURUSD' } });
+    fireEvent.click(symbolLink);
+    await act(async () => { await vi.dynamicImportSettled(); });
+    expect(symbolLink).toHaveAttribute('data-active', 'true');
+    expect(screen.getByRole('dialog', { name: 'XAUUSD Specification' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close symbol specification' }));
+
+    rerender(
+      <MarketWatchPanel
+        allSymbols={DEFAULT_SYMBOLS}
+        chartSymbols={DEFAULT_SYMBOLS}
+        selectedSymbol="EURUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
     expect(screen.getByRole('region', { name: 'EURUSD Details' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'EURUSD, Euro vs US Dollar' })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Symbol unavailable');
     expect(screen.getByText('-0.42%')).toHaveAttribute('data-tone', 'down');
     expect(getDetailValue('Bid')).toBe('1.10000');
     expect(getDetailValue('Bid High')).toBe('—');
     expect(getDetailValue('Tick Value')).toBe('—');
   });
+
 
   it('prefers the account specification Tick Value while Details is open', async () => {
     act(() => useAppStore.setState({ isAuthenticated: true }));
@@ -1454,6 +1470,70 @@ describe('MarketWatchPanel symbol visibility', () => {
       'Metals and FX': DEFAULT_DISPLAY_SYMBOLS,
     });
     expect(JSON.parse(localStorage.getItem('rtx5_symbol_set_columns') ?? '{}')['Metals and FX']).toContain('time');
+  });
+
+  it('renders the 5-column MT5 Desktop Columns submenu with all 46 options and displays toggled column values', () => {
+    const specInstrument = {
+      symbol: 'XAUUSD',
+      digits: 2,
+      tickSize: 0.01,
+      tickValue: 1,
+      marginInitial: 1000,
+    };
+    setMarketCatalog([specInstrument], ['XAUUSD']);
+    marketHooks.activeSymbols = ['XAUUSD'];
+    act(() => {
+      useAppStore.getState().setTicks({
+        XAUUSD: {
+          symbol: 'XAUUSD',
+          bid: 2350.25,
+          ask: 2350.55,
+          spread: 30,
+          high: 2360.50,
+          low: 2340.10,
+          open: 2345.00,
+          close: 2344.80,
+          timestamp: Date.now(),
+        },
+      });
+    });
+
+    render(
+      <MarketWatchPanel
+        allSymbols={[specInstrument]}
+        chartSymbols={['XAUUSD']}
+        selectedSymbol="XAUUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+    const rootMenu = screen.getByRole('menu');
+    fireEvent.click(within(rootMenu).getByText('Columns'));
+    const columnsMenu = screen.getAllByRole('menu').at(-1)!;
+
+    expect(columnsMenu.querySelector('.rtx-context-menu__columns')).toHaveAttribute('data-column-count', '5');
+    const menuItems = within(columnsMenu).getAllByRole('menuitem');
+    expect(menuItems).toHaveLength(46);
+
+    fireEvent.click(within(columnsMenu).getByText('Tick Size'));
+    fireEvent.click(within(columnsMenu).getByText('Tick Value'));
+    fireEvent.click(within(columnsMenu).getByText('Initial margin'));
+    fireEvent.click(within(columnsMenu).getByText('Bid High'));
+    fireEvent.click(within(columnsMenu).getByText('Open Price'));
+
+    expect(screen.getByRole('columnheader', { name: 'Tick Size' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Tick Value' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Initial margin' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Bid High' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Open Price' })).toBeInTheDocument();
+
+    const xauRow = screen.getByText('XAUUSD').closest('tr')!;
+    expect(xauRow.querySelector('[data-field="tickSize"]')).toHaveTextContent('0.01');
+    expect(xauRow.querySelector('[data-field="tickValue"]')).toHaveTextContent('1');
+    expect(xauRow.querySelector('[data-field="initialMargin"]')).toHaveTextContent('1000');
+    expect(xauRow.querySelector('[data-field="bidHigh"]')).toHaveTextContent('2360.50');
+    expect(xauRow.querySelector('[data-field="openPrice"]')).toHaveTextContent('2345.00');
   });
 
   it('shows stock-only Fundamental Data while honestly disabling unavailable realtime subscription', () => {

@@ -165,10 +165,10 @@ export const buildChartTheme = (
     areaDownLine: candleDown,
     areaDownTop: colorWithAlpha(candleDown, areaFillOpacity, `rgba(242, 54, 69, ${areaFillOpacity})`),
     areaDownBottom: colorWithAlpha(candleDown, 0, 'rgba(242, 54, 69, 0)'),
-    volumeUp: colorScheme === 'Green and White' ? colors.volumes : useReferenceLightSurface
+    volumeUp: colorScheme === 'Green and White' || colorScheme === 'Green and Blue' ? colors.volumes : useReferenceLightSurface
       ? barUp
       : colorWithAlpha(barUp, 0.28, 'rgba(8, 153, 129, 0.28)'),
-    volumeDown: colorScheme === 'Green and White' ? colors.volumes : useReferenceLightSurface
+    volumeDown: colorScheme === 'Green and White' || colorScheme === 'Green and Blue' ? colors.volumes : useReferenceLightSurface
       ? barDown
       : colorWithAlpha(barDown, 0.28, 'rgba(242, 54, 69, 0.28)'),
   };

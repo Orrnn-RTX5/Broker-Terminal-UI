@@ -11,6 +11,7 @@ export interface ContextMenuItemConfig {
   checked?: boolean;
   disabled?: boolean;
   divider?: boolean;
+  columnBreak?: boolean;
   action?: () => void;
   submenu?: ContextMenuItemConfig[];
   autoClose?: boolean;

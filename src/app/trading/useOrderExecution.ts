@@ -30,6 +30,15 @@ export interface OrderPanelSubmission {
   type: 'buy' | 'sell';
   volume: number;
   symbol: string;
+  orderType?: 'Market Execution' | 'Limit Order' | 'Stop Order' | 'Stop Limit Order' | 'Buy Limit' | 'Sell Limit' | 'Buy Stop' | 'Sell Stop' | 'Buy Stop Limit' | 'Sell Stop Limit';
+  price?: number;
+  stopLimitPrice?: number;
+  priceSl?: number;
+  priceTp?: number;
+  fillPolicy?: 'Fill or Kill' | 'Immediate or Cancel' | 'Return';
+  expiration?: string;
+  expirationTimestamp?: number;
+  comment?: string;
 }
 
 export interface OrderProtection {
@@ -280,6 +289,7 @@ export const useOrderExecution = ({
     const intentAtMs = captureTradeOrderIntent();
     try {
       const side = order.type.toUpperCase() as 'BUY' | 'SELL';
+      const lowerSide = order.type.toLowerCase() as 'buy' | 'sell';
       const requestedOrderPanelSymbol = normalizeSymbolName(order.symbol || orderPanelSymbol);
       const submitSymbol = getAllowedSymbol(requestedOrderPanelSymbol);
       if (!submitSymbol) {
@@ -299,11 +309,63 @@ export const useOrderExecution = ({
       const operationContext = captureTradeOperationContext(loginId);
       if (!operationContext || !ensureMarketOpenForOrder(submitSymbol)) return;
 
+      const isPendingOrder = Boolean(
+        order.orderType && order.orderType !== 'Market Execution',
+      );
+
+      if (isPendingOrder) {
+        const orderPrice = Number(order.price);
+        if (!Number.isFinite(orderPrice) || orderPrice <= 0) {
+          publishOrderFeedback([
+            feedbackLabel('Invalid price'),
+            feedbackValue(`: ${order.price ?? 0} · `),
+            feedbackLabel('Order failed'),
+          ]);
+          return;
+        }
+        const pendingKind = order.orderType?.toLowerCase().includes('stop') && !order.orderType?.toLowerCase().includes('limit')
+          ? 'stop'
+          : 'limit';
+        const pendingType = `${lowerSide}_${pendingKind}` as 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop';
+        await api.orders.placePendingOrder({
+          login: loginId,
+          symbol: submitSymbol,
+          side: lowerSide,
+          volume: order.volume,
+          type: pendingType,
+          price: orderPrice,
+          ...(order.priceSl && order.priceSl > 0 ? { price_sl: order.priceSl } : {}),
+          ...(order.priceTp && order.priceTp > 0 ? { price_tp: order.priceTp } : {}),
+          ...(order.expirationTimestamp && order.expirationTimestamp > 0 ? { expiration: order.expirationTimestamp } : {}),
+          ...(order.comment ? { comment: order.comment } : {}),
+        });
+        if (!isTradeOperationContextCurrent(operationContext)) return;
+        const labelText = pendingKind === 'stop'
+          ? (side === 'BUY' ? 'Buy Stop' : 'Sell Stop')
+          : (side === 'BUY' ? 'Buy Limit' : 'Sell Limit');
+        publishOrderFeedback([
+          feedbackLabel(labelText),
+          feedbackValue(` · ${submitSymbol} · `),
+          feedbackLabel('Volume'),
+          feedbackValue(`: ${order.volume} · `),
+          feedbackLabel('Price'),
+          feedbackValue(`: ${orderPrice} · `),
+          feedbackLabel('request submitted successfully!'),
+        ], 'success');
+        void refreshOrdersAndHistory(loginId).catch((error) => {
+          console.error('[Trade] Failed to refresh pending orders/history:', error);
+        });
+        return;
+      }
+
       const orderPromise = api.orders.placeMarketOrder({
         symbol: submitSymbol,
         side,
         volume: order.volume,
         login: loginId,
+        ...(order.priceSl && order.priceSl > 0 ? { price_sl: order.priceSl } : {}),
+        ...(order.priceTp && order.priceTp > 0 ? { price_tp: order.priceTp } : {}),
+        ...(order.comment ? { comment: order.comment } : {}),
       }, { intentAtMs });
       const chartEntryPrice = getChartEntryPriceForSymbol(submitSymbol, side);
       const chartEntryTime = new Date().toISOString();
@@ -330,6 +392,7 @@ export const useOrderExecution = ({
     ensureMarketOpenForOrder,
     getAllowedSymbol,
     getLiveTradingLogin,
+    isTradeOperationContextCurrent,
     orderPanelSymbol,
     refreshOrdersAndHistory,
     refreshPositions,

@@ -178,6 +178,18 @@ describe('account summary saved-account ownership', () => {
     })]);
   });
 
+  it('classifies a non-demo broker group as real while preserving an existing demo registration bookmark', async () => {
+    useAppStore.setState({ savedAccounts: [bookmark('Real owner', brokerA.server, brokerA)] });
+    vi.mocked(loadSessionTradeSnapshot).mockResolvedValue(snapshot('Real owner', { group: 'standard' }));
+
+    mountSnapshotRuntime();
+    await flushSnapshot();
+
+    expect(useAppStore.getState().savedAccounts).toEqual([expect.objectContaining({
+      name: 'Real owner', accountType: 'real', isLive: true, brokerId: brokerA.brokerId,
+    })]);
+  });
+
   it('does not copy classification from a different broker or infer it from an owner or server label', async () => {
     const foreign = { ...bookmark('Foreign owner', brokerB.server, brokerB), accountType: 'contest' as const, isLive: false };
     useAppStore.setState({ savedAccounts: [foreign] });

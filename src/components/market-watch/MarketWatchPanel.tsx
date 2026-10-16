@@ -1,10 +1,11 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useTerminalStartupReady } from '../../startup/TerminalStartupBoundary';
-import React, { lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useWatchlistStore } from '../../store/useWatchlistStore';
+import { createPreloadableFeature } from '../../startup/createPreloadableFeature';
 import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { MarketWatchTickChart, PopupPricesDialog } from './index';
 import { MarketWatchSaveSetDialog } from './MarketWatchSaveSetDialog';
@@ -14,6 +15,7 @@ import { useMarketWatchPanelModel } from './useMarketWatchPanelModel';
 import { MarketWatchSymbolExplorer } from './MarketWatchSymbolExplorer';
 import { MarketWatchGrid } from './MarketWatchGrid';
 import { MarketWatchSymbolDetails } from './MarketWatchSymbolDetails';
+import { MarketWatchTradingView } from './MarketWatchTradingView';
 import { MarketWatchViewTabs } from './MarketWatchViewTabs';
 import { MarketWatchServerClock } from '../layout/MarketWatchServerClock';
 import './market-watch-desktop.css';
@@ -73,10 +75,9 @@ import {
   searchMarketWatchSymbols,
 } from '../../utils/marketWatchSource';
 
-const SymbolSpecificationDialog = lazy(() => import('../dialogs/SymbolSpecificationDialog')
+const symbolSpecificationDialogFeature = createPreloadableFeature(() => import('../dialogs/SymbolSpecificationDialog')
   .then(module => ({ default: module.SymbolSpecificationDialog })));
-const MarketWatchTradingView = lazy(() => import('./MarketWatchTradingView')
-  .then(module => ({ default: module.MarketWatchTradingView })));
+const SymbolSpecificationDialog = symbolSpecificationDialogFeature.Component;
 
 export { MARKET_WATCH_EXPORT_HYDRATION_TIMEOUT_MS } from './marketWatchExportHydration';
 export type { ActiveMarketSymbolsSnapshot } from './marketWatchPanelTypes';
@@ -503,6 +504,12 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       });
     }, []);
 
+    const getInstrumentSourcesForSymbol = useCallback((symbol: string): readonly unknown[] => (
+      [authenticatedMarketInstruments, marketInstruments, allSymbols]
+        .map((catalog) => findInstrumentBySymbol(catalog, symbol))
+        .filter((entry) => entry !== undefined)
+    ), [allSymbols, authenticatedMarketInstruments, marketInstruments]);
+
     const handleExport = useMarketWatchExport({
       activeSymbolSet,
       brokerAccountScopeKey,
@@ -510,6 +517,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       closedDailyChanges,
       dailyChangeScopeKey,
       displayedColumns,
+      getInstrumentSources: getInstrumentSourcesForSymbol,
       isTraditionalMarketWeekend,
       lastPrices,
       publishFeedback: publishMarketWatchFeedback,
@@ -853,6 +861,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               closedDailyChanges={closedDailyChanges}
               columns={displayedColumns}
               getContextMenuItems={getContextMenuItems}
+              getInstrumentSources={getInstrumentSourcesForSymbol}
               isSymbolListLoading={isSymbolListLoading}
               lastPrices={lastPrices}
               liveQuoteSymbolSet={liveQuoteSymbolSet}
@@ -891,6 +900,13 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               loadSpecification={isAuthenticated ? loadSymbolSpecification : undefined}
               showGrid={marketWatchOptions.showGrid}
               contextMenuItems={getDetailsContextMenuItems(detailsSymbol)}
+              isSpecificationOpen={specificationSymbol === detailsSymbol}
+              onOpenSpecification={(symbolToOpen) => {
+                setRefreshedSpecification(null);
+                setSpecificationRequestKey(`${brokerAccountScopeKey}\u0000${symbolToOpen}`);
+                setSpecificationRequestStatus(isAuthenticated && Boolean(loadSymbolSpecification) ? 'loading' : 'ready');
+                setSpecificationSymbol(symbolToOpen);
+              }}
               onRowDoubleClick={() => {
                 if (actionableSymbolSet.has(detailsSymbol)) {
                   window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol: detailsSymbol } }));

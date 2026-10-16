@@ -104,14 +104,24 @@ export const getTradeHistoryExecutionSide = (
     : positionSide === 'BUY' ? 'SELL' : 'BUY'
 );
 
-/** Display markers outside their candle; execution prices remain in the tooltip. */
+/** Anchors execution markers to the trade price point on their candle. */
 export const getTradeHistoryMarkerPrice = (
   executionSide: TradeHistoryPositionSide,
   executionPrice: number,
   candle?: { high: number; low: number } | null,
 ): number => {
-  const candleEdge = executionSide === 'BUY' ? candle?.low : candle?.high;
-  return candleEdge != null && Number.isFinite(candleEdge) ? candleEdge : executionPrice;
+  const hasCandleRange = candle != null
+    && Number.isFinite(candle.low)
+    && Number.isFinite(candle.high);
+  if (hasCandleRange && Number.isFinite(executionPrice) && executionPrice > 0) {
+    const low = Math.min(candle.low, candle.high);
+    const high = Math.max(candle.low, candle.high);
+    return Math.min(high, Math.max(low, executionPrice));
+  }
+  if (hasCandleRange) {
+    return executionSide === 'BUY' ? candle.low : candle.high;
+  }
+  return executionPrice;
 };
 
 /**

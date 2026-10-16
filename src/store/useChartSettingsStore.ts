@@ -8,6 +8,7 @@ export type ChartGridType = "square" | "scale" | "mt5";
 export type ColorScheme =
   | "Green on Black"
   | "Green and White"
+  | "Green and Blue"
   | "Blue on Black"
   | "Black on White"
   | "Yellow on Black"
@@ -138,6 +139,13 @@ const greenAndWhiteSchemeColors: ChartProperties["colors"] = {
   askPriceLine: "#ff0000",
   lastPriceLine: "#00c000",
   stopLevels: "#ff0000",
+};
+
+// Reference preset with green bulls, blue bears, and lime outlines on black.
+const greenAndBlueSchemeColors: ChartProperties["colors"] = {
+  ...greenAndWhiteSchemeColors,
+  bullCandle: "#7cfc00",
+  bearCandle: "#0000ff",
 };
 
 export const defaultChartProperties: ChartProperties = {
@@ -461,6 +469,10 @@ export const getPresetSchemeColors = (
     return { ...greenAndWhiteSchemeColors };
   }
 
+  if (scheme === "Green and Blue") {
+    return { ...greenAndBlueSchemeColors };
+  }
+
   if (scheme === "Blue on Black") {
     return { ...blueSchemeColors };
   }
@@ -562,6 +574,34 @@ export const getEffectiveChartColors = (
       lineChart: "#000000",
       volumes: "rgba(0, 0, 0, 0.4)",
       lastPriceLine: "#000000",
+    };
+  }
+
+  if (properties.colorScheme === "Green and White") {
+    return {
+      ...properties.colors,
+      ...lightSurface,
+      barUp: "#15803d",
+      barDown: "#15803d",
+      bullCandle: "#ffffff",
+      bearCandle: "#15803d",
+      lineChart: "#15803d",
+      volumes: "rgba(21, 128, 61, 0.4)",
+      lastPriceLine: "#15803d",
+    };
+  }
+
+  if (properties.colorScheme === "Green and Blue") {
+    return {
+      ...properties.colors,
+      ...lightSurface,
+      barUp: "#15803d",
+      barDown: "#15803d",
+      bullCandle: "#16a34a",
+      bearCandle: "#0000ff",
+      lineChart: "#15803d",
+      volumes: "rgba(21, 128, 61, 0.4)",
+      lastPriceLine: "#15803d",
     };
   }
 

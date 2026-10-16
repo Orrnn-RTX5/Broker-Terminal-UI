@@ -485,10 +485,7 @@ export const TradingChart = React.memo(function TradingChart({
   } = useTradingChartLoadingPresentation({
     activeTimeframe, intervalEnabled: visibleRuntime.interval, isActive, symbol,
   });
-  const [showOneClick, setShowOneClick] = useState(
-    initialChartSettingsSnapshot.symbolProperties[symbol]?.showQuickTradingButtons
-    ?? initialChartSettingsSnapshot.globalProperties.showQuickTradingButtons,
-  );
+  const [showOneClick, setShowOneClick] = useState(false);
   // Inline text-input overlay for the text drawing tool (replaces browser prompt)
   const [textInputOverlay, setTextInputOverlay] = useState<{ x: number; y: number; time: number; price: number } | null>(null);
   const [textInputValue, setTextInputValue] = useState('');
@@ -518,7 +515,9 @@ export const TradingChart = React.memo(function TradingChart({
   const toggleOneClickTrading = useCallback(() => {
     setShowOneClick((current) => {
       const visible = !current;
-      useChartSettingsStore.getState().updateSymbolProperty(symbol, 'showQuickTradingButtons', visible);
+      if (visible && !chartSettingsRef.current.showQuickTradingButtons) {
+        useChartSettingsStore.getState().updateSymbolProperty(symbol, 'showQuickTradingButtons', true);
+      }
       return visible;
     });
   }, [symbol]);
@@ -845,7 +844,7 @@ export const TradingChart = React.memo(function TradingChart({
     setCtxShowTradeLevels(chartSettings.showTradeLevels);
     setCtxShowTradeHistory(chartSettings.showTradeHistoryArrows);
     setCtxShowTradeHistoryLine(chartSettings.showTradeHistory);
-    setShowOneClick(chartSettings.showQuickTradingButtons);
+    if (!chartSettings.showQuickTradingButtons) setShowOneClick(false);
   }, [chartSettings, setCtxShowTradeHistory, setCtxShowTradeHistoryLine, setCtxShowTradeLevels]);
 
   useEffect(() => {
@@ -928,16 +927,18 @@ export const TradingChart = React.memo(function TradingChart({
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
     [chartSettings, isAdvancedUntitledLight],
   );
+  const isLimeOutlineBlackPreset = chartSettings.colorScheme === 'Green and White'
+    || chartSettings.colorScheme === 'Green and Blue';
   const useEnterpriseLightChartPalette = isAdvancedUntitledLight
-    && chartSettings.colorScheme !== 'Custom' && chartSettings.colorScheme !== 'Green and White';
+    && chartSettings.colorScheme !== 'Custom';
   useEnterpriseLightPricePaletteRef.current = useEnterpriseLightChartPalette;
   const initialLivePriceOverlayColors = useMemo(
     () => getLivePriceOverlayColors(
       chartColors,
-      chartSettings.colorScheme === 'Green and White' ? chartColors.bidPriceLine : getLivePriceSeriesColor(chartColors, chartType, 'up'),
+      isLimeOutlineBlackPreset ? chartColors.bidPriceLine : getLivePriceSeriesColor(chartColors, chartType, 'up'),
       useEnterpriseLightChartPalette,
     ),
-    [chartColors, chartSettings.colorScheme, chartType, useEnterpriseLightChartPalette],
+    [chartColors, chartType, isLimeOutlineBlackPreset, useEnterpriseLightChartPalette],
   );
   const chartTheme = useMemo(
     () => buildChartTheme(chartColors, chartSettings.showGrid, useEnterpriseLightChartPalette, chartSettings.gridLineStyle, chartSettings.gridType, chartSettings.colorScheme),

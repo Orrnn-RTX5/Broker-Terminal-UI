@@ -7,6 +7,22 @@ const ACCOUNT_TRADE_MODE_FIELDS = ['account_trade_mode', 'accountTradeMode', 'AC
 const DEMO_FIELDS = ['is_demo', 'isDemo', 'demo'] as const;
 const CONTEST_FIELDS = ['is_contest', 'isContest', 'contest'] as const;
 const GROUP_FIELDS = ['group', 'Group', 'account_group', 'accountGroup'] as const;
+const LABEL_FIELDS = [
+  'name',
+  'account_name',
+  'accountName',
+  'display_name',
+  'displayName',
+  'server',
+  'server_name',
+  'serverName',
+  'broker_server',
+  'brokerServer',
+  'mt5_server',
+  'trade_server',
+  'broker_name',
+  'brokerName',
+] as const;
 
 const asRecord = (value: unknown): AccountMetadata | undefined => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -69,11 +85,27 @@ const readAccountTradeMode = (value: unknown): TradingAccountType | undefined =>
   return readTypeText(value);
 };
 
+const readUnconflictedDemoLabel = (records: AccountMetadata[]): TradingAccountType | undefined => {
+  const tokens: string[] = [];
+  for (const record of records) {
+    for (const field of LABEL_FIELDS) {
+      const value = record[field];
+      if (typeof value === 'string' && value.trim()) {
+        tokens.push(...value.trim().toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+      }
+    }
+  }
+  if (!tokens.includes('demo')) return undefined;
+  if (tokens.some(token => ['real', 'live', 'contest', 'competition', 'tournament'].includes(token))) {
+    return undefined;
+  }
+  return 'demo';
+};
+
 /**
  * Classifies backend account metadata independently of broker branding.
  * Sources are ordered from current response to optional fallbacks. Within one
  * response, explicit account types precede flags and broker account groups.
- * Display names, broker/server labels, lot types and legacy isLive are ignored.
  */
 export const resolveTradingAccountType = (...sources: unknown[]): TradingAccountType | undefined => {
   for (const source of sources) {
@@ -94,6 +126,27 @@ export const resolveTradingAccountType = (...sources: unknown[]): TradingAccount
     // false alone is weaker than positive Contest or a classified group.
     const real = readFields(records, DEMO_FIELDS, value => value === false ? 'real' : undefined);
     if (real) return real;
+
+    const demoLabel = readUnconflictedDemoLabel(records);
+    if (demoLabel) return demoLabel;
   }
   return undefined;
+};
+
+/**
+ * Resolves the Navigator display classification for a trading account bookmark.
+ * Demo accounts resolve to 'demo' (green icon), Contest accounts to 'contest'
+ * (blue icon), and Real accounts (including standard/lot-tier groups without
+ * explicit demo/contest flags) resolve to 'real' (yellow icon).
+ */
+export const resolveDisplayAccountType = (...sources: unknown[]): TradingAccountType => {
+  const resolved = resolveTradingAccountType(...sources);
+  if (resolved) return resolved;
+  for (const source of sources) {
+    for (const record of recordsFrom(source)) {
+      if (record.isLive === false) return 'demo';
+      if (record.isLive === true) return 'real';
+    }
+  }
+  return 'real';
 };

@@ -1,7 +1,7 @@
 .rtx-order-dialog-backdrop {
   align-items: center;
-  background: color-mix(in srgb, var(--bg-primary) 84%, transparent);
-  backdrop-filter: blur(2px);
+  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  backdrop-filter: blur(1px);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -13,26 +13,27 @@
 .rtx-order-dialog {
   --order-ask: var(--color-info);
   --order-bid: var(--color-loss);
-  --order-buy-action: var(--drawing-tool-accent, #2962ff);
+  --order-buy-action: #3687ff;
   --order-chart-axis-surface: var(--bg-secondary);
   --order-control-bg: var(--bg-primary);
-  --order-sell-action: var(--color-loss);
+  --order-sell-action: #e14b4b;
   --order-supporting-text: color-mix(in srgb, var(--text-primary) 68%, var(--bg-secondary));
   --order-tag-text: #fff;
+  --order-sidebar-bg: #38383d;
 
   background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
-  border-radius: var(--radius-md);
-  box-shadow: 0 24px 72px rgb(0 0 0 / 62%), 0 0 0 1px rgb(255 255 255 / 2%);
+  border-radius: 2px;
+  box-shadow: 0 20px 64px rgb(0 0 0 / 68%), 0 0 0 1px rgb(255 255 255 / 4%);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  font-family: var(--font-sans);
-  max-height: calc(100vh - 32px);
-  max-width: calc(100vw - 32px);
+  font-family: Tahoma, "Segoe UI", var(--font-sans);
+  max-height: calc(100vh - 24px);
+  max-width: calc(100vw - 24px);
   overflow: hidden;
   user-select: none;
-  width: 790px;
+  width: auto;
 }
 
 .rtx-order-dialog__header {
@@ -41,9 +42,9 @@
   border-bottom: 1px solid var(--border-primary);
   cursor: move;
   display: flex;
-  flex: 0 0 40px;
+  flex: 0 0 30px;
   justify-content: space-between;
-  padding: 0 10px 0 14px;
+  padding: 0 6px 0 10px;
 }
 
 .rtx-order-dialog__header:active {
@@ -52,21 +53,24 @@
 
 .rtx-order-dialog__title {
   color: var(--text-primary);
-  font-size: 14px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: -0.01em;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rtx-order-dialog__close {
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 2px;
   color: var(--order-supporting-text);
   cursor: pointer;
   display: inline-flex;
-  font-size: 20px;
-  height: 28px;
+  font-size: 18px;
+  height: 24px;
   justify-content: center;
   line-height: 1;
   transition: background var(--transition-fast), color var(--transition-fast);
@@ -79,152 +83,181 @@
 }
 
 .rtx-order-dialog__content {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 370px;
-  min-height: 360px;
+  align-items: stretch;
+  display: flex;
+  min-height: 426px;
 }
 
-.rtx-order-dialog__chart {
-  background: var(--bg-primary);
+/* ─── Left Mode & View Sidebar ───────────────────────────────── */
+.rtx-order-dialog__sidebar {
+  background: var(--order-sidebar-bg);
   border-right: 1px solid var(--border-primary);
   display: flex;
-  min-width: 0;
-}
-
-.rtx-order-dialog__chart-shell {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-}
-
-.rtx-order-dialog__chart-header {
-  align-items: center;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-primary);
-  display: flex;
   flex: 0 0 46px;
+  flex-direction: column;
   justify-content: space-between;
-  min-width: 0;
-  padding: 7px 10px 7px 12px;
+  padding: 0;
 }
 
-.rtx-order-dialog__chart-identity {
+.rtx-order-dialog[data-sidebar-expanded='true'] .rtx-order-dialog__sidebar {
+  flex-basis: 188px;
+}
+
+.rtx-order-dialog__sidebar-top,
+.rtx-order-dialog__sidebar-bottom {
   display: flex;
   flex-direction: column;
-  min-width: 0;
 }
 
-.rtx-order-dialog__chart-symbol {
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.02em;
-}
-
-.rtx-order-dialog__chart-meta {
-  align-items: center;
-  color: var(--order-supporting-text);
-  display: inline-flex;
-  font-size: 11px;
+.rtx-order-dialog__sidebar-bottom {
   gap: 5px;
-  margin-top: 2px;
+  padding: 8px 6px 10px;
 }
 
-.rtx-order-dialog__live-dot {
-  background: var(--status-connected);
-  border-radius: 999px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-connected) 18%, transparent);
-  height: 5px;
-  width: 5px;
-}
-
-.rtx-order-dialog__chart-quotes {
-  align-items: flex-end;
+.rtx-order-dialog__mode-btn {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  cursor: pointer;
   display: flex;
-  flex-direction: column;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  gap: 2px;
-  white-space: nowrap;
-}
-
-.rtx-order-dialog__chart-quote {
-  color: var(--order-supporting-text);
-}
-
-.rtx-order-dialog__chart-quote strong {
-  font-weight: var(--font-weight-semibold);
-  margin-left: 5px;
-}
-
-.rtx-order-dialog__chart-quote--bid strong {
-  color: var(--order-bid);
-}
-
-.rtx-order-dialog__chart-quote--ask strong {
-  color: var(--order-ask);
-}
-
-.rtx-order-dialog__chart-canvas {
-  color: var(--order-supporting-text);
-  display: block;
-  flex: 1;
-  height: 314px;
-  min-height: 260px;
+  gap: 10px;
+  height: 36px;
+  justify-content: center;
+  padding: 0 10px;
+  text-align: left;
   width: 100%;
 }
 
+.rtx-order-dialog[data-sidebar-expanded='true'] .rtx-order-dialog__mode-btn {
+  justify-content: flex-start;
+  padding: 0 12px;
+}
+
+.rtx-order-dialog__mode-btn:hover {
+  background: rgb(255 255 255 / 5%);
+}
+
+.rtx-order-dialog__mode-btn--active {
+  background: var(--bg-secondary);
+  margin-right: -1px;
+  position: relative;
+  z-index: 1;
+}
+
+.rtx-order-dialog__mode-icon {
+  flex: 0 0 20px;
+}
+
+.rtx-order-dialog__mode-label {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__view-btn {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  height: 31px;
+  justify-content: center;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.rtx-order-dialog[data-sidebar-expanded='true'] .rtx-order-dialog__view-btn {
+  justify-content: flex-start;
+  padding: 0 6px;
+}
+
+.rtx-order-dialog__view-icon-box {
+  align-items: center;
+  border: 1px solid transparent;
+  display: inline-flex;
+  flex: 0 0 31px;
+  height: 31px;
+  justify-content: center;
+  width: 31px;
+}
+
+.rtx-order-dialog__view-btn--active .rtx-order-dialog__view-icon-box,
+.rtx-order-dialog__view-btn--minimize:hover .rtx-order-dialog__view-icon-box {
+  border-color: #9ca3af;
+}
+
+/* ─── Main Order Form Pane ───────────────────────────────────── */
 .rtx-order-dialog__form {
   background: var(--bg-secondary);
   display: flex;
+  flex: 0 0 426px;
   flex-direction: column;
   min-width: 0;
-  padding: 16px;
+  padding: 12px 16px 12px 14px;
 }
 
 .rtx-order-dialog__field {
   align-items: center;
   display: grid;
-  gap: 10px;
-  grid-template-columns: 78px minmax(0, 1fr);
-  margin-bottom: 10px;
-  min-height: 32px;
+  gap: 8px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  margin-bottom: 6px;
+  min-height: 22px;
+}
+
+.rtx-order-dialog__field--symbol {
+  margin-bottom: 16px;
+}
+
+.rtx-order-dialog__field--spaced-top {
+  margin-top: 24px;
 }
 
 .rtx-order-dialog__label {
-  color: var(--order-supporting-text);
-  font-size: 13px;
-  font-weight: var(--font-weight-normal);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 400;
   text-align: right;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__label::after {
+  content: ":";
+}
+
+.rtx-order-dialog__label--compact-symbol {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .rtx-order-dialog__control {
   background: var(--order-control-bg);
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--radius-sm);
+  border: 1px solid #7a7a85;
+  border-radius: 0;
   color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  height: 32px;
+  font-family: Tahoma, "Segoe UI", var(--font-sans);
+  font-size: 12px;
+  height: 22px;
   min-width: 0;
   outline: none;
-  padding: 0 10px;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  padding: 0 6px;
+  transition: border-color var(--transition-fast);
   width: 100%;
 }
 
 .rtx-order-dialog__control:focus {
-  border-color: var(--border-tertiary);
-  box-shadow: 0 0 0 2px var(--color-primary-dimmer);
+  border-color: #c4c4cc;
 }
 
-.rtx-order-dialog__control--static {
-  align-items: center;
-  display: flex;
+.rtx-order-dialog__control:disabled {
+  color: #6b7280;
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .rtx-order-dialog__volume-row {
@@ -237,12 +270,17 @@
 .rtx-order-dialog__volume-control {
   align-items: stretch;
   background: var(--order-control-bg);
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--radius-sm);
+  border: 1px solid #8a8a94;
+  border-radius: 0;
   display: flex;
-  height: 32px;
+  height: 22px;
   overflow: hidden;
-  width: 104px;
+  width: 98px;
+}
+
+.rtx-order-dialog__volume-control--disabled {
+  border-color: #55555e;
+  opacity: 0.6;
 }
 
 .rtx-order-dialog__volume-input {
@@ -250,36 +288,60 @@
   border: 0;
   color: var(--text-primary);
   flex: 1;
-  font-family: var(--font-mono);
-  font-size: 13px;
+  font-family: Tahoma, "Segoe UI", var(--font-mono);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   min-width: 0;
   outline: none;
-  padding: 0 8px;
-  width: 76px;
+  padding: 0 6px;
+  text-align: right;
+  width: 80px;
+}
+
+.rtx-order-dialog__volume-input:disabled {
+  color: #6b7280;
 }
 
 .rtx-order-dialog__spinner {
-  border-left: 1px solid var(--border-secondary);
+  background: #e5e7eb;
+  border-left: 1px solid #8a8a94;
   display: flex;
-  flex: 0 0 20px;
+  flex: 0 0 17px;
   flex-direction: column;
 }
 
 .rtx-order-dialog__spinner-button {
-  background: var(--bg-quaternary);
+  align-items: center;
+  background: #e5e7eb;
   border: 0;
-  color: var(--order-supporting-text);
+  color: #18181b;
   cursor: pointer;
+  display: inline-flex;
   flex: 1;
-  font-size: 8px;
+  font-size: 6px;
+  justify-content: center;
   line-height: 1;
   padding: 0;
 }
 
-.rtx-order-dialog__spinner-button:hover {
-  background: var(--bg-elevated);
+.rtx-order-dialog__spinner-button:first-child {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.rtx-order-dialog__spinner-button:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+.rtx-order-dialog__spinner-button:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.rtx-order-dialog__contract-units {
   color: var(--text-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .rtx-order-dialog__margin {
@@ -288,15 +350,102 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* ─── Fill Policy Tabs & Expiration Row ──────────────────────── */
+.rtx-order-dialog__fill-policy-wrap {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+  position: relative;
+}
+
+.rtx-order-dialog__fill-tabs {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.rtx-order-dialog__fill-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: Tahoma, "Segoe UI", var(--font-sans);
+  font-size: 12px;
+  height: 22px;
+  padding: 0 1px 2px;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__fill-tab--active {
+  border-bottom-color: #3687ff;
+}
+
+.rtx-order-dialog__fill-select-sr {
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+}
+
+.rtx-order-dialog__expiration-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rtx-order-dialog__expiration-select {
+  flex: 0 0 98px;
+  width: 98px;
+}
+
+.rtx-order-dialog__expiration-date-label {
+  color: var(--text-primary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__expiration-date-input {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+  min-width: 92px;
+}
+
+.rtx-order-dialog__comment-wrap {
+  align-items: center;
+  display: flex;
+  position: relative;
+  width: 100%;
+}
+
+.rtx-order-dialog__comment-input {
+  padding-right: 22px;
+}
+
+.rtx-order-dialog__comment-chevron {
+  color: var(--order-supporting-text);
+  font-size: 12px;
+  pointer-events: none;
+  position: absolute;
+  right: 6px;
+  top: 2px;
+}
+
+/* ─── Messages, Live Quote, Actions & Status Box ─────────────── */
 .rtx-order-dialog__message {
   border: 1px solid;
-  border-radius: var(--radius-sm);
+  border-radius: 2px;
   font-size: 11px;
-  line-height: 1.4;
-  margin-bottom: 10px;
-  padding: 7px 9px;
+  line-height: 1.35;
+  margin-top: 4px;
+  padding: 4px 8px;
 }
 
 .rtx-order-dialog__message--error {
@@ -312,124 +461,419 @@
 }
 
 .rtx-order-dialog__price-summary {
-  border-top: 1px solid var(--border-primary);
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr 1px 1fr;
-  margin-top: auto;
-  padding: 13px 0 9px;
-}
-
-.rtx-order-dialog__price-divider {
-  background: var(--border-primary);
-}
-
-.rtx-order-dialog__price-side {
+  align-items: center;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  justify-content: center;
+  margin-top: auto;
+  padding: 18px 0 14px;
 }
 
-.rtx-order-dialog__price-side--ask {
-  text-align: right;
-}
-
-.rtx-order-dialog__price-label {
-  color: var(--order-supporting-text);
-  font-size: 10px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.12em;
-  margin-bottom: 2px;
-}
-
-.rtx-order-dialog__price {
+.rtx-order-dialog__mt5-quote {
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: Tahoma, "Segoe UI", var(--font-sans);
   font-size: 24px;
   font-variant-numeric: tabular-nums;
   font-weight: 400;
-  letter-spacing: -0.045em;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  text-align: center;
   white-space: nowrap;
 }
 
-.rtx-order-dialog__price strong {
-  font-size: 29px;
-  font-weight: var(--font-weight-bold);
-}
-
-.rtx-order-dialog__spread {
-  color: var(--order-supporting-text);
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold);
-  margin-bottom: 10px;
-  text-align: center;
+.rtx-order-dialog__spread-sr {
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
 }
 
 .rtx-order-dialog__actions {
   display: grid;
-  gap: 10px;
+  gap: 14px;
   grid-template-columns: 1fr 1fr;
-}
-
-.rtx-order-dialog__actions--single {
-  grid-template-columns: 1fr;
 }
 
 .rtx-order-dialog__action {
   align-items: center;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: #fff;
+  border-radius: 0;
+  color: #ffffff;
   cursor: pointer;
   display: inline-flex;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
-  gap: 7px;
-  height: 44px;
+  font-family: Tahoma, "Segoe UI", var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  height: 24px;
   justify-content: center;
-  transition: filter var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+  transition: filter var(--transition-fast), opacity var(--transition-fast);
 }
 
 .rtx-order-dialog__action--sell {
-  background: color-mix(in srgb, var(--order-sell-action) 82%, #111);
-  border-color: color-mix(in srgb, var(--order-sell-action) 62%, var(--border-primary));
+  background: var(--order-sell-action);
+  border-color: var(--order-sell-action);
 }
 
 .rtx-order-dialog__action--buy {
-  background: color-mix(in srgb, var(--order-buy-action) 84%, #111);
-  border-color: color-mix(in srgb, var(--order-buy-action) 66%, var(--border-primary));
+  background: var(--order-buy-action);
+  border-color: var(--order-buy-action);
 }
 
 .rtx-order-dialog__action:hover:not(:disabled) {
-  filter: brightness(1.12);
-}
-
-.rtx-order-dialog__action:active:not(:disabled) {
-  transform: translateY(1px);
+  filter: brightness(1.08);
 }
 
 .rtx-order-dialog__action:disabled {
+  background: transparent;
+  border-color: #52525b;
+  color: #71717a;
   cursor: not-allowed;
-  opacity: 0.38;
+  opacity: 1;
 }
 
-.rtx-order-dialog__progress {
-  background: var(--border-primary);
-  border-radius: 999px;
-  height: 2px;
-  margin-top: 10px;
+.rtx-order-dialog__status-box {
+  border: 1px solid #45454d;
+  height: 23px;
+  margin-top: 8px;
   overflow: hidden;
+  position: relative;
+  width: 100%;
 }
 
 .rtx-order-dialog__progress-bar {
   animation: rtx-order-progress 1s ease-in-out infinite alternate;
-  background: var(--color-primary);
+  background: var(--order-buy-action);
   height: 100%;
   width: 100%;
 }
 
-/* Share the light terminal's surfaces and action states without changing dark. */
+/* ─── Middle Tick Chart Pane ─────────────────────────────────── */
+.rtx-order-dialog__chart {
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-primary);
+  display: flex;
+  flex: 0 0 326px;
+  min-width: 0;
+}
+
+.rtx-order-dialog__chart-shell {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: 4px 6px 8px;
+}
+
+.rtx-order-dialog__chart-toolbar,
+.rtx-order-dialog__dom-toolbar {
+  align-items: center;
+  display: flex;
+  flex: 0 0 28px;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.rtx-order-dialog__toolbar-btn {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--order-supporting-text);
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.rtx-order-dialog__toolbar-btn:hover {
+  background: rgb(255 255 255 / 6%);
+}
+
+.rtx-order-dialog__toolbar-btn--boxed {
+  border-color: #9ca3af;
+}
+
+.rtx-order-dialog__toolbar-sep {
+  background: #45454d;
+  height: 18px;
+  margin: 0 2px;
+  width: 1px;
+}
+
+.rtx-order-dialog__chart-quotes-sr {
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+}
+
+.rtx-order-dialog__chart-canvas {
+  color: var(--order-supporting-text);
+  display: block;
+  flex: 1;
+  height: 371px;
+  min-height: 260px;
+  width: 100%;
+}
+
+/* ─── Right Depth of Market + One Click Trading Pane ─────────── */
+.rtx-order-dialog__dom {
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-primary);
+  display: flex;
+  flex: 0 0 332px;
+  flex-direction: column;
+  min-width: 0;
+  padding: 4px 8px 12px;
+}
+
+.rtx-order-dialog__dom-table-wrap {
+  border: 1px solid #3f3f46;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rtx-order-dialog__dom-table {
+  border-collapse: collapse;
+  font-family: Tahoma, "Segoe UI", var(--font-sans);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.rtx-order-dialog__dom-table thead th {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid #3f3f46;
+  border-right: 1px solid #3f3f46;
+  color: var(--text-primary);
+  font-weight: 400;
+  height: 23px;
+  text-align: center;
+}
+
+.rtx-order-dialog__dom-table thead th:last-child {
+  border-right: 0;
+}
+
+.rtx-order-dialog__dom-row {
+  height: 22px;
+}
+
+.rtx-order-dialog__dom-row td {
+  border-bottom: 1px solid #38383f;
+  border-right: 1px solid #38383f;
+  height: 22px;
+  padding: 0;
+}
+
+.rtx-order-dialog__dom-row td:last-child {
+  border-right: 0;
+}
+
+.rtx-order-dialog__dom-row--best-ask td {
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.rtx-order-dialog__dom-vol {
+  overflow: hidden;
+  padding-right: 6px !important;
+  position: relative;
+  text-align: right;
+  width: 40%;
+}
+
+.rtx-order-dialog__dom-bar {
+  bottom: 1px;
+  left: 0;
+  position: absolute;
+  top: 1px;
+  z-index: 0;
+}
+
+.rtx-order-dialog__dom-bar--ask {
+  background: linear-gradient(90deg, rgb(206 108 108 / 88%), rgb(138 45 45 / 72%));
+}
+
+.rtx-order-dialog__dom-bar--bid {
+  background: linear-gradient(90deg, rgb(118 134 208 / 88%), rgb(48 70 155 / 72%));
+}
+
+.rtx-order-dialog__dom-vol-text {
+  color: #ffffff;
+  position: relative;
+  z-index: 1;
+}
+
+.rtx-order-dialog__dom-price {
+  color: #ffffff;
+  cursor: pointer;
+  text-align: center;
+  width: 34%;
+}
+
+.rtx-order-dialog__dom-price--ask {
+  background: #7c1f24;
+}
+
+.rtx-order-dialog__dom-price--bid {
+  background: #1d3678;
+}
+
+.rtx-order-dialog__dom-trade {
+  width: 26%;
+}
+
+.rtx-order-dialog__dom-chevron {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+   font-weight: 700;
+  height: 21px;
+  justify-content: center;
+  padding: 0;
+  width: 50%;
+}
+
+.rtx-order-dialog__dom-chevron--sell {
+  border-right: 1px solid #38383f;
+  color: #f23645;
+}
+
+.rtx-order-dialog__dom-chevron--buy {
+  color: #3687ff;
+}
+
+.rtx-order-dialog__dom-chevron:hover {
+  background: rgb(255 255 255 / 6%);
+}
+
+/* ─── Bottom One Click Trading Controls inside DOM ───────────── */
+.rtx-order-dialog__dom-oct {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.rtx-order-dialog__dom-oct-spinners {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.rtx-order-dialog__dom-oct-box {
+  align-items: stretch;
+  border: 1px solid #6b7280;
+  display: flex;
+  height: 21px;
+}
+
+.rtx-order-dialog__dom-oct-step {
+  align-items: center;
+  background: #e5e7eb;
+  border: 0;
+  color: #18181b;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 16px;
+  font-size: 7px;
+  justify-content: center;
+  padding: 0;
+}
+
+.rtx-order-dialog__dom-oct-step:hover {
+  background: #ffffff;
+}
+
+.rtx-order-dialog__dom-oct-field {
+  align-items: center;
+  background: var(--order-control-bg);
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.rtx-order-dialog__dom-oct-tag {
+  color: #71717a;
+  font-size: 11px;
+  margin-right: 3px;
+}
+
+.rtx-order-dialog__dom-oct-field input {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  flex: 1;
+  font-family: Tahoma, "Segoe UI", var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  outline: none;
+  text-align: right;
+  width: 100%;
+}
+
+.rtx-order-dialog__dom-oct-positions {
+  background: var(--order-control-bg);
+  border: 1px solid #6b7280;
+  color: var(--text-primary);
+  font-family: Tahoma, "Segoe UI", var(--font-sans);
+  font-size: 11px;
+  height: 21px;
+  outline: none;
+  padding: 0 4px;
+  width: 100%;
+}
+
+.rtx-order-dialog__dom-oct-actions {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.rtx-order-dialog__dom-oct-btn {
+  align-items: center;
+  border: 1px solid transparent;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: Tahoma, "Segoe UI", var(--font-sans);
+  font-size: 12px;
+  height: 23px;
+  justify-content: center;
+}
+
+.rtx-order-dialog__dom-oct-btn--sell {
+  background: var(--order-sell-action);
+}
+
+.rtx-order-dialog__dom-oct-btn--close {
+  background: #47443e;
+  border-color: #6b665e;
+}
+
+.rtx-order-dialog__dom-oct-btn--buy {
+  background: var(--order-buy-action);
+}
+
+.rtx-order-dialog__dom-oct-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* ─── Light Theme Overrides ──────────────────────────────────── */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog-backdrop {
   background: rgba(15, 23, 42, 0.28);
   backdrop-filter: none;
@@ -443,18 +887,19 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog {
   --order-chart-axis-surface: var(--rtx-light-panel-header);
   --order-control-bg: var(--rtx-light-field);
   --order-supporting-text: var(--rtx-light-text-muted);
+  --order-sidebar-bg: var(--rtx-light-panel-subtle);
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__content .rtx-order-dialog__form {
   background: var(--rtx-light-elevated) !important;
 }
 
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog :is(.rtx-order-dialog__header, .rtx-order-dialog__chart-header) {
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog :is(.rtx-order-dialog__header, .rtx-order-dialog__chart-toolbar, .rtx-order-dialog__dom-toolbar) {
   background: var(--rtx-light-panel-header) !important;
   border-color: var(--rtx-light-border) !important;
 }
 
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__content .rtx-order-dialog__chart {
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__content :is(.rtx-order-dialog__chart, .rtx-order-dialog__dom) {
   background: var(--rtx-light-chart) !important;
   border-color: var(--rtx-light-border) !important;
 }
@@ -499,10 +944,6 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order
   outline: 2px solid var(--rtx-light-accent) !important;
   outline-offset: 2px;
   box-shadow: none !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__live-dot {
-  box-shadow: none;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action {
@@ -558,34 +999,18 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--sell:a
   }
 
   .rtx-order-dialog__content {
-    grid-template-columns: 1fr;
+    flex-wrap: wrap;
     overflow-y: auto;
   }
 
-  .rtx-order-dialog__chart {
-    border-bottom: 1px solid var(--border-primary);
-    border-right: 0;
-    min-height: 248px;
+  .rtx-order-dialog__form,
+  .rtx-order-dialog__chart,
+  .rtx-order-dialog__dom {
+    flex: 1 1 100%;
   }
 
   .rtx-order-dialog__chart-canvas {
     height: 210px;
     min-height: 210px;
-  }
-}
-
-@media (max-width: 420px) {
-  .rtx-order-dialog__form {
-    padding: 12px;
-  }
-
-  .rtx-order-dialog__field {
-    align-items: stretch;
-    gap: 5px;
-    grid-template-columns: 1fr;
-  }
-
-  .rtx-order-dialog__label {
-    text-align: left;
   }
 }

@@ -448,10 +448,11 @@ export const useTradingChartTradeRuntime = ({
 
       const activeTf = prevTimeframeRef.current || timeframe;
       const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
-      const nearest = getNearestCandleByTime(
-        numericTime,
-        Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
-      );
+      const firstCandleTime = candlesRef.current[0]?.time ?? currentCandleRef.current?.time ?? null;
+      const maxDistance = firstCandleTime != null && numericTime >= firstCandleTime
+        ? undefined
+        : (Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined);
+      const nearest = getNearestCandleByTime(numericTime, maxDistance);
       if (!nearest?.time) return null;
 
       return chart.timeScale().timeToCoordinate(nearest.time as Time);
@@ -471,13 +472,20 @@ export const useTradingChartTradeRuntime = ({
         if (liveCandle) tradeMarkerCandles.set(liveCandle.time, liveCandle);
       }
       let markerTime = Number(node.time);
+      if (!tradeMarkerCandles.has(markerTime) && node.resolveTime) {
+        const resolvedTime = Number(node.resolveTime());
+        if (Number.isFinite(resolvedTime) && resolvedTime > 0) {
+          markerTime = resolvedTime;
+        }
+      }
       if (!tradeMarkerCandles.has(markerTime)) {
         const activeTf = prevTimeframeRef.current || timeframe;
         const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
-        const fallbackTime = getNearestCandleByTime(
-          markerTime,
-          Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
-        )?.time;
+        const firstCandleTime = candlesRef.current[0]?.time ?? currentCandleRef.current?.time ?? null;
+        const maxDistance = firstCandleTime != null && markerTime >= firstCandleTime
+          ? undefined
+          : (Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined);
+        const fallbackTime = getNearestCandleByTime(markerTime, maxDistance)?.time;
         if (fallbackTime != null) {
           markerTime = fallbackTime;
         }
@@ -599,7 +607,7 @@ export const useTradingChartTradeRuntime = ({
               y1,
               x2,
               y2,
-              minLengthPx: el.classList.contains('rtx-trade-history-line') ? 24 : 0,
+              minLengthPx: 0,
             });
             if (!geometry) {
               // Coordinate gaps during candle reloads freeze placed segments.

@@ -36,6 +36,7 @@ interface UseMarketWatchExportOptions {
   closedDailyChanges: ReadonlyMap<string, number>;
   dailyChangeScopeKey: string | null;
   displayedColumns: readonly MarketWatchColumnId[];
+  getInstrumentSources?: (symbol: string) => readonly unknown[];
   isTraditionalMarketWeekend: boolean;
   lastPrices: ReadonlyMap<string, MarketWatchLastPrice>;
   publishFeedback: PublishFeedback;
@@ -58,6 +59,7 @@ export const useMarketWatchExport = ({
   closedDailyChanges,
   dailyChangeScopeKey,
   displayedColumns,
+  getInstrumentSources,
   isTraditionalMarketWeekend,
   lastPrices,
   publishFeedback,
@@ -158,6 +160,7 @@ export const useMarketWatchExport = ({
         lastPrices: exportLastPrices,
         showMilliseconds,
         getTick: getTickSnapshot,
+        getInstrumentSources,
         translate,
       });
       const copied = await copyTextToClipboard(clipboardPayload);
@@ -209,6 +212,7 @@ export const useMarketWatchExport = ({
     closedDailyChanges,
     dailyChangeScopeKey,
     displayedColumns,
+    getInstrumentSources,
     isTraditionalMarketWeekend,
     lastPrices,
     publishFeedback,

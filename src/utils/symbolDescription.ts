@@ -69,11 +69,71 @@ export const getFallbackSymbolDescription = (symbol: string): string => {
     : suffixMatch?.[1] === 'PERP'
       ? ' Perpetual'
       : '';
-  const root = suffixMatch ? normalized.slice(0, -suffixMatch[0].length) : normalized;
-  if (!/^[A-Z]{6}$/.test(root)) return '';
+  const withoutDerivativeSuffix = suffixMatch
+    ? normalized.slice(0, -suffixMatch[0].length)
+    : normalized;
+  const brokerRoot = withoutDerivativeSuffix.split(/[._]/)[0] ?? withoutDerivativeSuffix;
+  const root = brokerRoot === 'EUROUSD'
+    ? 'EURUSD'
+    : brokerRoot.replace(/^([A-Z]{3,4})[/\-:]([A-Z]{3,4})$/, '$1$2');
 
-  const base = ASSET_NAMES[root.slice(0, 3)];
-  const quote = ASSET_NAMES[root.slice(3, 6)];
-  return base && quote ? `${base} vs ${quote}${suffix}` : '';
+  const exactRoot = EXACT_SYMBOL_NAMES[root];
+  if (exactRoot) return `${exactRoot}${suffix}`;
+
+  for (const baseLength of [3, 4]) {
+    const baseCode = root.slice(0, baseLength);
+    const quoteCode = root.slice(baseLength);
+    if (!/^[A-Z]{3,4}$/.test(baseCode) || !/^[A-Z]{3,4}$/.test(quoteCode)) continue;
+    const base = ASSET_NAMES[baseCode];
+    const quote = ASSET_NAMES[quoteCode];
+    if (base && quote) return `${base} vs ${quote}${suffix}`;
+  }
+
+  return '';
+};
+
+const compactAlphanumeric = (value: string): string => (
+  value.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+);
+
+export const isTickerOnlyDescription = (symbol: string, candidate: string): boolean => {
+  const trimmedCandidate = String(candidate ?? '').trim();
+  if (!trimmedCandidate) return true;
+
+  const normalizedSymbol = String(symbol ?? '').trim().toUpperCase();
+  if (normalizedSymbol && trimmedCandidate.toUpperCase() === normalizedSymbol) return true;
+
+  const compactCandidate = compactAlphanumeric(trimmedCandidate);
+  const compactSymbol = compactAlphanumeric(normalizedSymbol);
+  if (compactSymbol && compactCandidate === compactSymbol) return true;
+
+  const compactBrokerRoot = compactAlphanumeric(normalizedSymbol.split(/[._]/)[0] ?? '');
+  if (compactBrokerRoot && compactCandidate === compactBrokerRoot) return true;
+
+  if (/^[A-Z0-9]{2,5}\s*[/\-:]\s*[A-Z0-9]{2,5}$/i.test(trimmedCandidate)) {
+    return Boolean(getFallbackSymbolDescription(trimmedCandidate) || getFallbackSymbolDescription(normalizedSymbol));
+  }
+
+  return false;
+};
+
+export const normalizeSymbolDescriptionText = (symbol: string, candidate: string): string => {
+  const trimmed = String(candidate ?? '').trim();
+  if (!trimmed || isTickerOnlyDescription(symbol, trimmed)) return '';
+
+  if (/^[A-Za-z][A-Za-z0-9 &.'()-]*\s+\/\s+[A-Za-z][A-Za-z0-9 &.'()-]*$/.test(trimmed)) {
+    return trimmed.replace(/\s+\/\s+/g, ' vs ');
+  }
+
+  return trimmed;
+};
+
+export const resolveSymbolDescription = (
+  symbol: string,
+  rawDescription?: string | null,
+): string => {
+  const normalizedExplicit = normalizeSymbolDescriptionText(symbol, String(rawDescription ?? ''));
+  if (normalizedExplicit) return normalizedExplicit;
+  return getFallbackSymbolDescription(symbol);
 };
 

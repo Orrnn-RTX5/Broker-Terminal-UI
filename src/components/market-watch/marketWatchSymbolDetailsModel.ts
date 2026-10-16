@@ -185,3 +185,242 @@ export const formatMarketWatchDetailsPrice = (value: number | null, digits: numb
 export const formatMarketWatchDetailsPercent = (value: number | null): string | null => (
   value === null ? null : formatDailyChange(value, 2, true)
 );
+
+const EXTENDED_SPECIFICATION_NESTED_KEYS = [
+  ...SPECIFICATION_NESTED_KEYS,
+  'costs',
+  'metadata',
+  'details',
+  'session',
+  'greeks',
+  'options',
+] as const;
+
+const collectExtendedRecords = (source: unknown): Record<string, unknown>[] => {
+  const root = asRecord(source);
+  if (!root) return [];
+  const nested = EXTENDED_SPECIFICATION_NESTED_KEYS
+    .map((key) => asRecord(root[key]))
+    .filter((record): record is Record<string, unknown> => record !== null);
+  return [...nested, root];
+};
+
+const finiteNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const nonNegativeNumber = (value: unknown): number | null => {
+  const parsed = finiteNumber(value);
+  return parsed !== null && parsed >= 0 ? parsed : null;
+};
+
+export interface MarketWatchExtendedColumnResolution {
+  numericValue: number | null;
+  formatted: string | null;
+  kind: 'price' | 'spec' | 'integer' | 'decimal';
+}
+
+export interface ResolveMarketWatchExtendedColumnOptions {
+  column: string;
+  tick: Tick | undefined;
+  lastPrice?: MarketWatchLastPrice;
+  displayLast?: unknown;
+  instrumentSources?: readonly unknown[];
+  priceDigits: number;
+}
+
+/**
+ * Resolves any of the extended MT5 Market Watch columns (`tickSize` through
+ * `sensitivity`) from the live tick and symbol specification records.
+ */
+export const resolveMarketWatchExtendedColumn = ({
+  column,
+  tick,
+  lastPrice,
+  displayLast,
+  instrumentSources = [],
+  priceDigits: fallbackDigits,
+}: ResolveMarketWatchExtendedColumnOptions): MarketWatchExtendedColumnResolution => {
+  const spec = readMarketWatchSymbolSpecification(...instrumentSources, tick);
+  const details = buildMarketWatchSymbolDetails({
+    tick,
+    lastPrice,
+    specification: spec,
+  });
+  const effectiveDigits = spec.digits ?? fallbackDigits;
+  const allRecords = [tick, ...instrumentSources].flatMap(collectExtendedRecords);
+
+  const asPrice = (val: number | null): MarketWatchExtendedColumnResolution => ({
+    numericValue: val,
+    formatted: val === null ? null : val.toFixed(effectiveDigits),
+    kind: 'price',
+  });
+
+  const asSpec = (val: number | null): MarketWatchExtendedColumnResolution => ({
+    numericValue: val,
+    formatted: formatMarketWatchDetailsNumber(val),
+    kind: 'spec',
+  });
+
+  const asInteger = (val: number | null): MarketWatchExtendedColumnResolution => ({
+    numericValue: val,
+    formatted: val === null ? null : Math.round(val).toLocaleString('en-US'),
+    kind: 'integer',
+  });
+
+  const asDecimal = (val: number | null): MarketWatchExtendedColumnResolution => ({
+    numericValue: val,
+    formatted: formatMarketWatchDetailsNumber(val),
+    kind: 'decimal',
+  });
+
+  switch (column) {
+    case 'tickSize':
+      return asSpec(spec.tickSize);
+    case 'tickValue':
+      return asSpec(spec.tickValue);
+    case 'faceValue':
+      return asSpec(readFirst(allRecords, ['face_value', 'faceValue', 'bond_face_value', 'bondFaceValue'], finiteNumber));
+    case 'accruedInterest':
+      return asSpec(readFirst(allRecords, ['accrued_interest', 'accruedInterest', 'bond_accrued_interest', 'bondAccruedInterest'], finiteNumber));
+    case 'initialMargin':
+      return asSpec(readFirst(allRecords, ['margin_initial', 'marginInitial', 'initial_margin', 'initialMargin'], finiteNumber));
+    case 'maintenanceMargin':
+      return asSpec(readFirst(allRecords, ['margin_maintenance', 'marginMaintenance', 'maintenance_margin', 'maintenanceMargin'], finiteNumber));
+    case 'initialBuyMargin':
+      return asSpec(
+        readFirst(allRecords, [
+          'initial_buy_margin',
+          'initialBuyMargin',
+          'margin_initial_buy',
+          'marginInitialBuy',
+          'buy_margin_initial',
+          'buyMarginInitial',
+          'margin_buy_initial',
+          'marginBuyInitial',
+          'margin_initial',
+          'marginInitial',
+          'initial_margin',
+          'initialMargin',
+        ], finiteNumber),
+      );
+    case 'initialSellMargin':
+      return asSpec(
+        readFirst(allRecords, [
+          'initial_sell_margin',
+          'initialSellMargin',
+          'margin_initial_sell',
+          'marginInitialSell',
+          'sell_margin_initial',
+          'sellMarginInitial',
+          'margin_sell_initial',
+          'marginSellInitial',
+          'margin_initial',
+          'marginInitial',
+          'initial_margin',
+          'initialMargin',
+        ], finiteNumber),
+      );
+    case 'lowerLimit':
+      return asPrice(readFirst(allRecords, [
+        'price_limit_min',
+        'priceLimitMin',
+        'lower_limit',
+        'lowerLimit',
+        'limit_min',
+        'limitMin',
+        'session_price_limit_min',
+        'sessionPriceLimitMin',
+      ], positiveNumber));
+    case 'upperLimit':
+      return asPrice(readFirst(allRecords, [
+        'price_limit_max',
+        'priceLimitMax',
+        'upper_limit',
+        'upperLimit',
+        'limit_max',
+        'limitMax',
+        'session_price_limit_max',
+        'sessionPriceLimitMax',
+      ], positiveNumber));
+    case 'settlementPrice':
+      return asPrice(readFirst(allRecords, [
+        'settlement_price',
+        'settlementPrice',
+        'session_price_settlement',
+        'sessionPriceSettlement',
+        'price_settlement',
+        'priceSettlement',
+      ], positiveNumber));
+    case 'bidHigh':
+      return asPrice(details.bidHigh ?? positiveNumber(tick?.high24h));
+    case 'bidLow':
+      return asPrice(details.bidLow ?? positiveNumber(tick?.low24h));
+    case 'askHigh':
+      return asPrice(details.askHigh ?? readFirst(allRecords, ['askHigh', 'ask_high', 'high_ask', 'highAsk'], positiveNumber));
+    case 'askLow':
+      return asPrice(details.askLow ?? readFirst(allRecords, ['askLow', 'ask_low', 'low_ask', 'lowAsk'], positiveNumber));
+    case 'lastHigh': {
+      const rawLastHigh = readFirst(allRecords, ['lastHigh', 'last_high', 'high_last', 'highLast', 'lasthigh'], positiveNumber);
+      const currentLast = positiveNumber(displayLast ?? tick?.last);
+      return asPrice(includeHigh(rawLastHigh, currentLast));
+    }
+    case 'lastLow': {
+      const rawLastLow = readFirst(allRecords, ['lastLow', 'last_low', 'low_last', 'lowLast', 'lastlow'], positiveNumber);
+      const currentLast = positiveNumber(displayLast ?? tick?.last);
+      return asPrice(includeLow(rawLastLow, currentLast));
+    }
+    case 'volumeHigh':
+      return asInteger(readFirst(allRecords, ['volumeHigh', 'volume_high', 'high_volume', 'highVolume', 'volumehigh'], nonNegativeNumber));
+    case 'volumeLow':
+      return asInteger(readFirst(allRecords, ['volumeLow', 'volume_low', 'low_volume', 'lowVolume', 'volumelow'], nonNegativeNumber));
+    case 'deals':
+      return asInteger(readFirst(allRecords, ['deals', 'session_deals', 'sessionDeals'], nonNegativeNumber));
+    case 'dealsVolume':
+      return asInteger(readFirst(allRecords, ['dealsVolume', 'deals_volume', 'session_volume', 'sessionVolume', 'volume'], nonNegativeNumber));
+    case 'turnover':
+      return asSpec(readFirst(allRecords, ['turnover', 'session_turnover', 'sessionTurnover'], nonNegativeNumber));
+    case 'openInterest':
+      return asInteger(readFirst(allRecords, ['openInterest', 'open_interest', 'session_interest', 'sessionInterest'], nonNegativeNumber));
+    case 'buyOrders':
+      return asInteger(readFirst(allRecords, ['buyOrders', 'buy_orders', 'session_buy_orders', 'sessionBuyOrders'], nonNegativeNumber));
+    case 'buyVolume':
+      return asSpec(readFirst(allRecords, ['buyVolume', 'buy_volume', 'session_buy_orders_volume', 'sessionBuyOrdersVolume'], nonNegativeNumber));
+    case 'sellOrders':
+      return asInteger(readFirst(allRecords, ['sellOrders', 'sell_orders', 'session_sell_orders', 'sessionSellOrders'], nonNegativeNumber));
+    case 'sellVolume':
+      return asSpec(readFirst(allRecords, ['sellVolume', 'sell_volume', 'session_sell_orders_volume', 'sessionSellOrdersVolume'], nonNegativeNumber));
+    case 'openPrice':
+      return asPrice(details.open ?? readFirst(allRecords, ['open', 'openPrice', 'open_price', 'session_open', 'sessionOpen'], positiveNumber));
+    case 'closePrice':
+      return asPrice(
+        details.close
+          ?? (lastPrice?.kind === 'close' ? positiveNumber(lastPrice.close) : null)
+          ?? readFirst(allRecords, ['close', 'closePrice', 'close_price', 'session_close', 'sessionClose', 'prevClose', 'prev_close'], positiveNumber),
+      );
+    case 'averageWeightedPrice':
+      return asPrice(readFirst(allRecords, ['averageWeightedPrice', 'average_weighted_price', 'awp', 'session_aw', 'sessionAw', 'vwap'], positiveNumber));
+    case 'volatility':
+      return asDecimal(readFirst(allRecords, ['volatility', 'price_volatility', 'priceVolatility', 'option_volatility'], finiteNumber));
+    case 'theoreticalPrice':
+      return asPrice(readFirst(allRecords, ['theoreticalPrice', 'theoretical_price', 'price_theoretical', 'priceTheoretical'], positiveNumber));
+    case 'delta':
+      return asDecimal(readFirst(allRecords, ['delta', 'price_delta', 'priceDelta', 'greek_delta'], finiteNumber));
+    case 'theta':
+      return asDecimal(readFirst(allRecords, ['theta', 'price_theta', 'priceTheta', 'greek_theta'], finiteNumber));
+    case 'gamma':
+      return asDecimal(readFirst(allRecords, ['gamma', 'price_gamma', 'priceGamma', 'greek_gamma'], finiteNumber));
+    case 'vega':
+      return asDecimal(readFirst(allRecords, ['vega', 'price_vega', 'priceVega', 'greek_vega'], finiteNumber));
+    case 'rho':
+      return asDecimal(readFirst(allRecords, ['rho', 'price_rho', 'priceRho', 'greek_rho'], finiteNumber));
+    case 'omega':
+      return asDecimal(readFirst(allRecords, ['omega', 'price_omega', 'priceOmega', 'greek_omega'], finiteNumber));
+    case 'sensitivity':
+      return asDecimal(readFirst(allRecords, ['sensitivity', 'price_sensitivity', 'priceSensitivity'], finiteNumber));
+    default:
+      return { numericValue: null, formatted: null, kind: 'spec' };
+  }
+};

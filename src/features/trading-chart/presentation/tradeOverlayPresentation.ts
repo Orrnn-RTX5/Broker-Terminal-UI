@@ -20,8 +20,8 @@ export const TRADE_LEVEL_BADGE_LEFT_INSET_PX = 16;
 export const TRADE_LEVEL_BADGE_STACK_OFFSET_PX = 76;
 export const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
 
-/** Candle edge to chevron tip: marker offset plus the arrow SVG tip inset. */
-export const TRADE_MARKER_TIP_OFFSET_PX = 6;
+/** Chevron tip sits directly on the anchored candle trade point. */
+export const TRADE_MARKER_TIP_OFFSET_PX = 0;
 
 export interface TradeControlRect {
   left: number;

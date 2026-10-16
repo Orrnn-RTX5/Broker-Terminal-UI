@@ -1,10 +1,12 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useFloatingPanelDrag } from '../../hooks/useFloatingPanelDrag';
 import i18n from '../../i18n';
+import { normalizeSymbolDescriptionText, resolveSymbolDescription } from '../../utils/symbolDescription';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { Icon } from '../ui/Icon';
+
 
 interface SymbolSpecificationDialogProps {
   isOpen: boolean;
@@ -954,6 +956,34 @@ const readSwapRolloverDay = (records: readonly Record<string, unknown>[]): strin
   return day ? WEEKDAYS.find((entry) => entry.key === day)!.label : typeof value === 'string' ? titleCase(value) : null;
 };
 
+const readSpecificationDescription = (records: readonly Record<string, unknown>[]): string | null => {
+  const symbolFromRecords = readString(records, ['symbol', 'id']) ?? '';
+  const keys = ['description', 'display_name', 'displayName', 'full_name', 'fullName'] as const;
+  const normalizedKeys = new Set(keys.map(normalizeSpecificationKey));
+
+  for (const record of records) {
+    const recordSymbol = typeof record.symbol === 'string' && record.symbol.trim()
+      ? record.symbol.trim()
+      : symbolFromRecords;
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value !== 'string') continue;
+      const normalized = normalizeSymbolDescriptionText(recordSymbol, value);
+      if (normalized) return normalized;
+    }
+    for (const [key, value] of Object.entries(record)) {
+      if (typeof value !== 'string' || !normalizedKeys.has(normalizeSpecificationKey(key))) continue;
+      const normalized = normalizeSymbolDescriptionText(recordSymbol, value);
+      if (normalized) return normalized;
+    }
+    if (recordSymbol && typeof record.name === 'string') {
+      const normalized = normalizeSymbolDescriptionText(recordSymbol, record.name);
+      if (normalized) return normalized;
+    }
+  }
+  return null;
+};
+
 // Exported for contract-level tests; it is a pure broker-payload normalizer.
 // eslint-disable-next-line react-refresh/only-export-components
 export const buildSymbolSpecificationSnapshot = (
@@ -984,8 +1014,9 @@ export const buildSymbolSpecificationSnapshot = (
   const depositCurrency = readString(records, ['currency_deposit', 'currencyDeposit', 'deposit_currency', 'depositCurrency', 'account_currency', 'accountCurrency']);
 
   return {
-    description: readString(identityRecords, ['description', 'display_name', 'displayName']),
+    description: readSpecificationDescription(identityRecords),
     pageUrl: readString(identityRecords, ['page_url', 'pageUrl', 'page', 'information_url', 'informationUrl']),
+
     isin: readString(records, ['isin']),
     category: readString(records, ['category', 'asset_class', 'assetClass', 'type']),
     exchange: readString(records, ['exchange', 'exchange_name', 'exchangeName', 'exchange_id', 'exchangeId']),
@@ -1790,11 +1821,9 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
     };
   });
   const pageUrl = safeWebUrl(snapshot.pageUrl);
-  const displayDescription = snapshot.description
-    && snapshot.description.trim().toUpperCase() !== symbol.trim().toUpperCase()
-    ? snapshot.description.trim()
-    : null;
+  const displayDescription = resolveSymbolDescription(symbol, snapshot.description) || null;
   const isRequestPending = requestStatus === 'loading' || requestStatus === 'idle';
+
   const isSymbolBannerSelected = selectedRowKey === 'symbol-banner';
 
   return createPortal(

@@ -6,6 +6,8 @@ import { resetBrokerServerClock } from '../services/brokerServerClock';
 import {
   DEFAULT_MARKET_WATCH_COLUMNS,
   DEFAULT_MARKET_WATCH_OPTIONS,
+  MARKET_WATCH_COLUMN_HEADERS,
+  MARKET_WATCH_COLUMN_IDS,
   MARKET_WATCH_COLUMNS_STORAGE_KEY,
   MARKET_WATCH_OPTIONS_STORAGE_KEY,
   MARKET_WATCH_SYMBOL_SET_COLUMNS_STORAGE_KEY,
@@ -73,6 +75,15 @@ describe('marketWatchView storage', () => {
   it.each([['dailyChangePrice'], ['dailyChange'], ['dailyChangePrice', 'dailyChange']] as const)('persists daily columns independently: %j', (...columns) => {
     saveMarketWatchColumns(['symbol', 'bid', 'ask', ...columns]);
     expect(loadMarketWatchColumns()).toEqual(['symbol', 'bid', 'ask', ...columns]);
+  });
+
+  it('supports and persists all MT5 Market Watch column options with canonical headers', () => {
+    saveMarketWatchColumns(MARKET_WATCH_COLUMN_IDS);
+    expect(loadMarketWatchColumns()).toEqual([...MARKET_WATCH_COLUMN_IDS]);
+    MARKET_WATCH_COLUMN_IDS.forEach((columnId) => {
+      expect(typeof MARKET_WATCH_COLUMN_HEADERS[columnId]).toBe('string');
+      expect(MARKET_WATCH_COLUMN_HEADERS[columnId].length).toBeGreaterThan(0);
+    });
   });
 
   it('accepts only boolean option overrides and persists the normalized contract', () => {

@@ -17,7 +17,7 @@ import {
 } from './useChartSettingsStore';
 
 describe('chart settings trade history overlay defaults', () => {
-  it('keeps the green outlines and white bears on black across themes and persisted symbol settings', () => {
+  it('keeps the green outlines and white bears on black in dark mode and adapts to the light surface in light mode', () => {
     const initial = useChartSettingsStore.getState();
     const colors = getPresetSchemeColors('Green and White');
     try {
@@ -30,13 +30,39 @@ describe('chart settings trade history overlay defaults', () => {
       expect(properties.colorScheme).toBe('Green and White');
       expect(properties.gridType).toBe('mt5');
       expect(properties.colors).toEqual(colors);
-      for (const isAdvancedUntitledLight of [true, false]) {
-        expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight })).toMatchObject({
-          background: '#000000', foreground: '#ffffff', bullCandle: '#000000', bearCandle: '#ffffff',
-          barUp: '#00ff00', barDown: '#00ff00',
-        });
-      }
+      expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: false })).toMatchObject({
+        background: '#000000', foreground: '#ffffff', bullCandle: '#000000', bearCandle: '#ffffff',
+        barUp: '#00ff00', barDown: '#00ff00',
+      });
+      expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
+        background: '#fafbfc', foreground: '#334155', grid: 'rgba(71, 85, 105, 0.07)',
+        bullCandle: '#ffffff', bearCandle: '#15803d', barUp: '#15803d', barDown: '#15803d',
+      });
       expect(restored.globalProperties.colorScheme).toBe(defaultChartProperties.colorScheme);
+    } finally {
+      useChartSettingsStore.setState(initial);
+    }
+  });
+  it('keeps the green bulls, blue bears, and lime outlines on black in dark mode and adapts to light mode for Green and Blue', () => {
+    const initial = useChartSettingsStore.getState();
+    const colors = getPresetSchemeColors('Green and Blue');
+    try {
+      useChartSettingsStore.setState({ globalProperties: { ...defaultChartProperties }, symbolProperties: {} });
+      useChartSettingsStore.getState().applySymbolPresetScheme('XAUUSD', 'Green and Blue');
+      const saved = JSON.parse(JSON.stringify(useChartSettingsStore.getState()));
+      const restored = useChartSettingsStore.persist.getOptions().merge!(saved, initial);
+      const properties = restored.symbolProperties.XAUUSD;
+      expect(properties.colorScheme).toBe('Green and Blue');
+      expect(properties.colors).toEqual(colors);
+      expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: false })).toMatchObject({
+        background: '#000000', foreground: '#ffffff', bullCandle: '#7cfc00', bearCandle: '#0000ff',
+        barUp: '#00ff00', barDown: '#00ff00', volumes: '#32cd32', bidPriceLine: '#778899',
+      });
+      expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
+        background: '#fafbfc', foreground: '#334155', grid: 'rgba(71, 85, 105, 0.07)',
+        bullCandle: '#16a34a', bearCandle: '#0000ff', barUp: '#15803d', barDown: '#15803d',
+        volumes: 'rgba(21, 128, 61, 0.4)', bidPriceLine: '#778899',
+      });
     } finally {
       useChartSettingsStore.setState(initial);
     }

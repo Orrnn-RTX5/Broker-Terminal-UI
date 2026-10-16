@@ -1,4 +1,5 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { extractAccountMetrics } from '../../services/accountMetrics';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../../services/brokerSession';
 import { getStoredBrokerServer } from '../../services/brokerServers';
 import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession, normalizeSavedAccountServer } from '../../services/savedAccountScope';
@@ -134,12 +135,15 @@ export const useAccountSnapshotRuntime = ({
             });
             useAppStore.getState().setAccount(normalizedAccount);
 
-            const raw = accountPayload as unknown as Record<string, unknown>;
+            const raw = extractAccountMetrics(accountPayload);
             const store = useAppStore.getState();
             const existingAccount = store.savedAccounts.find((savedAccount) => savedAccount.login === loginId
               && isSavedAccountInBrokerSession(savedAccount, accountScope, accountServerIdentities));
             const accountName = pickAccountDisplayName(raw.name, raw.account_name, raw.display_name, raw.user_name);
-            const accountType = resolveTradingAccountType(accountPayload) ?? existingAccount?.accountType;
+            const hasNonEmptyGroup = [raw.group, raw.Group, raw.account_group, raw.accountGroup]
+              .some((value) => typeof value === 'string' && Boolean(value.trim()));
+            const accountType = resolveTradingAccountType(accountPayload, existingAccount)
+              ?? (hasNonEmptyGroup ? 'real' : undefined);
             if ((accountName || accountType) && isAccountMetadataForSession(accountPayload, loginId, accountScope.brokerId)) {
               const serverFromPayload = [raw.broker_server, raw.server, raw.server_name, raw.mt5_server, raw.trade_server]
                 .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))

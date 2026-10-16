@@ -48,3 +48,4 @@ it('allows a click to retry after a failed speculative download', async () => {
   expect(await screen.findByRole('dialog')).toHaveTextContent('Ready');
   expect(loader).toHaveBeenCalledTimes(2);
 });
+

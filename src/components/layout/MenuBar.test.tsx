@@ -576,7 +576,7 @@ describe('MenuBar hamburger launcher', () => {
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
 
-    it.each(['Yellow on Black', 'Green and White'] as const)('shows genuine chart color templates and applies %s only to the active chart', (scheme) => {
+    it.each(['Yellow on Black', 'Green and White', 'Green and Blue'] as const)('shows genuine chart color templates and applies %s only to the active chart', (scheme) => {
         useChartSettingsStore.setState({
             globalProperties: {
                 ...defaultChartProperties,
@@ -594,6 +594,7 @@ describe('MenuBar hamburger launcher', () => {
         expect(within(colorTemplatesMenu).getAllByRole('menuitemradio').map(item => item.textContent)).toEqual([
             'Green on Black',
             'Green and White',
+            'Green and Blue',
             'Blue on Black',
             'Black on White',
             'Yellow on Black',

@@ -48,7 +48,9 @@ describe('TradingChart Charts-menu runtime contract', () => {
     expect(chartRuntimeSource).toContain('(chartSettings.showTicker || chartSettings.showOHLC)');
     expect(chartRuntimeSource).toContain('{chartSettings.showTicker && (');
     expect(chartRuntimeSource).toContain('{chartSettings.showOHLC && (');
-    expect(chartRuntimeSource).toContain('setShowOneClick(chartSettings.showQuickTradingButtons);');
+    expect(chartRuntimeSource).toContain('if (!chartSettings.showQuickTradingButtons) setShowOneClick(false);');
+    expect(chartRuntimeSource).toContain('data-testid="chart-hud-one-click-toggle"');
+    expect(chartRuntimeSource).toContain('visible={chartSettings.showQuickTradingButtons && showOneClick}');
     expect(chartRuntimeSource).toContain('style={{ zIndex: chartSettings.chartOnForeground ? 11 : 0 }}');
     expect(chartRuntimeSource).toContain('getChartGridRenderingOptions(chartSettings, chartTheme)');
     expect(chartRuntimeSource).toContain('grid: gridRenderingOptions.nativeGrid,');

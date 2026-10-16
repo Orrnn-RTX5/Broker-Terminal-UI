@@ -294,13 +294,26 @@ export function MarketWatchTickChart({
   ]);
 
   const handleMouseMove = useCallback((event: MouseEvent<SVGSVGElement>) => {
+    if (!geometry) {
+      setHoverState(null);
+      return;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     const scaleX = rect.width > 0 ? size.width / rect.width : 1;
     const scaleY = rect.height > 0 ? size.height / rect.height : 1;
     const x = (event.clientX - rect.left) * scaleX;
     const y = (event.clientY - rect.top) * scaleY;
+    if (
+      x < geometry.plot.left
+      || x > geometry.plot.right
+      || y < geometry.plot.top
+      || y > geometry.plot.bottom
+    ) {
+      setHoverState((current) => (current === null ? null : null));
+      return;
+    }
     setHoverState({ symbol: normalizedSymbol, pointer: { x, y } });
-  }, [normalizedSymbol, size.height, size.width]);
+  }, [geometry, normalizedSymbol, size.height, size.width]);
 
   const handleMouseLeave = useCallback(() => {
     setHoverState(null);
@@ -439,6 +452,7 @@ export function MarketWatchTickChart({
               role="img"
               aria-labelledby={`${titleId} ${descriptionId}`}
               data-tick-count={geometry.visibleCount}
+              data-cursor={crosshair ? 'crosshair' : 'default'}
               style={{ fontSize: size.fontSize }}
               onMouseMove={handleMouseMove}
               onMouseLeave={handleMouseLeave}
@@ -455,10 +469,12 @@ export function MarketWatchTickChart({
               </desc>
               <rect
                 className="rtx-market-tick-chart__plot"
+                data-testid="market-tick-plot"
                 x={geometry.plot.left}
                 y={geometry.plot.top}
                 width={geometry.plot.right - geometry.plot.left}
                 height={geometry.plot.bottom - geometry.plot.top}
+                onMouseLeave={handleMouseLeave}
               />
               {options.grid && (
                 <g className="rtx-market-tick-chart__grid" data-testid="market-tick-grid" aria-hidden="true">

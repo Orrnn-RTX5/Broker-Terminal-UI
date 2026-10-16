@@ -1,5 +1,6 @@
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { resolveTickFromLookup, useAppStore } from '../../store/useAppStore';
+import { normalizeSymbolDescriptionText } from '../../utils/symbolDescription';
 import { getInstrumentSymbolName } from '../../utils/symbolEligibility';
 import { formatPrice } from '../../utils/symbolUtils';
 
@@ -136,11 +137,12 @@ export const readInstrumentDescription = (value: unknown, symbol: string): strin
     hasExplicitSymbol ? record.name : undefined,
   ];
   for (const candidate of candidates) {
-    const description = String(candidate ?? '').trim();
-    if (description && normalizeSymbol(description) !== normalizeSymbol(symbol)) return description;
+    const description = normalizeSymbolDescriptionText(symbol, String(candidate ?? ''));
+    if (description) return description;
   }
   return '';
 };
+
 
 export const findInstrumentBySymbol = (instruments: readonly unknown[], symbol: string): unknown => {
   const matches = instruments.filter((instrument) => getInstrumentSymbolName(instrument) === symbol);

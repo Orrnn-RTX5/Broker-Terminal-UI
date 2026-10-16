@@ -148,8 +148,11 @@ export function useTradingChartLivePriceOverlay({
     nextClose?: number,
   ): string => {
     const colors = livePriceColorPaletteRef.current;
-    if (chartSettingsRef.current.colorScheme === 'Green and White') {
-      // Hollow black bodies are not the price-line color in this preset.
+    if (
+      chartSettingsRef.current.colorScheme === 'Green and White'
+      || chartSettingsRef.current.colorScheme === 'Green and Blue'
+    ) {
+      // Reference presets with lime outlines use the configured slate bid line.
       return colors.bidPriceLine;
     }
     if (chartType === 'area') {

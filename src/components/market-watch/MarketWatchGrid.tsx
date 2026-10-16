@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import type { ContextMenuItemConfig } from '../ui/ContextMenu';
-import type {
-  MarketWatchColumnId,
-  MarketWatchOptions,
-  MarketWatchSortMode,
+import {
+  MARKET_WATCH_COLUMN_HEADERS,
+  type MarketWatchColumnId,
+  type MarketWatchOptions,
+  type MarketWatchSortMode,
 } from '../../utils/marketWatchView';
 import { MarketWatchRow } from './MarketWatchRow';
 
@@ -16,6 +17,7 @@ interface MarketWatchGridProps {
   closedDailyChanges: ReadonlyMap<string, number>;
   columns: readonly MarketWatchColumnId[];
   getContextMenuItems: (symbol: string) => ContextMenuItemConfig[];
+  getInstrumentSources?: (symbol: string) => readonly unknown[];
   footer?: ReactNode;
   isSymbolListLoading: boolean;
   lastPrices: ReadonlyMap<string, MarketWatchLastPrice>;
@@ -42,6 +44,7 @@ export const MarketWatchGrid = ({
   closedDailyChanges,
   columns,
   getContextMenuItems,
+  getInstrumentSources,
   footer,
   isSymbolListLoading,
   lastPrices,
@@ -107,20 +110,7 @@ export const MarketWatchGrid = ({
     return () => observer.disconnect();
   }, []);
 
-  const columnHeaders: Record<MarketWatchColumnId, string> = {
-    symbol: 'Symbol',
-    bid: 'Bid',
-    ask: 'Ask',
-    last: 'Last',
-    high: 'High',
-    low: 'Low',
-    volume: 'Volume',
-    spread: 'Spread',
-    time: 'Time',
-    dailyChange: 'Daily Change',
-    dailyChangePrice: 'Change',
-    source: 'Source',
-  };
+  const columnHeaders = MARKET_WATCH_COLUMN_HEADERS;
   const columnWidths = useMemo<Partial<Record<MarketWatchColumnId, number>>>(() => ({
     bid: 74,
     ask: 74,
@@ -133,6 +123,16 @@ export const MarketWatchGrid = ({
     dailyChange: 76,
     dailyChangePrice: 76,
     source: 110,
+    accruedInterest: 102,
+    initialMargin: 94,
+    maintenanceMargin: 118,
+    initialBuyMargin: 112,
+    initialSellMargin: 112,
+    settlementPrice: 102,
+    dealsVolume: 92,
+    openInterest: 92,
+    averageWeightedPrice: 138,
+    theoreticalPrice: 106,
   }), [marketWatchOptions.showMilliseconds]);
   const tableMinimumWidth = 118 + columns.reduce(
     (total, column) => total + (column === 'symbol' ? 0 : (columnWidths[column] ?? 82)),
@@ -284,6 +284,7 @@ export const MarketWatchGrid = ({
                 isLightSkin={isLightSkin}
                 closedDailyChange={closedDailyChanges.get(symbol)}
                 lastPrice={lastPrices.get(symbol)}
+                instrumentSources={getInstrumentSources?.(symbol)}
                 symbolUniverse={quoteEligibleSymbols}
                 rowRef={marketWatchRowRefCallbacks.get(symbol)}
               />

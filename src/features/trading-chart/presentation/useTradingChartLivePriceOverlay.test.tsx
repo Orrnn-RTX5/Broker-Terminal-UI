@@ -8,8 +8,13 @@ import { defaultChartProperties, normalizeChartProperties } from '../../../store
 describe('forming candle and chart price line alignment', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it.each([99, 101])('keeps the configured slate bid line visible with a hollow or white candle closing at %s', close => {
-    const settings = normalizeChartProperties({ colorScheme: 'Green and White' });
+  it.each([
+    ['Green and White', 99],
+    ['Green and White', 101],
+    ['Green and Blue', 99],
+    ['Green and Blue', 101],
+  ] as const)('keeps the configured slate bid line visible for %s with a candle closing at %s', (colorScheme, close) => {
+    const settings = normalizeChartProperties({ colorScheme });
     const candle = { time: 1, open: 100, high: 102, low: 98, close, volume: 1 };
     const { result } = renderHook(() => useTradingChartLivePriceOverlay({
       canPaintLivePrice: () => true,

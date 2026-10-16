@@ -6,19 +6,20 @@ export function createPreloadableFeature<Props extends object>(
 ) {
   let resolved: ComponentType<Props> | undefined;
   let pending: Promise<{ default: ComponentType<Props> }> | undefined;
-  const preload = () => {
+  let LazyComponent = lazy(preload);
+  function preload() {
     if (!pending) {
       pending = loader().then(module => {
         resolved = module.default;
         return module;
       }).catch(error => {
         pending = undefined;
+        LazyComponent = lazy(preload);
         throw error;
       });
     }
     return pending;
-  };
-  const LazyComponent = lazy(preload);
+  }
   const Component = (props: Props) => createElement(resolved ?? LazyComponent, props);
   return { Component, preload };
 }

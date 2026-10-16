@@ -42,16 +42,16 @@ describe('Chart Properties keyboard ownership', () => {
 });
 
 describe('Chart Properties grid settings', () => {
-  it('previews Green and White on the active symbol and restores the original scheme on Cancel', () => {
+  it.each(['Green and White', 'Green and Blue'] as const)('previews %s on the active symbol and restores the original scheme on Cancel', (preset) => {
     const initial = useChartSettingsStore.getState();
     useChartSettingsStore.setState({ globalProperties: { ...defaultChartProperties }, symbolProperties: {} });
     const { unmount } = render(<ChartPropertiesDialog isOpen symbol="EURUSD" timeframe="M1" onClose={vi.fn()} />);
     try {
       fireEvent.click(screen.getByRole('tab', { name: 'Colors' }));
       const scheme = screen.getByDisplayValue('Blue on Black');
-      fireEvent.change(scheme, { target: { value: 'Green and White' } });
-      expect(scheme).toHaveValue('Green and White');
-      expect(useChartSettingsStore.getState().symbolProperties.EURUSD.colors).toEqual(getPresetSchemeColors('Green and White'));
+      fireEvent.change(scheme, { target: { value: preset } });
+      expect(scheme).toHaveValue(preset);
+      expect(useChartSettingsStore.getState().symbolProperties.EURUSD.colors).toEqual(getPresetSchemeColors(preset));
       const preview = screen.getByRole('dialog').querySelector<HTMLElement>('.rtx-cp-preview-inner')!;
       expect(preview.style.backgroundColor).toBe('rgb(0, 0, 0)');
       expect(decodeURIComponent(preview.style.backgroundImage)).toContain('#778899');

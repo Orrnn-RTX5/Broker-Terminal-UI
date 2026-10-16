@@ -641,7 +641,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
           if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
             const letter = e.key.toLowerCase();
             const matchingIndex = nonDividerItems.findIndex(item =>
-              item.label.toLowerCase().startsWith(letter)
+              item.label?.toLowerCase().startsWith(letter)
             );
             if (matchingIndex !== -1) {
               setFocusedIndex(matchingIndex);
@@ -671,11 +671,58 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
     }
   }, [isSubmenu, isPositioned]);
 
+  const itemColumns = React.useMemo(() => {
+    const result: Array<Array<{ item: ContextMenuItemConfig; index: number }>> = [];
+    items.forEach((item, index) => {
+      if (result.length === 0 || (item.columnBreak && result[result.length - 1].length > 0)) {
+        result.push([]);
+      }
+      result[result.length - 1].push({ item, index });
+    });
+    return result;
+  }, [items]);
+  const isMultiColumn = itemColumns.length > 1;
+  const nonDividerItems = items.filter(i => !i.divider && !i.disabled);
+  const focusedItem = focusedIndex >= 0 ? nonDividerItems[focusedIndex] : null;
+  const columnSeparatorColor = panelSkin === 'theme'
+    ? 'var(--border-secondary)'
+    : panelSkin === 'light'
+      ? 'rgba(0, 0, 0, 0.08)'
+      : 'rgba(255, 255, 255, 0.08)';
+
+  const renderEntry = (item: ContextMenuItemConfig, index: number) => {
+    const itemId = `item-${index}`;
+    const isFocused = !item.divider && !item.disabled && focusedItem === item;
+
+    return (
+      <div
+        key={itemId}
+        ref={el => { itemRefs.current[index] = el; }}
+      >
+        <MenuItem
+          item={item}
+          onClose={onClose}
+          onSubmenuOpen={handleSubmenuOpen}
+          onSubmenuClose={handleSubmenuClose}
+          isSubmenuActive={activeSubmenu !== null && activeSubmenu.parentIndex === index}
+          itemId={itemId}
+          itemIndex={index}
+          variant={variant}
+          density={density}
+          isPointerHovered={hoveredIndex === index}
+          onPointerEnterItem={() => setHoveredIndex(index)}
+          onPointerLeaveItem={() => setHoveredIndex(prev => prev === index ? null : prev)}
+          isFocused={isFocused}
+        />
+      </div>
+    );
+  };
+
   return (
     <>
       <div
         ref={menuRef}
-        className="fixed w-max min-w-[256px] max-w-[min(440px,calc(100vw-16px))] max-h-[calc(100vh-16px)] rounded-lg border p-1 text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent shadow-2xl"
+        className={`fixed w-max min-w-[256px] ${isMultiColumn ? 'max-w-[calc(100vw-16px)] overflow-x-auto' : 'max-w-[min(440px,calc(100vw-16px))] overflow-x-hidden'} max-h-[calc(100vh-16px)] rounded-lg border p-1 text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent shadow-2xl`}
         style={{
           ...menuPanelStyle(panelSkin),
           left: `${adjustedPosition.x}px`,
@@ -690,35 +737,25 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
         role="menu"
         aria-label={tr("Context menu")}
       >
-        {items.map((item, index) => {
-          const itemId = `item-${index}`;
-          const nonDividerItems = items.filter(i => !i.divider && !i.disabled);
-          const focusedItem = focusedIndex >= 0 ? nonDividerItems[focusedIndex] : null;
-          const isFocused = !item.divider && !item.disabled && focusedItem === item;
-
-          return (
-            <div
-              key={itemId}
-              ref={el => { itemRefs.current[index] = el; }}
-            >
-              <MenuItem
-                item={item}
-                onClose={onClose}
-                onSubmenuOpen={handleSubmenuOpen}
-                onSubmenuClose={handleSubmenuClose}
-                isSubmenuActive={activeSubmenu !== null && activeSubmenu.parentIndex === index}
-                itemId={itemId}
-                itemIndex={index}
-                variant={variant}
-                density={density}
-                isPointerHovered={hoveredIndex === index}
-                onPointerEnterItem={() => setHoveredIndex(index)}
-                onPointerLeaveItem={() => setHoveredIndex(prev => prev === index ? null : prev)}
-                isFocused={isFocused}
-              />
-            </div>
-          );
-        })}
+        {isMultiColumn ? (
+          <div className="rtx-context-menu__columns flex flex-row items-stretch" data-column-count={itemColumns.length}>
+            {itemColumns.map((columnEntries, colIndex) => (
+              <div
+                key={`col-${colIndex}`}
+                className="rtx-context-menu__column flex flex-col min-w-[164px]"
+                style={colIndex > 0 ? {
+                  borderLeft: `1px solid ${columnSeparatorColor}`,
+                  paddingLeft: 4,
+                  marginLeft: 4,
+                } : undefined}
+              >
+                {columnEntries.map(({ item, index }) => renderEntry(item, index))}
+              </div>
+            ))}
+          </div>
+        ) : (
+          items.map((item, index) => renderEntry(item, index))
+        )}
       </div>
 
       {/* Render submenu with collision detection and higher z-index */}

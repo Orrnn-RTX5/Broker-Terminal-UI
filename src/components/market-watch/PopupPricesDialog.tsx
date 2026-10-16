@@ -25,6 +25,7 @@ import {
 import {
   DEFAULT_MARKET_WATCH_COLUMNS,
   formatMarketWatchTime,
+  MARKET_WATCH_COLUMN_HEADERS,
   normalizeMarketWatchColumns,
   type MarketWatchColumnId,
 } from '../../utils/marketWatchView';
@@ -33,7 +34,23 @@ import { getSymbolDigits } from '../../utils/symbolUtils';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
 import { getLatestMarketWatchTimestamp } from './marketWatchPanelModel';
+import { resolveMarketWatchExtendedColumn } from './marketWatchSymbolDetailsModel';
 import './market-watch-views.css';
+
+const CORE_POPUP_COLUMN_SET = new Set<MarketWatchColumnId>([
+  'symbol',
+  'bid',
+  'ask',
+  'last',
+  'high',
+  'low',
+  'volume',
+  'spread',
+  'time',
+  'dailyChangePrice',
+  'dailyChange',
+  'source',
+]);
 
 const VIEWPORT_GAP = 12;
 const MINIMUM_WIDTH = 420;
@@ -295,6 +312,27 @@ function PopupPriceCard({
               <strong title={tick?.lp || undefined}>{tick?.lp || '—'}</strong>
             </div>
           )}
+          {columns.filter((col) => !CORE_POPUP_COLUMN_SET.has(col)).map((column) => {
+            const resolved = resolveMarketWatchExtendedColumn({
+              column,
+              tick,
+              lastPrice: fallbackPrice,
+              displayLast: resolvedDisplayMetadata.last,
+              priceDigits: digits,
+            });
+            return (
+              <div key={column} className="rtx-popup-prices__metric">
+                <span>{tr(MARKET_WATCH_COLUMN_HEADERS[column])}</span>
+                <strong>
+                  {resolved.kind === 'price' && resolved.numericValue !== null && resolved.numericValue !== 0 ? (
+                    <PriceDisplay price={resolved.numericValue} symbol={symbol} digits={digits} />
+                  ) : (
+                    resolved.formatted ?? '—'
+                  )}
+                </strong>
+              </div>
+            );
+          })}
         </footer>
       )}
     </article>

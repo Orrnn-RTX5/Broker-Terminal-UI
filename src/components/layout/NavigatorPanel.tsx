@@ -21,7 +21,7 @@ import type { Broker, BrokerServer } from '../../types/api';
 import type { BrokerDiscoveryItem } from '../../services/brokerDiscovery';
 import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession, normalizeSavedAccountServer } from '../../services/savedAccountScope';
 import { getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
-import type { TradingAccountType } from '../../services/tradingAccountType';
+import { resolveDisplayAccountType, type TradingAccountType } from '../../services/tradingAccountType';
 import './NavigatorPanel.css';
 
 const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
@@ -390,7 +390,7 @@ export const NavigatorPanel: React.FC = () => {
                                             <ContextMenu key={accountKey(acc)} items={getAccountContextMenuItems(acc)} variant="theme">
                                                 <TreeItem
                                                     label={isSwitching ? tr("{{value0}} (switching...)", { value0: displayName }) : tr(displayName)}
-                                                    icon={<AccountIcon isActive={isActive} accountType={acc.accountType} />}
+                                                    icon={<AccountIcon isActive={isActive} accountType={resolveDisplayAccountType(acc)} />}
                                                     isLast={isLastAccount}
                                                     isFavorite={acc.isFavorite}
                                                     onItemClick={() => {
@@ -442,7 +442,7 @@ export const NavigatorPanel: React.FC = () => {
                             <ContextMenu key={`${sessionScope}:${accountKey(acc)}`} items={getAccountContextMenuItems(acc)} variant="theme">
                                 <TreeItem
                                     label={`${acc.login}${acc.name && acc.name !== String(acc.login) ? `: ${acc.name}` : ''} · ${brokerDisplayName(acc.server, logoFor(acc.server, acc).brokerName)}`}
-                                    icon={<AccountIcon isActive={isAccountActive(acc)} accountType={acc.accountType} />}
+                                    icon={<AccountIcon isActive={isAccountActive(acc)} accountType={resolveDisplayAccountType(acc)} />}
                                     isFavorite
                                     isLast={index === favoriteAccounts.length - 1}
                                     onItemClick={() => {

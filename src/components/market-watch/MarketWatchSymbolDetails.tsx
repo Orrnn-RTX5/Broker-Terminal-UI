@@ -9,11 +9,13 @@ import {
   useMarketWatchDisplayMetadata,
 } from '../../store/useMarketWatchDisplayMetadataStore';
 import { getMarketWatchSymbolLabel } from '../../utils/marketWatchSource';
+import { resolveSymbolDescription } from '../../utils/symbolDescription';
 import { formatDailyChange } from '../../utils/dailyChange';
 import { dailyChangeDescription } from '../../utils/dailyChangeSession';
 import { readCurrentMarketWatchDailyChangePrice, describeCurrentMarketWatchDailyChange } from '../../services/marketWatchDailyChangeCache';
 import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
-import { formatLastPriceTime, hasMarketWatchQuote } from './marketWatchPanelModel';
+import { formatLastPriceTime, hasMarketWatchQuote, readInstrumentDescription } from './marketWatchPanelModel';
+
 import {
   buildMarketWatchSymbolDetails,
   formatMarketWatchDetailsNumber,
@@ -50,7 +52,9 @@ export interface MarketWatchSymbolDetailsProps {
   instrumentSources: readonly unknown[];
   specificationScopeKey: string;
   loadSpecification?: LoadSymbolSpecification;
-  onSymbolChange: (symbol: string) => void;
+  onSymbolChange?: (symbol: string) => void;
+  onOpenSpecification?: (symbol: string) => void;
+  isSpecificationOpen?: boolean;
   showGrid?: boolean;
   contextMenuItems?: ContextMenuItemConfig[];
   onRowDoubleClick?: () => void;
@@ -109,26 +113,22 @@ const useBrokerSymbolSpecification = (
   return loaded?.key === requestKey ? loaded.instrument : null;
 };
 
-const DirectionMarker = ({ direction }: { direction: DetailRow['direction'] }) => (
-  <span className="rtx-market-watch-details__marker" data-direction={direction} aria-hidden="true">
-    {direction === 'up' || direction === 'down' ? (
+const DirectionMarker = ({ direction }: { direction: DetailRow['direction'] }) => {
+  if (direction !== 'up' && direction !== 'down') return null;
+  return (
+    <span className="rtx-market-watch-details__marker" data-direction={direction} aria-hidden="true">
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
         {direction === 'up'
           ? <path d="M2 8L8 2M4 2h4v4" />
           : <path d="M2 2l6 6M8 4v4H4" />}
       </svg>
-    ) : (
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-        <circle cx="5" cy="5" r="1.75" />
-      </svg>
-    )}
-  </span>
-);
+    </span>
+  );
+};
 
 /** MT5 Market Watch "Details" tab: live quote extremes and contract terms for one symbol. */
 export function MarketWatchSymbolDetails({
   symbol,
-  symbols,
   symbolUniverse,
   descriptions,
   isLive,
@@ -137,13 +137,15 @@ export function MarketWatchSymbolDetails({
   instrumentSources,
   specificationScopeKey,
   loadSpecification,
-  onSymbolChange,
+  onOpenSpecification,
+  isSpecificationOpen = false,
   showGrid = true,
   contextMenuItems,
   onRowDoubleClick,
 }: MarketWatchSymbolDetailsProps) {
   const tr = useUiTranslation();
   const [selectedField, setSelectedField] = useState<string | null>(null);
+  const [activatedSymbol, setActivatedSymbol] = useState<string | null>(null);
   const [isLightSkin, setIsLightSkin] = useState(false);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const tick = useTick(symbol);
@@ -200,7 +202,15 @@ export function MarketWatchSymbolDetails({
   }
 
   const displaySymbol = getMarketWatchSymbolLabel(symbol, symbolUniverse);
-  const options = symbols.includes(symbol) ? symbols : [symbol, ...symbols];
+  const rawDescription = descriptions.get(symbol)
+    || readInstrumentDescription(brokerSpecification, symbol)
+    || instrumentSources.map((source) => readInstrumentDescription(source, symbol)).find(Boolean)
+    || '';
+  const symbolDescription = resolveSymbolDescription(symbol, rawDescription)
+    || resolveSymbolDescription(displaySymbol);
+  const symbolHeaderLabel = symbolDescription ? `${displaySymbol}, ${symbolDescription}` : displaySymbol;
+
+  const isSymbolActive = isSpecificationOpen || activatedSymbol === symbol;
   const quoteTitle = details.fallbackQuoteAsOf === null
     ? undefined
     : `${tr('Last quote')} · ${formatLastPriceTime(details.fallbackQuoteAsOf)}`;
@@ -237,6 +247,7 @@ export function MarketWatchSymbolDetails({
     if (targetIndex !== null) {
       event.preventDefault();
       const nextField = rows[targetIndex].field;
+      setActivatedSymbol(null);
       setSelectedField(nextField);
       rowRefs.current.get(nextField)?.focus();
     }
@@ -260,10 +271,12 @@ export function MarketWatchSymbolDetails({
               aria-selected={isRowSelected}
               tabIndex={isRowSelected || (selectedField === null && index === 0) ? 0 : -1}
               onClick={(event) => {
+                setActivatedSymbol(null);
                 setSelectedField(row.field);
                 event.currentTarget.focus();
               }}
               onContextMenu={(event) => {
+                setActivatedSymbol(null);
                 setSelectedField(row.field);
                 event.currentTarget.focus();
               }}
@@ -296,22 +309,19 @@ export function MarketWatchSymbolDetails({
       data-grid={showGrid}
     >
       <div className="rtx-market-watch-details__header">
-        <select
+        <button
+          type="button"
           className="rtx-market-watch-details__symbol"
-          aria-label={tr('Symbol')}
-          value={symbol}
-          onChange={(event) => onSymbolChange(event.target.value)}
+          data-testid="market-watch-details-symbol"
+          data-active={isSymbolActive ? 'true' : undefined}
+          title={symbolHeaderLabel}
+          onClick={() => {
+            setActivatedSymbol(symbol);
+            onOpenSpecification?.(symbol);
+          }}
         >
-          {options.map((option) => {
-            const label = getMarketWatchSymbolLabel(option, symbolUniverse);
-            const description = descriptions.get(option);
-            return (
-              <option key={option} value={option}>
-                {description ? `${label}, ${description}` : label}
-              </option>
-            );
-          })}
-        </select>
+          {symbolHeaderLabel}
+        </button>
         {!isLive && (
           <span className="rtx-market-watch-details__availability-status" role="status">
             {tr('Symbol unavailable')}

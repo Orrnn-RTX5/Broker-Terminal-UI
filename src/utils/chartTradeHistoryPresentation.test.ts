@@ -55,12 +55,14 @@ describe('chart trade-history presentation', () => {
     expect(getTradeHistoryExecutionSide('SELL', 'CLOSE')).toBe('BUY');
   });
 
-  it('places buy executions below the wick and sell executions above it', () => {
+  it('anchors buy and sell executions to the trade price point on the candle and clamps to the candle range', () => {
     const candle = { high: 81300, low: 81200 };
-    expect(getTradeHistoryMarkerPrice('BUY', 81250, candle)).toBe(81200);
-    expect(getTradeHistoryMarkerPrice('SELL', 81250, candle)).toBe(81300);
-    expect(getTradeHistoryMarkerPrice(getTradeHistoryExecutionSide('BUY', 'CLOSE'), 81260, candle)).toBe(81300);
-    expect(getTradeHistoryMarkerPrice(getTradeHistoryExecutionSide('SELL', 'CLOSE'), 81260, candle)).toBe(81200);
+    expect(getTradeHistoryMarkerPrice('BUY', 81250, candle)).toBe(81250);
+    expect(getTradeHistoryMarkerPrice('SELL', 81250, candle)).toBe(81250);
+    expect(getTradeHistoryMarkerPrice(getTradeHistoryExecutionSide('BUY', 'CLOSE'), 81260, candle)).toBe(81260);
+    expect(getTradeHistoryMarkerPrice(getTradeHistoryExecutionSide('SELL', 'CLOSE'), 81260, candle)).toBe(81260);
+    expect(getTradeHistoryMarkerPrice('BUY', 81340, candle)).toBe(81300);
+    expect(getTradeHistoryMarkerPrice('SELL', 81150, candle)).toBe(81200);
   });
 
   it('uses the execution price while the candle is unavailable', () => {

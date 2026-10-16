@@ -13,15 +13,18 @@ import {
   escapeMarketWatchCsvCell,
   escapeMarketWatchTsvCell,
   formatMarketWatchTime,
+  MARKET_WATCH_COLUMN_HEADERS,
   type MarketWatchColumnId,
 } from '../../utils/marketWatchView';
 import type { MarketWatchExportResult } from '../../utils/marketWatchExport';
 import {
   formatMarketWatchExportPrice,
   getLatestMarketWatchTimestamp,
+  getMarketWatchPriceDigits,
   hasMarketWatchQuote,
   readFiniteDailyChange,
 } from './marketWatchPanelModel';
+import { resolveMarketWatchExtendedColumn } from './marketWatchSymbolDetailsModel';
 
 type Translate = (source: string, values?: Record<string, unknown>) => string;
 
@@ -32,6 +35,7 @@ interface MarketWatchExportSnapshotOptions {
   lastPrices: ReadonlyMap<string, MarketWatchLastPrice>;
   showMilliseconds: boolean;
   getTick: (symbol: string) => Tick | undefined;
+  getInstrumentSources?: (symbol: string) => readonly unknown[];
   translate: Translate;
   now?: Date;
 }
@@ -42,18 +46,8 @@ export interface MarketWatchExportSnapshot {
 }
 
 const COLUMN_LABELS: Record<MarketWatchColumnId, string> = {
-  symbol: 'Symbol',
-  bid: 'Bid',
-  ask: 'Ask',
-  last: 'Last',
-  high: 'High',
-  low: 'Low',
-  volume: 'Volume',
-  spread: 'Spread',
-  time: 'Time',
+  ...MARKET_WATCH_COLUMN_HEADERS,
   dailyChange: 'Change %',
-  dailyChangePrice: 'Change',
-  source: 'Source',
 };
 
 export const createMarketWatchExportSnapshot = ({
@@ -63,6 +57,7 @@ export const createMarketWatchExportSnapshot = ({
   lastPrices,
   showMilliseconds,
   getTick,
+  getInstrumentSources,
   translate,
   now = new Date(),
 }: MarketWatchExportSnapshotOptions): MarketWatchExportSnapshot => {
@@ -106,7 +101,17 @@ export const createMarketWatchExportSnapshot = ({
         case 'dailyChange': return dailyChange !== null ? formatDailyChange(dailyChange, 2, true) : '-';
         case 'dailyChangePrice': return dailyAmount != null ? formatDailyChange(dailyAmount, resolveDailyChangeDisplayDigits(symbol, tick?.digits)) : '-';
         case 'source': return tick?.lp ?? '-';
-        default: return '-';
+        default: {
+          const resolved = resolveMarketWatchExtendedColumn({
+            column,
+            tick,
+            lastPrice: fallback,
+            displayLast: display.last,
+            instrumentSources: getInstrumentSources?.(symbol),
+            priceDigits: getMarketWatchPriceDigits(symbol),
+          });
+          return resolved.formatted ?? '-';
+        }
       }
     });
   });

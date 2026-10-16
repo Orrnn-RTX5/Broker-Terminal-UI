@@ -134,7 +134,7 @@ export const createTradeOverlayModelRuntime = ({
       const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
       if (!Number.isFinite(timeframeSeconds) || timeframeSeconds <= 0) return normalizedTimestamp;
 
-      if (candlesRef.current.length === 0) {
+      if (candlesRef.current.length === 0 && !currentCandleRef.current) {
         return alignTimeframeBoundarySeconds(normalizedTimestamp, activeTf as AggTimeframe, timeframeSeconds);
       }
 
@@ -160,6 +160,22 @@ export const createTradeOverlayModelRuntime = ({
         if (distance < bestDistance) {
           bestDistance = distance;
           bestTime = nearest.time;
+        }
+      }
+
+      if (bestTime != null) return bestTime;
+
+      const firstCandleTime = candlesRef.current[0]?.time ?? currentCandleRef.current?.time ?? null;
+      if (firstCandleTime != null) {
+        for (const candidate of candidates) {
+          if (candidate < firstCandleTime) continue;
+          const nearest = getNearestCandleByTime(candidate);
+          if (!nearest) continue;
+          const distance = Math.abs(nearest.time - candidate);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestTime = nearest.time;
+          }
         }
       }
 
@@ -194,10 +210,11 @@ export const createTradeOverlayModelRuntime = ({
 
       const activeTf = prevTimeframeRef.current || timeframe;
       const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
-      return Boolean(getNearestCandleByTime(
-        numericTime,
-        Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
-      ));
+      const firstCandleTime = candlesRef.current[0]?.time ?? currentCandleRef.current?.time ?? null;
+      const maxDistance = firstCandleTime != null && numericTime >= firstCandleTime
+        ? undefined
+        : (Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined);
+      return Boolean(getNearestCandleByTime(numericTime, maxDistance));
     };
     const resolveClosedEntryTime = (trade: ActiveTradeSnapshot): number => {
       if (canResolveOverlayTime(trade.entryTime)) return trade.entryTime;
@@ -207,7 +224,7 @@ export const createTradeOverlayModelRuntime = ({
         return storedMarkerTime;
       }
 
-      return trade.entryTime;
+      return getLiveTrailTime() ?? trade.entryTime;
     };
     const getLiveTrailPrice = (side: TradeSide, fallbackPrice: number): number | null => {
       const tick = resolveSymbolTick(useAppStore.getState().ticks);
@@ -261,15 +278,22 @@ export const createTradeOverlayModelRuntime = ({
       capturedTrade?: ActiveTradeSnapshot | null,
       existingTrade?: ClosedTradeSnapshot | null,
     ): ClosedTradeSnapshot | null => {
-      const entryFallbackTime = existingTrade?.entryTime
-        ?? (capturedTrade ? resolveClosedEntryTime(capturedTrade) : null);
-      const entryTime = existingTrade?.entryTime
+      const existingEntryTime = existingTrade?.entryTime != null && canResolveOverlayTime(existingTrade.entryTime)
+        ? existingTrade.entryTime
+        : null;
+      const entryFallbackTime = existingEntryTime
+        ?? (capturedTrade ? resolveClosedEntryTime(capturedTrade) : null)
+        ?? getLiveTrailTime();
+      const entryTime = existingEntryTime
         ?? resolveCloseSnapshotOverlayTime(snapshot.entryTime, entryFallbackTime);
-      const exitFallbackTime = existingTrade?.exitTime
+      const existingExitTime = existingTrade?.exitTime != null && canResolveOverlayTime(existingTrade.exitTime)
+        ? existingTrade.exitTime
+        : null;
+      const exitFallbackTime = existingExitTime
         ?? getLiveTrailTime()
         ?? capturedTrade?.currentTime
         ?? entryTime;
-      const exitTime = existingTrade?.exitTime
+      const exitTime = existingExitTime
         ?? resolveCloseSnapshotOverlayTime(snapshot.exitTime, exitFallbackTime);
 
       return buildOptimisticClosedTradeSnapshot({
@@ -283,21 +307,24 @@ export const createTradeOverlayModelRuntime = ({
         profit: snapshot.profit ?? existingTrade?.profit,
       });
     };
-    const mapStoredClosedTradeToChart = (trade: ClosedTradeSnapshot): ClosedTradeSnapshot | null => (
-      buildOptimisticClosedTradeSnapshot({
+    const mapStoredClosedTradeToChart = (trade: ClosedTradeSnapshot): ClosedTradeSnapshot | null => {
+      const liveTrailTime = getLiveTrailTime();
+      const entryFallback = canResolveOverlayTime(trade.entryTime) ? trade.entryTime : liveTrailTime ?? trade.entryTime;
+      const exitFallback = canResolveOverlayTime(trade.exitTime) ? trade.exitTime : liveTrailTime ?? trade.exitTime;
+      return buildOptimisticClosedTradeSnapshot({
         key: trade.key,
         symbol: trade.symbol,
         side: trade.side,
         volume: trade.volume,
         entryPrice: trade.entryPrice,
-        entryTime: resolveCloseSnapshotOverlayTime(trade.entryExecutionTime, trade.entryTime),
+        entryTime: resolveCloseSnapshotOverlayTime(trade.entryExecutionTime, entryFallback),
         entryExecutionTime: trade.entryExecutionTime,
         exitPrice: trade.exitPrice,
-        exitTime: resolveCloseSnapshotOverlayTime(trade.exitExecutionTime, trade.exitTime),
+        exitTime: resolveCloseSnapshotOverlayTime(trade.exitExecutionTime, exitFallback),
         exitExecutionTime: trade.exitExecutionTime,
         profit: trade.profit,
-      })
-    );
+      });
+    };
     const requestTradeHistoryRefresh = () => {
       const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
       if (!Number.isFinite(login) || login <= 0) return;

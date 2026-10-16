@@ -102,7 +102,9 @@ export const getChartGridLineColors = ({
   const parsedBackground = parseChartColor(background) ?? { r: 0, g: 0, b: 0, alpha: 1 };
   const backgroundLuminance = getChartColorLuminance(parsedBackground);
   const isDarkSurface = backgroundLuminance < 0.45;
-  const fineGridColor = colorScheme === 'Custom' || colorScheme === 'Green and White'
+  const isSlateGridPreset = isDarkSurface
+    && (colorScheme === 'Green and White' || colorScheme === 'Green and Blue');
+  const fineGridColor = colorScheme === 'Custom' || isSlateGridPreset
     ? grid : isDarkSurface ? '#778899' : 'rgba(71, 85, 105, 0.45)';
 
   if (lineStyle === 'solid') {
@@ -118,7 +120,7 @@ export const getChartGridLineColors = ({
     return { vertical: color, horizontal: color };
   }
 
-  if (colorScheme === 'Green and White') {
+  if (isSlateGridPreset) {
     // The black preset retains the reference's slate guides in every layout.
     return { vertical: grid, horizontal: grid };
   }

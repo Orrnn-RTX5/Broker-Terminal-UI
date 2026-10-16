@@ -388,6 +388,20 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             ...accountRecord,
             broker_id: accountRecord.broker_id || submitBroker.broker_id,
         });
+        const createdLogin = Number.parseInt(String(accountRecord.login), 10);
+        if (Number.isSafeInteger(createdLogin) && createdLogin > 0) {
+            const createdAccountType = resolveTradingAccountType(response, accountRecord) ?? 'demo';
+            useAppStore.getState().addSavedAccount?.({
+                login: createdLogin,
+                name: request.name,
+                server: accountRecord.server || submitBroker.broker_name || submitBroker.broker_id,
+                brokerId: accountRecord.broker_id || submitBroker.broker_id,
+                serverUrl: resolveBrokerBackendUrl(submitBroker) || submitBroker.server_url || submitBroker.backend_url,
+                accountType: createdAccountType,
+                isLive: createdAccountType === 'real',
+                lastUsed: Date.now(),
+            });
+        }
         setStep(4);
     };
 

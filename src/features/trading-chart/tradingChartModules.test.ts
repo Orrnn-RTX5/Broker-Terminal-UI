@@ -40,11 +40,11 @@ describe('trading chart extracted modules', () => {
     expect(shouldScrollToRealtime(chart as never, true, false, rightOffset)).toBe(false);
   });
 
-  it.each([false, true])('renders hollow green bulls and white bears on black with a light interface of %s', (light) => {
+  it('renders Green and White and Green and Blue on black in dark mode and on the light surface in light mode', () => {
     const properties = normalizeChartProperties({ colorScheme: 'Green and White', gridType: 'mt5' });
-    const colors = getEffectiveChartColors(properties, { isAdvancedUntitledLight: light });
-    const theme = buildChartTheme(colors, true, false, 'dashed', 'mt5', properties.colorScheme);
-    expect(theme).toMatchObject({
+    const darkColors = getEffectiveChartColors(properties, { isAdvancedUntitledLight: false });
+    const darkTheme = buildChartTheme(darkColors, true, false, 'dashed', 'mt5', properties.colorScheme);
+    expect(darkTheme).toMatchObject({
       background: '#000000',
       candleUp: '#000000', candleDown: '#ffffff',
       barUp: '#00ff00', barDown: '#00ff00', wickUp: '#00ff00', wickDown: '#00ff00',
@@ -52,7 +52,37 @@ describe('trading chart extracted modules', () => {
       gridVertical: '#778899', gridHorizontal: '#778899',
       volumeUp: '#32cd32', volumeDown: '#32cd32',
     });
-    expect(buildChartTheme(colors, false, light, 'dashed', 'mt5', properties.colorScheme).gridHorizontal).toBe('rgba(0, 0, 0, 0)');
+    const lightColors = getEffectiveChartColors(properties, { isAdvancedUntitledLight: true });
+    const lightTheme = buildChartTheme(lightColors, true, true, 'dashed', 'mt5', properties.colorScheme);
+    expect(lightTheme).toMatchObject({
+      background: '#fafbfc',
+      candleUp: '#ffffff', candleDown: '#15803d',
+      barUp: '#15803d', barDown: '#15803d', wickUp: '#15803d', wickDown: '#15803d',
+      areaUpLine: '#15803d', areaDownLine: '#15803d',
+      gridVertical: 'rgba(71, 85, 105, 0.45)', gridHorizontal: 'rgba(71, 85, 105, 0.45)',
+      volumeUp: 'rgba(21, 128, 61, 0.4)', volumeDown: 'rgba(21, 128, 61, 0.4)',
+    });
+    expect(buildChartTheme(lightColors, false, true, 'dashed', 'mt5', properties.colorScheme).gridHorizontal).toBe('rgba(0, 0, 0, 0)');
+
+    const greenBlueProps = normalizeChartProperties({ colorScheme: 'Green and Blue', gridType: 'mt5' });
+    const greenBlueDarkColors = getEffectiveChartColors(greenBlueProps, { isAdvancedUntitledLight: false });
+    const greenBlueDarkTheme = buildChartTheme(greenBlueDarkColors, true, false, 'dashed', 'mt5', greenBlueProps.colorScheme);
+    expect(greenBlueDarkTheme).toMatchObject({
+      background: '#000000',
+      candleUp: '#7cfc00', candleDown: '#0000ff',
+      barUp: '#00ff00', barDown: '#00ff00', wickUp: '#00ff00', wickDown: '#00ff00',
+      gridVertical: '#778899', gridHorizontal: '#778899',
+      volumeUp: '#32cd32', volumeDown: '#32cd32',
+    });
+    const greenBlueLightColors = getEffectiveChartColors(greenBlueProps, { isAdvancedUntitledLight: true });
+    const greenBlueLightTheme = buildChartTheme(greenBlueLightColors, true, true, 'dashed', 'mt5', greenBlueProps.colorScheme);
+    expect(greenBlueLightTheme).toMatchObject({
+      background: '#fafbfc',
+      candleUp: '#16a34a', candleDown: '#0000ff',
+      barUp: '#15803d', barDown: '#15803d', wickUp: '#15803d', wickDown: '#15803d',
+      gridVertical: 'rgba(71, 85, 105, 0.45)', gridHorizontal: 'rgba(71, 85, 105, 0.45)',
+      volumeUp: 'rgba(21, 128, 61, 0.4)', volumeDown: 'rgba(21, 128, 61, 0.4)',
+    });
   });
   it('resolves indicator requests and fixed ranges without component state', () => {
     expect(resolveChartIndicatorType({ name: 'Exponential Moving Average' })).toBe('ema');

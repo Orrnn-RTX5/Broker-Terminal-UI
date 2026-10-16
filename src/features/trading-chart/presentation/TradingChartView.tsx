@@ -309,67 +309,152 @@ return (
 
 
       {/* Chart HUD uses shared size and weight roles with theme-specific families and colors. */}
-      {(chartSettings.showTicker || chartSettings.showOHLC) && (isAdvancedUntitledLight ? (
-        <div className="rtx-chart-hud" style={{
-          position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
-          fontFamily: 'var(--font-sans)', fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', lineHeight: '16px', letterSpacing: 'normal',
-          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'
-        }}>
-          {chartSettings.showTicker && (
-            <span className="rtx-chart-hud__symbol" style={{
-              fontWeight: 'var(--rtx-font-weight-control, 400)', color: 'var(--rtx-light-text)',
-              background: 'transparent',
-              padding: '2px 8px', borderRadius: '4px',
-            }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
-          )}
-          {chartSettings.showOHLC && (
-            <>
-              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
-                O: <span ref={ohlcOpenRef} style={{
-                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-price)',
-                  background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
-                }}>0.00000</span>
-              </span>
-              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
-                H: <span ref={ohlcHighRef} style={{
-                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-chart-high)',
-                  background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
-                }}>0.00000</span>
-              </span>
-              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
-                L: <span ref={ohlcLowRef} style={{
-                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-quote-down)',
-                  background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
-                }}>0.00000</span>
-              </span>
-              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
-                C: <span ref={ohlcCloseRef} style={{
-                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-price)',
-                  background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
-                }}>0.00000</span>
-              </span>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="rtx-chart-hud" style={{
-          position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
-          fontFamily: 'var(--font-mono)', fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', lineHeight: '16px', color: chartTheme.axisText,
-          textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'
-        }}>
-          {chartSettings.showTicker && (
-            <span className="rtx-chart-hud__symbol" style={{ fontWeight: 'var(--rtx-font-weight-control, 400)', color: chartTheme.text }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
-          )}
-          {chartSettings.showOHLC && (
-            <>
-              <span>O: <span ref={ohlcOpenRef} style={{ color: chartTheme.text }}>0.00000</span></span>
-              <span>H: <span ref={ohlcHighRef} style={{ color: '#22c55e' }}>0.00000</span></span>
-              <span>L: <span ref={ohlcLowRef} style={{ color: '#ef4444' }}>0.00000</span></span>
-              <span>C: <span ref={ohlcCloseRef} style={{ color: chartTheme.text }}>0.00000</span></span>
-            </>
-          )}
-        </div>
-      ))}
+      {(chartSettings.showQuickTradingButtons || (chartSettings.showTicker || chartSettings.showOHLC)) && (() => {
+        const quickTradingButtons = chartSettings.showQuickTradingButtons ? (
+          <div
+            className="rtx-chart-hud__quick-trading"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', pointerEvents: 'auto' }}
+          >
+            <button
+              type="button"
+              className="rtx-chart-hud__quick-btn"
+              data-testid="chart-hud-dom-toggle"
+              aria-label={tr('Depth of Market')}
+              title={`${tr('Depth of Market')} (Alt+B)`}
+              onPointerDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleCtxOpenDOM();
+              }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 15, height: 13, padding: 0, background: 'transparent', border: 'none', cursor: 'pointer', lineHeight: 1,
+              }}
+            >
+              <svg width="13" height="11" viewBox="0 0 13 11" fill="none" shapeRendering="crispEdges" aria-hidden="true">
+                <rect
+                  x="0.5"
+                  y="0.5"
+                  width="12"
+                  height="10"
+                  fill={isAdvancedUntitledLight ? '#f8fafc' : '#0b1220'}
+                  stroke="#64748b"
+                  strokeWidth="1"
+                />
+                <rect x="2" y="2" width="4" height="1" fill="#ef4444" />
+                <rect x="7" y="2" width="1" height="1" fill="#94a3b8" />
+                <rect x="2" y="4" width="3" height="1" fill="#ef4444" />
+                <rect x="6" y="4" width="1" height="1" fill="#94a3b8" />
+                <rect x="9" y="4" width="2" height="1" fill="#3b82f6" />
+                <rect x="2" y="6" width="2" height="1" fill="#ef4444" />
+                <rect x="6" y="6" width="1" height="1" fill="#94a3b8" />
+                <rect x="8" y="6" width="3" height="1" fill="#3b82f6" />
+                <rect x="5" y="8" width="1" height="1" fill="#94a3b8" />
+                <rect x="7" y="8" width="4" height="1" fill="#3b82f6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="rtx-chart-hud__quick-btn"
+              data-testid="chart-hud-one-click-toggle"
+              aria-label={tr('One-Click Trading')}
+              aria-pressed={showOneClick}
+              title={`${tr('One-Click Trading')} (Alt+T)`}
+              onPointerDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleOneClickTrading();
+              }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 16, height: 13, padding: 0, background: 'transparent', border: 'none', cursor: 'pointer', lineHeight: 1,
+              }}
+            >
+              <svg width="15" height="11" viewBox="0 0 15 11" fill="none" shapeRendering="crispEdges" aria-hidden="true">
+                <rect x="5" y="0" width="5" height="2" fill={isAdvancedUntitledLight ? '#475569' : '#cbd5e1'} />
+                <path
+                  d="M0.5 0.5H3.5V3.5H6.5V10.5H0.5V0.5Z"
+                  fill={showOneClick ? 'rgba(239, 68, 68, 0.35)' : isAdvancedUntitledLight ? 'rgba(239, 68, 68, 0.14)' : 'rgba(15, 23, 42, 0.9)'}
+                  stroke="#ef4444"
+                  strokeWidth="1"
+                />
+                <path
+                  d="M11.5 0.5H14.5V10.5H8.5V3.5H11.5V0.5Z"
+                  fill={showOneClick ? 'rgba(59, 130, 246, 0.35)' : isAdvancedUntitledLight ? 'rgba(59, 130, 246, 0.14)' : 'rgba(15, 23, 42, 0.9)'}
+                  stroke="#3b82f6"
+                  strokeWidth="1"
+                />
+              </svg>
+            </button>
+          </div>
+        ) : null;
+
+        return isAdvancedUntitledLight ? (
+          <div className="rtx-chart-hud" style={{
+            position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
+            fontFamily: 'var(--font-sans)', fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', lineHeight: '16px', letterSpacing: 'normal',
+            display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'
+          }}>
+            {quickTradingButtons}
+            {chartSettings.showTicker && (
+              <span className="rtx-chart-hud__symbol" style={{
+                fontWeight: 'var(--rtx-font-weight-control, 400)', color: 'var(--rtx-light-text)',
+                background: 'transparent',
+                padding: '2px 8px', borderRadius: '4px',
+              }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
+            )}
+            {chartSettings.showOHLC && (
+              <>
+                <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
+                  O: <span ref={ohlcOpenRef} style={{
+                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-price)',
+                    background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
+                  }}>0.00000</span>
+                </span>
+                <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
+                  H: <span ref={ohlcHighRef} style={{
+                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-chart-high)',
+                    background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
+                  }}>0.00000</span>
+                </span>
+                <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
+                  L: <span ref={ohlcLowRef} style={{
+                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-quote-down)',
+                    background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
+                  }}>0.00000</span>
+                </span>
+                <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
+                  C: <span ref={ohlcCloseRef} style={{
+                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-price)',
+                    background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
+                  }}>0.00000</span>
+                </span>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="rtx-chart-hud" style={{
+            position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', lineHeight: '16px', color: chartTheme.axisText,
+            textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'
+          }}>
+            {quickTradingButtons}
+            {chartSettings.showTicker && (
+              <span className="rtx-chart-hud__symbol" style={{ fontWeight: 'var(--rtx-font-weight-control, 400)', color: chartTheme.text }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
+            )}
+            {chartSettings.showOHLC && (
+              <>
+                <span>O: <span ref={ohlcOpenRef} style={{ color: chartTheme.text }}>0.00000</span></span>
+                <span>H: <span ref={ohlcHighRef} style={{ color: '#22c55e' }}>0.00000</span></span>
+                <span>L: <span ref={ohlcLowRef} style={{ color: '#ef4444' }}>0.00000</span></span>
+                <span>C: <span ref={ohlcCloseRef} style={{ color: chartTheme.text }}>0.00000</span></span>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/*
         Chart Container - must have explicit dimensions for lightweight-charts.
@@ -509,11 +594,11 @@ return (
       {/* Drawing Context Menu (Right-click on drawings) */}
       <DrawingContextMenu onClose={() => { }} />
 
-      {/* One-Click Trading Panel (Alt+T to toggle) */}
+      {/* One-Click Trading Panel (Alt+T or HUD button to toggle) */}
       <OneClickTrading
         symbol={symbol}
         timeframe={timeframe}
-        visible={showOneClick}
+        visible={chartSettings.showQuickTradingButtons && showOneClick}
         tradeAllowed={tradeAllowed}
         marketStatus={marketStatus}
         minVolume={minVolume}

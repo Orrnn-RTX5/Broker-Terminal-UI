@@ -362,7 +362,7 @@ export const useTradingChartTradeOverlayRenderer = ({
       const mapHistoryTimestamp = (value: unknown): number =>
         mapTradeTimestampToChartTime(value) ?? normalizeUnixSeconds(value) ?? 0;
       const activeKeys = Array.from(activeTradeKeys).sort().join('|');
-      const candleWindow = `${candlesRef.current.length}:${candlesRef.current[0]?.time}:${candlesRef.current.at(-1)?.time}`;
+      const candleWindow = `${candlesRef.current.length}:${candlesRef.current[0]?.time}:${candlesRef.current.at(-1)?.time}:${currentCandleRef.current?.time}:${prevTimeframeRef.current || timeframe}:${brokerTimeOffsetSec}`;
       if (!historyCache || historyCache.rows !== appTrades
         || historyCache.activeKeys !== activeKeys || historyCache.candleWindow !== candleWindow) {
         historyCache = { rows: appTrades, activeKeys, candleWindow, snapshots: buildClosedTradeHistorySnapshots({
@@ -419,14 +419,20 @@ export const useTradingChartTradeOverlayRenderer = ({
         const activeTf = prevTimeframeRef.current || timeframe;
         const scopedEntryTimeKey = getFrozenEntryTimeKey(key, activeTf);
         const storedEntryTime = frozenEntryTimesRef.current.get(scopedEntryTimeKey);
+        const validStoredEntryTime = storedEntryTime != null && canResolveOverlayTime(storedEntryTime)
+          ? storedEntryTime
+          : null;
         const rawEntryTime = position.rawOpenTime ?? normalizeUnixSeconds(Date.now());
-        const entryTime = resolveStableTradeEntryTime(
-          storedEntryTime,
+        const mappedEntryTime = resolveStableTradeEntryTime(
+          validStoredEntryTime,
           rawEntryTime,
           mapTradeTimestampToChartTime,
           liveTrailTime,
         );
-        if (storedEntryTime == null && entryTime > 0) {
+        const entryTime = canResolveOverlayTime(mappedEntryTime)
+          ? mappedEntryTime
+          : (liveTrailTime ?? mappedEntryTime);
+        if (validStoredEntryTime == null && entryTime > 0 && canResolveOverlayTime(entryTime)) {
           frozenEntryTimesRef.current.set(scopedEntryTimeKey, entryTime);
         }
 
@@ -520,8 +526,15 @@ export const useTradingChartTradeOverlayRenderer = ({
       }
 
       const closedTrades = new Map<string, ClosedTradeSnapshot>();
+      const baseHistoryCandles = lastRenderedCandlesRef.current.length > 0
+        ? lastRenderedCandlesRef.current
+        : candlesRef.current;
+      const renderedHistoryCandles = currentCandleRef.current
+        && baseHistoryCandles.at(-1)?.time !== currentCandleRef.current.time
+        ? [...baseHistoryCandles, currentCandleRef.current]
+        : baseHistoryCandles;
       const historyTimeRange = getTradeHistoryTimeRange(
-        lastRenderedCandlesRef.current, chartRef.current?.timeScale().getVisibleLogicalRange() ?? null,
+        renderedHistoryCandles, chartRef.current?.timeScale().getVisibleLogicalRange() ?? null,
       );
       const registerClosedTrade = (trade: ClosedTradeSnapshot) => {
         if (trade.entryPrice > 0 && trade.exitPrice > 0 && trade.entryTime > 0 && trade.exitTime > 0) {
@@ -665,9 +678,14 @@ export const useTradingChartTradeOverlayRenderer = ({
             const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${entryPriceLabel}`.trim();
             const activeMarkerTimeKey = getActiveMarkerTimeKey(trade.key);
             let stableActiveMarkerTime = stableActiveMarkerTimesRef.current.get(activeMarkerTimeKey) ?? null;
-            if (!(stableActiveMarkerTime != null && stableActiveMarkerTime > 0) && trade.currentTime > 0) {
+            if (
+              !(stableActiveMarkerTime != null && stableActiveMarkerTime > 0 && canResolveOverlayTime(stableActiveMarkerTime))
+              && trade.currentTime > 0
+            ) {
               stableActiveMarkerTime = trade.currentTime;
-              stableActiveMarkerTimesRef.current.set(activeMarkerTimeKey, stableActiveMarkerTime);
+              if (canResolveOverlayTime(stableActiveMarkerTime)) {
+                stableActiveMarkerTimesRef.current.set(activeMarkerTimeKey, stableActiveMarkerTime);
+              }
             }
             createTradeMarker(
               trade.side,

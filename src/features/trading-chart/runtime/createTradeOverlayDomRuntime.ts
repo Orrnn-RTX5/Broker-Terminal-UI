@@ -177,7 +177,7 @@ export const createTradeOverlayDomRuntime = ({
       const markerHeight = 20;
       marker.innerHTML = createArrowSvg(side);
       marker.style.cssText = `position:absolute;display:none;width:${markerWidth}px;height:${markerHeight}px;z-index:${isHistoryMarker ? 20 : 16};pointer-events:none;opacity:${opacity};filter:none;`;
-      appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? 3 : -3 }, layer);
+      appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? -3 : 3 }, layer);
 
       if (layer !== 'history') return;
 
@@ -252,7 +252,7 @@ export const createTradeOverlayDomRuntime = ({
       hoverTarget.appendChild(tooltip);
       appendHistoryInteractionNode(
         hoverTarget,
-        { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? 3 : -3 },
+        { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? -3 : 3 },
       );
     };
 

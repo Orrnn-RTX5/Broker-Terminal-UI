@@ -104,14 +104,57 @@ export const useMarketWatchContextMenu = ({
   const hasSector = Array.from(sortMetadata.values()).some((metadata) => Boolean(metadata.sector));
   const savedSetEntries = Object.entries(savedSets).sort(([left], [right]) => left.localeCompare(right));
   const columnItems: ContextMenuItemConfig[] = [
+    // Column 1 (10 items)
     { label: 'Last', checked: columns.includes('last'), action: () => toggleColumn('last'), autoClose: false },
     { label: 'High/Low', checked: columns.includes('high') || columns.includes('low'), action: () => toggleColumn('highLow'), autoClose: false },
     { label: 'Volume', checked: columns.includes('volume'), action: () => toggleColumn('volume'), autoClose: false },
     { label: 'Spread', checked: columns.includes('spread'), action: () => toggleColumn('spread'), autoClose: false },
     { label: 'Time', checked: columns.includes('time'), action: () => toggleColumn('time'), autoClose: false },
-    { label: 'Change', checked: columns.includes('dailyChangePrice'), action: () => toggleColumn('dailyChangePrice'), autoClose: false },
-    { label: 'Change %', checked: columns.includes('dailyChange'), action: () => toggleColumn('dailyChange'), autoClose: false },
+    { label: 'Daily Change', checked: columns.includes('dailyChange'), action: () => toggleColumn('dailyChange'), autoClose: false },
     { label: 'Source', checked: columns.includes('source'), action: () => toggleColumn('source'), autoClose: false },
+    { label: 'Tick Size', checked: columns.includes('tickSize'), action: () => toggleColumn('tickSize'), autoClose: false },
+    { label: 'Tick Value', checked: columns.includes('tickValue'), action: () => toggleColumn('tickValue'), autoClose: false },
+    { label: 'Face Value', checked: columns.includes('faceValue'), action: () => toggleColumn('faceValue'), autoClose: false },
+    // Column 2 (8 items)
+    { label: 'Accrued Interest', columnBreak: true, checked: columns.includes('accruedInterest'), action: () => toggleColumn('accruedInterest'), autoClose: false },
+    { label: 'Initial margin', checked: columns.includes('initialMargin'), action: () => toggleColumn('initialMargin'), autoClose: false },
+    { label: 'Maintenance margin', checked: columns.includes('maintenanceMargin'), action: () => toggleColumn('maintenanceMargin'), autoClose: false },
+    { label: 'Initial Buy margin', checked: columns.includes('initialBuyMargin'), action: () => toggleColumn('initialBuyMargin'), autoClose: false },
+    { label: 'Initial Sell margin', checked: columns.includes('initialSellMargin'), action: () => toggleColumn('initialSellMargin'), autoClose: false },
+    { label: 'Lower Limit', checked: columns.includes('lowerLimit'), action: () => toggleColumn('lowerLimit'), autoClose: false },
+    { label: 'Upper Limit', checked: columns.includes('upperLimit'), action: () => toggleColumn('upperLimit'), autoClose: false },
+    { label: 'Settlement Price', checked: columns.includes('settlementPrice'), action: () => toggleColumn('settlementPrice'), autoClose: false },
+    // Column 3 (8 items)
+    { label: 'Bid High', columnBreak: true, checked: columns.includes('bidHigh'), action: () => toggleColumn('bidHigh'), autoClose: false },
+    { label: 'Bid Low', checked: columns.includes('bidLow'), action: () => toggleColumn('bidLow'), autoClose: false },
+    { label: 'Ask High', checked: columns.includes('askHigh'), action: () => toggleColumn('askHigh'), autoClose: false },
+    { label: 'Ask Low', checked: columns.includes('askLow'), action: () => toggleColumn('askLow'), autoClose: false },
+    { label: 'Last High', checked: columns.includes('lastHigh'), action: () => toggleColumn('lastHigh'), autoClose: false },
+    { label: 'Last Low', checked: columns.includes('lastLow'), action: () => toggleColumn('lastLow'), autoClose: false },
+    { label: 'Volume High', checked: columns.includes('volumeHigh'), action: () => toggleColumn('volumeHigh'), autoClose: false },
+    { label: 'Volume Low', checked: columns.includes('volumeLow'), action: () => toggleColumn('volumeLow'), autoClose: false },
+    // Column 4 (11 items)
+    { label: 'Deals', columnBreak: true, checked: columns.includes('deals'), action: () => toggleColumn('deals'), autoClose: false },
+    { label: 'Deals Volume', checked: columns.includes('dealsVolume'), action: () => toggleColumn('dealsVolume'), autoClose: false },
+    { label: 'Turnover', checked: columns.includes('turnover'), action: () => toggleColumn('turnover'), autoClose: false },
+    { label: 'Open Interest', checked: columns.includes('openInterest'), action: () => toggleColumn('openInterest'), autoClose: false },
+    { label: 'Buy Orders', checked: columns.includes('buyOrders'), action: () => toggleColumn('buyOrders'), autoClose: false },
+    { label: 'Buy Volume', checked: columns.includes('buyVolume'), action: () => toggleColumn('buyVolume'), autoClose: false },
+    { label: 'Sell Orders', checked: columns.includes('sellOrders'), action: () => toggleColumn('sellOrders'), autoClose: false },
+    { label: 'Sell Volume', checked: columns.includes('sellVolume'), action: () => toggleColumn('sellVolume'), autoClose: false },
+    { label: 'Open Price', checked: columns.includes('openPrice'), action: () => toggleColumn('openPrice'), autoClose: false },
+    { label: 'Close Price', checked: columns.includes('closePrice'), action: () => toggleColumn('closePrice'), autoClose: false },
+    { label: 'Average Weighted Price', checked: columns.includes('averageWeightedPrice'), action: () => toggleColumn('averageWeightedPrice'), autoClose: false },
+    // Column 5 (9 items)
+    { label: 'Volatility', columnBreak: true, checked: columns.includes('volatility'), action: () => toggleColumn('volatility'), autoClose: false },
+    { label: 'Theoretical Price', checked: columns.includes('theoreticalPrice'), action: () => toggleColumn('theoreticalPrice'), autoClose: false },
+    { label: 'Delta', checked: columns.includes('delta'), action: () => toggleColumn('delta'), autoClose: false },
+    { label: 'Theta', checked: columns.includes('theta'), action: () => toggleColumn('theta'), autoClose: false },
+    { label: 'Gamma', checked: columns.includes('gamma'), action: () => toggleColumn('gamma'), autoClose: false },
+    { label: 'Vega', checked: columns.includes('vega'), action: () => toggleColumn('vega'), autoClose: false },
+    { label: 'Rho', checked: columns.includes('rho'), action: () => toggleColumn('rho'), autoClose: false },
+    { label: 'Omega', checked: columns.includes('omega'), action: () => toggleColumn('omega'), autoClose: false },
+    { label: 'Sensitivity', checked: columns.includes('sensitivity'), action: () => toggleColumn('sensitivity'), autoClose: false },
   ];
   const setsSubmenu: ContextMenuItemConfig[] = [
     {

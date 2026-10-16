@@ -605,10 +605,12 @@ describe('SymbolSpecificationDialog', () => {
       />,
     );
 
+    expect(screen.getByText('EURUSD, Euro vs US Dollar')).toBeInTheDocument();
     expect(screen.getByText('Exchange').closest('div')).toHaveTextContent('0');
     expect(screen.getByText('Sector').closest('div')).toHaveTextContent('0');
     expect(screen.getByText('Contract size').closest('div')).toHaveTextContent('0');
     expect(screen.getByText('Spread').closest('div')).toHaveTextContent('0');
+
     expect(screen.getByRole('region', { name: 'Swap rates' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Sessions' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Margin rates' })).toBeInTheDocument();
