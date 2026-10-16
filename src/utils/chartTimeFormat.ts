@@ -83,14 +83,15 @@ const parseTradingChartTimeframe = (
 const getTimeframeMetrics = (timeframe: string) => {
   const parsed = parseTradingChartTimeframe(timeframe) ?? parseTradingChartTimeframe('M5')!;
   const isIntraday = parsed.seconds < 24 * 60 * 60;
-  // All intraday timeframes (M1 up to H4) show only HH:MM for
-  // regular time ticks to save horizontal space. 
-  // Date boundaries are handled natively by DayOfMonth/Month TickMarkTypes.
-  const showsTimeOnlyInFooter = isIntraday;
-  
-  const tickMarkMaxCharacterLength = parsed.seconds >= 24 * 60 * 60
-    ? 8   // Covers "Apr 2024" (MN) and "31 Dec" (D1/W1) 
-    : 5;  // Covers "HH:MM" for all modern intraday setups
+  // MT5 bottom time scale renders "DD Mon HH:MM" on intraday ticks and promotes
+  // the leftmost visible tick to "DD Mon YYYY".
+  const showsTimeOnlyInFooter = false;
+
+  const tickMarkMaxCharacterLength = parsed.unit === 'month'
+    ? 8   // Covers "Apr 2024" (MN)
+    : isIntraday
+      ? 12  // Covers "12 Oct 16:00" for intraday setups
+      : 11; // Covers "12 Oct 2026" (D1/W1)
 
   return {
     ...parsed,
@@ -194,8 +195,7 @@ const formatHigherTimeframeTickLabel = (
     return formatMonthYear(date, locale);
   }
 
-  // Fallback to DayMonth ("1 Apr") instead of DayMonthYear ("1 Apr 2024")
-  return formatDayMonth(date, locale);
+  return formatDayMonthYear(date, locale);
 };
 
 const formatUtcOffsetLabel = (offsetSeconds: number): string => {
@@ -271,7 +271,7 @@ export const formatTradingChartTickLabel = (
     return formatMonthYear(date, options?.locale);
   }
 
-  if (options?.forceDateLabel && timeframeMetrics.showsTimeOnlyInFooter) {
+  if (options?.forceDateLabel && timeframeMetrics.isIntraday) {
     return formatDayMonthYear(date, options?.locale);
   }
 
@@ -286,7 +286,7 @@ export const getTradingChartTickMarkCharacterLength = (timeframe: string): numbe
   getTimeframeMetrics(timeframe).tickMarkMaxCharacterLength;
 
 export const shouldTradingChartFooterPromoteLeftEdgeDateLabel = (timeframe: string): boolean =>
-  getTimeframeMetrics(timeframe).showsTimeOnlyInFooter;
+  getTimeframeMetrics(timeframe).isIntraday;
 
 export const getTradingChartDefaultVisibleBars = (timeframe: string): number =>
   getTimeframeLayoutConfig(timeframe).defaultVisibleBars;

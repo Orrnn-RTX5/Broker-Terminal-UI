@@ -51,10 +51,45 @@ export const getFineGridHorizontalPositions = (extentCssPx: number): number[] =>
   return positions.reverse();
 };
 
+/**
+ * MT5 bottom time-axis tick positions start at the left chart border (0px)
+ * and repeat at every 64px major vertical grid line (every cell in Square
+ * mode, and every second 32px cell in Fine/MT5 mode).
+ */
+export const getSquareGridTimeAxisPositions = (
+  extentCssPx: number,
+  cellSizeCssPx: number = SQUARE_CHART_GRID_CELL_SIZE_PX,
+  profile: 'square' | 'fine' = 'square',
+): number[] => {
+  if (!Number.isFinite(extentCssPx) || extentCssPx <= 0) return [];
+  const baseStep = normalizeCellSize(cellSizeCssPx);
+  const step = profile === 'fine' ? baseStep * 2 : baseStep;
+  const positions: number[] = [];
+  for (let x = 0; x < extentCssPx; x += step) {
+    positions.push(x);
+  }
+  return positions;
+};
+
 export interface FineGridPriceAxis {
   labelAt: (coordinate: number) => string | null;
   appearance: () => { color: string; fontSize: number; fontFamily: string };
 }
+
+export interface SquareGridTimeAxis {
+  labelAt: (coordinate: number, isFirstTick: boolean) => string | null;
+  timeKeyAt?: (coordinate: number) => string | number | null;
+  appearance: () => {
+    color: string;
+    backgroundColor?: string;
+    borderColor?: string;
+    fontSize: number;
+    fontFamily: string;
+  };
+}
+
+const MT5_TIME_AXIS_MAX_FONT_SIZE_PX = 10;
+const MT5_TIME_AXIS_TICK_LENGTH_PX = 4;
 
 class FineGridPriceAxisRenderer implements IPrimitivePaneRenderer {
   constructor(
@@ -76,6 +111,90 @@ class FineGridPriceAxisRenderer implements IPrimitivePaneRenderer {
         if (y < appearance.fontSize / 2 || y > mediaSize.height - appearance.fontSize / 2) continue;
         const text = this.priceAxis.labelAt(y);
         if (text !== null) context.fillText(text, 8, y + 0.5);
+      }
+      context.restore();
+    });
+  }
+}
+
+class SquareGridTimeAxisRenderer implements IPrimitivePaneRenderer {
+  constructor(
+    private readonly readOptions: () => Readonly<SquareChartGridOptions>,
+    private readonly timeAxis: SquareGridTimeAxis,
+  ) {}
+
+  draw(target: CanvasRenderingTarget2D): void {
+    const options = this.readOptions();
+    if (!options.visible) return;
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      const appearance = this.timeAxis.appearance();
+      const positions = getSquareGridTimeAxisPositions(
+        mediaSize.width,
+        options.cellSizeCssPx,
+        options.profile,
+      );
+      if (positions.length === 0) return;
+
+      const fontSize = Math.max(
+        8,
+        Math.min(
+          Number.isFinite(appearance.fontSize) && appearance.fontSize > 0
+            ? appearance.fontSize
+            : MT5_TIME_AXIS_MAX_FONT_SIZE_PX,
+          MT5_TIME_AXIS_MAX_FONT_SIZE_PX,
+        ),
+      );
+      const borderColor = appearance.borderColor && appearance.borderColor !== 'transparent'
+        ? appearance.borderColor
+        : appearance.color;
+
+      context.save();
+      if (appearance.backgroundColor && typeof context.fillRect === 'function') {
+        context.fillStyle = appearance.backgroundColor;
+        context.fillRect(0, 1, mediaSize.width, Math.max(0, mediaSize.height - 1));
+        context.fillStyle = borderColor;
+        context.fillRect(0, 0, mediaSize.width, 1);
+      }
+
+      context.font = `${fontSize}px ${appearance.fontFamily}`;
+      context.textBaseline = 'middle';
+      context.textAlign = 'left';
+
+      const textY = Math.max(
+        MT5_TIME_AXIS_TICK_LENGTH_PX + fontSize / 2 + 2,
+        Math.floor(mediaSize.height / 2) + 0.5,
+      );
+      let hasDrawnFirstTick = false;
+      let lastTimeKey: string | number | null = null;
+      let minNextX = 0;
+
+      for (const x of positions) {
+        if (x < minNextX) continue;
+        const timeKey = this.timeAxis.timeKeyAt?.(x) ?? null;
+        if (hasDrawnFirstTick && timeKey !== null && timeKey === lastTimeKey) continue;
+
+        const text = this.timeAxis.labelAt(x, !hasDrawnFirstTick);
+        if (text === null || text === '') continue;
+
+        const textX = x === 0 ? 2 : x + 1;
+        const measuredWidth = typeof context.measureText === 'function'
+          ? context.measureText(text).width
+          : 0;
+        if (x > 0 && measuredWidth > 0 && textX + measuredWidth > mediaSize.width - 2) {
+          continue;
+        }
+
+        if (typeof context.fillRect === 'function') {
+          context.fillStyle = appearance.color;
+          context.fillRect(x === 0 ? 0 : Math.round(x), 1, 1, MT5_TIME_AXIS_TICK_LENGTH_PX);
+        }
+
+        context.fillStyle = appearance.color;
+        context.fillText(text, textX, textY);
+
+        hasDrawnFirstTick = true;
+        if (timeKey !== null) lastTimeKey = timeKey;
+        minNextX = measuredWidth > 0 ? textX + measuredWidth : x + 1;
       }
       context.restore();
     });
@@ -158,14 +277,22 @@ export class SquareChartGridPrimitive implements ISeriesPrimitive<Time> {
   private readonly gridRenderer = new SquareChartGridRenderer(() => this.options);
   private readonly gridPaneView = new SquareChartGridPaneView(this.gridRenderer);
   private readonly pricePaneViews: readonly IPrimitivePaneView[];
+  private readonly timePaneViews: readonly IPrimitivePaneView[];
 
-  constructor(options: SquareChartGridOptions, priceAxis?: FineGridPriceAxis) {
+  constructor(
+    options: SquareChartGridOptions,
+    priceAxis?: FineGridPriceAxis,
+    timeAxis?: SquareGridTimeAxis,
+  ) {
     this.options = {
       ...options,
       cellSizeCssPx: normalizeCellSize(options.cellSizeCssPx),
     };
     this.pricePaneViews = priceAxis
       ? [new SquareChartGridPaneView(new FineGridPriceAxisRenderer(() => this.options, priceAxis), 'normal')]
+      : [];
+    this.timePaneViews = timeAxis
+      ? [new SquareChartGridPaneView(new SquareGridTimeAxisRenderer(() => this.options, timeAxis), 'normal')]
       : [];
   }
 
@@ -183,6 +310,10 @@ export class SquareChartGridPrimitive implements ISeriesPrimitive<Time> {
 
   priceAxisPaneViews(): readonly IPrimitivePaneView[] {
     return this.pricePaneViews;
+  }
+
+  timeAxisPaneViews(): readonly IPrimitivePaneView[] {
+    return this.timePaneViews;
   }
 
   applyOptions(options: Partial<SquareChartGridOptions>): void {

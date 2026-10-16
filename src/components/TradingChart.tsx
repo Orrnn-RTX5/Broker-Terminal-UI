@@ -2423,6 +2423,7 @@ useTradingChartInitialization({
       },
       timeScale: {
         ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
+        ticksVisible: true,
         tickMarkMaxCharacterLength: getTradingChartTickMarkCharacterLength(timeframe),
         tickMarkFormatter: formatTimeScaleTick,
       },
@@ -2484,6 +2485,7 @@ useTradingChartInitialization({
       },
       timeScale: {
         ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
+        ticksVisible: true,
         borderColor: chartTheme.scaleBorder,
       },
     });

@@ -5,6 +5,7 @@ import {
   SquareChartGridPrimitive,
   getSquareGridLinePositions,
   getFineGridHorizontalPositions,
+  getSquareGridTimeAxisPositions,
 } from './squareChartGridPrimitive';
 
 describe('square chart grid geometry', () => {
@@ -34,6 +35,12 @@ describe('square chart grid geometry', () => {
   it('clamps unsafe cell sizes to a professional readable range', () => {
     expect(getSquareGridLinePositions(100, 2)).toEqual([24, 48, 72, 96]);
     expect(getSquareGridLinePositions(350, 500)).toEqual([160, 320]);
+  });
+
+  it('computes MT5 grid-aligned time axis tick positions starting at x=0 with 64px intervals', () => {
+    expect(getSquareGridTimeAxisPositions(320, SQUARE_CHART_GRID_CELL_SIZE_PX, 'square')).toEqual([0, 64, 128, 192, 256]);
+    expect(getSquareGridTimeAxisPositions(320, FINE_CHART_GRID_CELL_SIZE_PX, 'fine')).toEqual([0, 64, 128, 192, 256]);
+    expect(getSquareGridTimeAxisPositions(0)).toEqual([]);
   });
 });
 
@@ -169,5 +176,69 @@ describe('SquareChartGridPrimitive', () => {
     primitive.detached();
     primitive.applyOptions({ visible: true });
     expect(requestUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws MT5 grid-aligned tick marks and left-aligned labels on the time axis when visible', () => {
+    const labelAt = vi.fn((x: number, isFirstTick: boolean) =>
+      isFirstTick ? '12 Oct 2026' : `12 Oct ${16 + x / 64}:00`,
+    );
+    const timeKeyAt = vi.fn((x: number) => `t-${x}`);
+    const primitive = new SquareChartGridPrimitive(
+      {
+        visible: true,
+        profile: 'fine',
+        cellSizeCssPx: FINE_CHART_GRID_CELL_SIZE_PX,
+        verticalColor: '#778899',
+        horizontalColor: '#778899',
+      },
+      undefined,
+      {
+        labelAt,
+        timeKeyAt,
+        appearance: () => ({
+          color: '#cccccc',
+          fontSize: 11,
+          fontFamily: 'Arial',
+          backgroundColor: '#000000',
+          borderColor: '#555555',
+        }),
+      },
+    );
+    const context = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+      measureText: vi.fn((text: string) => ({ width: text.length * 5 })),
+      font: '',
+      fillStyle: '',
+      textBaseline: '',
+      textAlign: '',
+    };
+    const target = {
+      useMediaCoordinateSpace: (draw: (scope: unknown) => void) =>
+        draw({ context, mediaSize: { width: 220, height: 26 } }),
+    };
+
+    const timePane = primitive.timeAxisPaneViews()[0]!;
+    expect(timePane.zOrder?.()).toBe('normal');
+    timePane.renderer()!.draw(target as never);
+
+    expect(labelAt.mock.calls).toEqual([
+      [0, true],
+      [64, false],
+      [128, false],
+      [192, false],
+    ]);
+    expect(context.fillText.mock.calls).toEqual([
+      ['12 Oct 2026', 2, 13.5],
+      ['12 Oct 17:00', 65, 13.5],
+      ['12 Oct 18:00', 129, 13.5],
+    ]);
+
+    context.fillText.mockClear();
+    primitive.applyOptions({ visible: false });
+    timePane.renderer()!.draw(target as never);
+    expect(context.fillText).not.toHaveBeenCalled();
   });
 });

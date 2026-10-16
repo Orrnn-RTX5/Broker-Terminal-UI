@@ -3,6 +3,7 @@ import {
   ColorType,
   CrosshairMode,
   LineSeries,
+  TickMarkType,
   createChartEx,
   type IChartApi,
   type IPriceLine,
@@ -25,8 +26,10 @@ import { computeMinimumVisiblePriceSpan } from '../../../utils/chartPriceScale';
 import { computePriceAxisDragRange } from '../../../utils/priceAxisDragZoom';
 import { createChartWheelSmoothing } from '../../../utils/chartWheelSmoothing';
 import {
+  formatTradingChartTickLabel,
   getTradingChartShiftRightOffset,
   getTradingChartTickMarkCharacterLength,
+  shouldTradingChartFooterPromoteLeftEdgeDateLabel,
 } from '../../../utils/chartTimeFormat';
 import { TradingChartTimeScaleBehavior } from '../../../utils/chartTimeScaleBehavior';
 import {
@@ -212,6 +215,7 @@ useChartInitializationLifetime(() => {
       },
       timeScale: {
         ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
+        ticksVisible: true,
         borderColor: chartTheme.scaleBorder,
         timeVisible: true,
         secondsVisible: false,
@@ -244,18 +248,64 @@ useChartInitializationLifetime(() => {
       lastValueVisible: false,
       crosshairMarkerVisible: false,
     });
-    const squareGridPrimitive = new SquareChartGridPrimitive(gridRenderingOptions.fixedGrid, {
-      labelAt: (coordinate) => {
-        const series = seriesRef.current;
-        if (!series) return null;
-        const price = series.coordinateToPrice(coordinate);
-        return price === null || !Number.isFinite(price) ? null : series.priceFormatter().format(price);
+    const resolveTimeAxisAtCoordinate = (coordinate: number): Time | null => {
+      const directTime = chart.timeScale().coordinateToTime(coordinate);
+      if (directTime !== null) return directTime;
+      if (coordinate <= 0) {
+        for (let offset = 1; offset <= 12; offset += 1) {
+          const fallbackTime = chart.timeScale().coordinateToTime(coordinate + offset);
+          if (fallbackTime !== null) return fallbackTime;
+        }
+      }
+      return null;
+    };
+    const squareGridPrimitive = new SquareChartGridPrimitive(
+      gridRenderingOptions.fixedGrid,
+      {
+        labelAt: (coordinate) => {
+          const series = seriesRef.current;
+          if (!series) return null;
+          const price = series.coordinateToPrice(coordinate);
+          return price === null || !Number.isFinite(price) ? null : series.priceFormatter().format(price);
+        },
+        appearance: () => {
+          const layout = chart.options().layout;
+          return { color: layout.textColor, fontSize: layout.fontSize, fontFamily: layout.fontFamily };
+        },
       },
-      appearance: () => {
-        const layout = chart.options().layout;
-        return { color: layout.textColor, fontSize: layout.fontSize, fontFamily: layout.fontFamily };
+      {
+        labelAt: (coordinate, isFirstTick) => {
+          const time = resolveTimeAxisAtCoordinate(coordinate);
+          if (time === null) return null;
+          const activeTimeframe = timeScaleTimeframeRef.current;
+          const promoteDateLabel = isFirstTick && shouldTradingChartFooterPromoteLeftEdgeDateLabel(activeTimeframe);
+          return formatTradingChartTickLabel(
+            time,
+            activeTimeframe,
+            promoteDateLabel ? TickMarkType.DayOfMonth : TickMarkType.Time,
+            brokerTimeOffsetSecRef.current,
+            { forceDateLabel: promoteDateLabel },
+          );
+        },
+        timeKeyAt: (coordinate) => {
+          const time = resolveTimeAxisAtCoordinate(coordinate);
+          if (time === null) return null;
+          return typeof time === 'object' ? JSON.stringify(time) : String(time);
+        },
+        appearance: () => {
+          const chartOptions = chart.options();
+          const layout = chartOptions.layout;
+          const background = layout.background as { color?: string } | undefined;
+          return {
+            color: layout.textColor,
+            fontSize: layout.fontSize,
+            fontFamily: layout.fontFamily,
+            backgroundColor: background?.color ?? chartTheme.background,
+            borderColor: chartOptions.timeScale.borderColor || chartTheme.scaleBorder,
+          };
+        },
       },
-    });
+    );
     squareGridHostSeries.attachPrimitive(squareGridPrimitive);
     squareGridHostSeriesRef.current = squareGridHostSeries;
     squareGridPrimitiveRef.current = squareGridPrimitive;
