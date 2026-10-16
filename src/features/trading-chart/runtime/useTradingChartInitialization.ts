@@ -259,53 +259,49 @@ useChartInitializationLifetime(() => {
       }
       return null;
     };
-    const squareGridPrimitive = new SquareChartGridPrimitive(
-      gridRenderingOptions.fixedGrid,
-      {
-        labelAt: (coordinate) => {
-          const series = seriesRef.current;
-          if (!series) return null;
-          const price = series.coordinateToPrice(coordinate);
-          return price === null || !Number.isFinite(price) ? null : series.priceFormatter().format(price);
-        },
-        appearance: () => {
-          const layout = chart.options().layout;
-          return { color: layout.textColor, fontSize: layout.fontSize, fontFamily: layout.fontFamily };
-        },
+    const squareGridPrimitive = new SquareChartGridPrimitive(gridRenderingOptions.fixedGrid, {
+      labelAt: (coordinate) => {
+        const series = seriesRef.current;
+        if (!series) return null;
+        const price = series.coordinateToPrice(coordinate);
+        return price === null || !Number.isFinite(price) ? null : series.priceFormatter().format(price);
       },
-      {
-        labelAt: (coordinate, isFirstTick) => {
-          const time = resolveTimeAxisAtCoordinate(coordinate);
-          if (time === null) return null;
-          const activeTimeframe = timeScaleTimeframeRef.current;
-          const promoteDateLabel = isFirstTick && shouldTradingChartFooterPromoteLeftEdgeDateLabel(activeTimeframe);
-          return formatTradingChartTickLabel(
-            time,
-            activeTimeframe,
-            promoteDateLabel ? TickMarkType.DayOfMonth : TickMarkType.Time,
-            brokerTimeOffsetSecRef.current,
-            { forceDateLabel: promoteDateLabel },
-          );
-        },
-        timeKeyAt: (coordinate) => {
-          const time = resolveTimeAxisAtCoordinate(coordinate);
-          if (time === null) return null;
-          return typeof time === 'object' ? JSON.stringify(time) : String(time);
-        },
-        appearance: () => {
-          const chartOptions = chart.options();
-          const layout = chartOptions.layout;
-          const background = layout.background as { color?: string } | undefined;
-          return {
-            color: layout.textColor,
-            fontSize: layout.fontSize,
-            fontFamily: layout.fontFamily,
-            backgroundColor: background?.color ?? chartTheme.background,
-            borderColor: chartOptions.timeScale.borderColor || chartTheme.scaleBorder,
-          };
-        },
+      appearance: () => {
+        const layout = chart.options().layout;
+        return { color: layout.textColor, fontSize: layout.fontSize, fontFamily: layout.fontFamily };
       },
-    );
+    }, {
+      labelAt: (coordinate, isFirstTick) => {
+        const time = resolveTimeAxisAtCoordinate(coordinate);
+        if (time === null) return null;
+        const activeTimeframe = timeScaleTimeframeRef.current;
+        const promoteDateLabel = isFirstTick && shouldTradingChartFooterPromoteLeftEdgeDateLabel(activeTimeframe);
+        return formatTradingChartTickLabel(
+          time,
+          activeTimeframe,
+          promoteDateLabel ? TickMarkType.DayOfMonth : TickMarkType.Time,
+          brokerTimeOffsetSecRef.current,
+          { forceDateLabel: promoteDateLabel },
+        );
+      },
+      timeKeyAt: (coordinate) => {
+        const time = resolveTimeAxisAtCoordinate(coordinate);
+        if (time === null) return null;
+        return typeof time === 'object' ? JSON.stringify(time) : String(time);
+      },
+      appearance: () => {
+        const chartOptions = chart.options();
+        const layout = chartOptions.layout;
+        const background = layout.background as { color?: string } | undefined;
+        return {
+          color: layout.textColor,
+          fontSize: layout.fontSize,
+          fontFamily: layout.fontFamily,
+          backgroundColor: background?.color ?? chartTheme.background,
+          borderColor: chartOptions.timeScale.borderColor || chartTheme.scaleBorder,
+        };
+      },
+    });
     squareGridHostSeries.attachPrimitive(squareGridPrimitive);
     squareGridHostSeriesRef.current = squareGridHostSeries;
     squareGridPrimitiveRef.current = squareGridPrimitive;
