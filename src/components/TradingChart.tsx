@@ -485,7 +485,11 @@ export const TradingChart = React.memo(function TradingChart({
   } = useTradingChartLoadingPresentation({
     activeTimeframe, intervalEnabled: visibleRuntime.interval, isActive, symbol,
   });
-  const [showOneClick, setShowOneClick] = useState(false);
+  const userHiddenOneClickRef = useRef(false);
+  const [showOneClick, setShowOneClick] = useState(
+    () => initialChartSettingsSnapshot.symbolProperties[symbol]?.showQuickTradingButtons
+      ?? initialChartSettingsSnapshot.globalProperties.showQuickTradingButtons,
+  );
   // Inline text-input overlay for the text drawing tool (replaces browser prompt)
   const [textInputOverlay, setTextInputOverlay] = useState<{ x: number; y: number; time: number; price: number } | null>(null);
   const [textInputValue, setTextInputValue] = useState('');
@@ -515,6 +519,7 @@ export const TradingChart = React.memo(function TradingChart({
   const toggleOneClickTrading = useCallback(() => {
     setShowOneClick((current) => {
       const visible = !current;
+      userHiddenOneClickRef.current = !visible;
       if (visible && !chartSettingsRef.current.showQuickTradingButtons) {
         useChartSettingsStore.getState().updateSymbolProperty(symbol, 'showQuickTradingButtons', true);
       }
@@ -845,7 +850,8 @@ export const TradingChart = React.memo(function TradingChart({
     setCtxShowTradeHistory(chartSettings.showTradeHistoryArrows);
     setCtxShowTradeHistoryLine(chartSettings.showTradeHistory);
     if (!chartSettings.showQuickTradingButtons) setShowOneClick(false);
-  }, [chartSettings, setCtxShowTradeHistory, setCtxShowTradeHistoryLine, setCtxShowTradeLevels]);
+    else if (!userHiddenOneClickRef.current) setShowOneClick(true);
+  }, [brokerAccountSessionScope, chartSettings, setCtxShowTradeHistory, setCtxShowTradeHistoryLine, setCtxShowTradeLevels]);
 
   useEffect(() => {
     if (!chartSettings.showAskPriceLine) {
