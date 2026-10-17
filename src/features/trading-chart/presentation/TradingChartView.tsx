@@ -332,26 +332,18 @@ return (
                 width: 15, height: 13, padding: 0, background: 'transparent', border: 'none', cursor: 'pointer', lineHeight: 1,
               }}
             >
-              <svg width="13" height="11" viewBox="0 0 13 11" fill="none" shapeRendering="crispEdges" aria-hidden="true">
-                <rect
-                  x="0.5"
-                  y="0.5"
-                  width="12"
-                  height="10"
-                  fill={isAdvancedUntitledLight ? '#f8fafc' : '#0b1220'}
-                  stroke="#64748b"
-                  strokeWidth="1"
-                />
-                <rect x="2" y="2" width="4" height="1" fill="#ef4444" />
-                <rect x="7" y="2" width="1" height="1" fill="#94a3b8" />
-                <rect x="2" y="4" width="3" height="1" fill="#ef4444" />
-                <rect x="6" y="4" width="1" height="1" fill="#94a3b8" />
-                <rect x="9" y="4" width="2" height="1" fill="#3b82f6" />
-                <rect x="2" y="6" width="2" height="1" fill="#ef4444" />
-                <rect x="6" y="6" width="1" height="1" fill="#94a3b8" />
-                <rect x="8" y="6" width="3" height="1" fill="#3b82f6" />
-                <rect x="5" y="8" width="1" height="1" fill="#94a3b8" />
-                <rect x="7" y="8" width="4" height="1" fill="#3b82f6" />
+              <svg width="15" height="11" viewBox="0 0 15 11" fill="none" shapeRendering="crispEdges" aria-hidden="true">
+                <rect x="0" y="0" width="15" height="11" fill={isAdvancedUntitledLight ? '#f8fafc' : '#1e222d'} />
+                <rect x="1" y="1" width="6" height="9" fill={isAdvancedUntitledLight ? 'rgba(239, 68, 68, 0.16)' : '#431f13'} />
+                <rect x="8" y="1" width="6" height="9" fill={isAdvancedUntitledLight ? 'rgba(49, 131, 255, 0.16)' : '#042842'} />
+                <path d="M7 0.5H0.5V10.5H7" stroke="#ff5252" strokeWidth="1" />
+                <path d="M8 0.5H14.5V10.5H8" stroke="#3183ff" strokeWidth="1" />
+                <rect x="2" y="2" width="5" height="1" fill="#ff5252" />
+                <rect x="3" y="5" width="4" height="1" fill="#ff5252" />
+                <rect x="2" y="8" width="5" height="1" fill="#ff5252" />
+                <rect x="8" y="2" width="5" height="1" fill="#3183ff" />
+                <rect x="8" y="5" width="4" height="1" fill="#3183ff" />
+                <rect x="8" y="8" width="5" height="1" fill="#3183ff" />
               </svg>
             </button>
             <button
@@ -369,23 +361,26 @@ return (
               }}
               style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 16, height: 13, padding: 0, background: 'transparent', border: 'none', cursor: 'pointer', lineHeight: 1,
+                width: 15, height: 13, padding: 0, background: 'transparent', border: 'none', cursor: 'pointer', lineHeight: 1,
               }}
             >
               <svg width="15" height="11" viewBox="0 0 15 11" fill="none" shapeRendering="crispEdges" aria-hidden="true">
-                <rect x="5" y="0" width="5" height="2" fill={isAdvancedUntitledLight ? '#475569' : '#cbd5e1'} />
+                <rect x="0" y="0" width="15" height="11" fill={isAdvancedUntitledLight ? '#f8fafc' : '#1e222d'} />
+                <rect x="5" y="0" width="5" height="2" fill={isAdvancedUntitledLight ? '#475569' : '#e2e8f0'} />
                 <path
                   d="M0.5 0.5H3.5V3.5H6.5V10.5H0.5V0.5Z"
-                  fill={showOneClick ? 'rgba(239, 68, 68, 0.35)' : isAdvancedUntitledLight ? 'rgba(239, 68, 68, 0.14)' : 'rgba(15, 23, 42, 0.9)'}
-                  stroke="#ef4444"
+                  fill={showOneClick ? (isAdvancedUntitledLight ? 'rgba(239, 68, 68, 0.28)' : '#431f13') : (isAdvancedUntitledLight ? 'rgba(239, 68, 68, 0.12)' : '#26171a')}
+                  stroke="#ff5252"
                   strokeWidth="1"
                 />
                 <path
                   d="M11.5 0.5H14.5V10.5H8.5V3.5H11.5V0.5Z"
-                  fill={showOneClick ? 'rgba(59, 130, 246, 0.35)' : isAdvancedUntitledLight ? 'rgba(59, 130, 246, 0.14)' : 'rgba(15, 23, 42, 0.9)'}
-                  stroke="#3b82f6"
+                  fill={showOneClick ? (isAdvancedUntitledLight ? 'rgba(49, 131, 255, 0.28)' : '#042842') : (isAdvancedUntitledLight ? 'rgba(49, 131, 255, 0.12)' : '#112034')}
+                  stroke="#3183ff"
                   strokeWidth="1"
                 />
+                <rect x="2" y="7" width="3" height="1" fill="#ff5252" opacity={showOneClick ? 0.9 : 0.55} />
+                <rect x="10" y="7" width="3" height="1" fill="#3183ff" opacity={showOneClick ? 0.9 : 0.55} />
               </svg>
             </button>
           </div>
