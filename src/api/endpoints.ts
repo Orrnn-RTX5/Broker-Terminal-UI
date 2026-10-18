@@ -125,6 +125,11 @@ const normalizeOrderPayload = (order: CreateOrderRequest): CreateOrderRequest & 
 
 const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderRequest & { account_login: number; side: 'buy' | 'sell'; sl?: number; tp?: number; expiry?: number } => {
   const login = requireLogin(order.login ?? order.account_login, '/api/v2/orders/pending');
+  // The gateway requires an idempotency key for every order command (CLIENT_ORDER_ID_REQUIRED).
+  const suppliedClientOrderId = String(order.client_order_id ?? '').trim();
+  if (suppliedClientOrderId && !isTradeOrderUuidV4(suppliedClientOrderId)) {
+    throw new Error('client_order_id must be a UUID v4');
+  }
   const rest = { ...order };
   delete rest.login;
   delete rest.account_login;
@@ -138,6 +143,7 @@ const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderR
   return {
     ...rest,
     account_login: login,
+    client_order_id: suppliedClientOrderId || createTradeOrderUuid(),
     side: normalizeSide(order.side),
     type: order.type.toLowerCase() as PendingOrderRequest['type'],
     sl: order.sl ?? order.price_sl,
@@ -313,6 +319,7 @@ export interface PendingOrderRequest {
   trailing_stop?: number;
   trailing_step?: number;
   magic?: number;
+  client_order_id?: string;
 }
 
 export interface ModifyPositionRequest {
