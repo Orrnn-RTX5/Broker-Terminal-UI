@@ -177,6 +177,19 @@ describe('broker websocket URL builder', () => {
     expect(normalizeWsUrl('http://plain.example/ws')).toBe('ws://plain.example/ws');
   });
 
+  it('uses an explicit feed WS runtime URL instead of the trading WS host', () => {
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      backendTarget: 'desktop',
+      WS_HOST: 'ws://127.0.0.1:8090',
+      FEED_WS_URL: 'ws://127.0.0.1:8094',
+      BROKER_ID: 'broker-a',
+    };
+    localStorage.setItem('broker_id', 'broker-a');
+    localStorage.setItem('server_url', 'http://127.0.0.1:8090');
+
+    expect(buildBrokerWsFeedUri()).toBe('ws://127.0.0.1:8094/ws/feed?broker_id=broker-a');
+  });
+
   it('prefers broker-provided feed_url for quote feed sockets', () => {
     localStorage.setItem('server_url', 'http://fallback-broker.example');
     localStorage.setItem('feed_url', 'wss://feed-broker.example/custom/feed');

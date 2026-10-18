@@ -1058,6 +1058,14 @@ export function buildBrokerWsFeedUri(): string {
     return toLocalDevProxyWsUrl(appendFeedBrokerIdToWsUrl(forceWssForHttpsFrontend(providedWsUrl)));
   }
 
+  const configuredFeed = getRuntimeConfigValue([
+    'FEED_WS_URL', 'FEED_WS_HOST', 'VITE_FEED_WS_URL', 'VITE_FEED_WS_HOST',
+  ]);
+  if (configuredFeed) {
+    return toLocalDevProxyWsUrl(appendFeedBrokerIdToWsUrl(
+      forceWssForHttpsFrontend(normalizeWsUrlToFeed(configuredFeed)),
+    ));
+  }
   const fallback = normalizeWsUrlToFeed(
     getRuntimeConfigValue(['WS_HOST', 'VITE_WS_HOST', 'VITE_MARKET_WS_URL', 'VITE_RTX5_WS_URL', 'VITE_WS_URL'])
     || getPublicWsTarget()

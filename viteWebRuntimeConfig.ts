@@ -18,6 +18,7 @@ export type WebRuntimeConfig = {
   API_HOST: string
   API_HOST_EXT: string
   WS_HOST: string
+  FEED_WS_URL: string
   DEFAULT_MT5_SERVER: string
   DISCOVERY_BASE_URL: string
   BROKER_DISCOVERY_URL: string
@@ -57,6 +58,7 @@ export const createWebRuntimeConfig = (env: Record<string, string>): WebRuntimeC
     API_HOST: apiHost,
     API_HOST_EXT: withoutTrailingSlash(first(env.API_HOST_EXT, env.API_URL_EXT, env.BACKEND_URL_EXT, env.VITE_API_HOST_EXT, env.VITE_API_URL_EXT, env.VITE_BACKEND_URL_EXT, apiHost)),
     WS_HOST: wsHost,
+    FEED_WS_URL: withoutTrailingSlash(first(env.FEED_WS_URL, env.FEED_WS_HOST, env.VITE_FEED_WS_URL, env.VITE_FEED_WS_HOST)).replace(/^https:/i, 'wss:').replace(/^http:/i, 'ws:'),
     DEFAULT_MT5_SERVER: first(env.DEFAULT_MT5_SERVER, env.VITE_DEFAULT_MT5_SERVER),
     DISCOVERY_BASE_URL: discoveryBase,
     BROKER_DISCOVERY_URL: withoutTrailingSlash(first(env.BROKER_DISCOVERY_URL, env.VITE_BROKER_DISCOVERY_URL, discoveryBase)),
