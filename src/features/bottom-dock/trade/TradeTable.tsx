@@ -320,7 +320,7 @@ const TradeTableRow = memo(function TradeTableRow({
             event.stopPropagation();
             if (isPendingPlacement) return;
             setSelectedPositionKey(positionKey);
-            if (event.detail === 0) openModifyPosition(position);
+            openModifyPosition(position);
           }}
           onDoubleClick={(event) => {
             event.stopPropagation();
@@ -349,7 +349,7 @@ const TradeTableRow = memo(function TradeTableRow({
             event.stopPropagation();
             if (isPendingPlacement) return;
             setSelectedPositionKey(positionKey);
-            if (event.detail === 0) openModifyPosition(position);
+            openModifyPosition(position);
           }}
           onDoubleClick={(event) => {
             event.stopPropagation();

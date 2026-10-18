@@ -226,7 +226,9 @@ describe('Trade row updates', () => {
     const row = view.container.querySelector('tbody tr')!;
     fireEvent.doubleClick(row);
     expect(props.openModifyPosition).toHaveBeenLastCalledWith(latest);
-    fireEvent.click(view.container.querySelector('.rtx-trade-sl-value')!);
+    fireEvent.click(view.container.querySelector('.rtx-trade-sl-value')!, { detail: 1 });
+    expect(props.openModifyPosition).toHaveBeenLastCalledWith(latest);
+    fireEvent.click(view.container.querySelector('.rtx-trade-tp-value')!, { detail: 1 });
     expect(props.openModifyPosition).toHaveBeenLastCalledWith(latest);
     fireEvent.contextMenu(row);
     expect(props.handleTradeContextMenu).toHaveBeenLastCalledWith(expect.anything(), latest);
