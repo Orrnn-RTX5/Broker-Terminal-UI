@@ -650,17 +650,15 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
             setError('Close volume cannot be greater than position volume');
             return;
         }
-        if (Math.abs(actionVolume - position.volume) > 0.0000001) {
-            setError('Partial close by volume is not supported by the backend yet');
-            return;
-        }
+        // The close endpoint takes a volume; a smaller volume is a partial close.
+        const isPartialClose = Math.abs(actionVolume - position.volume) > 0.0000001;
 
         setIsSubmitting(true);
         setError(null);
         setSuccessMessage(null);
 
         try {
-            if (onClosePosition) {
+            if (onClosePosition && !isPartialClose) {
                 const closeOperation = Promise.resolve(onClosePosition(position.id));
                 // The shared coordinator removes the pending row immediately
                 // and owns failure feedback/rollback, so this dialog need not
@@ -669,12 +667,23 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                 await closeOperation;
                 return;
             }
-            await api.positions.closePosition(String(position.id));
+            await api.positions.closePosition(String(position.id), isPartialClose ? { volume: actionVolume } : undefined);
             if (!isCurrentDialogSession(mutationContext)) return;
-            const store = useAppStore.getState();
-            store.setPositions(store.positions.filter(p => p.id !== position.id), { closedTickets: [position.id] });
-            setSuccessMessage('Position closed successfully');
-            refreshPositionsAfterTrade();
+            if (!isPartialClose) {
+                const store = useAppStore.getState();
+                store.setPositions(store.positions.filter(p => p.id !== position.id), { closedTickets: [position.id] });
+                refreshPositionsAfterTrade();
+            } else {
+                // A partial close already has an authoritative response. Patch
+                // the displayed volume locally instead of forcing a full
+                // positions/account/metrics refresh before confirmation.
+                const remainingVolume = Math.max(0, Math.round((position.volume - actionVolume) * 1e8) / 1e8);
+                const store = useAppStore.getState();
+                store.setPositions(store.positions.map((p) => (
+                    p.id === position.id ? { ...p, volume: remainingVolume } : p
+                )));
+            }
+            setSuccessMessage(isPartialClose ? `Closed ${actionVolume} of #${position.id}` : 'Position closed successfully');
             onCloseRef.current();
         } catch (err: unknown) {
             if (!isCurrentDialogSession(mutationContext)) return;

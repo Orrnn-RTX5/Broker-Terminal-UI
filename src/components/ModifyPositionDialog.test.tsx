@@ -266,6 +266,32 @@ describe('ModifyPositionDialog chart toolbar', () => {
         expect(screen.getByText('Trading session changed. Reopen the position and try again.')).toBeInTheDocument();
     });
 
+    it('sends a partial close with the entered volume and keeps the position', async () => {
+        mocks.positions = [{ ...makePosition(172), volume: 0.1 }];
+        const onClosePosition = vi.fn();
+        render(
+            <ModifyPositionDialog
+                isOpen
+                onClose={vi.fn()}
+                onClosePosition={onClosePosition}
+                position={{ ...makePosition(172), volume: 0.1 }}
+            />
+        );
+
+        fireEvent.change(screen.getByLabelText('Volume:'), { target: { value: '0.04' } });
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /close #172 buy .* by market/i }));
+        });
+
+        expect(mocks.closePosition).toHaveBeenCalledWith('172', { volume: 0.04 });
+        expect(onClosePosition).not.toHaveBeenCalled();
+        expect(mocks.setPositions).toHaveBeenCalledOnce();
+        const patched = mocks.setPositions.mock.calls[0][0];
+        expect(patched).toHaveLength(1);
+        expect(patched[0].volume).toBeCloseTo(0.06, 8);
+        expect(screen.queryByText(/not supported by the backend/i)).not.toBeInTheDocument();
+    });
+
     it('routes Close by Market through the shared fast-close coordinator and closes immediately', async () => {
         let resolveClose: ((value: boolean) => void) | null = null;
         const pendingClose = new Promise<boolean>(resolve => { resolveClose = resolve; });
