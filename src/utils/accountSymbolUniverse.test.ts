@@ -75,19 +75,51 @@ describe('selectAccountDefaultMarketWatchSymbols', () => {
     expect(selectAccountDefaultMarketWatchSymbols(catalog)).toEqual(['US30', 'GBPUSD', 'XAUUSD', 'EURUSD']);
   });
 
-  it('keeps the curated selection (restricted to the account) for large catalogues', () => {
-    const catalog = Array.from({ length: 60 }, (_, index) => ({ symbol: `SYM${index}` }));
-    catalog.push({ symbol: 'EURUSD' }, { symbol: 'XAUUSD' });
-    const selected = selectAccountDefaultMarketWatchSymbols(catalog);
-    expect(selected.length).toBeLessThan(catalog.length);
-    expect(selected).toEqual(expect.arrayContaining(['XAUUSD', 'EURUSD']));
-    const names = new Set(catalog.map((item) => item.symbol));
-    selected.forEach((symbol) => expect(names.has(symbol)).toBe(true));
+  it('returns the complete catalogue above 50 symbols, in backend order and category mix', () => {
+    const catalog = [
+      { symbol: 'GBPUSD', category: 'forex' },
+      ...Array.from({ length: 60 }, (_, index) => ({
+        symbol: `PAIR${index}`,
+        category: index % 2 === 0 ? 'crypto' : 'forex',
+      })),
+      { symbol: 'EURUSD.R', category: 'forex' },
+      { symbol: '0001.HK', category: 'stocks' },
+    ];
+    expect(catalog.length).toBeGreaterThan(50);
+
+    expect(selectAccountDefaultMarketWatchSymbols(catalog)).toEqual(catalog.map((item) => item.symbol));
   });
 
-  it('honours a custom full-catalogue limit', () => {
-    const catalog = [{ symbol: 'A1' }, { symbol: 'EURUSD' }, { symbol: 'XAUUSD' }];
-    expect(selectAccountDefaultMarketWatchSymbols(catalog, catalog, 2)).not.toContain('A1');
+  it('de-duplicates repeated symbols while keeping first-seen backend order', () => {
+    const catalog = [
+      { symbol: 'GBPUSD' },
+      ...Array.from({ length: 55 }, (_, index) => ({ symbol: `PAIR${index}` })),
+      { symbol: 'eurusd' },
+      { symbol: 'EURUSD' },
+      { symbol: '0001.HK' },
+    ];
+    const selected = selectAccountDefaultMarketWatchSymbols(catalog);
+
+    expect(selected).toHaveLength(58);
+    expect(selected[0]).toBe('GBPUSD');
+    expect(selected.slice(-2)).toEqual(['EURUSD', '0001.HK']);
+    expect(new Set(selected).size).toBe(selected.length);
+  });
+
+  it('ignores metadata sources and the legacy limit argument', () => {
+    const catalog = Array.from({ length: 60 }, (_, index) => ({
+      symbol: `SYM${index}`,
+      category: index % 2 === 0 ? 'forex' : 'crypto',
+    }));
+    const metadata = catalog.map((item, index) => ({ ...item, bid: index }));
+
+    expect(selectAccountDefaultMarketWatchSymbols(catalog, metadata, 2))
+      .toEqual(catalog.map((item) => item.symbol));
+  });
+
+  it('returns an empty selection for an empty catalogue', () => {
+    expect(selectAccountDefaultMarketWatchSymbols([])).toEqual([]);
+    expect(selectAccountDefaultMarketWatchSymbols([], [], 0)).toEqual([]);
   });
 });
 

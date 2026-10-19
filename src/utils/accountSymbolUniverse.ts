@@ -12,7 +12,6 @@
  */
 import { buildChartEligibleSymbolNames, buildTradeEligibleSymbolNames, getUniqueSymbolNames, normalizeSymbolName } from './symbolEligibility';
 import { resolveMarketWatchSymbolInput } from './marketWatchSource';
-import { selectDefaultMarketWatchSymbols } from './marketWatchGroups';
 
 /**
  * Lifecycle of the authenticated account catalogue.
@@ -23,9 +22,6 @@ import { selectDefaultMarketWatchSymbols } from './marketWatchGroups';
  *   back to the public catalogue while trading stays gated (no authorized symbols).
  */
 export type AccountCatalogStatus = 'none' | 'loading' | 'loaded' | 'failed';
-
-/** Catalogues at or below this size are shown in full, in backend order, as default Market Watch rows. */
-export const ACCOUNT_DEFAULT_MARKET_WATCH_FULL_CATALOG_LIMIT = 50;
 
 /**
  * True when the account catalogue (possibly still empty while loading) is the
@@ -202,21 +198,26 @@ export const filterSymbolsExactlyInUniverse = (
 };
 
 /**
- * Default Market Watch rows for a logged-in account. Small group catalogues
- * are shown in full in the order configured for the group; large catalogues
- * keep the curated core-per-category selection.
+ * Default Market Watch rows for a logged-in account: always the complete
+ * account catalogue in backend order. Members are resolved with
+ * `getUniqueSymbolNames`, which de-duplicates repeated names without alias or
+ * suffix rewriting and preserves first-seen order; no curated subset, category
+ * re-grouping or group-level default is applied (the instrument payload exposes
+ * no group Market Watch default field).
+ *
+ * The trailing arguments are accepted only for compatibility with the shared
+ * Market Watch model call site and never change the returned symbols.
  */
 export const selectAccountDefaultMarketWatchSymbols = (
   accountCatalog: readonly unknown[],
-  metadataSources: readonly unknown[] = accountCatalog,
-  fullCatalogLimit = ACCOUNT_DEFAULT_MARKET_WATCH_FULL_CATALOG_LIMIT,
+  metadataSources?: readonly unknown[],
+  fullCatalogLimit?: number,
 ): string[] => {
-  const names = getUniqueSymbolNames([...accountCatalog]);
-  if (names.length <= fullCatalogLimit) return names;
-  return pruneSymbolsToUniverse(
-    selectDefaultMarketWatchSymbols(accountCatalog, metadataSources),
-    names,
-  );
+  // Retained only so existing callers keep their arity; neither argument may
+  // shrink or reorder the account catalogue.
+  void metadataSources;
+  void fullCatalogLimit;
+  return getUniqueSymbolNames([...accountCatalog]);
 };
 
 export interface ChartEligibleSymbolInput {
