@@ -14,6 +14,8 @@ export type GatewayAccount = {
   login?: number;
   name?: string;
   currency?: string;
+  /** Canonical account-currency display scale from the gateway (0..18). */
+  currency_digits?: number;
   leverage?: number;
   group?: string;
   balance?: number;
@@ -44,6 +46,8 @@ export type GatewayPosition = {
   symbol?: string;
   side?: string;
   action?: string | number;
+  /** Canonical account-currency display scale from the gateway (0..18). */
+  currency_digits?: number;
   volume?: number;
   volume_lots?: number;
   price_open?: number;

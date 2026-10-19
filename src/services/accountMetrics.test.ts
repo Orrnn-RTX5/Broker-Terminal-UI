@@ -13,6 +13,13 @@ describe('authoritative account metrics', () => {
     expect(accountMetricAvailable(result, 'freeMargin', now)).toBe(true);
   });
 
+  it('carries canonical account-currency digits, including an explicit zero scale', () => {
+    const usd = normalizeAccountMetrics({ ...complete, currency: 'USD', currency_digits: 2 }, null, { now });
+    const zeroDigit = normalizeAccountMetrics({ ...complete, currency: 'USD', currency_digits: 0 }, null, { now });
+    expect(usd.currencyDigits).toBe(2);
+    expect(zeroDigit.currencyDigits).toBe(0);
+  });
+
   it('accepts a genuine zero balance after funding', () => {
     const previous = normalizeAccountMetrics(complete, null, { now });
     expect(normalizeAccountMetrics({ ...complete, balance: 0, equity: 0 }, previous, { now }).balance).toBe(0);

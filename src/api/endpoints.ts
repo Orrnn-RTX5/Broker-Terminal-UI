@@ -223,6 +223,8 @@ export interface AccountSummary extends AccountClassificationFields {
   open_positions?: number;
   pending_orders?: number;
   currency: string;
+  /** Canonical account-currency display scale from the gateway (0..18). */
+  currency_digits?: number;
   leverage: number;
   last_updated?: string;
 }

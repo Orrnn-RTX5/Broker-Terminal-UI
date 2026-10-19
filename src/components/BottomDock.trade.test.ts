@@ -520,5 +520,11 @@ describe('live account metrics between backend snapshots', () => {
     expect(resolvePositionProfitDigits({ currency: 'JPY' })).toBe(0);
     expect(resolvePositionProfitDigits({ currency: 'KWD' })).toBe(3);
     expect(resolvePositionProfitDigits({ currency: 'USD', currencyDigits: 3 })).toBe(3);
+    // Gateway-provided canonical digits win, including an explicit 0 scale.
+    expect(resolvePositionProfitDigits({ currency: 'USD', currency_digits: 0 })).toBe(0);
+    expect(resolvePositionProfitDigits({ currency: 'USD', currency_digits: 2 })).toBe(2);
+    expect(formatPositionProfit(12.3456, resolvePositionProfitDigits({ currency: 'USD', currency_digits: 2 }))).toBe('12.35');
+    expect(formatPositionProfit(12.3456, resolvePositionProfitDigits({ currency: 'USD', currency_digits: 0 }))).toBe('12');
+    expect(formatPositionProfit(12.3456, resolvePositionProfitDigits({ currency: 'JPY' }))).toBe('12');
   });
 });

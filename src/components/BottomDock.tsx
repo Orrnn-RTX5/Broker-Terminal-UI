@@ -23,6 +23,7 @@ import { TradeTab } from '../features/bottom-dock/trade/TradeTab';
 import { useBottomDockStoreBridge } from '../features/bottom-dock/useBottomDockStoreBridge';
 import { useDockLayoutStore } from '../store/useDockLayoutStore';
 import { resolveTradeAccountMetrics } from './BottomDock.trade';
+import { formatAccountAmount, resolveAccountCurrencyDigits } from '../utils/accountCurrency';
 
 const findTerminalPanelId = (node: unknown): string | null => {
   if (!node || typeof node !== 'object') return null;
@@ -162,14 +163,12 @@ export function BottomDock({
     }, [onCloseBulk]);
 
     // Helpers
-    const formatMoney = useCallback((val: number | undefined | null) => {
-        const v = val ?? 0;
-        if (isNaN(v)) return '0.00';
-        // MT5 style uses spaces instead of commas for large numbers
-        const parts = v.toFixed(2).split('.');
-        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-        return parts.join('.');
-    }, []);
+    // One money formatter for the balance bar and every P&L/profit cell. The
+    // precision is the account currency's canonical scale from the backend.
+    const accountCurrencyDigits = resolveAccountCurrencyDigits(toolboxTrade.account ?? account);
+    const formatMoney = useCallback((val: number | undefined | null) => (
+        formatAccountAmount(val ?? 0, accountCurrencyDigits)
+    ), [accountCurrencyDigits]);
 
     // Persist active tab selection
     useEffect(() => {

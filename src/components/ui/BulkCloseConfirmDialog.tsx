@@ -1,7 +1,9 @@
 import React, { useRef, useMemo } from 'react';
 import { useBulkCloseConfirmStore } from '../../store/useBulkCloseConfirmStore';
+import { useAppStore } from '../../store/useAppStore';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
+import { resolveAccountCurrencyDigits } from '../../utils/accountCurrency';
 
 const MAX_PREVIEW_ROWS = 10;
 
@@ -16,6 +18,7 @@ export function BulkCloseConfirmDialog() {
         onConfirm,
         onCancel,
     } = useBulkCloseConfirmStore();
+    const accountCurrencyDigits = resolveAccountCurrencyDigits(useAppStore(state => state.account));
 
     const cancelBtnRef = useRef<HTMLButtonElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
@@ -43,7 +46,7 @@ export function BulkCloseConfirmDialog() {
             : tr('Close In-Loss Positions');
 
     const pnlSign = combinedPnL >= 0 ? '+' : '';
-    const pnlFormatted = `${pnlSign}${combinedPnL.toFixed(2)}`;
+    const pnlFormatted = `${pnlSign}${combinedPnL.toFixed(accountCurrencyDigits)}`;
     const pnlTone = combinedPnL >= 0 ? 'profit' : 'loss';
 
     return (
@@ -127,7 +130,7 @@ export function BulkCloseConfirmDialog() {
                                         <td className="rtx-bulk-close-dialog__cell-right">{pos.volume.toFixed(2)}</td>
                                         <td className="rtx-bulk-close-dialog__cell-right">{pos.openPrice.toFixed(pos.openPrice >= 100 ? 2 : 5)}</td>
                                         <td className={`rtx-bulk-close-dialog__cell-right rtx-bulk-close-dialog__cell-pnl rtx-bulk-close-dialog__cell-pnl--${rowPnlTone}`}>
-                                            {rowPnlSign}{pos.pnl.toFixed(2)}
+                                            {rowPnlSign}{pos.pnl.toFixed(accountCurrencyDigits)}
                                         </td>
                                     </tr>
                                 );

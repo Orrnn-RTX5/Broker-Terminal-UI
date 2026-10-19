@@ -1,4 +1,4 @@
-import { resolveAccountCurrencyDigits } from '../utils/accountCurrency';
+import { formatAccountAmount, resolveAccountCurrencyDigits } from '../utils/accountCurrency';
 import {
   getExposureContractSize,
   parseExposureSymbol,
@@ -330,17 +330,12 @@ export const resolveTradeProfit = (position: TradeProfitInput): TradeProfitResol
 };
 
 /**
- * Open-position P/L with enough decimals to see every tick on small lots, matching
- * the RTX 5 mobile app; large values keep the MT5 two-decimal money format.
+ * Open-position P/L rendered at the account currency's canonical precision.
+ * Delegates to the same formatter as the balance bar so P&L and balances can
+ * never disagree about decimals for the same account.
  */
-export const formatPositionProfit = (value: number, currencyDigits: number): string => {
-  const digits = Number.isInteger(currencyDigits) && currencyDigits >= 0 && currencyDigits <= 8
-    ? currencyDigits : 0;
-  const fixed = value.toFixed(digits);
-  const [whole, fraction] = (Number(fixed) === 0 ? fixed.replace('-', '') : fixed).split('.');
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return fraction === undefined ? grouped : `${grouped}.${fraction}`;
-};
+export const formatPositionProfit = (value: number, currencyDigits: number): string =>
+  formatAccountAmount(value, currencyDigits);
 
 export const resolvePositionProfitDigits = (account: unknown): number => (
   resolveAccountCurrencyDigits(account)

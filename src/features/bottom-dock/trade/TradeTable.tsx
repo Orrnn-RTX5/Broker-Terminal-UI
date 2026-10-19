@@ -13,8 +13,6 @@ import type { ToolboxTradePosition } from '../../../hooks/useToolboxTradeData';
 import { useUiTranslation } from '../../../hooks/useUiTranslation';
 import type { Account } from '../../../store/useAppStore';
 import {
-  formatPositionProfit,
-  resolvePositionProfitDigits,
   resolveTradeProfit,
   toBackendFinancialNumber,
 } from '../../../components/BottomDock.trade';
@@ -37,7 +35,6 @@ import {
 
 type TradeTableProps = {
   account: Account | null;
-  currencyDigits?: number;
   columnWidths: TradeColumnWidths;
   displayedLivePositions: ToolboxTradePosition[];
   error: string | null;
@@ -95,7 +92,6 @@ type TradeTableRowProps = Pick<TradeTableProps,
   | 'onClosePosition'
   | 'openModifyPosition'
   | 'profitMode'
-  | 'currencyDigits'
   | 'selectedPositionKey'
   | 'setSelectedPositionKey'
   | 'visibleOptionalColumnCount'
@@ -124,7 +120,6 @@ const TradeTableRow = memo(function TradeTableRow({
   onClosePosition,
   openModifyPosition,
   profitMode,
-  currencyDigits,
   selectedPositionKey,
   setSelectedPositionKey,
   visibleOptionalColumnCount,
@@ -199,7 +194,7 @@ const TradeTableRow = memo(function TradeTableRow({
     : rawCurrentPrice === null ? METRIC_UNAVAILABLE : formatTradePrice(rawCurrentPrice, symbolLabel);
   const profitLabel = isPendingPlacement ? placementPlaceholder
     : profitMode === 'points' ? formatTradePoints(position)
-      : profitValue === null || Number.isNaN(profitValue) ? METRIC_UNAVAILABLE : formatPositionProfit(profitValue, currencyDigits);
+      : profitValue === null || Number.isNaN(profitValue) ? METRIC_UNAVAILABLE : formatMoney(profitValue);
   const profitTitleLabel = useMemo(() => tr(profitMode === 'points' ? 'Profit Points' : 'Profit'), [profitMode, tr]);
   const swap = position.swap;
   const swapLabel = useMemo(() => formatMoney(swap), [formatMoney, swap]);
@@ -471,7 +466,6 @@ export function TradeTable({
   visibleTradeTableWidth,
 }: TradeTableProps) {
   const tr = useUiTranslation();
-  const currencyDigits = resolvePositionProfitDigits(account);
 
   const renderColumnResizeHandle = (key: TradeColumnWidthKey) => (
     <button
@@ -564,7 +558,6 @@ export function TradeTable({
             onClosePosition={onClosePosition}
             openModifyPosition={openModifyPosition}
             profitMode={profitMode}
-            currencyDigits={currencyDigits}
             selectedPositionKey={selectedPositionKey}
             setSelectedPositionKey={setSelectedPositionKey}
             visibleOptionalColumnCount={visibleOptionalColumnCount}

@@ -25,6 +25,7 @@ import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { isShortcutInput, isShortcutLocalScope, isShortcutOverlay, shouldIgnoreShortcutEvent } from '../services/keyboardShortcutManager';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
 import { formatOrderError } from '../utils/orderError';
+import { resolveAccountCurrencyDigits } from '../utils/accountCurrency';
 import { hasAuthenticatedTradingSession, requireTradingAuth } from '../services/tradingAuthGate';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import {
@@ -46,7 +47,6 @@ const ACCOUNT_VALUE_FORMATTER = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
 });
-
 const clampPanelPosition = (position: { x: number; y: number }, panel: HTMLDivElement | null) => ({
     x: snapToPixel(Math.max(
         PANEL_EDGE_GAP,
@@ -89,6 +89,7 @@ export function LastSymbolPanel({ symbol }: { symbol?: string } = {}) {
     // the entire trader panel and suffixes never borrow another quote.
     const tick = useAppStore((s) => resolveExactBrokerSymbolValue(s.ticks, exactLastSymbol) ?? null);
     const account = useAppStore((s) => s.account);
+const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
     const positions = useAppStore((s) => s.positions);
     const accountId = useAppStore((s) => s.accountId);
     const authIdentity = useAppStore((s) => `${s.isAuthenticated}:${s.accountId}:${s.authToken}`);
@@ -579,7 +580,7 @@ export function LastSymbolPanel({ symbol }: { symbol?: string } = {}) {
                                 <>
                                     {lastSymbolPositions.length}
                                     <strong data-tone={totalPnL >= 0 ? 'profit' : 'loss'}>
-                                        {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
+                                        {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(accountCurrencyDigits)}
                                     </strong>
                                 </>
                             ) : tr("None open")}
