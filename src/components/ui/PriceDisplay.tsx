@@ -1,7 +1,7 @@
 /**
  * PriceDisplay — MT5-style price formatting
  * Shows last 2 decimal digits in a larger/bolder font,
- * matching the Flexy Markets MT5 terminal style.
+ * matching standard MT5 terminal style.
  */
 import React from 'react';
 import { getSymbolDigits } from '../../utils/symbolUtils';

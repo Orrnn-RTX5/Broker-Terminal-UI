@@ -79,13 +79,16 @@ export const buildBrokerPresentationUrl = (
   }
 };
 
+export const isPlaceholderBrokerLogoUrl = (value: unknown): boolean =>
+  /(?:^|\/)assets\/logo\.png(?:[?#].*)?$/i.test(String(value || '').trim());
+
 /** Resolve a broker-provided asset against that broker's own origin. */
 export const resolveBrokerPresentationAssetUrl = (
   value: unknown,
   serverUrl: unknown,
 ): string => {
   const raw = String(value || '').trim();
-  if (!raw) return '';
+  if (!raw || isPlaceholderBrokerLogoUrl(raw)) return '';
   if (ABSOLUTE_ASSET_URL.test(raw)) return raw;
   if (raw.startsWith('//')) {
     return `https:${raw}`;
@@ -108,8 +111,9 @@ export const normalizeBrokerPresentationConfig = (
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
 
   const raw = payload as Record<string, unknown>;
-  const logoUrl = resolveBrokerPresentationAssetUrl(raw.logo_url, serverUrl)
-    || String(raw.logo_url || '').trim();
+  const rawLogo = isPlaceholderBrokerLogoUrl(raw.logo_url) ? '' : raw.logo_url;
+  const logoUrl = resolveBrokerPresentationAssetUrl(rawLogo, serverUrl)
+    || String(rawLogo || '').trim();
   const themeColor = normalizeBrokerThemeColor(raw.theme_color);
   const brokerName = isBrokerName(raw.broker_name) ? String(raw.broker_name).trim() : '';
   if (!logoUrl && !themeColor && !brokerName) return null;

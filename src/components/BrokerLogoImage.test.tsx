@@ -6,7 +6,7 @@ const testBroker = {
   broker_id: 'TEST',
   broker_name: 'TEST',
   server_url: 'https://fxtrustbrokerbackend.orrnn.com',
-  logo_url: '/assets/logo.png',
+  logo_url: '/branding/broker-logo.png',
 };
 
 describe('BrokerLogoImage', () => {
@@ -24,7 +24,7 @@ describe('BrokerLogoImage', () => {
       .toHaveAttribute('src', 'https://branding.example/current-logo.png');
     fireEvent.error(screen.getByRole('img', { name: 'TEST broker logo' }));
     expect(screen.getByRole('img', { name: 'TEST broker logo' }))
-      .toHaveAttribute('src', `${testBroker.server_url}/assets/logo.png`);
+      .toHaveAttribute('src', `${testBroker.server_url}/branding/broker-logo.png`);
   });
 
   it('never applies deployment branding to another broker or a desktop selection', () => {
@@ -46,7 +46,18 @@ describe('BrokerLogoImage', () => {
       'https://fxtrustsuperbackned.orrnn.com',
       '/brand/rtx5-app-icon.png',
     )).toEqual([
-      'https://fxtrustbrokerbackend.orrnn.com/assets/logo.png',
+      'https://fxtrustbrokerbackend.orrnn.com/branding/broker-logo.png',
+      'https://fxtrustsuperbackned.orrnn.com/api/v1/brokers/TEST/logo',
+      '/brand/rtx5-app-icon.png',
+    ]);
+  });
+
+  it('treats /assets/logo.png as an unconfigured placeholder and falls back to /api/v1/brokers/:id/logo', () => {
+    expect(buildBrokerLogoCandidates(
+      { ...testBroker, logo_url: '/assets/logo.png' },
+      'https://fxtrustsuperbackned.orrnn.com',
+      '/brand/rtx5-app-icon.png',
+    )).toEqual([
       'https://fxtrustsuperbackned.orrnn.com/api/v1/brokers/TEST/logo',
       '/brand/rtx5-app-icon.png',
     ]);

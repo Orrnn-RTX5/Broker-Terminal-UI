@@ -38,12 +38,16 @@ const normalizeLogoBaseUrl = (value: unknown): string => {
   return normalized.replace(/\/+$/, '');
 };
 
+export const isPlaceholderBrokerLogoUrl = (value: unknown): boolean =>
+  /(?:^|\/)assets\/logo\.png(?:[?#].*)?$/i.test(String(value || '').trim());
+
 /** Deployment branding belongs only to its configured web broker. */
 export const getConfiguredBrokerLogoUrl = (brokerId: string | number | null | undefined): string => {
   if (isDesktopBackendTarget()) return '';
   const config = getRuntimeBrokerConfiguration();
-  return config.valid && String(brokerId || '').trim() === config.brokerId
+  const logoUrl = config.valid && String(brokerId || '').trim() === config.brokerId
     ? config.brokerLogoUrl : '';
+  return isPlaceholderBrokerLogoUrl(logoUrl) ? '' : logoUrl;
 };
 
 export const buildBrokerDirectoryLogoUrl = (
@@ -66,28 +70,29 @@ export const buildBrokerLogoCandidates = (
   const candidates: string[] = [];
   appendUnique(candidates, getConfiguredBrokerLogoUrl(broker.broker_id));
   const rawLogoUrl = String(broker.logo_url || '').trim();
+  const hasUsableLogoUrl = Boolean(rawLogoUrl) && !isPlaceholderBrokerLogoUrl(rawLogoUrl);
 
-  if (ABSOLUTE_IMAGE_URL.test(rawLogoUrl)) {
+  const baseCandidates = [
+    broker.server_url,
+    broker.backend_url,
+    broker.market_api_url,
+    broker.public_backend_url,
+    broker.public_ext_api_url,
+    broker.web_backend_url,
+    broker.web_ext_api_url,
+    broker.API_HOST,
+    broker.API_HOST_EXT,
+    broker.api_host,
+    broker.api_host_ext,
+  ].filter(value => String(value || '').trim());
+  if (baseCandidates.length === 0) baseCandidates.push(getBackendTarget());
+
+  if (hasUsableLogoUrl && ABSOLUTE_IMAGE_URL.test(rawLogoUrl)) {
     appendUnique(candidates, rawLogoUrl);
-  } else if (rawLogoUrl.startsWith('//')) {
+  } else if (hasUsableLogoUrl && rawLogoUrl.startsWith('//')) {
     const protocol = typeof window !== 'undefined' && window.location.protocol === 'http:' ? 'http:' : 'https:';
     appendUnique(candidates, `${protocol}${rawLogoUrl}`);
-  } else if (rawLogoUrl) {
-    const baseCandidates = [
-      broker.server_url,
-      broker.backend_url,
-      broker.market_api_url,
-      broker.public_backend_url,
-      broker.public_ext_api_url,
-      broker.web_backend_url,
-      broker.web_ext_api_url,
-      broker.API_HOST,
-      broker.API_HOST_EXT,
-      broker.api_host,
-      broker.api_host_ext,
-    ].filter(value => String(value || '').trim());
-    if (baseCandidates.length === 0) baseCandidates.push(getBackendTarget());
-
+  } else if (hasUsableLogoUrl) {
     for (const baseValue of baseCandidates) {
       const baseUrl = normalizeLogoBaseUrl(baseValue);
       if (!baseUrl) continue;
@@ -99,7 +104,16 @@ export const buildBrokerLogoCandidates = (
     }
   }
 
-  appendUnique(candidates, buildBrokerDirectoryLogoUrl(broker.broker_id, discoveryBaseUrl));
+  const directoryLogoUrl = buildBrokerDirectoryLogoUrl(broker.broker_id, discoveryBaseUrl);
+  appendUnique(candidates, directoryLogoUrl);
+  if (!directoryLogoUrl && String(broker.broker_id || '').trim()) {
+    const encodedId = encodeURIComponent(String(broker.broker_id || '').trim());
+    for (const baseValue of baseCandidates) {
+      const baseUrl = normalizeLogoBaseUrl(baseValue);
+      if (!baseUrl) continue;
+      appendUnique(candidates, `${baseUrl}/api/v1/brokers/${encodedId}/logo`);
+    }
+  }
 
   appendUnique(candidates, appFallbackUrl);
   return candidates;

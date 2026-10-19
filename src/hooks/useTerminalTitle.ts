@@ -9,7 +9,11 @@ import { RTX5_API_URL, normalizeServerUrl } from '../config/api';
 import { runAfterTerminalReady } from '../startup/runAfterTerminalReady';
 import { setBrokerServerTimeZoneFromConfig } from '../services/brokerServerClock';
 import { onSessionChange } from '../services/brokerSession';
-import { buildBrokerDirectoryLogoUrl, getConfiguredBrokerLogoUrl } from '../components/BrokerLogoImage';
+import {
+    buildBrokerDirectoryLogoUrl,
+    getConfiguredBrokerLogoUrl,
+    isPlaceholderBrokerLogoUrl,
+} from '../components/BrokerLogoImage';
 
 export const WEB_TERMINAL_TITLE = 'RTX 5 Web Terminal';
 export const DEFAULT_BROKER_SERVER = WEB_TERMINAL_TITLE;
@@ -22,8 +26,13 @@ const getStoredHeaderValue = (key: string): string => {
 };
 
 const getStoredBrokerId = (): string => getStoredHeaderValue('broker_id') || getStoredHeaderValue('rtx_broker_id');
-const getStoredLogoUrl = (): string => getConfiguredBrokerLogoUrl(getStoredBrokerId())
-    || getStoredHeaderValue('logo_url') || buildBrokerDirectoryLogoUrl(getStoredBrokerId());
+const getStoredLogoUrl = (): string => {
+    const storedLogo = getStoredHeaderValue('logo_url');
+    const validStoredLogo = isPlaceholderBrokerLogoUrl(storedLogo) ? '' : storedLogo;
+    return getConfiguredBrokerLogoUrl(getStoredBrokerId())
+        || validStoredLogo
+        || buildBrokerDirectoryLogoUrl(getStoredBrokerId());
+};
 
 const normalizeLogoBaseUrl = (value: unknown): string => {
     const normalized = normalizeServerUrl(normalizeHeaderText(value));
@@ -32,7 +41,7 @@ const normalizeLogoBaseUrl = (value: unknown): string => {
 
 export const getLogoUrl = (url?: string, baseCandidates: string[] = []) => {
     const rawUrl = normalizeHeaderText(url);
-    if (!rawUrl) return '';
+    if (!rawUrl || isPlaceholderBrokerLogoUrl(rawUrl)) return '';
     if (/^(?:https?:|data:|blob:)/i.test(rawUrl)) {
         return rawUrl;
     }
@@ -55,6 +64,8 @@ export const getLogoUrl = (url?: string, baseCandidates: string[] = []) => {
 type BrokerTitleConfig = {
     name?: string;
     brokerName?: string;
+    broker_name?: string;
+    server_name?: string;
     logo_url?: string;
     marginMode?: string;
 };
@@ -78,13 +89,22 @@ const resolveBrokerDisplayName = (
     config: BrokerTitleConfig | null,
     matchedServer?: BrokerServer,
     brokers: Broker[] = [],
+    brokerId = '',
 ): string => {
-    const matchedBroker = matchedServer?.broker_id
-        ? brokers.find((broker) => broker.broker_id === matchedServer.broker_id)
+    const targetBrokerId = matchedServer?.broker_id || brokerId;
+    const matchedBroker = targetBrokerId
+        ? brokers.find((broker) => String(broker.broker_id) === String(targetBrokerId))
         : undefined;
 
     const directoryName = matchedServer?.broker_name || matchedBroker?.name;
-    return brokerDisplayName(serverName, directoryName, config?.brokerName, config?.name);
+    return brokerDisplayName(
+        serverName,
+        directoryName,
+        config?.broker_name,
+        config?.brokerName,
+        config?.name,
+        config?.server_name,
+    );
 };
 
 type BrokerDetails = [BrokerTitleConfig | null, BrokerServer[], { brokers: Broker[]; count: number } | null];
@@ -166,8 +186,19 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
                 const brokersList = brokersData?.brokers || [];
                 const matchedBroker = brokersList.find(broker => String(broker.broker_id) === (brokerId || String(matchedServer?.broker_id || '')));
 
-                const finalLogoUrl = getConfiguredBrokerLogoUrl(brokerId) || matchedServer?.logo_url || matchedBroker?.logo_url
-                    || config?.logo_url || getStoredHeaderValue('logo_url') || getStoredLogoUrl();
+                const pickValidLogoUrl = (...values: Array<string | undefined>): string =>
+                    values
+                        .map((v) => normalizeHeaderText(v))
+                        .find((v) => Boolean(v) && !isPlaceholderBrokerLogoUrl(v)) || '';
+
+                const finalLogoUrl = pickValidLogoUrl(
+                    getConfiguredBrokerLogoUrl(brokerId),
+                    matchedServer?.logo_url,
+                    matchedBroker?.logo_url,
+                    config?.logo_url,
+                    getStoredHeaderValue('logo_url'),
+                    getStoredLogoUrl(),
+                );
                 let nextLogoBaseCandidates: string[] = [];
                 if (matchedServer) {
                     nextLogoBaseCandidates = [
@@ -177,7 +208,7 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
                     ];
                 }
 
-                setBrokerName(resolveBrokerDisplayName(serverName, config, matchedServer, brokersList));
+                setBrokerName(resolveBrokerDisplayName(serverName, config, matchedServer, brokersList, brokerId));
                 setLogoUrl(finalLogoUrl);
                 setLogoBaseCandidates(nextLogoBaseCandidates);
             } catch (err) {

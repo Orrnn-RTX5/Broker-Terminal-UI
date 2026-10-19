@@ -13,7 +13,7 @@ import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
 import { brokerV2Api } from '../../api/trade';
 import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
-import { buildBrokerDirectoryLogoUrl, getConfiguredBrokerLogoUrl } from '../BrokerLogoImage';
+import { buildBrokerDirectoryLogoUrl, getConfiguredBrokerLogoUrl, isPlaceholderBrokerLogoUrl } from '../BrokerLogoImage';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
 import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
 import { openWebTrader } from '../../services/webTrader';
@@ -46,7 +46,7 @@ const getStoredNavigatorValue = (key: string): string => {
 
 const resolveNavigatorLogoUrl = (url: string, baseCandidates: string[]): string => {
     const rawUrl = normalizeNavigatorText(url);
-    if (!rawUrl) return '';
+    if (!rawUrl || isPlaceholderBrokerLogoUrl(rawUrl)) return '';
     if (/^(?:https?:|data:|blob:)/i.test(rawUrl)) {
         return rawUrl;
     }

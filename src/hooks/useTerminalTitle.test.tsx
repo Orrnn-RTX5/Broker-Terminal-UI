@@ -137,3 +137,25 @@ it('keeps the account name in sync with saved metadata and active-account change
     await act(async () => useAppStore.setState({ accountId: '200034' }));
     expect(result.current.accountName).toBe('');
 });
+
+it('resolves snake_case broker_name from /api/v2/broker/config and ignores /assets/logo.png placeholder', async () => {
+    vi.stubGlobal('__RTX_RUNTIME_CONFIG__', {
+        CONFIG_SOURCE: 'deployment',
+        API_HOST: 'https://broker.example',
+        WS_HOST: 'wss://broker.example',
+        BROKER_ID: 'alpha-markets',
+        DEFAULT_MT5_SERVER: 'RTX5-PROD-01',
+        DISCOVERY_BASE_URL: 'https://directory.example',
+    });
+    localStorage.setItem('broker_id', 'alpha-markets');
+    localStorage.setItem('logo_url', '/assets/logo.png');
+    vi.mocked(configApi.getConfig).mockResolvedValue({
+        broker_name: 'Alpha Markets',
+        logo_url: '/assets/logo.png',
+    } as unknown as Awaited<ReturnType<typeof configApi.getConfig>>);
+
+    const { result } = renderHook(useTerminalBrokerInfo);
+    await waitFor(() => expect(result.current.brokerName).toBe('Alpha Markets'));
+    expect(result.current.logoUrl).toBe('https://directory.example/api/v1/brokers/alpha-markets/logo');
+});
+

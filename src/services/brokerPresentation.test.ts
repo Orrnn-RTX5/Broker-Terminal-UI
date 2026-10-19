@@ -28,9 +28,11 @@ describe('broker presentation', () => {
     expect(buildBrokerPresentationUrl('not a URL', 'Nexa')).toBe('');
   });
 
-  it('resolves relative branding assets onto the selected broker origin', () => {
+  it('resolves relative branding assets onto the selected broker origin and ignores /assets/logo.png placeholder', () => {
+    expect(resolveBrokerPresentationAssetUrl('/branding/logo.png', 'https://service.achieverfinancials.com'))
+      .toBe('https://service.achieverfinancials.com/branding/logo.png');
     expect(resolveBrokerPresentationAssetUrl('/assets/logo.png', 'https://service.achieverfinancials.com'))
-      .toBe('https://service.achieverfinancials.com/assets/logo.png');
+      .toBe('');
     expect(resolveBrokerPresentationAssetUrl('https://assets.example.test/nexa.svg', 'https://nexa.orrnn.com'))
       .toBe('https://assets.example.test/nexa.svg');
   });
@@ -44,14 +46,22 @@ describe('broker presentation', () => {
     })).toEqual({ logo_url: 'https://assets.example.test/nexa.svg' });
     expect(normalizeBrokerPresentationConfig({
       broker_name: 'Achiever Financials',
+      logo_url: '/branding/logo.png',
+      theme_color: '#1a73e8',
+    }, 'https://service.achieverfinancials.com')).toEqual({
+      broker_name: 'Achiever Financials',
+      logo_url: 'https://service.achieverfinancials.com/branding/logo.png',
+      theme_color: '#1a73e8',
+    });
+    expect(normalizeBrokerPresentationConfig({
+      broker_name: 'Achiever Financials',
       logo_url: '/assets/logo.png',
       theme_color: '#1a73e8',
     }, 'https://service.achieverfinancials.com')).toEqual({
       broker_name: 'Achiever Financials',
-      logo_url: 'https://service.achieverfinancials.com/assets/logo.png',
       theme_color: '#1a73e8',
     });
-    expect(normalizeBrokerPresentationConfig({ broker_name: 'Broker', theme_color: '' })).toBeNull();
+    expect(normalizeBrokerPresentationConfig({ broker_name: 'Broker', logo_url: '/assets/logo.png', theme_color: '' })).toBeNull();
 
     const broker = {
       broker_id: 'Nexa',
