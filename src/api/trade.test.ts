@@ -1247,3 +1247,25 @@ describe('trade v2 API contract calls', () => {
     } satisfies Partial<ApiError>);
   });
 });
+
+describe('tradingV2Api pending placement identity', () => {
+  it('adds a UUIDv4 client_order_id to the latent trade.ts placement path', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ok: true })));
+    const restore = installTestBrokerRuntime();
+    localStorage.setItem('broker_id', 'test-broker');
+    localStorage.setItem('server_url', 'https://broker.example');
+    setToken('test-access-token');
+    try {
+      await tradingV2Api.placePendingOrder({
+        login: 77, symbol: 'BTCUSD', side: 'buy', volume: 0.01, type: 'buy_limit', price: 64000,
+      });
+      const sent = lastFetchCall().body as Record<string, unknown>;
+      expect(String(sent.client_order_id)).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+    } finally {
+      restore();
+      vi.unstubAllGlobals();
+    }
+  });
+});
