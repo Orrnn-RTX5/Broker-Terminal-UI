@@ -89,6 +89,24 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
     return views.sort((a, b) => a.ticket - b.ticket);
   }, [storeOrders]);
 
+  // Single-row cancel with the same bulk-style handling: user-visible error
+  // plus backend refresh (ds-19 U2 review gap). The outer handler may also
+  // refresh, but the panel never relies on which handler is wired.
+  const cancelOne = useCallback(async (ticket: number) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onCancelOrder(ticket);
+      const loginId = currentLoginId();
+      if (loginId) await refreshPendingOrders(loginId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cancel failed');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, onCancelOrder]);
+
   const cancelMany = useCallback(async (mode: 'ALL' | 'BUY' | 'SELL') => {
     const targets = orders.filter((o) => mode === 'ALL' || o.side === mode);
     if (targets.length === 0 || busy) return;
@@ -186,7 +204,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
                       {tr('Modify')}
                     </button>
                     <button type="button" disabled={busy}
-                      onClick={() => void onCancelOrder(order.ticket)}
+                      onClick={() => void cancelOne(order.ticket)}
                       className="text-red-400 hover:text-red-300 disabled:opacity-50">
                       {tr('Cancel')}
                     </button>

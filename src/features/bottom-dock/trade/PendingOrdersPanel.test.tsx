@@ -119,6 +119,35 @@ describe('PendingOrdersPanel (real store + backend shapes)', () => {
     });
   });
 
+  it('single-row cancel refreshes from the backend and surfaces failures', async () => {
+    const onModify = vi.fn();
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+
+    const { rerender } = render(<PendingOrdersPanel onModifyOrder={onModify} onCancelOrder={onCancel} />);
+    const row = screen.getByText('34671').closest('tr')!;
+    fireEvent.click(row.querySelectorAll('button')[1]);
+
+    await waitFor(() => {
+      expect(onCancel).toHaveBeenCalledWith(34671);
+    });
+    await waitFor(() => {
+      expect(useAppStore.getState().orders).toEqual([]);
+    });
+
+    // A failing cancel shows a user-visible error and keeps the row.
+    act(() => {
+      useAppStore.getState().setOrders(BACKEND_ROWS as any);
+    });
+    onCancel.mockRejectedValueOnce(new Error('broker refused cancel'));
+    rerender(<PendingOrdersPanel onModifyOrder={onModify} onCancelOrder={onCancel} />);
+    fireEvent.click(screen.getByText('34672').closest('tr')!.querySelectorAll('button')[1]);
+
+    await waitFor(() => {
+      expect(screen.getByText('broker refused cancel')).toBeTruthy();
+    });
+    expect(useAppStore.getState().orders).toHaveLength(2);
+  });
+
   it('shows the empty state when no pendings rest', () => {
     act(() => {
       useAppStore.getState().setOrders([]);

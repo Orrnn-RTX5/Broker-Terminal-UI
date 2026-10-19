@@ -956,7 +956,7 @@ ${rows}
                     aria-pressed={tradeView === 'pending'}
                     className={`text-xs px-2 py-0.5 rounded ${tradeView === 'pending' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}
                 >
-                    {tr('Pending')}{pendingCount > 0 ? ` (${pendingCount})` : ''}
+                    {tr('Pending Orders')}{pendingCount > 0 ? ` (${pendingCount})` : ''}
                 </button>
             </div>
             {tradeView === 'pending' ? (
