@@ -366,4 +366,48 @@ describe('durable closePosition intent', () => {
     expect(callsTo('/order-commands/')).toHaveLength(1);
     expect(result).toMatchObject({ ticket: 998877, client_order_id: SUPPLIED_CLOSE_ID });
   });
+
+  it('surfaces a clean rejection when POST /close returns a structured 503 refusal and GET /order-commands returns 404 (T10)', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              code: 'LEGACY_ID_CACHE_UNAVAILABLE',
+              message: 'Original command identity cannot be verified; retry with the same client_order_id',
+              retryable: true,
+            },
+          },
+          { status: 503 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              code: 'ORDER_COMMAND_NOT_FOUND',
+              message: 'Order command not found',
+            },
+          },
+          { status: 404 },
+        ),
+      );
+
+    const failure = await tradingV2Api
+      .closePosition(28548, {
+        client_order_id: SUPPLIED_CLOSE_ID,
+        account_login: 190002,
+        closeRecoveryIntervalMs: 0,
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(formatOrderError(failure)).toBe(
+      'LEGACY_ID_CACHE_UNAVAILABLE: Original command identity cannot be verified; retry with the same client_order_id',
+    );
+    expect(String((failure as ApiError).message)).not.toMatch(/Close outcome unknown/i);
+  });
 });

@@ -729,6 +729,19 @@ const buildCloseStatusOptions = (
 };
 
 
+const hasStructuredCloseError = (data: unknown): boolean => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  if ('error' in data && data.error && typeof data.error === 'object' && !Array.isArray(data.error)) {
+    const errObj = data.error as Record<string, unknown>;
+    if (typeof errObj.code === 'string' && errObj.code.trim() !== '') return true;
+  }
+  if ('code' in data && typeof (data as Record<string, unknown>).code === 'string' && String((data as Record<string, unknown>).code).trim() !== '') {
+    return true;
+  }
+  return false;
+};
+
+
 const pollCloseCommandForTerminal = async (
   clientOrderId: string,
   expectedTicket: string,
@@ -736,6 +749,7 @@ const pollCloseCommandForTerminal = async (
   requestOptions: ApiRequestOptions,
   attempts: number,
   intervalMs: number,
+  initialPostError?: unknown,
 ): Promise<Deal> => {
   const deadline = performance.now() + 30_000;
   let lastAccepted: unknown = null;
@@ -755,6 +769,9 @@ const pollCloseCommandForTerminal = async (
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) throw error;
       if (error instanceof ApiError && error.status === 404) {
+        if (initialPostError instanceof ApiError && hasStructuredCloseError(initialPostError.data)) {
+          throw closeRejectionError(initialPostError.data, clientOrderId);
+        }
         throw new ApiError(
           404,
           `Close outcome unknown for client_order_id ${clientOrderId}: order command not found; verify before acting (never resubmitted, not confirmed)`,
@@ -922,7 +939,7 @@ export const tradingV2Api = {
       } catch (error) {
         const ambiguous = error instanceof ApiError && (error.status === 0 || error.status === 503);
         if (!ambiguous) throw error;
-        return pollCloseCommandForTerminal(clientOrderId, ticket, accountLogin, statusRequestOptions, attempts, intervalMs);
+        return pollCloseCommandForTerminal(clientOrderId, ticket, accountLogin, statusRequestOptions, attempts, intervalMs, error);
       }
       const status = readCommandStatus(posted);
       if (CLOSE_FAILURE_STATUS[status]) throw closeRejectionError(posted, clientOrderId);
