@@ -40,6 +40,27 @@ describe('pending order API', () => {
     expect(sent.type).toBe('buy_limit');
   });
 
+  it('sends the pending modify identity and drops the forbidden comment', async () => {
+    setToken('test-access-token');
+    await tradingApi.modifyPendingOrder(123, {
+      price: 65000, price_sl: 64000, price_tp: 66000, comment: 'must not be sent',
+    });
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const sent = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+    expect(String(sent.client_order_id)).toMatch(UUID_V4);
+    expect(sent.comment).toBeUndefined();
+    expect(sent.price).toBe(65000);
+    expect(sent.sl).toBe(64000);
+  });
+
+  it('sends an Idempotency-Key on pending cancel', async () => {
+    setToken('test-access-token');
+    await tradingApi.cancelOrder(123);
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const headers = new Headers(init?.headers as HeadersInit);
+    expect(headers.get('Idempotency-Key')).toMatch(UUID_V4);
+  });
+
   it('keeps a caller-supplied client_order_id and rejects a non-UUID one', async () => {
     setToken('test-access-token');
     const id = '6f1c2b0a-1d2e-4f3a-9b8c-7d6e5f4a3b2c';

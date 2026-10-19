@@ -175,6 +175,7 @@ const persistAuth = (response: AuthTokenResponse): AuthTokenResponse => {
 
 type PendingOrderPayload = {
   account_login: number;
+  client_order_id: string;
   symbol: string;
   side: PlacePendingOrderRequest['side'];
   volume: number;
@@ -199,8 +200,12 @@ type ModifyPendingOrderPayload = {
   trailing_step?: number;
 };
 
-const normalizePendingOrderRequest = (order: PlacePendingOrderRequest): PendingOrderPayload => ({
+const normalizePendingOrderRequest = (order: PlacePendingOrderRequest): PendingOrderPayload => {
+  const supplied = String(order.client_order_id ?? '').trim();
+  if (supplied && !isTradeOrderUuidV4(supplied)) throw new Error('client_order_id must be a UUID v4');
+  return {
   account_login: order.account_login ?? order.login,
+  client_order_id: supplied || createTradeOrderUuid(),
   symbol: order.symbol,
   side: order.side,
   volume: order.volume,
@@ -213,7 +218,8 @@ const normalizePendingOrderRequest = (order: PlacePendingOrderRequest): PendingO
   trailing_stop: order.trailing_stop,
   trailing_step: order.trailing_step,
   magic: order.magic,
-});
+  };
+};
 
 const normalizeModifyPendingOrderRequest = (changes: ModifyPendingOrderRequest): ModifyPendingOrderPayload => ({
   price: changes.price,

@@ -1020,9 +1020,7 @@ export const ordersApi = {
       price_sl: data.price_sl ?? data.sl,
       price_tp: data.price_tp ?? data.tp,
       expiration: data.expiration ?? data.expiry,
-      comment: data.comment,
-      trailing_stop: data.trailing_stop,
-      trailing_step: data.trailing_step,
+      client_order_id: data.client_order_id,
       magic: data.magic,
     });
     if (typeof window !== 'undefined') {
@@ -1037,10 +1035,10 @@ export const ordersApi = {
       .map((order) => normalizeGatewayOrderForApp(order as unknown as LooseRecord)) as unknown as endpoints.Order[];
   },
 
-  async cancelOrder(orderId: string): Promise<void> {
+  async cancelOrder(orderId: string, clientOrderId?: string): Promise<void> {
     const ticket = Number.parseInt(String(orderId), 10);
     if (!Number.isFinite(ticket) || ticket <= 0) throw new Error('Invalid pending order ticket');
-    await endpoints.tradingApi.cancelOrder(ticket);
+    await endpoints.tradingApi.cancelOrder(ticket, clientOrderId);
   },
 
   async modifyPendingOrder(orderId: string | number, data: endpoints.ModifyPendingOrderRequest): Promise<endpoints.Order> {
@@ -1051,9 +1049,7 @@ export const ordersApi = {
       price_sl: data.price_sl ?? data.sl,
       price_tp: data.price_tp ?? data.tp,
       expiration: data.expiration ?? data.expiry,
-      comment: data.comment,
-      trailing_stop: data.trailing_stop,
-      trailing_step: data.trailing_step,
+      client_order_id: data.client_order_id,
     });
   },
 };

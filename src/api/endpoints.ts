@@ -152,10 +152,13 @@ const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderR
   };
 };
 
-const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): ModifyPendingOrderRequest & { sl?: number; tp?: number; expiry?: number } => {
-  const { price_sl, price_tp, sl, tp, expiration, expiry, ...rest } = data;
+const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): ModifyPendingOrderRequest & { sl?: number; tp?: number; expiry?: number; client_order_id: string } => {
+  const { price_sl, price_tp, sl, tp, expiration, expiry, comment: _comment, trailing_stop: _trailingStop, trailing_step: _trailingStep, client_order_id: supplied, ...rest } = data;
+  const clientOrderId = String(supplied ?? '').trim();
+  if (clientOrderId && !isTradeOrderUuidV4(clientOrderId)) throw new Error('client_order_id must be a UUID v4');
   return {
     ...rest,
+    client_order_id: clientOrderId || createTradeOrderUuid(),
     sl: sl ?? price_sl,
     tp: tp ?? price_tp,
     expiry: expiry ?? expiration,
@@ -331,6 +334,7 @@ export interface ModifyPositionRequest {
 }
 
 export interface ModifyPendingOrderRequest extends ModifyPositionRequest {
+  client_order_id?: string;
   price?: number;
   expiration?: number;
   expiry?: number;
@@ -548,8 +552,14 @@ export const tradingApi = {
   placePendingOrder: (order: PendingOrderRequest): Promise<Order> =>
     apiClient.post<Order>('/orders/pending', normalizePendingOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
 
-  cancelOrder: (orderId: string | number): Promise<{ message?: string }> =>
-    apiClient.delete<{ message?: string }>(`/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`, { baseUrl: API_V2_BASE_URL }),
+  cancelOrder: (orderId: string | number, clientOrderId?: string): Promise<{ message?: string }> => {
+    const supplied = String(clientOrderId ?? '').trim();
+    if (supplied && !isTradeOrderUuidV4(supplied)) throw new Error('client_order_id must be a UUID v4');
+    return apiClient.delete<{ message?: string }>(
+      `/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`,
+      { baseUrl: API_V2_BASE_URL, headers: { 'Idempotency-Key': supplied || createTradeOrderUuid() } },
+    );
+  },
 
   modifyPendingOrder: (orderId: string | number, data: ModifyPendingOrderRequest): Promise<Order> =>
     apiClient.put<Order>(

@@ -533,7 +533,6 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                     price: position.openPrice,
                     price_sl: slVal,
                     price_tp: tpVal,
-                    comment: nextComment,
                 });
             } else {
                 await api.positions.modifyPosition(position.id, { ...levelChanges, comment: nextComment });
