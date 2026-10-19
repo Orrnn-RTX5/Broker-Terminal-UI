@@ -16,10 +16,12 @@ import {
 import { onCommittedBrokerAccountSessionScopeChange } from '../../../services/brokerSession';
 import { TRADE_MODIFIED_EVENT, type TradeModifiedEventDetail } from '../../../contracts/terminalEvents';
 import type {
+  CancelOrderAction,
   CloseBulkPositionsAction,
   ClosePositionAction,
   ModifyPositionAction,
 } from '../../../contracts/tradeActions';
+import { PendingOrdersPanel, type PendingOrderView } from './PendingOrdersPanel';
 import { safeReadBoolean, safeReadJson, safeReadString } from '../preferences';
 import { escapeHtml } from '../reporting';
 import { getCurrentBrokerAccountSessionScopeKey, normalizeTradeSymbol } from '../sessionScope';
@@ -61,6 +63,7 @@ const EMPTY_PENDING_POSITIONS: ToolboxTradePosition[] = [];
 type ModifyPositionContext = {
   position: ToolboxTradePosition;
   sessionScope: string;
+  kind: 'position' | 'pending-order';
 };
 
 type TradeTabProps = {
@@ -69,6 +72,7 @@ type TradeTabProps = {
   account: Account | null;
   onClosePosition: ClosePositionAction;
   onModifyPosition: ModifyPositionAction;
+  onCancelOrder?: CancelOrderAction;
   onCloseBulk?: CloseBulkPositionsAction;
   formatMoney: (value: number | null | undefined) => string;
   loading: boolean;
@@ -82,6 +86,7 @@ export const TradeTab = memo(function TradeTab({
     pendingPositions = EMPTY_PENDING_POSITIONS,
     account,
     onClosePosition,
+    onCancelOrder,
     onCloseBulk,
     formatMoney,
     loading,
@@ -116,6 +121,27 @@ export const TradeTab = memo(function TradeTab({
         setModifyPositionContext({
             position,
             sessionScope: getCurrentBrokerAccountSessionScopeKey(),
+            kind: 'position',
+        });
+    }, []);
+
+    const [tradeView, setTradeView] = useState<'positions' | 'pending'>('positions');
+    const pendingCount = useAppStore((s) => s.orders?.length ?? 0);
+
+    const openModifyPendingOrder = useCallback((order: PendingOrderView) => {
+        const position: ToolboxTradePosition = {
+            id: order.ticket,
+            symbol: order.symbol,
+            side: order.side,
+            volume: order.volume,
+            openPrice: order.price,
+            sl: order.sl,
+            tp: order.tp,
+        } as ToolboxTradePosition;
+        setModifyPositionContext({
+            position,
+            sessionScope: getCurrentBrokerAccountSessionScopeKey(),
+            kind: 'pending-order',
         });
     }, []);
 
@@ -915,6 +941,30 @@ ${rows}
 
     return (
         <div ref={tradeTabRef} className="rtx-trade-tab h-full cursor-default flex flex-col relative bg-[#131316] overflow-hidden">
+            <div className="flex items-center gap-1 px-2 pt-1">
+                <button
+                    type="button"
+                    onClick={() => setTradeView('positions')}
+                    aria-pressed={tradeView === 'positions'}
+                    className={`text-xs px-2 py-0.5 rounded ${tradeView === 'positions' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}
+                >
+                    {tr('Positions')}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setTradeView('pending')}
+                    aria-pressed={tradeView === 'pending'}
+                    className={`text-xs px-2 py-0.5 rounded ${tradeView === 'pending' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}
+                >
+                    {tr('Pending')}{pendingCount > 0 ? ` (${pendingCount})` : ''}
+                </button>
+            </div>
+            {tradeView === 'pending' ? (
+                <PendingOrdersPanel
+                    onModifyOrder={openModifyPendingOrder}
+                    onCancelOrder={async (ticket) => { await onCancelOrder?.(ticket); }}
+                />
+            ) : (
             <TradeTable
                 account={account}
                 columnWidths={columnWidths}
@@ -956,6 +1006,7 @@ ${rows}
                 visibleTradeColumns={visibleTradeColumns}
                 visibleTradeTableWidth={visibleTradeTableWidth}
             />
+            )}
             {footerMetricMenu && (
                 <ContextMenu
                     variant={isLightSkin ? "mt5-light" : "mt5-dark"}
@@ -977,6 +1028,7 @@ ${rows}
             <RetainedLazyFeature active={modifyPosition !== null}>
             <ModifyPositionDialog
                 isOpen={modifyPosition !== null}
+                kind={modifyPositionContext?.kind ?? 'position'}
                 onClosePosition={(id) => onClosePosition(id)}
                 onClose={(modifiedSl?: number, modifiedTp?: number, modifiedComment?: string) => {
                     const closingContext = modifyPositionContext;

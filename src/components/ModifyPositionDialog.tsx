@@ -263,6 +263,10 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     const initialDigits = (tick as any)?.digits ?? (position as any)?.digits ?? getSymbolDigits(position.symbol);
     const [sl, setSl] = useState(() => position.sl > 0 ? position.sl.toFixed(initialDigits) : '0.00');
     const [tp, setTp] = useState(() => position.tp > 0 ? position.tp.toFixed(initialDigits) : '0.00');
+    // Pending-order entry price + expiry (pending kind only; positions keep
+    // their fill price and have no expiry).
+    const [priceStr, setPriceStr] = useState(() => position.openPrice > 0 ? position.openPrice.toFixed(initialDigits) : '0.00');
+    const [expiryStr, setExpiryStr] = useState('');
     const [volumeStr, setVolumeStr] = useState(() => position.volume.toFixed(2));
     const [comment, setComment] = useState(() => position.comment ?? '');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -509,6 +513,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     const slPointsFieldId = `modify-position-${position.id}-sl-points`;
     const tpFieldId = `modify-position-${position.id}-tp`;
     const tpPointsFieldId = `modify-position-${position.id}-tp-points`;
+    const priceFieldId = `modify-position-${position.id}-price`;
+    const expiryFieldId = `modify-position-${position.id}-expiry`;
     const commentFieldId = `modify-position-${position.id}-comment`;
 
     const handleSubmit = async () => {
@@ -529,11 +535,30 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
             };
 
             if (kind === 'pending-order') {
+                const priceVal = parseFloat(priceStr) || 0;
+                if (!(priceVal > 0)) {
+                    setError('Enter a valid order price');
+                    setIsSubmitting(false);
+                    return;
+                }
+                const expiryVal = Number.parseInt(expiryStr.trim(), 10);
                 await api.orders.modifyPendingOrder(position.id, {
-                    price: position.openPrice,
+                    price: priceVal,
                     price_sl: slVal,
                     price_tp: tpVal,
+                    ...(Number.isFinite(expiryVal) && expiryVal > 0 ? { expiry: expiryVal } : {}),
                 });
+                // Refresh the pending list from the backend (the positions
+                // patch below does not apply to pending rows).
+                try {
+                    const loginId = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+                    if (Number.isFinite(loginId) && loginId > 0) {
+                        const latest = await api.orders.getPendingOrders(loginId);
+                        useAppStore.getState().setOrders(latest as any);
+                    }
+                } catch {
+                    // The success message stands; the next poll refreshes.
+                }
             } else {
                 await api.positions.modifyPosition(position.id, { ...levelChanges, comment: nextComment });
             }
@@ -1346,6 +1371,37 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                 <span className="rtx-modify-points-label text-[12px] font-normal">{tr("points")}</span>
                             </div>
                         </div>
+
+                        {kind === 'pending-order' && (
+                            <>
+                                {/* Entry Price (pending orders only) */}
+                                <div className="rtx-modify-field-row">
+                                    <label htmlFor={priceFieldId} className="rtx-modify-label text-[14px] font-normal">{tr("Price:")}</label>
+                                    <input
+                                        id={priceFieldId}
+                                        type="number"
+                                        step={Math.pow(10, -digits).toString()}
+                                        value={priceStr}
+                                        onChange={(e) => setPriceStr(e.target.value)}
+                                        className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price"
+                                    />
+                                </div>
+
+                                {/* Expiry, unix seconds, optional (pending orders only) */}
+                                <div className="rtx-modify-field-row">
+                                    <label htmlFor={expiryFieldId} className="rtx-modify-label text-[14px] font-normal">{tr("Expiry:")}</label>
+                                    <input
+                                        id={expiryFieldId}
+                                        type="number"
+                                        step="1"
+                                        value={expiryStr}
+                                        placeholder="Unix time, empty to keep"
+                                        onChange={(e) => setExpiryStr(e.target.value)}
+                                        className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price"
+                                    />
+                                </div>
+                            </>
+                        )}
 
                         {/* Comment */}
                         <div className="rtx-modify-field-row">

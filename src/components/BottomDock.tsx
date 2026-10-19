@@ -126,6 +126,7 @@ export function BottomDock({
     onFloat,
     onClosePosition,
     onModifyPosition,
+    onCancelOrder,
     onCloseBulk,
     historyInstrumentCatalog,
 }: BottomDockProps) {
@@ -314,6 +315,7 @@ export function BottomDock({
                         account={isTradeSurfaceLive ? toolboxTrade.account : null}
                         onClosePosition={handleTradeClosePosition}
                         onModifyPosition={onModifyPosition}
+                        onCancelOrder={onCancelOrder}
                         onCloseBulk={handleTradeCloseBulk}
                         formatMoney={formatMoney}
                         loading={isTradeSurfaceLive ? toolboxTrade.loading : false}
