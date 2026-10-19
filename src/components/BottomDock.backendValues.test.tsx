@@ -44,20 +44,20 @@ describe('Trade backend financial rendering', () => {
 
   it('renders backend row profit, keeps the account total on the live rows, then applies fresh backend updates', () => {
     const { container, rerender } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
-    expect(screen.getByTitle('Profit: 7.0000')).toHaveTextContent('7.0000');
+    expect(screen.getByTitle('Profit: 7.00')).toHaveTextContent('7.00');
     // Floating P/L follows the streamed rows (profit + swap + commission), not the older -81.40 snapshot.
     expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('7.00');
 
     act(() => useAppStore.getState().setTicks({
       BTCUSD: { symbol: 'BTCUSD', bid: 90000, ask: 90001, spread: 1, timestamp: Date.now() },
     }));
-    expect(screen.getByTitle('Profit: 7.0000')).toHaveTextContent('7.0000');
+    expect(screen.getByTitle('Profit: 7.00')).toHaveTextContent('7.00');
     expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('7.00');
 
     trade.positions = [{ ...trade.positions[0], profit: -12, unrealizedPnL: -12 }];
     trade.account = { ...trade.account, unrealizedPL: -90.5 };
     rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
-    expect(screen.getByTitle('Profit: -12.000')).toHaveTextContent('-12.000');
+    expect(screen.getByTitle('Profit: -12.00')).toHaveTextContent('-12.00');
     expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('-12.00');
   });
 

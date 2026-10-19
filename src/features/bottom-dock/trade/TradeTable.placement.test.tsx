@@ -33,7 +33,7 @@ const provisionalPosition = (placementState: ToolboxTradePosition['placementStat
 });
 
 const createProps = (positions: ToolboxTradePosition[]): ComponentProps<typeof TradeTable> => ({
-  account: null,
+  account: { currency: 'USD' } as ComponentProps<typeof TradeTable>['account'],
   columnWidths: DEFAULT_TRADE_COLUMN_WIDTHS,
   displayedLivePositions: positions,
   error: null,
@@ -185,7 +185,7 @@ describe('Trade row updates', () => {
     }
 
     expect(screen.getByTitle('Current price: 75030')).toHaveTextContent('75030');
-    expect(screen.getByTitle('Profit: 20.000')).toHaveTextContent('20.000');
+    expect(screen.getByTitle('Profit: 20.00')).toHaveTextContent('20.00');
     expect(screen.getByTitle('Last update: 2026-10-09T10:00:20Z')).toHaveTextContent('2026-10-09T10:00:20Z');
     expect(formatTradeTime).toHaveBeenCalledTimes(20);
     expect(formatTradeTime).not.toHaveBeenCalledWith(position.time_create);
@@ -279,7 +279,7 @@ describe('Trade row updates', () => {
     const view = render(<TradeTable {...props} />);
     view.rerender(<TradeTable {...props} displayedLivePositions={[{ ...position, price_current: 75042, profit: 5 }]} />);
     expect(screen.getByTitle('Current price: 75042')).toHaveTextContent('75042');
-    expect(screen.getByTitle('Profit: 5.0000')).toHaveTextContent('5.0000');
+    expect(screen.getByTitle('Profit: 5.00')).toHaveTextContent('5.00');
 
     view.rerender(<TradeTable {...props} selectedPositionKey="100" />);
     expect(view.container.querySelector('tbody tr')).toHaveAttribute('aria-selected', 'true');

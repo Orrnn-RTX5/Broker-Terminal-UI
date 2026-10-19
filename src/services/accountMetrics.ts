@@ -1,3 +1,4 @@
+import { readBackendCurrencyDigits } from '../utils/accountCurrency';
 import type { Account } from '../store/useAppStore';
 
 export const ACCOUNT_METRICS_MAX_AGE_MS = 30_000;
@@ -64,9 +65,10 @@ export function normalizeAccountMetrics(
     // supply account identity, but must not roll back any financial value.
     if (token === undefined) {
       const currency = typeof raw.currency === 'string' && raw.currency.trim() ? raw.currency : current.currency;
+      const currencyDigits = readBackendCurrencyDigits(raw) ?? current.currencyDigits;
       const leverageValue = accountMetricNumber(raw.leverage);
       const leverage = leverageValue !== null && leverageValue > 0 ? leverageValue : current.leverage;
-      if (currency !== current.currency || leverage !== current.leverage) return { ...current, currency, leverage };
+      if (currency !== current.currency || currencyDigits !== current.currencyDigits || leverage !== current.leverage) return { ...current, currency, currencyDigits, leverage };
     }
     return current;
   }
@@ -75,6 +77,7 @@ export function normalizeAccountMetrics(
   const next: Account = {
     balance: 0, equity: 0, margin: 0, freeMargin: 0, unrealizedPL: 0, marginLevel: 0, credit: 0,
     currency: String(raw.currency ?? current?.currency ?? 'USD'),
+    currencyDigits: readBackendCurrencyDigits(raw) ?? current?.currencyDigits,
     leverage: accountMetricNumber(raw.leverage) ?? current?.leverage ?? 100,
     metricsScope: scope,
     publicationToken: validToken ? token : current?.publicationToken,

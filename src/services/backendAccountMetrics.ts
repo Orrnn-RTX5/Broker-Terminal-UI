@@ -1,3 +1,4 @@
+import { readBackendCurrencyDigits } from '../utils/accountCurrency';
 import type { Account } from '../store/useAppStore';
 
 type RecordValue = Record<string, unknown>;
@@ -69,6 +70,7 @@ export const normalizeBackendAccount = (value: unknown, previous?: Account | nul
   return {
     ...next,
     currency: String(raw.currency ?? previous?.currency ?? 'USD'),
+    currencyDigits: readBackendCurrencyDigits(raw) ?? previous?.currencyDigits,
     leverage: readBackendNumber(raw.leverage) ?? previous?.leverage ?? 100,
   } as unknown as Account;
 };
@@ -84,6 +86,7 @@ export const getBackendAccountUpdateKeys = (value: unknown): (keyof Account)[] =
     }
   }
   if (raw.currency !== undefined) keys.push('currency');
+  if (readBackendCurrencyDigits(raw) !== undefined) keys.push('currencyDigits');
   if (raw.leverage !== undefined) keys.push('leverage');
   return keys;
 };

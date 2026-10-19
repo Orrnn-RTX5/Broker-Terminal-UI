@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyLivePositionProfit,
   formatPositionProfit,
+  resolvePositionProfitDigits,
   calculateLivePositionProfit,
   resolveTradeAccountMetrics,
   resolveTradeProfit,
@@ -509,10 +510,15 @@ describe('live account metrics between backend snapshots', () => {
     expect(partial.equity).toBeCloseTo(10024.2336, 10);
   });
 
-  it('formats small row profit with enough decimals to show each tick', () => {
-    expect(formatPositionProfit(-0.1525)).toBe('-0.1525');
-    expect(formatPositionProfit(-0.00001)).toBe('0.0000');
-    expect(formatPositionProfit(42.5)).toBe('42.500');
-    expect(formatPositionProfit(12345.678)).toBe('12 345.68');
+  it('formats row profit with account-currency digits, not a USD-only heuristic', () => {
+    expect(formatPositionProfit(-0.1525, 2)).toBe('-0.15');
+    expect(formatPositionProfit(-0.00001, 2)).toBe('0.00');
+    expect(formatPositionProfit(42.5, 3)).toBe('42.500');
+    expect(formatPositionProfit(1234.5, 0)).toBe('1 235');
+    expect(formatPositionProfit(12345.678, 2)).toBe('12 345.68');
+    expect(resolvePositionProfitDigits({ currency: 'USD' })).toBe(2);
+    expect(resolvePositionProfitDigits({ currency: 'JPY' })).toBe(0);
+    expect(resolvePositionProfitDigits({ currency: 'KWD' })).toBe(3);
+    expect(resolvePositionProfitDigits({ currency: 'USD', currencyDigits: 3 })).toBe(3);
   });
 });

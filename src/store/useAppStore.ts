@@ -236,6 +236,7 @@ export interface Account {
   marketClosed?: boolean;
   metricUpdatedAt?: Partial<Record<'balance' | 'equity' | 'margin' | 'freeMargin' | 'unrealizedPL' | 'marginLevel' | 'credit', number>>;
   currency: string;
+  currencyDigits?: number;
   leverage: number;
 }
 
