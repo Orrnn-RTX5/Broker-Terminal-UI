@@ -768,7 +768,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!closeLogin) {
       if (showFailureFeedback) {
         publishOrderFeedback(
-          [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(' — No trading account is selected. Please sign in again.')],
+          [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(' — '), feedbackLabel('No trading account is selected. Please sign in again.')],
           'error',
         );
       }
@@ -852,7 +852,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!position) return;
     const login = getLiveTradingLogin();
     if (!login) {
-      publishOrderFeedback('No trading account is selected. Please sign in again.');
+      publishOrderFeedback([feedbackLabel('No trading account is selected. Please sign in again.')]);
       return;
     }
     const operationContext = captureTradeOperationContext(login);
@@ -896,7 +896,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!position) return;
     const login = getLiveTradingLogin();
     if (!login) {
-      publishOrderFeedback('No trading account is selected. Please sign in again.');
+      publishOrderFeedback([feedbackLabel('No trading account is selected. Please sign in again.')]);
       return;
     }
     const operationContext = captureTradeOperationContext(login);
