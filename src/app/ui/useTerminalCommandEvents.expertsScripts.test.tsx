@@ -14,6 +14,14 @@ import {
 } from '../../services/bottomDockNavigation';
 import { DockManager, type DockContainer, type DockLayout } from '../../services/dockManager';
 
+// SUI-T15-guard: this file covers the AVAILABLE-tab open path, so the
+// availability lock is forced off here. Locked-tab behavior (visible notice,
+// no silent no-op) is covered in useTerminalCommandEvents.expertsScriptsGuard.test.tsx.
+vi.mock('../../config/terminalToolAvailability', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../config/terminalToolAvailability')>();
+  return { ...actual, isUnavailableDockSection: () => false };
+});
+
 const setter = <T,>(): Dispatch<SetStateAction<T>> => vi.fn();
 
 const useHarness = () => {

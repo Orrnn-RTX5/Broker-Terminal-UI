@@ -3,6 +3,7 @@ import type { ChartSymbolAnchor } from '../../components/ChartSymbolDropdown';
 import type { ChartType, Timeframe } from '../../types/chart';
 import type { DockContainer, DockPanelConfig } from '../../services/dockManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { isUnavailableDockSection, unavailableDockSections } from '../../config/terminalToolAvailability';
 import { openBottomDockTab, type BottomDockNavigationTab } from '../../services/bottomDockNavigation';
 import { getActiveChartCommandTarget } from '../../services/chartCommandTarget';
 import { getDockPanelChartType } from '../../services/chartTypeCommand';
@@ -197,6 +198,14 @@ export const useTerminalCommandEvents = ({
       };
       const expertsScriptsTarget = expertsScriptsTab[panelType];
       if (expertsScriptsTarget) {
+        // SUI-T15-guard: Experts/Code Base tabs sit under the existing
+        // availability lock (BottomDock refuses them silently). Refuse here
+        // instead through the existing toast surface so the request is never
+        // a silent no-op; available tabs open exactly as before.
+        if (isUnavailableDockSection(expertsScriptsTarget)) {
+          displayToast(translateUi(unavailableDockSections[expertsScriptsTarget]), 'error');
+          return;
+        }
         openBottomDockTab(expertsScriptsTarget);
         return;
       }

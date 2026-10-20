@@ -19,7 +19,7 @@ import { getChartPanelCount, MAX_CHART_PANELS } from '../../services/dockManager
 import { useDrawingSidebarStore } from '../../store/useDrawingSidebarStore';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import { TERMINAL_RESOLUTION_PRESETS, useTerminalResolutionStore } from '../../store/useTerminalResolutionStore';
-import { lockedTerminalTool, unavailableDockSections } from '../../config/terminalToolAvailability';
+import { isUnavailableDockSection, lockedTerminalTool, unavailableDockSections } from '../../config/terminalToolAvailability';
 import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
@@ -501,8 +501,12 @@ export const MenuBar = ({
                 ]
             },
             { divider: true, label: '' },
-            { label: t('menu.insert.experts'), icon: <Icon name="cpu" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Experts' })); setActiveMenu(null); } },
-            { label: t('menu.insert.scripts'), icon: <Icon name="code" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Scripts' })); setActiveMenu(null); } },
+            // SUI-T15-guard: Experts/Scripts open locked bottom-dock tabs, so
+            // the menu shows the existing availability lock as disabled state
+            // with reason (same pattern as Economic Calendar) instead of a
+            // click BottomDock would refuse silently.
+            { label: t('menu.insert.experts'), icon: <Icon name="cpu" size="sm" />, disabled: isUnavailableDockSection('Experts'), unavailableReason: isUnavailableDockSection('Experts') ? unavailableDockSections.Experts : undefined, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Experts' })); setActiveMenu(null); } },
+            { label: t('menu.insert.scripts'), icon: <Icon name="code" size="sm" />, disabled: isUnavailableDockSection('Code Base'), unavailableReason: isUnavailableDockSection('Code Base') ? unavailableDockSections['Code Base'] : undefined, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Scripts' })); setActiveMenu(null); } },
         ],
         Charts: [
             { label: t('menu.charts.depthOfMarket'), icon: <Icon name="box" size="sm" />, ...terminalShortcut('view.depth-of-market') },
