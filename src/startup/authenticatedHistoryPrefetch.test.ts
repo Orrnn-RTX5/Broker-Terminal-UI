@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest';
+
+// The default chart symbol is tenant deployment config (no compiled-in market);
+// these cases model a deployment that configured BTCUSD.
+vi.hoisted(() => { vi.stubEnv('VITE_DEFAULT_CHART_SYMBOL', 'BTCUSD'); });
 import type { OHLCData } from '../services/chartDataService';
 
 const state = vi.hoisted(() => ({

@@ -36,6 +36,9 @@ export function preloadPublicStartupHistory(): void {
   } catch { return; }
   const backend = getPublicBackendTarget();
   if (!backend) return;
+  // No configured tenant chart symbol: the chart opens on the first authorized
+  // symbol, which is unknown here, so there is nothing to warm up.
+  if (!DEFAULT_CHART_SYMBOL) return;
   const query = new URLSearchParams({ timeframe: DEFAULT_CHART_TIMEFRAME, limit: String(FIRST_PAINT_HISTORY_COUNT) });
   const url = toLocalDevProxyUrl(`${backend}/api/v2/candles/${encodeURIComponent(DEFAULT_CHART_SYMBOL)}?${query}`);
   const brokerId = getRuntimeBrokerConfiguration().brokerId;

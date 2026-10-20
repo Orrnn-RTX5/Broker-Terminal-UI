@@ -774,7 +774,7 @@ ${rows}
 </Table>
 </Worksheet>
 </Workbook>`;
-        downloadTextFile(xml, 'rtx5-trade-report.xml', 'application/vnd.ms-excel');
+        downloadTextFile(xml, 'trade-report.xml', 'application/vnd.ms-excel');
     };
 
     const setShowTradeLevelsForSymbol = (symbol: string, visible: boolean) => {

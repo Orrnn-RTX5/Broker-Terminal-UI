@@ -387,7 +387,7 @@ body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; print-color-adjust: e
 ${prefs.includeHeader ? `<header class="header"><div class="header-title">${title}</div><div class="header-info">${range}${escapeHTML(tr('Time'))}: ${capturedAt}</div></header>` : ''}
 <div class="chart-container" dir="ltr">${data.chartCanvas ? `<img src="${data.chartCanvas.toDataURL('image/png')}" alt="${escapeHTML(data.symbol)} ${escapeHTML(data.timeframe)} ${escapeHTML(tr('Chart'))}" class="chart-image">` : `<p>${escapeHTML(tr('No chart image is available. Open a chart and try again.'))}</p>`}</div>
 ${indicators || drawings ? `<section class="legend">${indicators}${drawings}</section>` : ''}
-${prefs.includeFooter ? `<footer class="footer"><span class="footer-left">${escapeHTML(prefs.footerText || `RTX5 | ${tr('Chart')}`)}</span><span class="footer-right">${escapeHTML(tr('Page 1 of 1 |').replace(/\s*\|\s*$/, ''))}</span></footer>` : ''}
+${prefs.includeFooter ? `<footer class="footer"><span class="footer-left">${escapeHTML(prefs.footerText || tr('Chart'))}</span><span class="footer-right">${escapeHTML(tr('Page 1 of 1 |').replace(/\s*\|\s*$/, ''))}</span></footer>` : ''}
 </main></body></html>`;
   }
 

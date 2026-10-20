@@ -505,7 +505,7 @@ ${rows}
 </Table>
 </Worksheet>
 </Workbook>`;
-        downloadTextFile(xml, 'rtx5-history-report.xml', 'application/vnd.ms-excel');
+        downloadTextFile(xml, 'history-report.xml', 'application/vnd.ms-excel');
     };
 
     const setTradeHistoryForSymbol = (symbol: string, visible: boolean) => {

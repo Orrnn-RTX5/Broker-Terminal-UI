@@ -49,7 +49,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose }) => {
         : 'Standard';
 
   const [accountInfo, setAccountInfo] = useState({
-    accountNumber: activeLogin ? `RTX-${activeLogin.toString().padStart(6, '0')}` : '—',
+    accountNumber: activeLogin ? String(activeLogin) : '—',
     accountType: resolvedAccountType,
     leverage: account?.leverage || 100,
   });
@@ -62,7 +62,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose }) => {
         if (!login) return;
         const data = await tradeGatewayApi.getAccount(login);
         setAccountInfo({
-          accountNumber: `RTX-${login.toString().padStart(6, '0')}`,
+          accountNumber: String(login),
           accountType: resolvedAccountType,
           leverage: data.leverage || 100,
         });

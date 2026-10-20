@@ -212,7 +212,7 @@ describe('unavailable terminal services', () => {
                 fireEvent.click(screen.getByRole('menuitem', { name: 'Tools' }));
             } else {
                 fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
-                fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Algo Trading' }));
+                fireEvent.click(screen.getByRole('menuitem', { name: 'Algo Trading' }));
             }
         };
         openTools();
@@ -259,7 +259,7 @@ describe('MenuBar toolbar visibility', () => {
             fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
         } else {
             fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
-            fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Terminal' }));
             fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         }
         fireEvent.click(screen.getByRole('menuitem', { name: 'menu.view.toolbars' }));
@@ -341,7 +341,7 @@ describe('MenuBar hamburger launcher', () => {
         const launcher = screen.getByRole('button', { name: 'Open application menu' });
         const openView = () => {
             fireEvent.click(launcher);
-            fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Terminal' }));
             fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         };
         const stateKey = bar === 'statusBar' ? 'statusBarVisible' : 'chartsBarVisible';
@@ -425,8 +425,8 @@ describe('MenuBar hamburger launcher', () => {
             'One Click Trading',
             'Light Theme',
             'Color Templates',
-            'RTX5 Algo Trading',
-            'RTX5 Terminal',
+            'Algo Trading',
+            'Terminal',
             'Economic Calendar',
             'Language',
             'Shortcuts',
@@ -662,7 +662,7 @@ describe('MenuBar hamburger launcher', () => {
         expect(screen.queryByText('200002 - MetaQuotes-Demo')).not.toBeInTheDocument();
         expect(screen.queryByText('Demo')).not.toBeInTheDocument();
         expect(screen.queryByText('Current account 200002')).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Terminal' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         expect(screen.getByRole('menuitem', { name: 'Search Symbols' })).toBeInTheDocument();
         fireEvent.click(screen.getByRole('menuitem', { name: 'Font Size' }));
@@ -670,7 +670,7 @@ describe('MenuBar hamburger launcher', () => {
         expect(onSetAdvancedFontSize).toHaveBeenCalledWith('large');
 
         fireEvent.click(launcher);
-        fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Terminal' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Focus Chart' }));
         expect(onSetFocusChart).toHaveBeenCalledWith(true);
@@ -680,7 +680,7 @@ describe('MenuBar hamburger launcher', () => {
         expect(onSetAdvancedViewEnabled).toHaveBeenCalledWith(false);
 
         fireEvent.click(launcher);
-        fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Terminal' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Search Symbols' }));
         expect(await screen.findByRole('dialog', { name: 'Symbols dialog' }, { timeout: 5_000 })).toBeInTheDocument();
@@ -1040,7 +1040,7 @@ describe('MenuBar Electron desktop menubar', () => {
             fireEvent.click(screen.getByRole('menuitem', { name: 'Window' }));
         } else {
             fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
-            fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Terminal' }));
             fireEvent.click(screen.getByRole('menuitem', { name: 'Window layout' }));
         }
         const disabled = screen.getByRole('menuitem', { name: 'menu.window.arrangeIcons' });
@@ -1084,7 +1084,7 @@ describe('MenuBar Electron desktop menubar', () => {
     it('applies terminal resolution through the web Window layout menu', () => {
         render(<TerminalViewport role="main"><MenuBar /></TerminalViewport>);
         fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
-        fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Terminal' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Window layout' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'menu.window.resolution' }));
         fireEvent.click(screen.getByRole('menuitemradio', { name: '1280 × 720' }));

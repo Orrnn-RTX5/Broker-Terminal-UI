@@ -22,7 +22,7 @@ const TABS: { id: TabId; label: string; icon: IconName; title: string; descripti
     { id: 'notifications', label: 'Notifications', icon: 'bell', title: 'Notifications', description: 'Choose which updates you receive and how they reach you.' },
     { id: 'email', label: 'Email', icon: 'mail', title: 'Email', description: 'Email delivery for alerts and terminal updates.', unavailable: true },
     { id: 'ftp', label: 'FTP', icon: 'hard-drive', title: 'Report publishing', description: 'Scheduled report delivery to an FTP server.', unavailable: true },
-    { id: 'community', label: 'Community', icon: 'globe', title: 'RTX5 Community', description: 'Your connection to the RTX5 community.', group: 'RTX5 services', unavailable: true },
+    { id: 'community', label: 'Community', icon: 'globe', title: 'RTX5 Community', description: 'Your connection to the community.', group: 'Services', unavailable: true },
     { id: 'signals', label: 'Signals', icon: 'wifi', title: 'RTX5 Signals Hub', description: 'Signal providers and subscription preferences.', unavailable: true },
 ];
 
@@ -234,7 +234,7 @@ const UNAVAILABLE_CONTENT: Partial<Record<TabId, { title: string; description: s
     events: { title: 'Event sound profiles', description: 'Custom event sounds are not available in this terminal. You can manage notification sounds in Notifications.', features: ['Connection & system events', 'Custom sound profiles', 'Event playback preferences'] },
     email: { title: 'Email delivery', description: 'Email configuration is not available in this terminal.', features: ['SMTP server configuration', 'Sender & recipient details', 'Email alert delivery'] },
     ftp: { title: 'Automated report publishing', description: 'FTP publishing is not available in this terminal.', features: ['FTP server connection', 'Report destination', 'Publishing schedule'] },
-    community: { title: 'Connect with the RTX5 community', description: 'Community accounts are not available in this terminal.', features: ['Community account', 'Shared resources', 'Account preferences'] },
+    community: { title: 'Connect with the community', description: 'Community accounts are not available in this terminal.', features: ['Community account', 'Shared resources', 'Account preferences'] },
     signals: { title: 'Signal subscriptions', description: 'Signal subscriptions are not available in this terminal.', features: ['Signal providers', 'Subscription management', 'Signal preferences'] },
 };
 function UnavailableTab({ tab, icon }: { tab: TabId; icon: IconName }) {

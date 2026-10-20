@@ -2,6 +2,10 @@
 import React, { useEffect } from 'react';
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// The default chart symbol is tenant deployment config (no compiled-in market);
+// these cases model a deployment that configured BTCUSD.
+vi.hoisted(() => { vi.stubEnv('VITE_DEFAULT_CHART_SYMBOL', 'BTCUSD'); });
 import { DockContainer } from './DockContainer';
 import { DockManager, MAX_CHART_PANELS, type DockPanelConfig } from '../../services/dockManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';

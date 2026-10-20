@@ -33,10 +33,10 @@ interface ExpertItem {
 // --- MOCK DATA ---
 
 const CODE_BASE_DATA: CodeBaseItem[] = [
-    { id: '1', name: 'RTX5 Trend Master', category: 'Trend Indicators', date: '2025.12.10', author: 'RTX Systems', description: 'Advanced trend following indicator for major pairs.' },
+    { id: '1', name: 'Trend Master', category: 'Trend Indicators', date: '2025.12.10', author: 'TrendLab', description: 'Advanced trend following indicator for major pairs.' },
     { id: '2', name: 'Institutional Volume', category: 'Oscillators', date: '2025.11.28', author: 'PropDev', description: 'Volume analysis tool for detecting institutional flow.' },
     { id: '3', name: 'Grid Manager Pro', category: 'Expert Advisors', date: '2025.11.15', author: 'AlgoTrader', description: 'Robust grid management system with risk controls.' },
-    { id: '4', name: 'News Filter API', category: 'Libraries', date: '2025.10.30', author: 'RTX Core', description: 'Integration library for economic calendar events.' },
+    { id: '4', name: 'News Filter API', category: 'Libraries', date: '2025.10.30', author: 'CoreDev', description: 'Integration library for economic calendar events.' },
     { id: '5', name: 'Fibonacci Auto-Plot', category: 'Scripts', date: '2025.10.12', author: 'ChartWizard', description: 'Automatically plots fib levels on current timeframe.' },
 ];
 
@@ -44,11 +44,11 @@ const ARTICLES_DATA: ArticleItem[] = [
     { id: '1', name: 'Strategies for XAUUSD Scalping', description: 'Deep dive into 1-minute timeframe scalping using RTX5 tools.', rating: 5, date: '2026.01.18 14:30', author: 'GoldMike' },
     { id: '2', name: 'Understanding Order Flow', description: 'How to read the tape and DOM for better entry precision.', rating: 4, date: '2026.01.15 09:15', author: 'QuantDesk' },
     { id: '3', name: 'Risk Management 101 for Prop Firms', description: 'Essential guide to passing evaluations and keeping funded accounts.', rating: 5, date: '2026.01.10 11:00', author: 'RiskManager' },
-    { id: '4', name: 'Automating your Strategy with RTX Scripts', description: 'Introduction to the RTX5 scripting language basics.', rating: 3, date: '2025.12.28 16:45', author: 'DevTeam' },
+    { id: '4', name: 'Automating your Strategy with Scripts', description: 'Introduction to the RTX5 scripting language basics.', rating: 3, date: '2025.12.28 16:45', author: 'DevTeam' },
 ];
 
 const EXPERTS_DATA: ExpertItem[] = [
-    { id: '1', name: 'RTX Scalper Pro', description: 'High frequency scalping EA for EURUSD.', type: 'Advisor', rating: 4, date: '2026.01.05', price: '$199' },
+    { id: '1', name: 'Scalper Pro', description: 'High frequency scalping EA for EURUSD.', type: 'Advisor', rating: 4, date: '2026.01.05', price: '$199' },
     { id: '2', name: 'Golden Zone Indicator', description: 'Highlights premium and discount zones automatically.', type: 'Indicator', rating: 5, date: '2026.01.12', price: 'Free' },
     { id: '3', name: 'Trade Copier Local', description: 'Fast trade copying between RTX5 instances.', type: 'Service', rating: 5, date: '2025.12.20', price: '$49/mo' },
     { id: '4', name: 'Close All Orders', description: 'Utility script to close all open positions instantly.', type: 'Script', rating: 3, date: '2025.11.10', price: 'Free' },

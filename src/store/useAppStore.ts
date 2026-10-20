@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { pickAccountDisplayName } from '../utils/accountDisplayName';
 import type { TradingAccountType } from '../services/tradingAccountType';
 import { devtools, persist } from 'zustand/middleware';
-import { useSystemJournalStore } from './useSystemJournalStore';
+import { formatJournalLoginMessage, useSystemJournalStore } from './useSystemJournalStore';
 import { hasTradeHistoryPositionLevelChanges, rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
 import { isOlderPositionVersion, mergePositionRecord } from '../services/positionStream';
 import {
@@ -782,7 +782,7 @@ export const useAppStore = create<AppState>()(
             : savedAccount;
           if (isAuth && accountId) {
             // Log successful login to system journal
-            useSystemJournalStore.getState().addLog('System', `Login to RTX5 as account ${accountId}`);
+            useSystemJournalStore.getState().addLog('System', formatJournalLoginMessage(accountId));
           }
 
           let sessionChangeReason: 'login' | 'account_change' | 'token_rotation' | null = null;

@@ -6,7 +6,7 @@
     "node": ">=22",
     "npm": ">=10"
   },
-  "description": "RTX Terminal - Professional Trading Terminal",
+  "description": "Professional trading terminal",
   "author": "RTX",
   "type": "module",
   "main": "electron.cjs",
@@ -44,19 +44,20 @@
     "check:docs": "node scripts/checkMarkdownLinks.mjs",
     "check:secrets": "node scripts/checkTrackedSecrets.mjs",
     "electron:dev": "electron .",
-    "electron:build": "npm run build:electron && npx electron-builder --win",
-    "electron:publish": "npm run build:electron && npx electron-builder --win --publish always"
+    "electron:build": "npm run build:electron && npx electron-builder --win --config electron-builder.config.cjs",
+    "electron:publish": "npm run build:electron && npx electron-builder --win --config electron-builder.config.cjs --publish always"
   },
   "build": {
     "appId": "com.rtx.terminal",
-    "productName": "RTX Terminal",
-    "artifactName": "RTX.Terminal.Setup.${version}.${ext}",
+    "productName": "Terminal",
+    "artifactName": "Terminal.Setup.${version}.${ext}",
     "directories": {
       "output": "draft"
     },
     "files": [
       "dist/**/*",
       "electron.cjs",
+      "electron-brand.cjs",
       "electron-network.cjs",
       "electron-startup.cjs",
       "desktop-splash.html",
@@ -73,7 +74,7 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "RTX Terminal"
+      "shortcutName": "Terminal"
     },
     "publish": {
       "provider": "github",

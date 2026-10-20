@@ -12,6 +12,12 @@ export interface JournalLogEntry {
     message: string;
 }
 
+// Neutral journal texts (white-label: no vendor brand). The login and welcome
+// sounds key off these exact messages.
+export const JOURNAL_WELCOME_MESSAGE = 'Welcome to the terminal';
+export const JOURNAL_LOGIN_MESSAGE_PREFIX = 'Login as account ';
+export const formatJournalLoginMessage = (accountId: string | number): string => `${JOURNAL_LOGIN_MESSAGE_PREFIX}${accountId}`;
+
 const playJournalSoundAfterPaint = (type: 'login' | 'welcome') => {
     const play = () => playSystemSound(type);
     if (typeof window === 'undefined') return;
@@ -40,7 +46,7 @@ export const useSystemJournalStore = create<SystemJournalState>((set) => ({
             type_text: 'System',
             datetime: Math.floor(Date.now() / 1000),
             source: 'Terminal',
-            message: 'Welcome to RTX5 Terminal',
+            message: JOURNAL_WELCOME_MESSAGE,
         }
     ],
 
@@ -48,9 +54,9 @@ export const useSystemJournalStore = create<SystemJournalState>((set) => ({
         const now = Math.floor(Date.now() / 1000);
 
         // System Audio Triggers
-        if (message.includes('Login to RTX5')) {
+        if (message.startsWith(JOURNAL_LOGIN_MESSAGE_PREFIX)) {
             playJournalSoundAfterPaint('login');
-        } else if (message.includes('Welcome to RTX5')) {
+        } else if (message === JOURNAL_WELCOME_MESSAGE) {
             playJournalSoundAfterPaint('welcome');
         }
 

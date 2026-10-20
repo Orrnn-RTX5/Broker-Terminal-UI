@@ -10,6 +10,13 @@ const path = require('path');
 const { exec } = require('child_process');
 const { registerBrokerWebSocketOriginPolicy } = require('./electron-network.cjs');
 const { createDesktopStartup } = require('./electron-startup.cjs');
+const { resolveBrandProductName, resolveWindowTitle } = require('./electron-brand.cjs');
+
+// Product name from deployment config (env or the packaged build stamp); the
+// neutral fallback logs a warning and never shows an error string to users.
+let brandPackageMetadata = null;
+try { brandPackageMetadata = require('./package.json'); } catch { brandPackageMetadata = null; }
+const BRAND_PRODUCT_NAME = resolveBrandProductName({ packageMetadata: brandPackageMetadata });
 
 // electron-updater and its dependency tree are expensive to require and are
 // first needed seconds after launch. Loading it lazily keeps main-process
@@ -357,7 +364,7 @@ ipcMain.handle('shell-open-external', async (_event, url) => {
 
 ipcMain.on('set-window-title', (_event, title) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setTitle(typeof title === 'string' ? title : 'Terminal');
+        mainWindow.setTitle(resolveWindowTitle(title, BRAND_PRODUCT_NAME));
     }
 });
 
@@ -368,7 +375,7 @@ function createWindow() {
         height: 900,
         minWidth: 1024,
         minHeight: 600,
-        title: 'Terminal',
+        title: BRAND_PRODUCT_NAME,
         icon: path.join(__dirname, 'build', 'icon.ico'),
         frame: false,
         show: false,

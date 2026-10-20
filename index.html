@@ -229,6 +229,18 @@
         : {};
       var validatedBrokerConfig = typeof window.__RTX_VALIDATE_BROKER_CONFIG__ === 'function'
         ? window.__RTX_VALIDATE_BROKER_CONFIG__(runtimeConfig) : null;
+      // Tenant brand before first paint: only an explicitly configured
+      // BROKER_NAME of a valid deployment. Otherwise the neutral static title
+      // stays and the app resolves the broker-published name after boot.
+      try {
+        var bootBrandName = validatedBrokerConfig && validatedBrokerConfig.valid
+          ? String(runtimeConfig.BROKER_NAME || runtimeConfig.VITE_BROKER_NAME || '').trim()
+          : '';
+        if (bootBrandName) {
+          document.title = bootBrandName;
+          root.setAttribute('data-rtx-boot-brand', bootBrandName);
+        }
+      } catch (_) { /* The brand title must never delay the terminal. */ }
       function firstConfiguredValue(values) {
         for (var index = 0; index < values.length; index++) {
           if (values[index] !== undefined && values[index] !== null) return String(values[index]).trim().toLowerCase();
@@ -414,7 +426,16 @@
   <div id="root">
     <div data-rtx-static-shell>
       <div class="rtx-terminal-loading" role="status" aria-live="polite" aria-busy="true">
-        <div class="rtx-terminal-loading__brand">Web Terminal</div>
+        <div class="rtx-terminal-loading__brand" data-rtx-boot-brand-slot>Web Terminal</div>
+        <script>
+          (function applyBootBrand() {
+            try {
+              var brand = document.documentElement.getAttribute('data-rtx-boot-brand');
+              var slot = document.querySelector('[data-rtx-boot-brand-slot]');
+              if (brand && slot) slot.textContent = brand;
+            } catch (_) { /* The brand label must never delay the terminal. */ }
+          })();
+        </script>
         <div class="rtx-terminal-loading__spinner" aria-hidden="true"></div>
         <div class="rtx-terminal-loading__message">Loading terminal…</div>
       </div>

@@ -166,7 +166,7 @@ describe('instant startup shell source contract', () => {
   it('starts the public catalog and first chart page before the terminal modules download', () => {
     const fetch = vi.fn(() => Promise.resolve({ ok: true }));
     const shell = runInstantShell({
-      runtimeConfig: { BACKEND_TARGET: 'web', API_HOST: 'https://service.example' },
+      runtimeConfig: { BACKEND_TARGET: 'web', API_HOST: 'https://service.example', DEFAULT_CHART_SYMBOL: 'BTCUSD' },
       fetch,
     }) as Document & { startupWindow: { __RTX_EARLY_PUBLIC_STARTUP__?: { symbolsUrl: string; candlesUrl: string } } };
 
@@ -197,6 +197,69 @@ describe('instant startup shell source contract', () => {
     });
   });
 
+  it('starts no candle warmup when the deployment configures no default chart symbol', () => {
+    const fetch = vi.fn(() => Promise.resolve({ ok: true }));
+    const shell = runInstantShell({
+      runtimeConfig: { BACKEND_TARGET: 'web', API_HOST: 'https://service.example' },
+      fetch,
+    }) as Document & { startupWindow: { __RTX_EARLY_PUBLIC_STARTUP__?: { symbolsUrl: string; candlesUrl?: string } } };
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith('https://service.example/api/v2/instruments', {
+      credentials: 'omit',
+      cache: 'no-store', redirect: 'error', headers: { 'X-Broker-ID': 'fixture-broker' },
+    });
+    expect(shell.startupWindow.__RTX_EARLY_PUBLIC_STARTUP__?.candlesUrl).toBeUndefined();
+  });
+
+  it('warms the configured symbol with the configured timeframe and count', () => {
+    const fetch = vi.fn(() => Promise.resolve({ ok: true }));
+    runInstantShell({
+      runtimeConfig: {
+        BACKEND_TARGET: 'web', API_HOST: 'https://service.example',
+        DEFAULT_CHART_SYMBOL: 'xauusd', DEFAULT_CHART_TIMEFRAME: 'H1', FIRST_PAINT_HISTORY_COUNT: '250',
+      },
+      fetch,
+    });
+    expect(fetch).toHaveBeenCalledWith('https://service.example/api/v2/candles/XAUUSD?timeframe=H1&limit=250', {
+      credentials: 'omit',
+      cache: 'no-store', redirect: 'error', headers: { 'X-Broker-ID': 'fixture-broker' },
+    });
+  });
+
+  it('paints only an explicitly configured broker name before first paint', () => {
+    const branded = runInstantShell({
+      runtimeConfig: { BACKEND_TARGET: 'web', API_HOST: 'https://service.example', BROKER_NAME: 'Fixture Markets' },
+    });
+    expect(branded.title).toBe('Fixture Markets');
+    expect(branded.documentElement.getAttribute('data-rtx-boot-brand')).toBe('Fixture Markets');
+
+    const unnamed = runInstantShell({ runtimeConfig: { BACKEND_TARGET: 'web', API_HOST: 'https://service.example' } });
+    expect(unnamed.title).toBe('Startup');
+    expect(unnamed.documentElement.hasAttribute('data-rtx-boot-brand')).toBe(false);
+
+    const invalid = runInstantShell({ runtimeConfig: { API_HOST: 'https://user:secret@service.example', BROKER_NAME: 'Fixture Markets' } });
+    expect(invalid.title).toBe('Startup');
+    expect(invalid.documentElement.hasAttribute('data-rtx-boot-brand')).toBe(false);
+  });
+
+  it('keeps the neutral loading label and swaps in only the boot brand', () => {
+    const html = readSource('index.html');
+    expect(html).toContain('<title>Web Terminal</title>');
+    expect(html).toContain('<div class="rtx-terminal-loading__brand" data-rtx-boot-brand-slot>Web Terminal</div>');
+    const brandScript = html.match(/<script>\s*(\(function applyBootBrand[\s\S]*?)<\/script>/)?.[1];
+    if (!brandScript) throw new Error('Boot brand script missing');
+    const run = (brand: string | null) => {
+      const doc = document.implementation.createHTMLDocument('Startup');
+      doc.body.innerHTML = '<div class="rtx-terminal-loading__brand" data-rtx-boot-brand-slot>Web Terminal</div>';
+      if (brand !== null) doc.documentElement.setAttribute('data-rtx-boot-brand', brand);
+      runInNewContext(brandScript, { document: doc });
+      return doc.querySelector('[data-rtx-boot-brand-slot]')?.textContent;
+    };
+    expect(run('Fixture <b>Markets</b>')).toBe('Fixture <b>Markets</b>');
+    expect(run(null)).toBe('Web Terminal');
+  });
+
   it.each([
     {},
     { API_HOST: 'https://service.example', BROKER_ID: '' },
@@ -224,7 +287,7 @@ describe('instant startup shell source contract', () => {
   it.each(['127.0.0.1', 'localhost', '::1', 'terminal.localhost'])('uses the same-origin broker proxy for early requests on Vite dev host %s', (hostname) => {
     const fetch = vi.fn(() => Promise.resolve(new Response('{}')));
     const shell = runInstantShell({
-      runtimeConfig: { BACKEND_TARGET: 'web', API_HOST: 'https://service.example:8443/' },
+      runtimeConfig: { BACKEND_TARGET: 'web', API_HOST: 'https://service.example:8443/', DEFAULT_CHART_SYMBOL: 'BTCUSD' },
       viteDev: true,
       protocol: 'http:',
       hostname,

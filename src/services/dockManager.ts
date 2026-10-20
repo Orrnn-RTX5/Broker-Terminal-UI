@@ -305,9 +305,11 @@ export class DockManager {
               {
                 id: 'chart-default-container',
                 type: 'panel',
-                title: `${DEFAULT_CHART_SYMBOL},${DEFAULT_CHART_TIMEFRAME}`,
+                // No configured tenant symbol: a symbol-less chart that the
+                // app settles on the first authorized symbol (as createChartPanel).
+                title: `${DEFAULT_CHART_SYMBOL || 'Chart'},${DEFAULT_CHART_TIMEFRAME}`,
                 component: 'Chart',
-                props: { symbol: DEFAULT_CHART_SYMBOL, timeframe: DEFAULT_CHART_TIMEFRAME },
+                props: { ...(DEFAULT_CHART_SYMBOL ? { symbol: DEFAULT_CHART_SYMBOL } : {}), timeframe: DEFAULT_CHART_TIMEFRAME },
                 ratio: 0.75,
                 closable: true,
                 floatable: true,

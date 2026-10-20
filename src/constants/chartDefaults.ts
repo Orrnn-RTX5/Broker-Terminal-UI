@@ -1,3 +1,5 @@
+import type { Timeframe } from '../types/chart';
+
 /**
  * Terminal chart defaults.
  *
@@ -10,9 +12,10 @@
  */
 
 const SYMBOL_PATTERN = /^[A-Z0-9._-]{1,20}$/;
-const TIMEFRAMES = new Set([
+const TIMEFRAMES: ReadonlySet<string> = new Set<Timeframe>([
   'M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN',
 ]);
+const isTimeframe = (value: string): value is Timeframe => TIMEFRAMES.has(value);
 
 const readRuntimeValue = (...keys: string[]): string => {
   if (typeof window === 'undefined') return '';
@@ -34,7 +37,9 @@ const readRuntimeValue = (...keys: string[]): string => {
 
 const readEnvValue = (...keys: string[]): string => {
   try {
-    const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env || {};
+    // Plain `import.meta.env` so Vite (build) and Vitest (stubEnv) resolve it;
+    // a cast on `import.meta` hides the access from Vite's env replacement.
+    const env = (import.meta.env || {}) as Record<string, string | undefined>;
     for (const key of keys) {
       const value = env[key];
       if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
@@ -53,12 +58,12 @@ const resolveDefaultChartSymbol = (): string => {
   return SYMBOL_PATTERN.test(candidate) ? candidate : '';
 };
 
-const resolveDefaultChartTimeframe = (): string => {
+const resolveDefaultChartTimeframe = (): Timeframe => {
   const candidate = (
     readRuntimeValue('DEFAULT_CHART_TIMEFRAME', 'VITE_DEFAULT_CHART_TIMEFRAME') ||
     readEnvValue('VITE_DEFAULT_CHART_TIMEFRAME', 'DEFAULT_CHART_TIMEFRAME')
   ).toUpperCase();
-  return TIMEFRAMES.has(candidate) ? candidate : 'M1';
+  return isTimeframe(candidate) ? candidate : 'M1';
 };
 
 const resolveFirstPaintHistoryCount = (): number => {

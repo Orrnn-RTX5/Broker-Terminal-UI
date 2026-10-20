@@ -104,7 +104,7 @@ describe('toolbar selection synchronization', () => {
     const openFocusMenu = () => {
       fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
       const menu = screen.getByRole('menu', { name: 'Application menu' });
-      fireEvent.click(within(menu).getByRole('menuitem', { name: 'RTX5 Terminal' }));
+      fireEvent.click(within(menu).getByRole('menuitem', { name: 'Terminal' }));
       fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
       return screen.getByRole('menuitemcheckbox', { name: 'Focus Chart' });
     };

@@ -64,11 +64,11 @@ describe('Navigator account context menu', () => {
         expect(screen.getAllByRole('menu')).toHaveLength(1);
         expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual([
             'Open an AccountInsert', 'Login to Trade AccountEnter', 'Login to Web Trader',
-            'Login to RTX5.community', 'Change Password', 'DeleteDelete', 'Deposit',
+            'Login to the community', 'Change Password', 'DeleteDelete', 'Deposit',
             'Withdrawal', 'Add to Favorites',
         ]);
         expect(within(menu).getAllByRole('separator')).toHaveLength(4);
-        for (const name of ['Deposit', 'Withdrawal', 'Login to RTX5.community']) {
+        for (const name of ['Deposit', 'Withdrawal', 'Login to the community']) {
             expect(within(menu).getByRole('menuitem', { name })).toHaveAttribute('aria-disabled', 'true');
         }
     });

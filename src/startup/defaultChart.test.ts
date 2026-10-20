@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// The default chart symbol is tenant deployment config (no compiled-in market);
+// these cases model a deployment that configured BTCUSD.
+vi.hoisted(() => { vi.stubEnv('VITE_DEFAULT_CHART_SYMBOL', 'BTCUSD'); });
 import type { DockContainer, DockPanelConfig } from '../services/dockManager';
 
 const collectCharts = (container: DockContainer): DockPanelConfig[] => container.children.flatMap(child => (

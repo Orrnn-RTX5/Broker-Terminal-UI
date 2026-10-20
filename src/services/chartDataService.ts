@@ -602,6 +602,9 @@ export class ChartDataService {
   }
 
   preloadStartupHistory(): void {
+    // Without a configured tenant symbol the first chart is the first
+    // authorized symbol, resolved later; never prefetch an empty symbol.
+    if (!DEFAULT_CHART_SYMBOL) return;
     preloadAuthenticatedStartupHistory(signal => this.fetchCandlesFromNetwork({
       symbol: DEFAULT_CHART_SYMBOL, timeframe: DEFAULT_CHART_TIMEFRAME,
       count: FIRST_PAINT_HISTORY_COUNT, signal,

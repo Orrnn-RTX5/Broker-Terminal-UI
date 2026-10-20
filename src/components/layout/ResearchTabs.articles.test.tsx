@@ -43,9 +43,9 @@ describe('CodeBaseTab', () => {
       'Author',
       'Date',
     ]);
-    expect(screen.getByText('RTX5 Trend Master')).toBeInTheDocument();
+    expect(screen.getByText('Trend Master')).toBeInTheDocument();
     expect(screen.getByText('Trend Indicators')).toBeInTheDocument();
-    expect(screen.getByText('RTX Systems')).toBeInTheDocument();
+    expect(screen.getByText('TrendLab')).toBeInTheDocument();
     expect(container.querySelectorAll('td.border-r')).toHaveLength(0);
   });
 
@@ -72,7 +72,7 @@ describe('ExpertsTab', () => {
       'Date',
       'Price',
     ]);
-    expect(screen.getByText('RTX Scalper Pro')).toBeInTheDocument();
+    expect(screen.getByText('Scalper Pro')).toBeInTheDocument();
     expect(screen.getAllByText('Advisor').length).toBeGreaterThan(0);
     expect(container.querySelectorAll('.rtx-research-rating')).toHaveLength(5);
     expect(container.querySelector('.rtx-experts-price--paid')).toHaveTextContent('$199');
