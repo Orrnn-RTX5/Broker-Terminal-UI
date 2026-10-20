@@ -334,9 +334,9 @@ export function useTradingChartContextMenuController({
     symbol,
   ]);
 
-  const handleCtxOpenNewOrder = useCallback(() => {
+  const handleCtxOpenNewOrder = useCallback((draft?: { orderType?: string; side?: string; price?: number }) => {
     window.dispatchEvent(new CustomEvent('openNewOrder', {
-      detail: { symbol, targetContextId: activeChartSourceId },
+      detail: { symbol, targetContextId: activeChartSourceId, draft },
     }));
   }, [activeChartSourceId, symbol]);
 

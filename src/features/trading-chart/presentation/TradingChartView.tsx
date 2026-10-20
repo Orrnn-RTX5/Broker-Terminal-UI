@@ -65,7 +65,7 @@ interface TradingChartViewProps {
   handleCtxGridLineStyleChange: (gridLineStyle: ChartProperties['gridLineStyle']) => void;
   handleCtxDeleteIndicators: () => void;
   handleCtxOpenDOM: () => void;
-  handleCtxOpenNewOrder: () => void;
+  handleCtxOpenNewOrder: (draft?: { orderType?: string; side?: string; price?: number }) => void;
   handleCtxOpenProperties: () => void;
   handleCtxRefresh: () => void;
   handleCtxSaveAsPicture: () => void;
