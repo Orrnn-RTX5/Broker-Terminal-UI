@@ -16,7 +16,9 @@ import {
 import { onCommittedBrokerAccountSessionScopeChange } from '../../../services/brokerSession';
 import { TRADE_MODIFIED_EVENT, type TradeModifiedEventDetail } from '../../../contracts/terminalEvents';
 import type {
+  BulkCancelOrdersAction,
   CancelOrderAction,
+  CancelOrderWithoutConfirmAction,
   CloseBulkPositionsAction,
   ClosePositionAction,
   ModifyPositionAction,
@@ -27,6 +29,12 @@ import { escapeHtml } from '../reporting';
 import { getCurrentBrokerAccountSessionScopeKey, normalizeTradeSymbol } from '../sessionScope';
 import { TradeMetricValue, UnavailableTradeMetric } from './TradeMetricValue';
 import { TradeTable } from './TradeTable';
+import { closePositionsBy, buildCloseByPairKey, findCloseByCounterpart, readCloseByLegTicket } from '../../../api/closeBy';
+import { publishOrderFeedback } from '../../../app/trading/orderFeedback';
+import { useConfirmStore } from '../../../store/useConfirmStore';
+import { feedbackLabel, feedbackValue } from '../../../utils/uiFeedback';
+import { formatOrderError } from '../../../utils/orderError';
+import { api } from '../../../services/api';
 import {
   ALL_TRADE_COLUMNS,
   clampTradeColumnWidth,
@@ -73,6 +81,8 @@ type TradeTabProps = {
   onClosePosition: ClosePositionAction;
   onModifyPosition: ModifyPositionAction;
   onCancelOrder?: CancelOrderAction;
+  onCancelBulkOrders?: BulkCancelOrdersAction;
+  onCancelOrderWithoutConfirm?: CancelOrderWithoutConfirmAction;
   onCloseBulk?: CloseBulkPositionsAction;
   formatMoney: (value: number | null | undefined) => string;
   loading: boolean;
@@ -87,6 +97,8 @@ export const TradeTab = memo(function TradeTab({
     account,
     onClosePosition,
     onCancelOrder,
+    onCancelBulkOrders,
+    onCancelOrderWithoutConfirm,
     onCloseBulk,
     formatMoney,
     loading,
@@ -771,6 +783,66 @@ ${rows}
         });
     }, []);
 
+    const closeByInFlightRef = useRef<Set<string>>(new Set());
+
+    // Close-by: net this row against its opposite-side same-symbol counterpart.
+    // Fail-closed: without a counterpart nothing is offered (menu item hidden)
+    // and nothing is sent; the confirm dialog is the existing themed confirm
+    // flow; positions are re-read from the backend after the call and every
+    // failure is surfaced as user-visible feedback.
+    const handleCloseByPosition = useCallback(async (position: ToolboxTradePosition): Promise<boolean> => {
+        const counterpart = findCloseByCounterpart(position, positions);
+        const rowTicket = readCloseByLegTicket(position);
+        const pairTicket = counterpart ? readCloseByLegTicket(counterpart) : null;
+        if (!counterpart || !rowTicket || !pairTicket) {
+            publishOrderFeedback(
+                [feedbackLabel('Close by'), feedbackValue(` #${String(position.ticket ?? position.id ?? '?')}: `), feedbackLabel('Failed'), feedbackValue(' — No opposite-side position for this symbol is available.')],
+                'error',
+            );
+            return false;
+        }
+        const pairKey = buildCloseByPairKey(rowTicket, pairTicket);
+        // Guard against double-click: skip if this pair is already closing.
+        if (closeByInFlightRef.current.has(pairKey)) return false;
+        const symbol = String(position.symbol ?? '').trim();
+        const confirmed = await useConfirmStore.getState().showConfirm(
+            `Close by #${rowTicket} and #${pairTicket}`,
+            `Close positions #${rowTicket} and #${pairTicket} (${symbol}) against each other at the current market price? This action cannot be undone.`,
+            { confirmLabel: 'Close by', danger: true },
+        );
+        if (!confirmed) return false;
+        closeByInFlightRef.current.add(pairKey);
+        try {
+            // account_login rides in the body (gateway requires it in-body).
+            await closePositionsBy(position, counterpart, { account_login: accountId ?? undefined });
+            try {
+                useAppStore.getState().setPositions(await api.positions.getPositions());
+            } catch (refreshError) {
+                console.warn('[Trade] Close-by confirmed, but position refresh failed:', refreshError);
+                publishOrderFeedback(
+                    [feedbackLabel('Close by'), feedbackValue(` #${rowTicket} / #${pairTicket}: `), feedbackLabel('Refresh failed'), feedbackValue(` — ${formatOrderError(refreshError)}`)],
+                    'error',
+                );
+            }
+            return true;
+        } catch (err) {
+            console.error('Failed to close positions by each other:', err);
+            publishOrderFeedback(
+                [feedbackLabel('Close by'), feedbackValue(` #${rowTicket} / #${pairTicket}: `), feedbackLabel('Failed'), feedbackValue(` — ${formatOrderError(err)}`)],
+                'error',
+            );
+            // Converge with backend truth best-effort; the original error is already surfaced.
+            try {
+                useAppStore.getState().setPositions(await api.positions.getPositions());
+            } catch (refreshError) {
+                console.warn('[Trade] Position refresh after failed close-by failed:', refreshError);
+            }
+            return false;
+        } finally {
+            closeByInFlightRef.current.delete(pairKey);
+        }
+    }, [positions, accountId]);
+
     const handleTradeContextMenu = useCallback((event: React.MouseEvent<HTMLTableRowElement>, position: ToolboxTradePosition) => {
         event.preventDefault();
         event.stopPropagation();
@@ -780,6 +852,11 @@ ${rows}
 
     const buildTradeContextMenuItems = (position: ToolboxTradePosition): ContextMenuItemConfig[] => {
         const symbol = String(position.symbol ?? '');
+        // Close-by is offered only while an opposite-side same-symbol
+        // counterpart is present; the lowest-ticket one is named (see
+        // findCloseByCounterpart). Otherwise the item stays hidden.
+        const closeByCounterpart = findCloseByCounterpart(position, positions);
+        const closeByTicket = closeByCounterpart ? readCloseByLegTicket(closeByCounterpart) : null;
         return [
             {
                 label: 'New Order',
@@ -792,6 +869,11 @@ ${rows}
                 icon: <Icon name="check" size="xs" />,
                 action: () => onClosePosition(position.id),
             },
+            ...(closeByTicket ? [{
+                label: `Close by #${closeByTicket}`,
+                icon: <Icon name="check" size="xs" />,
+                action: () => void handleCloseByPosition(position),
+            } satisfies ContextMenuItemConfig] : []),
             {
                 label: 'Modify or Delete',
                 icon: <Icon name="settings" size="xs" />,
@@ -963,6 +1045,8 @@ ${rows}
                 <PendingOrdersPanel
                     onModifyOrder={openModifyPendingOrder}
                     onCancelOrder={async (ticket) => { await onCancelOrder?.(ticket); }}
+                    onCancelBulkOrders={onCancelBulkOrders}
+                    onCancelOrderWithoutConfirm={onCancelOrderWithoutConfirm}
                 />
             ) : (
             <TradeTable
