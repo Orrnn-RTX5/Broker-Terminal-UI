@@ -7,12 +7,29 @@ import {
 } from '../config/backendTarget.js';
 import type { BrokerServer } from '../types/api';
 
-export const DEFAULT_BROKER_SERVER = 'RTX 5 Web Terminal';
+// Neutral fallback display label for "no broker server known yet". This must stay
+// brand-free: the brand-driven display name is resolved downstream by
+// brokerDisplayName(), which reads the per-tenant broker-config (brokerName /
+// defaultMt5Server) when the server matches the deployment. A module-level
+// constant cannot read runtime config, so the fallback itself stays neutral.
+// 'Broker' matches the existing neutral label brokerDisplayName() already uses
+// for unknown/URL-like servers.
+export const DEFAULT_BROKER_SERVER = 'Broker';
 export const BROKER_SERVER_STORAGE_KEY = 'rtx_broker_server';
 
+// Pre-white-label fallback label. Kept ONLY to migrate previously stored state
+// (localStorage / in-flight inputs); never shown to users and never used for
+// routing. Do not reuse this literal for any new behavior.
+const LEGACY_DEFAULT_BROKER_SERVER = 'RTX 5 Web Terminal';
+
 const normalizeServerName = (value: unknown): string => String(value || '').trim();
-const isDefaultDisplayServer = (value: string): boolean =>
-  normalizeServerName(value).toLowerCase() === DEFAULT_BROKER_SERVER.toLowerCase();
+/** True for the neutral fallback and the migrated legacy label (case-insensitive). */
+export const isDefaultBrokerServerValue = (value: unknown): boolean => {
+  const normalized = normalizeServerName(value).toLowerCase();
+  return normalized === DEFAULT_BROKER_SERVER.toLowerCase()
+    || normalized === LEGACY_DEFAULT_BROKER_SERVER.toLowerCase();
+};
+const isDefaultDisplayServer = (value: string): boolean => isDefaultBrokerServerValue(value);
 const brokerServerRegistry = new Map<string, BrokerServer>();
 
 export interface LoginBrokerTarget {
@@ -23,7 +40,9 @@ export interface LoginBrokerTarget {
 
 export const getStoredBrokerServer = (): string => {
   if (typeof window === 'undefined') return DEFAULT_BROKER_SERVER;
-  return normalizeServerName(localStorage.getItem(BROKER_SERVER_STORAGE_KEY)) || DEFAULT_BROKER_SERVER;
+  const stored = normalizeServerName(localStorage.getItem(BROKER_SERVER_STORAGE_KEY));
+  // Previously stored legacy labels migrate to the neutral fallback on read.
+  return !stored || isDefaultBrokerServerValue(stored) ? DEFAULT_BROKER_SERVER : stored;
 };
 
 export const persistBrokerServer = (server: string): string => {
@@ -92,7 +111,9 @@ const looksLikeBrokerServerAddress = (value: string): boolean => {
 };
 
 export const resolveLoginBrokerTarget = (serverInput: string): LoginBrokerTarget => {
-  const displayValue = normalizeServerName(serverInput) || DEFAULT_BROKER_SERVER;
+  const raw = normalizeServerName(serverInput);
+  // Empty and legacy fallback labels carry no routing hint; normalize to neutral.
+  const displayValue = !raw || isDefaultBrokerServerValue(raw) ? DEFAULT_BROKER_SERVER : raw;
 
   if (isDefaultDisplayServer(displayValue)) {
     return { displayValue };
