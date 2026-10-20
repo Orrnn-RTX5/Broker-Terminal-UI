@@ -1845,7 +1845,6 @@
   "Chart limit reached": "चार्ट की सीमा पूरी हो गई है",
   "Change chart symbol": "चार्ट का प्रतीक बदलें",
   "Add chart ({{count}}/{{limit}})": "चार्ट जोड़ें ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "आपके द्वारा निर्धारित स्टॉप लॉस या टेक प्रॉफिट बाजार मूल्य से कम से कम {{value0}} अंक भिन्न होना चाहिए।",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

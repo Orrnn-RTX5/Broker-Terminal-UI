@@ -1845,7 +1845,6 @@
   "Chart limit reached": "已达到图表数量上限",
   "Change chart symbol": "更改图表品种",
   "Add chart ({{count}}/{{limit}})": "添加图表 ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "您设置的止损或止盈必须与市场价格相差至少{{value0}}点。",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

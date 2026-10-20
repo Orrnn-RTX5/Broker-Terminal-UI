@@ -1845,7 +1845,6 @@
   "Chart limit reached": "เปิดกราฟถึงจำนวนสูงสุดแล้ว",
   "Change chart symbol": "เปลี่ยนสัญลักษณ์กราฟ",
   "Add chart ({{count}}/{{limit}})": "เพิ่มกราฟ ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "Stop Loss หรือ Take Profit ที่คุณตั้งไว้จะต้องแตกต่างจากราคาตลาดอย่างน้อย {{value0}} จุด",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

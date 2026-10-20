@@ -1845,7 +1845,6 @@
   "Chart limit reached": "최대 차트 수에 도달했습니다",
   "Change chart symbol": "차트 종목 변경",
   "Add chart ({{count}}/{{limit}})": "차트 추가 ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "설정한 손절 또는 익절 가격은 시장가와 최소 {{value0}}포인트 차이가 있어야 합니다.",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

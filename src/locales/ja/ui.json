@@ -1845,7 +1845,6 @@
   "Chart limit reached": "チャート数の上限に達しました",
   "Change chart symbol": "チャートの銘柄を変更",
   "Add chart ({{count}}/{{limit}})": "チャートを追加 ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "設定したストップロスまたはテイクプロフィットは、市場価格と少なくとも{{value0}}ポイント異なっていなければなりません。",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

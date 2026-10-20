@@ -1845,7 +1845,6 @@
   "Chart limit reached": "Batas grafik tercapai",
   "Change chart symbol": "Ubah simbol grafik",
   "Add chart ({{count}}/{{limit}})": "Tambah grafik ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "Stop Loss atau Take Profit yang Anda tetapkan harus berbeda dari harga pasar minimal {{value0}} poin.",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

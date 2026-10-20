@@ -421,7 +421,7 @@ describe('ModifyPositionDialog chart toolbar', () => {
         })]);
     });
 
-    it('renders the 5 points difference notice and enhanced left chart elements', () => {
+    it('does not render a minimum points distance notice and renders enhanced left chart elements', () => {
         render(
             <ModifyPositionDialog
                 isOpen
@@ -439,8 +439,10 @@ describe('ModifyPositionDialog chart toolbar', () => {
             />
         );
 
-        // Requirement 1: 5 points notice
-        expect(screen.getByText(/Stop Loss or Take Profit you set must differ from market price by at least 5 points\./i)).toBeInTheDocument();
+        // Requirement 1 (owner ruling): no minimum-distance hint. The gateway
+        // checks side + grid only, so no "at least N points" notice is shown.
+        expect(screen.queryByText(/must differ from market price by at least/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/at least \d+ points/i)).not.toBeInTheDocument();
         expect(screen.getByText(/Stops processing is performed on the broker side\./i)).toBeInTheDocument();
 
         // Requirement 2: Left side chart elements

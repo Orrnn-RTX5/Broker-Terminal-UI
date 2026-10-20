@@ -1850,7 +1850,6 @@
   "Chart limit reached": "Chart limit reached",
   "Change chart symbol": "Change chart symbol",
   "Add chart ({{count}}/{{limit}})": "Add chart ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

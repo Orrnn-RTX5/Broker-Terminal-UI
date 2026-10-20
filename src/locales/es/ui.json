@@ -1845,7 +1845,6 @@
   "Chart limit reached": "Límite de gráficos alcanzado",
   "Change chart symbol": "Cambiar símbolo del gráfico",
   "Add chart ({{count}}/{{limit}})": "Añadir gráfico ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "El Stop Loss o Take Profit que establezca debe diferir del precio de mercado en al menos {{value0}} puntos.",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

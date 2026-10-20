@@ -1845,7 +1845,6 @@
   "Chart limit reached": "Maximaal aantal grafieken bereikt",
   "Change chart symbol": "Grafieksymbool wijzigen",
   "Add chart ({{count}}/{{limit}})": "Grafiek toevoegen ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "De door u ingestelde Stop Loss of Take Profit moet minimaal {{value0}} punten afwijken van de marktprijs.",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

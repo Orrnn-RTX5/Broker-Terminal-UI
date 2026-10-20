@@ -1845,7 +1845,6 @@
   "Chart limit reached": "Grafik sınırına ulaşıldı",
   "Change chart symbol": "Grafik sembolünü değiştir",
   "Add chart ({{count}}/{{limit}})": "Grafik ekle ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "Belirlediğiniz Zararı Durdur veya Kar Al piyasa fiyatından en az {{value0}} puan farklı olmalıdır.",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

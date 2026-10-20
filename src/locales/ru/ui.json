@@ -1845,7 +1845,6 @@
   "Chart limit reached": "Достигнут лимит графиков",
   "Change chart symbol": "Изменить символ графика",
   "Add chart ({{count}}/{{limit}})": "Добавить график ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "Установленный вами стоп-лосс или тейк-профит должен отличаться от рыночной цены как минимум на {{value0}} пунктов.",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

@@ -1845,7 +1845,6 @@
   "Chart limit reached": "Đã đạt giới hạn biểu đồ",
   "Change chart symbol": "Đổi mã giao dịch trên biểu đồ",
   "Add chart ({{count}}/{{limit}})": "Thêm biểu đồ ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "Cắt lỗ hoặc chốt lời mà bạn đặt phải khác với giá thị trường ít nhất {{value0}} điểm.",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",

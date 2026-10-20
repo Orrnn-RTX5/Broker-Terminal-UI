@@ -520,14 +520,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     // Render-path digits: the same broker spec digits, nullable. Display
     // helpers below render raw values when precision is unknown.
     const digits = specDigits;
-    // Informational notice only (never a client-side block; the gateway
-    // enforces side + grid, no distance).
-    const stopsMetadata = [position, tick] as ReadonlyArray<{ stopsLevel?: unknown; stops_level?: unknown } | null | undefined>;
-    const stopsLevel = stopsMetadata[0]?.stopsLevel
-        ?? stopsMetadata[0]?.stops_level
-        ?? stopsMetadata[1]?.stopsLevel
-        ?? stopsMetadata[1]?.stops_level
-        ?? 5;
+    // No minimum-distance notice: the gateway checks side + grid only
+    // (rules_modify.go), so the dialog does not advertise a points distance.
     const fmtPrice = (value: number): string => (digits === null ? String(value) : value.toFixed(digits));
     const priceStepAttr = digits === null ? 'any' : Math.pow(10, -digits).toString();
     const previousMiniChartSample = miniChartKey && miniChartState.key === miniChartKey
@@ -1616,8 +1610,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                         <div className="rtx-modify-notice">
                             <Info size={14} className="rtx-modify-notice-icon" aria-hidden="true" />
                             <div className="rtx-modify-notice-text">
-                                <div className="text-[12px] font-normal">{tr("Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.", { value0: stopsLevel })}</div>
-                                <div className="rtx-modify-notice-helper mt-0.5 text-[#737882] text-[12px] font-normal">{tr("Stops processing is performed on the broker side.")}</div>
+                                <div className="rtx-modify-notice-helper text-[#737882] text-[12px] font-normal">{tr("Stops processing is performed on the broker side.")}</div>
                             </div>
                         </div>
                     </div>

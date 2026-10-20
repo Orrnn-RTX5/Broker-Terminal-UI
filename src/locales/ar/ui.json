@@ -1845,7 +1845,6 @@
   "Chart limit reached": "تم بلوغ الحد الأقصى للمخططات",
   "Change chart symbol": "تغيير رمز المخطط",
   "Add chart ({{count}}/{{limit}})": "إضافة مخطط ({{count}}/{{limit}})",
-  "Stop Loss or Take Profit you set must differ from market price by at least {{value0}} points.": "يجب أن يختلف إيقاف الخسارة أو أخذ الربح الذي قمت بتعيينه عن سعر السوق بمقدار {{value0}} نقطة على الأقل.",
   "Order in progress": "Order in progress",
   "Change symbol for {{value0}}": "Change symbol for {{value0}}",
   "Search symbols": "Search symbols",
