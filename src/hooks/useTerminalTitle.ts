@@ -16,6 +16,11 @@ import {
     isPlaceholderBrokerLogoUrl,
 } from '../components/BrokerLogoImage';
 import { getRuntimeBrokerConfiguration } from '../config/backendTarget.js';
+import {
+    recordBrokerServerIdentity,
+    resolveServerDisplayLabel,
+    useKnownBrokerServerName,
+} from '../services/brokerServerIdentity';
 
 /** Neutral fallback title. No vendor string; prefer getWebTerminalTitle(). */
 export const WEB_TERMINAL_TITLE = NEUTRAL_TERMINAL_TITLE;
@@ -30,11 +35,13 @@ export const getWebTerminalTitle = (): string => {
         const config = getRuntimeBrokerConfiguration() as {
             brokerName?: unknown; defaultMt5Server?: unknown; brokerId?: unknown;
         } | null;
-        return resolveTerminalTitle({
+        // The build fallback DEFAULT_MT5_SERVER yields to the broker-published
+        // server name once the broker config is available.
+        return resolveServerDisplayLabel(resolveTerminalTitle({
             displayName: config?.brokerName,
             defaultMt5Server: config?.defaultMt5Server,
             brokerId: config?.brokerId,
-        });
+        }));
     } catch {
         return NEUTRAL_TERMINAL_TITLE;
     }
@@ -200,6 +207,9 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
 
                 // The broker may declare its server timezone for the server clock.
                 if (config) setBrokerServerTimeZoneFromConfig(config);
+                // The broker-published server name (config server_name, else the
+                // current broker's /broker/servers entry) replaces the build fallback.
+                recordBrokerServerIdentity(config, servers);
 
                 // 1. Margin mode from the broker config (camelCase or
                 // snake_case — anything else stays on the neutral Hedge).
@@ -258,10 +268,13 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
         };
     }, [infoKey, serverName, brokerId]);
 
+    // Re-render when the broker-published server name becomes known so the
+    // build fallback is replaced without waiting for another session change.
+    useKnownBrokerServerName();
     const currentDetails = resolvedKey === infoKey;
     return {
-        accountId, accountName, serverName, marginMode,
-        brokerName: currentDetails ? brokerName : brokerDisplayName(serverName),
+        accountId, accountName, serverName: resolveServerDisplayLabel(serverName), marginMode,
+        brokerName: resolveServerDisplayLabel(currentDetails ? brokerName : brokerDisplayName(serverName)),
         logoUrl: currentDetails ? logoUrl : getStoredLogoUrl(),
         logoBaseCandidates: currentDetails ? logoBaseCandidates : [],
     };

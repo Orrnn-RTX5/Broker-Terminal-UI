@@ -1,4 +1,5 @@
 import { getRuntimeBrokerConfiguration, isDesktopBackendTarget } from '../config/backendTarget.js';
+import { resolveServerDisplayLabel } from './brokerServerIdentity';
 
 const text = (value: unknown): string => String(value ?? '').trim();
 const identity = (value: unknown): string => text(value).replace(/\/+$/, '').toLowerCase();
@@ -15,8 +16,17 @@ export const isBrokerName = (value: unknown): boolean => {
   return true;
 };
 
-/** Display metadata only: never change the server used for routing or login. */
+/**
+ * Display metadata only: never change the server used for routing or login.
+ * The build fallback DEFAULT_MT5_SERVER is shown as the broker-published
+ * server name once the broker config is available; every other label is
+ * shown exactly as resolved.
+ */
 export function brokerDisplayName(server: string, ...names: unknown[]): string {
+  return resolveServerDisplayLabel(resolveBrokerDisplayLabel(server, names));
+}
+
+function resolveBrokerDisplayLabel(server: string, names: unknown[]): string {
   const config = getRuntimeBrokerConfiguration();
   const configuredServers = [config.apiHost, config.apiHostExt].filter(Boolean);
   const matchesConfig = configuredServers.some(value => identity(server) === identity(value))

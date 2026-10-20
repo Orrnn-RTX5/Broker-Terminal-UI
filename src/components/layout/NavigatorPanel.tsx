@@ -11,6 +11,7 @@ import { openAccountFeature } from '../../startup/terminalFeatures';
 import { ChangePasswordDialog } from '../ChangePasswordDialog';
 import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
+import { useSavedAccountServerMigration } from '../../services/savedAccountServerMigration';
 import { brokerV2Api } from '../../api/trade';
 import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
 import { buildBrokerDirectoryLogoUrl, getConfiguredBrokerLogoUrl, isPlaceholderBrokerLogoUrl } from '../BrokerLogoImage';
@@ -124,6 +125,10 @@ export const NavigatorPanel: React.FC = () => {
     const addSavedAccount = useAppStore(state => state.addSavedAccount);
     const isAuthenticated = useAppStore(state => state.isAuthenticated);
     const sessionScope = useBrokerAccountSessionScope();
+    // One group per broker: accounts saved under the build fallback server key
+    // join the broker's real key once its config is available (re-renders the
+    // group labels with the broker-published server name as well).
+    useSavedAccountServerMigration();
     // Capture aliases at committed login boundaries, not while another broker
     // is being selected. Same-login broker switches also change this scope.
     const { brokerScope, accountServerIdentities, storedBrokerLogo } = useMemo(() => {

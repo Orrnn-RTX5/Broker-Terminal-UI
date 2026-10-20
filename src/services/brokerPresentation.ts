@@ -3,6 +3,7 @@ import { isBrokerName } from './brokerDisplayName';
 import { normalizeBrokerThemeColor } from './brokerThemeColor';
 import { isConfiguredBrokerEndpoint, isDesktopBackendTarget, getRuntimeBrokerConfiguration, getRuntimeConfiguredBrokerId } from '../config/backendTarget.js';
 import { NEUTRAL_TERMINAL_TITLE, resolveTerminalTitle } from './brokerDisplayName';
+import { resolveServerDisplayLabel } from './brokerServerIdentity';
 import { assertBrokerRequestAllowed } from '../api/brokerRequestGuard';
 
 export { normalizeBrokerThemeColor } from './brokerThemeColor';
@@ -73,11 +74,13 @@ export const getLoginTitle = (): string => {
     const config = getRuntimeBrokerConfiguration() as {
       brokerName?: unknown; defaultMt5Server?: unknown; brokerId?: unknown;
     } | null;
-    return resolveTerminalTitle({
+    // The build fallback DEFAULT_MT5_SERVER yields to the broker-published
+    // server name once the broker config is available.
+    return resolveServerDisplayLabel(resolveTerminalTitle({
       displayName: config?.brokerName,
       defaultMt5Server: config?.defaultMt5Server,
       brokerId: config?.brokerId,
-    });
+    }));
   } catch {
     return NEUTRAL_TERMINAL_TITLE;
   }
