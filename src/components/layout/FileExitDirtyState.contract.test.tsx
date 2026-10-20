@@ -43,6 +43,10 @@ vi.mock('react-i18next', async (importOriginal) => {
         ...await importOriginal<typeof import('react-i18next')>(),
         useTranslation: () => ({
             t: (key: string) => mockTranslations[key] || key,
+            // SUI-T19d integ: MenuBar reads the raw i18n object
+            // (resolvedLanguage) outside t(); the mock must provide it or
+            // MenuBar crashes on render (pre-existing on ds14/sui-t19 tip).
+            i18n: { language: 'en', resolvedLanguage: 'en', changeLanguage: vi.fn() },
         }),
     };
 });
@@ -244,14 +248,17 @@ afterEach(() => {
 });
 
 describe('File Exit dirty-state contract (SUI-T19d)', () => {
-    it('surfaces live open positions in the Exit confirm instead of hardcoded zeros', () => {
+    it('surfaces live open positions in the Exit confirm instead of hardcoded zeros', async () => {
         seedPositions(2);
         const onExit = vi.fn();
         render(<FileMenu onSave={vi.fn()} onExit={onExit} />);
 
         fireEvent.click(screen.getByText('Exit').closest('button')!);
 
-        expect(screen.getByTestId('exit-confirm-dialog')).toBeInTheDocument();
+        // Await: the dialog renders through the retained-lazy feature
+        // registry (dynamic import), which suspends the first paint; a sync
+        // getBy* can never see it (pre-existing on ds14/sui-t19 tip).
+        expect(await screen.findByTestId('exit-confirm-dialog')).toBeInTheDocument();
         expect(screen.getByText('2 open positions')).toBeInTheDocument();
         expect(exitDialogSeen.current?.changes).toMatchObject({
             hasOpenTrades: true,
@@ -286,14 +293,14 @@ describe('File Exit dirty-state contract (SUI-T19d)', () => {
         expect(screen.queryByTestId('exit-confirm-dialog')).not.toBeInTheDocument();
     });
 
-    it('wires MenuBar File Exit to live trade state instead of a hardcoded clean flag', () => {
+    it('wires MenuBar File Exit to live trade state instead of a hardcoded clean flag', async () => {
         installElectronBridge();
 
         seedPositions(1);
         render(<MenuBar />);
         fireEvent.click(screen.getByRole('menuitem', { name: 'File' }));
         fireEvent.click(screen.getByText('Exit').closest('button')!);
-        expect(screen.getByTestId('exit-confirm-dialog')).toBeInTheDocument();
+        expect(await screen.findByTestId('exit-confirm-dialog')).toBeInTheDocument();
         expect(screen.getByText('1 open positions')).toBeInTheDocument();
         cleanup();
 
