@@ -30,8 +30,9 @@ import {
     mergeBrokerPresentation,
     normalizeBrokerThemeColor,
 } from '../services/brokerPresentation';
-import { resolveLoginHeroAsset, toPublicAssetPath, type LoginHeroAsset } from './welcomeHeroAssets';
+import { resolveLoginHeroAsset, type LoginHeroAsset } from './welcomeHeroAssets';
 import { BrokerLogoImage, buildBrokerDirectoryLogoUrl } from './BrokerLogoImage';
+import { resolveLoginTitleBrandName } from './loginTitleBrand';
 import {
     beginLoginPerformanceMeasurement,
     markAuthenticationAccepted,
@@ -114,7 +115,6 @@ const ACCENT_LOGIN_FIELD_FOCUS = '#2f8cff';
 const ACCENT_LOGIN_FIELD_FOCUS_SHADOW = '0 0 0 3px rgba(47, 140, 255, 0.16)';
 const LOGIN_TITLE_TEXT = 'Sign in to';
 const LOGIN_TITLE_ACCESSIBLE_LABEL = 'Sign in';
-const RTX5_TITLE_LOGO_SRC = toPublicAssetPath('brand/rtx5-login-wordmark.png');
 const BROKER_PRESENTATION_CACHE_KEY = 'rtx_broker_presentation_v1';
 export const LAST_AUTHENTICATED_BROKER_ID_KEY = 'rtx_last_authenticated_broker_id';
 
@@ -1123,17 +1123,14 @@ export function WelcomeTerminal({
                             <header className="rtx-form-header">
                                 <h1 className="rtx-login-title" aria-label={LOGIN_TITLE_ACCESSIBLE_LABEL}>
                                     <span className="rtx-login-title-text">{LOGIN_TITLE_TEXT}</span>
-                                    <span className="rtx-login-title-logo-reveal">
-                                        <img
-                                            src={RTX5_TITLE_LOGO_SRC}
-                                            alt=""
-                                            aria-hidden="true"
-                                            className="rtx-login-title-logo"
-                                            width={502}
-                                            height={197}
-                                            loading="eager"
-                                            decoding="async"
-                                            fetchPriority="high"
+                                    {/* Broker logo from the broker config / directory; the broker
+                                        name (or neutral 'Broker') when no logo loads. Never a vendor mark. */}
+                                    <span className="rtx-login-title-logo-reveal" data-rtx-login-title-brand>
+                                        <BrokerLogoImage
+                                            broker={selectedBroker}
+                                            appFallbackUrl=""
+                                            className="rtx-login-title-logo rtx-login-title-logo--broker"
+                                            fallback={<span className="rtx-login-title-brand">{resolveLoginTitleBrandName(selectedBroker?.broker_name)}</span>}
                                         />
                                     </span>
                                 </h1>

@@ -25,7 +25,8 @@ export interface BrokerLogoSource {
   api_host_ext?: string;
 }
 
-const RTX5_FALLBACK_LOGO_SRC = toPublicAssetPath('brand/rtx5-app-icon.png');
+// Neutral generic app icon (no vendor brand); a configured broker logo always comes first.
+export const APP_FALLBACK_LOGO_SRC = toPublicAssetPath('brand/terminal-icon.png');
 const ABSOLUTE_IMAGE_URL = /^(?:https?:|data:|blob:)/i;
 
 const appendUnique = (values: string[], value: unknown): void => {
@@ -63,7 +64,7 @@ export const buildBrokerDirectoryLogoUrl = (
 export const buildBrokerLogoCandidates = (
   broker: BrokerLogoSource | null | undefined,
   discoveryBaseUrl = getRuntimeDiscoveryBaseUrl(),
-  appFallbackUrl = RTX5_FALLBACK_LOGO_SRC,
+  appFallbackUrl = APP_FALLBACK_LOGO_SRC,
 ): string[] => {
   if (!broker) return appFallbackUrl ? [appFallbackUrl] : [];
 

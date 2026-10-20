@@ -44,11 +44,11 @@ describe('BrokerLogoImage', () => {
     expect(buildBrokerLogoCandidates(
       testBroker,
       'https://fxtrustsuperbackned.orrnn.com',
-      '/brand/rtx5-app-icon.png',
+      '/brand/terminal-icon.png',
     )).toEqual([
       'https://fxtrustbrokerbackend.orrnn.com/branding/broker-logo.png',
       'https://fxtrustsuperbackned.orrnn.com/api/v1/brokers/TEST/logo',
-      '/brand/rtx5-app-icon.png',
+      '/brand/terminal-icon.png',
     ]);
   });
 
@@ -56,10 +56,10 @@ describe('BrokerLogoImage', () => {
     expect(buildBrokerLogoCandidates(
       { ...testBroker, logo_url: '/assets/logo.png' },
       'https://fxtrustsuperbackned.orrnn.com',
-      '/brand/rtx5-app-icon.png',
+      '/brand/terminal-icon.png',
     )).toEqual([
       'https://fxtrustsuperbackned.orrnn.com/api/v1/brokers/TEST/logo',
-      '/brand/rtx5-app-icon.png',
+      '/brand/terminal-icon.png',
     ]);
   });
 
@@ -89,7 +89,7 @@ describe('BrokerLogoImage', () => {
     fireEvent.error(screen.getByRole('img', { name: 'TEST broker logo' }));
     expect(screen.getByRole('img', { name: 'TEST broker logo' })).toHaveAttribute(
       'src',
-      expect.stringContaining('/brand/rtx5-app-icon.png'),
+      expect.stringContaining('/brand/terminal-icon.png'),
     );
   });
 

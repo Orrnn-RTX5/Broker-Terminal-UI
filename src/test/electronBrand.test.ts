@@ -77,5 +77,14 @@ describe('electron-builder config', () => {
     expect(config.nsis.shortcutName).toBe('Fixture FX Trader');
     expect(config.extraMetadata).toEqual({ brandProductName: 'Fixture FX Trader' });
     expect(config.files).toEqual(pkg.build.files);
+    expect((config as { win?: { icon?: string } }).win?.icon).toBe(pkg.build.win.icon);
+  });
+
+  it('uses a configured broker icon for the executable and keeps the neutral icon otherwise', () => {
+    const branded = brand.createBuilderConfig(pkg.build, { BRAND_ICON: 'C:/brand/fixture.ico' }, vi.fn()) as { win: { icon: string; target: string } };
+    expect(branded.win).toEqual({ ...pkg.build.win, icon: 'C:/brand/fixture.ico' });
+    const neutral = brand.createBuilderConfig(pkg.build, {}, vi.fn()) as { win: { icon: string } };
+    expect(neutral.win.icon).toBe('build/icon.ico');
+    expect(electronSource).toContain("icon: app.isPackaged ? undefined : path.join(__dirname, 'build', 'icon.ico'),");
   });
 });

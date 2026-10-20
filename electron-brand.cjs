@@ -53,6 +53,10 @@ function createBuilderConfig(baseBuild = {}, env = process.env, warn = console.w
     // Stamp the configured name into the packaged package.json so the
     // installed app shows it without a launch-time environment variable.
     if (configured) config.extraMetadata = { ...(base.extraMetadata || {}), brandProductName: configured };
+    // Optional broker icon (.ico) for the executable, installer and shortcuts;
+    // otherwise the neutral build/icon.ico from package.json stays.
+    const icon = clean(env && env.BRAND_ICON);
+    if (icon) config.win = { ...(base.win || {}), icon };
     return config;
 }
 

@@ -376,7 +376,9 @@ function createWindow() {
         minWidth: 1024,
         minHeight: 600,
         title: BRAND_PRODUCT_NAME,
-        icon: path.join(__dirname, 'build', 'icon.ico'),
+        // Packaged: the executable's icon (neutral, or BRAND_ICON at build time).
+        // Development: the repo's neutral icon.
+        icon: app.isPackaged ? undefined : path.join(__dirname, 'build', 'icon.ico'),
         frame: false,
         show: false,
         webPreferences: {

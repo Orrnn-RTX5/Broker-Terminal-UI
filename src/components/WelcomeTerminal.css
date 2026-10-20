@@ -2264,3 +2264,21 @@ html:root.rtx-skin-untitled-light .rtx-login-overlay .rtx-login-panel :is(
     text-decoration: underline;
     cursor: pointer;
 }
+
+/* Login title brand: a tenant logo sized to the title line, or the broker
+   name as text. Placed last so it wins over the responsive width rules. */
+.rtx-login-title-logo.rtx-login-title-logo--broker {
+    width: auto;
+    height: 32px;
+    max-width: 168px;
+    filter: none;
+    transform: none;
+    vertical-align: middle;
+}
+
+.rtx-login-title-brand {
+    color: inherit;
+    font: inherit;
+    line-height: inherit;
+    overflow-wrap: anywhere;
+}

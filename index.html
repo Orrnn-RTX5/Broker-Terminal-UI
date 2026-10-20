@@ -341,14 +341,6 @@
         });
       } catch (_) { /* Connection warmup must never delay the terminal. */ }
       if (!initialTerminal) {
-        var wordmarkPreload = document.createElement('link');
-        wordmarkPreload.rel = 'preload';
-        wordmarkPreload.as = 'image';
-        wordmarkPreload.href = './brand/rtx5-login-wordmark.png';
-        wordmarkPreload.type = 'image/png';
-        wordmarkPreload.setAttribute('fetchpriority', 'high');
-        document.head.appendChild(wordmarkPreload);
-
         // Desktop selection has not been verified yet: preload only shared
         // artwork, never images inferred from stored broker names or hostnames.
         var desktopHeroPath = './login/trading-desk-hero.webp';

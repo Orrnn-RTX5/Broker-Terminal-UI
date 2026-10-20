@@ -108,7 +108,7 @@ describe('Navigator broker logo ownership', () => {
     expect(screen.getByRole('img', { name: 'Nexa Logo' })).toHaveAttribute('src', 'https://directory.example/api/v1/brokers/Nexa/logo');
     fireEvent.error(screen.getByRole('img', { name: 'Nexa Logo' }));
     expect(screen.queryByRole('img', { name: /Logo/ })).not.toBeInTheDocument();
-    expect(document.querySelector('img[src*="rtx5-app-icon"]')).toBeNull();
+    expect(document.querySelector('img[src*="terminal-icon"]')).toBeNull();
   });
 
   it('renders the selected broker logo on the logged-out placeholder', async () => {

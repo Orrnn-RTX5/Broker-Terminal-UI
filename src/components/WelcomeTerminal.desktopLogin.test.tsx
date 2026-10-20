@@ -260,6 +260,31 @@ describe('desktop broker directory login', () => {
     expect(screen.getByRole('combobox')).toHaveValue(nexa.broker_name);
   });
 
+  it('brands the sign-in title with the broker logo, then the broker name, never a vendor mark', async () => {
+    render(<WelcomeTerminal onLogin={vi.fn()} />);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    const titleBrand = () => document.querySelector('[data-rtx-login-title-brand]')!;
+    const failTitleLogos = () => {
+      for (let attempt = 0; attempt < 6 && titleBrand().querySelector('img'); attempt++) {
+        fireEvent.error(titleBrand().querySelector('img')!);
+      }
+    };
+
+    selectBroker(nexa.broker_name);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    expect(titleBrand().querySelector('img')).toHaveAttribute('src', nexa.logo_url);
+    expect(titleBrand().querySelector('img')).toHaveClass('rtx-login-title-logo--broker');
+    failTitleLogos();
+    expect(titleBrand().querySelector('img')).toBeNull();
+    expect(titleBrand()).toHaveTextContent(/^Nexa$/);
+
+    selectBroker(achiever.broker_name);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    failTitleLogos();
+    expect(titleBrand()).toHaveTextContent(/^Achiever Financials$/);
+    expect(document.querySelector('img[src*="rtx5"], img[src*="wordmark"], img[src*="terminal-icon"]')).toBeNull();
+  });
+
   it('shows every directory broker and changes branding and health target on selection', async () => {
     render(<WelcomeTerminal onLogin={vi.fn()} />);
     await waitFor(() => expect(loginButton()).toBeEnabled());

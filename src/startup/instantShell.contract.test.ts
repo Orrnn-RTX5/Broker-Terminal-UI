@@ -137,7 +137,9 @@ describe('instant startup shell source contract', () => {
     const shell = runInstantShell({ runtimeConfig: { BACKEND_TARGET: target }, hostname: 'localhost' });
 
     expect(shell.documentElement.getAttribute('data-rtx-initial-view')).toBe('login');
-    expect(shell.querySelectorAll('link[rel="preload"]')).toHaveLength(3);
+    // Shared hero artwork only; the vendor wordmark is no longer part of the login title.
+    expect(Array.from(shell.querySelectorAll('link[rel="preload"]')).map(link => link.getAttribute('href')))
+      .toEqual(['./login/trading-desk-hero.webp', './login/trading-desk-hero-mobile.webp']);
   });
 
   it.each([
