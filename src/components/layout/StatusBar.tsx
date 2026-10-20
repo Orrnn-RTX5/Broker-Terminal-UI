@@ -7,6 +7,7 @@ import {
     formatTerminalTitle,
     getLogoUrl,
     getWebTerminalTitle,
+    isSameTerminalLabel,
     useTerminalBrokerInfo,
 } from '../../hooks/useTerminalTitle';
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
@@ -33,7 +34,9 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
     const terminalTitle = symbol && timeframe
         ? formatTerminalTitle(brokerInfo, symbol, timeframe, marketStatus)
         : (brokerInfo.accountId && brokerInfo.accountId !== '---'
-            ? `${getWebTerminalTitle()} - ${brokerInfo.accountId} - ${brokerInfo.brokerName} - ${brokerInfo.marginMode}`
+            ? `${getWebTerminalTitle()} - ${brokerInfo.accountId}`
+                + (isSameTerminalLabel(brokerInfo.brokerName, getWebTerminalTitle()) ? '' : ` - ${brokerInfo.brokerName}`)
+                + ` - ${brokerInfo.marginMode}`
             : getWebTerminalTitle());
 
     const appVersion = getAppVersion();

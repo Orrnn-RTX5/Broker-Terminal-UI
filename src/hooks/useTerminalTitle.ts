@@ -42,6 +42,13 @@ export const getWebTerminalTitle = (): string => {
 
 export const normalizeHeaderText = (value: unknown): string => String(value || '').trim();
 
+/** Case-insensitive label equality for title dedupe (empty never equals). */
+export const isSameTerminalLabel = (a: unknown, b: unknown): boolean => {
+  const x = normalizeHeaderText(a).toLowerCase();
+  const y = normalizeHeaderText(b).toLowerCase();
+  return Boolean(x) && x === y;
+};
+
 const getStoredHeaderValue = (key: string): string => {
     if (typeof window === 'undefined') return '';
     return normalizeHeaderText(localStorage.getItem(key));
@@ -269,5 +276,12 @@ export function formatTerminalTitle(
     const marketStatusSuffix = marketStatus?.isTradeBlocked && !marketStatus.loading && marketStatus.status !== 'unknown'
         ? ` - ${marketStatus.label}`
         : '';
-    return `${getWebTerminalTitle()} - ${info.accountId} - ${info.brokerName} - ${info.marginMode} - ${symbol},${timeframe.toUpperCase()}${marketStatusSuffix}`;
+    // Broker display name from discovery/runtime-config, shown once: when it
+    // equals the title prefix the broker segment adds nothing, so it is dropped
+    // (the server label then appears only once via the remaining segment).
+    const brokerSegment = isSameTerminalLabel(info.brokerName, getWebTerminalTitle()) ? '' : info.brokerName;
+    const title = `${getWebTerminalTitle()} - ${info.accountId}`
+        + (brokerSegment ? ` - ${brokerSegment}` : '')
+        + ` - ${info.marginMode} - ${symbol},${timeframe.toUpperCase()}${marketStatusSuffix}`;
+    return title;
 }

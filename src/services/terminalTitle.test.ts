@@ -29,23 +29,26 @@ describe('white-label terminal title (ds-16)', () => {
     expect(getWebTerminalTitle()).not.toMatch(/RTX/);
   });
 
-  it('prefixes the status title with the broker title, never a vendor default', () => {
+  it('shows each label once: broker name used, server label never repeated', () => {
+    // Case A: configured display name — used once, repetitions dropped.
     setRuntimeBroker('Acme Trading');
-    const title = formatTerminalTitle(
+    const configured = formatTerminalTitle(
       { accountId: '100043', brokerName: 'Acme Trading', marginMode: 'Hedge' },
       'EURUSD',
       'm15',
     );
-    expect(title.startsWith('Acme Trading - 100043 - Acme Trading - Hedge - EURUSD,M15')).toBe(true);
-    expect(title).not.toMatch(/RTX/);
+    expect(configured).toBe('Acme Trading - 100043 - Hedge - EURUSD,M15');
+    expect(configured).not.toMatch(/RTX/);
 
+    // Case B: no display name — neutral prefix, server label exactly once.
     delete (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__;
     const fallback = formatTerminalTitle(
-      { accountId: '100043', brokerName: 'Acme Trading', marginMode: 'Hedge' },
+      { accountId: '100043', brokerName: 'local-dev', marginMode: 'Hedge' },
       'EURUSD',
       'm15',
     );
-    expect(fallback.startsWith('Web Terminal - ')).toBe(true);
+    expect(fallback).toBe('Web Terminal - 100043 - local-dev - Hedge - EURUSD,M15');
+    expect(fallback.match(/local-dev/g)).toHaveLength(1);
     expect(fallback).not.toMatch(/RTX/);
   });
 });

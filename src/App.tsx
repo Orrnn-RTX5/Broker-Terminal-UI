@@ -3,7 +3,7 @@ import { useGuestMarketData } from './hooks/useGuestMarketData';
 import { useBrokerAccountSessionScope } from './hooks/useBrokerAccountSessionScope';
 import { useGuestChartLoginContinuity } from './hooks/useGuestChartLoginContinuity';
 import { getChartMarketSourceIdentity } from './utils/chartLoginTransition';
-import { getLogoUrl, getWebTerminalTitle, useTerminalBrokerInfo } from './hooks/useTerminalTitle';
+import { getLogoUrl, getWebTerminalTitle, isSameTerminalLabel, useTerminalBrokerInfo } from './hooks/useTerminalTitle';
 import { brokerDisplayName } from './services/brokerDisplayName';
 import { applyBrokerChrome } from './services/brokerPresentation';
 import { ChartSymbolDropdown } from './components/ChartSymbolDropdown';
@@ -26,7 +26,7 @@ import { useDrawingSidebarStore } from './store/useDrawingSidebarStore';
 import type { ChartType, Timeframe } from './types/chart';
 import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME } from './constants/chartDefaults';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { OrderPanelDialog } from './components/OrderPanelDialog';
+import { OrderPanelDialog, resolveOrderPanelSide } from './components/OrderPanelDialog';
 import { AlertsContainer } from './components/AlertsContainer';
 import { getPositionCloseScope, markPositionsClosed, unmarkPositionsClosed, useAppStore, type Account, type Position } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
@@ -1566,7 +1566,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const tf         = tfLabel[timeframe] ?? timeframe.toUpperCase();
     // FIX: Browser/Electron chrome follows the rendered active dock tab, not a
     // stale Market Watch or pre-restore selection.
-    const title      = `${accountLabel} - ${server} - ${marginMode} - ${broker} - ${desktopToolbarSymbol},${tf}`;
+    // Broker display name (discovery/runtime-config) renders once: the server
+    // segment drops out only when it repeats the displayed broker name, so an
+    // unconfigured broker still shows its server label exactly once.
+    const showServer = server && !isSameTerminalLabel(server, broker);
+    const title      = `${accountLabel} - ${showServer ? `${server} - ` : ''}${marginMode} - ${broker} - ${desktopToolbarSymbol},${tf}`;
 
     document.title = title;
     window.electron?.window?.setTitle(title);
@@ -1656,7 +1660,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // Opening the ticket is a navigation action, so it follows the active chart
   // and chart/catalog eligibility. The stricter live-trading gate remains in
   // handleOrderPanelSubmit, where an order can actually be sent.
-  const [orderPanelDraft, setOrderPanelDraft] = useState<{ orderType?: 'Limit Order' | 'Stop Order' | 'Stop Limit Order'; price?: number } | null>(null);
+  const [orderPanelDraft, setOrderPanelDraft] = useState<{ orderType?: 'Limit Order' | 'Stop Order' | 'Stop Limit Order'; price?: number; side?: 'BUY' | 'SELL' } | null>(null);
 
   const openOrderPanelForSymbol = useCallback((
     requestedSymbol?: unknown,
@@ -1695,14 +1699,19 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     // absent/invalid drafts leave the dialog blank as before.
     const draftType = String(requestedDraft?.orderType || '').toLowerCase();
     const draftPrice = Number(requestedDraft?.price);
+    // SUI-T10: carry a validated chart/event side into the dialog preselect;
+    // absent/invalid sides leave the dialog on its default flow.
+    const draftSide = resolveOrderPanelSide(requestedDraft?.side);
+    const draftPriceField = (Number.isFinite(draftPrice) && draftPrice > 0 ? { price: draftPrice } : {});
+    const draftSideField = (draftSide ? { side: draftSide } : {});
     setOrderPanelDraft(
       draftType.includes('stop') && draftType.includes('limit')
-        ? { orderType: 'Stop Limit Order', ...(Number.isFinite(draftPrice) && draftPrice > 0 ? { price: draftPrice } : {}) }
+        ? { orderType: 'Stop Limit Order', ...draftPriceField, ...draftSideField }
         : draftType.includes('stop')
-          ? { orderType: 'Stop Order', ...(Number.isFinite(draftPrice) && draftPrice > 0 ? { price: draftPrice } : {}) }
+          ? { orderType: 'Stop Order', ...draftSideField, ...draftPriceField }
           : draftType.includes('limit')
-            ? { orderType: 'Limit Order', ...(Number.isFinite(draftPrice) && draftPrice > 0 ? { price: draftPrice } : {}) }
-            : null,
+            ? { orderType: 'Limit Order', ...draftSideField, ...draftPriceField }
+            : (draftSide ? { ...draftSideField } : null),
     );
     setOrderPanelOpen(true);
     return true;
@@ -1995,6 +2004,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                 symbols={isAuthenticated ? allowedSymbolNames : undefined}
                 initialOrderType={orderPanelDraft?.orderType}
                 initialPrice={orderPanelDraft?.price}
+                initialSide={orderPanelDraft?.side}
               />
             </ErrorBoundary>
           )}

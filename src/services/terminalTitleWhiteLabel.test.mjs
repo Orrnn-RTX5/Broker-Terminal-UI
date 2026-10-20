@@ -72,9 +72,13 @@ test('title chain is config-driven with no vendor literal (ds-16)', () => {
   }
   for (const [file, marker] of [
     ['src/App.tsx', 'getWebTerminalTitle()'],
+    ['src/App.tsx', 'isSameTerminalLabel'],
+    ['src/App.tsx', 'initialSide={orderPanelDraft?.side}'],
+    ['src/components/OrderPanelDialog.tsx', 'resolveOrderPanelSide'],
     ['src/components/layout/StatusBar.tsx', 'getWebTerminalTitle()'],
     ['src/services/brokerPresentation.ts', 'getLoginTitle()'],
     ['src/services/desktopRelease.ts', 'Download desktop installer'],
+    ['src/hooks/useTerminalTitle.ts', 'isSameTerminalLabel'],
   ]) {
     assert.ok(readFileSync(join(root, file), 'utf8').includes(marker), `${file}: must wire ${marker}`);
   }

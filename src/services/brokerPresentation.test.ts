@@ -148,6 +148,26 @@ describe('broker presentation', () => {
     expect(getLoginTitle()).not.toMatch(/RTX/);
   });
 
+  it('shows the broker name once when it repeats the login title (ds-16)', () => {
+    const runtimeWindow = window as unknown as Record<string, unknown>;
+    const previous = runtimeWindow.__RTX_RUNTIME_CONFIG__;
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      BROKER_ID: 'acme',
+      BROKER_NAME: 'Acme Trading',
+      API_HOST: 'https://acme.example.com',
+    };
+    try {
+      applyBrokerChrome({ brokerId: 'acme', brokerName: 'Acme Trading', updateLoginTitle: true });
+      expect(document.title).toBe('Acme Trading');
+      applyBrokerChrome({ brokerId: 'acme', brokerName: 'Desk', updateLoginTitle: true });
+      expect(document.title).toBe('Acme Trading - Desk');
+    } finally {
+      if (previous === undefined) delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+      else runtimeWindow.__RTX_RUNTIME_CONFIG__ = previous;
+    }
+  });
+
   it('updates the browser tab icon for each broker and restores the app icon when cleared', () => {
     document.querySelectorAll('link[rel~="icon"]').forEach(link => link.remove());
     const icon = document.createElement('link');

@@ -224,9 +224,12 @@ export const applyBrokerChrome = (
   else root.style.removeProperty('--rtx-broker-accent');
 
   if (input.updateLoginTitle) {
-    const title = currentChrome.brokerName
-      ? `${getLoginTitle()} - ${currentChrome.brokerName}`
-      : getLoginTitle();
+    const loginTitle = getLoginTitle();
+    const chromeName = currentChrome.brokerName.trim();
+    // Broker name renders once: drop it when it repeats the login title.
+    const title = chromeName && chromeName.toLowerCase() !== loginTitle.toLowerCase()
+      ? `${loginTitle} - ${currentChrome.brokerName}`
+      : loginTitle;
     document.title = title;
     if (typeof window !== 'undefined') {
       window.electron?.window?.setTitle?.(title);
