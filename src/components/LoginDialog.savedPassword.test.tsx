@@ -110,3 +110,31 @@ it('clears restored credentials when the account ID changes', async () => {
   expect(screen.getByLabelText('Password')).toHaveValue('');
   expect(screen.getByRole('checkbox', { name: 'Save password' })).not.toBeChecked();
 });
+
+// Deterministic restore-race regression test: no timeout options anywhere —
+// every wait uses default budgets and targets a locally-controlled state
+// transition. The vault restore is held pending behind a manual gate, so the
+// test ENTERS the exact race window the full suite hits under load (restore
+// in-flight while waiting on the checkbox) and then releases it. If the gate
+// never resolved, the final wait would time out and fail — the test is
+// sensitive to the race by construction.
+it('keeps Save password disabled until the vault restore settles', async () => {
+  const savedLogins = await import('../services/savedLogins');
+  let resolveRestore!: (value: Awaited<ReturnType<typeof loadSavedLogin>>) => void;
+  const restoreGate = new Promise<Awaited<ReturnType<typeof loadSavedLogin>>>((resolve) => { resolveRestore = resolve; });
+  const restoreSpy = vi.spyOn(savedLogins, 'loadSavedLogin').mockReturnValue(restoreGate);
+  try {
+    openDialog();
+    await screen.findByText('Server online');
+    // Restore effect has started (spy called ⇒ setRestoring(true) queued)...
+    await waitFor(() => expect(restoreSpy).toHaveBeenCalled());
+    // ...and once React re-renders, the checkbox reflects it. Waiting (not a
+    // sync assert) because the re-render lands on a later microtask.
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Save password' })).toBeDisabled());
+    // End the restore; the checkbox must enable on the real readiness signal.
+    resolveRestore(null);
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Save password' })).toBeEnabled());
+  } finally {
+    restoreSpy.mockRestore();
+  }
+});
