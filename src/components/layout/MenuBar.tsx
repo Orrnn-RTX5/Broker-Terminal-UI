@@ -11,6 +11,7 @@ import { commandBus } from '../../services/commandBus';
 import { useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { useAppStore } from '../../store/useAppStore';
 import type { PayloadFor } from '../../types/commands';
 import { STAMP_OPTIONS } from './stampOptions';
 import { openWebTrader } from '../../services/webTrader';
@@ -107,6 +108,11 @@ export const MenuBar = ({
     const canArrangeIcons = useDockLayoutStore(state => state.layout.floatingPanels.some(container =>
         container.children.some(child => !('children' in child) && child.minimized === true)));
     const chartCount = useDockLayoutStore(state => getChartPanelCount(state.layout));
+    // SUI-T19b: no reactive workspace-modified source exists; best available
+    // dirty-state is open positions + pending orders (mirrors exitHandler).
+    const openPositionsCount = useAppStore(state => state.positions?.length ?? 0);
+    const pendingOrdersCount = useAppStore(state => state.orders?.filter(o => o.status === 'PENDING').length ?? 0);
+    const hasUnsavedChanges = openPositionsCount > 0 || pendingOrdersCount > 0;
     const isElectronDesktop = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -404,7 +410,7 @@ export const MenuBar = ({
             { label: t('menu.view.statusBar'), icon: <Icon name="layout" size="sm" />, checked: statusBarVisible, checkRole: 'checkbox', action: () => useTerminalBarsStore.getState().toggleStatusBar() },
             { label: t('menu.view.chartsBar'), icon: <Icon name="layers" size="sm" />, checked: chartsBarVisible, checkRole: 'checkbox', action: () => useTerminalBarsStore.getState().toggleChartsBar() },
             { divider: true, label: '' },
-            { label: 'Search Symbols', shortcut: 'Alt+U', icon: <Icon name="search" size="sm" />, action: () => { setIsSymbolsOpen(true); setActiveMenu(null); } },
+            { label: 'Search Symbols', shortcut: getTerminalShortcutHint('view.symbols'), icon: <Icon name="search" size="sm" />, action: () => { setIsSymbolsOpen(true); setActiveMenu(null); } },
             { label: t('menu.view.depthOfMarket'), icon: <Icon name="box" size="sm" />, ...terminalShortcut('view.depth-of-market') },
             { label: t('menu.view.marketWatch'), icon: <Icon name="monitor" size="sm" />, ...terminalShortcut('view.market-watch') },
             { label: t('menu.view.dataWindow'), icon: <Icon name="data-window" size="sm" />, ...terminalShortcut('view.data-window') },
@@ -412,7 +418,7 @@ export const MenuBar = ({
             { label: t('menu.view.toolbox'), icon: <Icon name="terminal" size="sm" />, ...terminalShortcut('view.terminal') },
             { label: t('menu.view.strategyTester'), icon: <Icon name="strategy-tester" size="sm" />, ...lockedTerminalTool('strategyTester') },
             { divider: true, label: '' },
-            { label: t('menu.view.fullScreen'), shortcut: 'F11', icon: <Icon name="layout-template" size="sm" />, action: () => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => { }); } else { document.exitFullscreen().catch(() => { }); } setActiveMenu(null); } }
+            { label: t('menu.view.fullScreen'), icon: <Icon name="layout-template" size="sm" />, action: () => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => { }); } else { document.exitFullscreen().catch(() => { }); } setActiveMenu(null); } }
         ],
         Insert: [
             {
@@ -435,9 +441,9 @@ export const MenuBar = ({
                         label: 'Lines',
                         icon: <Icon name="trend-line" size="sm" />,
                         children: [
-                            { label: 'Trend Line', shortcut: 'Alt+T', icon: <Icon name="trend-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'trendline' } }); setActiveMenu(null); } },
-                            { label: 'Horizontal Line', shortcut: 'Alt+H', icon: <Icon name="minus" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'hline' } }); setActiveMenu(null); } },
-                            { label: 'Vertical Line', shortcut: 'Alt+V', icon: <Icon name="v-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'vline' } }); setActiveMenu(null); } },
+                            { label: 'Trend Line', icon: <Icon name="trend-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'trendline' } }); setActiveMenu(null); } },
+                            { label: 'Horizontal Line', icon: <Icon name="minus" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'hline' } }); setActiveMenu(null); } },
+                            { label: 'Vertical Line', icon: <Icon name="v-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'vline' } }); setActiveMenu(null); } },
                         ]
                     },
                     {
@@ -477,7 +483,7 @@ export const MenuBar = ({
                         })),
                     },
                     { divider: true, label: '' },
-                    { label: 'Text', shortcut: 'Alt+X', icon: <Icon name="text" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'text' } }); setActiveMenu(null); } },
+                    { label: 'Text', icon: <Icon name="text" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'text' } }); setActiveMenu(null); } },
                     { label: 'Callout', icon: <Icon name="callout" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'callout' } }); setActiveMenu(null); } },
                     { label: 'Measure', icon: <Icon name="measure" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'measure' } }); setActiveMenu(null); } },
                 ]
@@ -491,7 +497,6 @@ export const MenuBar = ({
             { label: t('menu.charts.indicatorList'), icon: <Icon name="line-chart" size="sm" />, ...terminalShortcut('charts.indicator-list') },
             {
                 label: 'Crosshair',
-                shortcut: 'C',
                 icon: <Icon name="crosshair" size="sm" />,
                 checked: crosshairEnabled,
                 checkRole: 'checkbox',
@@ -506,15 +511,15 @@ export const MenuBar = ({
                     { divider: true, label: '' },
 
                     // Destructive Actions (Muted Red)
-                    { label: 'Delete Last', shortcut: 'Backspace', icon: <Icon name="x-close" size="sm" className="text-rose-400" />, action: () => { drawingManager.deleteLast(resolveChartTarget().targetContextId); setActiveMenu(null); } },
-                    { label: 'Delete All Selected', shortcut: 'Del', icon: <Icon name="trash" size="sm" className="text-rose-400" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'DELETE_SELECTED_DRAWING', payload: { targetContextId } }); setActiveMenu(null); } },
+                    { label: 'Delete Last', icon: <Icon name="x-close" size="sm" className="text-rose-400" />, action: () => { drawingManager.deleteLast(resolveChartTarget().targetContextId); setActiveMenu(null); } },
+                    { label: 'Delete All Selected', icon: <Icon name="trash" size="sm" className="text-rose-400" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'DELETE_SELECTED_DRAWING', payload: { targetContextId } }); setActiveMenu(null); } },
                     { label: 'Delete All Arrows', icon: <Icon name="minus" size="sm" className="text-rose-400" />, action: () => { drawingManager.deleteArrows(resolveChartTarget().targetContextId); setActiveMenu(null); } },
                     { label: 'Delete All', icon: <Icon name="trash" size="sm" className="text-rose-500" />, action: () => { drawingManager.clearAllDrawings(true, resolveChartTarget().targetContextId); selectDrawingTool('cursor'); setActiveMenu(null); } },
                     { divider: true, label: '' },
 
                     // Selection / Undo
-                    { label: 'Selection Mode', shortcut: 'Esc', icon: <Icon name="cursor" size="sm" />, checked: activeDrawingTool === null || activeDrawingTool === 'cursor', checkRole: 'radio', action: () => { selectDrawingTool('cursor'); setActiveMenu(null); } },
-                    { label: 'Undo Delete', shortcut: 'Ctrl+Z', icon: <Icon name="refresh" size="sm" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'UNDO', payload: { targetContextId } }); setActiveMenu(null); } }
+                    { label: 'Selection Mode', icon: <Icon name="cursor" size="sm" />, checked: activeDrawingTool === null || activeDrawingTool === 'cursor', checkRole: 'radio', action: () => { selectDrawingTool('cursor'); setActiveMenu(null); } },
+                    { label: 'Undo Delete', icon: <Icon name="refresh" size="sm" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'UNDO', payload: { targetContextId } }); setActiveMenu(null); } }
                 ]
             },
             { divider: true, label: '' },
@@ -523,16 +528,16 @@ export const MenuBar = ({
             { label: t('menu.charts.lineChart'), icon: <Icon name="line-chart" size="sm" />, checked: menuChartType === 'line', checkRole: 'radio', ...terminalShortcut('charts.line-chart') },
             { label: t('menu.charts.areaChart'), icon: <Icon name="area-chart" size="sm" />, checked: menuChartType === 'area', checkRole: 'radio', ...terminalShortcut('charts.area-chart') },
             { divider: true, label: '' },
-            { label: t('menu.charts.grid'), shortcut: 'Ctrl+G', icon: <Icon name="grid-3x3" size="sm" />, checked: menuChartProperties.showGrid, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; updateActiveChartProperty('showGrid', !current.showGrid, target.symbol); setActiveMenu(null); } },
+            { label: t('menu.charts.grid'), icon: <Icon name="grid-3x3" size="sm" />, checked: menuChartProperties.showGrid, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; updateActiveChartProperty('showGrid', !current.showGrid, target.symbol); setActiveMenu(null); } },
             { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" />, checked: menuChartProperties.chartAutoScroll, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const enabled = !current.chartAutoScroll; updateActiveChartProperty('chartAutoScroll', enabled, target.symbol); commandBus.dispatch({ type: 'SET_AUTO_SCROLL', payload: { enabled, targetContextId: target.targetContextId } }); setActiveMenu(null); } },
             { label: t('menu.charts.chartShift'), icon: <Icon name="chart-shift" size="sm" />, checked: menuChartProperties.chartShift, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const enabled = !current.chartShift; updateActiveChartProperty('chartShift', enabled, target.symbol); commandBus.dispatch({ type: 'SET_CHART_SHIFT', payload: { enabled, targetContextId: target.targetContextId } }); setActiveMenu(null); } },
-            { label: t('menu.charts.volumes'), shortcut: 'Ctrl+K', icon: <Icon name="bar-chart-3" size="sm" />, checked: menuChartProperties.showTickVolumes || menuChartProperties.showRealVolumes, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const visible = !(current.showTickVolumes || current.showRealVolumes); updateActiveChartProperty('showTickVolumes', visible, target.symbol); updateActiveChartProperty('showRealVolumes', false, target.symbol); setActiveMenu(null); } },
-            { label: t('menu.charts.ohlc', 'Show OHLC'), shortcut: 'Alt+Shift+L', icon: <Icon name="activity" size="sm" />, checked: menuChartProperties.showOHLC, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; updateActiveChartProperty('showOHLC', !current.showOHLC, target.symbol); setActiveMenu(null); } },
+            { label: t('menu.charts.volumes'), icon: <Icon name="bar-chart-3" size="sm" />, checked: menuChartProperties.showTickVolumes || menuChartProperties.showRealVolumes, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const visible = !(current.showTickVolumes || current.showRealVolumes); updateActiveChartProperty('showTickVolumes', visible, target.symbol); updateActiveChartProperty('showRealVolumes', false, target.symbol); setActiveMenu(null); } },
+            { label: t('menu.charts.ohlc', 'Show OHLC'), shortcut: getTerminalShortcutHint('charts.ohlc'), icon: <Icon name="activity" size="sm" />, checked: menuChartProperties.showOHLC, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; updateActiveChartProperty('showOHLC', !current.showOHLC, target.symbol); setActiveMenu(null); } },
             { divider: true, label: '' },
-            { label: t('menu.charts.zoomIn'), shortcut: '+', icon: <Icon name="zoom-in" size="sm" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_IN', payload: { targetContextId } }); setActiveMenu(null); } },
-            { label: t('menu.charts.zoomOut'), shortcut: '-', icon: <Icon name="zoom-out" size="sm" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_OUT', payload: { targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.zoomIn'), icon: <Icon name="zoom-in" size="sm" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_IN', payload: { targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.zoomOut'), icon: <Icon name="zoom-out" size="sm" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_OUT', payload: { targetContextId } }); setActiveMenu(null); } },
             { divider: true, label: '' },
-            { label: t('menu.charts.properties'), shortcut: 'F8', icon: <Icon name="settings" size="sm" />, action: () => { const target = resolveChartTarget(); window.dispatchEvent(new CustomEvent('openChartProperties', { detail: target })); setActiveMenu(null); } }
+            { label: t('menu.charts.properties'), icon: <Icon name="settings" size="sm" />, action: () => { const target = resolveChartTarget(); window.dispatchEvent(new CustomEvent('openChartProperties', { detail: target })); setActiveMenu(null); } }
         ],
         Tools: [
             // Primary Trading
@@ -828,7 +833,7 @@ export const MenuBar = ({
                 if (!isElectronDesktop) onLogout?.();
                 closeMenu();
             }}
-            hasUnsavedChanges={false}
+            hasUnsavedChanges={hasUnsavedChanges}
         />
     );
 

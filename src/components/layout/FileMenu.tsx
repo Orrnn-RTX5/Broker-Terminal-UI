@@ -186,6 +186,12 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const selectedSymbol = useAppStore(state => state.selectedSymbol);
     const timeframe = useAppStore(state => state.timeframe);
     const isAuthenticated = useAppStore(state => state.isAuthenticated);
+    // SUI-T19b: no reactive workspace-modified source exists; best available
+    // live dirty-state is open positions + pending orders (mirrors exitHandler).
+    const openTradesCount = useAppStore(state => state.positions?.length ?? 0);
+    const draftOrdersCount = useAppStore(state => state.orders?.filter(o => o.status === 'PENDING').length ?? 0);
+    const hasOpenTrades = openTradesCount > 0;
+    const hasDraftOrders = draftOrdersCount > 0;
 
     // Print state
     const [printPreferences, setPrintPreferences] = useState<PrintPreferences | null>(null);
@@ -375,7 +381,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     });
 
     const handleExit = () => {
-        if (hasUnsavedChanges) {
+        if (hasUnsavedChanges || hasOpenTrades || hasDraftOrders) {
             setShowExitDialog(true);
         } else {
             performExit();
@@ -871,10 +877,10 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     isOpen={showExitDialog}
                     changes={{
                         hasWorkspaceChanges: hasUnsavedChanges,
-                        hasOpenTrades: false,
-                        hasDraftOrders: false,
-                        openTradesCount: 0,
-                        draftOrdersCount: 0,
+                        hasOpenTrades,
+                        hasDraftOrders,
+                        openTradesCount,
+                        draftOrdersCount,
                         workspaceModified: hasUnsavedChanges,
                     }}
                     onConfirm={(saveWorkspace) => {
