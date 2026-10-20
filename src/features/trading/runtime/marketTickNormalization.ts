@@ -9,6 +9,7 @@ import {
 import { resolveDailyChangePriceMode } from '../../../services/dailyChangePriceModeRegistry';
 import { asUnknownRecord, readBrokerTimestampMs } from '../../../utils/brokerStreamSemantics';
 import { readQuoteSessionRange, type QuoteSessionRange } from '../../../utils/quoteSessionRange';
+import { resolveSpecDigits } from '../../../utils/symbolUtils';
 import { readFirstFiniteNumber } from '../../../utils/recordFields';
 import { readQuoteTradingStatus, type QuoteTradingStatusFields } from '../../../utils/quoteTradingStatus';
 
@@ -63,14 +64,9 @@ const getDefaultSpread = (symbol: string): number => {
   return 0.0001;
 };
 
-const getSymbolDigits = (symbol: string): number => {
-  if (symbol.includes('JPY')) return 3;
-  if (symbol.includes('BTC') || symbol.includes('ETH')) return 2;
-  if (symbol.includes('LTC') || symbol.includes('SOL') || symbol.includes('XRP') || symbol.includes('BNB') || symbol.includes('DOT') || symbol.includes('ADA')) return 4;
-  if (symbol.includes('XAU') || symbol.includes('XAG') || symbol.includes('XPT') || symbol.includes('XPD')) return 2;
-  if (symbol.includes('NAS') || symbol.includes('SPX') || symbol.includes('DJ') || symbol.includes('US30') || symbol.includes('US500') || symbol.includes('NDX')) return 2;
-  return 5;
-};
+// TERM-DIGITS-WL: the name-based digits table is deleted. Broker digits
+// flow through record/previous; unknown precision stays null (render raw).
+// (getDefaultSpread above is spread synthesis, out of scope here.)
 
 export const normalizeRealtimeTick = (
   raw: unknown,
@@ -164,7 +160,7 @@ export const normalizeRealtimeTick = (
     // Last is an exchange field, not the Bid/Ask midpoint. Leave it absent
     // when the broker did not publish one.
     last: brokerLast,
-    digits: toNumber(record.digits, previous?.digits ?? 0) || getSymbolDigits(symbol),
+    digits: resolveSpecDigits(record.digits, previous?.digits),
     ...readQuoteSessionRange(record),
     open: readFirstFiniteNumber(record, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']),
     close: readFirstFiniteNumber(record, ['close', 'close_price', 'closePrice']) ?? previousClose,

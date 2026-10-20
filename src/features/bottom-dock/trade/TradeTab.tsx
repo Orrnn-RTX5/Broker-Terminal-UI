@@ -378,15 +378,22 @@ export const TradeTab = memo(function TradeTab({
         return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     }, []);
 
+    // Spec digits only (live tick); unknown renders raw (never guessed).
+    const lookupTradeTickDigits = useCallback((symbol: string): number | null => {
+        const ticks = (useAppStore.getState().ticks ?? {}) as Record<string, { digits?: unknown } | undefined>;
+        const tick = ticks[symbol] ?? ticks[symbol.toUpperCase()];
+        return resolveSpecDigits(tick?.digits);
+    }, []);
+
     const formatTradePrice = useCallback((value: unknown, symbol: string) => {
         const price = Number(value);
-        return Number.isFinite(price) && price > 0 ? formatPrice(price, symbol) : '-';
-    }, []);
+        return Number.isFinite(price) && price > 0 ? formatPrice(price, lookupTradeTickDigits(symbol) ?? undefined) : '-';
+    }, [lookupTradeTickDigits]);
 
     const formatTradeLevel = useCallback((value: unknown, symbol: string) => {
         const price = Number(value);
-        return Number.isFinite(price) && price > 0 ? formatPrice(price, symbol) : '0.00';
-    }, []);
+        return Number.isFinite(price) && price > 0 ? formatPrice(price, lookupTradeTickDigits(symbol) ?? undefined) : '0.00';
+    }, [lookupTradeTickDigits]);
 
     const getTradeTimeValue = useCallback((value?: number | string | null) => {
         if (value === undefined || value === null || value === '' || value === 0) return 0;

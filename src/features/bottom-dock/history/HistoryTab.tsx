@@ -6,7 +6,7 @@ import { useUiTranslation } from '../../../hooks/useUiTranslation';
 import { useDialogFocusScope } from '../../../hooks/useDialogFocusScope';
 import { useChartSettingsStore } from '../../../store/useChartSettingsStore';
 import { useAppStore, type Trade } from '../../../store/useAppStore';
-import { formatPrice } from '../../../utils/symbolUtils';
+import { formatPrice, resolveSpecDigits } from '../../../utils/symbolUtils';
 import { safeReadBoolean, safeReadJson, safeReadString } from '../preferences';
 import { escapeHtml } from '../reporting';
 import { getCurrentBrokerAccountSessionScopeKey, normalizeTradeSymbol } from '../sessionScope';
@@ -285,14 +285,21 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [], accountBalance
         return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${milliseconds}`;
     };
 
+    // Spec digits only (live tick); unknown renders raw (never guessed).
+    const lookupHistoryTickDigits = (symbol: string): number | null => {
+        const ticks = (useAppStore.getState().ticks ?? {}) as Record<string, { digits?: unknown } | undefined>;
+        const tick = ticks[symbol] ?? ticks[symbol.toUpperCase()];
+        return resolveSpecDigits(tick?.digits);
+    };
+
     const formatPriceCell = (value: number | undefined, symbol: string) => {
         const price = Number(value);
-        return Number.isFinite(price) && price > 0 ? formatPrice(price, symbol) : '-';
+        return Number.isFinite(price) && price > 0 ? formatPrice(price, lookupHistoryTickDigits(symbol) ?? undefined) : '-';
     };
 
     const formatLevelCell = (value: number | undefined, symbol: string) => {
         const price = Number(value);
-        return Number.isFinite(price) && price > 0 ? formatPrice(price, symbol) : '0.00';
+        return Number.isFinite(price) && price > 0 ? formatPrice(price, lookupHistoryTickDigits(symbol) ?? undefined) : '0.00';
     };
 
     const moneyColor = (value: number | undefined | null) => {
