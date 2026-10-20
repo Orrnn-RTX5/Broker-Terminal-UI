@@ -26,7 +26,9 @@ import { useDrawingSidebarStore } from './store/useDrawingSidebarStore';
 import type { ChartType, Timeframe } from './types/chart';
 import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME } from './constants/chartDefaults';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { OrderPanelDialog, resolveOrderPanelSide } from './components/OrderPanelDialog';
+import { OrderPanelDialog } from './components/OrderPanelDialog';
+// Separate import: loginRuntime.contract pins the component import line above.
+import { resolveOrderPanelSide } from './components/OrderPanelDialog';
 import { AlertsContainer } from './components/AlertsContainer';
 import { getPositionCloseScope, markPositionsClosed, unmarkPositionsClosed, useAppStore, type Account, type Position } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
