@@ -142,7 +142,6 @@ import { confirmBulkCloseForSession } from './features/trading/mutations/confirm
 import { useBulkCloseConfirmStore } from './store/useBulkCloseConfirmStore';
 import { useConfirmStore } from './store/useConfirmStore';
 import { useChartSettingsStore } from './store/useChartSettingsStore';
-import { useSettingsStore } from './store/useSettingsStore';
 import {
   getActiveChartCommandTarget,
   getPanelIdFromChartContextId,
