@@ -815,16 +815,9 @@ ${rows}
         try {
             // account_login rides in the body (gateway requires it in-body).
             await closePositionsBy(position, counterpart, { account_login: accountId ?? undefined });
-            try {
-                // Backend rows carry the full position shape; the api type is narrower.
-                useAppStore.getState().setPositions(await api.positions.getPositions() as never);
-            } catch (refreshError) {
-                console.warn('[Trade] Close-by confirmed, but position refresh failed:', refreshError);
-                publishOrderFeedback(
-                    [feedbackLabel('Close by'), feedbackValue(` #${rowTicket} / #${pairTicket}: `), feedbackLabel('Refresh failed'), feedbackValue(` — ${formatOrderError(refreshError)}`)],
-                    'error',
-                );
-            }
+            // Authoritative refresh through the trade-refresh controller
+            // (it maps rows to the store shape; no direct setPositions cast).
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
             return true;
         } catch (err) {
             console.error('Failed to close positions by each other:', err);
@@ -833,11 +826,7 @@ ${rows}
                 'error',
             );
             // Converge with backend truth best-effort; the original error is already surfaced.
-            try {
-                useAppStore.getState().setPositions(await api.positions.getPositions() as never);
-            } catch (refreshError) {
-                console.warn('[Trade] Position refresh after failed close-by failed:', refreshError);
-            }
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
             return false;
         } finally {
             closeByInFlightRef.current.delete(pairKey);

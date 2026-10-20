@@ -144,20 +144,27 @@ describe('TradeTab close-by row menu', () => {
     });
   });
 
-  it('refreshes positions from the backend after a confirmed close-by', async () => {
-    renderTradeTab([LONG, SHORT]);
-    openRowMenu('2002');
+  it('requests an authoritative positions refresh after a confirmed close-by', async () => {
+    const refreshRequests: Event[] = [];
+    const listener = (event: Event) => refreshRequests.push(event);
+    window.addEventListener('rtx:force-refresh-positions', listener);
+    try {
+      renderTradeTab([LONG, SHORT]);
+      openRowMenu('2002');
 
-    fireEvent.click(screen.getByText('Close by #2001'));
+      fireEvent.click(screen.getByText('Close by #2001'));
 
-    await waitFor(() => expect(useAppStore.getState().positions).toEqual([]));
-    const refreshCall = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/positions/777001'));
-    expect(refreshCall).toBeDefined();
-    expect(useConfirmStore.getState().showConfirm).toHaveBeenCalledWith(
-      expect.stringContaining('#2002'),
-      expect.stringContaining('#2001'),
-      expect.objectContaining({ confirmLabel: 'Close by', danger: true }),
-    );
+      // The controller owns the refresh (and the store-shape mapping); the
+      // tab only signals it — no direct setPositions, no casts.
+      await waitFor(() => expect(refreshRequests).toHaveLength(1));
+      expect(useConfirmStore.getState().showConfirm).toHaveBeenCalledWith(
+        expect.stringContaining('#2002'),
+        expect.stringContaining('#2001'),
+        expect.objectContaining({ confirmLabel: 'Close by', danger: true }),
+      );
+    } finally {
+      window.removeEventListener('rtx:force-refresh-positions', listener);
+    }
   });
 
   it('sends nothing when the confirmation is declined', async () => {
@@ -191,8 +198,6 @@ describe('TradeTab close-by row menu', () => {
       await waitFor(() => expect(feedback.length).toBeGreaterThan(0));
       expect(feedback[0].type).toBe('error');
       expect(feedback[0].message).toMatch(/Close by/);
-      // Backend truth still converges into the store.
-      await waitFor(() => expect(useAppStore.getState().positions).toHaveLength(2));
     } finally {
       window.removeEventListener(ORDER_FEEDBACK_EVENT, listener);
     }
