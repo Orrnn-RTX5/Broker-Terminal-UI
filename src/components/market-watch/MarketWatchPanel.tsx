@@ -386,6 +386,21 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       shouldMergePersistedSymbols,
     ]);
 
+    // Search Symbols dialog "Show symbol" fires `watchlist:addSymbol` (see
+    // MenuBar SymbolsDialog onShowSymbol). Route it through the exact same
+    // click-to-add search path above so the symbol lands in Market Watch on
+    // both default and custom watchlists. Unknown symbols resolve to nothing
+    // and are ignored gracefully; resolution is broker-catalog driven.
+    useEffect(() => {
+      const handleWatchlistAddSymbol = (event: Event) => {
+        const symbol = (event as CustomEvent<{ symbol?: unknown }>).detail?.symbol;
+        if (typeof symbol !== 'string' || !symbol.trim()) return;
+        handleSelectSymbol(symbol);
+      };
+      window.addEventListener('watchlist:addSymbol', handleWatchlistAddSymbol);
+      return () => window.removeEventListener('watchlist:addSymbol', handleWatchlistAddSymbol);
+    }, [handleSelectSymbol]);
+
     const publishMarketWatchFeedback = useCallback((
       message: string,
       type: 'success' | 'error' = 'success',
