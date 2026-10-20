@@ -80,7 +80,9 @@ describe('desktop trading authentication', () => {
       error: 'The active broker session does not match this terminal deployment URL.',
     });
     mocks.loadDirectory.mockResolvedValue(brokers);
-    mocks.login.mockResolvedValue({ access_token: 'desktop-test-token', account_login: 200001, broker_id: 'achiever' });
+    // account_type: 'real' makes the login classifiable so isLive is set
+    // (ba43e98c: typeless logins intentionally omit isLive/accountType).
+    mocks.login.mockResolvedValue({ access_token: 'desktop-test-token', account_login: 200001, broker_id: 'achiever', account_type: 'real' });
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'ok' })));
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('electron', { window: {} });
