@@ -107,7 +107,9 @@ describe('ModifyPositionDialog chart toolbar', () => {
         commits.length = 0;
         rerender(renderDialog(second));
         expect(commits.length).toBeGreaterThan(0);
-        expect(commits.every(commit => commit.title.includes('#166') && commit.sl === '0.00' && commit.tp === '0.00'
+        // Empty SL/TP seed to the valid side of the live quote (BUY GBPUSD
+        // bid 1.33981, 5 digits, default 5pt standoff), never '0.00'.
+        expect(commits.every(commit => commit.title.includes('#166') && commit.sl === '1.33976' && commit.tp === '1.33986'
             && commit.volume === '0.01' && commit.comment === 'Second position')).toBe(true);
 
         fireEvent.change(screen.getByLabelText(/stop loss:$/i), { target: { value: '1.28' } });

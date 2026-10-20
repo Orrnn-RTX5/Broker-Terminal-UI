@@ -559,7 +559,9 @@ describe('displaced trade control gestures', () => {
         expect(onModified.mock.calls[1][0].detail).toEqual({
           id: 987, symbol: 'XAUUSD', sessionScope: 'test-only', ...expectedLevels,
         });
-        expect(onFeedback.mock.calls[0][0].detail).toEqual({ message: 'Modify Position: Failed', type: 'error' });
+        // Non-geometry errors route through formatOrderError (informative,
+        // never a bare generic); the feedback purpose is unchanged.
+        expect(onFeedback.mock.calls[0][0].detail).toEqual({ message: 'Order failed: Broker rejected stop level', type: 'error' });
         expect(h.options.pendingTradeLevelModifyRequestsRef.current.has(h.trade.key)).toBe(false);
         expect(h.options.tradeLevelOptimisticGraceUntilRef.current.has(h.trade.key)).toBe(false);
       }

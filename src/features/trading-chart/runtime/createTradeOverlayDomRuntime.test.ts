@@ -332,8 +332,10 @@ describe('SL/TP chart controls', () => {
     expect(options.tradeLevelOptimisticGraceUntilRef.current.has(trade.key)).toBe(false);
     const feedback = dispatch.mock.calls.map(([event]) => event)
       .filter(event => event.type === 'rtx:order-feedback') as CustomEvent[];
+    // Non-geometry errors route through formatOrderError (never a bare
+    // generic): the feedback purpose is unchanged, the text is informative.
     expect(feedback.map(event => event.detail)).toEqual([
-      { message: 'Modify Position: Failed', type: 'error' },
+      { message: 'Order failed: Broker rejected the update', type: 'error' },
     ]);
   });
 
