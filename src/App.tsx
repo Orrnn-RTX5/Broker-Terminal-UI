@@ -64,12 +64,12 @@ import {
 } from './startup/authenticatedSessionHandoff';
 import { TerminalLoadFallback } from './startup/TerminalLoadFallback';
 import { TerminalStartupBoundary } from './startup/TerminalStartupBoundary';
+import { useBrokerConfigWarmup } from './startup/brokerConfigWarmup';
 
 import { useLastSymbolStore } from './store/useLastSymbolStore';
 import { resolveOpenOrderTargetSymbol, useSettingsStore } from './store/useSettingsStore';
 import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
-import { normalizeBrokerOperationalConfig, type BrokerOperationalConfig } from './services/brokerOperationalConfig';
 import { tradingV2Api } from './api/trade';
 import { dispatchTradeOverlayCloseState, type TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
 import { formatOrderError } from './utils/orderError';
@@ -236,7 +236,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     return (saved as ChartType) || 'candlestick';
   });
   const [timeframe, setTimeframe] = useState<Timeframe>(DEFAULT_CHART_TIMEFRAME);
-  const [, setBrokerConfig] = useState<BrokerOperationalConfig | null>(null);
   const [dockHeight, setDockHeight] = useState(() => {
     const saved = localStorage.getItem('dockHeight');
     return saved ? parseInt(saved, 10) : 250;
@@ -734,17 +733,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     setRestoredLayoutAccountId(accountId);
   }, [isAuthenticated, accountId]);
 
-  // Broker config — operating values come from the broker's own
+  // Broker config warmup — operating values come from the broker's own
   // /api/v2/broker/config document (white-label: no per-broker literals in
-  // code). Neutral values apply until the broker config arrives or when it
-  // is unavailable.
-  useEffect(() => {
-    let active = true;
-    api.config.getConfig()
-      .then((config) => { if (active) setBrokerConfig(normalizeBrokerOperationalConfig(config)); })
-      .catch(() => { if (active) setBrokerConfig(normalizeBrokerOperationalConfig(null)); });
-    return () => { active = false; };
-  }, []);
+  // code). The shared warmup primes that document on startup through the
+  // neutral-fallback normalization; each consumer holds its own normalized
+  // read, so this owns no UI state.
+  useBrokerConfigWarmup();
 
   const {
     refreshPositions,
