@@ -76,9 +76,14 @@ export const getStoredBrokerServer = (): string => {
   if (typeof window === 'undefined') return DEFAULT_BROKER_SERVER;
   const stored = normalizeServerName(localStorage.getItem(BROKER_SERVER_STORAGE_KEY));
   if (!stored || isDefaultBrokerServerValue(stored)) return DEFAULT_BROKER_SERVER;
+  const configured = getConfiguredBrokerServers();
+  // Unconfigured broker: no runtime list to validate against, so keep the
+  // stored value (directory/desktop flows resolve it downstream). A
+  // configured list is enforced strictly below.
+  if (configured.length === 0) return stored;
   if (isConfiguredBrokerServer(stored)) return stored;
   // Not in the current broker's runtime list: discard, use first configured.
-  return getConfiguredBrokerServers()[0] || DEFAULT_BROKER_SERVER;
+  return configured[0] || DEFAULT_BROKER_SERVER;
 };
 
 export const persistBrokerServer = (server: string): string => {
