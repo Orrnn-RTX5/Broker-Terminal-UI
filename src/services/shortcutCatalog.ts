@@ -58,6 +58,22 @@ export const TERMINAL_SHORTCUTS: ShortcutHelpEntry[] = [
   { id: 'file.print-preview', key: 'p', ctrl: true, shift: true, description: 'Print Preview', category: 'File' },
   { id: 'file.save-picture', key: 's', ctrl: true, shift: true, description: 'Save as Picture', category: 'File' },
   { id: 'help.shortcuts', key: 'F1', description: 'Keyboard Shortcuts', category: 'Help' },
+  // SUI-T19c: MenuBar hints for these actions already fire through GlobalShortcuts
+  // registrations (same id + combo, so the additions loop skips them and the
+  // uniqueness + matrix snapshots are unaffected). Catalog entries expose the
+  // hint text via getTerminalShortcutHint. Rail-owned Alt+T/H/V/X stay out:
+  // re-registering them here would flip the active handler's priority/shape.
+  { id: 'view.fullscreen', key: 'F11', description: 'Full Screen', category: 'View' },
+  { id: 'charts.toggle-crosshair', key: 'c', description: 'Toggle Crosshair', category: 'Charts' },
+  { id: 'charts.toggle-grid', key: 'g', ctrl: true, description: 'Toggle Grid', category: 'Charts' },
+  { id: 'charts.toggle-volumes', key: 'k', ctrl: true, description: 'Toggle Volumes', category: 'Charts' },
+  { id: 'charts.zoom-in', key: '+', description: 'Zoom In', category: 'Charts' },
+  { id: 'charts.zoom-out', key: '-', description: 'Zoom Out', category: 'Charts' },
+  { id: 'charts.properties', key: 'F8', description: 'Chart Properties', category: 'Charts' },
+  { id: 'charts.undo-drawing', key: 'z', ctrl: true, description: 'Undo Last Drawing', category: 'Charts' },
+  { id: 'charts.delete-drawing', key: 'Delete', description: 'Delete Selected Drawing', category: 'Charts' },
+  { id: 'charts.delete-last-drawing', key: 'Backspace', description: 'Delete Last Drawing', category: 'Charts' },
+  { id: 'navigation.close-modal', key: 'Escape', description: 'Close Modal', category: 'Navigation' },
 ];
 
 export const getTerminalShortcutHint = (id: string): string => {
@@ -122,6 +138,38 @@ export const runTerminalShortcutAction = (id: string): void => {
     case 'file.print-preview': emit('open-print-preview'); break;
     case 'file.save-picture': emit('open-save-picture'); break;
     case 'help.shortcuts': emit('open-shortcut-help'); break;
+    // SUI-T19c: catalog actions for MenuBar-hinted bindings (mirror the
+    // GlobalShortcuts/MenuBar effects; previously no-ops for these ids).
+    case 'view.fullscreen':
+      if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => undefined); }
+      else { document.exitFullscreen().catch(() => undefined); }
+      break;
+    case 'charts.toggle-crosshair':
+      commandBus.dispatch({ type: 'TOGGLE_CROSSHAIR', payload: { targetContextId: target.targetContextId } }); break;
+    case 'charts.toggle-grid': {
+      const gridStore = useChartSettingsStore.getState();
+      const gridCurrent = target.symbol ? (gridStore.symbolProperties[target.symbol] || gridStore.globalProperties) : gridStore.globalProperties;
+      if (target.symbol) gridStore.updateSymbolProperty(target.symbol, 'showGrid', !gridCurrent.showGrid);
+      else gridStore.updateGlobalProperty('showGrid', !gridCurrent.showGrid);
+      break;
+    }
+    case 'charts.toggle-volumes': {
+      const volumeStore = useChartSettingsStore.getState();
+      const volumeCurrent = target.symbol ? (volumeStore.symbolProperties[target.symbol] || volumeStore.globalProperties) : volumeStore.globalProperties;
+      const volumesVisible = !(volumeCurrent.showTickVolumes || volumeCurrent.showRealVolumes);
+      if (target.symbol) { volumeStore.updateSymbolProperty(target.symbol, 'showTickVolumes', volumesVisible); volumeStore.updateSymbolProperty(target.symbol, 'showRealVolumes', false); }
+      else { volumeStore.updateGlobalProperty('showTickVolumes', volumesVisible); volumeStore.updateGlobalProperty('showRealVolumes', false); }
+      break;
+    }
+    case 'charts.zoom-in': commandBus.dispatch({ type: 'ZOOM_IN', payload: { targetContextId: target.targetContextId } }); break;
+    case 'charts.zoom-out': commandBus.dispatch({ type: 'ZOOM_OUT', payload: { targetContextId: target.targetContextId } }); break;
+    case 'charts.properties': emit('openChartProperties', { symbol: target.symbol, timeframe: target.timeframe, targetContextId: target.targetContextId }); break;
+    case 'charts.undo-drawing': emit('chart-undo-drawing', target.targetContextId ? { targetContextId: target.targetContextId } : {}); break;
+    case 'charts.delete-drawing': emit('chart-delete-drawing', target.targetContextId ? { targetContextId: target.targetContextId } : {}); break;
+    case 'charts.delete-last-drawing': emit('chart-delete-last-drawing', target.targetContextId ? { targetContextId: target.targetContextId } : {}); break;
+    case 'navigation.close-modal':
+      commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'cursor', ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}) } });
+      break;
   }
 };
 
