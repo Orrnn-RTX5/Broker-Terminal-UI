@@ -7,6 +7,10 @@ import {
   resolveStopsDistancePoints,
 } from './tradeLevelDrag';
 
+// Spec-exact broker stops-level fixture (ds-19 matrix): seeding distances
+// derive from this via resolveStopsDistancePoints, never from literals.
+const STOPS_LEVEL_FIXTURE = 12;
+
 describe('protection initial placement', () => {
   it('BUY profit seeds SL below Bid (EURUSD)', () => {
     const bid = 1.1;
@@ -16,13 +20,13 @@ describe('protection initial placement', () => {
     const open = 1.099;
     expect(open).toBeLessThan(bid);
     const close = bid;
-    const seeded = defaultProtectionLevel({ side: 'BUY', role: 'SL', bid, ask, digits });
+    const seeded = defaultProtectionLevel({ side: 'BUY', role: 'SL', bid, ask, digits, distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE) });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
     expect(level).toBeLessThan(close);
     expect(Math.abs(level - close)).toBeGreaterThan(0);
     expect(Math.abs(level - close)).toBeCloseTo(
-      DEFAULT_PROTECTION_DISTANCE_POINTS * Math.pow(10, -digits),
+      STOPS_LEVEL_FIXTURE * Math.pow(10, -digits),
       10,
     );
     expect(protectionLevelViolation({ side: 'BUY', role: 'SL', price: level, bid, ask, digits })).toBeNull();
@@ -36,13 +40,13 @@ describe('protection initial placement', () => {
     const open = 1.099;
     expect(open).toBeLessThan(bid);
     const close = bid;
-    const seeded = defaultProtectionLevel({ side: 'BUY', role: 'TP', bid, ask, digits });
+    const seeded = defaultProtectionLevel({ side: 'BUY', role: 'TP', bid, ask, digits, distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE) });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
     expect(level).toBeGreaterThan(close);
     expect(Math.abs(level - close)).toBeGreaterThan(0);
     expect(Math.abs(level - close)).toBeCloseTo(
-      DEFAULT_PROTECTION_DISTANCE_POINTS * Math.pow(10, -digits),
+      STOPS_LEVEL_FIXTURE * Math.pow(10, -digits),
       10,
     );
     expect(protectionLevelViolation({ side: 'BUY', role: 'TP', price: level, bid, ask, digits })).toBeNull();
@@ -56,13 +60,13 @@ describe('protection initial placement', () => {
     const open = 81611;
     expect(open).toBeGreaterThan(bid);
     const close = bid;
-    const seeded = defaultProtectionLevel({ side: 'BUY', role: 'SL', bid, ask, digits });
+    const seeded = defaultProtectionLevel({ side: 'BUY', role: 'SL', bid, ask, digits, distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE) });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
     expect(level).toBeLessThan(close);
     expect(Math.abs(level - close)).toBeGreaterThan(0);
     expect(Math.abs(level - close)).toBeCloseTo(
-      DEFAULT_PROTECTION_DISTANCE_POINTS * Math.pow(10, -digits),
+      STOPS_LEVEL_FIXTURE * Math.pow(10, -digits),
       10,
     );
     expect(protectionLevelViolation({ side: 'BUY', role: 'SL', price: level, bid, ask, digits })).toBeNull();
@@ -76,13 +80,13 @@ describe('protection initial placement', () => {
     const open = 81611;
     expect(open).toBeGreaterThan(bid);
     const close = bid;
-    const seeded = defaultProtectionLevel({ side: 'BUY', role: 'TP', bid, ask, digits });
+    const seeded = defaultProtectionLevel({ side: 'BUY', role: 'TP', bid, ask, digits, distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE) });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
     expect(level).toBeGreaterThan(close);
     expect(Math.abs(level - close)).toBeGreaterThan(0);
     expect(Math.abs(level - close)).toBeCloseTo(
-      DEFAULT_PROTECTION_DISTANCE_POINTS * Math.pow(10, -digits),
+      STOPS_LEVEL_FIXTURE * Math.pow(10, -digits),
       10,
     );
     expect(protectionLevelViolation({ side: 'BUY', role: 'TP', price: level, bid, ask, digits })).toBeNull();
@@ -96,13 +100,13 @@ describe('protection initial placement', () => {
     const open = 1.101;
     expect(open).toBeGreaterThan(ask);
     const close = ask;
-    const seeded = defaultProtectionLevel({ side: 'SELL', role: 'SL', bid, ask, digits });
+    const seeded = defaultProtectionLevel({ side: 'SELL', role: 'SL', bid, ask, digits, distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE) });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
     expect(level).toBeGreaterThan(close);
     expect(Math.abs(level - close)).toBeGreaterThan(0);
     expect(Math.abs(level - close)).toBeCloseTo(
-      DEFAULT_PROTECTION_DISTANCE_POINTS * Math.pow(10, -digits),
+      STOPS_LEVEL_FIXTURE * Math.pow(10, -digits),
       10,
     );
     expect(protectionLevelViolation({ side: 'SELL', role: 'SL', price: level, bid, ask, digits })).toBeNull();
@@ -116,13 +120,13 @@ describe('protection initial placement', () => {
     const open = 1.101;
     expect(open).toBeGreaterThan(ask);
     const close = ask;
-    const seeded = defaultProtectionLevel({ side: 'SELL', role: 'TP', bid, ask, digits });
+    const seeded = defaultProtectionLevel({ side: 'SELL', role: 'TP', bid, ask, digits, distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE) });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
     expect(level).toBeLessThan(close);
     expect(Math.abs(level - close)).toBeGreaterThan(0);
     expect(Math.abs(level - close)).toBeCloseTo(
-      DEFAULT_PROTECTION_DISTANCE_POINTS * Math.pow(10, -digits),
+      STOPS_LEVEL_FIXTURE * Math.pow(10, -digits),
       10,
     );
     expect(protectionLevelViolation({ side: 'SELL', role: 'TP', price: level, bid, ask, digits })).toBeNull();
@@ -136,13 +140,13 @@ describe('protection initial placement', () => {
     const open = 81486;
     expect(open).toBeLessThan(ask);
     const close = ask;
-    const seeded = defaultProtectionLevel({ side: 'SELL', role: 'SL', bid, ask, digits });
+    const seeded = defaultProtectionLevel({ side: 'SELL', role: 'SL', bid, ask, digits, distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE) });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
     expect(level).toBeGreaterThan(close);
     expect(Math.abs(level - close)).toBeGreaterThan(0);
     expect(Math.abs(level - close)).toBeCloseTo(
-      DEFAULT_PROTECTION_DISTANCE_POINTS * Math.pow(10, -digits),
+      STOPS_LEVEL_FIXTURE * Math.pow(10, -digits),
       10,
     );
     expect(protectionLevelViolation({ side: 'SELL', role: 'SL', price: level, bid, ask, digits })).toBeNull();
@@ -156,13 +160,13 @@ describe('protection initial placement', () => {
     const open = 81486;
     expect(open).toBeLessThan(ask);
     const close = ask;
-    const seeded = defaultProtectionLevel({ side: 'SELL', role: 'TP', bid, ask, digits });
+    const seeded = defaultProtectionLevel({ side: 'SELL', role: 'TP', bid, ask, digits, distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE) });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
     expect(level).toBeLessThan(close);
     expect(Math.abs(level - close)).toBeGreaterThan(0);
     expect(Math.abs(level - close)).toBeCloseTo(
-      DEFAULT_PROTECTION_DISTANCE_POINTS * Math.pow(10, -digits),
+      STOPS_LEVEL_FIXTURE * Math.pow(10, -digits),
       10,
     );
     expect(protectionLevelViolation({ side: 'SELL', role: 'TP', price: level, bid, ask, digits })).toBeNull();
@@ -182,7 +186,7 @@ describe('protection exact 12-point gap', () => {
       bid,
       ask,
       digits,
-      distancePoints: 12,
+      distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE),
     });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
@@ -204,7 +208,7 @@ describe('protection exact 12-point gap', () => {
       bid,
       ask,
       digits,
-      distancePoints: 12,
+      distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE),
     });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
@@ -226,7 +230,7 @@ describe('protection exact 12-point gap', () => {
       bid,
       ask,
       digits,
-      distancePoints: 12,
+      distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE),
     });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);
@@ -248,7 +252,7 @@ describe('protection exact 12-point gap', () => {
       bid,
       ask,
       digits,
-      distancePoints: 12,
+      distancePoints: resolveStopsDistancePoints(STOPS_LEVEL_FIXTURE),
     });
     expect(seeded).not.toBeNull();
     const level = Number(seeded);

@@ -8,6 +8,7 @@ import {
 import {
   getCurrentDailyChangePriceModeScopeKey,
   readRegisteredDailyChangePriceMode,
+  readRegisteredSymbolPriceSpec,
   registerDailyChangePriceModes,
   resetDailyChangePriceModeRegistryForTests,
   resolveDailyChangePriceMode,
@@ -170,6 +171,36 @@ describe('daily change price-mode registry', () => {
 
     expect(registerDailyChangePriceModes(accountUniverse, capturedScope)).toBe(false);
     expect(readRegisteredDailyChangePriceMode('FUTURE.LAST')).toBeUndefined();
+  });
+
+  it('exposes broker digits and top-level tick size by exact symbol', () => {
+    const rows: Array<Record<string, unknown>> = [{ symbol: 'ALPHA.x', digits: 3, tickSize: 0.005 }];
+    expect(registerDailyChangePriceModes(rows)).toBe(true);
+    expect(readRegisteredSymbolPriceSpec('ALPHA.x')).toEqual({ digits: 3, tickSize: 0.005 });
+    expect(readRegisteredSymbolPriceSpec('alpha.X')).toEqual({ digits: 3, tickSize: 0.005 });
+  });
+
+  it('reads tick_size from a brokerSpecification-only row', () => {
+    const rows: Array<Record<string, unknown>> = [
+      { symbol: 'ALPHA.x', brokerSpecification: { digits: 3, tick_size: 0.005 } },
+    ];
+    expect(registerDailyChangePriceModes(rows)).toBe(true);
+    expect(readRegisteredSymbolPriceSpec('ALPHA.x')).toEqual({ digits: 3, tickSize: 0.005 });
+  });
+
+  it('returns nulls for unknown symbols and after a broker scope change', () => {
+    const rows: Array<Record<string, unknown>> = [{ symbol: 'ALPHA.x', digits: 3, tickSize: 0.005 }];
+    registerDailyChangePriceModes(rows);
+    expect(readRegisteredSymbolPriceSpec('TESTFIX')).toEqual({ digits: null, tickSize: null });
+    expect(readRegisteredSymbolPriceSpec('')).toEqual({ digits: null, tickSize: null });
+
+    commitBrokerAccountSessionScope({
+      authenticated: true,
+      accountId: '2002',
+      brokerId: 'broker-b',
+      serverUrl: 'https://broker-b.test',
+    });
+    expect(readRegisteredSymbolPriceSpec('ALPHA.x')).toEqual({ digits: null, tickSize: null });
   });
 
   it('refuses metadata ownership when anonymous broker identity is empty', () => {

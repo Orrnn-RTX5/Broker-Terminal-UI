@@ -102,5 +102,7 @@ describe('protection toast (SL/TP refusal)', () => {
     expect(formatted).not.toBe('');
     expect(formatted.length).toBeGreaterThan(0);
     expect(formatted).toContain(serverMessage);
+    // T3 filter pin: the unknown raw code must not leak into the toast.
+    expect(formatted).not.toContain('UNKNOWN_ORDER_REASON');
   });
 });
