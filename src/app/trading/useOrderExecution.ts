@@ -236,19 +236,20 @@ export const useOrderExecution = ({
       if (!ensureMarketOpenForOrder(submitSymbol)) return;
 
       const side = request.side.toLowerCase() as 'buy' | 'sell';
+      const pendingKind = (request.execution as string) === 'stop' ? 'stop' : 'limit';
       await api.orders.placePendingOrder({
         login: loginId,
         symbol: submitSymbol,
         side,
         volume: request.volume,
-        type: `${side}_limit`,
+        type: `${side}_${pendingKind}` as 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop',
         price: request.price,
         ...(request.priceSl ? { price_sl: request.priceSl } : {}),
         ...(request.priceTp ? { price_tp: request.priceTp } : {}),
       });
       if (!isTradeOperationContextCurrent(operationContext)) return;
       publishOrderFeedback([
-        feedbackLabel(request.side === 'BUY' ? 'Buy Limit' : 'Sell Limit'),
+        feedbackLabel(side === 'buy' ? (pendingKind === 'stop' ? 'Buy Stop' : 'Buy Limit') : (pendingKind === 'stop' ? 'Sell Stop' : 'Sell Limit')),
         feedbackValue(` · ${submitSymbol} · `),
         feedbackLabel('Volume'),
         feedbackValue(`: ${request.volume} · `),
@@ -323,10 +324,37 @@ export const useOrderExecution = ({
           ]);
           return;
         }
-        const pendingKind = order.orderType?.toLowerCase().includes('stop') && !order.orderType?.toLowerCase().includes('limit')
-          ? 'stop'
-          : 'limit';
-        const pendingType = `${lowerSide}_${pendingKind}` as 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop';
+        const orderTypeName = String(order.orderType || '').toLowerCase();
+        const isStopLimitOrder = orderTypeName.includes('stop') && orderTypeName.includes('limit');
+        const pendingKind = isStopLimitOrder
+          ? 'stop_limit'
+          : (orderTypeName.includes('stop') ? 'stop' : 'limit');
+        const pendingType = `${lowerSide}_${pendingKind}` as 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop' | 'buy_stop_limit' | 'sell_stop_limit';
+        let stopLimitPrice: number | undefined;
+        if (isStopLimitOrder) {
+          stopLimitPrice = Number(order.stopLimitPrice);
+          if (!Number.isFinite(stopLimitPrice) || stopLimitPrice <= 0) {
+            publishOrderFeedback([
+              feedbackLabel('Invalid stop limit price'),
+              feedbackValue(`: ${order.stopLimitPrice ?? 0} · `),
+              feedbackLabel('Order failed'),
+            ]);
+            return;
+          }
+        }
+        // The dialog sends `expiration` as a display string ('GTC', date text)
+        // while other callers send `expirationTimestamp` (epoch seconds or ms).
+        // Normalize to whole epoch SECONDS; empty/invalid is omitted (never 0/NaN).
+        const toPendingExpirySeconds = (value: unknown): number | undefined => {
+          if (value === undefined || value === null) return undefined;
+          const text = typeof value === 'string' ? value.trim() : value;
+          if (text === '') return undefined;
+          const numeric = typeof text === 'number' ? text : Number(text);
+          if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+          const seconds = numeric >= 1e12 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+          return seconds > 0 ? seconds : undefined;
+        };
+        const pendingExpiry = toPendingExpirySeconds(order.expirationTimestamp ?? order.expiration);
         await api.orders.placePendingOrder({
           login: loginId,
           symbol: submitSymbol,
@@ -334,15 +362,20 @@ export const useOrderExecution = ({
           volume: order.volume,
           type: pendingType,
           price: orderPrice,
+          // Backend wire name is `price_limit`. No fill_policy is sent: the
+          // gateway REST decoder has no fill-policy concept (IOC/FOK refused).
+          ...(stopLimitPrice !== undefined ? { price_limit: stopLimitPrice } : {}),
           ...(order.priceSl && order.priceSl > 0 ? { price_sl: order.priceSl } : {}),
           ...(order.priceTp && order.priceTp > 0 ? { price_tp: order.priceTp } : {}),
-          ...(order.expirationTimestamp && order.expirationTimestamp > 0 ? { expiration: order.expirationTimestamp } : {}),
+          ...(pendingExpiry !== undefined ? { expiration: pendingExpiry } : {}),
           ...(order.comment ? { comment: order.comment } : {}),
         });
         if (!isTradeOperationContextCurrent(operationContext)) return;
-        const labelText = pendingKind === 'stop'
-          ? (side === 'BUY' ? 'Buy Stop' : 'Sell Stop')
-          : (side === 'BUY' ? 'Buy Limit' : 'Sell Limit');
+        const labelText = pendingKind === 'stop_limit'
+          ? (side === 'BUY' ? 'Buy Stop Limit' : 'Sell Stop Limit')
+          : pendingKind === 'stop'
+            ? (side === 'BUY' ? 'Buy Stop' : 'Sell Stop')
+            : (side === 'BUY' ? 'Buy Limit' : 'Sell Limit');
         publishOrderFeedback([
           feedbackLabel(labelText),
           feedbackValue(` · ${submitSymbol} · `),
@@ -385,7 +418,9 @@ export const useOrderExecution = ({
         console.error('[Trade] Failed to refresh orders/history:', error);
       });
     } catch (error) {
-      publishOrderFeedback(formatOrderError(error));
+      const failureMessage = formatOrderError(error);
+      publishOrderFeedback(failureMessage);
+      throw new Error(failureMessage, { cause: error });
     }
   }, [
     captureTradeOperationContext,

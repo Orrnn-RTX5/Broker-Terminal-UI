@@ -12,6 +12,7 @@ import { getShortcutHelpEntries } from '../services/shortcutCatalog';
 import { activateActiveChartSource, clearActiveChartSources, registerActiveChartSource } from '../services/activeChartSource';
 import { applyChartTimeframeCommand, CHART_TIMEFRAMES } from '../services/chartTimeframeCommand';
 import { useAppStore } from '../store/useAppStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { defaultChartProperties, useChartSettingsStore } from '../store/useChartSettingsStore';
 import { useDrawingSidebarStore } from '../store/useDrawingSidebarStore';
 import { useDockLayoutStore } from '../store/useDockLayoutStore';
@@ -143,6 +144,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup(); dispose(); releases.splice(0).forEach(fn => fn()); vi.restoreAllMocks();
   keyboardShortcutManager.clear(); clearActiveChartSources(); document.body.replaceChildren();
+  useSettingsStore.setState((s) => ({ trade: { ...s.trade, oneClickTrading: false } }));
 });
 
 describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
@@ -154,6 +156,11 @@ describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
     createChart('other', () => broker.other, () => panel('other').props!.timeframe);
     activateActiveChartSource('trading-chart:active');
     const callbacks = props(); mount(callbacks);
+    // One-click ON: the matrix covers binding→callback wiring; the SUI-T9
+    // OFF→dialog gate is covered by dedicated one-click tests.
+    act(() => {
+      useSettingsStore.setState((s) => ({ trade: { ...s.trade, oneClickTrading: true } }));
+    });
     const fallbackTimeframe = vi.fn();
     releases.push(commandBus.subscribe('SET_TIMEFRAME', payload => { applyChartTimeframeCommand(payload, fallbackTimeframe); }));
     const bindings = keyboardShortcutManager.getShortcuts().filter(binding => binding.enabled !== false);
@@ -247,6 +254,11 @@ describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
     createChart('active', () => currentSymbol, () => panel('active').props!.timeframe);
     createChart('other', () => currentOther, () => panel('other').props!.timeframe);
     const callbacks = props(); mount(callbacks);
+    // One-click ON: this test covers shortcut routing, not the SUI-T9
+    // one-click confirm gate (covered by dedicated one-click tests).
+    act(() => {
+      useSettingsStore.setState((s) => ({ trade: { ...s.trade, oneClickTrading: true } }));
+    });
     const fallback = vi.fn(); releases.push(commandBus.subscribe('SET_TIMEFRAME', payload => { applyChartTimeframeCommand(payload, fallback); }));
     for (const broker of BROKERS) {
       currentSymbol = broker.symbol; currentOther = broker.other;
@@ -330,6 +342,11 @@ describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
 
   it.each(['dialog', 'menu'])('does not quick-sell from a focused %s button', role => {
     const callbacks = props(); mount(callbacks);
+    // One-click ON: this test covers dialog-focus protection, not the
+    // SUI-T9 confirm gate.
+    act(() => {
+      useSettingsStore.setState((s) => ({ trade: { ...s.trade, oneClickTrading: true } }));
+    });
     const overlay = document.createElement('div'); overlay.setAttribute('role', role);
     const button = document.createElement('button'); overlay.appendChild(button); document.body.appendChild(overlay);
     button.focus(); press(keyboardShortcutManager.findShortcut('trading.quick-sell')!, button);

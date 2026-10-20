@@ -3,6 +3,7 @@ import type { ChartSymbolAnchor } from '../../components/ChartSymbolDropdown';
 import type { ChartType, Timeframe } from '../../types/chart';
 import type { DockContainer, DockPanelConfig } from '../../services/dockManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { getActiveChartCommandTarget } from '../../services/chartCommandTarget';
 import { getDockPanelChartType } from '../../services/chartTypeCommand';
 import {
@@ -54,7 +55,11 @@ interface UseTerminalCommandEventsOptions {
   handlePrintChart: (request?: PrintChartRequest) => void | Promise<void>;
   getAllowedSymbol: (symbol: unknown) => string;
   getChartEligibleSymbol: (symbol: unknown) => string;
-  openOrderPanelForSymbol: (symbol: unknown) => void;
+  openOrderPanelForSymbol: (
+    symbol: unknown,
+    price?: { bid: number; ask: number },
+    draft?: { orderType?: string; side?: string; price?: number },
+  ) => boolean;
   setShowDataWindow: Dispatch<SetStateAction<boolean>>;
   setShowAccountPanel: Dispatch<SetStateAction<boolean>>;
   setDockHeight: Dispatch<SetStateAction<number>>;
@@ -214,10 +219,23 @@ export const useTerminalCommandEvents = ({
         store.addPanel({ ...config, closable: true, floatable: true }, 'root', 'left');
       }
     };
+    // SUI-T9: one-click OFF opens the prefilled order dialog (never an
+    // instant order); ON places immediately. Fail-closed (unreadable
+    // setting = dialog).
     const handleQuickTrade = (event: CustomEvent<{ side: 'BUY' | 'SELL'; symbol?: unknown }>) => {
       const allowedSymbol = getAllowedSymbol(event.detail?.symbol);
       if (event.detail?.symbol && !allowedSymbol) return;
       if (allowedSymbol) setSelectedSymbol(allowedSymbol);
+      let oneClick = false;
+      try {
+        oneClick = useSettingsStore.getState()?.trade?.oneClickTrading === true;
+      } catch {
+        oneClick = false;
+      }
+      if (!oneClick) {
+        openOrderPanelForSymbol(allowedSymbol || event.detail?.symbol);
+        return;
+      }
       void placeOrder(event.detail?.side, allowedSymbol || undefined);
     };
     const handleOpenChartProperties = (event: CustomEvent<ChartPropertiesEventDetail>) => {
@@ -264,8 +282,8 @@ export const useTerminalCommandEvents = ({
       ['openChart', handleOpenChart as EventListener],
       ['add-chart-panel', () => addChart()],
       ['request-chart-symbol-change', handleRequestChartSymbolChange as EventListener],
-      ['openOrderDialog', ((event: CustomEvent<{ symbol?: unknown }>) => openOrderPanelForSymbol(event.detail?.symbol)) as EventListener],
-      ['openNewOrder', ((event: CustomEvent<{ symbol?: unknown }>) => openOrderPanelForSymbol(event.detail?.symbol)) as EventListener],
+      ['openOrderDialog', ((event: CustomEvent<{ symbol?: unknown; draft?: { orderType?: string; side?: string; price?: number } }>) => openOrderPanelForSymbol(event.detail?.symbol, undefined, event.detail?.draft)) as EventListener],
+      ['openNewOrder', ((event: CustomEvent<{ symbol?: unknown; draft?: { orderType?: string; side?: string; price?: number } }>) => openOrderPanelForSymbol(event.detail?.symbol, undefined, event.detail?.draft)) as EventListener],
       ['openDepthOfMarket', handleOpenDOM as EventListener],
       ['openDataWindow', () => setShowDataWindow((visible) => !visible)],
       ['openChartProperties', handleOpenChartProperties as EventListener],

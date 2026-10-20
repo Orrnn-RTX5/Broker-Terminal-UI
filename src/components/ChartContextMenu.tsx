@@ -9,6 +9,7 @@ import ReactDOM from 'react-dom';
 import type { ChartType, Timeframe } from '../types/chart';
 import type { IndicatorConfig } from '../services/indicatorManager';
 import { commandBus } from '../services/commandBus';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useTemplates, useTemplateStore } from '../store/useTemplateStore';
 import type { ChartTemplate } from '../store/useTemplateStore';
 import type { ChartGridLineStyle, ChartGridType } from '../store/useChartSettingsStore';
@@ -21,11 +22,41 @@ import {
     Eye, EyeOff,
 } from 'lucide-react';
 
+export interface ChartPendingOrderDraft {
+    symbol: string;
+    orderType: 'Buy Limit' | 'Sell Limit' | 'Buy Stop' | 'Sell Stop';
+    side: 'BUY' | 'SELL';
+    price?: number;
+}
+
+// Fail-closed: any unreadable setting disables instant send and opens the
+// order dialog instead (SUI-T9 confirmation contract: one-click OFF ⇒
+// prefilled dialog, never an instant order).
+const isOneClickTradingEnabledFailClosed = (): boolean => {
+    try {
+        const trade = useSettingsStore.getState()?.trade as { oneClickTrading?: unknown } | undefined;
+        return trade?.oneClickTrading === true;
+    } catch {
+        return false;
+    }
+};
+
+// One-click OFF routes market entries to the order dialog via the openNewOrder
+// event (handled by useTerminalCommandEvents → openOrderPanelForSymbol).
+const openChartMarketDialog = (side: 'BUY' | 'SELL', symbol: string): void => {
+    window.dispatchEvent(new CustomEvent('openNewOrder', { detail: { symbol, side } }));
+};
+
+const resolveChartClickPrice = (clickPrice: number | null | undefined): number | undefined => (
+    typeof clickPrice === 'number' && Number.isFinite(clickPrice) && clickPrice > 0 ? clickPrice : undefined
+);
+
 interface ChartContextMenuProps {
     visible: boolean;
     x: number;
     y: number;
     symbol: string;
+    clickPrice?: number | null;
     targetContextId: string;
     currentChartType: ChartType;
     currentTimeframe: Timeframe;
@@ -65,7 +96,7 @@ interface ChartContextMenuProps {
         params: Record<string, any>;
     }) => void;
     onDeleteIndicators: () => void;
-    onOpenNewOrder: () => void;
+    onOpenNewOrder: (draft?: ChartPendingOrderDraft) => void;
     onOpenDOM: () => void;
     onOpenTemplateDialog: (mode: 'save' | 'load') => void;
     onClose: () => void;
@@ -382,6 +413,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     x,
     y,
     symbol,
+    clickPrice,
     targetContextId,
     currentChartType,
     currentTimeframe,
@@ -604,13 +636,25 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 label={tr("Trading")}
                 icon={<TrendingUp size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />}
             >
-                <MenuItem label={tr("Buy Market")} onClick={() => closeThen(() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'BUY', symbol } })); })} />
-                <MenuItem label={tr("Sell Market")} onClick={() => closeThen(() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'SELL', symbol } })); })} />
+                <MenuItem label={tr("Buy Market")} onClick={() => closeThen(() => {
+                    if (isOneClickTradingEnabledFailClosed()) {
+                        window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'BUY', symbol } }));
+                        return;
+                    }
+                    openChartMarketDialog('BUY', symbol);
+                })} />
+                <MenuItem label={tr("Sell Market")} onClick={() => closeThen(() => {
+                    if (isOneClickTradingEnabledFailClosed()) {
+                        window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'SELL', symbol } }));
+                        return;
+                    }
+                    openChartMarketDialog('SELL', symbol);
+                })} />
                 <MenuSeparator />
-                <MenuItem label={tr("Buy Limit")} onClick={() => closeThen(() => { onOpenNewOrder(); })} />
-                <MenuItem label={tr("Sell Limit")} onClick={() => closeThen(() => { onOpenNewOrder(); })} />
-                <MenuItem label={tr("Buy Stop")} onClick={() => closeThen(() => { onOpenNewOrder(); })} />
-                <MenuItem label={tr("Sell Stop")} onClick={() => closeThen(() => { onOpenNewOrder(); })} />
+                <MenuItem label={tr("Buy Limit")} onClick={() => closeThen(() => { onOpenNewOrder({ symbol, orderType: 'Buy Limit', side: 'BUY', price: resolveChartClickPrice(clickPrice) }); })} />
+                <MenuItem label={tr("Sell Limit")} onClick={() => closeThen(() => { onOpenNewOrder({ symbol, orderType: 'Sell Limit', side: 'SELL', price: resolveChartClickPrice(clickPrice) }); })} />
+                <MenuItem label={tr("Buy Stop")} onClick={() => closeThen(() => { onOpenNewOrder({ symbol, orderType: 'Buy Stop', side: 'BUY', price: resolveChartClickPrice(clickPrice) }); })} />
+                <MenuItem label={tr("Sell Stop")} onClick={() => closeThen(() => { onOpenNewOrder({ symbol, orderType: 'Sell Stop', side: 'SELL', price: resolveChartClickPrice(clickPrice) }); })} />
             </Submenu>
 
             <MenuSeparator />

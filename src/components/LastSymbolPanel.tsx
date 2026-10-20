@@ -19,6 +19,7 @@ import { useFloatingPanelDrag } from '../hooks/useFloatingPanelDrag';
 import { Icon } from './ui/Icon';
 import { DailyChangeSummary } from './market-watch/DailyChangeSummary';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
 import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
@@ -57,6 +58,16 @@ const clampPanelPosition = (position: { x: number; y: number }, panel: HTMLDivEl
         Math.min(Math.max(PANEL_EDGE_GAP, window.innerHeight - (panel?.offsetHeight || 96) - PANEL_EDGE_GAP), position.y),
     )),
 });
+
+// Fail-closed: any unreadable setting disables instant send and forces confirm.
+const isOneClickTradingEnabledFailClosed = (): boolean => {
+    try {
+        const trade = useSettingsStore.getState()?.trade as { oneClickTrading?: unknown } | undefined;
+        return trade?.oneClickTrading === true;
+    } catch {
+        return false;
+    }
+};
 
 export function LastSymbolPanel({ symbol }: { symbol?: string } = {}) {
     const tr = useUiTranslation();
@@ -220,6 +231,12 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
             const executionPrice = side === 'BUY' ? ask : bid;
             if (!Number.isFinite(executionPrice) || executionPrice <= 0) {
                 flash(tr('Awaiting quote'), 'info');
+                return;
+            }
+            // SUI-T9: one-click OFF opens the order dialog, never an instant
+            // order. The dialog carries symbol/side context via the event.
+            if (!isOneClickTradingEnabledFailClosed()) {
+                window.dispatchEvent(new CustomEvent('openNewOrder', { detail: { symbol: lastSymbol, side } }));
                 return;
             }
 

@@ -135,8 +135,12 @@ import {
 import { StatusBar } from './components/layout/StatusBar';
 import { UpdateBanner } from './components/layout/UpdateBanner';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
+import { BulkCloseConfirmDialog } from './components/ui/BulkCloseConfirmDialog';
+import { confirmBulkCloseForSession } from './features/trading/mutations/confirmBulkCloseForSession';
+import { useBulkCloseConfirmStore } from './store/useBulkCloseConfirmStore';
 import { useConfirmStore } from './store/useConfirmStore';
 import { useChartSettingsStore } from './store/useChartSettingsStore';
+import { useSettingsStore } from './store/useSettingsStore';
 import {
   getActiveChartCommandTarget,
   getPanelIdFromChartContextId,
@@ -960,19 +964,77 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     return () => window.removeEventListener(CHART_POSITION_ACTION_EVENT, handleChartPositionAction);
   }, []);
 
-  const handleCancelOrder = async (orderId: string) => {
-    if (!(await useConfirmStore.getState().showConfirm(translateUi('Cancel'), `${translateUi('pending order')} #${orderId}?`))) return;
+  // Pending-cancel core WITHOUT any confirmation dialog. Bulk callers confirm
+  // once up front and then run this sequentially per ticket; each call sends
+  // its own Idempotency-Key (see tradingApi.cancelOrder) and throws on
+  // failure so the caller can surface the error instead of swallowing it.
+  // Rows are only replaced from the backend refresh below — never removed
+  // optimistically — so they stay until the backend confirms the cancel.
+  const cancelPendingOrderWithoutConfirm = async (orderId: string) => {
+    const loginId = getLiveTradingLogin();
+    if (!loginId) throw new Error('No trading account is selected. Please sign in again.');
+
+    await api.orders.cancelOrder(orderId);
+    const ordersPayload = await api.orders.getPendingOrders(loginId).catch(() => null);
+    if (!isAuthenticatedRef.current || getLiveTradingLogin() !== loginId || ordersPayload === null) return;
+
+    useAppStore.getState().setOrders(ordersPayload as any);
+  };
+
+  const handleCancelOrder = async (orderId: string, options?: { skipConfirm?: boolean }) => {
+    if (!options?.skipConfirm) {
+      if (!(await useConfirmStore.getState().showConfirm(translateUi('Cancel'), `${translateUi('pending order')} #${orderId}?`))) return;
+    }
     try {
-      const loginId = getLiveTradingLogin();
-      if (!loginId) return;
-
-      await api.orders.cancelOrder(orderId);
-      const ordersPayload = await api.orders.getPendingOrders(loginId).catch(() => []);
-      if (!isAuthenticatedRef.current || getLiveTradingLogin() !== loginId) return;
-
-      useAppStore.getState().setOrders(ordersPayload as any);
+      await cancelPendingOrderWithoutConfirm(orderId);
     } catch (err) {
       console.error('Failed to cancel order:', err);
+      publishOrderFeedback(
+        [feedbackLabel('Cancel pending order'), feedbackValue(` #${orderId}: `), feedbackLabel('Failed'), feedbackValue(` — ${formatOrderError(err)}`)],
+        'error',
+      );
+      throw err;
+    }
+  };
+
+  // Bulk pending cancel: ONE confirm up front for the whole set, then cancel
+  // sequentially WITHOUT per-item confirms. Failures are surfaced in the
+  // feedback toast and rethrown (never swallowed); rows are refreshed from
+  // the backend afterwards so they reflect backend truth. Partial failures
+  // continue through every ticket and report done X/Y · failed Z (SUI-T5).
+  const handleCancelPendingBulkOrders = async (orderIds: Array<string | number>) => {
+    const tickets = orderIds.map((ticket) => String(ticket)).filter((ticket) => ticket.length > 0);
+    if (tickets.length === 0) return;
+    if (!(await useConfirmStore.getState().showConfirm(
+      translateUi('Cancel'),
+      `${translateUi('Cancel all pending orders?')} (${tickets.length})`,
+    ))) return;
+    const loginId = getLiveTradingLogin();
+    let done = 0;
+    let firstReason: unknown = null;
+    for (const ticket of tickets) {
+      try {
+        await cancelPendingOrderWithoutConfirm(ticket);
+        done += 1;
+      } catch (err) {
+        console.error(`Failed to cancel pending order #${ticket}:`, err);
+        if (firstReason === null) firstReason = err;
+      }
+    }
+    if (loginId) {
+      const ordersPayload = await api.orders.getPendingOrders(loginId).catch(() => null);
+      if (ordersPayload !== null && isAuthenticatedRef.current && getLiveTradingLogin() === loginId) {
+        useAppStore.getState().setOrders(ordersPayload as any);
+      }
+    }
+    if (firstReason !== null) {
+      const summary = `done ${done}/${tickets.length} · failed ${tickets.length - done} — ${formatOrderError(firstReason)}`;
+      console.error('Failed to cancel pending orders:', summary);
+      publishOrderFeedback(
+        [feedbackLabel('Cancel pending orders'), feedbackValue(': '), feedbackLabel('Failed'), feedbackValue(` — ${summary}`)],
+        'error',
+      );
+      throw new Error(summary);
     }
   };
 
@@ -980,6 +1042,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const position = (useAppStore.getState().positions as Position[])
       .find((candidate) => candidate.id === id)
       ?? positions.find((candidate) => candidate.id === id);
+    // Intentional no-op (SUI-T6): an already-gone or ineligible row has
+    // nothing to send — no toast, since there was no failure to report.
     if (!position || !getAllowedSymbol(position.symbol)) return;
 
     try {
@@ -991,6 +1055,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       refreshPositions(getLiveTradingLogin() || undefined);
     } catch (err: any) {
       console.error('Failed to modify position:', err);
+      publishOrderFeedback(
+        [feedbackLabel('Modify position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(` — ${formatOrderError(err)}`)],
+        'error',
+      );
+      refreshPositions(getLiveTradingLogin() || undefined);
     }
   };
 
@@ -1019,6 +1088,34 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const closeSnapshotsByTicket = new Map<number, TradeOverlayCloseSnapshotPayload[]>();
     const closeCandidatesByTicket = new Map<number, Position>();
     try {
+      // Fail-closed bulk-close gate: every bulk-close entry (dock buttons,
+      // row menu, DOM) funnels through this handler, so the shared
+      // BulkCloseConfirmDialog runs here before any order is sent.
+      // Dismissal, dialog cancellation, or a broker/account session change
+      // aborts with zero side effects — no orders, no store mutations.
+      const bulkPreviewPositions = localCandidates.map((position) => ({
+        id: position.id,
+        symbol: position.symbol,
+        side: position.side,
+        volume: position.volume,
+        openPrice: position.openPrice,
+        pnl: backendCloseProfit(position) ?? 0,
+      }));
+      const bulkPreviewPnL = bulkPreviewPositions.reduce((total, preview) => total + preview.pnl, 0);
+      const bulkCloseConfirmed = await confirmBulkCloseForSession({
+        sessionScope: closeSessionScope,
+        getCurrentSessionScope: () => getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()),
+        subscribeToSessionChange: (listener) => onCommittedBrokerAccountSessionScopeChange(() => listener()),
+        showConfirmation: () => useBulkCloseConfirmStore.getState().showBulkCloseConfirm({
+          type,
+          symbol,
+          positions: bulkPreviewPositions,
+          combinedPnL: bulkPreviewPnL,
+        }),
+        cancelConfirmation: () => useBulkCloseConfirmStore.getState().closeBulkCloseConfirm(),
+      });
+      if (!bulkCloseConfirmed) return;
+
       const getCurrentCloseSessionKey = () => {
         if (!isAuthenticatedRef.current || getLiveTradingLogin() !== accId
           || getPositionCloseScope() !== closeMarkerScope) return null;
@@ -1454,6 +1551,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const workspaceClosePosition = useCommittedCallback(handleClosePosition);
   const workspaceModifyPosition = useCommittedCallback(handleModifyPosition);
   const workspaceCancelOrder = useCommittedCallback((id: string | number) => handleCancelOrder(String(id)));
+  const workspaceCancelBulkOrders = useCommittedCallback((tickets: Array<string | number>) => handleCancelPendingBulkOrders(tickets));
+  const workspaceCancelOrderWithoutConfirm = useCommittedCallback((id: string | number) => cancelPendingOrderWithoutConfirm(String(id)));
   const workspaceCloseBulk = useCommittedCallback(handleCloseBulk);
   useEffect(() => {
     return () => {
@@ -1568,9 +1667,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // Opening the ticket is a navigation action, so it follows the active chart
   // and chart/catalog eligibility. The stricter live-trading gate remains in
   // handleOrderPanelSubmit, where an order can actually be sent.
+  const [orderPanelDraft, setOrderPanelDraft] = useState<{ orderType?: 'Limit Order' | 'Stop Order' | 'Stop Limit Order'; price?: number } | null>(null);
+
   const openOrderPanelForSymbol = useCallback((
     requestedSymbol?: unknown,
     requestedPrice?: { bid: number; ask: number },
+    requestedDraft?: { orderType?: string; side?: string; price?: number },
   ): boolean => {
     if (!isAuthenticatedRef.current) {
       window.dispatchEvent(new Event('rtx:requestTradeLogin'));
@@ -1592,6 +1694,19 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const tick = useAppStore.getState().ticks[dialogSymbol];
     setOrderPanelSymbol(dialogSymbol);
     setOrderPanelPrice(requestedPrice ?? { bid: tick?.bid || 0, ask: tick?.ask || 0 });
+    // Chart prefill (SUI-T10): map the chart draft to the dialog order type;
+    // absent/invalid drafts leave the dialog blank as before.
+    const draftType = String(requestedDraft?.orderType || '').toLowerCase();
+    const draftPrice = Number(requestedDraft?.price);
+    setOrderPanelDraft(
+      draftType.includes('stop') && draftType.includes('limit')
+        ? { orderType: 'Stop Limit Order', ...(Number.isFinite(draftPrice) && draftPrice > 0 ? { price: draftPrice } : {}) }
+        : draftType.includes('stop')
+          ? { orderType: 'Stop Order', ...(Number.isFinite(draftPrice) && draftPrice > 0 ? { price: draftPrice } : {}) }
+          : draftType.includes('limit')
+            ? { orderType: 'Limit Order', ...(Number.isFinite(draftPrice) && draftPrice > 0 ? { price: draftPrice } : {}) }
+            : null,
+    );
     setOrderPanelOpen(true);
     return true;
   }, [getAllowedSymbol, getChartEligibleSymbol, selectedSymbol, timeframe]);
@@ -1601,17 +1716,33 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     openOrderPanelForSymbol(symbol, price);
   }, [openOrderPanelForSymbol]);
 
-  const handleQuickBuy = useCallback(() => {
-    if (selectedSymbol) {
-      placeOrder('BUY');
+  // SUI-T9: one-click OFF opens the order dialog (never an instant order);
+  // ON places immediately. Fail-closed (unreadable setting = dialog).
+  const isOneClickTrade = (): boolean => {
+    try {
+      return useSettingsStore.getState()?.trade?.oneClickTrading === true;
+    } catch {
+      return false;
     }
+  };
+
+  const handleQuickBuy = useCallback(() => {
+    if (!selectedSymbol) return;
+    if (!isOneClickTrade()) {
+      openOrderPanelForSymbol(selectedSymbol);
+      return;
+    }
+    placeOrder('BUY');
   }, [selectedSymbol, placeOrder]);
 
   const handleQuickSell = useCallback((requestedSymbol?: string) => {
     const targetSymbol = requestedSymbol || getActiveChartCommandTarget().symbol || selectedSymbol;
-    if (targetSymbol) {
-      placeOrder('SELL', targetSymbol);
+    if (!targetSymbol) return;
+    if (!isOneClickTrade()) {
+      openOrderPanelForSymbol(targetSymbol);
+      return;
     }
+    placeOrder('SELL', targetSymbol);
   }, [selectedSymbol, placeOrder]);
 
   const handleOpenDOM = useCallback((symbolOrEvent: string | CustomEvent) => {
@@ -1812,6 +1943,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                       onClosePosition={workspaceClosePosition}
                       onModifyPosition={workspaceModifyPosition}
                       onCancelOrder={workspaceCancelOrder}
+                      onCancelBulkOrders={workspaceCancelBulkOrders}
+                      onCancelOrderWithoutConfirm={workspaceCancelOrderWithoutConfirm}
                       onCloseBulk={workspaceCloseBulk}
                     />
                   </ErrorBoundary>
@@ -1857,12 +1990,14 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             <ErrorBoundary label="New Order">
               <OrderPanelDialog
                 isOpen
-                onClose={() => setOrderPanelOpen(false)}
+                onClose={() => { setOrderPanelOpen(false); setOrderPanelDraft(null); }}
                 symbol={orderPanelSymbol || selectedSymbol}
                 currentPrice={orderPanelPrice}
                 onSubmitOrder={handleOrderPanelSubmit}
                 marketStatus={selectedMarketStatus}
                 symbols={isAuthenticated ? allowedSymbolNames : undefined}
+                initialOrderType={orderPanelDraft?.orderType}
+                initialPrice={orderPanelDraft?.price}
               />
             </ErrorBoundary>
           )}
@@ -1959,6 +2094,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
           {/* Global Confirm Dialog */}
           <ConfirmDialog />
+
+          {/* Bulk close confirmation sheet: handleCloseBulk awaits this
+              store-backed dialog via confirmBulkCloseForSession. */}
+          <BulkCloseConfirmDialog />
 
           {/* Indicator Navigator (Insert > Indicators, toolbar button) */}
           <IndicatorNavigatorHost selectedSymbol={selectedSymbol} timeframe={timeframe} />

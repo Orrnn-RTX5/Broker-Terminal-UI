@@ -1007,9 +1007,19 @@ export const ordersApi = {
 
   async placePendingOrder(data: endpoints.PendingOrderRequest): Promise<endpoints.Order> {
     const type = String(data.type || '').trim().toLowerCase();
-    if (!['buy_limit', 'sell_limit', 'buy_stop', 'sell_stop'].includes(type)) {
-      throw new Error('Pending order type must be buy_limit, sell_limit, buy_stop, or sell_stop');
+    if (!['buy_limit', 'sell_limit', 'buy_stop', 'sell_stop', 'buy_stop_limit', 'sell_stop_limit'].includes(type)) {
+      throw new Error('Pending order type must be buy_limit, sell_limit, buy_stop, sell_stop, buy_stop_limit, or sell_stop_limit');
     }
+    const isStopLimit = type.endsWith('_stop_limit');
+    // Backend wire name is `price_limit` (gateway placePendingOrderWireRequest).
+    // No fill_policy is sent: the gateway REST decoder has no fill-policy
+    // concept (IOC/FOK explicitly refused), so it would be dropped silently.
+    const stopLimitPrice = Number((data as { price_limit?: unknown }).price_limit);
+    if (isStopLimit && (!Number.isFinite(stopLimitPrice) || stopLimitPrice <= 0)) {
+      throw new Error('Stop limit price must be a positive number for stop limit orders');
+    }
+    const expiry = endpoints.normalizePendingExpiryToEpochSeconds(data.expiration ?? data.expiry);
+    const comment = typeof data.comment === 'string' && data.comment.trim() ? data.comment : undefined;
     const result = await endpoints.tradingApi.placePendingOrder({
       login: resolveTradingLogin(data.login ?? data.account_login),
       symbol: requireSymbol(data.symbol),
@@ -1017,9 +1027,11 @@ export const ordersApi = {
       volume: requireVolume(data.volume),
       type: type as endpoints.PendingOrderRequest['type'],
       price: requireVolume(data.price),
+      ...(isStopLimit ? { price_limit: stopLimitPrice } : {}),
       price_sl: data.price_sl ?? data.sl,
       price_tp: data.price_tp ?? data.tp,
-      expiration: data.expiration ?? data.expiry,
+      ...(expiry !== undefined ? { expiration: expiry } : {}),
+      ...(comment !== undefined ? { comment } : {}),
       client_order_id: data.client_order_id,
       magic: data.magic,
     });

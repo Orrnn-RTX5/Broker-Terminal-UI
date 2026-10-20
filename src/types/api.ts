@@ -1,6 +1,6 @@
 export type ApiRole = 'user' | 'manager' | 'admin' | 'trader';
 export type TradeSide = 'buy' | 'sell';
-export type PendingOrderType = 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop';
+export type PendingOrderType = 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop' | 'buy_stop_limit' | 'sell_stop_limit';
 export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
 
 /** Optional backend account environment metadata; absence is not evidence of a real account. */

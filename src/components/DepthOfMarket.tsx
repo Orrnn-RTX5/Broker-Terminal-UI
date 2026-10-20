@@ -4,7 +4,22 @@ import { useCurrentTick } from '../store/useMarketDataStore';
 import { useLiveOrderBook } from '../hooks/useLiveMarketData';
 import './DepthOfMarket.css';
 
-export type DepthOrderExecution = 'market' | 'limit';
+export type DepthOrderExecution = 'market' | 'limit' | 'stop';
+
+// MT5 rule: a BUY clicked above the live ask is a buy_stop (else buy_limit);
+// a SELL clicked below the live bid is a sell_stop (else sell_limit).
+// Unknown quote fails closed to 'limit' (previous behavior).
+export const depthExecutionForLevel = (
+  side: DepthOrderRequest['side'],
+  price: number,
+  bestBid: number,
+  bestAsk: number,
+): 'limit' | 'stop' => {
+  if (!Number.isFinite(price) || price <= 0) return 'limit';
+  if (side === 'BUY' && Number.isFinite(bestAsk) && bestAsk > 0 && price > bestAsk) return 'stop';
+  if (side === 'SELL' && Number.isFinite(bestBid) && bestBid > 0 && price < bestBid) return 'stop';
+  return 'limit';
+};
 
 export interface DepthOrderRequest {
     side: 'BUY' | 'SELL';
@@ -958,7 +973,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                     background: isNearSpread ? C.askBgBest : C.askBg,
                     borderBottom: '1px solid var(--border-primary)',
                   }}
-                  onClick={() => onPlaceOrder?.(buildDepthOrderRequest('SELL', level.price, volume, 'limit', digits, sl, tp))}
+                  onClick={() => onPlaceOrder?.(buildDepthOrderRequest('SELL', level.price, volume, depthExecutionForLevel('SELL', level.price, bestBid, bestAsk), digits, sl, tp))}
                   onMouseDown={e => e.stopPropagation()}
                 >
                   <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: 'var(--border-primary)' }}>
@@ -977,7 +992,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   <div className="flex items-center justify-center">
                     <button
                       type="button"
-                      onClick={e => { e.stopPropagation(); onPlaceOrder?.(buildDepthOrderRequest('SELL', level.price, volume, 'limit', digits, sl, tp)); }}
+                      onClick={e => { e.stopPropagation(); onPlaceOrder?.(buildDepthOrderRequest('SELL', level.price, volume, depthExecutionForLevel('SELL', level.price, bestBid, bestAsk), digits, sl, tp)); }}
                       onMouseDown={e => e.stopPropagation()}
                       className="rtx-dom-trade-btn"
                       style={{ color: C.loss }}
@@ -1024,7 +1039,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                     background: isNearSpread ? C.bidBgBest : C.bidBg,
                     borderBottom: '1px solid var(--border-primary)',
                   }}
-                  onClick={() => onPlaceOrder?.(buildDepthOrderRequest('BUY', level.price, volume, 'limit', digits, sl, tp))}
+                  onClick={() => onPlaceOrder?.(buildDepthOrderRequest('BUY', level.price, volume, depthExecutionForLevel('BUY', level.price, bestBid, bestAsk), digits, sl, tp))}
                   onMouseDown={e => e.stopPropagation()}
                 >
                   <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: 'var(--border-primary)' }}>
@@ -1043,7 +1058,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   <div className="flex items-center justify-center">
                     <button
                       type="button"
-                      onClick={e => { e.stopPropagation(); onPlaceOrder?.(buildDepthOrderRequest('BUY', level.price, volume, 'limit', digits, sl, tp)); }}
+                      onClick={e => { e.stopPropagation(); onPlaceOrder?.(buildDepthOrderRequest('BUY', level.price, volume, depthExecutionForLevel('BUY', level.price, bestBid, bestAsk), digits, sl, tp)); }}
                       onMouseDown={e => e.stopPropagation()}
                       className="rtx-dom-trade-btn"
                       style={{ color: C.profit }}

@@ -53,6 +53,15 @@ describe('pending order API', () => {
     expect(sent.sl).toBe(64000);
   });
 
+  it('normalizes millisecond expiry to whole epoch seconds on modify', async () => {
+    setToken('test-access-token');
+    await tradingApi.modifyPendingOrder(123, { price: 65000, expiry: 1770000000000 });
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const sent = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+    expect(sent.expiry).toBe(1770000000);
+    expect(Number.isInteger(sent.expiry)).toBe(true);
+  });
+
   it('sends an Idempotency-Key on pending cancel', async () => {
     setToken('test-access-token');
     await tradingApi.cancelOrder(123);

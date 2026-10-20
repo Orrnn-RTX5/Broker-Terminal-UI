@@ -36,7 +36,7 @@ describe('App market-order feedback source contract', () => {
       'const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);',
     );
     expect(source).toContain('setOrderPanelOpen(true);');
-    expect(source).toContain('openOrderPanelForSymbol(event.detail?.symbol)) as EventListener');
+    expect(source).toContain('openOrderPanelForSymbol(event.detail?.symbol, undefined, event.detail?.draft)) as EventListener');
     expect(source).toContain('const submitSymbol = getAllowedSymbol(requestedOrderPanelSymbol);');
   });
 

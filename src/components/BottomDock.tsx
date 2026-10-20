@@ -10,7 +10,9 @@ import { loadTerminalHistory, resetTerminalHistorySession } from '../services/te
 import { acknowledgeBottomDockTab, getRequestedBottomDockTab } from '../services/bottomDockNavigation';
 import { onCommittedBrokerAccountSessionScopeChange } from '../services/brokerSession';
 import type {
+  BulkCancelOrdersAction,
   CancelOrderAction,
+  CancelOrderWithoutConfirmAction,
   CloseBulkPositionsAction,
   ClosePositionAction,
   ModifyPositionAction,
@@ -79,6 +81,8 @@ interface BottomDockProps {
   onClosePosition: ClosePositionAction;
   onModifyPosition: ModifyPositionAction;
   onCancelOrder?: CancelOrderAction;
+  onCancelBulkOrders?: BulkCancelOrdersAction;
+  onCancelOrderWithoutConfirm?: CancelOrderWithoutConfirmAction;
   onCloseBulk?: CloseBulkPositionsAction;
   historyInstrumentCatalog?: readonly unknown[];
 }
@@ -126,6 +130,9 @@ export function BottomDock({
     onFloat,
     onClosePosition,
     onModifyPosition,
+    onCancelOrder,
+    onCancelBulkOrders,
+    onCancelOrderWithoutConfirm,
     onCloseBulk,
     historyInstrumentCatalog,
 }: BottomDockProps) {
@@ -314,6 +321,9 @@ export function BottomDock({
                         account={isTradeSurfaceLive ? toolboxTrade.account : null}
                         onClosePosition={handleTradeClosePosition}
                         onModifyPosition={onModifyPosition}
+                        onCancelOrder={onCancelOrder}
+                        onCancelBulkOrders={onCancelBulkOrders}
+                        onCancelOrderWithoutConfirm={onCancelOrderWithoutConfirm}
                         onCloseBulk={handleTradeCloseBulk}
                         formatMoney={formatMoney}
                         loading={isTradeSurfaceLive ? toolboxTrade.loading : false}
