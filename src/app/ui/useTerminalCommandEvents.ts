@@ -3,6 +3,7 @@ import type { ChartSymbolAnchor } from '../../components/ChartSymbolDropdown';
 import type { ChartType, Timeframe } from '../../types/chart';
 import type { DockContainer, DockPanelConfig } from '../../services/dockManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { openBottomDockTab, type BottomDockNavigationTab } from '../../services/bottomDockNavigation';
 import { getActiveChartCommandTarget } from '../../services/chartCommandTarget';
 import { getDockPanelChartType } from '../../services/chartTypeCommand';
 import {
@@ -187,6 +188,17 @@ export const useTerminalCommandEvents = ({
     };
     const handleTogglePanel = (event: CustomEvent<string>) => {
       const panelType = event.detail;
+      // SUI-T15: Insert > Experts/Scripts reveal their bottom-dock tab through
+      // the existing dock navigation and never add or remove the Navigator.
+      const expertsScriptsTab: Record<string, BottomDockNavigationTab> = {
+        Experts: 'Experts',
+        Scripts: 'Code Base',
+      };
+      const expertsScriptsTarget = expertsScriptsTab[panelType];
+      if (expertsScriptsTarget) {
+        openBottomDockTab(expertsScriptsTarget);
+        return;
+      }
       const store = useDockLayoutStore.getState();
       const layout = store.layout;
       const existing = findPanel(layout.root, panelType)

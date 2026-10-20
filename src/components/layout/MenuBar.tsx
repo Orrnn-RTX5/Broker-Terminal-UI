@@ -501,8 +501,8 @@ export const MenuBar = ({
                 ]
             },
             { divider: true, label: '' },
-            { label: t('menu.insert.experts'), icon: <Icon name="cpu" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
-            { label: t('menu.insert.scripts'), icon: <Icon name="code" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
+            { label: t('menu.insert.experts'), icon: <Icon name="cpu" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Experts' })); setActiveMenu(null); } },
+            { label: t('menu.insert.scripts'), icon: <Icon name="code" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Scripts' })); setActiveMenu(null); } },
         ],
         Charts: [
             { label: t('menu.charts.depthOfMarket'), icon: <Icon name="box" size="sm" />, ...terminalShortcut('view.depth-of-market') },
