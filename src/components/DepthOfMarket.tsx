@@ -2,6 +2,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useLiveOrderBook } from '../hooks/useLiveMarketData';
+import { formatPrice, resolveSpecDigits } from '../utils/symbolUtils';
 import './DepthOfMarket.css';
 
 export type DepthOrderExecution = 'market' | 'limit' | 'stop';
@@ -35,13 +36,18 @@ export const buildDepthOrderRequest = (
   price: number,
   volume: number,
   execution: DepthOrderExecution,
-  digits: number,
+  digits: number | null,
   stopLossPoints = 0,
   takeProfitPoints = 0,
 ): DepthOrderRequest => {
+  const request: DepthOrderRequest = { side, price, volume, execution };
+
+  // Unknown precision: omit digits-dependent protection rounding rather than
+  // guessing a point size. The base price passes through raw.
+  if (digits === null) return request;
+
   const point = 10 ** -Math.max(0, digits);
   const roundPrice = (value: number) => Number(value.toFixed(Math.max(0, digits)));
-  const request: DepthOrderRequest = { side, price, volume, execution };
 
   if (price > 0 && stopLossPoints > 0) {
     request.priceSl = roundPrice(
@@ -122,6 +128,14 @@ export const splitPipDigits = (formattedPrice: string): [string, string] => (
     : ['', formattedPrice]
 );
 
+/**
+ * Ladder price split from catalog digits. Unknown precision (null) renders
+ * the raw value with no pip emphasis instead of guessing a format.
+ */
+export const splitLadderPrice = (price: number, digits: number | null): [string, string] => (
+  digits === null ? [String(price), ''] : splitPipDigits(price.toFixed(digits))
+);
+
 /* ─── Dark Charcoal Theme Colors (from theme.css vars) ──────────────── */
 const C = {
   bgPrimary:   '#0d0d11',
@@ -165,7 +179,7 @@ interface TickChartProps {
   crosshair: boolean;
   zoomLevel: number; // 1=default, higher=zoomed in
   typography: DepthTypography;
-  digits: number;
+  digits: number | null;
 }
 
 interface TickData {
@@ -316,7 +330,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
       for (let i = 0; i <= priceIntervals; i++) {
         const y = (chartH / priceIntervals) * i;
         const price = maxP - (i / priceIntervals) * totalRange;
-        ctx.fillText(price.toFixed(digits), width - 3, Math.max(labelHeight / 2, Math.min(chartH - labelHeight / 2, y)));
+        ctx.fillText(formatPrice(price, digits ?? undefined), width - 3, Math.max(labelHeight / 2, Math.min(chartH - labelHeight / 2, y)));
       }
 
       // === CHART MODE RENDERING ===
@@ -482,7 +496,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
         // Price label at crosshair Y
         if (my <= chartH) {
           const price = maxP - (my / chartH) * totalRange;
-          const labelText = price.toFixed(digits);
+          const labelText = formatPrice(price, digits ?? undefined);
           ctx.font = bodyFont;
           ctx.fillStyle = badgeBg;
           const tw = ctx.measureText(labelText).width + 8;
@@ -515,8 +529,8 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
           const t = history[idx2];
           if (t) {
             const tooltipLines = [
-              `Bid: ${t.bid.toFixed(digits)}`,
-              `Ask: ${t.ask.toFixed(digits)}`,
+              `Bid: ${formatPrice(t.bid, digits ?? undefined)}`,
+              `Ask: ${formatPrice(t.ask, digits ?? undefined)}`,
               `Vol: ${t.volume.toFixed(2)}`,
             ];
             ctx.font = bodyFont;
@@ -547,7 +561,7 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
         const lastTick = history[history.length - 1];
         const lastY = chartH - ((lastTick.bid - minP) / totalRange) * chartH;
         ctx.font = controlFont;
-        const priceText = lastTick.bid.toFixed(digits);
+        const priceText = formatPrice(lastTick.bid, digits ?? undefined);
         const priceLabelWidth = ctx.measureText(priceText).width + 10;
         const priceLabelY = Math.max(0, Math.min(chartH - labelHeight, lastY - labelHeight / 2));
         // Price line
@@ -793,12 +807,14 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
     return () => observer.disconnect();
   }, [hasDepthSurface]);
 
-  const digits = useMemo(() => {
-    if (symbol.includes('JPY')) return 3;
-    if (symbol.startsWith('BTC') || symbol.startsWith('ETH')) return 2;
-    if (symbol.startsWith('XAU') || symbol.startsWith('XAG')) return 2;
-    return 5;
-  }, [symbol]);
+  // Catalog (symbol-data) digits: broker tick metadata only. Unknown
+  // precision stays null and renders raw — never guessed from the symbol name.
+  // (MarketData Tick carries no typed digits field; read defensively.)
+  const currentTickDigits = (currentTick as { digits?: unknown } | null | undefined)?.digits;
+  const digits = useMemo(
+    () => resolveSpecDigits(currentTickDigits),
+    [currentTickDigits],
+  );
 
   type DepthLevel = { price: number; volume: number };
   const depthLevels = useMemo(() => {
@@ -813,6 +829,16 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
     // live tick so limit-order entry keeps working. Prices are real (derived
     // from the current bid/ask); no liquidity volumes are invented.
     if (bestBid > 0 && bestAsk > 0) {
+      if (digits === null) {
+        // Unknown precision: expose the live quote raw — no point-step
+        // expansion and no rounding.
+        return {
+          asks: [{ price: bestAsk, volume: 0 }],
+          bids: [{ price: bestBid, volume: 0 }],
+          maxVolume: 0,
+          synthetic: true,
+        };
+      }
       const point = 10 ** -digits;
       const roundPrice = (value: number) => Number(value.toFixed(digits));
       const asks: DepthLevel[] = Array.from({ length: dynamicLevels }, (_, index) => ({
@@ -962,7 +988,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             {depthLevels.asks.map((level, i) => {
               const isNearSpread = i === depthLevels.asks.length - 1;
               const volPct = depthLevels.maxVolume > 0 ? (level.volume / depthLevels.maxVolume) * 100 : 0;
-              const [priceBase, pricePips] = splitPipDigits(level.price.toFixed(digits));
+              const [priceBase, pricePips] = splitLadderPrice(level.price, digits);
               return (
                 <div
                   key={`ask-${i}`}
@@ -996,8 +1022,8 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                       onMouseDown={e => e.stopPropagation()}
                       className="rtx-dom-trade-btn"
                       style={{ color: C.loss }}
-                      title={tr("Sell @ {{value0}}", { value0: level.price.toFixed(digits) })}
-                      aria-label={tr("Sell @ {{value0}}", { value0: level.price.toFixed(digits) })}
+                      title={tr("Sell @ {{value0}}", { value0: formatPrice(level.price, digits ?? undefined) })}
+                      aria-label={tr("Sell @ {{value0}}", { value0: formatPrice(level.price, digits ?? undefined) })}
                     >▼</button>
                   </div>
                 </div>
@@ -1018,9 +1044,13 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                 <span className="uppercase" style={{ color: C.textTertiary, fontSize: 11, letterSpacing: '0.08em' }}>
                   {tr("Spread")}</span>
                 <span style={{ fontFamily: MONO, color: '#7aacca' }}>
-                  {((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)}</span>
+                  {digits === null
+                    ? String(bestAsk - bestBid)
+                    : ((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)}</span>
+                {digits !== null && (
                 <span className="uppercase" style={{ color: C.textTertiary, fontSize: 11, letterSpacing: '0.08em' }}>
                   {tr(" pts")}</span>
+                )}
               </div>
             )}
 
@@ -1028,7 +1058,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             {depthLevels.bids.map((level, i) => {
               const isNearSpread = i === 0;
               const volPct = depthLevels.maxVolume > 0 ? (level.volume / depthLevels.maxVolume) * 100 : 0;
-              const [priceBase, pricePips] = splitPipDigits(level.price.toFixed(digits));
+              const [priceBase, pricePips] = splitLadderPrice(level.price, digits);
               return (
                 <div
                   key={`bid-${i}`}
@@ -1062,8 +1092,8 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                       onMouseDown={e => e.stopPropagation()}
                       className="rtx-dom-trade-btn"
                       style={{ color: C.profit }}
-                      title={tr("Buy @ {{value0}}", { value0: level.price.toFixed(digits) })}
-                      aria-label={tr("Buy @ {{value0}}", { value0: level.price.toFixed(digits) })}
+                      title={tr("Buy @ {{value0}}", { value0: formatPrice(level.price, digits ?? undefined) })}
+                      aria-label={tr("Buy @ {{value0}}", { value0: formatPrice(level.price, digits ?? undefined) })}
                     >▲</button>
                   </div>
                 </div>
@@ -1148,7 +1178,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           title={tr("Sell {{value0}} at market", { value0: volume.toFixed(2) })}
         >
           <span className="rtx-dom-exec-btn__caption">{tr("Sell")}</span>
-          <span className="rtx-dom-exec-btn__price">{bestBid > 0 ? bestBid.toFixed(digits) : '—'}</span>
+          <span className="rtx-dom-exec-btn__price">{bestBid > 0 ? formatPrice(bestBid, digits ?? undefined) : '—'}</span>
         </button>
         <button
           type="button"
@@ -1169,7 +1199,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           title={tr("Buy {{value0}} at market", { value0: volume.toFixed(2) })}
         >
           <span className="rtx-dom-exec-btn__caption">{tr("Buy")}</span>
-          <span className="rtx-dom-exec-btn__price">{bestAsk > 0 ? bestAsk.toFixed(digits) : '—'}</span>
+          <span className="rtx-dom-exec-btn__price">{bestAsk > 0 ? formatPrice(bestAsk, digits ?? undefined) : '—'}</span>
         </button>
       </div>
     </div>
