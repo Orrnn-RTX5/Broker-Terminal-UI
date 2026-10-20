@@ -31,9 +31,11 @@ const loadLocale = async (language: string, namespace: string) => {
 // (src/locales/en/*). A key missing from any other language resolves to its
 // English value — via `fallbackLng: 'en'` below, the `./locales/en/...`
 // candidate in loadLocale, and translateUi's `defaultValue: key`. New catalog
-// entries therefore ship with English values in every locale file as
-// intentional placeholders pending a translator pass; never commit
-// machine-translated placeholder text as if it were a reviewed translation.
+// entries ship as English in en/ ONLY; other locales leave the key ABSENT
+// (tracked in src/locales/translation-todo.json + NEEDS_TRANSLATION.md) and
+// render English through the fallback. Never copy English values into other
+// locales as if translated, and never commit machine-translated placeholder
+// text as if it were a reviewed translation.
 export const i18nReady = i18n
     .use(resourcesToBackend((language: string, namespace: string) => loadLocale(language, namespace)))
     .use(LanguageDetector)

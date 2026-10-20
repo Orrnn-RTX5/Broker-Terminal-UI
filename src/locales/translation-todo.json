@@ -1,0 +1,9 @@
+{
+  "_comment": "White-label neutral keys (ds-16) allowed to be MISSING in non-en catalogs. A missing key renders the English value at runtime via fallbackLng 'en' (src/i18n.ts) — English is never presented as a translation. catalogs.test.ts reads this file: listed keys skip the missing-key assertion (placeholder integrity still enforced when present). Every listed key MUST exist non-empty in en/ui.json. Human tracker: NEEDS_TRANSLATION.md.",
+  "allowMissing": [
+    "brokerWebsite",
+    "Terminal login",
+    "Download desktop installer {{value0}}",
+    "Download the latest desktop installer"
+  ]
+}

@@ -7,6 +7,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const catalogs = import.meta.glob('./*/*.json', { eager: true, import: 'default' }) as Record<string, Record<string, unknown>>;
+// White-label neutral keys (ds-16) allowed to be missing outside en: a
+// missing key renders English at runtime via fallbackLng 'en', never
+// presented as a translation. Tracked in translation-todo.json + NEEDS_TRANSLATION.md.
+const translationTodo: string[] = (JSON.parse(
+  readFileSync(new URL('./translation-todo.json', import.meta.url), 'utf8'),
+) as { allowMissing: string[] }).allowMissing;
 const leaves = (value: Record<string, unknown>, prefix = ''): Record<string, string> => Object.fromEntries(
   Object.entries(value).flatMap(([key, entry]) => typeof entry === 'string'
     ? [[`${prefix}${key}`, entry]]
@@ -52,6 +58,13 @@ describe('complete local interface catalogs', () => {
     expect(missing).toEqual([]);
   });
 
+  it('translation allowlist only names real, non-empty English keys', () => {
+    for (const key of translationTodo) {
+      expect(typeof (englishUi as Record<string, unknown>)[key], `todo key in en: ${key}`).toBe('string');
+      expect(((englishUi as Record<string, string>)[key] ?? '').trim(), `todo key non-empty: ${key}`).not.toBe('');
+    }
+  });
+
   it.each(supportedLanguages)('$code includes every menu and UI message with intact placeholders', ({ code }) => {
     for (const [namespace, english] of [['ui', englishUi], ['translation', englishMenu]] as const) {
       const source = namespace === 'ui' ? english as Record<string, string> : leaves(english);
@@ -60,6 +73,9 @@ describe('complete local interface catalogs', () => {
       const translated = namespace === 'ui' ? resource as Record<string, string> : leaves(resource);
       for (const [key, original] of Object.entries(source)) {
         const label = `${code}/${namespace}: ${key}`;
+        if (code !== 'en' && namespace === 'ui' && translated[key] === undefined && translationTodo.includes(key)) {
+          continue; // allowed missing: renders English via fallbackLng, tracked in translation-todo.json
+        }
         expect(translated[key], label).toBeTypeOf('string');
         expect(translated[key]?.trim(), label).not.toBe('');
         expect(placeholders(translated[key]), label).toEqual(placeholders(original));

@@ -59,4 +59,15 @@ describe('localized generated presentation', () => {
     expect(german).toMatchObject({ feedState: english.feedState, fillPercent: english.fillPercent, securityTone: english.securityTone });
     expect(getDesktopReleaseButtonTitle(release)).toBe('Desktop-Installer v2.4.1 herunterladen');
   });
+
+  it('renders the English string at runtime for allowlisted keys missing in German (ds-16)', async () => {
+    expect(i18n.options.fallbackLng).toContain('en');
+    // 'Terminal login' is absent from the German catalog (translation-todo.json);
+    // the UI must show English, never a vendor string and never blank.
+    expect(i18n.getResource('de', 'ui', 'Terminal login', { keySeparator: false })).toBeUndefined();
+    await i18n.changeLanguage('de');
+    const { translateUi } = await import('../hooks/useUiTranslation');
+    expect(translateUi('Terminal login')).toBe('Terminal login');
+    expect(translateUi('Download the latest desktop installer')).toBe('Download the latest desktop installer');
+  });
 });
