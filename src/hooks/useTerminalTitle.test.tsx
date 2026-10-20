@@ -159,3 +159,13 @@ it('resolves snake_case broker_name from /api/v2/broker/config and ignores /asse
     expect(result.current.logoUrl).toBe('https://directory.example/api/v1/brokers/alpha-markets/logo');
 });
 
+it('resolves snake_case margin_mode from /api/v2/broker/config', async () => {
+    localStorage.setItem('broker_id', 'alpha-markets');
+    vi.mocked(configApi.getConfig).mockResolvedValue({
+        margin_mode: 'NETTING',
+    } as unknown as Awaited<ReturnType<typeof configApi.getConfig>>);
+
+    const { result } = renderHook(useTerminalBrokerInfo);
+    await waitFor(() => expect(result.current.marginMode).toBe('Netting'));
+});
+

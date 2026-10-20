@@ -66,8 +66,10 @@ import { TerminalLoadFallback } from './startup/TerminalLoadFallback';
 import { TerminalStartupBoundary } from './startup/TerminalStartupBoundary';
 
 import { useLastSymbolStore } from './store/useLastSymbolStore';
+import { resolveOpenOrderTargetSymbol, useSettingsStore } from './store/useSettingsStore';
 import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
+import { normalizeBrokerOperationalConfig, type BrokerOperationalConfig } from './services/brokerOperationalConfig';
 import { tradingV2Api } from './api/trade';
 import { dispatchTradeOverlayCloseState, type TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
 import { formatOrderError } from './utils/orderError';
@@ -178,14 +180,6 @@ const toSettingsChartType = (chartType: ChartType) => {
 
 const SELECTED_SYMBOL_STORAGE_KEY = 'rtx5_selected_symbol';
 
-interface BrokerConfig {
-  brokerName: string;
-  priceFeedLP: string;
-  executionMode: string;
-  defaultLeverage: number;
-  marginMode: string;
-}
-
 interface AppProps {
   initialSessionHandoff?: AuthenticatedSessionHandoff | null;
   onSessionEnded?: () => void;
@@ -242,7 +236,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     return (saved as ChartType) || 'candlestick';
   });
   const [timeframe, setTimeframe] = useState<Timeframe>(DEFAULT_CHART_TIMEFRAME);
-  const [, setBrokerConfig] = useState<BrokerConfig | null>(null);
+  const [, setBrokerConfig] = useState<BrokerOperationalConfig | null>(null);
   const [dockHeight, setDockHeight] = useState(() => {
     const saved = localStorage.getItem('dockHeight');
     return saved ? parseInt(saved, 10) : 250;
@@ -740,17 +734,16 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     setRestoredLayoutAccountId(accountId);
   }, [isAuthenticated, accountId]);
 
-  // Broker config — /api/config is not deployed yet, use defaults directly
+  // Broker config — operating values come from the broker's own
+  // /api/v2/broker/config document (white-label: no per-broker literals in
+  // code). Neutral values apply until the broker config arrives or when it
+  // is unavailable.
   useEffect(() => {
-    setBrokerConfig({
-      brokerName: 'RTX',
-      priceFeedLP: 'YOFX',
-      executionMode: 'ABOOK',
-      defaultLeverage: 1000,
-      defaultBalance: 0,
-      marginMode: 'HEDGING',
-      maxTicksPerSymbol: 1000,
-    } as any);
+    let active = true;
+    api.config.getConfig()
+      .then((config) => { if (active) setBrokerConfig(normalizeBrokerOperationalConfig(config)); })
+      .catch(() => { if (active) setBrokerConfig(normalizeBrokerOperationalConfig(null)); });
+    return () => { active = false; };
   }, []);
 
   const {

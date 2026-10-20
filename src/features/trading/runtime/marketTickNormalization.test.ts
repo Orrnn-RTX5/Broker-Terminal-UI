@@ -19,6 +19,24 @@ describe('market tick normalization', () => {
     expect(tick?.last).toBeUndefined();
   });
 
+  it('passes a broker-published lp tag through trimmed', () => {
+    expect(normalizeRealtimeTick({
+      symbol: 'EURUSD', bid: 1.1, ask: 1.1002, lp: '  Fixture LP  ',
+    })?.lp).toBe('Fixture LP');
+  });
+
+  it('leaves lp absent when the feed publishes none instead of stamping a broker literal', () => {
+    for (const payload of [
+      { symbol: 'EURUSD', bid: 1.1, ask: 1.1002 },
+      { symbol: 'EURUSD', bid: 1.1, ask: 1.1002, lp: '   ' },
+      { symbol: 'EURUSD', bid: 1.1, ask: 1.1002, lp: 7 },
+    ]) {
+      const tick = normalizeRealtimeTick(payload);
+      expect(tick?.lp).toBeUndefined();
+      expect(tick && 'lp' in tick).toBe(false);
+    }
+  });
+
   it('normalizes an explicit Last-mode tick without inventing a spread', () => {
     const tick = normalizeRealtimeTick({
       symbol: 'future.last-only',

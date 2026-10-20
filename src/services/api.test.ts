@@ -349,6 +349,20 @@ describe('broker config bootstrap', () => {
     expect(request.url).toBe(`${API_V2_BASE_URL}/broker/config`);
     expect(request.headers.Authorization).toBeUndefined();
   });
+
+  it('falls back to neutral broker values (never code literals) when v2 config is not deployed', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ error: 'not found' }, { status: 404 }));
+
+    await expect(api.config.getConfig()).resolves.toEqual({
+      brokerName: '',
+      priceFeedLP: '',
+      executionMode: '',
+      defaultLeverage: 0,
+      defaultBalance: 0,
+      marginMode: '',
+      maxTicksPerSymbol: 0,
+    });
+  });
 });
 
 describe('analytics export endpoint wiring', () => {
