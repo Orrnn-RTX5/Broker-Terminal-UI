@@ -114,7 +114,7 @@ describe('BottomDock SL/TP modify-position dialog handoff', () => {
   it.each([
     ['Stop Loss', '.rtx-trade-sl-cell'],
     ['Take Profit', '.rtx-trade-tp-cell'],
-  ])('opens the existing dialog for the exact position from a %s double click', async (_label, cellSelector) => {
+  ])('opens the existing dialog for the exact position from a %s click', async (_label, cellSelector) => {
     const user = userEvent.setup();
     const onModifyPosition = vi.fn();
     renderDock(onModifyPosition);
@@ -125,8 +125,10 @@ describe('BottomDock SL/TP modify-position dialog handoff', () => {
 
     expect(row).not.toBeNull();
     expect(levelButton).not.toBeNull();
+    // Single click opens by design (577d61b0; TradeTable.placement.test.tsx
+    // pins click(detail:1) => openModifyPosition): assert the dialog opens.
     await user.click(levelButton!);
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Modify Position #91002' })).toBeInTheDocument();
     await user.dblClick(levelButton!);
 
     const dialog = await screen.findByRole('dialog', { name: 'Modify Position #91002' });
