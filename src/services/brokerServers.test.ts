@@ -120,11 +120,9 @@ describe('white-label fallback server (T-ADD)', () => {
     }
   });
 
-  it('discards stored servers outside the runtime list to neutral (ds-16)', () => {
-    // Unconfigured: no runtime list exists, so the stored value is kept for
-    // directory/desktop flows to resolve downstream.
+  it('discards stored servers outside the runtime list, using first configured (ds-16)', () => {
     localStorage.setItem(BROKER_SERVER_STORAGE_KEY, 'Some Stale Server');
-    expect(getStoredBrokerServer()).toBe('Some Stale Server');
+    expect(getStoredBrokerServer()).toBe('Broker');
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
       BROKER_ID: 'acme',
@@ -133,9 +131,7 @@ describe('white-label fallback server (T-ADD)', () => {
     };
     try {
       localStorage.setItem(BROKER_SERVER_STORAGE_KEY, 'Some Stale Server');
-      // Reason: neutral (not first-configured) so manifest names never leak
-      // into saved-account scope matching on endpoint mismatch.
-      expect(getStoredBrokerServer()).toBe('Broker');
+      expect(getStoredBrokerServer()).toBe('Acme-Live');
     } finally {
       delete (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__;
       localStorage.clear();

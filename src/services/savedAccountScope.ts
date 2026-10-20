@@ -1,7 +1,7 @@
 import { getRuntimeBrokerConfiguration } from '../config/backendTarget.js';
 import type { SavedAccount } from '../store/useAppStore';
 import { getCommittedBrokerAccountSessionScope, type CommittedBrokerAccountSessionScope } from './brokerSession';
-import { getStoredBrokerServer, isDefaultBrokerServerValue } from './brokerServers';
+import { getRawStoredBrokerServer, isDefaultBrokerServerValue } from './brokerServers';
 
 // Account ownership needs full identities. The logo resolver's hostname-only
 // matching would merge servers on different ports or broker-specific paths.
@@ -35,7 +35,9 @@ export const getSavedAccountServerIdentities = (): Set<string> => {
     const storedBrokerId = stored('broker_id').trim() || stored('rtx_broker_id').trim();
     // market_api_url can survive an older session; it is not committed by the
     // login discovery flow and must not grant visibility to saved accounts.
-    const storedServers = [getStoredBrokerServer(), stored('server_url'), stored('backend_url')];
+    // Ownership matching uses the verbatim remembered server (base behaviour);
+    // login/display paths use the validated getStoredBrokerServer() instead.
+    const storedServers = [getRawStoredBrokerServer(), stored('server_url'), stored('backend_url')];
     const storageMatchesSession = !scope.authenticated || (
         (!scope.brokerId || storedBrokerId === scope.brokerId)
         && (!scope.serverUrl || storedServers.some(server => (

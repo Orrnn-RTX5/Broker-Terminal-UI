@@ -1,7 +1,7 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { extractAccountMetrics } from '../../services/accountMetrics';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../../services/brokerSession';
-import { getStoredBrokerServer } from '../../services/brokerServers';
+import { getRawStoredBrokerServer } from '../../services/brokerServers';
 import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession, normalizeSavedAccountServer } from '../../services/savedAccountScope';
 import { pickAccountDisplayName } from '../../utils/accountDisplayName';
 import { resolveTradingAccountType } from '../../services/tradingAccountType';
@@ -100,7 +100,7 @@ export const useAccountSnapshotRuntime = ({
           if (!accountScope.authenticated || accountScope.accountId !== String(loginId)) return;
           const metricsScope = getCommittedBrokerAccountSessionScopeKey(accountScope);
           const accountServerIdentities = getSavedAccountServerIdentities();
-          const storedServer = getStoredBrokerServer();
+          const storedServer = getRawStoredBrokerServer();
           const isAccountSwitch = activeAccountDataRef.current !== loginId;
           if (isInitial && isAccountSwitch) {
             optimisticClosedTicketsRef.current.clear();
