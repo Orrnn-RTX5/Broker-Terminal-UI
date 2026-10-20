@@ -24,7 +24,8 @@ import { useCurrentTick } from '../store/useMarketDataStore';
 import { useAppStore } from '../store/useAppStore';
 import api from '../services/api';
 import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
-import { formatOrderError } from '../utils/orderError';
+import { describeProtectionRefusal, formatOrderError } from '../utils/orderError';
+import { defaultProtectionLevel, protectionLevelViolation } from '../utils/tradeLevelDrag';
 import { getSymbolDigits } from '../utils/symbolUtils';
 import { getFallbackSymbolDescription } from '../utils/symbolDescription';
 import {
@@ -261,11 +262,33 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     const tr = useUiTranslation();
     const tick = useCurrentTick(position.symbol);
     const initialDigits = (tick as any)?.digits ?? (position as any)?.digits ?? getSymbolDigits(position.symbol);
-    const [sl, setSl] = useState(() => position.sl > 0 ? position.sl.toFixed(initialDigits) : '0.00');
-    const [tp, setTp] = useState(() => position.tp > 0 ? position.tp.toFixed(initialDigits) : '0.00');
+    // Seed an empty SL/TP on the VALID side (never '0.00'): live quote first,
+    // else the open price as reference (degraded but side-correct; the
+    // server stays final authority and the mapped error names any residual).
+    // With no reference price at all the inputs stay blank AND disabled with
+    // a visible reason (fail-closed: no fake zero is ever shown or sent).
+    const tickBid = Number((tick as { bid?: unknown } | null)?.bid) || 0;
+    const tickAsk = Number((tick as { ask?: unknown } | null)?.ask) || 0;
+    const hasProtectionReference = tickBid > 0 || tickAsk > 0 || position.openPrice > 0;
+    const seedProtectionLevel = (role: 'SL' | 'TP'): string => {
+      const refPrice = position.openPrice > 0 ? position.openPrice : 0;
+      const seeded = defaultProtectionLevel({
+        side: String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+        role,
+        bid: tickBid > 0 ? tickBid : refPrice,
+        ask: tickAsk > 0 ? tickAsk : refPrice,
+        digits: initialDigits,
+        distancePoints: (position as { stopsLevel?: unknown })?.stopsLevel
+          ?? (position as { stops_level?: unknown })?.stops_level
+          ?? (tick as { stopsLevel?: unknown } | null)?.stopsLevel,
+      });
+      return seeded !== null ? seeded.toFixed(initialDigits) : '';
+    };
+    const [sl, setSl] = useState(() => position.sl > 0 ? position.sl.toFixed(initialDigits) : seedProtectionLevel('SL'));
+    const [tp, setTp] = useState(() => position.tp > 0 ? position.tp.toFixed(initialDigits) : seedProtectionLevel('TP'));
     // Pending-order entry price + expiry (pending kind only; positions keep
     // their fill price and have no expiry).
-    const [priceStr, setPriceStr] = useState(() => position.openPrice > 0 ? position.openPrice.toFixed(initialDigits) : '0.00');
+    const [priceStr, setPriceStr] = useState(() => position.openPrice > 0 ? position.openPrice.toFixed(initialDigits) : '');
     const [expiryStr, setExpiryStr] = useState('');
     const [volumeStr, setVolumeStr] = useState(() => position.volume.toFixed(2));
     const [comment, setComment] = useState(() => position.comment ?? '');
@@ -504,6 +527,17 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     const latestMiniChartSample = miniChartSamples[miniChartSamples.length - 1] ?? currentMiniChartSample;
     const bid = latestMiniChartSample.bid;
     const ask = latestMiniChartSample.ask;
+    // Live red marking while typing: a level on the broker-invalid side or
+    // off the price grid is marked with the reason before submit.
+    const dialogSide = String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+    const slViolation = protectionLevelViolation({
+        side: dialogSide, role: 'SL', price: parseFloat(sl) || 0,
+        bid, ask, digits: initialDigits,
+    });
+    const tpViolation = protectionLevelViolation({
+        side: dialogSide, role: 'TP', price: parseFloat(tp) || 0,
+        bid, ask, digits: initialDigits,
+    });
     const dialogTitleId = `modify-position-${position.id}-title`;
     const symbolFieldId = `modify-position-${position.id}-symbol`;
     const typeLabelId = `modify-position-${position.id}-type-label`;
@@ -521,13 +555,28 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
         const mutationContext = getCurrentMutationContext();
         if (!mutationContext) return;
 
+        // No reference price: SL/TP inputs are disabled, and submitting is
+        // blocked (fail-closed — never send a blind zero).
+        if (!hasProtectionReference) {
+            setError(tr("No live price is available to place Stop Loss or Take Profit levels"));
+            return;
+        }
         setIsSubmitting(true);
         setError(null);
         setSuccessMessage(null);
 
+        // Round free-typed levels to the symbol grid before sending
+        // (same normalization the drag path applies; the backend
+        // requires on-grid values). Declared outside try so the catch can
+        // name the offending level.
+        const roundLevel = (value: number): number => {
+            if (!(value > 0)) return 0;
+            const scale = Math.pow(10, initialDigits);
+            return Number((Math.round(value * scale) / scale).toFixed(initialDigits));
+        };
+        const slVal = roundLevel(parseFloat(sl) || 0);
+        const tpVal = roundLevel(parseFloat(tp) || 0);
         try {
-            const slVal = parseFloat(sl) || 0;
-            const tpVal = parseFloat(tp) || 0;
             const nextComment = comment.trim();
             const levelChanges = {
                 ...(slVal !== initialLevelsRef.current.sl ? { price_sl: slVal } : {}),
@@ -586,7 +635,17 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
         } catch (err: unknown) {
             if (!isCurrentDialogSession(mutationContext)) return;
             console.error('[Modify] Error:', err);
-            setError(getErrorMessage(err));
+            // Name the offending level against the live quote when the
+            // server refused the geometry (never a bare failure message).
+            const refusal = kind === 'position' ? describeProtectionRefusal(err, {
+                side: String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+                sl: slVal,
+                tp: tpVal,
+                bid: Number((tick as { bid?: unknown } | null)?.bid) || 0,
+                ask: Number((tick as { ask?: unknown } | null)?.ask) || 0,
+                digits: initialDigits,
+            }) : null;
+            setError(refusal ?? getErrorMessage(err));
         } finally {
             if (isCurrentDialogSession(mutationContext)) {
                 setIsSubmitting(false);
@@ -596,6 +655,9 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
 
     const parsedVolume = Number.parseFloat(volumeStr);
     const actionVolume = Number.isFinite(parsedVolume) && parsedVolume > 0 ? parsedVolume : 0;
+    // Validated-only close label: an invalid volume disables the button
+    // (submit guards the same conditions with messages).
+    const closeVolumeInvalid = actionVolume <= 0 || actionVolume > position.volume + 0.0000001;
     const contractAmount = actionVolume * getContractSize(position.symbol);
     const volumeDescription = `${Number.isInteger(contractAmount) ? contractAmount.toFixed(0) : contractAmount.toFixed(2)} ${getContractUnit(position.symbol)}`;
 
@@ -1161,7 +1223,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
 
     // Update SL/TP from points input
     const handleSlPointsChange = (points: number) => {
-        if (points <= 0) { setSl('0.00'); return; }
+        if (points <= 0) { setSl(''); return; }
         const step = Math.pow(10, -digits);
         const ref = position.side === 'BUY' ? bid : ask;
         const val = position.side === 'BUY' ? ref - points * step : ref + points * step;
@@ -1169,7 +1231,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     };
 
     const handleTpPointsChange = (points: number) => {
-        if (points <= 0) { setTp('0.00'); return; }
+        if (points <= 0) { setTp(''); return; }
         const step = Math.pow(10, -digits);
         const ref = position.side === 'BUY' ? ask : bid;
         const val = position.side === 'BUY' ? ref + points * step : ref - points * step;
@@ -1331,7 +1393,10 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                     step={Math.pow(10, -digits).toString()}
                                     value={sl}
                                     onChange={(e) => setSl(e.target.value)}
-                                    className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price"
+                                    disabled={!hasProtectionReference}
+                                    title={slViolation ?? (!hasProtectionReference ? tr("No live price is available to place this level") : undefined)}
+                                    aria-invalid={slViolation ? true : undefined}
+                                    className={`rtx-modify-input rtx-modify-input--mono rtx-modify-input--price${slViolation ? ' rtx-modify-input--invalid' : ''}`}
                                 />
                                 <input
                                     id={slPointsFieldId}
@@ -1339,11 +1404,17 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                     type="number"
                                     value={slPoints}
                                     onChange={(e) => handleSlPointsChange(parseInt(e.target.value) || 0)}
+                                    disabled={!hasProtectionReference}
                                     className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--points"
                                 />
                                 <span className="rtx-modify-points-label text-[12px] font-normal">{tr("points")}</span>
                             </div>
                         </div>
+                        {!hasProtectionReference && (
+                            <div className="rtx-modify-alert rtx-modify-alert--error">
+                                {tr("No live price is available to place Stop Loss or Take Profit levels")}
+                            </div>
+                        )}
 
                         {/* Take Profit with Points */}
                         <div className="rtx-modify-field-row">
@@ -1358,7 +1429,10 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                     step={Math.pow(10, -digits).toString()}
                                     value={tp}
                                     onChange={(e) => setTp(e.target.value)}
-                                    className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price"
+                                    disabled={!hasProtectionReference}
+                                    title={tpViolation ?? (!hasProtectionReference ? tr("No live price is available to place this level") : undefined)}
+                                    aria-invalid={tpViolation ? true : undefined}
+                                    className={`rtx-modify-input rtx-modify-input--mono rtx-modify-input--price${tpViolation ? ' rtx-modify-input--invalid' : ''}`}
                                 />
                                 <input
                                     id={tpPointsFieldId}
@@ -1366,6 +1440,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                     type="number"
                                     value={tpPoints}
                                     onChange={(e) => handleTpPointsChange(parseInt(e.target.value) || 0)}
+                                    disabled={!hasProtectionReference}
                                     className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--points"
                                 />
                                 <span className="rtx-modify-points-label text-[12px] font-normal">{tr("points")}</span>
@@ -1471,10 +1546,11 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                     <button
                                         type="button"
                                         onClick={handleCloseByMarket}
-                                        disabled={isSubmitting}
+                                        disabled={isSubmitting || closeVolumeInvalid}
+                                        title={closeVolumeInvalid ? tr("Enter a valid close volume first") : undefined}
                                         className="rtx-modify-btn--close"
                                     >
-                                        {tr("Close #")}{position.id} {position.side.toLowerCase()} {actionVolume > 0 ? actionVolume.toFixed(2) : '0.00'} {position.symbol} {position.openPrice.toFixed(digits)} {tr(" by Market")}
+                                        {tr("Close #")}{position.id} {position.side.toLowerCase()} {(actionVolume > 0 ? actionVolume : position.volume).toFixed(2)} {position.symbol} {position.openPrice.toFixed(digits)} {tr(" by Market")}
                                     </button>
                                 </>
                             )}

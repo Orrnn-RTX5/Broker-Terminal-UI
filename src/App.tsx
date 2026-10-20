@@ -73,6 +73,8 @@ import { api } from './services/api';
 import { tradingV2Api } from './api/trade';
 import { dispatchTradeOverlayCloseState, type TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
 import { formatOrderError } from './utils/orderError';
+import { describeProtectionRefusal } from './utils/orderError';
+import { getSymbolDigits } from './utils/symbolUtils';
 import {
   CHART_POSITION_ACTION_EVENT,
   type ChartPositionActionDetail,
@@ -1041,8 +1043,21 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       refreshPositions(getLiveTradingLogin() || undefined);
     } catch (err: any) {
       console.error('Failed to modify position:', err);
+      // Name the offending level against the live quote when the server
+      // refused the geometry (never a bare "Failed").
+      const appTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; digits?: unknown; stopsLevel?: unknown; stops_level?: unknown } | undefined>;
+      const tick = appTicks[position.symbol]
+        ?? appTicks[position.symbol?.toUpperCase?.() ?? ''];
+      const refusal = describeProtectionRefusal(err, {
+        side: String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+        sl,
+        tp,
+        bid: Number(tick?.bid) || 0,
+        ask: Number(tick?.ask) || 0,
+        digits: Number((tick as { digits?: unknown } | undefined)?.digits) || getSymbolDigits(position.symbol),
+      });
       publishOrderFeedback(
-        [feedbackLabel('Modify position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(` — ${formatOrderError(err)}`)],
+        [feedbackLabel('Modify position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(` — ${refusal ?? formatOrderError(err)}`)],
         'error',
       );
       refreshPositions(getLiveTradingLogin() || undefined);

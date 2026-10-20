@@ -8,6 +8,7 @@
 
 import { ApiError } from '../api/client';
 import { mapBrokerError } from '../api/brokerApi';
+import { protectionLevelViolation } from './tradeLevelDrag';
 
 const URL_LIKE_RE = /\b(?:wss?|https?):\/\/\S+/gi;
 const HOST_PORT_RE = /\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g;
@@ -21,6 +22,7 @@ const LOCAL_TRADING_ERROR_MESSAGES: Record<string, string> = {
   INVALID_VOLUME: 'the volume is invalid. Check the lot size and try again.',
   INVALID_SYMBOL: 'this symbol cannot be traded on the current account.',
   INVALID_SL_TP: 'the Stop Loss or Take Profit levels are invalid.',
+  INVALID_STOPS: 'the Stop Loss or Take Profit level is on the wrong side of the current market price.',
   NO_PRICE_AVAILABLE: 'no live price is available for this symbol right now.',
   OFF_QUOTES: 'no live quote is available for this symbol right now.',
   TRADE_DISABLED: 'trading is disabled for this symbol on the current account.',
@@ -75,6 +77,48 @@ const mapKnownTradingCode = (code: string): string => {
 
   const mapped = mapBrokerError(normalized);
   return mapped === normalized ? '' : mapped;
+};
+
+const PROTECTION_REFUSAL_CODES = new Set([
+  'INVALID_STOPS',
+  'INVALID_SL_TP',
+  'PROTECTION_VIOLATION',
+  'STOPS_LEVEL_VIOLATION',
+]);
+
+/**
+ * Plain-words explanation for a rejected SL/TP modify, naming the offending
+ * level against the LIVE Bid/Ask (e.g. "Stop loss must be below the current
+ * Bid 81,486.42 for a BUY"). Returns null when the error is not a
+ * protection refusal. Unknown codes fall back to the server message —
+ * never a bare "Failed".
+ */
+export const describeProtectionRefusal = (
+  err: unknown,
+  context: {
+    side: 'BUY' | 'SELL';
+    sl?: number | null;
+    tp?: number | null;
+    bid: number;
+    ask: number;
+    digits: number;
+  },
+): string | null => {
+  const code = extractErrorCode(err);
+  if (!code || !PROTECTION_REFUSAL_CODES.has(code.toUpperCase())) return null;
+  const { side, sl, tp, bid, ask, digits } = context;
+  const slReason = sl !== undefined && sl !== null && sl > 0
+    ? protectionLevelViolation({ side, role: 'SL', price: sl, bid, ask, digits })
+    : null;
+  if (slReason) return slReason;
+  const tpReason = tp !== undefined && tp !== null && tp > 0
+    ? protectionLevelViolation({ side, role: 'TP', price: tp, bid, ask, digits })
+    : null;
+  if (tpReason) return tpReason;
+  // Levels look valid against this quote (it moved): keep the server text.
+  const structured = readStructuredBackendError(err);
+  if (structured) return `${structured.message}`;
+  return null;
 };
 
 export const isStaleOrderError = (err: unknown): boolean => {

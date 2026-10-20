@@ -1104,14 +1104,17 @@ export function OrderPanelDialog({
   const [deviationStr, setDeviationStr] = useState(() =>
     String(resolveDefaultTradeDeviation(tradeDefaults)),
   );
+  // Price inputs start blank (never a fake '0.00'): the submit path omits
+  // non-positive values, and SL/TP validity depends on the Buy/Sell side
+  // chosen at submit time.
   const [priceStr, setPriceStr] = useState(() => (
     initialPrice !== undefined && Number.isFinite(initialPrice) && initialPrice > 0
       ? String(initialPrice)
-      : '0.00'
+      : ''
   ));
-  const [stopLimitPriceStr, setStopLimitPriceStr] = useState('0.00');
-  const [stopLossStr, setStopLossStr] = useState('0.00');
-  const [takeProfitStr, setTakeProfitStr] = useState('0.00');
+  const [stopLimitPriceStr, setStopLimitPriceStr] = useState('');
+  const [stopLossStr, setStopLossStr] = useState('');
+  const [takeProfitStr, setTakeProfitStr] = useState('');
   const [fillPolicy, setFillPolicy] = useState<FillPolicy>('Fill or Kill');
   const [expiration, setExpiration] = useState<ExpirationType>('GTC');
   const [expirationDateStr, setExpirationDateStr] = useState(formatDefaultExpirationDate);
@@ -1748,7 +1751,7 @@ export function OrderPanelDialog({
                         }}
                         onBlur={() => {
                           const parsed = Number.parseFloat(priceStr);
-                          setPriceStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '0.00');
+                          setPriceStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '');
                         }}
                         className="rtx-order-dialog__volume-input"
                       />
@@ -1788,7 +1791,7 @@ export function OrderPanelDialog({
                         }}
                         onBlur={() => {
                           const parsed = Number.parseFloat(stopLimitPriceStr);
-                          setStopLimitPriceStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '0.00');
+                          setStopLimitPriceStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '');
                         }}
                         className="rtx-order-dialog__volume-input"
                       />
@@ -1829,7 +1832,7 @@ export function OrderPanelDialog({
                     }}
                     onBlur={() => {
                       const parsed = Number.parseFloat(stopLossStr);
-                      setStopLossStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '0.00');
+                      setStopLossStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '');
                     }}
                     className="rtx-order-dialog__volume-input"
                   />
@@ -1866,7 +1869,7 @@ export function OrderPanelDialog({
                     }}
                     onBlur={() => {
                       const parsed = Number.parseFloat(takeProfitStr);
-                      setTakeProfitStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '0.00');
+                      setTakeProfitStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '');
                     }}
                     className="rtx-order-dialog__volume-input"
                   />

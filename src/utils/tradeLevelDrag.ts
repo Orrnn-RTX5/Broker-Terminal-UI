@@ -210,6 +210,163 @@ export const applyTradeLevelDragUpdate = ({
   };
 };
 
+/**
+ * Fallback protection distance in points when neither the broker's stops
+ * level nor a runtime-config default is available. Matches the pre-existing
+ * hardcoded minimums (5 price steps) used by the chart drag clamp and the
+ * modify notice.
+ */
+export const DEFAULT_PROTECTION_DISTANCE_POINTS = 5;
+
+/**
+ * Runtime-configured default SL/TP standoff in points
+ * (`SLTP_DEFAULT_DISTANCE_POINTS`, `VITE_` alias accepted): the per-tenant
+ * knob used when a symbol carries no stops level. Falls back to
+ * DEFAULT_PROTECTION_DISTANCE_POINTS when unset, blank, or non-positive.
+ * White-label: generic points value, never a symbol-specific default.
+ */
+export const readDefaultProtectionDistancePoints = (): number => {
+  if (typeof window !== 'undefined') {
+    const runtimeWindow = window as Window & {
+      __RTX_RUNTIME_CONFIG__?: Record<string, unknown>;
+      RUNTIME_CONFIG?: Record<string, unknown>;
+      __RUNTIME_CONFIG__?: Record<string, unknown>;
+    };
+    const configs = [
+      runtimeWindow.__RTX_RUNTIME_CONFIG__,
+      runtimeWindow.RUNTIME_CONFIG,
+      runtimeWindow.__RUNTIME_CONFIG__,
+    ];
+    for (const config of configs) {
+      if (!config || typeof config !== 'object') continue;
+      for (const key of ['SLTP_DEFAULT_DISTANCE_POINTS', 'VITE_SLTP_DEFAULT_DISTANCE_POINTS']) {
+        const raw = config[key];
+        const points = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim());
+        if (Number.isFinite(points) && points > 0) return points;
+      }
+    }
+  }
+  return DEFAULT_PROTECTION_DISTANCE_POINTS;
+};
+
+/**
+ * Resolve the SL/TP standoff distance in points: the broker's stops level
+ * when it is a positive finite number, else the runtime-configured default.
+ * Never invents a symbol-specific value (white-label: unknown means the
+ * configured default, not zero).
+ */
+export const resolveStopsDistancePoints = (stopsLevel: unknown): number => {
+  const points = typeof stopsLevel === 'number' ? stopsLevel : Number(stopsLevel);
+  if (Number.isFinite(points) && points > 0) return points;
+  return readDefaultProtectionDistancePoints();
+};
+
+export type ProtectionSide = 'BUY' | 'SELL';
+export type ProtectionRole = 'SL' | 'TP';
+
+/** Effective closing price for protection geometry: Bid for BUY, Ask for SELL. */
+export const protectionClosePrice = (
+  side: ProtectionSide,
+  bid: number,
+  ask: number,
+): number | null => {
+  const close = side === 'BUY' ? bid : ask;
+  return Number.isFinite(close) && close > 0 ? close : null;
+};
+
+const formatProtectionPrice = (value: number, digits: number): string => {
+  const safeDigits = Number.isFinite(digits) && digits >= 0 ? Math.floor(digits) : 2;
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: safeDigits,
+    maximumFractionDigits: safeDigits,
+  });
+};
+
+/**
+ * Default SL/TP level on the VALID side of the current close price, so a
+ * freshly opened modify flow never starts on a level the broker must refuse:
+ * BUY SL below Bid / TP above Bid, SELL SL above Ask / TP below Ask, offset
+ * by the stops distance. Returns null when no usable close price exists.
+ */
+export const defaultProtectionLevel = ({
+  side,
+  role,
+  bid,
+  ask,
+  digits,
+  distancePoints,
+}: {
+  side: ProtectionSide;
+  role: ProtectionRole;
+  bid: number;
+  ask: number;
+  digits: number;
+  distancePoints?: unknown;
+}): number | null => {
+  const close = protectionClosePrice(side, bid, ask);
+  if (close === null) return null;
+  const safeDigits = Number.isFinite(digits) && digits >= 0 ? Math.floor(digits) : 2;
+  const step = Math.pow(10, -safeDigits);
+  const distance = resolveStopsDistancePoints(distancePoints) * step;
+  const raw = role === 'SL'
+    ? (side === 'BUY' ? close - distance : close + distance)
+    : (side === 'BUY' ? close + distance : close - distance);
+  const rounded = Math.round(raw / step) * step;
+  return Number.isFinite(rounded) && rounded > 0 ? rounded : null;
+};
+
+/**
+ * Plain-words reason when a protection level violates the rules the
+ * gateway enforces (rules_modify.go: side strictly off the current close
+ * — BUY vs Bid, SELL vs Ask, equality refused — plus the price grid), or
+ * null when the level is acceptable. There is deliberately NO minimum
+ * distance: the backend enforces none, so the client must not refuse
+ * in-gap levels. Distance lives only in defaultProtectionLevel (seeding).
+ * The server stays final authority for race cases.
+ */
+export const protectionLevelViolation = ({
+  side,
+  role,
+  price,
+  bid,
+  ask,
+  digits,
+  tickSize,
+}: {
+  side: ProtectionSide;
+  role: ProtectionRole;
+  price: number;
+  bid: number;
+  ask: number;
+  digits: number;
+  tickSize?: unknown;
+}): string | null => {
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const close = protectionClosePrice(side, bid, ask);
+  if (close === null) return null;
+  const safeDigits = Number.isFinite(digits) && digits >= 0 ? Math.floor(digits) : 2;
+  const closeText = formatProtectionPrice(close, safeDigits);
+  const closeLabel = side === 'BUY' ? 'Bid' : 'Ask';
+  const levelLabel = role === 'SL' ? 'Stop loss' : 'Take profit';
+  const wrongSide = role === 'SL'
+    ? (side === 'BUY' ? price >= close : price <= close)
+    : (side === 'BUY' ? price <= close : price >= close);
+  if (wrongSide) {
+    const direction = role === 'SL'
+      ? (side === 'BUY' ? 'below' : 'above')
+      : (side === 'BUY' ? 'above' : 'below');
+    return `${levelLabel} must be ${direction} the current ${closeLabel} ${closeText} for a ${side}`;
+  }
+  const step = Math.pow(10, -safeDigits);
+  const tick = typeof tickSize === 'number' && Number.isFinite(tickSize) && tickSize > 0 ? tickSize : step;
+  const scaled = price / tick;
+  const scaleFit = price * Math.pow(10, safeDigits);
+  if (Math.abs(scaled - Math.round(scaled)) > 1e-6 || Math.abs(scaleFit - Math.round(scaleFit)) > 1e-6) {
+    return `${levelLabel} must be on the ${safeDigits}-digit price grid`;
+  }
+  return null;
+};
+
 export const selectNearestTradeLevel = (
   candidates: TradeLevelDragCandidate[],
   pointerY: number,

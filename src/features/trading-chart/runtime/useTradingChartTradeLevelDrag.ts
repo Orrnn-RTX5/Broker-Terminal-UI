@@ -4,11 +4,15 @@ import { isTrendDrawingInputActive } from '../../../drawing-tools/drawingInterac
 import api from '../../../services/api';
 import { useAppStore } from '../../../store/useAppStore';
 import { rememberTradeHistoryPositionLevels } from '../../../utils/tradeHistoryLevelCache';
+import { describeProtectionRefusal, formatOrderError } from '../../../utils/orderError';
 import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import {
   applyTradeLevelDragUpdate,
   getTradeLevelStateKeys,
-  getTradeLevelDragMinDistance,
+  normalizeTradeLevelDragPrice,
+  protectionLevelViolation,
+  resolveStopsDistancePoints,
+  resolveTradeLevelDragRole,
   selectNearestTradeLevel,
   tradeLevelModifyPatch,
 } from '../../../utils/tradeLevelDrag';
@@ -452,7 +456,19 @@ export const useTradingChartTradeLevelDrag = ({
 
         const { tradeObj, grabbedType, entryAnchorY } = dragState;
         const digits = resolvedPriceDigitsRef.current;
-        const minStopDistance = getTradeLevelDragMinDistance(digits);
+        // Stops-aware standoff: broker stops level when the trade snapshot
+        // or tick carries one, else the configured default (never a
+        // symbol-specific invention). Falls back to the pre-existing
+        // 5-step minimum when nothing is known.
+        const moveTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { stopsLevel?: unknown; stops_level?: unknown } | undefined>;
+        const moveTickStops = moveTicks[tradeObj.symbol] ?? moveTicks[String(tradeObj.symbol).toUpperCase()];
+        const moveStopsPoints = resolveStopsDistancePoints(
+          (tradeObj as { stopsLevel?: unknown })?.stopsLevel
+            ?? (tradeObj as { stops_level?: unknown })?.stops_level
+            ?? moveTickStops?.stopsLevel
+            ?? moveTickStops?.stops_level,
+        );
+        const minStopDistance = moveStopsPoints * Math.pow(10, -digits);
         const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
         const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
 
@@ -484,11 +500,43 @@ export const useTradingChartTradeLevelDrag = ({
           if (dragZoneOverlay) dragZoneOverlay.style.display = 'none';
           dragLineOverlay.style.transform = `translate3d(0, ${idleY}px, 0)`;
           dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${idleY}px))`;
+          dragLineOverlay.title = '';
+          dragBadgeOverlay.title = '';
           return;
         }
 
         const price = previewUpdate.price;
         const role = previewUpdate.role;
+        // Mark a level dragged onto the broker-invalid side red with the
+        // reason (submitting stays blocked until it is valid — see pointerup).
+        // Real Bid/Ask from the store (spread-aware); snapshot price fallback.
+        const moveTick = (useAppStore.getState().ticks as Record<string, { bid?: unknown; ask?: unknown } | undefined>)?.[tradeObj.symbol]
+          ?? (useAppStore.getState().ticks as Record<string, { bid?: unknown; ask?: unknown } | undefined>)?.[String(tradeObj.symbol).toUpperCase()];
+        const moveBid = Number(moveTick?.bid) || liveCurrentPrice;
+        const moveAsk = Number(moveTick?.ask) || liveCurrentPrice;
+        const moveSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
+        const moveRaw = normalizeTradeLevelDragPrice(rawPrice, digits);
+        const moveViolation = protectionLevelViolation({
+          side: moveSide,
+          role: resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, moveRaw),
+          price: moveRaw,
+          bid: moveBid,
+          ask: moveAsk,
+          digits,
+        });
+        if (moveViolation) {
+          dragLineOverlay.style.borderTopColor = '#ef4444';
+          dragLineOverlay.title = moveViolation;
+          dragBadgeOverlay.style.opacity = '1';
+          dragBadgeOverlay.style.borderColor = '#ef4444';
+          dragBadgeOverlay.title = moveViolation;
+          dragLineOverlay.style.transform = `translate3d(0, ${y}px, 0)`;
+          dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${y}px))`;
+          if (dragZoneOverlay) dragZoneOverlay.style.display = 'none';
+          return;
+        }
+        dragLineOverlay.title = '';
+        dragBadgeOverlay.title = '';
         const color = getDragRoleColor(role);
         const palette = getTradeOverlayCardPalette(role, isChartSurfaceLight());
 
@@ -588,6 +636,33 @@ export const useTradingChartTradeLevelDrag = ({
               const { sl: currentSl, tp: currentTp } = getCurrentTradeLevels(tradeObj);
               const digits = resolvedPriceDigitsRef.current;
               const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
+              // Block broker-invalid drops before sending: the level must sit
+              // on the valid side of the live close (the server stays final
+              // authority for the gap and race cases).
+              const submitSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
+              const submitRaw = normalizeTradeLevelDragPrice(rawFinalPrice, digits);
+              const submitTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; stopsLevel?: unknown; stops_level?: unknown } | undefined>;
+              const submitTick = submitTicks[tradeObj.symbol] ?? submitTicks[String(tradeObj.symbol).toUpperCase()];
+              const submitStopsPoints = resolveStopsDistancePoints(
+                (tradeObj as { stopsLevel?: unknown })?.stopsLevel
+                  ?? (tradeObj as { stops_level?: unknown })?.stops_level
+                  ?? submitTick?.stopsLevel
+                  ?? submitTick?.stops_level,
+              );
+              const submitViolation = protectionLevelViolation({
+                side: submitSide,
+                role: resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, submitRaw),
+                price: submitRaw,
+                bid: Number(submitTick?.bid) || liveCurrentPrice,
+                ask: Number(submitTick?.ask) || liveCurrentPrice,
+                digits,
+              });
+              if (submitViolation) {
+                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                  detail: { message: submitViolation, type: 'error' },
+                }));
+                return;
+              }
               const update = applyTradeLevelDragUpdate({
                 side: tradeObj.side,
                 grabbedType,
@@ -597,8 +672,8 @@ export const useTradingChartTradeLevelDrag = ({
                 currentTp,
                 digits,
                 currentPrice: liveCurrentPrice,
-                minStopDistance: getTradeLevelDragMinDistance(digits),
-                minEntryDistance: grabbedType === 'ENTRY' ? getTradeLevelDragMinDistance(digits) : undefined,
+                minStopDistance: submitStopsPoints * Math.pow(10, -digits),
+                minEntryDistance: grabbedType === 'ENTRY' ? submitStopsPoints * Math.pow(10, -digits) : undefined,
                 snapEntryToMinDistance: grabbedType === 'ENTRY',
                 entryDragDirection: entryDragDirection ?? undefined,
               });
@@ -686,8 +761,20 @@ export const useTradingChartTradeLevelDrag = ({
                       },
                     }));
                     window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+                    // Name the offending level against the live quote when the
+                    // server refused the geometry (never a bare "Failed").
+                    const dragTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; digits?: unknown; stopsLevel?: unknown; stops_level?: unknown } | undefined>;
+                    const dragTick = dragTicks[tradeObj.symbol] ?? dragTicks[String(tradeObj.symbol).toUpperCase()];
+                    const dragRefusal = describeProtectionRefusal(err, {
+                      side: String(tradeObj.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+                      sl,
+                      tp,
+                      bid: Number(dragTick?.bid) || tradeObj.currentPrice || 0,
+                      ask: Number(dragTick?.ask) || tradeObj.currentPrice || 0,
+                      digits: Number(dragTick?.digits) || resolvedPriceDigitsRef.current || 2,
+                    });
                     window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
-                      detail: { message: `${tr('Modify Position')}: ${tr('Failed')}`, type: 'error' },
+                      detail: { message: dragRefusal ?? formatOrderError(err), type: 'error' },
                     }));
                     });
                 }

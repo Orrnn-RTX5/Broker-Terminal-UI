@@ -19,7 +19,8 @@ import {
 } from '../../../utils/chartTradeControls';
 import { buildTradeHistoryBadgeText, formatTradeHistoryGmtTime } from '../../../utils/chartTradeHistoryPresentation';
 import { buildTradeShareUrl, copyTextToClipboard } from '../../../utils/tradeShareLink';
-import { tradeLevelModifyPatch } from '../../../utils/tradeLevelDrag';
+import { normalizeTradeLevelDragPrice, protectionLevelViolation, tradeLevelModifyPatch } from '../../../utils/tradeLevelDrag';
+import { describeProtectionRefusal, formatOrderError } from '../../../utils/orderError';
 import type { Timeframe, TradingViewChartTheme } from '../../../types/chart';
 import { CHART_AXIS_FONT_FAMILY, clampAlpha, colorWithAlpha } from '../presentation/chartTheme';
 import {
@@ -487,6 +488,34 @@ export const createTradeOverlayDomRuntime = ({
       const optimisticGraceUntil = Date.now() + TRADE_LEVEL_OPTIMISTIC_GRACE_MS;
       requestKeys.forEach((key) => pendingTradeLevelModifyRequestsRef.current.set(key, requestId));
       requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.set(key, optimisticGraceUntil));
+      // Normalize to the symbol grid, then block broker-invalid levels
+      // before sending (same rule as the drag path; the server stays final
+      // authority for gap/race cases).
+      const submitTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; digits?: unknown } | undefined>;
+      const submitTick = submitTicks[tradeObj.symbol] ?? submitTicks[String(tradeObj.symbol).toUpperCase()] ?? null;
+      const submitDigits = Number(submitTick?.digits) || digits || 2;
+      const submitPrice = normalizeTradeLevelDragPrice(
+        role === 'SL' ? nextLevels.sl || 0 : nextLevels.tp || 0,
+        submitDigits,
+      );
+      nextLevels = {
+        ...nextLevels,
+        ...(role === 'SL' ? { sl: submitPrice } : { tp: submitPrice }),
+      };
+      const submitViolation = protectionLevelViolation({
+        side: String(tradeObj.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+        role,
+        price: submitPrice,
+        bid: Number(submitTick?.bid) || 0,
+        ask: Number(submitTick?.ask) || 0,
+        digits: submitDigits,
+      });
+      if (submitViolation) {
+        window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+          detail: { message: submitViolation, type: 'error' },
+        }));
+        return;
+      }
       const isCurrentRequest = () => requestKeys.some((key) => (
         pendingTradeLevelModifyRequestsRef.current.get(key) === requestId
       ));
@@ -555,8 +584,20 @@ export const createTradeOverlayDomRuntime = ({
               sessionScope: brokerAccountSessionScope,
             },
           }));
+          // Name the offending level against the live quote when the server
+          // refused the geometry (never a bare "Failed").
+          const domTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; digits?: unknown } | undefined>;
+          const domTick = domTicks[tradeObj.symbol] ?? domTicks[String(tradeObj.symbol).toUpperCase()] ?? null;
+          const domRefusal = describeProtectionRefusal(err, {
+            side: String(tradeObj.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+            sl: nextLevels.sl || 0,
+            tp: nextLevels.tp || 0,
+            bid: Number(domTick?.bid) || 0,
+            ask: Number(domTick?.ask) || 0,
+            digits: Number(domTick?.digits) || digits || 2,
+          });
           window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
-            detail: { message: `${tr('Modify Position')}: ${tr('Failed')}`, type: 'error' },
+            detail: { message: domRefusal ?? formatOrderError(err), type: 'error' },
           }));
         });
     };
