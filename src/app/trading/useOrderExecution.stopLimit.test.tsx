@@ -60,13 +60,13 @@ const createController = (
   return { ...result, refreshPositions, refreshOrdersAndHistory };
 };
 
-describe('useOrderExecution pending sweep (stop-limit / expiry / comment / fill policy)', () => {
+describe('useOrderExecution pending sweep (stop-limit / expiry / comment, never fill policy)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.orders.placePendingOrder).mockResolvedValue({ ticket: 72 } as never);
   });
 
-  it('maps Stop Limit Order submissions to *_stop_limit with the stop-limit price, epoch int expiry, comment, and fill policy', async () => {
+  it('maps Stop Limit Order submissions to *_stop_limit with the stop-limit price, epoch int expiry and comment (no fill policy on the wire)', async () => {
     const context = createTradeOperationContext('broker:123', 123, 4);
     const controller = createController(() => context);
 

@@ -41,16 +41,17 @@ const clearStoredRouting = () => {
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-describe('pending order sweep wire (stop-limit / expiry / comment / fill policy)', () => {
+describe('pending order sweep wire (stop-limit / expiry / comment, never fill policy)', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ok: true })));
+    // Fresh Response per call: a Response body can only be read once.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ ok: true }))));
     clearStoredRouting();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('sends a stop-limit place with type, stop-limit price, epoch int expiry, comment, fill policy, and UUID idempotency key', async () => {
+  it('sends a stop-limit place with type, stop-limit price, epoch int expiry, comment and UUID idempotency key (no fill policy)', async () => {
     await api.orders.placePendingOrder({
       login: 100001,
       symbol: 'XAUUSD',

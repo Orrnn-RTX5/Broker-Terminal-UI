@@ -190,12 +190,15 @@ const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): Mo
   // a caller passes one (defense in depth; the UI never sends it on modify).
   const { fill_policy: _droppedFillPolicy, ...cleanRest } = rest as Record<string, unknown>;
   void _droppedFillPolicy;
+  // Same epoch-seconds normalization as PLACE: a ms value would decode as a
+  // far-future seconds value (the backend does no ms→s conversion).
+  const modifyExpiry = normalizePendingExpiryToEpochSeconds(expiry ?? expiration);
   return {
     ...cleanRest,
     client_order_id: clientOrderId || createTradeOrderUuid(),
     sl: sl ?? price_sl,
     tp: tp ?? price_tp,
-    expiry: expiry ?? expiration,
+    ...(modifyExpiry !== undefined ? { expiry: modifyExpiry } : {}),
   };
 };
 

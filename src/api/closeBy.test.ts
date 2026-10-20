@@ -130,6 +130,7 @@ describe('close-by API wire', () => {
   it.each([
     ['empty ticket', { ticket: '', state_version_text: '1' }, sell(12, 'EURUSD', '2')],
     ['zero ticket', { ticket: '0', state_version_text: '1' }, sell(12, 'EURUSD', '2')],
+    ['padded ticket', { ticket: '007', state_version_text: '1' }, sell(12, 'EURUSD', '2')],
     ['fractional ticket', { ticket: '1001.5', state_version_text: '1' }, sell(12, 'EURUSD', '2')],
     ['unsafe numeric ticket', { ticket: Number.MAX_SAFE_INTEGER + 1, state_version_text: '1' }, sell(12, 'EURUSD', '2')],
     ['missing version', { ticket: '1001' }, sell(12, 'EURUSD', '2')],

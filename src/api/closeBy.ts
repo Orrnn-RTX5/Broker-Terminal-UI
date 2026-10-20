@@ -21,7 +21,6 @@ export const CLOSE_BY_ENDPOINT = '/positions/close-by';
 export const CLOSE_BY_CONTEXT = '/api/v2/positions/close-by';
 
 const DECIMAL_PATTERN = /^\d+$/;
-const NON_ZERO_PATTERN = /[1-9]/;
 
 /** Minimal structural shape of a position leg. Accepts store and gateway aliases. */
 export interface CloseByLegSource {
@@ -74,12 +73,14 @@ export const requireCloseByAccountLogin = (value: unknown): number => {
   throw new Error(`No trading account is selected for ${CLOSE_BY_CONTEXT}`);
 };
 
-/** Positive decimal ticket as a string. Rejects numbers-that-are-not-safe, zero, fractions, padding. */
+/** Canonical positive decimal ticket as a string (no leading zeros — the
+ * gateway requires strconv.FormatInt(v,10)==s). Rejects unsafe numbers,
+ * zero, fractions and padded strings like "007". */
 export const requireCloseByTicket = (value: unknown): string => {
   if (typeof value === 'number') {
     if (Number.isSafeInteger(value) && value > 0) return String(value);
-  } else if (typeof value === 'string' && DECIMAL_PATTERN.test(value) && NON_ZERO_PATTERN.test(value)) {
-    return value;
+  } else if (typeof value === 'string' && /^[1-9]\d*$/.test(value.trim())) {
+    return value.trim();
   }
   throw new Error(`Invalid ticket for ${CLOSE_BY_CONTEXT}`);
 };
