@@ -2,6 +2,11 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useTradingChartTradeLevelDrag } from './useTradingChartTradeLevelDrag';
+import { commitBrokerAccountSessionScope } from '../../../services/brokerSession';
+import {
+  registerDailyChangePriceModes,
+  resetDailyChangePriceModeRegistryForTests,
+} from '../../../services/dailyChangePriceModeRegistry';
 
 const { modifyPosition } = vi.hoisted(() => ({ modifyPosition: vi.fn(() => new Promise(() => undefined)) }));
 vi.mock('../../../services/api', () => ({ default: { positions: { modifyPosition } } }));
@@ -13,7 +18,16 @@ afterEach(() => {
   document.body.innerHTML = '';
   vi.clearAllMocks();
   vi.restoreAllMocks();
+  commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+  resetDailyChangePriceModeRegistryForTests();
 });
+
+/** Broker catalog precision for the fixture symbol (spec data, not the chart scale). */
+const registerCatalogDigits = (symbol: string, digits: number) => {
+  commitBrokerAccountSessionScope({ authenticated: true, accountId: '123', brokerId: 'broker-a', serverUrl: 'https://broker.example' });
+  resetDailyChangePriceModeRegistryForTests();
+  registerDailyChangePriceModes([{ symbol, digits }]);
+};
 
 function harness(role: 'SL' | 'TP' | 'ENTRY', offset: number, docked = false) {
   const wrapper = document.createElement('div');
@@ -288,6 +302,7 @@ describe('displaced trade control gestures', () => {
 
   it('drags only the targeted overlapping entry bar after the price scale expands', () => {
     // A 26px ENTRY bar has its center 17px above the true price (13px + 4px gap).
+    registerCatalogDigits('XAUUSD', 2);
     const h = harness('ENTRY', -17);
     const otherTrade = { ...h.trade, key: 'trade:999', sl: 840, tp: 960 };
     const untouchedTrade = { ...h.trade };
@@ -569,5 +584,38 @@ describe('displaced trade control gestures', () => {
       window.removeEventListener('rtx:trade-modified', onModified);
       window.removeEventListener('rtx:order-feedback', onFeedback);
     }
+  });
+});
+
+describe('drag SL/TP precision comes from broker data only', () => {
+
+  it('sends the raw dragged level when broker digits are unknown (no chart or default-2 rounding)', () => {
+    const h = harness('SL', 0);
+    h.coordinateToPrice.mockImplementation((y: number) => (y === 157 ? 843.123456 : 1000 - y));
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157);
+    h.send('pointerup', 157);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 843.123456 });
+  });
+
+  it('rounds to the catalog digits, not the chart display digits', () => {
+    registerCatalogDigits('XAUUSD', 3);
+    const h = harness('SL', 0);
+    h.coordinateToPrice.mockImplementation((y: number) => (y === 157 ? 843.123456 : 1000 - y));
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157);
+    h.send('pointerup', 157);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 843.123 });
+  });
+
+  it('keeps a level one tick past the close (no minimum-distance clamp)', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    const h = harness('SL', 0);
+    // Live price 900; drop the SL at 899.99 (one tick below).
+    h.coordinateToPrice.mockImplementation((y: number) => (y === 157 ? 899.99 : 1000 - y));
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157);
+    h.send('pointerup', 157);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 899.99 });
   });
 });

@@ -16,7 +16,8 @@ export interface TradeLevelDragUpdateInput {
   finalPrice: number;
   currentSl?: number;
   currentTp?: number;
-  digits: number;
+  /** Broker precision; null = unknown: levels keep the raw dragged number. */
+  digits: number | null;
   minEntryDistance?: number;
   snapEntryToMinDistance?: boolean;
   entryDragDirection?: 1 | -1;
@@ -62,15 +63,17 @@ const normalizeExistingTradeLevel = (price: number | undefined): number =>
 const getSafeDigits = (digits: number): number =>
   Number.isFinite(digits) && digits >= 0 ? Math.floor(digits) : 0;
 
-export const normalizeTradeLevelDragPrice = (price: number, digits: number): number => {
+export const normalizeTradeLevelDragPrice = (price: number, digits: number | null): number => {
   if (!Number.isFinite(price)) return Number.NaN;
+  // Unknown broker precision: keep the raw number (never round by a guess).
+  if (digits === null) return price;
   const safeDigits = getSafeDigits(digits);
   const scale = Math.pow(10, safeDigits);
   return Math.round(price * scale) / scale;
 };
 
-export const getTradeLevelDragMinDistance = (digits: number): number =>
-  5 * Math.pow(10, -getSafeDigits(digits));
+export const getTradeLevelDragMinDistance = (digits: number | null): number =>
+  (digits === null ? 0 : 5 * Math.pow(10, -getSafeDigits(digits)));
 
 /** Identical fills can belong to different tickets; metadata is never mutation ownership. */
 export const getTradeLevelStateKeys = (trade: { key: string }): string[] => [trade.key];
@@ -128,9 +131,12 @@ export const clampTradeLevelToCurrentPrice = (
   price: number,
   currentPrice: number,
   gap: number,
-  digits: number,
+  digits: number | null,
 ): number => {
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) return price;
+  // Unknown precision has no tick to step past the close; the side check
+  // (protectionLevelViolation) blocks wrong-side levels instead.
+  if (digits === null) return price;
   const safeDigits = getSafeDigits(digits);
   const safeGap = Math.max(Math.pow(10, -safeDigits), Number.isFinite(gap) && gap > 0 ? gap : 0);
   const slBoundaryForBuy = currentPrice - safeGap;
@@ -164,7 +170,7 @@ export const applyTradeLevelDragUpdate = ({
   let price = normalizeTradeLevelDragPrice(finalPrice, digits);
   if (!Number.isFinite(price) || price <= 0) return null;
   if (grabbedType === 'ENTRY') {
-    const safeDigits = getSafeDigits(digits);
+    const safeDigits = digits === null ? null : getSafeDigits(digits);
     const entry = normalizeTradeLevelDragPrice(entryPrice, safeDigits);
     const requiredDistance = Math.max(0, minEntryDistance ?? getTradeLevelDragMinDistance(safeDigits));
     const priceDirection = entryDragDirection === 1 || entryDragDirection === -1
@@ -179,13 +185,14 @@ export const applyTradeLevelDragUpdate = ({
     if (entryDistance < requiredDistance) {
       if (!snapEntryToMinDistance) return null;
       if (!priceDirection) return null;
-      const snapDistance = requiredDistance > 0 ? requiredDistance : Math.pow(10, -safeDigits);
+      if (requiredDistance <= 0 && safeDigits === null) return null;
+      const snapDistance = requiredDistance > 0 ? requiredDistance : Math.pow(10, -(safeDigits as number));
       price = normalizeTradeLevelDragPrice(entry + priceDirection * snapDistance, safeDigits);
       if (!Number.isFinite(price) || price <= 0) return null;
     }
 
     if (price === entry) {
-      if (!priceDirection) return null;
+      if (!priceDirection || safeDigits === null) return null;
       const tickSize = Math.pow(10, -safeDigits);
       price = normalizeTradeLevelDragPrice(entry + priceDirection * tickSize, safeDigits);
       if (!Number.isFinite(price) || price <= 0) return null;
@@ -262,6 +269,37 @@ export const resolveStopsDistancePoints = (stopsLevel: unknown): number => {
 };
 
 export type ProtectionSide = 'BUY' | 'SELL';
+
+/** Broker precision as a known integer (0..12), else null — never guessed. */
+export const readKnownPriceDigits = (value: unknown): number | null => {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 12 ? parsed : null;
+};
+
+const readPositiveTickSize = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+);
+
+/**
+ * Round a typed/dragged SL/TP level to the broker price grid before sending:
+ * nearest multiple of the broker tick size (or one digit step when the
+ * catalog publishes no tick size), at the broker precision. Unknown
+ * precision (null) returns the value exactly as typed: the server validates
+ * the grid and the client never rounds by a guessed precision.
+ */
+export const roundProtectionLevelToGrid = (
+  value: number,
+  digits: number | null,
+  tickSize?: unknown,
+): number => {
+  if (!Number.isFinite(value) || value <= 0) return value;
+  if (digits === null) return value;
+  const safeDigits = getSafeDigits(digits);
+  const step = readPositiveTickSize(tickSize) ?? Math.pow(10, -safeDigits);
+  const snapped = Math.round(value / step) * step;
+  return Number(snapped.toFixed(safeDigits));
+};
 export type ProtectionRole = 'SL' | 'TP';
 
 /** Effective closing price for protection geometry: Bid for BUY, Ask for SELL. */
@@ -274,8 +312,8 @@ export const protectionClosePrice = (
   return Number.isFinite(close) && close > 0 ? close : null;
 };
 
-const formatProtectionPrice = (value: number, digits: number): string => {
-  const safeDigits = Number.isFinite(digits) && digits >= 0 ? Math.floor(digits) : 2;
+// Callers pass known broker precision only (readKnownPriceDigits).
+const formatProtectionPrice = (value: number, safeDigits: number): string => {
   return value.toLocaleString('en-US', {
     minimumFractionDigits: safeDigits,
     maximumFractionDigits: safeDigits,
@@ -300,12 +338,14 @@ export const defaultProtectionLevel = ({
   role: ProtectionRole;
   bid: number;
   ask: number;
-  digits: number;
+  digits: number | null;
   distancePoints?: unknown;
 }): number | null => {
   const close = protectionClosePrice(side, bid, ask);
   if (close === null) return null;
-  const safeDigits = Number.isFinite(digits) && digits >= 0 ? Math.floor(digits) : 2;
+  // Unknown precision: no grid to seed on, so no default level (never guessed).
+  const safeDigits = readKnownPriceDigits(digits);
+  if (safeDigits === null) return null;
   const step = Math.pow(10, -safeDigits);
   const distance = resolveStopsDistancePoints(distancePoints) * step;
   const raw = role === 'SL'
@@ -338,14 +378,17 @@ export const protectionLevelViolation = ({
   price: number;
   bid: number;
   ask: number;
-  digits: number;
+  digits: number | null;
   tickSize?: unknown;
 }): string | null => {
   if (!Number.isFinite(price) || price <= 0) return null;
   const close = protectionClosePrice(side, bid, ask);
   if (close === null) return null;
-  const safeDigits = Number.isFinite(digits) && digits >= 0 ? Math.floor(digits) : 2;
-  const closeText = formatProtectionPrice(close, safeDigits);
+  // Unknown precision (null): side-only check; the grid needs real digits
+  // and the close is shown raw, never formatted by a guessed precision.
+  const safeDigits = readKnownPriceDigits(digits);
+  const digitsKnown = safeDigits !== null;
+  const closeText = digitsKnown ? formatProtectionPrice(close, safeDigits) : String(close);
   const closeLabel = side === 'BUY' ? 'Bid' : 'Ask';
   const levelLabel = role === 'SL' ? 'Stop loss' : 'Take profit';
   const wrongSide = role === 'SL'
@@ -357,6 +400,7 @@ export const protectionLevelViolation = ({
       : (side === 'BUY' ? 'above' : 'below');
     return `${levelLabel} must be ${direction} the current ${closeLabel} ${closeText} for a ${side}`;
   }
+  if (!digitsKnown) return null;
   const step = Math.pow(10, -safeDigits);
   const tick = typeof tickSize === 'number' && Number.isFinite(tickSize) && tickSize > 0 ? tickSize : step;
   const scaled = price / tick;

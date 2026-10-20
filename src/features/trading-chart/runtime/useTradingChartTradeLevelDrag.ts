@@ -13,9 +13,11 @@ import {
   normalizeTradeLevelDragPrice,
   protectionLevelViolation,
   resolveTradeLevelDragRole,
+  roundProtectionLevelToGrid,
   selectNearestTradeLevel,
   tradeLevelModifyPatch,
 } from '../../../utils/tradeLevelDrag';
+import { readRegisteredSymbolPriceSpec } from '../../../services/dailyChangePriceModeRegistry';
 import {
   bindChartUiTranslation,
   dispatchChartPositionModify,
@@ -68,6 +70,21 @@ interface UseTradingChartTradeLevelDragOptions {
   tradeLevelOptimisticGraceUntilRef: RefObject<Map<string, number>>;
   tradeLevelOverridesRef: RefObject<Map<string, TradeLevelOverride>>;
 }
+
+type DragQuote = { bid?: unknown; ask?: unknown } | undefined;
+
+/**
+ * SL/TP price geometry for a drag: the symbol's own broker catalog data only
+ * (scoped instrument registry). Never the chart's name-table fallback nor
+ * quote digits (the tick normalizer may fill those from the name table):
+ * unknown precision keeps the raw dragged number (digits null).
+ */
+const readDragPriceSpec = (symbol: string): { digits: number | null; tickSize: number | null; quote: DragQuote } => {
+  const ticks = (useAppStore.getState().ticks ?? {}) as Record<string, DragQuote>;
+  const quote = ticks[symbol] ?? ticks[String(symbol).toUpperCase()];
+  const registered = readRegisteredSymbolPriceSpec(symbol);
+  return { digits: registered.digits, tickSize: registered.tickSize, quote };
+};
 
 export const useTradingChartTradeLevelDrag = ({
   activeToolRef,
@@ -455,11 +472,14 @@ export const useTradingChartTradeLevelDrag = ({
         if (rawPrice === null) return;
 
         const { tradeObj, grabbedType, entryAnchorY } = dragState;
-        const digits = resolvedPriceDigitsRef.current;
-        // Clamp nudge uses ONLY the pre-existing 5-step minimum: the
-        // backend enforces side + grid, no stops distance, so a
-        // stops-level clamp would block levels the server accepts.
-        const minStopDistance = getTradeLevelDragMinDistance(digits);
+        const moveSpec = readDragPriceSpec(tradeObj.symbol);
+        const digits = moveSpec.digits;
+        // No minimum distance: the gateway enforces side + grid only, so the
+        // clamp keeps a level just one tick past the close (minStopDistance
+        // 0). The entry-line dead zone below is a gesture threshold, not a
+        // stops rule.
+        const minStopDistance = 0;
+        const minEntryDistance = getTradeLevelDragMinDistance(digits);
         const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
         const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
 
@@ -472,13 +492,13 @@ export const useTradingChartTradeLevelDrag = ({
             side: tradeObj.side,
             grabbedType,
             entryPrice: tradeObj.entryPrice,
-            finalPrice: rawPrice,
+            finalPrice: roundProtectionLevelToGrid(rawPrice, digits, moveSpec.tickSize),
             currentSl: tradeObj.sl,
             currentTp: tradeObj.tp,
             digits,
             currentPrice: liveCurrentPrice,
             minStopDistance,
-            minEntryDistance: grabbedType === 'ENTRY' ? minStopDistance : undefined,
+            minEntryDistance: grabbedType === 'ENTRY' ? minEntryDistance : undefined,
             snapEntryToMinDistance: grabbedType === 'ENTRY',
             entryDragDirection: entryDragDirection ?? undefined,
           })
@@ -501,12 +521,12 @@ export const useTradingChartTradeLevelDrag = ({
         // Mark a level dragged onto the broker-invalid side red with the
         // reason (submitting stays blocked until it is valid — see pointerup).
         // Real Bid/Ask from the store (spread-aware); snapshot price fallback.
-        const moveTick = (useAppStore.getState().ticks as Record<string, { bid?: unknown; ask?: unknown } | undefined>)?.[tradeObj.symbol]
-          ?? (useAppStore.getState().ticks as Record<string, { bid?: unknown; ask?: unknown } | undefined>)?.[String(tradeObj.symbol).toUpperCase()];
+        const moveTick = moveSpec.quote;
         const moveBid = Number(moveTick?.bid) || liveCurrentPrice;
         const moveAsk = Number(moveTick?.ask) || liveCurrentPrice;
+        // Unknown precision degrades the check to side-only (never guessed).
         const moveSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
-        const moveRaw = normalizeTradeLevelDragPrice(rawPrice, digits);
+        const moveRaw = normalizeTradeLevelDragPrice(roundProtectionLevelToGrid(rawPrice, digits, moveSpec.tickSize), digits);
         const moveViolation = protectionLevelViolation({
           side: moveSide,
           role: resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, moveRaw),
@@ -514,6 +534,7 @@ export const useTradingChartTradeLevelDrag = ({
           bid: moveBid,
           ask: moveAsk,
           digits,
+          tickSize: moveSpec.tickSize,
         });
         if (moveViolation) {
           dragLineOverlay.style.borderTopColor = '#ef4444';
@@ -569,7 +590,7 @@ export const useTradingChartTradeLevelDrag = ({
           volume: tradeObj.volume,
           entryPrice: tradeObj.entryPrice,
           levelPrice: price,
-          digits,
+          digits: resolvedPriceDigitsRef.current,
           backendPnl: Number.isFinite(previewBackendPnl) ? previewBackendPnl : null,
           currentPrice: liveCurrentPrice,
           contractSize: Number(previewPositionRaw?.contractSize ?? previewPositionRaw?.contract_size) || undefined,
@@ -577,7 +598,7 @@ export const useTradingChartTradeLevelDrag = ({
         const previewCurrency = String(previewState.account?.currency || 'USD').trim().toUpperCase() || 'USD';
         const previewBadge = dragBadgeOverlay;
         bindChartUiTranslation(previewBadge, () => {
-          previewBadge.textContent = `${tr(role)} ${price.toFixed(digits)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;
+          previewBadge.textContent = `${tr(role)} ${digits === null ? String(price) : price.toFixed(digits)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;
         });
         dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${drawY}px))`;
         return;
@@ -625,15 +646,16 @@ export const useTradingChartTradeLevelDrag = ({
               // A cross-button action can start while this gesture is active.
               if (blockPendingTradeLevelChange(tradeObj)) return;
               const { sl: currentSl, tp: currentTp } = getCurrentTradeLevels(tradeObj);
-              const digits = resolvedPriceDigitsRef.current;
+              const submitSpec = readDragPriceSpec(tradeObj.symbol);
+              const digits = submitSpec.digits;
+              const submitFinalPrice = roundProtectionLevelToGrid(rawFinalPrice, digits, submitSpec.tickSize);
               const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
               // Block broker-invalid drops before sending: the level must sit
               // on the valid side of the live close (the server stays final
               // authority for the gap and race cases).
               const submitSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
-              const submitRaw = normalizeTradeLevelDragPrice(rawFinalPrice, digits);
-              const submitTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown } | undefined>;
-              const submitTick = submitTicks[tradeObj.symbol] ?? submitTicks[String(tradeObj.symbol).toUpperCase()];
+              const submitRaw = normalizeTradeLevelDragPrice(submitFinalPrice, digits);
+              const submitTick = submitSpec.quote;
               const submitViolation = protectionLevelViolation({
                 side: submitSide,
                 role: resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, submitRaw),
@@ -641,6 +663,7 @@ export const useTradingChartTradeLevelDrag = ({
                 bid: Number(submitTick?.bid) || liveCurrentPrice,
                 ask: Number(submitTick?.ask) || liveCurrentPrice,
                 digits,
+                tickSize: submitSpec.tickSize,
               });
               if (submitViolation) {
                 window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
@@ -648,18 +671,20 @@ export const useTradingChartTradeLevelDrag = ({
                 }));
                 return;
               }
-              const submitMinStopDistance = getTradeLevelDragMinDistance(digits);
+              // Same rule as the preview: no minimum distance (one tick past
+              // the close); the entry dead zone is a gesture threshold only.
+              const submitMinEntryDistance = getTradeLevelDragMinDistance(digits);
               const update = applyTradeLevelDragUpdate({
                 side: tradeObj.side,
                 grabbedType,
                 entryPrice: tradeObj.entryPrice,
-                finalPrice: rawFinalPrice,
+                finalPrice: submitFinalPrice,
                 currentSl,
                 currentTp,
                 digits,
                 currentPrice: liveCurrentPrice,
-                minStopDistance: submitMinStopDistance,
-                minEntryDistance: grabbedType === 'ENTRY' ? submitMinStopDistance : undefined,
+                minStopDistance: 0,
+                minEntryDistance: grabbedType === 'ENTRY' ? submitMinEntryDistance : undefined,
                 snapEntryToMinDistance: grabbedType === 'ENTRY',
                 entryDragDirection: entryDragDirection ?? undefined,
               });
@@ -749,15 +774,17 @@ export const useTradingChartTradeLevelDrag = ({
                     window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
                     // Name the offending level against the live quote when the
                     // server refused the geometry (never a bare "Failed").
-                    const dragTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; digits?: unknown; stopsLevel?: unknown; stops_level?: unknown } | undefined>;
-                    const dragTick = dragTicks[tradeObj.symbol] ?? dragTicks[String(tradeObj.symbol).toUpperCase()];
+                    // Broker spec digits only; unknown precision degrades
+                    // the naming to side-only — never guessed.
+                    const refusalSpec = readDragPriceSpec(tradeObj.symbol);
+                    const dragTick = refusalSpec.quote;
                     const dragRefusal = describeProtectionRefusal(err, {
                       side: String(tradeObj.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
                       sl,
                       tp,
                       bid: Number(dragTick?.bid) || tradeObj.currentPrice || 0,
                       ask: Number(dragTick?.ask) || tradeObj.currentPrice || 0,
-                      digits: Number(dragTick?.digits) || resolvedPriceDigitsRef.current || 2,
+                      digits: refusalSpec.digits,
                     });
                     window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
                       detail: { message: dragRefusal ?? formatOrderError(err), type: 'error' },

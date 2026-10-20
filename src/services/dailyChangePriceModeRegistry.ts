@@ -14,11 +14,15 @@ export interface DailyChangePriceModeCatalogRow {
   symbol?: unknown;
   brokerSpecification?: unknown;
   specification?: unknown;
+  /** Normalized catalog fields (MarketInstrument), read when no spec row carries them. */
+  digits?: unknown;
+  tickSize?: unknown;
 }
 
 let activeScopeKey = '';
 let modesBySymbol = new Map<string, DailyChangePriceMode>();
 let digitsBySymbol = new Map<string, number>();
+let tickSizeBySymbol = new Map<string, number>();
 
 const normalizeSymbol = (value: unknown): string => String(value ?? '').trim().toUpperCase();
 
@@ -35,6 +39,7 @@ const resetForScope = (scope: CommittedBrokerAccountSessionScope): void => {
   activeScopeKey = isUsableScope(scope) ? scopeKey(scope) : '';
   modesBySymbol = new Map();
   digitsBySymbol = new Map();
+  tickSizeBySymbol = new Map();
 };
 
 resetForScope(getCommittedBrokerAccountSessionScope());
@@ -68,6 +73,26 @@ export const getCurrentDailyChangePriceModeScopeKey = (): string => {
   return isUsableScope(scope) ? scopeKey(scope) : '';
 };
 
+const readPositiveNumber = (value: unknown): number | null => {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+/** Broker tick size: the normalized catalog field first, then the raw spec row. */
+const readCatalogTickSize = (
+  row: DailyChangePriceModeCatalogRow,
+  specification: Record<string, unknown> | undefined,
+): number | null => {
+  const normalized = readPositiveNumber(row.tickSize);
+  if (normalized !== null) return normalized;
+  const nested = asRecord(specification?.specification);
+  for (const source of [specification, nested]) {
+    const value = readPositiveNumber(source?.tick_size ?? source?.tickSize);
+    if (value !== null) return value;
+  }
+  return null;
+};
+
 /**
  * Replace chart modes with one complete, currently published catalog. A late
  * response captured under another broker/account is rejected rather than
@@ -82,6 +107,7 @@ export const registerDailyChangePriceModes = (
 
   const next = new Map<string, DailyChangePriceMode>();
   const nextDigits = new Map<string, number>();
+  const nextTickSizes = new Map<string, number>();
   rows.forEach((row) => {
     const symbol = normalizeSymbol(row.symbol);
     const mode = readCatalogMode(row);
@@ -89,11 +115,39 @@ export const registerDailyChangePriceModes = (
     const specification = asRecord(row.brokerSpecification) ?? asRecord(row.specification) ?? asRecord(row);
     const digits = specification?.digits ?? asRecord(specification?.specification)?.digits;
     if (symbol && typeof digits === 'number' && Number.isInteger(digits) && digits >= 0 && digits <= 12) nextDigits.set(symbol, digits);
+    const tickSize = readCatalogTickSize(row, specification);
+    if (symbol && tickSize !== null) nextTickSizes.set(symbol, tickSize);
   });
   activeScopeKey = currentScopeKey;
   modesBySymbol = next;
   digitsBySymbol = nextDigits;
+  tickSizeBySymbol = nextTickSizes;
   return true;
+};
+
+export interface RegisteredSymbolPriceSpec {
+  /** Broker quote precision, or null when the catalog did not publish it. */
+  digits: number | null;
+  /** Broker tick size, or null when the catalog did not publish it. */
+  tickSize: number | null;
+}
+
+/**
+ * Broker-published price geometry for one symbol in the committed
+ * broker/account scope. Spec data only: unknown values stay null and are
+ * never guessed from the symbol name (SL/TP rounding and grid checks must
+ * send the typed value unrounded when precision is unknown).
+ */
+export const readRegisteredSymbolPriceSpec = (symbol: unknown): RegisteredSymbolPriceSpec => {
+  const currentScopeKey = getCurrentDailyChangePriceModeScopeKey();
+  const normalizedSymbol = normalizeSymbol(symbol);
+  if (!currentScopeKey || currentScopeKey !== activeScopeKey || !normalizedSymbol) {
+    return { digits: null, tickSize: null };
+  }
+  return {
+    digits: digitsBySymbol.get(normalizedSymbol) ?? null,
+    tickSize: tickSizeBySymbol.get(normalizedSymbol) ?? null,
+  };
 };
 
 /** Broker precision first; existing symbol display convention when omitted. */

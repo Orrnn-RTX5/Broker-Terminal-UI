@@ -25,8 +25,13 @@ import { useAppStore } from '../store/useAppStore';
 import api from '../services/api';
 import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { describeProtectionRefusal, formatOrderError } from '../utils/orderError';
-import { defaultProtectionLevel, protectionLevelViolation } from '../utils/tradeLevelDrag';
-import { getSymbolDigits } from '../utils/symbolUtils';
+import {
+    defaultProtectionLevel,
+    protectionLevelViolation,
+    readKnownPriceDigits,
+    roundProtectionLevelToGrid,
+} from '../utils/tradeLevelDrag';
+import { readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
 import { getFallbackSymbolDescription } from '../utils/symbolDescription';
 import {
     getCommittedBrokerAccountSessionScope,
@@ -179,9 +184,11 @@ const buildMiniMarketDepthLevels = (
     bid: number,
     ask: number,
     volume: number,
-    digits: number
+    digits: number | null
 ) => {
-    const point = Math.pow(10, -digits);
+    // Illustrative ladder only. Unknown broker precision collapses it onto
+    // the live best quotes instead of spacing it by a guessed point.
+    const point = digits === null ? 0 : Math.pow(10, -digits);
     const baseVolume = Math.max(volume, 0.01);
     const largeVolume = Math.max(2, baseVolume * 17_000);
     const smallVolume = Math.max(0.01, baseVolume * 200);
@@ -261,7 +268,15 @@ export function ModifyPositionDialog(props: ModifyPositionDialogProps) {
 function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, position, kind = 'position' }: Omit<ModifyPositionDialogProps, 'position'> & { position: ModifyPosition }) {
     const tr = useUiTranslation();
     const tick = useCurrentTick(position.symbol);
-    const initialDigits = (tick as any)?.digits ?? (position as any)?.digits ?? getSymbolDigits(position.symbol);
+    // Price geometry from the symbol's own broker data only: the loaded
+    // instrument catalog (scoped registry), then the position row. Never
+    // the symbol-name table nor quote digits (the tick normalizer may fill
+    // those from the name table): when precision is unknown every path below
+    // shows and sends the value exactly as typed (no rounding).
+    const registeredPriceSpec = readRegisteredSymbolPriceSpec(position.symbol);
+    const specDigits = registeredPriceSpec.digits
+        ?? readKnownPriceDigits((position as { digits?: unknown })?.digits);
+    const specTickSize = registeredPriceSpec.digits === null ? null : registeredPriceSpec.tickSize;
     // Seed an empty SL/TP on the VALID side (never '0.00'): live quote first,
     // else the open price as reference (degraded but side-correct; the
     // server stays final authority and the mapped error names any residual).
@@ -271,24 +286,28 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     const tickAsk = Number((tick as { ask?: unknown } | null)?.ask) || 0;
     const hasProtectionReference = tickBid > 0 || tickAsk > 0 || position.openPrice > 0;
     const seedProtectionLevel = (role: 'SL' | 'TP'): string => {
+      // No spec digits: cannot round or step, so seed nothing (blank). The
+      // submit path sends UNROUNDED and the server validates the grid.
+      if (specDigits === null) return '';
       const refPrice = position.openPrice > 0 ? position.openPrice : 0;
       const seeded = defaultProtectionLevel({
         side: String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
         role,
         bid: tickBid > 0 ? tickBid : refPrice,
         ask: tickAsk > 0 ? tickAsk : refPrice,
-        digits: initialDigits,
+        digits: specDigits,
         distancePoints: (position as { stopsLevel?: unknown })?.stopsLevel
           ?? (position as { stops_level?: unknown })?.stops_level
           ?? (tick as { stopsLevel?: unknown } | null)?.stopsLevel,
       });
-      return seeded !== null ? seeded.toFixed(initialDigits) : '';
+      return seeded !== null ? roundProtectionLevelToGrid(seeded, specDigits, specTickSize).toFixed(specDigits) : '';
     };
-    const [sl, setSl] = useState(() => position.sl > 0 ? position.sl.toFixed(initialDigits) : seedProtectionLevel('SL'));
-    const [tp, setTp] = useState(() => position.tp > 0 ? position.tp.toFixed(initialDigits) : seedProtectionLevel('TP'));
+    const fmtExisting = (value: number): string => (specDigits === null ? String(value) : value.toFixed(specDigits));
+    const [sl, setSl] = useState(() => position.sl > 0 ? fmtExisting(position.sl) : seedProtectionLevel('SL'));
+    const [tp, setTp] = useState(() => position.tp > 0 ? fmtExisting(position.tp) : seedProtectionLevel('TP'));
     // Pending-order entry price + expiry (pending kind only; positions keep
     // their fill price and have no expiry).
-    const [priceStr, setPriceStr] = useState(() => position.openPrice > 0 ? position.openPrice.toFixed(initialDigits) : '');
+    const [priceStr, setPriceStr] = useState(() => position.openPrice > 0 ? fmtExisting(position.openPrice) : '');
     const [expiryStr, setExpiryStr] = useState('');
     const [volumeStr, setVolumeStr] = useState(() => position.volume.toFixed(2));
     const [comment, setComment] = useState(() => position.comment ?? '');
@@ -498,12 +517,19 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
 
     if (!isOpen || !position) return null;
 
-    const digits = (tick as any)?.digits ?? (position as any)?.digits ?? getSymbolDigits(position.symbol);
-    const stopsLevel = (position as any)?.stopsLevel 
-        ?? (position as any)?.stops_level 
-        ?? (tick as any)?.stopsLevel 
-        ?? (tick as any)?.stops_level 
+    // Render-path digits: the same broker spec digits, nullable. Display
+    // helpers below render raw values when precision is unknown.
+    const digits = specDigits;
+    // Informational notice only (never a client-side block; the gateway
+    // enforces side + grid, no distance).
+    const stopsMetadata = [position, tick] as ReadonlyArray<{ stopsLevel?: unknown; stops_level?: unknown } | null | undefined>;
+    const stopsLevel = stopsMetadata[0]?.stopsLevel
+        ?? stopsMetadata[0]?.stops_level
+        ?? stopsMetadata[1]?.stopsLevel
+        ?? stopsMetadata[1]?.stops_level
         ?? 5;
+    const fmtPrice = (value: number): string => (digits === null ? String(value) : value.toFixed(digits));
+    const priceStepAttr = digits === null ? 'any' : Math.pow(10, -digits).toString();
     const previousMiniChartSample = miniChartKey && miniChartState.key === miniChartKey
         ? miniChartState.samples[miniChartState.samples.length - 1]
         : undefined;
@@ -527,16 +553,20 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     const latestMiniChartSample = miniChartSamples[miniChartSamples.length - 1] ?? currentMiniChartSample;
     const bid = latestMiniChartSample.bid;
     const ask = latestMiniChartSample.ask;
+    // Spread in points needs the broker point; unknown precision shows a dash.
+    const spreadPointsLabel = digits === null
+        ? '—'
+        : String(Math.max(0, Math.round((ask - bid) * Math.pow(10, digits))));
     // Live red marking while typing: a level on the broker-invalid side or
     // off the price grid is marked with the reason before submit.
     const dialogSide = String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
     const slViolation = protectionLevelViolation({
         side: dialogSide, role: 'SL', price: parseFloat(sl) || 0,
-        bid, ask, digits: initialDigits,
+        bid, ask, digits: specDigits, tickSize: specTickSize,
     });
     const tpViolation = protectionLevelViolation({
         side: dialogSide, role: 'TP', price: parseFloat(tp) || 0,
-        bid, ask, digits: initialDigits,
+        bid, ask, digits: specDigits, tickSize: specTickSize,
     });
     const dialogTitleId = `modify-position-${position.id}-title`;
     const symbolFieldId = `modify-position-${position.id}-symbol`;
@@ -550,6 +580,13 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     const priceFieldId = `modify-position-${position.id}-price`;
     const expiryFieldId = `modify-position-${position.id}-expiry`;
     const commentFieldId = `modify-position-${position.id}-comment`;
+
+    // Shared grid rounding for every submit path (modify + hedge market
+    // order): spec digits only. Unknown precision sends UNROUNDED — the
+    // server validates the grid; the client never guesses by symbol name.
+    const roundProtectionLevel = (value: number): number => (
+        value > 0 ? roundProtectionLevelToGrid(value, specDigits, specTickSize) : 0
+    );
 
     const handleSubmit = async () => {
         const mutationContext = getCurrentMutationContext();
@@ -568,12 +605,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
         // Round free-typed levels to the symbol grid before sending
         // (same normalization the drag path applies; the backend
         // requires on-grid values). Declared outside try so the catch can
-        // name the offending level.
-        const roundLevel = (value: number): number => {
-            if (!(value > 0)) return 0;
-            const scale = Math.pow(10, initialDigits);
-            return Number((Math.round(value * scale) / scale).toFixed(initialDigits));
-        };
+        // name the offending level. Shared with handleMarketOrder below.
+        const roundLevel = roundProtectionLevel;
         const slVal = roundLevel(parseFloat(sl) || 0);
         const tpVal = roundLevel(parseFloat(tp) || 0);
         try {
@@ -603,7 +636,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                     const loginId = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
                     if (Number.isFinite(loginId) && loginId > 0) {
                         const latest = await api.orders.getPendingOrders(loginId);
-                        useAppStore.getState().setOrders(latest as any);
+                        useAppStore.getState().setOrders(latest as unknown as Parameters<ReturnType<typeof useAppStore.getState>['setOrders']>[0]);
                     }
                 } catch {
                     // The success message stands; the next poll refreshes.
@@ -643,7 +676,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                 tp: tpVal,
                 bid: Number((tick as { bid?: unknown } | null)?.bid) || 0,
                 ask: Number((tick as { ask?: unknown } | null)?.ask) || 0,
-                digits: initialDigits,
+                digits: specDigits,
             }) : null;
             setError(refusal ?? getErrorMessage(err));
         } finally {
@@ -695,8 +728,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
         setSuccessMessage(null);
 
         try {
-            const slVal = Number.parseFloat(sl) || 0;
-            const tpVal = Number.parseFloat(tp) || 0;
+            const slVal = roundProtectionLevel(Number.parseFloat(sl) || 0);
+            const tpVal = roundProtectionLevel(Number.parseFloat(tp) || 0);
             await api.orders.placeMarketOrder({
                 symbol: position.symbol,
                 side,
@@ -865,7 +898,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
 
     const renderMiniMarketDepth = () => {
         const { asks, bids } = buildMiniMarketDepthLevels(bid, ask, actionVolume || position.volume, digits);
-        const spreadPoints = Math.max(0, Math.round((ask - bid) * Math.pow(10, digits)));
+        const spreadPoints = spreadPointsLabel;
 
         const renderDepthLevel = (level: MiniMarketDepthLevel) => {
             const isAsk = level.side === 'ASK';
@@ -890,14 +923,14 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                         <span className="relative z-10">{level.volume.toFixed(2)}</span>
                     </div>
                     <div className={`rtx-modify-depth-price flex min-w-0 items-center justify-end border-r border-[#29344a] pr-1.5 font-mono ${textColor}`}>
-                        {level.price.toFixed(digits)}
+                        {fmtPrice(level.price)}
                     </div>
                     <div className="flex items-center justify-center">
                         <button
                             type="button"
                             className={`rtx-modify-depth-action flex h-[16px] w-[18px] items-center justify-center border bg-[#162030] ${tradeBorder}`}
                             title={tr("Use the Sell or Buy by Market buttons to trade")}
-                            aria-label={tr("{{value0}} depth level {{value1}}", { value0: level.side === 'ASK' ? 'Ask' : 'Bid', value1: level.price.toFixed(digits) })}
+                            aria-label={tr("{{value0}} depth level {{value1}}", { value0: level.side === 'ASK' ? 'Ask' : 'Bid', value1: fmtPrice(level.price) })}
                             onClick={() => setError('Use the Sell by Market or Buy by Market buttons to trade from this dialog.')}
                         >
                             <span className={`h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent ${tradeColor}`} />
@@ -953,7 +986,11 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
         const allPrices = [...effectiveBidData, ...effectiveAskData, bid, ask];
         let rawMin = Math.min(...allPrices);
         let rawMax = Math.max(...allPrices);
-        const priceStep = Math.pow(10, -digits);
+        // Display scaling only: broker step when known; unknown precision
+        // scales by the live spread / quote magnitude (never a guessed digit).
+        const priceStep = digits !== null
+            ? Math.pow(10, -digits)
+            : Math.max(ask - bid, Math.abs(ask || bid) * 1e-6, Number.EPSILON);
         const observedRange = rawMax - rawMin;
         const currentSpread = Math.max(priceStep, ask - bid);
         const minimumRange = Math.max(priceStep * 10, currentSpread * 3.2);
@@ -971,7 +1008,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
         const h = Math.max(180, chartDimensions.height);
         const plotLeft = 6;
         const plotTop = 8;
-        const samplePriceStr = max.toFixed(digits);
+        const samplePriceStr = fmtPrice(max);
         const tagWidth = Math.max(80, Math.round(samplePriceStr.length * 8.2) + 16);
         const plotRight = Math.max(plotLeft + 60, w - tagWidth - 8);
         const plotBottom = Math.max(plotTop + 60, h - 28);
@@ -1117,7 +1154,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                 fontWeight="600"
                                 fontFamily="Consolas, monospace"
                             >
-                                {price.toFixed(digits)}
+                                {fmtPrice(price)}
                             </text>
                         </g>
                     );
@@ -1169,8 +1206,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                 {/* Price Tags on Right Axis */}
                 {showMiniChartPriceLines && (
                     <>
-                        {renderPriceTag(ask.toFixed(digits), askY, askTagY, askColor)}
-                        {renderPriceTag(bid.toFixed(digits), bidY, bidTagY, bidColor)}
+                        {renderPriceTag(fmtPrice(ask), askY, askTagY, askColor)}
+                        {renderPriceTag(fmtPrice(bid), bidY, bidTagY, bidColor)}
                     </>
                 )}
 
@@ -1201,8 +1238,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
 
     // Format the big price with last digits emphasized
     const formatBigPrice = (price: number, colorClass = '') => {
-        const str = price.toFixed(digits);
-        const splitIdx = digits >= 2 ? str.length - 2 : Math.max(0, str.length - 1);
+        const str = fmtPrice(price);
+        const splitIdx = digits !== null && digits >= 2 ? str.length - 2 : Math.max(0, str.length - 1);
         const main = str.slice(0, splitIdx);
         const pips = str.slice(splitIdx);
         return (
@@ -1214,28 +1251,33 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     };
 
     // Calculate SL/TP in points from current price
-    const slPoints = sl && parseFloat(sl) > 0
-        ? Math.abs(Math.round((parseFloat(sl) - (position.side === 'BUY' ? bid : ask)) * Math.pow(10, digits)))
+    // Points math needs real digits; unknown precision shows 0 and disables
+    // the points inputs (the price inputs stay usable; submit sends raw).
+    const pointsDigitsKnown = digits !== null;
+    const slPoints = pointsDigitsKnown && sl && parseFloat(sl) > 0
+        ? Math.abs(Math.round((parseFloat(sl) - (position.side === 'BUY' ? bid : ask)) * Math.pow(10, digits as number)))
         : 0;
-    const tpPoints = tp && parseFloat(tp) > 0
-        ? Math.abs(Math.round((parseFloat(tp) - (position.side === 'BUY' ? ask : bid)) * Math.pow(10, digits)))
+    const tpPoints = pointsDigitsKnown && tp && parseFloat(tp) > 0
+        ? Math.abs(Math.round((parseFloat(tp) - (position.side === 'BUY' ? ask : bid)) * Math.pow(10, digits as number)))
         : 0;
 
     // Update SL/TP from points input
     const handleSlPointsChange = (points: number) => {
         if (points <= 0) { setSl(''); return; }
+        if (digits === null) return;
         const step = Math.pow(10, -digits);
         const ref = position.side === 'BUY' ? bid : ask;
         const val = position.side === 'BUY' ? ref - points * step : ref + points * step;
-        setSl(val.toFixed(digits));
+        setSl(fmtPrice(val));
     };
 
     const handleTpPointsChange = (points: number) => {
         if (points <= 0) { setTp(''); return; }
+        if (digits === null) return;
         const step = Math.pow(10, -digits);
         const ref = position.side === 'BUY' ? ask : bid;
         const val = position.side === 'BUY' ? ref + points * step : ref - points * step;
-        setTp(val.toFixed(digits));
+        setTp(fmtPrice(val));
     };
 
     if (typeof document === 'undefined') return null;
@@ -1263,7 +1305,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                             {position.side}
                         </span>
                         <span className="rtx-modify-meta-detail">
-                            {position.volume.toFixed(2)} {position.symbol} @ {position.openPrice.toFixed(digits)}
+                            {position.volume.toFixed(2)} {position.symbol} @ {fmtPrice(position.openPrice)}
                         </span>
                     </div>
                     <button
@@ -1285,13 +1327,13 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                 <span className="rtx-modify-chart-symbol">{position.symbol}</span>
                                 <span className="rtx-modify-chart-badge">TICK</span>
                                 <span className="rtx-modify-chart-spread-pill">
-                                    {tr("Spread ")}{Math.max(0, Math.round((ask - bid) * Math.pow(10, digits)))} pts
+                                    {tr("Spread ")}{spreadPointsLabel} pts
                                 </span>
                             </div>
                             <div className="rtx-modify-chart-quote-pills">
-                                <span className="rtx-modify-chart-quote--bid">{bid.toFixed(digits)}</span>
+                                <span className="rtx-modify-chart-quote--bid">{fmtPrice(bid)}</span>
                                 <span className="rtx-modify-chart-quote-separator text-[#555a64]">/</span>
-                                <span className="rtx-modify-chart-quote--ask">{ask.toFixed(digits)}</span>
+                                <span className="rtx-modify-chart-quote--ask">{fmtPrice(ask)}</span>
                             </div>
                         </div>
                         {renderMiniChartToolbar()}
@@ -1390,7 +1432,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                 <input
                                     id={slFieldId}
                                     type="number"
-                                    step={Math.pow(10, -digits).toString()}
+                                    step={priceStepAttr}
                                     value={sl}
                                     onChange={(e) => setSl(e.target.value)}
                                     disabled={!hasProtectionReference}
@@ -1404,7 +1446,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                     type="number"
                                     value={slPoints}
                                     onChange={(e) => handleSlPointsChange(parseInt(e.target.value) || 0)}
-                                    disabled={!hasProtectionReference}
+                                    disabled={!hasProtectionReference || !pointsDigitsKnown}
+                                    title={!pointsDigitsKnown ? tr("Points need known symbol precision") : undefined}
                                     className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--points"
                                 />
                                 <span className="rtx-modify-points-label text-[12px] font-normal">{tr("points")}</span>
@@ -1426,7 +1469,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                 <input
                                     id={tpFieldId}
                                     type="number"
-                                    step={Math.pow(10, -digits).toString()}
+                                    step={priceStepAttr}
                                     value={tp}
                                     onChange={(e) => setTp(e.target.value)}
                                     disabled={!hasProtectionReference}
@@ -1440,7 +1483,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                     type="number"
                                     value={tpPoints}
                                     onChange={(e) => handleTpPointsChange(parseInt(e.target.value) || 0)}
-                                    disabled={!hasProtectionReference}
+                                    disabled={!hasProtectionReference || !pointsDigitsKnown}
+                                    title={!pointsDigitsKnown ? tr("Points need known symbol precision") : undefined}
                                     className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--points"
                                 />
                                 <span className="rtx-modify-points-label text-[12px] font-normal">{tr("points")}</span>
@@ -1455,7 +1499,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                     <input
                                         id={priceFieldId}
                                         type="number"
-                                        step={Math.pow(10, -digits).toString()}
+                                        step={priceStepAttr}
                                         value={priceStr}
                                         onChange={(e) => setPriceStr(e.target.value)}
                                         className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price"
@@ -1501,7 +1545,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                 </div>
                             </div>
                             <div className="rtx-modify-quote-spread">
-                                {tr("Spread ")}{Math.max(0, Math.round((ask - bid) * Math.pow(10, digits)))} pts
+                                {tr("Spread ")}{spreadPointsLabel} pts
                             </div>
                             <div className="rtx-modify-quote-side rtx-modify-quote-side--ask">
                                 <span className="rtx-modify-quote-tag rtx-modify-quote-tag--ask">BUY / ASK</span>
@@ -1520,7 +1564,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                 disabled={isSubmitting}
                                 className="rtx-modify-btn--submit"
                             >
-                                {isSubmitting ? tr("Processing...") : tr("Modify #{{value0}} {{value1}} {{value2}} {{value3}} {{value4}}", { value0: position.id, value1: position.side.toLowerCase(), value2: position.volume.toFixed(2), value3: position.symbol, value4: position.openPrice.toFixed(digits) })}
+                                {isSubmitting ? tr("Processing...") : tr("Modify #{{value0}} {{value1}} {{value2}} {{value3}} {{value4}}", { value0: position.id, value1: position.side.toLowerCase(), value2: position.volume.toFixed(2), value3: position.symbol, value4: fmtPrice(position.openPrice) })}
                             </button>
 
                             {kind === 'position' && (
@@ -1550,7 +1594,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                         title={closeVolumeInvalid ? tr("Enter a valid close volume first") : undefined}
                                         className="rtx-modify-btn--close"
                                     >
-                                        {tr("Close #")}{position.id} {position.side.toLowerCase()} {(actionVolume > 0 ? actionVolume : position.volume).toFixed(2)} {position.symbol} {position.openPrice.toFixed(digits)} {tr(" by Market")}
+                                        {tr("Close #")}{position.id} {position.side.toLowerCase()} {(actionVolume > 0 ? actionVolume : position.volume).toFixed(2)} {position.symbol} {fmtPrice(position.openPrice)} {tr(" by Market")}
                                     </button>
                                 </>
                             )}

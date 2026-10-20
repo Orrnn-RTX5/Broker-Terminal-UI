@@ -101,7 +101,7 @@ export const describeProtectionRefusal = (
     tp?: number | null;
     bid: number;
     ask: number;
-    digits: number;
+    digits: number | null;
   },
 ): string | null => {
   const code = extractErrorCode(err);

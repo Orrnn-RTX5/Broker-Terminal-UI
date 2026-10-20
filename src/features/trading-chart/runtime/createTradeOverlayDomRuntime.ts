@@ -19,7 +19,13 @@ import {
 } from '../../../utils/chartTradeControls';
 import { buildTradeHistoryBadgeText, formatTradeHistoryGmtTime } from '../../../utils/chartTradeHistoryPresentation';
 import { buildTradeShareUrl, copyTextToClipboard } from '../../../utils/tradeShareLink';
-import { normalizeTradeLevelDragPrice, protectionLevelViolation, tradeLevelModifyPatch } from '../../../utils/tradeLevelDrag';
+import {
+  normalizeTradeLevelDragPrice,
+  protectionLevelViolation,
+  roundProtectionLevelToGrid,
+  tradeLevelModifyPatch,
+} from '../../../utils/tradeLevelDrag';
+import { readRegisteredSymbolPriceSpec } from '../../../services/dailyChangePriceModeRegistry';
 import { describeProtectionRefusal, formatOrderError } from '../../../utils/orderError';
 import type { Timeframe, TradingViewChartTheme } from '../../../types/chart';
 import { CHART_AXIS_FONT_FAMILY, clampAlpha, colorWithAlpha } from '../presentation/chartTheme';
@@ -482,20 +488,19 @@ export const createTradeOverlayDomRuntime = ({
         }));
         return;
       }
-      const requestId = tradeLevelModifyRequestSeqRef.current + 1;
-      tradeLevelModifyRequestSeqRef.current = requestId;
-      const requestKeys = getTradeLevelStateKeys(tradeObj);
-      const optimisticGraceUntil = Date.now() + TRADE_LEVEL_OPTIMISTIC_GRACE_MS;
-      requestKeys.forEach((key) => pendingTradeLevelModifyRequestsRef.current.set(key, requestId));
-      requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.set(key, optimisticGraceUntil));
       // Normalize to the symbol grid, then block broker-invalid levels
       // before sending (same rule as the drag path; the server stays final
-      // authority for gap/race cases).
-      const submitTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; digits?: unknown } | undefined>;
+      // authority for race cases). Broker catalog spec only: never the
+      // chart's name-table digits, quote digits (the tick normalizer may
+      // fill them from the name table) or a default. Unknown precision sends
+      // the level unrounded and the check degrades to side-only.
+      const submitTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown } | undefined>;
       const submitTick = submitTicks[tradeObj.symbol] ?? submitTicks[String(tradeObj.symbol).toUpperCase()] ?? null;
-      const submitDigits = Number(submitTick?.digits) || digits || 2;
+      const submitSpec = readRegisteredSymbolPriceSpec(tradeObj.symbol);
+      const submitDigits = submitSpec.digits;
+      const submitTickSize = submitSpec.tickSize;
       const submitPrice = normalizeTradeLevelDragPrice(
-        role === 'SL' ? nextLevels.sl || 0 : nextLevels.tp || 0,
+        roundProtectionLevelToGrid(role === 'SL' ? nextLevels.sl || 0 : nextLevels.tp || 0, submitDigits, submitTickSize),
         submitDigits,
       );
       nextLevels = {
@@ -509,6 +514,7 @@ export const createTradeOverlayDomRuntime = ({
         bid: Number(submitTick?.bid) || 0,
         ask: Number(submitTick?.ask) || 0,
         digits: submitDigits,
+        tickSize: submitTickSize,
       });
       if (submitViolation) {
         window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
@@ -516,6 +522,14 @@ export const createTradeOverlayDomRuntime = ({
         }));
         return;
       }
+      // Mark the request pending only once it will really be sent, so a
+      // refused level never leaves the trade stuck in "Processing...".
+      const requestId = tradeLevelModifyRequestSeqRef.current + 1;
+      tradeLevelModifyRequestSeqRef.current = requestId;
+      const requestKeys = getTradeLevelStateKeys(tradeObj);
+      const optimisticGraceUntil = Date.now() + TRADE_LEVEL_OPTIMISTIC_GRACE_MS;
+      requestKeys.forEach((key) => pendingTradeLevelModifyRequestsRef.current.set(key, requestId));
+      requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.set(key, optimisticGraceUntil));
       const isCurrentRequest = () => requestKeys.some((key) => (
         pendingTradeLevelModifyRequestsRef.current.get(key) === requestId
       ));
@@ -594,7 +608,7 @@ export const createTradeOverlayDomRuntime = ({
             tp: nextLevels.tp || 0,
             bid: Number(domTick?.bid) || 0,
             ask: Number(domTick?.ask) || 0,
-            digits: Number(domTick?.digits) || digits || 2,
+            digits: submitDigits,
           });
           window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
             detail: { message: domRefusal ?? formatOrderError(err), type: 'error' },

@@ -76,7 +76,8 @@ import { tradingV2Api } from './api/trade';
 import { dispatchTradeOverlayCloseState, type TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
 import { formatOrderError } from './utils/orderError';
 import { describeProtectionRefusal } from './utils/orderError';
-import { getSymbolDigits } from './utils/symbolUtils';
+import { readKnownPriceDigits } from './utils/tradeLevelDrag';
+import { readRegisteredSymbolPriceSpec } from './services/dailyChangePriceModeRegistry';
 import {
   CHART_POSITION_ACTION_EVENT,
   type ChartPositionActionDetail,
@@ -1047,16 +1048,21 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       console.error('Failed to modify position:', err);
       // Name the offending level against the live quote when the server
       // refused the geometry (never a bare "Failed").
-      const appTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; digits?: unknown; stopsLevel?: unknown; stops_level?: unknown } | undefined>;
+      const appTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown } | undefined>;
       const tick = appTicks[position.symbol]
         ?? appTicks[position.symbol?.toUpperCase?.() ?? ''];
+      // Broker spec digits only (loaded catalog, then position row; quote
+      // digits may come from the name table); unknown precision falls back
+      // to side-only naming.
+      const refusalDigits = readRegisteredSymbolPriceSpec(position.symbol).digits
+        ?? readKnownPriceDigits((position as { digits?: unknown })?.digits);
       const refusal = describeProtectionRefusal(err, {
         side: String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
         sl,
         tp,
         bid: Number(tick?.bid) || 0,
         ask: Number(tick?.ask) || 0,
-        digits: Number((tick as { digits?: unknown } | undefined)?.digits) || getSymbolDigits(position.symbol),
+        digits: refusalDigits,
       });
       publishOrderFeedback(
         [feedbackLabel('Modify position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(` — ${refusal ?? formatOrderError(err)}`)],

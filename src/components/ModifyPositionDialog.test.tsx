@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ModifyPositionDialog } from './ModifyPositionDialog';
 import { commitBrokerAccountSessionScope } from '../services/brokerSession';
+import {
+    registerDailyChangePriceModes,
+    resetDailyChangePriceModeRegistryForTests,
+} from '../services/dailyChangePriceModeRegistry';
 
 const mocks = vi.hoisted(() => ({
     closePosition: vi.fn(),
@@ -12,7 +16,7 @@ const mocks = vi.hoisted(() => ({
     modifyPosition: vi.fn(),
     placeMarketOrder: vi.fn(),
     setPositions: vi.fn(),
-    positions: [] as any[],
+    positions: [] as unknown[],
     tick: {
         symbol: 'GBPUSD', bid: 1.33981, ask: 1.33983, spread: 2,
         timestamp: 1_797_341_377_000,
@@ -74,12 +78,16 @@ describe('ModifyPositionDialog chart toolbar', () => {
             brokerId: 'broker-a',
             serverUrl: 'https://broker.example',
         });
+        // Broker catalog precision for the fixture symbol (spec data, never the name table).
+        resetDailyChangePriceModeRegistryForTests();
+        registerDailyChangePriceModes([{ symbol: 'GBPUSD', digits: 5 }]);
     });
 
     afterEach(() => {
         cleanup();
         vi.useRealTimers();
         commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+        resetDailyChangePriceModeRegistryForTests();
     });
 
     it('commits only the opening ticket values on first open, ticket switch, and reopen', () => {

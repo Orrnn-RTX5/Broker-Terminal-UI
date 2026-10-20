@@ -133,7 +133,7 @@ describe('cTrader-style position controls contract', () => {
     expect(preview).not.toContain('isDesktopBackendTarget');
     expect(preview).toContain('const previewMoney = estimateTradeLevelMoney({');
     expect(preview).not.toContain('previewPips');
-    expect(preview).toContain("previewBadge.textContent = `${tr(role)} ${price.toFixed(digits)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;");
+    expect(preview).toContain("previewBadge.textContent = `${tr(role)} ${digits === null ? String(price) : price.toFixed(digits)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;");
     const dragOverlays = chartSection("dragLineOverlay = document.createElement('div');", 'const handlePointerMove = (e: PointerEvent) => {');
     expect(dragOverlays).not.toContain('isDesktopBackendTarget');
     expect(dragOverlays).toContain("dragZoneOverlay.className = 'rtx-trade-drag-zone';");
