@@ -183,11 +183,15 @@ const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderR
 };
 
 const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): ModifyPendingOrderRequest & { sl?: number; tp?: number; expiry?: number; client_order_id: string } => {
-  const { price_sl, price_tp, sl, tp, expiration, expiry, comment: _comment, fill_policy: _fillPolicy, trailing_stop: _trailingStop, trailing_step: _trailingStep, client_order_id: supplied, ...rest } = data;
+  const { price_sl, price_tp, sl, tp, expiration, expiry, comment: _comment, trailing_stop: _trailingStop, trailing_step: _trailingStep, client_order_id: supplied, ...rest } = data;
   const clientOrderId = String(supplied ?? '').trim();
   if (clientOrderId && !isTradeOrderUuidV4(clientOrderId)) throw new Error('client_order_id must be a UUID v4');
+  // No fill_policy wire field exists on the gateway decoder: strip it even if
+  // a caller passes one (defense in depth; the UI never sends it on modify).
+  const { fill_policy: _droppedFillPolicy, ...cleanRest } = rest as Record<string, unknown>;
+  void _droppedFillPolicy;
   return {
-    ...rest,
+    ...cleanRest,
     client_order_id: clientOrderId || createTradeOrderUuid(),
     sl: sl ?? price_sl,
     tp: tp ?? price_tp,

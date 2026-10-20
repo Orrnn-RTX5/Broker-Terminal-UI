@@ -55,7 +55,11 @@ interface UseTerminalCommandEventsOptions {
   handlePrintChart: (request?: PrintChartRequest) => void | Promise<void>;
   getAllowedSymbol: (symbol: unknown) => string;
   getChartEligibleSymbol: (symbol: unknown) => string;
-  openOrderPanelForSymbol: (symbol: unknown, draft?: { orderType?: string; side?: string; price?: number }) => void;
+  openOrderPanelForSymbol: (
+    symbol: unknown,
+    price?: { bid: number; ask: number },
+    draft?: { orderType?: string; side?: string; price?: number },
+  ) => boolean;
   setShowDataWindow: Dispatch<SetStateAction<boolean>>;
   setShowAccountPanel: Dispatch<SetStateAction<boolean>>;
   setDockHeight: Dispatch<SetStateAction<number>>;
@@ -278,8 +282,8 @@ export const useTerminalCommandEvents = ({
       ['openChart', handleOpenChart as EventListener],
       ['add-chart-panel', () => addChart()],
       ['request-chart-symbol-change', handleRequestChartSymbolChange as EventListener],
-      ['openOrderDialog', ((event: CustomEvent<{ symbol?: unknown; draft?: { orderType?: string; side?: string; price?: number } }>) => openOrderPanelForSymbol(event.detail?.symbol, event.detail?.draft)) as EventListener],
-      ['openNewOrder', ((event: CustomEvent<{ symbol?: unknown; draft?: { orderType?: string; side?: string; price?: number } }>) => openOrderPanelForSymbol(event.detail?.symbol, event.detail?.draft)) as EventListener],
+      ['openOrderDialog', ((event: CustomEvent<{ symbol?: unknown; draft?: { orderType?: string; side?: string; price?: number } }>) => openOrderPanelForSymbol(event.detail?.symbol, undefined, event.detail?.draft)) as EventListener],
+      ['openNewOrder', ((event: CustomEvent<{ symbol?: unknown; draft?: { orderType?: string; side?: string; price?: number } }>) => openOrderPanelForSymbol(event.detail?.symbol, undefined, event.detail?.draft)) as EventListener],
       ['openDepthOfMarket', handleOpenDOM as EventListener],
       ['openDataWindow', () => setShowDataWindow((visible) => !visible)],
       ['openChartProperties', handleOpenChartProperties as EventListener],

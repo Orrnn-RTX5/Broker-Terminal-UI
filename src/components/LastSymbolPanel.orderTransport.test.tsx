@@ -27,6 +27,7 @@ vi.mock('../hooks/useSymbolMarketStatus', () => ({
 
 import { useAppStore } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { LastSymbolPanel } from './LastSymbolPanel';
 
 describe('LastSymbolPanel market-order transport', () => {
@@ -50,6 +51,11 @@ describe('LastSymbolPanel market-order transport', () => {
       autoSLTP: false,
       useRiskSizing: false,
     });
+    // One-click ON: this suite covers market-order transport shape, not the
+    // SUI-T9 OFF→dialog gate (covered by dedicated one-click tests).
+    act(() => {
+      useSettingsStore.setState((s) => ({ trade: { ...s.trade, oneClickTrading: true } }));
+    });
     mocks.placeMarketOrder.mockReset();
     mocks.placeMarketOrder.mockResolvedValue({ ticket: 990001 });
     mocks.closePosition.mockReset();
@@ -59,6 +65,7 @@ describe('LastSymbolPanel market-order transport', () => {
     cleanup();
     document.body.replaceChildren();
     vi.restoreAllMocks();
+    useSettingsStore.setState((s) => ({ trade: { ...s.trade, oneClickTrading: false } }));
   });
 
   it('omits the former cosmetic comment so a standard click remains WS-eligible', async () => {
@@ -247,5 +254,44 @@ describe('LastSymbolPanel market-order transport', () => {
     await waitFor(() => expect(mocks.closePosition).toHaveBeenCalledExactlyOnceWith('901'));
     await waitFor(() => expect(useAppStore.getState().positions).toHaveLength(0));
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('LastSymbolPanel one-click gate (SUI-T9)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.getState().reset();
+    useAppStore.setState({ accountId: '200002', isAuthenticated: true, authToken: 'gate-test-token' });
+    useAppStore.getState().setTicks({
+      EURUSD: { symbol: 'EURUSD', bid: 1.085, ask: 1.0852, spread: 0.0002, timestamp: Date.now(), digits: 5 },
+    });
+    useLastSymbolStore.setState({ lastSymbol: 'EURUSD', volume: 0.01, autoSLTP: false, useRiskSizing: false });
+    act(() => {
+      useSettingsStore.setState((s) => ({ trade: { ...s.trade, oneClickTrading: false } }));
+    });
+    mocks.placeMarketOrder.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+    useSettingsStore.setState((s) => ({ trade: { ...s.trade, oneClickTrading: false } }));
+  });
+
+  it('one-click OFF: Shift+B opens the order dialog, sends nothing', async () => {
+    const dialogs: unknown[] = [];
+    const onDialog = (e: Event) => dialogs.push((e as CustomEvent).detail ?? {});
+    window.addEventListener('openNewOrder', onDialog);
+    try {
+      render(<LastSymbolPanel />);
+      fireEvent.keyDown(window, { key: 'B', shiftKey: true });
+      await waitFor(() => {
+        expect(dialogs).toEqual([{ symbol: 'EURUSD', side: 'BUY' }]);
+      });
+      expect(mocks.placeMarketOrder).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('openNewOrder', onDialog);
+    }
   });
 });

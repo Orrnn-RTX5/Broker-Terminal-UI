@@ -816,7 +816,8 @@ ${rows}
             // account_login rides in the body (gateway requires it in-body).
             await closePositionsBy(position, counterpart, { account_login: accountId ?? undefined });
             try {
-                useAppStore.getState().setPositions(await api.positions.getPositions());
+                // Backend rows carry the full position shape; the api type is narrower.
+                useAppStore.getState().setPositions(await api.positions.getPositions() as never);
             } catch (refreshError) {
                 console.warn('[Trade] Close-by confirmed, but position refresh failed:', refreshError);
                 publishOrderFeedback(
@@ -833,7 +834,7 @@ ${rows}
             );
             // Converge with backend truth best-effort; the original error is already surfaced.
             try {
-                useAppStore.getState().setPositions(await api.positions.getPositions());
+                useAppStore.getState().setPositions(await api.positions.getPositions() as never);
             } catch (refreshError) {
                 console.warn('[Trade] Position refresh after failed close-by failed:', refreshError);
             }
