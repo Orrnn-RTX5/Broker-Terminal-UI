@@ -8,10 +8,12 @@ import {
   resolveDailyChangePercent,
 } from '../../utils/dailyChange';
 import {
+  readRegisteredSymbolPriceSpec,
   resolveDailyChangePriceMode,
 } from '../../services/dailyChangePriceModeRegistry';
 import { isStaleQuoteErrorMessage } from '../../utils/marketWatchSource';
 import { readQuoteSessionRange } from '../../utils/quoteSessionRange';
+import { getPipSizeFromDigits, resolveSpecDigits } from '../../utils/symbolUtils';
 import {
   buildSpreadMarkupMap,
   normalizeSpreadMarkupSymbol,
@@ -137,17 +139,22 @@ export const getSourceTickTimestamp = (raw: unknown): number | undefined => {
   return readSourceTimestamp(context.payload, ...context.envelopes);
 };
 
-const getSymbolDigits = (symbol: string): number => {
-  if (symbol.includes('JPY')) return 3;
-  if (symbol.startsWith('BTC') || symbol.startsWith('ETH')) return 2;
-  if (symbol.startsWith('XAU') || symbol.startsWith('XAG')) return 2;
-  return 5;
-};
-
-export const getSpreadPips = (symbol: string, spread: number): number => {
-  const digits = getSymbolDigits(symbol);
-  const pipFactor = digits >= 5 ? 10000 : Math.pow(10, digits);
-  return spread * pipFactor;
+/**
+ * Spread in pips from broker precision only. Digits come from the registered
+ * broker catalog first, then the caller's instrument sources (e.g. the spread
+ * markup entry's digits). Returns null when no broker digits are known; the
+ * pip factor is never guessed from the symbol name (TERM-DIGITS-WL).
+ */
+export const getSpreadPips = (
+  symbol: string,
+  spread: number,
+  ...digitsSources: unknown[]
+): number | null => {
+  const digits = resolveSpecDigits(readRegisteredSymbolPriceSpec(symbol).digits, ...digitsSources);
+  const pipSize = getPipSizeFromDigits(digits);
+  if (pipSize === null || !Number.isFinite(spread)) return null;
+  // The terminal's single pip rule (shared with spread display and chart).
+  return spread / pipSize;
 };
 
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'y', 'on', 'enabled', 'enable', 'active', 'available', 'tradable', 'trading']);

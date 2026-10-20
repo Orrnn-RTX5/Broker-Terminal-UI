@@ -900,6 +900,24 @@ describe('trade v2 API contract calls', () => {
     expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/instruments`);
   });
 
+  it('keeps legacy symbol digits and tick size spec-only (TERM-DIGITS-WL)', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      symbols: [
+        { symbol: 'USDJPY' },
+        { symbol: 'IDX.CASH', digits: 0 },
+        { symbol: 'ALPHA.x', digits: 3, tick_size: 0.005 },
+      ],
+    }));
+
+    await expect(marketApi.getSymbols()).resolves.toEqual([
+      // No broker digits: unknown, never a 5-digit / 1e-5 guess from the name.
+      expect.objectContaining({ name: 'USDJPY', digits: null, tickSize: null }),
+      // A real 0-digit instrument stays 0 (not `|| 5`).
+      expect.objectContaining({ name: 'IDX.CASH', digits: 0, tickSize: 1 }),
+      expect.objectContaining({ name: 'ALPHA.x', digits: 3, tickSize: 0.005 }),
+    ]);
+  });
+
   it('preserves protected auth, api key, and JSON content headers over custom headers', async () => {
     setToken('jwt-token');
 

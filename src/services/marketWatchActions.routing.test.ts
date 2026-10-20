@@ -5,7 +5,10 @@ const state = vi.hoisted(() => ({ accountId: '', token: null as string | null, p
 vi.mock('./api', () => ({ ordersApi: { placeMarketOrder: state.place } }));
 vi.mock('../api/trade', () => ({ watchlistV2Api: { add: state.add } }));
 vi.mock('../store/useAppStore', () => ({ useAppStore: { getState: () => ({ accountId: state.accountId }) } }));
-vi.mock('./brokerSession', () => ({ getAccessToken: () => state.token }));
+vi.mock('./brokerSession', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./brokerSession')>()),
+  getAccessToken: () => state.token,
+}));
 
 beforeEach(() => {
   state.accountId = ''; state.token = null;

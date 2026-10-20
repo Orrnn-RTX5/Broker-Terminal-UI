@@ -24,6 +24,7 @@ import { api } from '../services/api';
 import { buildOrderTicketSymbolOptions } from '../utils/accountSymbolUniverse';
 import { resolveSymbolDescription } from '../utils/symbolDescription';
 import { resolveSpecDigits } from '../utils/symbolUtils';
+import { readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
 import '../styles/order-panel-dialog.css';
 
 // Symbol display names
@@ -73,26 +74,61 @@ interface OrderPanelProps {
    * present in the tick store.
    */
   symbols?: readonly string[];
+  /**
+   * Broker instrument catalog rows (e.g. useMarketInstruments().symbols).
+   * The dialog reads only broker data from them (contract_size, digits,
+   * tick_size) for the currently selected symbol. Absent rows = unknown.
+   */
+  instruments?: readonly OrderPanelInstrumentRow[];
 }
 
-// Instrument config helper.
-export function getInstrumentConfig(sym: string, liveDigits?: number) {
-  const base = (() => {
-    if (sym.startsWith('BTC')) return { digits: 2, pipSize: 1, contractSize: 1, currency: 'BTC' };
-    if (sym.startsWith('ETH')) return { digits: 2, pipSize: 0.01, contractSize: 1, currency: 'ETH' };
-    if (sym.startsWith('XAU')) return { digits: 2, pipSize: 0.01, contractSize: 100, currency: 'USD' };
-    if (sym.startsWith('XAG')) return { digits: 3, pipSize: 0.001, contractSize: 5000, currency: 'USD' };
-    if (sym.includes('JPY')) return { digits: 3, pipSize: 0.01, contractSize: 100000, currency: sym.slice(0, 3) };
-    return { digits: 5, pipSize: 0.0001, contractSize: 100000, currency: sym.slice(0, 3) };
-  })();
+/** Broker catalog fields the dialog consumes (subset of MarketInstrument). */
+export interface OrderPanelInstrumentRow {
+  symbol: string;
+  digits?: number;
+  tickSize?: number;
+  contractSize?: number;
+}
 
-  if (typeof liveDigits === 'number' && Number.isInteger(liveDigits) && liveDigits >= 0 && liveDigits <= 10) {
-    const pipExponent = liveDigits >= 1 && (liveDigits === 3 || liveDigits === 5) ? liveDigits - 1 : liveDigits;
-    const pipSize = Number((1 / Math.pow(10, pipExponent)).toFixed(pipExponent));
-    return { ...base, digits: liveDigits, pipSize };
-  }
+export interface OrderPanelInstrumentConfig {
+  /** Broker quote precision, or null when no broker data publishes it. */
+  digits: number | null;
+  /** Broker tick size, else 10^-digits; null when neither is known. */
+  priceStep: number | null;
+  /** Broker contract size, or null when the catalog does not publish it. */
+  contractSize: number | null;
+}
 
-  return base;
+const readPositiveFinite = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+);
+
+/**
+ * TERM-DIGITS-WL: instrument properties come ONLY from broker data, never
+ * from the symbol name. Sources, in order: the registered broker catalog
+ * (readRegisteredSymbolPriceSpec), the catalog row passed to the dialog,
+ * then the live tick/quote payload digits. Unknown values stay null; the
+ * symbol is used only as a lookup key into broker data.
+ */
+export function getInstrumentConfig(
+  sym: string,
+  liveDigits?: unknown,
+  instrument?: Partial<OrderPanelInstrumentRow> | null,
+): OrderPanelInstrumentConfig {
+  const catalog = readRegisteredSymbolPriceSpec(sym);
+  const digits = resolveSpecDigits(catalog.digits, instrument?.digits, liveDigits);
+  const tickSize = readPositiveFinite(catalog.tickSize) ?? readPositiveFinite(instrument?.tickSize);
+  const priceStep = tickSize ?? (digits === null ? null : Math.pow(10, -digits));
+  return {
+    digits,
+    priceStep,
+    contractSize: readPositiveFinite(instrument?.contractSize),
+  };
+}
+
+/** Broker digits -> fixed precision; unknown digits -> raw value (no guess). */
+function formatDialogPrice(price: number, digits: number | null): string {
+  return digits === null ? String(price) : price.toFixed(digits);
 }
 
 // Format number with space separators (MT5 style: "1 000")
@@ -106,17 +142,21 @@ function formatRequiredMargin(val: number | null, currency: string): string {
   return `${formatMargin(val)} ${currency}`.trim();
 }
 
-function formatMt5QuotePrice(price: number, digits: number): string {
-  if (!Number.isFinite(price) || price <= 0) return (0).toFixed(digits);
-  const fixed = price.toFixed(digits);
+function formatMt5QuotePrice(price: number, digits: number | null): string {
+  if (!Number.isFinite(price) || price <= 0) return digits === null ? '—' : (0).toFixed(digits);
+  const fixed = formatDialogPrice(price, digits);
+  // Raw values in exponent notation (unknown digits) are shown verbatim.
+  if (/e/i.test(fixed)) return fixed;
   const [intPart, decPart] = fixed.split('.');
   const spacedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return decPart !== undefined ? `${spacedInt}.${decPart}` : spacedInt;
 }
 
-function formatContractUnitsSummary(volumeStr: string, symbol: string, contractSize: number): string {
+function formatContractUnitsSummary(volumeStr: string, symbol: string, contractSize: number | null): string {
   const vol = Number.parseFloat(volumeStr);
   if (!Number.isFinite(vol) || vol <= 0) return `0 ${symbol}`;
+  // Unknown broker contract size: honest unknown, never a guessed lot size.
+  if (contractSize === null) return '—';
   const units = Number((vol * contractSize).toFixed(4));
   const [intPart, decPart] = String(units).split('.');
   const spacedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -219,6 +259,7 @@ function MiniTickChart({
   bid,
   ask,
   digits,
+  priceStep,
   chartColors,
   orderPrice,
   stopLossPrice,
@@ -227,7 +268,10 @@ function MiniTickChart({
   symbol: string;
   bid: number;
   ask: number;
-  digits: number;
+  /** Broker digits; null = unknown (raw prices, no interpolated axis labels). */
+  digits: number | null;
+  /** Broker tick size or 10^-digits; null = unknown. */
+  priceStep: number | null;
   chartColors: TickChartColors;
   orderPrice?: number;
   stopLossPrice?: number;
@@ -316,7 +360,7 @@ function MiniTickChart({
       const height = cssHeight;
       const left = 4;
       const samplePrice = Math.max(Math.abs(bid), Math.abs(ask), 100);
-      const right = Math.max(54, Math.ceil(ctx.measureText(samplePrice.toFixed(digits)).width) + 12);
+      const right = Math.max(54, Math.ceil(ctx.measureText(formatDialogPrice(samplePrice, digits)).width) + 12);
       const tagHeight = 16;
       const top = 6;
       const bottom = 22;
@@ -393,18 +437,26 @@ function MiniTickChart({
         }
       }
 
-      const priceStep = Math.pow(10, -digits);
+      // Broker price step when known. When unknown, the vertical scale uses
+      // only observed prices (spread/range); a purely visual non-zero span
+      // keeps a flat series drawable. No step is invented for price math.
+      const brokerStep = priceStep !== null && Number.isFinite(priceStep) && priceStep > 0 ? priceStep : null;
       const observedRange = maxPrice - minPrice;
-      const minimumRange = Math.max(priceStep * 16, Math.abs(ask - bid) * 4);
+      const minimumRange = Math.max((brokerStep ?? 0) * 16, Math.abs(ask - bid) * 4);
       if (observedRange < minimumRange) {
         const midpoint = (maxPrice + minPrice) / 2;
         minPrice = midpoint - minimumRange / 2;
         maxPrice = midpoint + minimumRange / 2;
       }
-      const padding = Math.max((maxPrice - minPrice) * 0.12, priceStep * 2);
+      const padding = Math.max((maxPrice - minPrice) * 0.12, (brokerStep ?? 0) * 2);
       minPrice -= padding;
       maxPrice += padding;
-      const totalRange = Math.max(maxPrice - minPrice, priceStep);
+      if (!(maxPrice - minPrice > 0)) {
+        const visualSpan = Math.abs((maxPrice + minPrice) / 2) * 1e-6 || 1;
+        minPrice -= visualSpan;
+        maxPrice += visualSpan;
+      }
+      const totalRange = maxPrice - minPrice;
 
       const timeStart = plotHistory[0].time;
       const timeEnd = plotHistory[plotHistory.length - 1].time;
@@ -418,10 +470,14 @@ function MiniTickChart({
       ctx.font = bodyFont;
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
-      for (let r = 0; r <= gridRows; r += 1) {
-        const price = maxPrice - (r / gridRows) * totalRange;
-        const y = top + (r / gridRows) * plotHeight;
-        ctx.fillText(price.toFixed(digits), plotRight + 5, y);
+      // Interpolated axis prices need broker precision to be meaningful;
+      // with unknown digits they are skipped instead of guessed.
+      if (digits !== null) {
+        for (let r = 0; r <= gridRows; r += 1) {
+          const price = maxPrice - (r / gridRows) * totalRange;
+          const y = top + (r / gridRows) * plotHeight;
+          ctx.fillText(price.toFixed(digits), plotRight + 5, y);
+        }
       }
 
       // Bottom time axis labels (MT5 style: YYYY.MM.DD on left, HH:MM across, HH:MM:SS on right)
@@ -497,7 +553,7 @@ function MiniTickChart({
         ctx.font = controlFont;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(levelPrice.toFixed(digits), plotRight + 4, clampedY);
+        ctx.fillText(formatDialogPrice(levelPrice, digits), plotRight + 4, clampedY);
       };
 
       drawLevelOverlay(orderPrice, 'Price', '#9ca3af', '#6b7280');
@@ -536,6 +592,7 @@ function MiniTickChart({
     chartColors,
     chartShift,
     digits,
+    priceStep,
     orderPrice,
     showCrosshair,
     showLineChart,
@@ -636,8 +693,8 @@ function MiniTickChart({
         </button>
 
         <div className="rtx-order-dialog__chart-quotes-sr" aria-label={tr("{{value0}} live bid and ask", { value0: symbol })}>
-          <span>{tr("Bid ")}<strong>{bid > 0 ? bid.toFixed(digits) : '—'}</strong></span>
-          <span>{tr("Ask ")}<strong>{ask > 0 ? ask.toFixed(digits) : '—'}</strong></span>
+          <span>{tr("Bid ")}<strong>{bid > 0 ? formatDialogPrice(bid, digits) : '—'}</strong></span>
+          <span>{tr("Ask ")}<strong>{ask > 0 ? formatDialogPrice(ask, digits) : '—'}</strong></span>
         </div>
       </div>
       <canvas
@@ -661,7 +718,7 @@ function OrderDialogDomPane({
   bid,
   ask,
   digits,
-  pipSize,
+  priceStep,
   volumeStr,
   onVolumeChange,
   showOneClickTrading,
@@ -674,8 +731,10 @@ function OrderDialogDomPane({
   symbol: string;
   bid: number;
   ask: number;
-  digits: number;
-  pipSize: number;
+  /** Broker digits; null = unknown (raw prices, no rounding). */
+  digits: number | null;
+  /** Broker tick size or 10^-digits; null = unknown (no synthetic levels). */
+  priceStep: number | null;
   volumeStr: string;
   onVolumeChange: (val: string) => void;
   showOneClickTrading: boolean;
@@ -718,34 +777,37 @@ function OrderDialogDomPane({
     }
   }, [selectedPositionTicket, symbolPositions]);
 
-  const stepUnit = useMemo(() => {
-    const point = Math.pow(10, -Math.max(0, digits));
-    return Math.max(point, pipSize || point);
-  }, [digits, pipSize]);
+  // Ladder spacing comes from broker data only (tick size, else 10^-digits).
+  const stepUnit = priceStep !== null && Number.isFinite(priceStep) && priceStep > 0 ? priceStep : null;
 
   const { asks, bids, maxVolume } = useMemo(() => {
-    const safeAsk = ask > 0 ? ask : (bid > 0 ? bid + stepUnit * 2 : 100);
-    const safeBid = bid > 0 ? bid : Math.max(stepUnit, safeAsk - stepUnit * 2);
-
     const liveAsks = Array.isArray(rawOrderBook?.asks) ? rawOrderBook.asks.slice(0, 6) : [];
     const liveBids = Array.isArray(rawOrderBook?.bids) ? rawOrderBook.bids.slice(0, 6) : [];
+    const roundLevel = (price: number) => (digits === null ? price : Number(price.toFixed(digits)));
+    // Synthetic levels need a broker step and a live quote; without either
+    // the ladder shows only what the live book published (never a made-up
+    // step or price).
+    const canSynthesize = stepUnit !== null && (ask > 0 || bid > 0);
+    const step = stepUnit ?? 0;
+    const safeAsk = ask > 0 ? ask : bid + step * 2;
+    const safeBid = bid > 0 ? bid : Math.max(step, safeAsk - step * 2);
 
-    const resolvedAsks = liveAsks.length === 6
+    const resolvedAsks = liveAsks.length === 6 || !canSynthesize
       ? [...liveAsks].sort((a, b) => b.price - a.price)
       : DEFAULT_DOM_VOLUMES.map((vol, idx) => {
-          const levelOffset = (6 - 1 - idx) * stepUnit;
+          const levelOffset = (6 - 1 - idx) * step;
           return {
-            price: Number((safeAsk + levelOffset).toFixed(digits)),
+            price: roundLevel(safeAsk + levelOffset),
             volume: vol,
           };
         });
 
-    const resolvedBids = liveBids.length === 6
+    const resolvedBids = liveBids.length === 6 || !canSynthesize
       ? [...liveBids].sort((a, b) => b.price - a.price)
       : [...DEFAULT_DOM_VOLUMES].reverse().map((vol, idx) => {
-          const levelOffset = idx * stepUnit;
+          const levelOffset = idx * step;
           return {
-            price: Number(Math.max(stepUnit, safeBid - levelOffset).toFixed(digits)),
+            price: roundLevel(Math.max(step, safeBid - levelOffset)),
             volume: vol,
           };
         });
@@ -840,13 +902,13 @@ function OrderDialogDomPane({
                     className="rtx-order-dialog__dom-price rtx-order-dialog__dom-price--ask"
                     onClick={() => onSelectDomPrice(level.price, 'sell')}
                   >
-                    {level.price.toFixed(digits)}
+                    {formatDialogPrice(level.price, digits)}
                   </td>
                   <td className="rtx-order-dialog__dom-trade">
                     <button
                       type="button"
                       className="rtx-order-dialog__dom-chevron rtx-order-dialog__dom-chevron--sell"
-                      title={tr("Sell at {{value0}}", { value0: level.price.toFixed(digits) })}
+                      title={tr("Sell at {{value0}}", { value0: formatDialogPrice(level.price, digits) })}
                       onClick={() => onSelectDomPrice(level.price, 'sell')}
                     >
                       ∨
@@ -854,7 +916,7 @@ function OrderDialogDomPane({
                     <button
                       type="button"
                       className="rtx-order-dialog__dom-chevron rtx-order-dialog__dom-chevron--buy"
-                      title={tr("Buy at {{value0}}", { value0: level.price.toFixed(digits) })}
+                      title={tr("Buy at {{value0}}", { value0: formatDialogPrice(level.price, digits) })}
                       onClick={() => onSelectDomPrice(level.price, 'buy')}
                     >
                       ∧
@@ -882,13 +944,13 @@ function OrderDialogDomPane({
                     className="rtx-order-dialog__dom-price rtx-order-dialog__dom-price--bid"
                     onClick={() => onSelectDomPrice(level.price, 'buy')}
                   >
-                    {level.price.toFixed(digits)}
+                    {formatDialogPrice(level.price, digits)}
                   </td>
                   <td className="rtx-order-dialog__dom-trade">
                     <button
                       type="button"
                       className="rtx-order-dialog__dom-chevron rtx-order-dialog__dom-chevron--sell"
-                      title={tr("Sell at {{value0}}", { value0: level.price.toFixed(digits) })}
+                      title={tr("Sell at {{value0}}", { value0: formatDialogPrice(level.price, digits) })}
                       onClick={() => onSelectDomPrice(level.price, 'sell')}
                     >
                       ∨
@@ -896,7 +958,7 @@ function OrderDialogDomPane({
                     <button
                       type="button"
                       className="rtx-order-dialog__dom-chevron rtx-order-dialog__dom-chevron--buy"
-                      title={tr("Buy at {{value0}}", { value0: level.price.toFixed(digits) })}
+                      title={tr("Buy at {{value0}}", { value0: formatDialogPrice(level.price, digits) })}
                       onClick={() => onSelectDomPrice(level.price, 'buy')}
                     >
                       ∧
@@ -1005,7 +1067,11 @@ function OrderDialogDomPane({
                 const ticket = String(raw.ticket ?? pos.id);
                 const side = String(pos.side || 'buy').toLowerCase();
                 const vol = Number(pos.volume ?? raw.quantity ?? 0.01).toFixed(2);
-                const openPrice = Number(raw.price_open ?? pos.open_price ?? 0).toFixed(digits);
+                // Position's own broker digits first, then the symbol's; unknown = raw.
+                const openPrice = formatDialogPrice(
+                  Number(raw.price_open ?? pos.open_price ?? 0),
+                  resolveSpecDigits(raw.digits, digits),
+                );
                 return (
                   <option key={ticket} value={ticket}>
                     {`#${ticket} ${side} ${vol} ${symbol} ${openPrice}`}
@@ -1082,6 +1148,7 @@ export function OrderPanelDialog({
   initialSide,
   marketStatus,
   symbols: accountSymbols,
+  instruments,
 }: OrderPanelProps) {
   const tr = useUiTranslation();
   const [symbol, setSymbol] = useState(initialSymbol);
@@ -1181,12 +1248,19 @@ export function OrderPanelDialog({
     currentSymbol: accountSymbols ? symbol : initialSymbol,
   }), [accountSymbols, initialSymbol, symbol, tickSymbolsKey]);
 
-  const config = getInstrumentConfig(symbol, tick?.digits);
-  const { digits, pipSize, contractSize } = config;
-  // TERM-DIGITS-WL (new-order SL/TP + price/stop-limit): catalog digits only
-  // (tick?.digits via resolveSpecDigits). No name table, no fallback constant.
-  // Unknown precision stays null -> raw String(value), no rounding/point math.
-  const specDigits = resolveSpecDigits(tick?.digits);
+  // TERM-DIGITS-WL: every instrument property comes from broker data only
+  // (registered catalog, catalog row prop, then tick digits). No name table,
+  // no fallback constant. Unknown precision stays null -> raw String(value),
+  // no rounding/point math; unknown contract size -> '—'.
+  const catalogInstrument = useMemo(() => {
+    const target = symbol.trim().toUpperCase();
+    return instruments?.find((row) => String(row?.symbol ?? '').trim().toUpperCase() === target) ?? null;
+  }, [instruments, symbol]);
+  const {
+    digits: specDigits,
+    priceStep,
+    contractSize,
+  } = getInstrumentConfig(symbol, tick?.digits, catalogInstrument);
   const chartColors = useMemo(
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
     [chartSettings, isAdvancedUntitledLight],
@@ -1237,7 +1311,8 @@ export function OrderPanelDialog({
   }, [isOpen, initialSide]);
 
   const spread = ask - bid;
-  const spreadDisplay = formatSpreadDisplayWithUnit(symbol, spread, bid, ask);
+  // Spread pips from the same catalog-first spec digits as the prices.
+  const spreadDisplay = formatSpreadDisplayWithUnit(symbol, spread, bid, ask, specDigits);
   const propMarketStatus = marketStatus?.symbol === symbol.toUpperCase()
     ? marketStatus
     : null;
@@ -1248,7 +1323,9 @@ export function OrderPanelDialog({
   const isMarketExecutionBlocked = orderType === 'Market Execution'
     && shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
 
-  const baseCurrency = marginCurrency || account?.currency || config.currency;
+  // Margin currency from the broker margin response, else the account
+  // currency; omitted when neither is known (never derived from the symbol).
+  const baseCurrency = marginCurrency || account?.currency || '';
 
   useEffect(() => {
     if (!isOpen) {
@@ -1308,7 +1385,8 @@ export function OrderPanelDialog({
       setter(String(parsed));
       return;
     }
-    const step = Math.pow(10, -specDigits);
+    // Broker tick size when published, else one point (10^-digits).
+    const step = priceStep ?? Math.pow(10, -specDigits);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       const seed = anchorPrice > 0 ? anchorPrice : (bid || ask || step);
       setter(seed.toFixed(specDigits));
@@ -2021,10 +2099,10 @@ export function OrderPanelDialog({
 
             <div
               className="rtx-order-dialog__price-summary"
-              aria-label={tr("Bid {{value0}}, Ask {{value1}}", { value0: bid.toFixed(digits), value1: ask.toFixed(digits) })}
+              aria-label={tr("Bid {{value0}}, Ask {{value1}}", { value0: formatDialogPrice(bid, specDigits), value1: formatDialogPrice(ask, specDigits) })}
             >
               <span className="rtx-order-dialog__mt5-quote">
-                {formatMt5QuotePrice(bid, digits)} / {formatMt5QuotePrice(ask, digits)}
+                {formatMt5QuotePrice(bid, specDigits)} / {formatMt5QuotePrice(ask, specDigits)}
               </span>
               <span className="rtx-order-dialog__spread-sr">{tr("Spread: ")}{spreadDisplay}</span>
             </div>
@@ -2085,7 +2163,8 @@ export function OrderPanelDialog({
                 symbol={symbol}
                 bid={bid}
                 ask={ask}
-                digits={digits}
+                digits={specDigits}
+                priceStep={priceStep}
                 chartColors={chartColors}
                 orderPrice={orderType !== 'Market Execution' && Number.isFinite(parsedPrice) && parsedPrice > 0 ? parsedPrice : undefined}
                 stopLossPrice={Number.isFinite(parsedStopLoss) && parsedStopLoss > 0 ? parsedStopLoss : undefined}
@@ -2100,8 +2179,8 @@ export function OrderPanelDialog({
               symbol={symbol}
               bid={bid}
               ask={ask}
-              digits={digits}
-              pipSize={pipSize}
+              digits={specDigits}
+              priceStep={priceStep}
               volumeStr={volumeStr}
               onVolumeChange={setVolumeStr}
               showOneClickTrading={showOneClickTrading}

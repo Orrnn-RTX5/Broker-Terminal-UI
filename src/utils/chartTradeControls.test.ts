@@ -48,35 +48,51 @@ afterEach(() => {
 });
 
 describe('pip math', () => {
-  it('derives the standard pip size from symbol digits', () => {
-    expect(getPipSize(5)).toBeCloseTo(0.0001, 10); // EURUSD
-    expect(getPipSize(3)).toBeCloseTo(0.01, 10);   // USDJPY
-    expect(getPipSize(2)).toBeCloseTo(0.1, 10);    // XAUUSD
-    expect(getPipSize(1)).toBe(1);
+  it('derives the pip size from broker digits with the shared terminal pip rule', () => {
+    // Same rule as spread display and order sizing (getPipSizeFromDigits).
+    expect(getPipSize(5)).toBeCloseTo(0.0001, 10);
+    expect(getPipSize(4)).toBeCloseTo(0.0001, 10);
+    expect(getPipSize(3)).toBeCloseTo(0.01, 10);
+    expect(getPipSize(2)).toBeCloseTo(0.01, 10);
+    expect(getPipSize(1)).toBeCloseTo(0.1, 10);
     expect(getPipSize(0)).toBe(1);
-    expect(getPipSize(Number.NaN)).toBe(1);
+  });
+
+  it('returns no pip size for unknown precision instead of guessing one', () => {
+    expect(getPipSize(Number.NaN)).toBeNull();
+    expect(getPipSize(null)).toBeNull();
+    expect(getPipSize(undefined)).toBeNull();
+    expect(getPipSize(-1)).toBeNull();
+    expect(computeSignedPips('BUY', 1.1, 1.2, null)).toBeNull();
   });
 
   it('signs pips by trade direction', () => {
-    // BUY gains when price rises.
-    expect(computeSignedPips('BUY', 4595.63, 4605.78, 2)).toBeCloseTo(101.5, 5);
+    // BUY gains when price rises (2-digit quote: one pip = 0.01).
+    expect(computeSignedPips('BUY', 4595.63, 4605.78, 2)).toBeCloseTo(1015, 5);
     // SELL gains when price falls.
-    expect(computeSignedPips('SELL', 4605.78, 4595.63, 2)).toBeCloseTo(101.5, 5);
-    expect(computeSignedPips('SELL', 4605.78, 4678.13, 2)).toBeCloseTo(-723.5, 5);
+    expect(computeSignedPips('SELL', 4605.78, 4595.63, 2)).toBeCloseTo(1015, 5);
+    expect(computeSignedPips('SELL', 4605.78, 4678.13, 2)).toBeCloseTo(-7235, 5);
     expect(computeSignedPips('BUY', 1.10000, 1.10123, 5)).toBeCloseTo(12.3, 5);
   });
 });
 
 describe('money estimate', () => {
-  it('estimates XAUUSD money using the metal contract size', () => {
+  it('estimates XAUUSD money using the broker-published contract size', () => {
     const money = estimateTradeMoneyAtPrice({
       symbol: 'XAUUSD',
       side: 'SELL',
       volume: 1,
       entryPrice: 4605.78,
       price: 4595.63,
+      contractSize: 100,
     });
     expect(money).toBeCloseTo(1015.0, 3);
+  });
+
+  it('never guesses a contract size from the symbol name (TERM-DIGITS-WL)', () => {
+    for (const symbol of ['XAUUSD', 'USDJPY', 'EURUSD', 'BTCUSD']) {
+      expect(estimateTradeMoneyAtPrice({ symbol, side: 'BUY', volume: 1, entryPrice: 100, price: 101 })).toBeNull();
+    }
   });
 
   it('prefers an explicit contract size and rejects unusable inputs', () => {
@@ -120,8 +136,9 @@ describe('estimateTradeLevelMoney', () => {
       digits: 2,
       backendPnl: 0,
       currentPrice: 4600, // zero pips baseline
+      contractSize: 100,
     });
-    expect(money).toBeCloseTo(5000, 3); // 50 price move x 100 oz
+    expect(money).toBeCloseTo(5000, 3); // 50 price move x 100 oz (broker contract)
   });
 
   it('returns null for unusable level prices', () => {

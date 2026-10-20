@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BottomDock } from './BottomDock';
 import { useLiveAccountMetrics } from '../hooks/useLiveAccountMetrics';
 import { formatPrice } from '../utils/symbolUtils';
-import type { Account } from '../store/useAppStore';
+import { useAppStore, type Account } from '../store/useAppStore';
 
 const trade = vi.hoisted(() => ({
   account: null as Account | null,
@@ -53,6 +53,8 @@ describe('Trade rendering latency', () => {
     trade.wsState = 'connected';
     trade.lastRestAt = null;
     trade.lastWsAt = null;
+    // Broker precision arrives with the quote (spec-only digits; never guessed).
+    useAppStore.setState({ ticks: { BTCUSD: { digits: 2 } } as unknown as ReturnType<typeof useAppStore.getState>['ticks'] });
   });
 
   afterEach(() => {
@@ -60,6 +62,7 @@ describe('Trade rendering latency', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     localStorage.clear();
+    useAppStore.setState({ ticks: {} });
   });
 
   it('does not rerender every trade row for transport timestamps and connection status alone', () => {

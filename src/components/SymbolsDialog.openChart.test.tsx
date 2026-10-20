@@ -106,6 +106,22 @@ describe('SymbolsDialog chart opening', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('shows broker spec geometry only, never a 5-digit default (TERM-DIGITS-WL)', () => {
+    const specValue = (label: string) => screen.getByText(label).closest('tr')?.querySelectorAll('td')[1]?.textContent;
+    const view = render(<SymbolsDialog isOpen onClose={vi.fn()} initialSymbol="USDJPY" instruments={[{ symbol: 'USDJPY' }]} />);
+    expect(specValue('Digits')).toBe('—');
+    expect(specValue('Tick size')).toBe('—');
+    expect(specValue('Contract size')).toBe('—');
+    expect(specValue('Margin currency')).toBe('—');
+    view.unmount();
+
+    render(<SymbolsDialog isOpen onClose={vi.fn()} initialSymbol="IDX.CASH"
+      instruments={[{ symbol: 'IDX.CASH', digits: 0, contract_size: 10 }]} />);
+    expect(specValue('Digits')).toBe('0');
+    expect(specValue('Tick size')).toBe('1');
+    expect(specValue('Contract size')).toBe('10');
+  });
+
   it('centers the larger desktop symbol browser with room for its catalog and actions', () => {
     vi.stubGlobal('electron', { window: {} });
     setViewport(1000, 760);

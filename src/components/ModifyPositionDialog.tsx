@@ -31,7 +31,7 @@ import {
     readKnownPriceDigits,
     roundProtectionLevelToGrid,
 } from '../utils/tradeLevelDrag';
-import { readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
+import { readRegisteredSymbolContractSpec, readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
 import { getFallbackSymbolDescription } from '../utils/symbolDescription';
 import {
     getCommittedBrokerAccountSessionScope,
@@ -144,18 +144,51 @@ const getSymbolFullName = (symbol: string) => {
     return desc ? `${symbol}, ${desc}` : symbol;
 };
 
-const getContractSize = (symbol: string) => {
-    const sym = symbol.toUpperCase();
-    if (sym.includes('XAU')) return 100;
-    if (sym.includes('XAG')) return 5000;
-    if (sym.includes('BTC') || sym.includes('ETH')) return 1;
-    if (sym.includes('OIL')) return 1000;
-    return 100000;
+const readPositiveContractNumber = (value: unknown): number | null => {
+    const parsed = typeof value === 'number'
+        ? value
+        : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
-const getContractUnit = (symbol: string) => {
-    if (symbol.length >= 3) return symbol.slice(0, 3);
-    return symbol;
+const readContractUnitText = (value: unknown): string | null => (
+    typeof value === 'string' && value.trim() ? value.trim() : null
+);
+
+// TERM-DIGITS-WL: contract size/unit come only from broker data (the scoped
+// instrument catalog, then the position row). Unknown stays null and the
+// volume description renders an honest unknown; never a symbol-name table.
+const resolvePositionContractSpec = (position: ModifyPosition): { contractSize: number | null; contractUnit: string | null } => {
+    const registered = readRegisteredSymbolContractSpec(position.symbol);
+    const row = position as {
+        contractSize?: unknown;
+        contract_size?: unknown;
+        contractSizeUnit?: unknown;
+        contract_size_unit?: unknown;
+        contractUnit?: unknown;
+        contract_unit?: unknown;
+    };
+    return {
+        contractSize: registered.contractSize
+            ?? readPositiveContractNumber(row.contractSize)
+            ?? readPositiveContractNumber(row.contract_size),
+        contractUnit: registered.contractUnit
+            ?? readContractUnitText(row.contractSizeUnit)
+            ?? readContractUnitText(row.contract_size_unit)
+            ?? readContractUnitText(row.contractUnit)
+            ?? readContractUnitText(row.contract_unit),
+    };
+};
+
+const formatPositionVolumeDescription = (
+    volume: number,
+    contractSize: number | null,
+    contractUnit: string | null,
+): string => {
+    if (contractSize === null) return '—';
+    const contractAmount = volume * contractSize;
+    const amountText = Number.isInteger(contractAmount) ? contractAmount.toFixed(0) : contractAmount.toFixed(2);
+    return contractUnit ? `${amountText} ${contractUnit}` : amountText;
 };
 
 const getErrorMessage = (err: unknown) => formatOrderError(err);
@@ -685,8 +718,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     // Validated-only close label: an invalid volume disables the button
     // (submit guards the same conditions with messages).
     const closeVolumeInvalid = actionVolume <= 0 || actionVolume > position.volume + 0.0000001;
-    const contractAmount = actionVolume * getContractSize(position.symbol);
-    const volumeDescription = `${Number.isInteger(contractAmount) ? contractAmount.toFixed(0) : contractAmount.toFixed(2)} ${getContractUnit(position.symbol)}`;
+    const contractSpec = resolvePositionContractSpec(position);
+    const volumeDescription = formatPositionVolumeDescription(actionVolume, contractSpec.contractSize, contractSpec.contractUnit);
 
     const normalizeVolume = (value: string) => {
         const parsed = Number.parseFloat(value);

@@ -23,6 +23,7 @@ describe('ExposureTab', () => {
           side: 'BUY',
           volume: 0.01,
           currentPrice: 2000,
+          contractSize: 100,
         }]}
         account={{
           balance: 10000,

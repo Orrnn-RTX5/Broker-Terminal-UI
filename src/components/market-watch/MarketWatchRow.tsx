@@ -19,9 +19,9 @@ import { PriceDisplay } from '../ui/PriceDisplay';
 import {
   formatLastPriceTime,
   getLatestMarketWatchTimestamp,
-  getMarketWatchPriceDigits,
   hasMarketWatchQuote,
   readFiniteDailyChange,
+  resolveMarketWatchPriceDigits,
 } from './marketWatchPanelModel';
 import { resolveMarketWatchExtendedColumn } from './marketWatchSymbolDetailsModel';
 
@@ -85,6 +85,8 @@ interface MarketWatchRowProps {
   closedDailyChange?: number | null;
   lastPrice?: MarketWatchLastPrice;
   instrumentSources?: readonly unknown[];
+  /** Broker catalog price digits for this symbol; null when the catalog publishes none. */
+  catalogPriceDigits?: number | null;
   symbolUniverse: readonly string[];
   rowRef?: (node: HTMLTableRowElement | null) => void;
 }
@@ -104,6 +106,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   closedDailyChange,
   lastPrice,
   instrumentSources,
+  catalogPriceDigits,
   symbolUniverse,
   rowRef,
 }) => {
@@ -119,7 +122,8 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   const lastPriceTitle = fallbackPrice
     ? `${tr(fallbackPrice.kind === 'close' ? 'Last close' : 'Last quote')} · ${formatLastPriceTime(fallbackPrice.asOf)}`
     : undefined;
-  const priceDigits = getMarketWatchPriceDigits(symbol);
+  // Broker data only (catalog row, registered spec, live tick); unknown renders raw.
+  const priceDigits = resolveMarketWatchPriceDigits(symbol, catalogPriceDigits, tick?.digits) ?? undefined;
   const bidDirection = hasTickQuote ? tick?.bidDirection ?? 'none' : 'none';
   const askDirection = hasTickQuote ? tick?.askDirection ?? 'none' : 'none';
   const bid = quote?.bid ?? 0;
@@ -311,7 +315,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
         {showSpread && (
           <td style={{ padding: '3px 5px', textAlign: 'right', opacity: isLive ? 1 : 0.72 }}>
             <span className="rtx-market-watch__spread" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
-              {hasData ? formatSpreadDisplay(symbol, tick?.spread, bid, ask) : '—'}
+              {hasData ? formatSpreadDisplay(symbol, tick?.spread, bid, ask, tick?.digits) : '—'}
             </span>
           </td>
         )}

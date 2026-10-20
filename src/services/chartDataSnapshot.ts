@@ -3,7 +3,8 @@ import type { Candle } from '../types/chart';
 export interface ChartDataSnapshot {
   symbol: string;
   timeframe: string;
-  digits: number;
+  /** Broker price precision; null when the broker published none (render raw). */
+  digits: number | null;
   date: string;
   time: string;
   open: number;
@@ -15,7 +16,7 @@ export interface ChartDataSnapshot {
   spread?: number;
 }
 
-export function createChartDataSnapshot(candle: Candle | null, symbol: string, timeframe: string, digits: number, offsetSeconds = 0): ChartDataSnapshot | null {
+export function createChartDataSnapshot(candle: Candle | null, symbol: string, timeframe: string, digits: number | null, offsetSeconds = 0): ChartDataSnapshot | null {
   if (!candle || ![candle.time, candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) return null;
   const date = new Date((candle.time + offsetSeconds) * 1000);
   if (!Number.isFinite(date.getTime())) return null;

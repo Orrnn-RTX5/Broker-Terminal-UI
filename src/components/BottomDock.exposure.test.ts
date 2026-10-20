@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildExposureSummary,
   formatExposureVolume,
+  getExposureContractSize,
   parseExposureSymbol,
 } from './BottomDock.exposure';
 
@@ -20,6 +21,7 @@ describe('BottomDock exposure helpers', () => {
         side: 'BUY',
         volume: 0.01,
         currentPrice: 4326.095,
+        contractSize: 100,
       }],
       {
         balance: 3328.65,
@@ -49,6 +51,7 @@ describe('BottomDock exposure helpers', () => {
         side: 'SELL',
         volume: 0.02,
         currentPrice: 1.34,
+        contract_size: 100000,
       }],
       {
         balance: 1000,
@@ -78,6 +81,7 @@ describe('BottomDock exposure helpers', () => {
         side: 'BUY',
         volume: 0.01,
         currentPrice: 2000,
+        contractSize: 100,
       }],
       {
         balance: 10000,
@@ -91,5 +95,18 @@ describe('BottomDock exposure helpers', () => {
     const totalPct = summary.longSegments.reduce((acc, seg) => acc + seg.percent, 0);
     expect(totalPct).toBeCloseTo(1, 4);
     expect(summary.longSegments[0].color).toBeTruthy();
+  });
+
+  it('never sizes exposure from a symbol-name contract table (TERM-DIGITS-WL)', () => {
+    expect(getExposureContractSize({ symbol: 'USDJPY' })).toBeNull();
+    expect(getExposureContractSize({ symbol: 'XAUUSD' })).toBeNull();
+    expect(getExposureContractSize({ symbol: 'XAUUSD', contract_size: '50' })).toBe(50);
+
+    const summary = buildExposureSummary(
+      [{ symbol: 'USDJPY', side: 'BUY', volume: 1, currentPrice: 150 }],
+      { balance: 1000, equity: 1000, margin: 0, freeMargin: 1000, currency: 'USD' }
+    );
+    // Unknown contract size: the position is left out, not sized as 100000.
+    expect(summary.rows.map((row) => row.asset)).toEqual(['USD']);
   });
 });

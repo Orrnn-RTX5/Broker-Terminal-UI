@@ -1,36 +1,92 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { commitBrokerAccountSessionScope } from '../services/brokerSession';
+import {
+  registerDailyChangePriceModes,
+  resetDailyChangePriceModeRegistryForTests,
+} from '../services/dailyChangePriceModeRegistry';
 import { getInstrumentConfig } from './OrderPanelDialog';
 
-describe('getInstrumentConfig (fe-11)', () => {
-  it('falls back to prefix heuristics when no live digits are provided', () => {
-    expect(getInstrumentConfig('EURUSD')).toMatchObject({ digits: 5, pipSize: 0.0001 });
-    expect(getInstrumentConfig('USDJPY')).toMatchObject({ digits: 3, pipSize: 0.01 });
-    expect(getInstrumentConfig('XAUUSD')).toMatchObject({ digits: 2, pipSize: 0.01, contractSize: 100 });
-    expect(getInstrumentConfig('BTCUSD')).toMatchObject({ digits: 2, pipSize: 1, contractSize: 1 });
+// TERM-DIGITS-WL: instrument properties come only from broker data
+// (registered catalog, catalog row, tick payload). The symbol is a lookup
+// key, never a source of digits / pip size / contract size / currency.
+describe('getInstrumentConfig (broker data only, no symbol-name table)', () => {
+  beforeEach(() => {
+    commitBrokerAccountSessionScope({
+      authenticated: true,
+      accountId: '77',
+      brokerId: 'broker-a',
+      serverUrl: 'https://broker.example',
+    });
+    resetDailyChangePriceModeRegistryForTests();
   });
 
-  it('prefers broker-reported digits over the heuristic', () => {
-    // A broker that quotes EURUSD at 4 digits (whole pip) instead of the 5-digit guess.
-    const cfg = getInstrumentConfig('EURUSD', 4);
-    expect(cfg.digits).toBe(4);
-    expect(cfg.pipSize).toBe(0.0001);
-    // contractSize/currency still come from the heuristic base.
-    expect(cfg.contractSize).toBe(100000);
+  afterEach(() => {
+    commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+    resetDailyChangePriceModeRegistryForTests();
   });
 
-  it('derives fractional-pip pipSize for 5-digit and 3-digit feeds', () => {
-    expect(getInstrumentConfig('EURUSD', 5).pipSize).toBeCloseTo(0.0001, 10);
-    expect(getInstrumentConfig('USDJPY', 3).pipSize).toBeCloseTo(0.01, 10);
+  it('returns unknown (null) for every property when no broker data exists, whatever the name', () => {
+    for (const symbol of ['EURUSD', 'USDJPY', 'XAUUSD', 'XAGUSD', 'BTCUSD', 'ETHUSD', 'TESTFIX']) {
+      expect(getInstrumentConfig(symbol)).toEqual({ digits: null, priceStep: null, contractSize: null });
+    }
   });
 
-  it('derives whole-pip pipSize for 2-digit feeds', () => {
-    expect(getInstrumentConfig('XAUUSD', 2)).toMatchObject({ digits: 2, pipSize: 0.01 });
+  it('honors live tick digits and derives the step from them (10^-digits)', () => {
+    const cfg = getInstrumentConfig('USDJPY', 5);
+    expect(cfg.digits).toBe(5);
+    expect(cfg.priceStep).toBeCloseTo(0.00001, 12);
+    // Contract size is never guessed from the name.
+    expect(cfg.contractSize).toBeNull();
+    expect(getInstrumentConfig('XAUUSD', 3)).toMatchObject({ digits: 3 });
+    expect(getInstrumentConfig('BTCUSD', 0)).toMatchObject({ digits: 0, priceStep: 1 });
   });
 
-  it('ignores invalid live digits and uses the heuristic', () => {
-    expect(getInstrumentConfig('EURUSD', NaN)).toMatchObject({ digits: 5, pipSize: 0.0001 });
-    expect(getInstrumentConfig('EURUSD', -1)).toMatchObject({ digits: 5, pipSize: 0.0001 });
-    expect(getInstrumentConfig('EURUSD', 1.5)).toMatchObject({ digits: 5, pipSize: 0.0001 });
-    expect(getInstrumentConfig('EURUSD', 99)).toMatchObject({ digits: 5, pipSize: 0.0001 });
+  it('accepts numeric-string digits from quote payloads', () => {
+    expect(getInstrumentConfig('TESTFIX', '4')).toMatchObject({ digits: 4 });
+  });
+
+  it('prefers registered catalog digits and tick size over the tick payload', () => {
+    registerDailyChangePriceModes([{ symbol: 'TESTFIX', digits: 2, tickSize: 0.05 }]);
+    expect(getInstrumentConfig('TESTFIX', 5)).toEqual({ digits: 2, priceStep: 0.05, contractSize: null });
+    // Lookup is case/whitespace-insensitive on the broker key.
+    expect(getInstrumentConfig(' testfix ', 5)).toMatchObject({ digits: 2, priceStep: 0.05 });
+  });
+
+  it('uses the catalog row (digits, tick size, contract size) when the registry has none', () => {
+    const cfg = getInstrumentConfig('TESTFIX', 5, { symbol: 'TESTFIX', digits: 3, tickSize: 0.005, contractSize: 250 });
+    expect(cfg).toEqual({ digits: 3, priceStep: 0.005, contractSize: 250 });
+  });
+
+  it('falls back to tick digits when the catalog row has no digits', () => {
+    expect(getInstrumentConfig('TESTFIX', 4, { symbol: 'TESTFIX', contractSize: 1 })).toEqual({
+      digits: 4,
+      priceStep: 0.0001,
+      contractSize: 1,
+    });
+  });
+
+  it('rejects invalid digits / sizes as unknown instead of substituting a default', () => {
+    for (const bad of [NaN, -1, 1.5, 99, '', 'abc', null, undefined, Infinity]) {
+      expect(getInstrumentConfig('EURUSD', bad)).toEqual({ digits: null, priceStep: null, contractSize: null });
+    }
+    expect(getInstrumentConfig('EURUSD', undefined, { symbol: 'EURUSD', contractSize: 0, tickSize: -1 }))
+      .toEqual({ digits: null, priceStep: null, contractSize: null });
+    expect(getInstrumentConfig('EURUSD', undefined, { symbol: 'EURUSD', contractSize: NaN }).contractSize).toBeNull();
+  });
+
+  it('keeps tick size from the catalog even when digits are unknown', () => {
+    expect(getInstrumentConfig('TESTFIX', undefined, { symbol: 'TESTFIX', tickSize: 0.25 }))
+      .toEqual({ digits: null, priceStep: 0.25, contractSize: null });
+  });
+
+  it('source contains no symbol-name heuristics or guessed instrument defaults', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/components/OrderPanelDialog.tsx'), 'utf8');
+    expect(source).not.toMatch(/startsWith\('(BTC|ETH|XAU|XAG)'\)/);
+    expect(source).not.toMatch(/includes\('JPY'\)/);
+    expect(source).not.toMatch(/contractSize:\s*100000/);
+    expect(source).not.toMatch(/currency:\s*sym\.slice/);
+    expect(source).not.toMatch(/config\.currency/);
   });
 });

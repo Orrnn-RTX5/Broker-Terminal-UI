@@ -6,7 +6,8 @@ export interface TradeHistoryBadgeTextOptions {
   lifecycle: TradeHistoryLifecycle;
   ticketLabel?: string;
   price: number;
-  digits: number;
+  /** Broker price precision; null/undefined renders the raw price. */
+  digits: number | null;
   time: number;
   includeSeconds?: boolean;
 }
@@ -83,8 +84,14 @@ export const buildTradeHistoryBadgeText = ({
   time,
   includeSeconds = false,
 }: TradeHistoryBadgeTextOptions): string => {
-  const safeDigits = Number.isFinite(digits) ? Math.max(0, Math.min(10, Math.floor(digits))) : 2;
-  const formattedPrice = Number.isFinite(price) ? price.toFixed(safeDigits) : '—';
+  // TERM-DIGITS-WL: broker digits only; unknown precision renders the raw
+  // price instead of a guessed 2-decimal default.
+  const safeDigits = typeof digits === 'number' && Number.isFinite(digits)
+    ? Math.max(0, Math.min(10, Math.floor(digits)))
+    : null;
+  const formattedPrice = !Number.isFinite(price)
+    ? '—'
+    : safeDigits === null ? String(price) : price.toFixed(safeDigits);
   const formattedTime = formatTradeHistoryGmtTime(time, { includeSeconds });
 
   return [

@@ -1051,9 +1051,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const appTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown } | undefined>;
       const tick = appTicks[position.symbol]
         ?? appTicks[position.symbol?.toUpperCase?.() ?? ''];
-      // Broker spec digits only (loaded catalog, then position row; quote
-      // digits may come from the name table); unknown precision falls back
-      // to side-only naming.
+      // Broker spec digits only (loaded catalog first, then the position
+      // row); never guessed from the symbol name. Unknown precision falls
+      // back to side-only naming.
       const refusalDigits = readRegisteredSymbolPriceSpec(position.symbol).digits
         ?? readKnownPriceDigits((position as { digits?: unknown })?.digits);
       const refusal = describeProtectionRefusal(err, {
@@ -2025,6 +2025,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                 onSubmitOrder={handleOrderPanelSubmit}
                 marketStatus={selectedMarketStatus}
                 symbols={isAuthenticated ? allowedSymbolNames : undefined}
+                instruments={marketInstrumentsSnapshot.symbols}
                 initialOrderType={orderPanelDraft?.orderType}
                 initialPrice={orderPanelDraft?.price}
                 initialSide={orderPanelDraft?.side}

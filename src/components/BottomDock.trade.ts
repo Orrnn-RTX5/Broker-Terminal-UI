@@ -1,8 +1,5 @@
 import { formatAccountAmount, resolveAccountCurrencyDigits } from '../utils/accountCurrency';
-import {
-  getExposureContractSize,
-  parseExposureSymbol,
-} from './BottomDock.exposure';
+import { getExposureContractSize } from './BottomDock.exposure';
 import { readBackendNumber } from '../services/backendAccountMetrics';
 import {
   accountMetricAvailable,
@@ -276,10 +273,6 @@ export const calculateLivePositionProfit = (
   position: TradeProfitInput,
   options: { requireExplicitContractSize?: boolean } = {}
 ): number | null => {
-  const symbol = String(position.symbol ?? '').toUpperCase();
-  const parsed = parseExposureSymbol(symbol);
-  if (!parsed) return null;
-
   const openPrice = toFiniteNumber(
     position.price_open ?? position.open_price ?? position.openPrice,
     0
@@ -298,7 +291,10 @@ export const calculateLivePositionProfit = (
   }
 
   const direction = String(position.side ?? '').toUpperCase() === 'SELL' ? -1 : 1;
-  const contractSize = explicitContractSize ?? getExposureContractSize(position, parsed.base, parsed.quote);
+  // Broker contract size only (row, then catalog); unknown -> no local
+  // reconstruction (the backend value is shown verbatim).
+  const contractSize = explicitContractSize ?? getExposureContractSize(position);
+  if (contractSize === null || !(contractSize > 0)) return null;
   const profit = (currentPrice - openPrice) * direction * volume * contractSize;
 
   return Number.isFinite(profit) ? profit : null;

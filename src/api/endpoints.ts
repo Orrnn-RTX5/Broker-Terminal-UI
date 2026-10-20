@@ -6,6 +6,7 @@ import { isDesktopBackendTarget } from '../config/backendTarget.js';
 import { getRefreshToken } from '../services/brokerSession';
 import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
+import { resolveSpecDigits } from '../utils/symbolUtils';
 import { createTradeOrderUuid, isTradeOrderUuidV4 } from './tradeSocket';
 import { tradingV2Api, type ClosePositionRequestOptions } from './trade';
 import type { AccountClassificationFields } from '../types/api';
@@ -419,8 +420,10 @@ export interface Symbol {
   name: string;
   description: string;
   category: string;
-  digits: number;
-  tickSize: number;
+  /** Broker precision; null when the broker published none (render raw). */
+  digits: number | null;
+  /** Broker tick size (else one point from broker digits); null when neither is published. */
+  tickSize: number | null;
   contractSize: number;
   marginRate: number;
   tradingEnabled: boolean;
@@ -662,14 +665,20 @@ export const marketApi = {
 
     return instruments.map((instrument) => {
       const symbol = String(instrument.symbol ?? instrument.name ?? instrument.id ?? '').trim();
+      // TERM-DIGITS-WL: broker spec only; never a 5-digit default (and a real
+      // 0-digit instrument stays 0).
+      const digits = resolveSpecDigits(instrument.digits);
+      const publishedTickSize = Number(instrument.tick_size);
 
       return {
         id: symbol,
         name: symbol,
         description: instrument.description || symbol,
         category: instrument.category || 'Forex',
-        digits: instrument.digits,
-        tickSize: instrument.tick_size ?? Math.pow(10, -Number(instrument.digits || 5)),
+        digits,
+        tickSize: Number.isFinite(publishedTickSize) && publishedTickSize > 0
+          ? publishedTickSize
+          : digits !== null ? Math.pow(10, -digits) : null,
         contractSize: instrument.contract_size,
         marginRate: instrument.margin_rate ?? 0.01,
         tradingEnabled: Boolean(instrument.enabled ?? instrument.trading_enabled ?? instrument.tradingEnabled ?? true),

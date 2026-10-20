@@ -16,7 +16,7 @@ import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { formatDailyChange } from '../../utils/dailyChange';
 import { dailyChangeDescription } from '../../utils/dailyChangeSession';
 import { readCurrentMarketWatchDailyChangePrice, describeCurrentMarketWatchDailyChange } from '../../services/marketWatchDailyChangeCache';
-import { type Tick, useTick } from '../../store/useAppStore';
+import { useTick } from '../../store/useAppStore';
 import {
   resolveMarketWatchDisplayMetadata,
   mayUseClosedDailyChange,
@@ -30,10 +30,13 @@ import {
   type MarketWatchColumnId,
 } from '../../utils/marketWatchView';
 import { formatSpreadDisplay } from '../../utils/spread';
-import { resolveSpecDigits } from '../../utils/symbolUtils';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
-import { getLatestMarketWatchTimestamp } from './marketWatchPanelModel';
+import {
+  getLatestMarketWatchTimestamp,
+  normalizeSymbol,
+  resolveMarketWatchPriceDigits,
+} from './marketWatchPanelModel';
 import { resolveMarketWatchExtendedColumn } from './marketWatchSymbolDetailsModel';
 import './market-watch-views.css';
 
@@ -80,6 +83,8 @@ export interface PopupPricesDialogProps {
   columns?: readonly MarketWatchColumnId[];
   showMilliseconds?: boolean;
   descriptions?: ReadonlyMap<string, string>;
+  /** Broker catalog price digits by normalized symbol; symbols without digits render raw. */
+  catalogPriceDigits?: ReadonlyMap<string, number>;
   fallbackPrices?: ReadonlyMap<string, MarketWatchLastPrice>;
   dailyChanges?: ReadonlyMap<string, number>;
   onClose: () => void;
@@ -152,13 +157,6 @@ const readSymbolMapValue = <T,>(values: ReadonlyMap<string, T> | undefined, symb
   values?.get(symbol) ?? values?.get(symbol.toUpperCase())
 );
 
-// Spec digits only (validated live tick); unknown renders raw downstream.
-// Symbol retained for call-site compatibility and ignored (never guessed).
-const tickDigits = (tick: Tick | undefined, symbol: string): number | null => {
-  void symbol;
-  return resolveSpecDigits(tick?.digits);
-};
-
 const quoteDate = (timestamp: number | undefined): Date | null => {
   if (!Number.isFinite(timestamp) || Number(timestamp) <= 0) return null;
   const milliseconds = Number(timestamp) < 1_000_000_000_000 ? Number(timestamp) * 1_000 : Number(timestamp);
@@ -171,6 +169,7 @@ function PopupPriceCard({
   columns,
   showMilliseconds,
   description,
+  catalogPriceDigits,
   fallbackPrice,
   fallbackDailyChange,
 }: {
@@ -178,6 +177,7 @@ function PopupPriceCard({
   columns: readonly MarketWatchColumnId[];
   showMilliseconds: boolean;
   description?: string;
+  catalogPriceDigits?: number;
   fallbackPrice?: MarketWatchLastPrice;
   fallbackDailyChange?: number;
 }) {
@@ -185,7 +185,8 @@ function PopupPriceCard({
   const tick = useTick(symbol);
   const displayMetadata = useMarketWatchDisplayMetadata(symbol);
   const resolvedDisplayMetadata = resolveMarketWatchDisplayMetadata(tick, displayMetadata);
-  const digits = tickDigits(tick, symbol);
+  // Broker data only (catalog row, registered spec, live tick); unknown renders raw.
+  const digits = resolveMarketWatchPriceDigits(symbol, catalogPriceDigits, tick?.digits);
   const liveBid = finiteNumber(tick?.bid) ?? 0;
   const liveAsk = finiteNumber(tick?.ask) ?? 0;
   const hasLiveQuote = liveBid > 0 || liveAsk > 0;
@@ -284,7 +285,7 @@ function PopupPriceCard({
           {columns.includes('spread') && (
             <div className="rtx-popup-prices__metric">
               <span>{tr('Spread')}</span>
-              <strong>{hasBidAskQuote ? formatSpreadDisplay(symbol, tick?.spread, bid, ask) : '—'}</strong>
+              <strong>{hasBidAskQuote ? formatSpreadDisplay(symbol, tick?.spread, bid, ask, digits) : '—'}</strong>
             </div>
           )}
           {columns.includes('time') && (
@@ -345,6 +346,7 @@ function PopupPricesDialogContent({
   columns = DEFAULT_MARKET_WATCH_COLUMNS,
   showMilliseconds = false,
   descriptions,
+  catalogPriceDigits,
   fallbackPrices,
   dailyChanges,
   onClose,
@@ -521,6 +523,7 @@ function PopupPricesDialogContent({
                   columns={displayedColumns}
                   showMilliseconds={showMilliseconds}
                   description={descriptions?.get(symbol.toUpperCase())}
+                  catalogPriceDigits={catalogPriceDigits?.get(normalizeSymbol(symbol))}
                   fallbackPrice={readSymbolMapValue(fallbackPrices, symbol)}
                   fallbackDailyChange={readSymbolMapValue(dailyChanges, symbol)}
                 />
@@ -569,6 +572,7 @@ export function PopupPricesDialog({
   columns,
   showMilliseconds,
   descriptions,
+  catalogPriceDigits,
   fallbackPrices,
   dailyChanges,
   onClose,
@@ -580,6 +584,7 @@ export function PopupPricesDialog({
       columns={columns}
       showMilliseconds={showMilliseconds}
       descriptions={descriptions}
+      catalogPriceDigits={catalogPriceDigits}
       fallbackPrices={fallbackPrices}
       dailyChanges={dailyChanges}
       onClose={onClose}

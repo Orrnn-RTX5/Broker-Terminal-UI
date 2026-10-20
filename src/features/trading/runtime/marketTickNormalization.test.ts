@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { commitBrokerAccountSessionScope } from '../../../services/brokerSession';
+import {
+  registerDailyChangePriceModes,
+  resetDailyChangePriceModeRegistryForTests,
+} from '../../../services/dailyChangePriceModeRegistry';
 import {
   normalizeRealtimeTick,
   parseTickPayloadContexts,
@@ -209,5 +214,39 @@ describe('market tick normalization', () => {
       bid: 1.101,
       ask: 1.1012,
     }, previous ?? undefined)?.dailyChange).toBeUndefined();
+  });
+
+  it('never synthesizes a name-based spread or digits for a mid-only tick (TERM-DIGITS-WL)', () => {
+    for (const symbol of ['USDJPY', 'XAUUSD', 'BTCUSD', 'EURUSD']) {
+      const tick = normalizeRealtimeTick({ symbol, price: 150.125 });
+      // No broker or previous spread: bid = ask = mid (raw), spread 0.
+      expect(tick).toMatchObject({ symbol, bid: 150.125, ask: 150.125, spread: 0, digits: null });
+    }
+    // A broker/previous spread is still honoured.
+    const previous = normalizeRealtimeTick({ symbol: 'USDJPY', bid: 150.1, ask: 150.12 });
+    const next = normalizeRealtimeTick({ symbol: 'USDJPY', price: 150.2 }, previous ?? undefined);
+    expect(next?.bid).toBeCloseTo(150.19, 10);
+    expect(next?.ask).toBeCloseTo(150.21, 10);
+  });
+
+  it('lets registered catalog digits win over payload and previous digits', () => {
+    commitBrokerAccountSessionScope({
+      authenticated: true,
+      accountId: '1001',
+      brokerId: 'broker-a',
+      serverUrl: 'https://broker-a.test',
+    });
+    resetDailyChangePriceModeRegistryForTests();
+    try {
+      expect(registerDailyChangePriceModes([{ symbol: 'ALPHA.x', digits: 3 }])).toBe(true);
+      expect(normalizeRealtimeTick({ symbol: 'alpha.x', bid: 1.1, ask: 1.2, digits: 5 })?.digits).toBe(3);
+      // Unregistered symbol: payload digits, then previous digits.
+      const previous = normalizeRealtimeTick({ symbol: 'BETA', bid: 1, ask: 2, digits: 4 });
+      expect(previous?.digits).toBe(4);
+      expect(normalizeRealtimeTick({ symbol: 'BETA', bid: 1, ask: 2 }, previous ?? undefined)?.digits).toBe(4);
+    } finally {
+      commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
+      resetDailyChangePriceModeRegistryForTests();
+    }
   });
 });

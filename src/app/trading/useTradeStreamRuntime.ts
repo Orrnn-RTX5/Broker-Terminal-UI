@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { formatPrice } from '../../utils/symbolUtils';
+import { readRegisteredSymbolPriceSpec } from '../../services/dailyChangePriceModeRegistry';
 import { extractBackendAccountRecord, isBackendAccountForLogin, isOtherBrokerId } from '../../services/backendAccountMetrics';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../../services/brokerSession';
 import { createStateInvalidator } from '../../services/stateInvalidation';
@@ -247,7 +249,7 @@ export const useTradeStreamRuntime = ({
             priceMap[symbol] = { bid: tick.bid, ask: tick.ask, last: tick.last };
           });
           alertState.checkAlerts(priceMap).forEach((alert) => {
-            const message = alert.message || `${alert.symbol} ${alert.condition.replace('_', ' ')} ${alert.price.toFixed(5)}`;
+            const message = alert.message || `${alert.symbol} ${alert.condition.replace('_', ' ')} ${formatPrice(alert.price, readRegisteredSymbolPriceSpec(alert.symbol).digits)}`;
             useNotificationStore.getState().addNotification({
               type: 'trading',
               severity: 'warning',

@@ -8,6 +8,7 @@ import {
 import {
   getCurrentDailyChangePriceModeScopeKey,
   readRegisteredDailyChangePriceMode,
+  readRegisteredSymbolContractSpec,
   readRegisteredSymbolPriceSpec,
   registerDailyChangePriceModes,
   resetDailyChangePriceModeRegistryForTests,
@@ -201,6 +202,28 @@ describe('daily change price-mode registry', () => {
       serverUrl: 'https://broker-b.test',
     });
     expect(readRegisteredSymbolPriceSpec('ALPHA.x')).toEqual({ digits: null, tickSize: null });
+  });
+
+  it('exposes broker contract size and unit by exact symbol, never guessed by name', () => {
+    const rows: Array<Record<string, unknown>> = [
+      { symbol: 'ALPHA.x', contractSize: 250, brokerSpecification: { contract_size_unit: 'oz', currency_base: 'XAU' } },
+      { symbol: 'BETA.y', brokerSpecification: { specification: { trade_contract_size: '1000', base_currency: 'EUR' } } },
+      { symbol: 'USDJPY' },
+    ];
+    expect(registerDailyChangePriceModes(rows)).toBe(true);
+    expect(readRegisteredSymbolContractSpec('alpha.X')).toEqual({ contractSize: 250, contractUnit: 'oz' });
+    expect(readRegisteredSymbolContractSpec('BETA.y')).toEqual({ contractSize: 1000, contractUnit: 'EUR' });
+    // A familiar name without broker data stays unknown (no 100000 / 'USD' guess).
+    expect(readRegisteredSymbolContractSpec('USDJPY')).toEqual({ contractSize: null, contractUnit: null });
+    expect(readRegisteredSymbolPriceSpec('USDJPY')).toEqual({ digits: null, tickSize: null });
+
+    commitBrokerAccountSessionScope({
+      authenticated: true,
+      accountId: '2002',
+      brokerId: 'broker-b',
+      serverUrl: 'https://broker-b.test',
+    });
+    expect(readRegisteredSymbolContractSpec('ALPHA.x')).toEqual({ contractSize: null, contractUnit: null });
   });
 
   it('refuses metadata ownership when anonymous broker identity is empty', () => {

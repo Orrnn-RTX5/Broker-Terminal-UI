@@ -56,7 +56,7 @@ function MarketWatchTradingCard({
   const timestamp = formatMarketWatchTime(sourceTime, false);
   const hasQuote = details.bid !== null && details.ask !== null;
   const spread = hasQuote
-    ? formatSpreadDisplayWithUnit(symbol, tick?.spread, details.bid, details.ask)
+    ? formatSpreadDisplayWithUnit(symbol, tick?.spread, details.bid, details.ask, details.digits)
     : '\u2014';
 
   return (

@@ -103,24 +103,48 @@ describe('backend Trade financial values', () => {
 });
 
 describe('BottomDock trade helpers', () => {
-  it('calculates forex profit using standard lot contract size', () => {
+  it('calculates forex profit using the broker-published contract size', () => {
     expect(calculateLivePositionProfit({
       symbol: 'GBPUSD',
       side: 'BUY',
       volume: 0.01,
       openPrice: 1.33981,
       currentPrice: 1.34142,
+      contractSize: 100000,
     })).toBeCloseTo(1.61, 5);
   });
 
-  it('does not apply forex contract size to crypto symbols', () => {
+  it('uses the crypto contract size published by the broker', () => {
     expect(calculateLivePositionProfit({
       symbol: 'BTCUSD',
       side: 'BUY',
       volume: 0.01,
       openPrice: 66294.16,
       currentPrice: 66299.70,
+      contractSize: 1,
     })).toBeCloseTo(0.0554, 5);
+  });
+
+  it('never guesses a contract size from the symbol name (TERM-DIGITS-WL)', () => {
+    // No row or catalog contract size: no local reconstruction at all.
+    for (const symbol of ['USDJPY', 'EURUSD', 'XAUUSD', 'BTCUSD', 'BROKER.CUSTOM']) {
+      expect(calculateLivePositionProfit({
+        symbol,
+        side: 'BUY',
+        volume: 0.01,
+        openPrice: 100,
+        currentPrice: 101,
+      })).toBeNull();
+    }
+    // A broker contract size works even for names no table would recognise.
+    expect(calculateLivePositionProfit({
+      symbol: 'BROKER.CUSTOM',
+      side: 'BUY',
+      volume: 2,
+      openPrice: 100,
+      currentPrice: 101,
+      contract_size: 10,
+    })).toBeCloseTo(20, 8);
   });
 
   it('uses explicit broker contract size when a position provides one', () => {
@@ -141,6 +165,7 @@ describe('BottomDock trade helpers', () => {
       volume: 0.02,
       openPrice: 1.1000,
       currentPrice: 1.0990,
+      contractSize: 100000,
     })).toBeCloseTo(2, 5);
   });
 
@@ -469,11 +494,12 @@ describe('live account metrics between backend snapshots', () => {
     balance: 10025.36, credit: 0, equity: 10024.76, margin: 25.08,
     freeMargin: 9999.68, marginLevel: 39972.53, unrealizedPL: -0.6,
   });
-  // The three BTCUSD 0.01-lot rows from the Trade tab at 83559.53.
+  // The three BTCUSD 0.01-lot rows from the Trade tab at 83559.53; the broker
+  // row publishes the contract size (1 coin per lot).
   const positions = [
-    { symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83574.78, currentPrice: 83559.53, profit: -0.15 },
-    { symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83613.04, currentPrice: 83559.53, profit: -0.54 },
-    { symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83603.41, currentPrice: 83559.53, profit: -0.44 },
+    { symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83574.78, currentPrice: 83559.53, profit: -0.15, contractSize: 1 },
+    { symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83613.04, currentPrice: 83559.53, profit: -0.54, contractSize: 1 },
+    { symbol: 'BTCUSD', side: 'BUY', volume: 0.01, openPrice: 83603.41, currentPrice: 83559.53, profit: -0.44, contractSize: 1 },
   ];
 
   it('shows unrounded row profit when it rounds to the backend value', () => {
@@ -481,6 +507,10 @@ describe('live account metrics between backend snapshots', () => {
     // Currency conversion or an unknown contract size: backend value verbatim.
     expect(resolveTradeProfit({ ...positions[0], profit: -0.2 }).value).toBe(-0.2);
     expect(resolveTradeProfit({ ...positions[0], hasBackendCurrentPrice: false }).value).toBe(-0.15);
+    // No broker contract size: the backend value verbatim, never a name-table size.
+    const { contractSize: _omitted, ...withoutContractSize } = positions[0];
+    void _omitted;
+    expect(resolveTradeProfit(withoutContractSize).value).toBe(-0.15);
   });
 
   it('derives floating P/L, equity, free margin and level from the live rows', () => {

@@ -10,8 +10,9 @@
  * them and owns the shared math/formatting so it stays unit-testable.
  */
 
-import { getExposureContractSize, parseExposureSymbol } from '../components/BottomDock.exposure';
+import { getExposureContractSize } from '../components/BottomDock.exposure';
 import { translateUi as tr } from '../hooks/useUiTranslation';
+import { getPipSizeFromDigits } from './symbolUtils';
 
 // Presentation-only updates keep the original nodes and their trading action
 // listeners intact when the language changes. Detached overlays remain GC-able.
@@ -121,22 +122,26 @@ export const hasChartTradeLevelGestureDragged = (
 // Pip / money math
 // ---------------------------------------------------------------------------
 
-/** Standard pip: one tenth-point above 1 digit (5-digit FX -> 0.0001, XAU 2 digits -> 0.1). */
-export const getPipSize = (digits: number): number => {
-  if (!Number.isFinite(digits) || digits <= 1) return 1;
-  return Math.pow(10, -(Math.floor(digits) - 1));
-};
+/**
+ * Pip size from broker digits, via the terminal's single pip rule
+ * (getPipSizeFromDigits: 5 -> 0.0001, 3 -> 0.01, 2 -> 0.01), so the chart
+ * shows the same pip count as the spread and order panels. Null when the
+ * symbol's precision is unknown (no guessed pip).
+ */
+export const getPipSize = (digits: number | null | undefined): number | null => getPipSizeFromDigits(digits);
 
 /** Signed pip distance from entry to `price` in the direction of the trade. */
 export const computeSignedPips = (
   side: ChartTradeSide,
   entryPrice: number,
   price: number,
-  digits: number,
-): number => {
+  digits: number | null | undefined,
+): number | null => {
+  const pipSize = getPipSize(digits);
+  if (pipSize === null) return null;
   if (!Number.isFinite(entryPrice) || !Number.isFinite(price)) return Number.NaN;
   const diff = side === 'SELL' ? entryPrice - price : price - entryPrice;
-  return diff / getPipSize(digits);
+  return diff / pipSize;
 };
 
 export interface TradeMoneyEstimateInput {
@@ -156,11 +161,10 @@ export interface TradeMoneyEstimateInput {
 export const estimateTradeMoneyAtPrice = (input: TradeMoneyEstimateInput): number | null => {
   const { symbol, side, volume, entryPrice, price } = input;
   if (!(volume > 0) || !(entryPrice > 0) || !(price > 0)) return null;
-  const parsed = parseExposureSymbol(symbol);
-  if (!parsed) return null;
-  const contractSize = input.contractSize && input.contractSize > 0
-    ? input.contractSize
-    : getExposureContractSize({ contractSize: input.contractSize }, parsed.base, parsed.quote);
+  // Broker contract size only (caller row, then catalog); unknown -> no
+  // estimate rather than a symbol-name lot multiplier.
+  const contractSize = getExposureContractSize({ symbol, contractSize: input.contractSize });
+  if (contractSize === null) return null;
   const direction = side === 'SELL' ? -1 : 1;
   const money = (price - entryPrice) * direction * volume * contractSize;
   return Number.isFinite(money) ? money : null;

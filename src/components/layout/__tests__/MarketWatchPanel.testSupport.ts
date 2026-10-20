@@ -26,6 +26,31 @@ export interface MockMarketInstrument {
   trading_enabled?: boolean;
 }
 
+/**
+ * Quote precision the test broker publishes on its instrument catalog rows.
+ * Market Watch reads digits only from broker data, so fixtures that expect
+ * fixed decimals must carry them on the catalog row like a real broker does.
+ */
+export const TEST_BROKER_PRICE_DIGITS: Readonly<Record<string, number>> = {
+  XAUUSD: 2,
+  BTCUSD: 2,
+  EURUSD: 5,
+  GBPUSD: 5,
+  USDJPY: 3,
+  SOLUSD: 2,
+  ETHUSD: 2,
+  '0001.HK': 3,
+};
+
+/** Catalog rows for the given symbols carrying the test broker's published digits. */
+export const brokerCatalogRows = (symbols: readonly string[]): MockMarketInstrument[] => (
+  symbols.map((symbol) => (
+    TEST_BROKER_PRICE_DIGITS[symbol] === undefined
+      ? { symbol }
+      : { symbol, digits: TEST_BROKER_PRICE_DIGITS[symbol] }
+  ))
+);
+
 const closedDailyChangeHookState = vi.hoisted(() => ({
   values: new Map<string, number>(),
   useHook: vi.fn(),

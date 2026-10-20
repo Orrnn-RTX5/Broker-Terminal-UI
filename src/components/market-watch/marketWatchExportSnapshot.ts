@@ -20,9 +20,10 @@ import type { MarketWatchExportResult } from '../../utils/marketWatchExport';
 import {
   formatMarketWatchExportPrice,
   getLatestMarketWatchTimestamp,
-  getMarketWatchPriceDigits,
   hasMarketWatchQuote,
+  normalizeSymbol,
   readFiniteDailyChange,
+  resolveMarketWatchPriceDigits,
 } from './marketWatchPanelModel';
 import { resolveMarketWatchExtendedColumn } from './marketWatchSymbolDetailsModel';
 
@@ -36,6 +37,8 @@ interface MarketWatchExportSnapshotOptions {
   showMilliseconds: boolean;
   getTick: (symbol: string) => Tick | undefined;
   getInstrumentSources?: (symbol: string) => readonly unknown[];
+  /** Broker catalog price digits by normalized symbol; symbols without digits export raw. */
+  catalogPriceDigits?: ReadonlyMap<string, number>;
   translate: Translate;
   now?: Date;
 }
@@ -58,6 +61,7 @@ export const createMarketWatchExportSnapshot = ({
   showMilliseconds,
   getTick,
   getInstrumentSources,
+  catalogPriceDigits,
   translate,
   now = new Date(),
 }: MarketWatchExportSnapshotOptions): MarketWatchExportSnapshot => {
@@ -74,22 +78,29 @@ export const createMarketWatchExportSnapshot = ({
       ?? (closedDailyChanges.has(symbol) && mayUseClosedDailyChange(display) ? readCurrentMarketWatchDailyChangePrice(symbol) : undefined);
     const fallback = hasLiveQuote ? undefined : lastPrices.get(symbol);
     const quote = hasLiveQuote ? tick : fallback?.kind === 'quote' ? fallback : undefined;
+    // Broker data only (catalog row, registered spec, live tick); unknown exports raw.
+    const priceDigits = resolveMarketWatchPriceDigits(
+      symbol,
+      catalogPriceDigits?.get(normalizeSymbol(symbol)),
+      tick?.digits,
+    );
+    const formatExportPrice = (value: unknown): string => formatMarketWatchExportPrice(symbol, value, priceDigits);
 
     return columns.map((column) => {
       switch (column) {
         case 'symbol': return symbol;
         case 'bid': return quote?.bid !== undefined
-          ? formatMarketWatchExportPrice(symbol, quote.bid)
+          ? formatExportPrice(quote.bid)
           : fallback?.kind === 'close'
-            ? `${translate('Last close')}: ${formatMarketWatchExportPrice(symbol, fallback.close)}`
+            ? `${translate('Last close')}: ${formatExportPrice(fallback.close)}`
             : '-';
-        case 'ask': return formatMarketWatchExportPrice(symbol, quote?.ask);
-        case 'last': return formatMarketWatchExportPrice(symbol, display.last);
-        case 'high': return formatMarketWatchExportPrice(symbol, tick?.high ?? tick?.high24h);
-        case 'low': return formatMarketWatchExportPrice(symbol, tick?.low ?? tick?.low24h);
+        case 'ask': return formatExportPrice(quote?.ask);
+        case 'last': return formatExportPrice(display.last);
+        case 'high': return formatExportPrice(tick?.high ?? tick?.high24h);
+        case 'low': return formatExportPrice(tick?.low ?? tick?.low24h);
         case 'volume': return tick?.volume ?? '-';
         case 'spread': return hasMarketWatchQuote(quote)
-          ? formatSpreadDisplay(symbol, tick?.spread, quote?.bid, quote?.ask)
+          ? formatSpreadDisplay(symbol, tick?.spread, quote?.bid, quote?.ask, tick?.digits)
           : '-';
         case 'time': return formatMarketWatchTime(
           getLatestMarketWatchTimestamp(
@@ -108,7 +119,7 @@ export const createMarketWatchExportSnapshot = ({
             lastPrice: fallback,
             displayLast: display.last,
             instrumentSources: getInstrumentSources?.(symbol),
-            priceDigits: getMarketWatchPriceDigits(symbol),
+            priceDigits,
           });
           return resolved.formatted ?? '-';
         }

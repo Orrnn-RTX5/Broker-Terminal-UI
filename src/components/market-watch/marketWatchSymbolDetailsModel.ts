@@ -228,7 +228,8 @@ export interface ResolveMarketWatchExtendedColumnOptions {
   lastPrice?: MarketWatchLastPrice;
   displayLast?: unknown;
   instrumentSources?: readonly unknown[];
-  priceDigits: number;
+  /** Broker price digits resolved by the caller; null renders prices raw. */
+  priceDigits?: number | null;
 }
 
 /**
@@ -249,12 +250,13 @@ export const resolveMarketWatchExtendedColumn = ({
     lastPrice,
     specification: spec,
   });
-  const effectiveDigits = spec.digits ?? fallbackDigits;
+  // Broker spec digits only; unknown precision renders the raw value.
+  const effectiveDigits = spec.digits ?? fallbackDigits ?? null;
   const allRecords = [tick, ...instrumentSources].flatMap(collectExtendedRecords);
 
   const asPrice = (val: number | null): MarketWatchExtendedColumnResolution => ({
     numericValue: val,
-    formatted: val === null ? null : val.toFixed(effectiveDigits),
+    formatted: val === null ? null : effectiveDigits === null ? String(val) : val.toFixed(effectiveDigits),
     kind: 'price',
   });
 

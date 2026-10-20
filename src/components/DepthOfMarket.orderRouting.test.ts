@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { buildDepthOrderRequest, depthExecutionForLevel } from './DepthOfMarket';
+import { buildDepthOrderRequest, depthExecutionForLevel } from './depthOfMarketModel';
 
 describe('Depth of Market order routing', () => {
   it('routes depth rows to limits and explicit Buy/Sell buttons to market execution', () => {

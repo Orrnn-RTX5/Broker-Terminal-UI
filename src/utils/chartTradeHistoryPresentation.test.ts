@@ -48,6 +48,24 @@ describe('chart trade-history presentation', () => {
     })).toBe('BUY CLOSE · 4601.10 · 17:15:09 GMT');
   });
 
+  it('renders the raw price when the broker published no digits (TERM-DIGITS-WL)', () => {
+    const time = Date.UTC(2026, 7, 31, 17, 15) / 1000;
+    expect(buildTradeHistoryBadgeText({
+      positionSide: 'BUY',
+      lifecycle: 'OPEN',
+      price: 150.1234,
+      digits: null,
+      time,
+    })).toBe('BUY OPEN · 150.1234 · 17:15 GMT');
+    expect(buildTradeHistoryBadgeText({
+      positionSide: 'SELL',
+      lifecycle: 'OPEN',
+      price: 150,
+      digits: 0,
+      time,
+    })).toBe('SELL OPEN · 150 · 17:15 GMT');
+  });
+
   it('keeps the position side in the label while reversing only close execution', () => {
     expect(getTradeHistoryExecutionSide('BUY', 'OPEN')).toBe('BUY');
     expect(getTradeHistoryExecutionSide('BUY', 'CLOSE')).toBe('SELL');

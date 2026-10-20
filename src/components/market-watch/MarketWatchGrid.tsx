@@ -7,6 +7,7 @@ import {
   type MarketWatchOptions,
   type MarketWatchSortMode,
 } from '../../utils/marketWatchView';
+import { normalizeSymbol } from './marketWatchPanelModel';
 import { MarketWatchRow } from './MarketWatchRow';
 
 type Translate = (source: string, values?: Record<string, unknown>) => string;
@@ -14,6 +15,8 @@ type Translate = (source: string, values?: Record<string, unknown>) => string;
 interface MarketWatchGridProps {
   actionableSymbolSet: ReadonlySet<string>;
   chartOpenableSymbolSet: ReadonlySet<string>;
+  /** Broker catalog price digits by normalized symbol (rows without published digits are absent). */
+  catalogPriceDigits?: ReadonlyMap<string, number>;
   closedDailyChanges: ReadonlyMap<string, number>;
   columns: readonly MarketWatchColumnId[];
   getContextMenuItems: (symbol: string) => ContextMenuItemConfig[];
@@ -41,6 +44,7 @@ interface MarketWatchGridProps {
 export const MarketWatchGrid = ({
   actionableSymbolSet,
   chartOpenableSymbolSet,
+  catalogPriceDigits,
   closedDailyChanges,
   columns,
   getContextMenuItems,
@@ -285,6 +289,7 @@ export const MarketWatchGrid = ({
                 closedDailyChange={closedDailyChanges.get(symbol)}
                 lastPrice={lastPrices.get(symbol)}
                 instrumentSources={getInstrumentSources?.(symbol)}
+                catalogPriceDigits={catalogPriceDigits?.get(normalizeSymbol(symbol)) ?? null}
                 symbolUniverse={quoteEligibleSymbols}
                 rowRef={marketWatchRowRefCallbacks.get(symbol)}
               />

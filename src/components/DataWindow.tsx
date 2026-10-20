@@ -11,6 +11,7 @@ import { X } from 'lucide-react';
 
 import { getActiveChartSource, subscribeActiveChartSource } from '../services/activeChartSource';
 import type { ChartDataSnapshot } from '../services/chartDataSnapshot';
+import { resolveSpecDigits } from '../utils/symbolUtils';
 
 export type CrosshairData = ChartDataSnapshot;
 
@@ -20,9 +21,10 @@ interface DataWindowProps {
   onDragHandleMouseDown?: (e: React.MouseEvent) => void;
 }
 
-const fmt = (n: number, digits = 5): string => {
+// TERM-DIGITS-WL: broker digits only; unknown precision renders the raw value.
+const fmt = (n: number, digits: number | null): string => {
   if (!n && n !== 0) return '—';
-  return n.toFixed(digits);
+  return digits === null ? String(n) : n.toFixed(digits);
 };
 
 const DataRow = ({ label, value }: { label: string; value: string }) => {
@@ -85,7 +87,7 @@ export const DataWindow: React.FC<DataWindowProps> = ({
     return () => { unsubscribe(); window.clearInterval(timer); };
   }, []);
 
-  const digits = data?.digits ?? 5;
+  const digits = resolveSpecDigits(data?.digits);
 
   const header = data ? `${data.symbol},${data.timeframe}` : '—';
 

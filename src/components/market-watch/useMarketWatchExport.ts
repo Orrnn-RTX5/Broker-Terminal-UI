@@ -33,6 +33,8 @@ interface UseMarketWatchExportOptions {
   activeSymbolSet: ReadonlySet<string>;
   brokerAccountScopeKey: string;
   canIdentifyClosedSymbols: boolean;
+  /** Broker catalog price digits by normalized symbol. */
+  catalogPriceDigits?: ReadonlyMap<string, number>;
   closedDailyChanges: ReadonlyMap<string, number>;
   dailyChangeScopeKey: string | null;
   displayedColumns: readonly MarketWatchColumnId[];
@@ -56,6 +58,7 @@ export const useMarketWatchExport = ({
   activeSymbolSet,
   brokerAccountScopeKey,
   canIdentifyClosedSymbols,
+  catalogPriceDigits,
   closedDailyChanges,
   dailyChangeScopeKey,
   displayedColumns,
@@ -161,6 +164,7 @@ export const useMarketWatchExport = ({
         showMilliseconds,
         getTick: getTickSnapshot,
         getInstrumentSources,
+        catalogPriceDigits,
         translate,
       });
       const copied = await copyTextToClipboard(clipboardPayload);
@@ -209,6 +213,7 @@ export const useMarketWatchExport = ({
     brokerAccountScopeKey,
     cancelActiveExport,
     canIdentifyClosedSymbols,
+    catalogPriceDigits,
     closedDailyChanges,
     dailyChangeScopeKey,
     displayedColumns,

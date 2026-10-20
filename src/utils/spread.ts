@@ -1,3 +1,6 @@
+import { readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
+import { getPipExponentFromDigits, resolveSpecDigits } from './symbolUtils';
+
 export type SpreadDisplayUnit = 'pips' | 'price';
 
 export interface SpreadDisplay {
@@ -7,22 +10,6 @@ export interface SpreadDisplay {
   formatted: string;
 }
 
-const FOREX_CURRENCIES = new Set([
-  'AUD',
-  'CAD',
-  'CHF',
-  'EUR',
-  'GBP',
-  'JPY',
-  'NZD',
-  'USD',
-]);
-
-const METAL_PREFIXES = ['XAU', 'XAG', 'XPT', 'XPD'];
-
-const normalizeSymbolForSpread = (symbol: unknown): string =>
-  String(symbol ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-
 const toFiniteNumber = (value: unknown): number | null => {
   const next = Number(value);
   return Number.isFinite(next) ? next : null;
@@ -30,20 +17,6 @@ const toFiniteNumber = (value: unknown): number | null => {
 
 const trimTrailingZeros = (value: string): string =>
   value.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
-
-export const isForexPair = (symbol: unknown): boolean => {
-  const normalized = normalizeSymbolForSpread(symbol);
-  if (normalized.length < 6) return false;
-
-  const base = normalized.slice(0, 3);
-  const quote = normalized.slice(3, 6);
-  return FOREX_CURRENCIES.has(base) && FOREX_CURRENCIES.has(quote);
-};
-
-export const isMetalSymbol = (symbol: unknown): boolean => {
-  const normalized = normalizeSymbolForSpread(symbol);
-  return METAL_PREFIXES.some((prefix) => normalized.startsWith(prefix));
-};
 
 export const resolveRawSpread = (spread: unknown, bid?: unknown, ask?: unknown): number => {
   const direct = toFiniteNumber(spread);
@@ -57,11 +30,21 @@ export const resolveRawSpread = (spread: unknown, bid?: unknown, ask?: unknown):
   return 0;
 };
 
-const getForexPipFactor = (symbol: unknown): number => {
-  const normalized = normalizeSymbolForSpread(symbol);
-  const quote = normalized.slice(3, 6);
-  return quote === 'JPY' ? 100 : 10000;
-};
+/**
+ * Broker precision for spread display: the registered broker catalog first,
+ * then the caller's quote/tick digits. Null when no spec digits are known;
+ * never guessed from the symbol name.
+ */
+export const resolveSpreadDigits = (symbol: unknown, digits?: unknown): number | null =>
+  resolveSpecDigits(readRegisteredSymbolPriceSpec(symbol).digits, digits);
+
+/**
+ * Pip multiplier derived from broker digits via the terminal's single pip
+ * rule (getPipExponentFromDigits): 5 -> x10000, 3 -> x100, 2 -> x100,
+ * 4 -> x10000. Callers pass resolved spec digits.
+ */
+export const getSpreadPipFactor = (digits: number): number =>
+  Math.pow(10, getPipExponentFromDigits(digits) ?? 0);
 
 const formatPipSpread = (value: number): string => {
   if (value >= 10) return Math.round(value).toString();
@@ -75,30 +58,32 @@ const formatPriceSpread = (value: number): string => {
   return trimTrailingZeros(value.toPrecision(2));
 };
 
-export const getSpreadDisplay = (symbol: unknown, spread: unknown, bid?: unknown, ask?: unknown): SpreadDisplay => {
+/**
+ * Spread display from broker spec data only. With known digits (catalog or
+ * the caller's tick/quote digits) the spread is shown in pips; without them
+ * the raw price spread is shown.
+ */
+export const getSpreadDisplay = (
+  symbol: unknown,
+  spread: unknown,
+  bid?: unknown,
+  ask?: unknown,
+  digits?: unknown,
+): SpreadDisplay => {
   const raw = resolveRawSpread(spread, bid, ask);
+  const specDigits = resolveSpreadDigits(symbol, digits);
 
   if (raw <= 0) {
     return {
       raw,
       value: 0,
-      unit: isForexPair(symbol) || isMetalSymbol(symbol) ? 'pips' : 'price',
+      unit: specDigits === null ? 'price' : 'pips',
       formatted: '0',
     };
   }
 
-  if (isForexPair(symbol)) {
-    const value = raw * getForexPipFactor(symbol);
-    return {
-      raw,
-      value,
-      unit: 'pips',
-      formatted: formatPipSpread(value),
-    };
-  }
-
-  if (isMetalSymbol(symbol)) {
-    const value = raw * 100;
+  if (specDigits !== null) {
+    const value = raw * getSpreadPipFactor(specDigits);
     return {
       raw,
       value,
@@ -115,11 +100,22 @@ export const getSpreadDisplay = (symbol: unknown, spread: unknown, bid?: unknown
   };
 };
 
-export const formatSpreadDisplay = (symbol: unknown, spread: unknown, bid?: unknown, ask?: unknown): string =>
-  getSpreadDisplay(symbol, spread, bid, ask).formatted;
+export const formatSpreadDisplay = (
+  symbol: unknown,
+  spread: unknown,
+  bid?: unknown,
+  ask?: unknown,
+  digits?: unknown,
+): string => getSpreadDisplay(symbol, spread, bid, ask, digits).formatted;
 
-export const formatSpreadDisplayWithUnit = (symbol: unknown, spread: unknown, bid?: unknown, ask?: unknown): string => {
-  const display = getSpreadDisplay(symbol, spread, bid, ask);
+export const formatSpreadDisplayWithUnit = (
+  symbol: unknown,
+  spread: unknown,
+  bid?: unknown,
+  ask?: unknown,
+  digits?: unknown,
+): string => {
+  const display = getSpreadDisplay(symbol, spread, bid, ask, digits);
   if (display.formatted === '-') return display.formatted;
   return display.unit === 'pips' ? `${display.formatted} pips` : display.formatted;
 };

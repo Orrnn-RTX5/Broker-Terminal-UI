@@ -94,7 +94,11 @@ describe('BottomDock SL/TP modify-position dialog handoff', () => {
       makePosition(91002, 'GBPUSD', 'SELL'),
     ];
     trade.pendingPositions = [];
-    useAppStore.setState({ positions: trade.positions });
+    // Broker precision arrives with the quote (spec-only digits; never guessed).
+    useAppStore.setState({
+      positions: trade.positions,
+      ticks: { EURUSD: { digits: 5 }, GBPUSD: { digits: 5 } } as unknown as ReturnType<typeof useAppStore.getState>['ticks'],
+    });
     commitBrokerAccountSessionScope({
       authenticated: true,
       accountId: '77',
@@ -105,7 +109,7 @@ describe('BottomDock SL/TP modify-position dialog handoff', () => {
 
   afterEach(() => {
     cleanup();
-    useAppStore.setState({ positions: [] });
+    useAppStore.setState({ positions: [], ticks: {} });
     commitBrokerAccountSessionScope({ authenticated: false, brokerId: '', serverUrl: '' });
     localStorage.clear();
     vi.clearAllMocks();

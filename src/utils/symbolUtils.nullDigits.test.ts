@@ -48,6 +48,11 @@ describe('formatPrice with null/unknown digits', () => {
     expect(formatPrice(1.5)).toBe(String(1.5));
   });
 
+  it('renders a placeholder, not a 5-decimal zero, when there is no price', () => {
+    expect(formatPrice(Number.NaN, 5)).toBe('—');
+    expect(formatPrice(undefined as unknown as number)).toBe('—');
+  });
+
   it('still honors an explicit valid digit count', () => {
     expect(formatPrice(1.123456789, 2)).toBe('1.12');
     expect(formatPrice(1.123456789, 5)).toBe('1.12346');

@@ -5,6 +5,8 @@
  */
 
 import { formatSpreadDisplay } from '../utils/spread';
+import { formatPrice } from '../utils/symbolUtils';
+import { readRegisteredSymbolPriceSpec } from './dailyChangePriceModeRegistry';
 import { watchlistV2Api } from '../api/trade';
 import { useAppStore } from '../store/useAppStore';
 import { getAccessToken } from './brokerSession';
@@ -361,17 +363,23 @@ export function exportMarketWatchCSV(ticks: Record<string, any>): void {
 
   const rows = Object.keys(ticks).map(symbol => {
     const tick = ticks[symbol];
-    const spreadDisplay = formatSpreadDisplay(symbol, tick.spread, tick.bid, tick.ask);
+    const spreadDisplay = formatSpreadDisplay(symbol, tick.spread, tick.bid, tick.ask, tick.digits);
+    // Broker spec digits only (catalog first, then the tick); unknown
+    // precision exports the raw value, never a fixed 5-decimal guess.
+    const catalogDigits = readRegisteredSymbolPriceSpec(symbol).digits;
+    const csvPrice = (value: unknown): string => (
+      typeof value === 'number' && Number.isFinite(value) ? formatPrice(value, catalogDigits, tick.digits) : ''
+    );
     const timestamp = new Date(tick.timestamp || Date.now()).toISOString();
 
     return [
       symbol,
-      tick.bid?.toFixed(5) || '',
-      tick.ask?.toFixed(5) || '',
+      csvPrice(tick.bid),
+      csvPrice(tick.ask),
       spreadDisplay === '-' ? '' : spreadDisplay,
       (tick.dailyChange || 0).toFixed(2),
-      tick.high?.toFixed(5) || '',
-      tick.low?.toFixed(5) || '',
+      csvPrice(tick.high),
+      csvPrice(tick.low),
       tick.volume || 0,
       timestamp
     ].join(',');

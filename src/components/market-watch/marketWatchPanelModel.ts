@@ -1,8 +1,9 @@
+import { readRegisteredSymbolPriceSpec } from '../../services/dailyChangePriceModeRegistry';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { resolveTickFromLookup, useAppStore } from '../../store/useAppStore';
 import { normalizeSymbolDescriptionText } from '../../utils/symbolDescription';
 import { getInstrumentSymbolName } from '../../utils/symbolEligibility';
-import { formatPrice } from '../../utils/symbolUtils';
+import { formatPrice, resolveSpecDigits } from '../../utils/symbolUtils';
 
 /** Bottom tabs of the Market Watch window, in MT5 order. */
 export const MARKET_WATCH_VIEWS = ['symbols', 'details', 'trading', 'ticks'] as const;
@@ -24,18 +25,6 @@ export const SYMBOL_EXPLORER_OVERSCAN = 6;
 export const SYMBOL_EXPLORER_FALLBACK_HEIGHT = 288;
 export const EMPTY_SORT_TICKS = {};
 
-const TWO_DECIMAL_MARKET_WATCH_SYMBOLS = new Set([
-  'JPN225',
-  'JPN225-F',
-  'WHEAT',
-  'GOLD-PERP',
-  'NICKEL',
-  'COCOA',
-  'MAERSKB.DK',
-  'COFFEE',
-  'SPA35-F',
-]);
-
 export const normalizeSymbol = (value: unknown): string => String(value ?? '').trim().toUpperCase();
 
 export const readFiniteDailyChange = (value: unknown): number | null => {
@@ -54,14 +43,59 @@ export const getLatestMarketWatchTimestamp = (...values: unknown[]): number | un
   return timestamps.length > 0 ? Math.max(...timestamps) : undefined;
 };
 
-export const getMarketWatchPriceDigits = (symbol: string): number | undefined => (
-  TWO_DECIMAL_MARKET_WATCH_SYMBOLS.has(normalizeSymbol(symbol)) ? 2 : undefined
+/** Broker quote precision published on one catalog row (normalized field, then raw broker spec). */
+const readCatalogRowPriceDigits = (row: unknown): number | null => {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+  const record = row as Record<string, unknown>;
+  const brokerSpecification = record.brokerSpecification;
+  const specDigits = brokerSpecification && typeof brokerSpecification === 'object' && !Array.isArray(brokerSpecification)
+    ? (brokerSpecification as Record<string, unknown>).digits
+    : undefined;
+  return resolveSpecDigits(record.digits, specDigits);
+};
+
+/**
+ * Per-symbol broker price digits from the published instrument catalogs, in
+ * priority order (the first catalog that publishes digits for a symbol wins).
+ * Rows without broker digits are left out; nothing is inferred from names.
+ */
+export const buildMarketWatchCatalogPriceDigits = (
+  ...catalogs: ReadonlyArray<readonly unknown[] | undefined>
+): ReadonlyMap<string, number> => {
+  const digitsBySymbol = new Map<string, number>();
+  catalogs.forEach((catalog) => catalog?.forEach((row) => {
+    const symbol = normalizeSymbol(getInstrumentSymbolName(row));
+    if (!symbol || digitsBySymbol.has(symbol)) return;
+    const digits = readCatalogRowPriceDigits(row);
+    if (digits !== null) digitsBySymbol.set(symbol, digits);
+  }));
+  return digitsBySymbol;
+};
+
+/**
+ * Market Watch price precision from broker data only: the catalog row, then
+ * the registered catalog spec, then the live tick. Null when none publishes
+ * digits, so prices render raw instead of a guessed precision.
+ */
+export const resolveMarketWatchPriceDigits = (
+  symbol: string,
+  catalogDigits?: unknown,
+  tickDigits?: unknown,
+): number | null => resolveSpecDigits(
+  catalogDigits,
+  readRegisteredSymbolPriceSpec(symbol).digits,
+  tickDigits,
 );
 
-export const formatMarketWatchExportPrice = (symbol: string, value: unknown): string => {
+export const formatMarketWatchExportPrice = (
+  symbol: string,
+  value: unknown,
+  catalogDigits?: unknown,
+  tickDigits?: unknown,
+): string => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed === 0) return '-';
-  return formatPrice(parsed, getMarketWatchPriceDigits(symbol) ?? symbol);
+  return formatPrice(parsed, resolveMarketWatchPriceDigits(symbol, catalogDigits, tickDigits));
 };
 
 export const uniqueSymbols = (symbols: unknown[]): string[] => (

@@ -1,3 +1,5 @@
+import { readRegisteredSymbolContractSpec } from '../services/dailyChangePriceModeRegistry';
+
 export interface ExposurePositionInput {
   symbol?: string | null;
   side?: string | null;
@@ -115,14 +117,15 @@ export const parseExposureSymbol = (symbol: unknown): { base: string; quote: str
   return null;
 };
 
-export const getExposureContractSize = (position: ExposurePositionInput, base: string, quote: string): number => {
+/**
+ * Broker contract size only: the position row's own field, then the scoped
+ * instrument catalog. Null when neither publishes one (TERM-DIGITS-WL: never a
+ * symbol-name table such as XAU=100 / FX=100000).
+ */
+export const getExposureContractSize = (position: ExposurePositionInput): number | null => {
   const explicit = toFiniteNumber(position.contractSize ?? position.contract_size, 0);
   if (explicit > 0) return explicit;
-  if (base === 'XAU') return 100;
-  if (base === 'XAG') return 5000;
-  if (base === 'BTC' || base === 'ETH') return 1;
-  if (FIAT_ASSETS.has(base) && FIAT_ASSETS.has(quote)) return 100000;
-  return 1;
+  return readRegisteredSymbolContractSpec(position.symbol).contractSize;
 };
 
 const getPositionRate = (position: ExposurePositionInput): number => {
@@ -191,12 +194,15 @@ export const buildExposureSummary = (
     const parsedSymbol = parseExposureSymbol(position.symbol);
     if (!parsedSymbol) return null;
 
-    const { base, quote } = parsedSymbol;
+    const { base } = parsedSymbol;
     const lots = getPositionVolume(position);
     const rate = getPositionRate(position);
     if (lots <= 0 || rate <= 0) return null;
 
-    const contractSize = getExposureContractSize(position, base, quote);
+    const contractSize = getExposureContractSize(position);
+    // Unknown contract size: the exposure cannot be sized honestly, so the
+    // position is left out rather than sized from a guessed lot multiplier.
+    if (contractSize === null) return null;
     const baseUnits = lots * contractSize;
     const notionalValue = baseUnits * rate;
     const direction = String(position.side ?? '').toUpperCase() === 'SELL' ? -1 : 1;

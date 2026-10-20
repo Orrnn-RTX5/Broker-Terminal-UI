@@ -47,7 +47,7 @@ export const applySpreadMarkupToOrderBook = (
     bids,
     asks,
     spread,
-    spreadPips: getSpreadPips(orderBook.symbol, spread),
+    spreadPips: getSpreadPips(orderBook.symbol, spread, entry.digits),
   };
 };
 

@@ -21,6 +21,7 @@ import { MarketWatchServerClock } from '../layout/MarketWatchServerClock';
 import './market-watch-desktop.css';
 import type { ActiveMarketSymbolsSnapshot } from './marketWatchPanelTypes';
 import {
+  buildMarketWatchCatalogPriceDigits,
   closeMarketWatchDockPanel,
   findInstrumentBySymbol,
   getBrokerSpecificationSource,
@@ -528,10 +529,19 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
         .filter((entry) => entry !== undefined)
     ), [allSymbols, authenticatedMarketInstruments, marketInstruments]);
 
+    // Broker-published price digits per symbol (account catalog first). Rows
+    // and exports re-render when the catalog arrives; no name-based guesses.
+    const catalogPriceDigits = useMemo(() => buildMarketWatchCatalogPriceDigits(
+      authenticatedMarketInstruments,
+      marketInstruments,
+      allSymbols,
+    ), [allSymbols, authenticatedMarketInstruments, marketInstruments]);
+
     const handleExport = useMarketWatchExport({
       activeSymbolSet,
       brokerAccountScopeKey,
       canIdentifyClosedSymbols,
+      catalogPriceDigits,
       closedDailyChanges,
       dailyChangeScopeKey,
       displayedColumns,
@@ -887,6 +897,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               }
               actionableSymbolSet={actionableSymbolSet}
               chartOpenableSymbolSet={chartOpenableSymbolSet}
+              catalogPriceDigits={catalogPriceDigits}
               closedDailyChanges={closedDailyChanges}
               columns={displayedColumns}
               getContextMenuItems={getContextMenuItems}
@@ -1016,6 +1027,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
           columns={columns}
           showMilliseconds={marketWatchOptions.showMilliseconds}
           descriptions={symbolDescriptionByName}
+          catalogPriceDigits={catalogPriceDigits}
           fallbackPrices={lastPrices}
           dailyChanges={closedDailyChanges}
           onClose={() => setPopupPricesOpen(false)}

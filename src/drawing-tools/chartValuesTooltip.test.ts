@@ -48,6 +48,23 @@ describe('long-press values tooltip', () => {
     })).toBeNull();
   });
 
+  it('renders raw values instead of zero decimals when broker digits are unknown (TERM-DIGITS-WL)', () => {
+    const candles = [candle(100, 150.123, 150.456)];
+    const model = buildChartValuesTooltip({
+      symbol: 'USDJPY',
+      timeframe: 'M1',
+      digits: null,
+      candles,
+      clientX: 40,
+      chartLeft: 10,
+      coordinateToTime: () => 100,
+      indicatorRows: () => [{ label: 'MA', value: 150.25 }],
+    });
+    expect(model?.lines.find((line) => line.label === 'Open')?.value).toBe('150.123');
+    expect(model?.lines.find((line) => line.label === 'Close')?.value).toBe('150.456');
+    expect(model?.lines.find((line) => line.label === 'MA')?.value).toBe('150.25');
+  });
+
   it('opens after a hold and closes when the pointer is released', () => {
     vi.useFakeTimers();
     const wrapper = document.createElement('div');

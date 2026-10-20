@@ -32,6 +32,14 @@ describe('Data Window chart connection', () => {
     cleanup();
     expect(vi.getTimerCount()).toBe(0);
   });
+  it('renders raw OHLC values when the broker published no digits (TERM-DIGITS-WL)', () => {
+    state.read.mockReturnValue(createChartDataSnapshot({ ...candle, open: 150.1, close: 150.123 }, 'USDJPY', 'M1', null));
+    render(<DataWindow onClose={() => {}} />);
+    expect(screen.getByText('USDJPY,M1')).toBeInTheDocument();
+    expect(screen.getByText('150.1')).toBeInTheDocument();
+    expect(screen.getByText('150.123')).toBeInTheDocument();
+    expect(screen.queryByText('150.10000')).not.toBeInTheDocument();
+  });
   it('preserves zero volume, broker time offset and unavailable fields honestly', () => {
     const data = createChartDataSnapshot({ ...candle, volume: 0, tickVolume: undefined }, 'TEST', 'M5', 3, 3600)!;
     expect(data.volume).toBe(0);

@@ -70,10 +70,12 @@ describe('OrderPanelDialog MT5 Desktop layout and behavior', () => {
         currentPrice={{ bid: 4173.23, ask: 4173.77 }}
         onSubmitOrder={vi.fn()}
         symbols={['XAUUSD', 'EURUSD']}
+        instruments={[{ symbol: 'XAUUSD', digits: 2, contractSize: 100 }]}
       />,
     );
 
     expect(screen.getByText('Order: XAUUSD - Gold vs US Dollar')).not.toBeNull();
+    // Contract units come from the broker catalog contract size (0.01 x 100).
     expect(screen.getByText('1 XAUUSD')).not.toBeNull();
     expect(screen.getByText('4 173.23 / 4 173.77')).not.toBeNull();
     expect(screen.getByRole('tab', { name: 'Fill or Kill' }).getAttribute('aria-selected')).toBe('true');
@@ -175,5 +177,65 @@ describe('OrderPanelDialog MT5 Desktop layout and behavior', () => {
     // Toggle Depth of Market off
     fireEvent.click(screen.getByTestId('order-toggle-dom'));
     expect(screen.queryByTestId('order-dom-pane')).toBeNull();
+  });
+
+  it('shows an honest unknown for contract units when the broker catalog has no contract size', () => {
+    const { container } = render(
+      <OrderPanelDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        currentPrice={{ bid: 4173.23, ask: 4173.77 }}
+        onSubmitOrder={vi.fn()}
+      />,
+    );
+
+    const units = container.querySelector('.rtx-order-dialog__contract-units');
+    expect(units?.textContent).toBe('—');
+    // No name-table lot sizes (100 for XAU, 100000 for FX).
+    expect(screen.queryByText('1 XAUUSD')).toBeNull();
+    expect(screen.queryByText('1 000 XAUUSD')).toBeNull();
+  });
+
+  it('renders raw prices (no guessed precision) when no broker digits are known', () => {
+    useAppStore.getState().setTicks({
+      TESTFIX: {
+        symbol: 'TESTFIX',
+        bid: 1.2345678,
+        ask: 1.2346,
+        spread: 0.0000322,
+        timestamp: Date.now(),
+      },
+    });
+    expect(() => render(
+      <OrderPanelDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="TESTFIX"
+        currentPrice={{ bid: 1.2345678, ask: 1.2346 }}
+        onSubmitOrder={vi.fn()}
+      />,
+    )).not.toThrow();
+
+    // Header quote is the raw broker value: no 5-digit/2-digit default.
+    expect(screen.getByText('1.2345678 / 1.2346')).not.toBeNull();
+    expect(screen.getByLabelText('Bid 1.2345678, Ask 1.2346')).not.toBeNull();
+    // The mocked live book (6 levels) is shown verbatim, unrounded.
+    expect(screen.getAllByText('4173.23').length).toBeGreaterThan(0);
+  });
+
+  it('uses catalog digits over the tick payload for the header quote', () => {
+    render(
+      <OrderPanelDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        currentPrice={{ bid: 4173.23, ask: 4173.77 }}
+        onSubmitOrder={vi.fn()}
+        instruments={[{ symbol: 'xauusd', digits: 3 }]}
+      />,
+    );
+
+    expect(screen.getByText('4 173.230 / 4 173.770')).not.toBeNull();
   });
 });

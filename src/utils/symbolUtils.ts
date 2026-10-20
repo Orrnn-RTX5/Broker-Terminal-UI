@@ -27,13 +27,34 @@ export function resolveSpecDigits(...sources: unknown[]): number | null {
 }
 
 /**
+ * The terminal's single pip rule, from broker digits only: fractional-pip
+ * quotes (3 or 5 digits) count one pip as 10 points; every other precision
+ * counts one pip as one point (5 -> 0.0001, 3 -> 0.01, 2 -> 0.01, 4 -> 0.0001).
+ * Returns null when no valid spec digits are given (never guessed by name).
+ * Shared by spread display, chart trade controls and order sizing so one
+ * symbol always shows the same pip count everywhere.
+ */
+export function getPipExponentFromDigits(digits: unknown): number | null {
+  const resolved = resolveSpecDigits(digits);
+  if (resolved === null) return null;
+  return resolved === 3 || resolved === 5 ? resolved - 1 : resolved;
+}
+
+/** Pip size (price units) from broker digits; null when digits are unknown. */
+export function getPipSizeFromDigits(digits: unknown): number | null {
+  const exponent = getPipExponentFromDigits(digits);
+  return exponent === null ? null : 1 / Math.pow(10, exponent);
+}
+
+/**
  * Formats a price value with broker-provided digits. Pass broker digits
  * sources (tick?.digits, position.digits, instrument.digits, ...); the first
  * valid integer 0-8 wins. Renders the raw value (String(price)) when no spec
  * digits are available instead of guessing from the symbol name.
  */
 export function formatPrice(price: number, ...digitsSources: unknown[]): string {
-  if (typeof price !== 'number' || isNaN(price)) return '0.00000';
+  // No price: an honest placeholder, never a 5-decimal zero guess.
+  if (typeof price !== 'number' || isNaN(price)) return '—';
 
   const digits = resolveSpecDigits(...digitsSources);
   if (digits === null) return String(price);

@@ -12,6 +12,7 @@ import { normalizeExactBrokerSymbol } from '../utils/exactBrokerSymbol';
 import { isShortcutOwnedBy, shouldIgnoreShortcutEvent } from '../services/keyboardShortcutManager';
 import { getAccessToken } from '../services/brokerSession';
 import { getBrokerConfigurationError, isConfiguredBrokerEndpoint } from '../config/backendTarget.js';
+import { resolveSpecDigits } from '../utils/symbolUtils';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -20,9 +21,10 @@ interface SymbolSpec {
   name: string;
   description: string;
   category: string;
-  digits: number;
-  tickSize: number;
-  contractSize: number;
+  /** Broker digits/tick/contract geometry; null when the broker published none. */
+  digits: number | null;
+  tickSize: number | null;
+  contractSize: number | null;
   marginRate: number;
   tradingEnabled: boolean;
   bid?: number;
@@ -59,6 +61,8 @@ interface BarRow {
   low: number;
   close: number;
   volume: number;
+  /** Broker-published bar spread (points); absent when the candle feed omits it. */
+  spread?: number;
 }
 
 interface TickRow {
@@ -189,13 +193,28 @@ const ACCOUNT_SYMBOL_ENDPOINTS = ['/api/v2/instruments'];
 const extractInstrumentRows = (payload: unknown): any[] =>
   asArray<any>(payload, ['symbols', 'instruments', 'data', 'result']);
 
+const readPositiveSpecNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+/** Price with broker digits; raw value when the broker published no precision. */
+const formatSpecPrice = (value: number, digits: unknown): string => {
+  const resolved = resolveSpecDigits(digits);
+  return resolved === null ? String(value) : value.toFixed(resolved);
+};
+
 const normalizeInstrument = (raw: any): SymbolSpec | null => {
   const name = String(raw?.symbol ?? raw?.name ?? raw?.id ?? '').trim();
   if (!name) return null;
   const sector = getSymbolSector(name);
-  const digits = Number(raw?.digits ?? 5);
-  const tickSize = Number(raw?.tick_size ?? raw?.tickSize ?? (digits > 0 ? 1 / Math.pow(10, digits) : 0.00001));
-  const contractSize = Number(raw?.contract_size ?? raw?.contractSize ?? 0);
+  // TERM-DIGITS-WL: broker spec only. Unknown digits/tick/contract stay null
+  // (rendered raw or as an honest unknown), never a 5-digit default.
+  const digits = resolveSpecDigits(raw?.digits);
+  const tickSize = readPositiveSpecNumber(raw?.tick_size ?? raw?.tickSize)
+    ?? (digits !== null ? Math.pow(10, -digits) : null);
+  const contractSize = readPositiveSpecNumber(raw?.contract_size ?? raw?.contractSize);
   const bid = Number(raw?.bid);
   const ask = Number(raw?.ask);
 
@@ -205,9 +224,9 @@ const normalizeInstrument = (raw: any): SymbolSpec | null => {
     symbol: name,
     description: String(raw?.description ?? name),
     category: String(raw?.category ?? 'Forex'),
-    digits: Number.isFinite(digits) ? digits : 5,
-    tickSize: Number.isFinite(tickSize) ? tickSize : 0.00001,
-    contractSize: Number.isFinite(contractSize) ? contractSize : 0,
+    digits,
+    tickSize,
+    contractSize,
     marginRate: Number(raw?.margin_rate ?? raw?.marginRate ?? 0),
     tradingEnabled: Boolean(raw?.enabled ?? raw?.trading_enabled ?? raw?.tradingEnabled ?? true),
     bid: Number.isFinite(bid) ? bid : undefined,
@@ -215,7 +234,8 @@ const normalizeInstrument = (raw: any): SymbolSpec | null => {
     ...sector,
     spread: raw?.spread ?? 'floating',
     stopsLevel: Number(raw?.stops_level ?? raw?.stopsLevel ?? 0),
-    marginCurrency: raw?.margin_currency ?? raw?.marginCurrency ?? name.slice(0, 3),
+    // Broker-published only; never sliced from the symbol name.
+    marginCurrency: raw?.margin_currency ?? raw?.marginCurrency,
     swapLong: Number(raw?.swap_long ?? raw?.swapLong ?? 0),
     swapShort: Number(raw?.swap_short ?? raw?.swapShort ?? 0),
     minVolume: Number(raw?.min_volume ?? raw?.minVolume ?? 0),
@@ -234,6 +254,9 @@ const normalizeBar = (raw: any): BarRow | null => {
   const volume = Number(raw?.volume ?? raw?.Volume ?? raw?.v ?? raw?.tick_count ?? raw?.tickCount ?? 0);
   if (rawTime == null || ![open, high, low, close].every(Number.isFinite)) return null;
   if (open <= 0 && close <= 0) return null;
+  const rawSpread = raw?.spread ?? raw?.Spread;
+  const parsedSpread = rawSpread === null || rawSpread === undefined || rawSpread === '' ? Number.NaN : Number(rawSpread);
+  const barSpread = Number.isFinite(parsedSpread) && parsedSpread >= 0 ? parsedSpread : null;
   return {
     time: safeTime(rawTime),
     open,
@@ -241,6 +264,7 @@ const normalizeBar = (raw: any): BarRow | null => {
     low,
     close,
     volume: Number.isFinite(volume) ? volume : 0,
+    ...(barSpread === null ? {} : { spread: barSpread }),
   };
 };
 
@@ -879,12 +903,12 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   const specFields = selectedSymbol ? [
     { label: 'Sector', value: selectedSymbol.sector || 'Forex', color: 'text-[var(--text-primary)]' },
     { label: 'Industry', value: selectedSymbol.industry || 'Currency Pairs', color: 'text-[var(--text-primary)]', alignRight: true },
-    { label: 'Digits', value: selectedSymbol.digits, color: 'text-[var(--text-primary)]' },
-    { label: 'Contract size', value: `${selectedSymbol.contractSize} ${selectedSymbol.marginCurrency || ''}`, color: 'text-[var(--text-primary)]' },
+    { label: 'Digits', value: selectedSymbol.digits ?? '—', color: 'text-[var(--text-primary)]' },
+    { label: 'Contract size', value: selectedSymbol.contractSize === null ? '—' : `${selectedSymbol.contractSize} ${selectedSymbol.marginCurrency || ''}`.trim(), color: 'text-[var(--text-primary)]' },
     { label: 'Spread', value: selectedSymbol.spread || 'floating', color: 'text-[var(--text-primary)]' },
     { label: 'Stops level', value: selectedSymbol.stopsLevel || 20, color: 'text-[var(--text-primary)]' },
-    { label: 'Margin currency', value: selectedSymbol.marginCurrency || selectedSymbol.name.slice(0, 3), color: 'text-[var(--color-profit)]' },
-    { label: 'Tick size', value: selectedSymbol.tickSize, color: 'text-[var(--text-primary)]' },
+    { label: 'Margin currency', value: selectedSymbol.marginCurrency || '—', color: 'text-[var(--color-profit)]' },
+    { label: 'Tick size', value: selectedSymbol.tickSize ?? '—', color: 'text-[var(--text-primary)]' },
     { label: 'Trading enabled', value: selectedSymbol.tradingEnabled ? 'Yes' : 'No', color: 'text-[var(--text-primary)]' },
   ] : [];
 
@@ -1069,13 +1093,13 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                               </svg>
                               {bar.time.replace(/,/g, '')}
                             </td>
-                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{bar.open.toFixed(selectedSymbol?.digits || 5)}</td>
-                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{bar.high.toFixed(selectedSymbol?.digits || 5)}</td>
-                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{bar.low.toFixed(selectedSymbol?.digits || 5)}</td>
-                            <td className={`px-3 py-[4px] font-mono text-right ${isUp ? 'text-[var(--color-profit)]' : 'text-blue-400'}`}>{bar.close.toFixed(selectedSymbol?.digits || 5)}</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{formatSpecPrice(bar.open, selectedSymbol?.digits)}</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{formatSpecPrice(bar.high, selectedSymbol?.digits)}</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{formatSpecPrice(bar.low, selectedSymbol?.digits)}</td>
+                            <td className={`px-3 py-[4px] font-mono text-right ${isUp ? 'text-[var(--color-profit)]' : 'text-blue-400'}`}>{formatSpecPrice(bar.close, selectedSymbol?.digits)}</td>
                             <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{bar.volume.toLocaleString()}</td>
                             <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">0</td>
-                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{Math.round((bar.high - bar.low) * Math.pow(10, selectedSymbol?.digits || 5) * 0.1) || 10}</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{bar.spread ?? '—'}</td>
                           </tr>
                         );
                       })}
@@ -1176,9 +1200,9 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                           <td className="px-3 py-[4px] text-[var(--text-primary)] text-left whitespace-nowrap">
                             {tick.time.replace(/,/g, '')}
                           </td>
-                          <td className="px-3 py-[4px] text-red-400 font-mono text-right">{tick.bid.toFixed(selectedSymbol?.digits || 5)}</td>
-                          <td className="px-3 py-[4px] text-[var(--color-profit)] font-mono text-right">{tick.ask.toFixed(selectedSymbol?.digits || 5)}</td>
-                          <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{tick.last.toFixed(selectedSymbol?.digits || 5)}</td>
+                          <td className="px-3 py-[4px] text-red-400 font-mono text-right">{formatSpecPrice(tick.bid, selectedSymbol?.digits)}</td>
+                          <td className="px-3 py-[4px] text-[var(--color-profit)] font-mono text-right">{formatSpecPrice(tick.ask, selectedSymbol?.digits)}</td>
+                          <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{formatSpecPrice(tick.last, selectedSymbol?.digits)}</td>
                           <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{tick.volume.toLocaleString()}</td>
                           <td className="px-3 py-[4px] text-[var(--text-secondary)] font-mono text-right">{tick.flags}</td>
                         </tr>

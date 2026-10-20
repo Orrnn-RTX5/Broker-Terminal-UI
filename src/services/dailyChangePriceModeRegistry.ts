@@ -17,12 +17,15 @@ export interface DailyChangePriceModeCatalogRow {
   /** Normalized catalog fields (MarketInstrument), read when no spec row carries them. */
   digits?: unknown;
   tickSize?: unknown;
+  contractSize?: unknown;
 }
 
 let activeScopeKey = '';
 let modesBySymbol = new Map<string, DailyChangePriceMode>();
 let digitsBySymbol = new Map<string, number>();
 let tickSizeBySymbol = new Map<string, number>();
+let contractSizeBySymbol = new Map<string, number>();
+let contractUnitBySymbol = new Map<string, string>();
 
 const normalizeSymbol = (value: unknown): string => String(value ?? '').trim().toUpperCase();
 
@@ -40,6 +43,8 @@ const resetForScope = (scope: CommittedBrokerAccountSessionScope): void => {
   modesBySymbol = new Map();
   digitsBySymbol = new Map();
   tickSizeBySymbol = new Map();
+  contractSizeBySymbol = new Map();
+  contractUnitBySymbol = new Map();
 };
 
 resetForScope(getCommittedBrokerAccountSessionScope());
@@ -93,6 +98,40 @@ const readCatalogTickSize = (
   return null;
 };
 
+/** Broker contract size: the normalized catalog field first, then the raw spec row. */
+const readCatalogContractSize = (
+  row: DailyChangePriceModeCatalogRow,
+  specification: Record<string, unknown> | undefined,
+): number | null => {
+  const normalized = readPositiveNumber(row.contractSize);
+  if (normalized !== null) return normalized;
+  const nested = asRecord(specification?.specification);
+  for (const source of [specification, nested]) {
+    const value = readPositiveNumber(
+      source?.contract_size ?? source?.contractSize ?? source?.trade_contract_size ?? source?.tradeContractSize,
+    );
+    if (value !== null) return value;
+  }
+  return null;
+};
+
+const CONTRACT_UNIT_KEYS = [
+  'contract_size_unit', 'contractSizeUnit', 'contract_unit', 'contractUnit',
+  'currency_base', 'currencyBase', 'base_currency', 'baseCurrency',
+] as const;
+
+/** Broker-published contract unit (explicit unit, else base currency); never sliced from the symbol name. */
+const readCatalogContractUnit = (specification: Record<string, unknown> | undefined): string | null => {
+  const nested = asRecord(specification?.specification);
+  for (const key of CONTRACT_UNIT_KEYS) {
+    for (const source of [specification, nested]) {
+      const value = source?.[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+  }
+  return null;
+};
+
 /**
  * Replace chart modes with one complete, currently published catalog. A late
  * response captured under another broker/account is rejected rather than
@@ -108,6 +147,8 @@ export const registerDailyChangePriceModes = (
   const next = new Map<string, DailyChangePriceMode>();
   const nextDigits = new Map<string, number>();
   const nextTickSizes = new Map<string, number>();
+  const nextContractSizes = new Map<string, number>();
+  const nextContractUnits = new Map<string, string>();
   rows.forEach((row) => {
     const symbol = normalizeSymbol(row.symbol);
     const mode = readCatalogMode(row);
@@ -117,11 +158,17 @@ export const registerDailyChangePriceModes = (
     if (symbol && typeof digits === 'number' && Number.isInteger(digits) && digits >= 0 && digits <= 12) nextDigits.set(symbol, digits);
     const tickSize = readCatalogTickSize(row, specification);
     if (symbol && tickSize !== null) nextTickSizes.set(symbol, tickSize);
+    const contractSize = readCatalogContractSize(row, specification);
+    if (symbol && contractSize !== null) nextContractSizes.set(symbol, contractSize);
+    const contractUnit = readCatalogContractUnit(specification);
+    if (symbol && contractUnit !== null) nextContractUnits.set(symbol, contractUnit);
   });
   activeScopeKey = currentScopeKey;
   modesBySymbol = next;
   digitsBySymbol = nextDigits;
   tickSizeBySymbol = nextTickSizes;
+  contractSizeBySymbol = nextContractSizes;
+  contractUnitBySymbol = nextContractUnits;
   return true;
 };
 
@@ -147,6 +194,30 @@ export const readRegisteredSymbolPriceSpec = (symbol: unknown): RegisteredSymbol
   return {
     digits: digitsBySymbol.get(normalizedSymbol) ?? null,
     tickSize: tickSizeBySymbol.get(normalizedSymbol) ?? null,
+  };
+};
+
+export interface RegisteredSymbolContractSpec {
+  /** Broker contract size (units per lot), or null when the catalog did not publish it. */
+  contractSize: number | null;
+  /** Broker contract unit (explicit unit, else base currency), or null when unpublished. */
+  contractUnit: string | null;
+}
+
+/**
+ * Broker-published contract geometry for one symbol in the committed
+ * broker/account scope. Unknown values stay null; never guessed from the
+ * symbol name.
+ */
+export const readRegisteredSymbolContractSpec = (symbol: unknown): RegisteredSymbolContractSpec => {
+  const currentScopeKey = getCurrentDailyChangePriceModeScopeKey();
+  const normalizedSymbol = normalizeSymbol(symbol);
+  if (!currentScopeKey || currentScopeKey !== activeScopeKey || !normalizedSymbol) {
+    return { contractSize: null, contractUnit: null };
+  }
+  return {
+    contractSize: contractSizeBySymbol.get(normalizedSymbol) ?? null,
+    contractUnit: contractUnitBySymbol.get(normalizedSymbol) ?? null,
   };
 };
 

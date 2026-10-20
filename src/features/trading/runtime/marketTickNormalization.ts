@@ -6,7 +6,7 @@ import {
   readDailyChangePreviousClose,
   resolveDailyChangePercent,
 } from '../../../utils/dailyChange';
-import { resolveDailyChangePriceMode } from '../../../services/dailyChangePriceModeRegistry';
+import { readRegisteredSymbolPriceSpec, resolveDailyChangePriceMode } from '../../../services/dailyChangePriceModeRegistry';
 import { asUnknownRecord, readBrokerTimestampMs } from '../../../utils/brokerStreamSemantics';
 import { readQuoteSessionRange, type QuoteSessionRange } from '../../../utils/quoteSessionRange';
 import { resolveSpecDigits } from '../../../utils/symbolUtils';
@@ -55,18 +55,11 @@ export const toNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(number) ? number : fallback;
 };
 
-const getDefaultSpread = (symbol: string): number => {
-  if (symbol.includes('JPY')) return 0.01;
-  if (symbol.includes('XAU') || symbol.includes('XAG') || symbol.includes('XPT') || symbol.includes('XPD')) return 0.5;
-  if (symbol.includes('BTC')) return 50;
-  if (symbol.includes('ETH')) return 5;
-  if (symbol.includes('LTC') || symbol.includes('SOL') || symbol.includes('XRP')) return 0.5;
-  return 0.0001;
-};
-
-// TERM-DIGITS-WL: the name-based digits table is deleted. Broker digits
-// flow through record/previous; unknown precision stays null (render raw).
-// (getDefaultSpread above is spread synthesis, out of scope here.)
+// TERM-DIGITS-WL: no symbol-name tables. Digits come from the registered
+// broker catalog first, then the tick payload, then the previous tick; unknown
+// precision stays null (render raw). A mid-only payload with no broker or
+// previous spread is synthesized with spread 0 (bid = ask = mid), never with a
+// spread guessed from the symbol name.
 
 export const normalizeRealtimeTick = (
   raw: unknown,
@@ -113,7 +106,7 @@ export const normalizeRealtimeTick = (
         ? rawSpread
         : (Number.isFinite(previousSpread) && previousSpread! >= 0
           ? previousSpread!
-          : getDefaultSpread(symbol));
+          : 0);
       bid = parsedMid - spreadForSynthesis / 2;
       ask = parsedMid + spreadForSynthesis / 2;
     }
@@ -160,7 +153,7 @@ export const normalizeRealtimeTick = (
     // Last is an exchange field, not the Bid/Ask midpoint. Leave it absent
     // when the broker did not publish one.
     last: brokerLast,
-    digits: resolveSpecDigits(record.digits, previous?.digits),
+    digits: resolveSpecDigits(readRegisteredSymbolPriceSpec(symbol).digits, record.digits, previous?.digits),
     ...readQuoteSessionRange(record),
     open: readFirstFiniteNumber(record, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']),
     close: readFirstFiniteNumber(record, ['close', 'close_price', 'closePrice']) ?? previousClose,

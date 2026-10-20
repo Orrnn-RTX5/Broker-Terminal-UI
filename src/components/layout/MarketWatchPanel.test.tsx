@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   brokerAccountScopeHook,
+  brokerCatalogRows,
   closedDailyChangeHook,
   CORE_DEFAULT_SYMBOLS,
   DEFAULT_DISPLAY_SYMBOLS,
@@ -95,7 +96,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     localStorage.removeItem('rtx5_symbol_sets');
     localStorage.removeItem('rtx5_symbol_set_columns');
     marketHooks.activeSymbols = [...DEFAULT_SYMBOLS, 'ETHUSD', '0001.HK'];
-    marketHooks.instrumentSymbols = [...DEFAULT_SYMBOLS];
+    marketHooks.instrumentSymbols = brokerCatalogRows(DEFAULT_SYMBOLS);
     marketHooks.authorizedInstruments = [];
     marketHooks.authorizedSymbols = [...DEFAULT_SYMBOLS];
     marketHooks.disabledSymbols = [];
@@ -745,7 +746,7 @@ describe('MarketWatchPanel symbol visibility', () => {
 
   it('shows the requested Market Watch instruments with exactly two price decimals', () => {
     const precisionSymbols = ['JPN225', 'JPN225-F', 'WHEAT', 'GOLD-PERP', 'NICKEL', 'EURUSD'];
-    setMarketCatalog(precisionSymbols);
+    setMarketCatalog(precisionSymbols.map((symbol) => ({ symbol, digits: symbol === 'EURUSD' ? 5 : 2 })));
     marketHooks.activeSymbols = [...precisionSymbols];
     watchlistState.activeWatchlistId = 'precision';
     watchlistState.watchlists = [{
@@ -803,7 +804,7 @@ describe('MarketWatchPanel symbol visibility', () => {
 
   it('renders COCOA and MAERSKB.DK bid and ask with exactly two decimal places', () => {
     const precisionSymbols = ['COCOA', 'MAERSKB.DK'];
-    setMarketCatalog(precisionSymbols);
+    setMarketCatalog(precisionSymbols.map((symbol) => ({ symbol, digits: 2 })));
     marketHooks.activeSymbols = [...precisionSymbols];
     watchlistState.activeWatchlistId = 'screenshot-precision';
     watchlistState.watchlists = [{
@@ -848,6 +849,50 @@ describe('MarketWatchPanel symbol visibility', () => {
       } else {
         Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
       }
+    }
+  });
+
+  it('renders prices raw when neither the broker catalog row nor the tick publishes digits', async () => {
+    const rawSymbols = ['XAUUSD', 'JPN225'];
+    // Real broker rows without precision: nothing may be inferred from the names.
+    setMarketCatalog(rawSymbols.map((symbol) => ({ symbol })));
+    marketHooks.activeSymbols = [...rawSymbols];
+    watchlistState.activeWatchlistId = 'raw-precision';
+    watchlistState.watchlists = [{ id: 'raw-precision', symbols: [...rawSymbols], isDefault: false }];
+    act(() => {
+      useAppStore.getState().setTicks({
+        XAUUSD: { symbol: 'XAUUSD', bid: 4385.2, ask: 4385.4, spread: 0.2, timestamp: Date.now() },
+        JPN225: { symbol: 'JPN225', bid: 64706.7, ask: 64714.7, spread: 8, timestamp: Date.now() },
+      });
+    });
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(379);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    try {
+      render(<MarketWatchPanel allSymbols={rawSymbols} selectedSymbol="XAUUSD" onSymbolSelect={vi.fn()} />);
+
+      const expectedPrices: Record<string, [string, string]> = {
+        XAUUSD: ['4385.2', '4385.4'],
+        JPN225: ['64706.7', '64714.7'],
+      };
+      Object.entries(expectedPrices).forEach(([symbol, [expectedBid, expectedAsk]]) => {
+        const row = screen.getByText(symbol).closest('tr')!;
+        expect(row.querySelector('.rtx-market-watch__price--bid')?.textContent).toBe(expectedBid);
+        expect(row.querySelector('.rtx-market-watch__price--ask')?.textContent).toBe(expectedAsk);
+      });
+      expect(screen.getByText('JPN225').closest('tr')).not.toHaveTextContent('64706.70');
+
+      fireEvent.contextMenu(screen.getByText('XAUUSD').closest('tr')!);
+      fireEvent.click(screen.getByText('Export'));
+      await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      expect(writeText.mock.calls[0][0]).toContain('XAUUSD	4385.2	4385.4	');
+      expect(writeText.mock.calls[0][0]).toContain('JPN225	64706.7	64714.7	');
+    } finally {
+      width.mockRestore();
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
     }
   });
 

@@ -37,7 +37,8 @@ import {
     normalizeExactBrokerSymbol,
     resolveExactBrokerSymbolValue,
 } from '../utils/exactBrokerSymbol';
-import { resolveSpecDigits } from '../utils/symbolUtils';
+import { getPipSizeFromDigits, resolveSpecDigits } from '../utils/symbolUtils';
+import { readRegisteredSymbolContractSpec, readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
 
 const PANEL_WIDTH = 368;
 const PANEL_EDGE_GAP = 12;
@@ -127,19 +128,18 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
     const ask = tick?.ask ?? 0;
     const spread = ask - bid;
 
-    // TERM-DIGITS-WL: catalog (spec) digits only — tick?.digits via
-    // resolveSpecDigits. No symbol-name table, no fallback constant. Unknown
-    // precision stays null: prices render raw (String(value)), and pip-size
-    // math that cannot run without precision degrades honestly (see below).
-    const digits = resolveSpecDigits(tick?.digits);
-    // Pip derived from broker digits with the same exponent rule as
-    // OrderPanelDialog's liveDigits override (3/5-digit feeds quote a
-    // fractional pip, so pip = 10^-(digits-1); otherwise pip = 10^-digits).
+    // TERM-DIGITS-WL: spec digits only — the broker instrument catalog first,
+    // then broker tick metadata (resolveSpecDigits). No symbol-name table, no
+    // fallback constant. Unknown precision stays null: prices render raw
+    // (String(value)), and pip-size math that cannot run without precision
+    // degrades honestly (see below).
+    const digits = resolveSpecDigits(readRegisteredSymbolPriceSpec(lastSymbol).digits, tick?.digits);
+    // Pip from broker digits via the terminal's single pip rule
+    // (getPipSizeFromDigits, shared with spread and chart controls).
     // Null when precision is unknown: no invented pip.
-    const pipSize = digits === null
-        ? null
-        : Math.pow(10, -(digits === 3 || digits === 5 ? digits - 1 : digits));
-    const spreadDisplay = formatSpreadDisplayWithUnit(lastSymbol, tick?.spread ?? spread, bid, ask);
+    const pipSize = getPipSizeFromDigits(digits);
+    // Spread pips from the same catalog-first spec digits as the prices.
+    const spreadDisplay = formatSpreadDisplayWithUnit(lastSymbol, tick?.spread ?? spread, bid, ask, digits);
 
     // FIX: Closing/summary ownership follows the same exact contract identity
     // as its quote; case/whitespace may differ but punctuation never aliases.
@@ -148,25 +148,28 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
     );
     const totalPnL = lastSymbolPositions.reduce((sum, p) => sum + (p.unrealizedPnL || 0), 0);
 
+    // Broker contract size from the instrument catalog; null when the
+    // catalog does not publish it (never guessed from the symbol name).
+    const contractSize = readRegisteredSymbolContractSpec(lastSymbol).contractSize;
+
     // Calculate risk-based lot
     const calculateRiskLot = useCallback(() => {
         if (!useRiskSizing || !account) return volume;
-        // Without broker precision no pip value can be estimated honestly;
-        // keep the manual volume instead of inventing one from the name.
-        if (pipSize === null) return volume;
+        // Without broker precision or contract size no pip value can be
+        // estimated honestly; keep the manual volume instead of guessing.
+        if (pipSize === null || contractSize === null) return volume;
         const balance = account.balance || 0;
         const riskAmount = (balance * riskPercent) / 100;
         const slDistance = slPips * pipSize;
         if (slDistance <= 0) return volume;
 
-        // Approximate pip value (simplified — real calculation needs contract size).
-        // Spec-derived only: 0.01-pip symbols (JPY, 2/3-digit feeds) value at
-        // 1000/lot, everything else at 10/lot — the same mapping the old name
-        // table produced via pipSize === 0.01, without inspecting the name.
-        const pipValue = pipSize === 0.01 ? 1000 : 10; // Per standard lot
+        // Pip value per standard lot from broker data only: contract size x
+        // pip size, in the symbol's quote currency (no cross-rate conversion).
+        const pipValue = contractSize * pipSize;
+        if (!(pipValue > 0)) return volume;
         const lot = riskAmount / (slPips * pipValue);
         return Math.max(0.01, Math.round(lot * 100) / 100);
-    }, [useRiskSizing, account, volume, riskPercent, slPips, pipSize]);
+    }, [useRiskSizing, account, volume, riskPercent, slPips, pipSize, contractSize]);
 
     const effectiveLot = useRiskSizing ? calculateRiskLot() : volume;
     const tradeBlockedMessage = getMarketStatusTradeBlockMessage(marketStatus, lastSymbol);

@@ -1,7 +1,8 @@
 import React from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DepthOfMarket, readDepthTypography } from './DepthOfMarket';
+import { DepthOfMarket } from './DepthOfMarket';
+import { readDepthTypography } from './depthOfMarketModel';
 
 const market = vi.hoisted(() => ({
   tick: { bid: 100, ask: 100.1, timestamp: 1, volume: 2 },

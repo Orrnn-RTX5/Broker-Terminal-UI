@@ -182,4 +182,26 @@ describe('ModifyPositionDialog broker catalog geometry (no name table, no defaul
         fireEvent.change(tpInput(), { target: { value: '1.235' } });
         expect(tpInput().getAttribute('aria-invalid')).toBeNull();
     });
+
+    it('volume description uses broker contract data only (TERM-DIGITS-WL)', () => {
+        resetDailyChangePriceModeRegistryForTests();
+        mocks.tick = { symbol: 'USDJPY', bid: 150.1, ask: 150.12, spread: 2, timestamp: 1_797_341_377_000 };
+        const volumeDesc = () => document.querySelector('.rtx-modify-volume-desc')?.textContent;
+
+        // A familiar name with no contract data: honest unknown, not "1000 USD".
+        const first = render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={makePosition({ symbol: 'USDJPY', openPrice: 150.1 })} />);
+        expect(volumeDesc()).toBe('—');
+        first.unmount();
+
+        // Position row contract size; no published unit -> amount only (no symbol slice).
+        const second = render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={makePosition({ symbol: 'USDJPY', openPrice: 150.1, contract_size: 100000 })} />);
+        expect(volumeDesc()).toBe('1000');
+        second.unmount();
+
+        // Catalog contract size and unit win.
+        registerDailyChangePriceModes([{ symbol: 'USDJPY', contractSize: 50000, brokerSpecification: { currency_base: 'USD' } }]);
+        render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={makePosition({ symbol: 'USDJPY', openPrice: 150.1, contract_size: 100000 })} />);
+        expect(volumeDesc()).toBe('500 USD');
+        resetDailyChangePriceModeRegistryForTests();
+    });
 });

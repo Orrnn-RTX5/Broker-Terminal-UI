@@ -2,6 +2,7 @@ import { translateUi } from '../hooks/useUiTranslation';
 import { createChartDataSnapshot } from '../services/chartDataSnapshot';
 import { useChartCursorStore } from '../store/useChartCursorStore';
 import type { Candle } from '../types/chart';
+import { resolveSpecDigits } from '../utils/symbolUtils';
 
 export const VALUES_TOOLTIP_HOLD_MS = 400;
 export const VALUES_TOOLTIP_MOVE_THRESHOLD_PX = 8;
@@ -24,7 +25,8 @@ export interface ValuesTooltipModel {
 export interface ChartValuesTooltipSource {
   symbol: string;
   timeframe: string;
-  digits: number;
+  /** Broker price precision; null when unpublished (values render raw). */
+  digits: number | null;
   offsetSeconds?: number;
   candles: readonly Candle[];
   clientX: number;
@@ -64,7 +66,10 @@ export const buildChartValuesTooltip = (source: ChartValuesTooltipSource): Value
     source.offsetSeconds ?? 0,
   );
   if (!snapshot || !candle) return null;
-  const price = (value: number) => value.toFixed(source.digits);
+  // TERM-DIGITS-WL: broker digits only; unknown precision renders raw
+  // (toFixed(null) would silently round to 0 decimals).
+  const digits = resolveSpecDigits(source.digits);
+  const price = (value: number) => (digits === null ? String(value) : value.toFixed(digits));
   const lines: ValuesTooltipLine[] = [
     { label: translateUi('Open'), value: price(snapshot.open) },
     { label: translateUi('High'), value: price(snapshot.high) },
@@ -73,7 +78,7 @@ export const buildChartValuesTooltip = (source: ChartValuesTooltipSource): Value
     { label: translateUi('Volume'), value: Math.round(snapshot.volume).toLocaleString() },
   ];
   for (const row of source.indicatorRows?.(candle.time) ?? []) {
-    lines.push({ label: row.label, value: row.value.toFixed(source.digits), color: safeColor(row.color) });
+    lines.push({ label: row.label, value: price(row.value), color: safeColor(row.color) });
   }
   return { title: source.symbol, subtitle: `${snapshot.date} ${snapshot.time}`, lines };
 };

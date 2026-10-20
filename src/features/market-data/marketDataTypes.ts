@@ -65,7 +65,8 @@ export interface LiveOrderBook {
   bids: OrderBookLevel[];
   asks: OrderBookLevel[];
   spread: number;
-  spreadPips: number;
+  /** Spread in pips from broker digits; null when the broker published no precision. */
+  spreadPips: number | null;
   timestamp: number;
 }
 
