@@ -2156,5 +2156,6 @@
   "Connection": "Connection",
   "The selected broker": "The selected broker",
   "These details are used to request your real account.": "These details are used to request your real account.",
-  "Your real account has been successfully created.": "Your real account has been successfully created."
+  "Your real account has been successfully created.": "Your real account has been successfully created.",
+  "Deviation": "Deviation"
 }

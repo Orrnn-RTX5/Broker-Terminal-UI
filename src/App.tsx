@@ -1576,7 +1576,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const activeChartSymbol = normalizeSymbolName(
       getActiveChartCommandTarget(selectedSymbol, timeframe).symbol,
     );
-    const targetSymbol = explicitSymbol || activeChartSymbol || normalizeSymbolName(selectedSymbol);
+    // SUI-T8: honor the Options default-symbol mode for ticket opens without
+    // an explicit symbol. `automatic` preserves the active-chart behavior;
+    // `last-used` prefers the last traded symbol.
+    const targetSymbol = resolveOpenOrderTargetSymbol(useSettingsStore.getState().trade, {
+      explicitSymbol,
+      activeChartSymbol,
+      selectedSymbol: normalizeSymbolName(selectedSymbol),
+      lastUsedSymbol: useLastSymbolStore.getState().lastSymbol,
+    });
     if (!requireNewOrderAuth(targetSymbol)) return false;
     const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);
 
