@@ -71,3 +71,40 @@ export function brokerDisplayName(server: string, ...names: unknown[]): string {
   // 6. Named servers (e.g. 'MetaQuotes-Demo', 'ICMarkets-Live') keep their name.
   return isBrokerName(text(server)) ? text(server) : 'Broker';
 }
+
+/** Neutral terminal window title. No vendor string. */
+export const NEUTRAL_TERMINAL_TITLE = 'Web Terminal';
+
+export interface BrokerTitleSource {
+  displayName?: unknown;
+  brokerName?: unknown;
+  broker_name?: unknown;
+  name?: unknown;
+  defaultMt5Server?: unknown;
+  default_mt5_server?: unknown;
+  server?: unknown;
+  brokerId?: unknown;
+  broker_id?: unknown;
+  id?: unknown;
+}
+
+/**
+ * Terminal window title: the broker display name when configured, the
+ * neutral fallback otherwise. Pure: no imports, no I/O. No vendor string.
+ */
+export function resolveTerminalTitle(broker?: BrokerTitleSource | null): string {
+  if (!broker || typeof broker !== 'object') return NEUTRAL_TERMINAL_TITLE;
+  const configured = [
+    broker.displayName,
+    broker.brokerName,
+    broker.broker_name,
+    broker.name,
+    broker.defaultMt5Server,
+    broker.default_mt5_server,
+    broker.server,
+    broker.brokerId,
+    broker.broker_id,
+    broker.id,
+  ].map(text).find(Boolean);
+  return configured || NEUTRAL_TERMINAL_TITLE;
+}

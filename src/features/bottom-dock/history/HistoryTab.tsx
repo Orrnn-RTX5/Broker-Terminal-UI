@@ -471,13 +471,13 @@ th{background:#ececec;font-weight:600}
     };
 
     const openHistoryOverview = () => {
-        const url = URL.createObjectURL(new Blob([buildHistoryReportHtml('RTX 5 History Overview')], { type: 'text/html' }));
+        const url = URL.createObjectURL(new Blob([buildHistoryReportHtml('History Overview')], { type: 'text/html' }));
         window.open(url, '_blank', 'noopener,noreferrer');
         window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
     };
 
     const downloadHistoryHtml = () => {
-        downloadTextFile(buildHistoryReportHtml('RTX 5 History Report'), 'rtx5-history-report.html', 'text/html');
+        downloadTextFile(buildHistoryReportHtml('History Report'), 'history-report.html', 'text/html');
     };
 
     const downloadHistoryXml = () => {

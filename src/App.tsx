@@ -3,7 +3,7 @@ import { useGuestMarketData } from './hooks/useGuestMarketData';
 import { useBrokerAccountSessionScope } from './hooks/useBrokerAccountSessionScope';
 import { useGuestChartLoginContinuity } from './hooks/useGuestChartLoginContinuity';
 import { getChartMarketSourceIdentity } from './utils/chartLoginTransition';
-import { getLogoUrl, useTerminalBrokerInfo } from './hooks/useTerminalTitle';
+import { getLogoUrl, getWebTerminalTitle, useTerminalBrokerInfo } from './hooks/useTerminalTitle';
 import { brokerDisplayName } from './services/brokerDisplayName';
 import { applyBrokerChrome } from './services/brokerPresentation';
 import { ChartSymbolDropdown } from './components/ChartSymbolDropdown';
@@ -1562,7 +1562,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const accountName = window.electron?.window ? terminalBrokerInfo.accountName : '';
     const accountLabel = accountName ? `${accountId} - ${accountName}` : accountId;
     const marginMode = terminalBrokerInfo.marginMode;
-    const broker = 'RTX Terminal';
+    const broker = getWebTerminalTitle();
     const tf         = tfLabel[timeframe] ?? timeframe.toUpperCase();
     // FIX: Browser/Electron chrome follows the rendered active dock tab, not a
     // stale Market Watch or pre-restore selection.

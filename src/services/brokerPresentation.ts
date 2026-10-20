@@ -1,7 +1,8 @@
 import { normalizeBrokerServerUrl, toLocalDevProxyUrl } from '../config/api';
 import { isBrokerName } from './brokerDisplayName';
 import { normalizeBrokerThemeColor } from './brokerThemeColor';
-import { isConfiguredBrokerEndpoint, isDesktopBackendTarget, getRuntimeConfiguredBrokerId } from '../config/backendTarget.js';
+import { isConfiguredBrokerEndpoint, isDesktopBackendTarget, getRuntimeBrokerConfiguration, getRuntimeConfiguredBrokerId } from '../config/backendTarget.js';
+import { NEUTRAL_TERMINAL_TITLE, resolveTerminalTitle } from './brokerDisplayName';
 import { assertBrokerRequestAllowed } from '../api/brokerRequestGuard';
 
 export { normalizeBrokerThemeColor } from './brokerThemeColor';
@@ -30,7 +31,8 @@ export interface BrokerChromeState {
 }
 
 const ABSOLUTE_ASSET_URL = /^(?:https?:|data:|blob:)/i;
-const DEFAULT_LOGIN_TITLE = 'RTX Terminal';
+/** Neutral login/desktop title. No vendor string; prefer getLoginTitle(). */
+export const DEFAULT_LOGIN_TITLE = NEUTRAL_TERMINAL_TITLE;
 const originalFavicons = new WeakMap<HTMLLinkElement, { href: string; type: string | null }>();
 
 const updateBrokerFavicon = (logoUrl: string): void => {
@@ -61,6 +63,25 @@ let currentChrome: BrokerChromeState = {
 };
 
 export const getBrokerChrome = (): BrokerChromeState => currentChrome;
+
+/**
+ * White-label login title: broker display name from broker config when
+ * configured, neutral fallback otherwise. Never a vendor default.
+ */
+export const getLoginTitle = (): string => {
+  try {
+    const config = getRuntimeBrokerConfiguration() as {
+      brokerName?: unknown; defaultMt5Server?: unknown; brokerId?: unknown;
+    } | null;
+    return resolveTerminalTitle({
+      displayName: config?.brokerName,
+      defaultMt5Server: config?.defaultMt5Server,
+      brokerId: config?.brokerId,
+    });
+  } catch {
+    return NEUTRAL_TERMINAL_TITLE;
+  }
+};
 
 export const buildBrokerPresentationUrl = (
   serverUrl: unknown,
@@ -204,8 +225,8 @@ export const applyBrokerChrome = (
 
   if (input.updateLoginTitle) {
     const title = currentChrome.brokerName
-      ? `${DEFAULT_LOGIN_TITLE} - ${currentChrome.brokerName}`
-      : DEFAULT_LOGIN_TITLE;
+      ? `${getLoginTitle()} - ${currentChrome.brokerName}`
+      : getLoginTitle();
     document.title = title;
     if (typeof window !== 'undefined') {
       window.electron?.window?.setTitle?.(title);

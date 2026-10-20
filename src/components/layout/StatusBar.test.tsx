@@ -11,7 +11,7 @@ vi.mock('../../hooks/useUiTranslation', () => ({
   useUiTranslation: () => (value: string) => value,
 }));
 vi.mock('../../hooks/useTerminalTitle', () => ({
-  WEB_TERMINAL_TITLE: 'RTX 5 Web Terminal',
+  WEB_TERMINAL_TITLE: 'Web Terminal',
   useTerminalBrokerInfo: () => ({
     accountId: '---',
     brokerName: 'Test Broker',
@@ -20,7 +20,7 @@ vi.mock('../../hooks/useTerminalTitle', () => ({
     logoBaseCandidates: [],
   }),
   getLogoUrl: (url: string) => url,
-  formatTerminalTitle: () => 'RTX 5 Web Terminal',
+  formatTerminalTitle: () => 'Web Terminal',
 }));
 vi.mock('../../hooks/useDesktopUpdater', () => ({
   useDesktopUpdater: () => ({ updatePhase: 'idle', updateLabel: '' }),

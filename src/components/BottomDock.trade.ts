@@ -224,7 +224,7 @@ export const resolveTradeAccountMetrics = (
  * The backend streams per-position profit far more often than it publishes account
  * metrics. Its position `profit` excludes swap and commission, so the live floating
  * P/L is the sum of each open position's profit + swap + commission (the same rule
- * as the RTX 5 mobile app), and equity = balance + credit + floating P/L. Balance,
+ * as the mobile app), and equity = balance + credit + floating P/L. Balance,
  * credit and margin stay exactly as the backend reports them. Metrics the backend
  * did not supply stay unavailable, and nothing is derived while any open position
  * is missing its backend profit.

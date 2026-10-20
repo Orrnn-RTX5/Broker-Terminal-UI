@@ -730,13 +730,13 @@ th{background:#ececec;font-weight:600}
     };
 
     const openTradeOverview = () => {
-        const url = URL.createObjectURL(new Blob([buildTradeReportHtml('RTX 5 Trade Overview')], { type: 'text/html' }));
+        const url = URL.createObjectURL(new Blob([buildTradeReportHtml('Trade Overview')], { type: 'text/html' }));
         window.open(url, '_blank', 'noopener,noreferrer');
         window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
     };
 
     const downloadTradeHtml = () => {
-        downloadTextFile(buildTradeReportHtml('RTX 5 Trade Report'), 'rtx5-trade-report.html', 'text/html');
+        downloadTextFile(buildTradeReportHtml('Trade Report'), 'trade-report.html', 'text/html');
     };
 
     const downloadTradeXml = () => {

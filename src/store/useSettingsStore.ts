@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
+import { NEUTRAL_TERMINAL_TITLE } from '../services/brokerDisplayName';
 
 // Server Settings
 export interface ServerSettings {
@@ -157,7 +158,7 @@ type SettingsStore = SettingsState & SettingsActions;
 // Default Settings
 const defaultSettings: SettingsState = {
   server: {
-    serverName: 'RTX 5 Web Terminal',
+    serverName: NEUTRAL_TERMINAL_TITLE,
     proxyEnabled: false,
     keepPersonalSettings: true,
     enableNews: true,

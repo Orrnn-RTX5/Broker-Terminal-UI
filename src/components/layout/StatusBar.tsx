@@ -4,9 +4,9 @@ import { ConnectionStatus } from '../ConnectionStatus';
 import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import {
-    WEB_TERMINAL_TITLE,
     formatTerminalTitle,
     getLogoUrl,
+    getWebTerminalTitle,
     useTerminalBrokerInfo,
 } from '../../hooks/useTerminalTitle';
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
@@ -33,8 +33,8 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
     const terminalTitle = symbol && timeframe
         ? formatTerminalTitle(brokerInfo, symbol, timeframe, marketStatus)
         : (brokerInfo.accountId && brokerInfo.accountId !== '---'
-            ? `${WEB_TERMINAL_TITLE} - ${brokerInfo.accountId} - ${brokerInfo.brokerName} - ${brokerInfo.marginMode}`
-            : WEB_TERMINAL_TITLE);
+            ? `${getWebTerminalTitle()} - ${brokerInfo.accountId} - ${brokerInfo.brokerName} - ${brokerInfo.marginMode}`
+            : getWebTerminalTitle());
 
     const appVersion = getAppVersion();
     const hasUpdater = Boolean(window.electron?.updater?.isSupported);

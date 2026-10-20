@@ -1,6 +1,6 @@
 /**
  * Command Bus Implementation
- * Centralized pub/sub system for RTX Terminal toolbar commands
+ * Centralized pub/sub system for terminal toolbar commands
  * Features:
  * - Type-safe command dispatching
  * - Command history tracking (last 100 commands)

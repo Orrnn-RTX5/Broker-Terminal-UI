@@ -504,7 +504,7 @@ function PlaceholderTab({ title }: { title: string }) {
                     className="text-[13px] leading-[19.5px] font-normal mb-0.5"
                     style={{ color: 'var(--text-primary, #e2e2e8)' }}
                 >
-                    {tr("RTX5 ")}{tr(title)}
+                    {tr(title)}
                 </div>
                 <div
                     className="text-[12px] leading-[18px] font-normal"

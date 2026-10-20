@@ -4,6 +4,7 @@ import { Copy, Minus, Square, X } from 'lucide-react';
 import { BROKER_CHROME_EVENT, getBrokerChrome, type BrokerChromeState } from '../../services/brokerPresentation';
 import './DesktopWindowShell.css';
 import { BrokerLogoImage } from '../BrokerLogoImage';
+import { NEUTRAL_TERMINAL_TITLE } from '../../services/brokerDisplayName';
 
 interface DesktopWindowShellProps {
   children: ReactNode;
@@ -11,12 +12,12 @@ interface DesktopWindowShellProps {
 
 type ElectronWindowApi = NonNullable<Window['electron']>['window'];
 
-const DEFAULT_DESKTOP_TITLE = 'RTX Terminal';
+const DEFAULT_DESKTOP_TITLE = NEUTRAL_TERMINAL_TITLE;
 const DEFAULT_TITLEBAR_ICON = './titlebar-icon.png';
 
 const readDesktopTitle = (): string => {
   const title = typeof document === 'undefined' ? '' : document.title.trim();
-  return !title || title === 'RTX 5 Web Terminal' ? DEFAULT_DESKTOP_TITLE : title;
+  return !title || title === NEUTRAL_TERMINAL_TITLE ? DEFAULT_DESKTOP_TITLE : title;
 };
 
 // Preserve the UTC clock previously displayed in the desktop status bar.

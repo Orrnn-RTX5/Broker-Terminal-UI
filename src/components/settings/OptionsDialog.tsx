@@ -8,6 +8,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { NotificationPreferences } from './NotificationPreferences';
 import { ThemeAppearanceSettings } from './ThemeAppearanceSettings';
 import { SettingsField, SettingsNotice, SettingsSection, SettingsToggle } from './OptionsControls';
+import { NEUTRAL_TERMINAL_TITLE } from '../../services/brokerDisplayName';
 import './options-dialog.css';
 
 interface OptionsDialogProps { isOpen: boolean; onClose: () => void; }
@@ -136,7 +137,7 @@ function ServerTab() {
     return <div className="options-stack">
         <SettingsSection title="Account details" action={<span className="options-badge">{tr('Read only')}</span>}>
             <div className="options-field-grid">
-                <SettingsField label="Server" htmlFor="options-server"><input id="options-server" className="options-control" value={server.serverName || 'RTX 5 Web Terminal'} readOnly /></SettingsField>
+                <SettingsField label="Server" htmlFor="options-server"><input id="options-server" className="options-control" value={server.serverName || NEUTRAL_TERMINAL_TITLE} readOnly /></SettingsField>
                 <SettingsField label="Login" htmlFor="options-login"><input id="options-login" className="options-control" value={accountId || tr('Guest')} readOnly /></SettingsField>
             </div>
             <div className="options-field"><label htmlFor="options-password">{tr('Password')}</label><div className="options-input-action"><input id="options-password" className="options-control" value="••••••••" readOnly /><button className="options-button options-button--secondary" disabled>{tr('Change')}</button></div><p className="options-field-hint">{tr('Password changes are not available in this window.')}</p></div>

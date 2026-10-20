@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyBrokerChrome,
   buildBrokerPresentationUrl,
+  getLoginTitle,
   loadBrokerPresentation,
   mergeBrokerPresentation,
   normalizeBrokerPresentationConfig,
@@ -112,7 +113,7 @@ describe('broker presentation', () => {
 
     expect(document.documentElement).toHaveAttribute('data-broker-id', 'Nexa');
     expect(document.documentElement).toHaveStyle('--rtx-broker-accent: #6D4AFF');
-    expect(document.title).toBe('RTX Terminal - Nexa');
+    expect(document.title).toBe('Terminal - Nexa');
 
     applyBrokerChrome({
       brokerId: 'gta_broker',
@@ -121,7 +122,30 @@ describe('broker presentation', () => {
     });
     expect(document.documentElement).toHaveAttribute('data-broker-id', 'gta_broker');
     expect(document.documentElement.style.getPropertyValue('--rtx-broker-accent')).toBe('');
-    expect(document.title).toBe('RTX Terminal - Grow Trading Academy');
+    expect(document.title).toBe('Terminal - Grow Trading Academy');
+  });
+
+  it('derives the login title from broker config, never a vendor default (ds-16)', () => {
+    const runtimeWindow = window as unknown as Record<string, unknown>;
+    const previous = runtimeWindow.__RTX_RUNTIME_CONFIG__;
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      BROKER_ID: 'acme',
+      BROKER_NAME: 'Acme Trading',
+      API_HOST: 'https://acme.example.com',
+    };
+    try {
+      expect(getLoginTitle()).toBe('Acme Trading');
+      applyBrokerChrome({ brokerId: 'acme', brokerName: 'Acme Trading', updateLoginTitle: true });
+      expect(document.title).toContain('Acme Trading');
+      expect(document.title).not.toMatch(/RTX/);
+    } finally {
+      if (previous === undefined) delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+      else runtimeWindow.__RTX_RUNTIME_CONFIG__ = previous;
+    }
+    delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+    expect(getLoginTitle()).toBe('Web Terminal');
+    expect(getLoginTitle()).not.toMatch(/RTX/);
   });
 
   it('updates the browser tab icon for each broker and restores the app icon when cleared', () => {

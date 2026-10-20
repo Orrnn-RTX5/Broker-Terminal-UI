@@ -27,7 +27,7 @@ export function TerminalLoadFallback({
       aria-live={isError ? 'assertive' : 'polite'}
       aria-busy={!isError}
     >
-      <div className="rtx-terminal-loading__brand">RTX 5</div>
+      <div className="rtx-terminal-loading__brand">Web Terminal</div>
       {!isError && <div className="rtx-terminal-loading__spinner" aria-hidden="true" />}
       <div className="rtx-terminal-loading__message">{tr(message)}</div>
       {children}

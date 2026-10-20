@@ -1,6 +1,6 @@
 /**
  * Command Bus Type Definitions
- * Centralized type-safe command dispatcher for RTX Terminal toolbar
+ * Centralized type-safe command dispatcher for terminal toolbar
  * Supports full event replay capability and type-safe payloads
  */
 

@@ -7,7 +7,7 @@ import { getMarketStatusTradeBlockMessage, normalizeMarketStatus } from './marke
 const germanCopy = {
   'Market is closed for {{value0}}.': 'Der Markt für {{value0}} ist geschlossen.',
   '{{value0}} live feed verified': 'Live-Daten für {{value0}} bestätigt',
-  'Download RTX Terminal desktop installer {{value0}}': 'RTX Terminal Desktop-Installer {{value0}} herunterladen',
+  'Download desktop installer {{value0}}': 'Desktop-Installer {{value0}} herunterladen',
 };
 let originalGermanCopy: Record<string, string | undefined>;
 
@@ -57,6 +57,6 @@ describe('localized generated presentation', () => {
     const german = resolveDesktopToolbarStatus(input);
     expect(german.feedLabel).toBe('Live-Daten für EURUSD.R bestätigt');
     expect(german).toMatchObject({ feedState: english.feedState, fillPercent: english.fillPercent, securityTone: english.securityTone });
-    expect(getDesktopReleaseButtonTitle(release)).toBe('RTX Terminal Desktop-Installer v2.4.1 herunterladen');
+    expect(getDesktopReleaseButtonTitle(release)).toBe('Desktop-Installer v2.4.1 herunterladen');
   });
 });

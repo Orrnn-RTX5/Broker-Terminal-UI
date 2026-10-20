@@ -357,7 +357,7 @@ ipcMain.handle('shell-open-external', async (_event, url) => {
 
 ipcMain.on('set-window-title', (_event, title) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setTitle(typeof title === 'string' ? title : 'RTX Terminal');
+        mainWindow.setTitle(typeof title === 'string' ? title : 'Terminal');
     }
 });
 
@@ -368,7 +368,7 @@ function createWindow() {
         height: 900,
         minWidth: 1024,
         minHeight: 600,
-        title: 'RTX Terminal',
+        title: 'Terminal',
         icon: path.join(__dirname, 'build', 'icon.ico'),
         frame: false,
         show: false,

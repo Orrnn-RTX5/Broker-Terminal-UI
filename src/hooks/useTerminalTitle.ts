@@ -1,4 +1,4 @@
-import { brokerDisplayName } from '../services/brokerDisplayName';
+import { brokerDisplayName, NEUTRAL_TERMINAL_TITLE, resolveTerminalTitle } from '../services/brokerDisplayName';
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { brokerV2Api } from '../api/trade';
@@ -15,9 +15,30 @@ import {
     getConfiguredBrokerLogoUrl,
     isPlaceholderBrokerLogoUrl,
 } from '../components/BrokerLogoImage';
+import { getRuntimeBrokerConfiguration } from '../config/backendTarget.js';
 
-export const WEB_TERMINAL_TITLE = 'RTX 5 Web Terminal';
+/** Neutral fallback title. No vendor string; prefer getWebTerminalTitle(). */
+export const WEB_TERMINAL_TITLE = NEUTRAL_TERMINAL_TITLE;
 export const DEFAULT_BROKER_SERVER = WEB_TERMINAL_TITLE;
+
+/**
+ * White-label terminal title: broker display name from broker config when
+ * configured, neutral fallback otherwise. Never a vendor default.
+ */
+export const getWebTerminalTitle = (): string => {
+    try {
+        const config = getRuntimeBrokerConfiguration() as {
+            brokerName?: unknown; defaultMt5Server?: unknown; brokerId?: unknown;
+        } | null;
+        return resolveTerminalTitle({
+            displayName: config?.brokerName,
+            defaultMt5Server: config?.defaultMt5Server,
+            brokerId: config?.brokerId,
+        });
+    } catch {
+        return NEUTRAL_TERMINAL_TITLE;
+    }
+};
 
 export const normalizeHeaderText = (value: unknown): string => String(value || '').trim();
 
@@ -248,5 +269,5 @@ export function formatTerminalTitle(
     const marketStatusSuffix = marketStatus?.isTradeBlocked && !marketStatus.loading && marketStatus.status !== 'unknown'
         ? ` - ${marketStatus.label}`
         : '';
-    return `${WEB_TERMINAL_TITLE} - ${info.accountId} - ${info.brokerName} - ${info.marginMode} - ${symbol},${timeframe.toUpperCase()}${marketStatusSuffix}`;
+    return `${getWebTerminalTitle()} - ${info.accountId} - ${info.brokerName} - ${info.marginMode} - ${symbol},${timeframe.toUpperCase()}${marketStatusSuffix}`;
 }

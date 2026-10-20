@@ -37,7 +37,7 @@ const installElectronBridge = () => {
 
 describe('DesktopWindowShell', () => {
   beforeEach(() => {
-    document.title = 'RTX 5 Web Terminal';
+    document.title = 'Web Terminal';
     delete window.electron;
   });
 
@@ -89,7 +89,7 @@ describe('DesktopWindowShell', () => {
     const shell = view.container.querySelector('[data-rtx-desktop-shell="true"]');
     expect(shell).not.toBeNull();
     expect(document.documentElement.classList.contains('rtx-desktop-shell-active')).toBe(true);
-    expect(view.getByText('RTX Terminal')).toBeTruthy();
+    expect(view.getByText('Terminal')).toBeTruthy();
 
     fireEvent.click(view.getByRole('button', { name: 'Minimize window' }));
     fireEvent.click(view.getByRole('button', { name: 'Maximize window' }));
@@ -106,6 +106,24 @@ describe('DesktopWindowShell', () => {
     view.unmount();
     expect(bridge.unsubscribe).toHaveBeenCalledTimes(1);
     expect(document.documentElement.classList.contains('rtx-desktop-shell-active')).toBe(false);
+  });
+
+  it('renders a broker title with no vendor brand (ds-16)', async () => {
+    installElectronBridge();
+    const view = render(
+      <DesktopWindowShell>
+        <div>Desktop content</div>
+      </DesktopWindowShell>,
+    );
+
+    act(() => {
+      document.title = 'Acme Trading - 100043 - Hedge - EURUSD,M15';
+    });
+
+    await waitFor(() => {
+      expect(view.getByText('Acme Trading - 100043 - Hedge - EURUSD,M15')).toBeTruthy();
+    });
+    expect(view.container.textContent).not.toMatch(/RTX/);
   });
 
   it('tracks the authenticated terminal title without importing authenticated state', async () => {
@@ -143,7 +161,7 @@ describe('DesktopWindowShell', () => {
     });
 
     await waitFor(() => {
-      expect(view.getByText('RTX Terminal - Nexa')).toBeTruthy();
+      expect(view.getByText('Terminal - Nexa')).toBeTruthy();
       expect(view.container.querySelector('.rtx-desktop-titlebar__icon')).toHaveAttribute(
         'src',
         'https://directory.example.test/nexa.ico',

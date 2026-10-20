@@ -229,8 +229,8 @@ export const getDesktopReleaseVersionLabel = (release: DesktopRelease | null | u
 export const getDesktopReleaseButtonTitle = (release: DesktopRelease | null | undefined): string => {
   const version = getDesktopReleaseVersionLabel(release);
   return version
-    ? translateUi('Download RTX Terminal desktop installer {{value0}}', { value0: version })
-    : translateUi('Download the latest RTX Terminal desktop installer');
+    ? translateUi('Download desktop installer {{value0}}', { value0: version })
+    : translateUi('Download the latest desktop installer');
 };
 
 export const openDesktopReleaseDownload = (release: DesktopRelease | null | undefined): void => {

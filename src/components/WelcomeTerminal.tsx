@@ -112,7 +112,7 @@ const ACCENT_LOGIN_FIELD_BORDER = '#1d3f68';
 const ACCENT_LOGIN_FIELD_FOCUS = '#2f8cff';
 const ACCENT_LOGIN_FIELD_FOCUS_SHADOW = '0 0 0 3px rgba(47, 140, 255, 0.16)';
 const LOGIN_TITLE_TEXT = 'Sign in to';
-const LOGIN_TITLE_ACCESSIBLE_LABEL = 'Sign in to RTX5';
+const LOGIN_TITLE_ACCESSIBLE_LABEL = 'Sign in';
 const RTX5_TITLE_LOGO_SRC = toPublicAssetPath('brand/rtx5-login-wordmark.png');
 const BROKER_PRESENTATION_CACHE_KEY = 'rtx_broker_presentation_v1';
 export const LAST_AUTHENTICATED_BROKER_ID_KEY = 'rtx_last_authenticated_broker_id';
@@ -1114,7 +1114,7 @@ export function WelcomeTerminal({
                 </aside>
 
                 <main className="rtx-login-panel-wrap">
-                    <section data-welcome-card className="rtx-login-panel" aria-label={tr("RTX Terminal login")}>
+                    <section data-welcome-card className="rtx-login-panel" aria-label={tr("Terminal login")}>
                         <div className="rtx-login-body">
                             <header className="rtx-form-header">
                                 <h1 className="rtx-login-title" aria-label={LOGIN_TITLE_ACCESSIBLE_LABEL}>
