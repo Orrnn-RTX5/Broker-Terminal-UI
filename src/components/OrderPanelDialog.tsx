@@ -51,6 +51,10 @@ interface OrderPanelProps {
   symbol: string;
   currentPrice: { bid: number; ask: number };
   onSubmitOrder: (order: any) => Promise<void> | void;
+  // Chart prefill (SUI-T10): when provided, the dialog opens with this order
+  // type and price instead of blank defaults. Side still follows Buy/Sell.
+  initialOrderType?: OrderType;
+  initialPrice?: number;
   marketStatus?: NormalizedMarketStatus;
   /**
    * Symbols the logged-in account may trade (its group catalogue). When
@@ -118,6 +122,50 @@ function formatDefaultExpirationDate(): string {
   const min = String(now.getMinutes()).padStart(2, '0');
   return `${dd}.${mm}.${yy} ${hh}:${min}`;
 }
+
+// Parse a dialog expiration date string `DD.MM.YY HH:mm` (local time) to a
+// Date, or null when unparseable. Strict shape: rejects overflow dates
+// (e.g. 31.02.26) by round-tripping the components.
+const parseDialogExpirationDate = (value: string): Date | null => {
+  const match = /^(\d{2})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const [, dd, mm, yy, hh, min] = match;
+  const date = new Date(2000 + Number(yy), Number(mm) - 1, Number(dd), Number(hh), Number(min), 0, 0);
+  if (
+    date.getDate() !== Number(dd) || date.getMonth() !== Number(mm) - 1
+    || date.getFullYear() !== 2000 + Number(yy) || date.getHours() !== Number(hh)
+    || date.getMinutes() !== Number(min)
+  ) return null;
+  return date;
+};
+
+/**
+ * Resolve the dialog expiration choice to whole epoch SECONDS for the order
+ * wire (SUI-T2). Semantics (local time, documented): GTC → undefined (no
+ * expiry); Today → end of the current local day; Specified day → end of the
+ * selected local date; Specified → the exact selected local datetime. Past or
+ * unparseable dated values THROW so submit blocks fail-closed (never 0/NaN).
+ */
+export const resolveDialogExpirationTimestamp = (
+  expiration: ExpirationType,
+  expirationDateStr: string,
+  nowMs = Date.now(),
+): number | undefined => {
+  if (expiration === 'GTC') return undefined;
+  if (expiration === 'Today') {
+    const end = new Date(nowMs);
+    end.setHours(23, 59, 59, 0);
+    const seconds = Math.floor(end.getTime() / 1000);
+    if (!(seconds * 1000 > nowMs)) throw new Error('Expiration must be in the future');
+    return seconds;
+  }
+  const parsed = parseDialogExpirationDate(expirationDateStr);
+  if (!parsed) throw new Error('Enter a valid expiration date (DD.MM.YY HH:mm)');
+  if (expiration === 'Specified day') parsed.setHours(23, 59, 59, 0);
+  const seconds = Math.floor(parsed.getTime() / 1000);
+  if (!(seconds * 1000 > nowMs)) throw new Error('Expiration must be in the future');
+  return seconds;
+};
 
 type TickChartColors = {
   background: string;
@@ -985,14 +1033,20 @@ export function OrderPanelDialog({
   symbol: initialSymbol,
   currentPrice,
   onSubmitOrder,
+  initialOrderType,
+  initialPrice,
   marketStatus,
   symbols: accountSymbols,
 }: OrderPanelProps) {
   const tr = useUiTranslation();
   const [symbol, setSymbol] = useState(initialSymbol);
-  const [orderType, setOrderType] = useState<OrderType>('Market Execution');
+  const [orderType, setOrderType] = useState<OrderType>(initialOrderType ?? 'Market Execution');
   const [volumeStr, setVolumeStr] = useState(() => localStorage.getItem('lastLotSize') || '0.01');
-  const [priceStr, setPriceStr] = useState('0.00');
+  const [priceStr, setPriceStr] = useState(() => (
+    initialPrice !== undefined && Number.isFinite(initialPrice) && initialPrice > 0
+      ? String(initialPrice)
+      : '0.00'
+  ));
   const [stopLimitPriceStr, setStopLimitPriceStr] = useState('0.00');
   const [stopLossStr, setStopLossStr] = useState('0.00');
   const [takeProfitStr, setTakeProfitStr] = useState('0.00');
@@ -1205,6 +1259,19 @@ export function OrderPanelDialog({
         ? overrideProtection.priceTp
         : (Number.isFinite(parsedTakeProfit) && parsedTakeProfit > 0 ? parsedTakeProfit : undefined);
 
+      // SUI-T2: convert the expiration choice to epoch seconds here. GTC
+      // omits expiry; Today/Specified resolve to a timestamp; invalid or past
+      // dated values block submit fail-closed (never 0/NaN).
+      let expirationTimestamp: number | undefined;
+      if (effectiveOrderType !== 'Market Execution') {
+        try {
+          expirationTimestamp = resolveDialogExpirationTimestamp(expiration, expirationDateStr);
+        } catch (expiryErr) {
+          setError(expiryErr instanceof Error ? expiryErr.message : 'Invalid expiration');
+          setIsPlacing(false);
+          return;
+        }
+      }
       await onSubmitOrder({
         type: side,
         volume,
@@ -1216,6 +1283,7 @@ export function OrderPanelDialog({
             ? parsedStopLimitPrice
             : undefined,
           expiration,
+          ...(expirationTimestamp !== undefined ? { expirationTimestamp } : {}),
         } : {}),
         ...(slVal ? { priceSl: slVal } : {}),
         ...(tpVal ? { priceTp: tpVal } : {}),
@@ -1234,6 +1302,7 @@ export function OrderPanelDialog({
     comment,
     effectiveMarketStatus,
     expiration,
+    expirationDateStr,
     isPlacing,
     marketBlockedMessage,
     onClose,

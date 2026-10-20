@@ -123,12 +123,40 @@ const normalizeOrderPayload = (order: CreateOrderRequest): CreateOrderRequest & 
   };
 };
 
+/**
+ * Normalize a pending-order expiration to whole epoch SECONDS for the gateway.
+ * Accepts epoch seconds, epoch milliseconds, or numeric strings (global — no
+ * broker/account/symbol-specific handling). Empty, non-numeric, non-positive,
+ * or NaN input yields `undefined` so the field is omitted from the wire
+ * payload — never 0 or NaN (fail-closed: the gateway would read those as real
+ * expirations).
+ */
+export const normalizePendingExpiryToEpochSeconds = (value: unknown): number | undefined => {
+  if (value === undefined || value === null) return undefined;
+  const text = typeof value === 'string' ? value.trim() : value;
+  if (text === '') return undefined;
+  const numeric = typeof text === 'number' ? text : Number(text);
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+  // Millisecond-epoch input (e.g. Date.now()) normalizes to seconds; values
+  // below 1e12 are already epoch seconds (1e12 s is the year 33658).
+  const seconds = numeric >= 1e12 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+  return seconds > 0 ? seconds : undefined;
+};
+
 const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderRequest & { account_login: number; side: 'buy' | 'sell'; sl?: number; tp?: number; expiry?: number } => {
   const login = requireLogin(order.login ?? order.account_login, '/api/v2/orders/pending');
   // The gateway requires an idempotency key for every order command (CLIENT_ORDER_ID_REQUIRED).
   const suppliedClientOrderId = String(order.client_order_id ?? '').trim();
   if (suppliedClientOrderId && !isTradeOrderUuidV4(suppliedClientOrderId)) {
     throw new Error('client_order_id must be a UUID v4');
+  }
+  const pendingType = String(order.type || '').trim().toLowerCase();
+  if (pendingType.endsWith('_stop_limit')) {
+    // Backend wire name is `price_limit` (gateway placePendingOrderWireRequest).
+    const stopLimitPrice = Number(order.price_limit);
+    if (!Number.isFinite(stopLimitPrice) || stopLimitPrice <= 0) {
+      throw new Error('Stop limit price must be a positive number for stop limit orders');
+    }
   }
   const rest = { ...order };
   delete rest.login;
@@ -140,20 +168,22 @@ const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderR
   delete rest.expiration;
   delete rest.expiry;
 
+  const expiry = normalizePendingExpiryToEpochSeconds(order.expiry ?? order.expiration);
+
   return {
     ...rest,
     account_login: login,
     client_order_id: suppliedClientOrderId || createTradeOrderUuid(),
     side: normalizeSide(order.side),
-    type: order.type.toLowerCase() as PendingOrderRequest['type'],
+    type: pendingType as PendingOrderRequest['type'],
     sl: order.sl ?? order.price_sl,
     tp: order.tp ?? order.price_tp,
-    expiry: order.expiry ?? order.expiration,
+    ...(expiry !== undefined ? { expiry } : {}),
   };
 };
 
 const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): ModifyPendingOrderRequest & { sl?: number; tp?: number; expiry?: number; client_order_id: string } => {
-  const { price_sl, price_tp, sl, tp, expiration, expiry, comment: _comment, trailing_stop: _trailingStop, trailing_step: _trailingStep, client_order_id: supplied, ...rest } = data;
+  const { price_sl, price_tp, sl, tp, expiration, expiry, comment: _comment, fill_policy: _fillPolicy, trailing_stop: _trailingStop, trailing_step: _trailingStep, client_order_id: supplied, ...rest } = data;
   const clientOrderId = String(supplied ?? '').trim();
   if (clientOrderId && !isTradeOrderUuidV4(clientOrderId)) throw new Error('client_order_id must be a UUID v4');
   return {
@@ -312,8 +342,14 @@ export interface PendingOrderRequest {
   symbol: string;
   side: 'buy' | 'sell' | 'BUY' | 'SELL';
   volume: number;
-  type: 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop' | 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP';
+  type: 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop' | 'buy_stop_limit' | 'sell_stop_limit' | 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP' | 'BUY_STOP_LIMIT' | 'SELL_STOP_LIMIT';
   price: number;
+  /**
+   * Limit (execution) price for `*_stop_limit` orders. The `price` field
+   * carries the stop (trigger) price. Required for stop-limit types.
+   * Backend wire name is `price_limit` (sent verbatim).
+   */
+  price_limit?: number;
   price_sl?: number;
   price_tp?: number;
   sl?: number;
@@ -321,6 +357,10 @@ export interface PendingOrderRequest {
   expiration?: number;
   expiry?: number;
   comment?: string;
+  // NOTE: there is deliberately NO fill_policy wire field. The gateway REST
+  // place decoder has no fill-policy concept (IOC/FOK are explicitly refused
+  // in decodePendingRESTTimeInForce); sending one would be silently dropped,
+  // so the UI must not send it. Kept out of the modify path the same way.
   trailing_stop?: number;
   trailing_step?: number;
   magic?: number;
