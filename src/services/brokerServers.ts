@@ -7,6 +7,7 @@ import {
   resolveBrokerDefaultMt5Server,
 } from '../config/backendTarget.js';
 import type { BrokerServer } from '../types/api';
+import { getCommittedBrokerAccountSessionScope } from './brokerSession';
 
 // Neutral fallback display label for "no broker server known yet". This must stay
 // brand-free: the brand-driven display name is resolved downstream by
@@ -63,6 +64,32 @@ const normalizeServerName = (value: unknown): string => String(value || '').trim
 /** True for the neutral fallback label (case-insensitive). */
 export const isDefaultBrokerServerValue = (value: unknown): boolean =>
   normalizeServerName(value).toLowerCase() === DEFAULT_BROKER_SERVER.toLowerCase();
+
+const normalizeStoredUrl = (value: string): string => value.trim().replace(/\/+$/, '');
+
+// The committed session is authoritative: storage written together with it
+// (broker_id + server_url/backend_url agreeing with the committed scope)
+// stays honoured verbatim, so an authenticated broker's accounts never hide.
+const isSessionAnchoredStorage = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const scope = getCommittedBrokerAccountSessionScope();
+    if (!scope || scope.authenticated !== true) return false;
+    const scopeBrokerId = normalizeServerName(scope.brokerId);
+    const scopeUrl = normalizeStoredUrl(normalizeServerName(scope.serverUrl));
+    if (!scopeBrokerId || !scopeUrl) return false;
+    const storedBrokerId = normalizeServerName(
+      localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id'),
+    );
+    const storedUrls = [
+      localStorage.getItem('server_url'),
+      localStorage.getItem('backend_url'),
+    ].map((value) => normalizeStoredUrl(normalizeServerName(value))).filter(Boolean);
+    return storedBrokerId === scopeBrokerId && storedUrls.some((url) => url === scopeUrl);
+  } catch {
+    return false;
+  }
+};
 const isDefaultDisplayServer = (value: string): boolean => isDefaultBrokerServerValue(value);
 const brokerServerRegistry = new Map<string, BrokerServer>();
 
@@ -76,14 +103,20 @@ export const getStoredBrokerServer = (): string => {
   if (typeof window === 'undefined') return DEFAULT_BROKER_SERVER;
   const stored = normalizeServerName(localStorage.getItem(BROKER_SERVER_STORAGE_KEY));
   if (!stored || isDefaultBrokerServerValue(stored)) return DEFAULT_BROKER_SERVER;
+  // Session-anchored storage (written with the committed session) is honoured
+  // verbatim so authenticated accounts never hide on endpoint mismatch.
+  if (isSessionAnchoredStorage()) return stored;
   const configured = getConfiguredBrokerServers();
   // Unconfigured broker: no runtime list to validate against, so keep the
   // stored value (directory/desktop flows resolve it downstream). A
   // configured list is enforced strictly below.
   if (configured.length === 0) return stored;
   if (isConfiguredBrokerServer(stored)) return stored;
-  // Not in the current broker's runtime list: discard, use first configured.
-  return configured[0] || DEFAULT_BROKER_SERVER;
+  // Not in the current broker's runtime list: discard to neutral. Neutral
+  // (not first-configured) is deliberate: a manifest-derived name must never
+  // leak into the stored channel, or saved-account scope matching would admit
+  // runtime aliases on endpoint mismatch (see brokerScope aliases tests).
+  return DEFAULT_BROKER_SERVER;
 };
 
 export const persistBrokerServer = (server: string): string => {
