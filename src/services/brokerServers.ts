@@ -19,10 +19,11 @@ import { getCommittedBrokerAccountSessionScope } from './brokerSession';
 export const DEFAULT_BROKER_SERVER = 'Broker';
 export const BROKER_SERVER_STORAGE_KEY = 'rtx_broker_server';
 
-// Broker-neutral stored-server rule (white-label): on load, a remembered
-// server is honoured ONLY when it belongs to the current broker's runtime
-// server list (deployment runtime config). Anything else is discarded and
-// the first configured server is used (neutral fallback when unconfigured).
+// Broker-neutral stored-server rule (white-label): session-anchored storage
+// (written with the committed session) is honoured verbatim; otherwise a
+// remembered server is honoured only when listed in the current broker's
+// runtime server list. Anything else is discarded to the neutral fallback
+// (unconfigured brokers keep the stored value: no list to validate against).
 // No brand names, no hashes, no per-broker special cases anywhere.
 export interface RuntimeBrokerServerConfig {
   defaultMt5Server?: unknown;
