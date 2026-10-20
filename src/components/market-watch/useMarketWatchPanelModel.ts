@@ -143,12 +143,23 @@ export const useMarketWatchPanelModel = ({
     : [], [allSymbols, authenticatedMarketSymbols, disabledSymbolSet, isAuthenticated]);
   const quoteEligibleSymbols = catalogSymbols;
   const quoteEligibleSymbolSet = useMemo(() => new Set(quoteEligibleSymbols), [quoteEligibleSymbols]);
-  const defaultSymbols = useMemo(
-    () => (accountUniverseActive ? selectAccountDefaultMarketWatchSymbols : selectDefaultMarketWatchSymbols)(
+  const defaultSymbols = useMemo(() => {
+    // Authenticated defaults are the whole account catalog; guest defaults are
+    // the curated core list intersected with the quote-eligible catalog so a
+    // non-catalog default never renders. The core list is fallback order only.
+    if (accountUniverseActive) {
+      return selectAccountDefaultMarketWatchSymbols(
+        [...marketInstruments],
+        [...allSymbols, ...marketInstruments],
+      );
+    }
+    return selectDefaultMarketWatchSymbols(
       [...marketInstruments],
       [...allSymbols, ...marketInstruments],
-    ),
-    [accountUniverseActive, allSymbols, marketInstruments],
+      quoteEligibleSymbols,
+    );
+  },
+  [accountUniverseActive, allSymbols, marketInstruments, quoteEligibleSymbols],
   );
   const shouldMergePersistedSymbols = shouldUseWatchlistAsMarketWatchSource({
     activeWatchlistId: activeWatchlist?.id,

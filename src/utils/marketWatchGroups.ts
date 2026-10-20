@@ -1,3 +1,4 @@
+import { pruneSymbolsToUniverse } from './accountSymbolUniverse';
 import { resolveMarketWatchSymbolInput } from './marketWatchSource';
 
 export interface MarketWatchGroupSource {
@@ -233,15 +234,20 @@ export const buildMarketWatchSymbolGroups = (
 /**
  * Builds the curated built-in Market Watch.
  *
- * The three requested core symbols always lead in the declared order when the
- * connected public catalog exposes them. Every remaining detected group except
- * Other then contributes one representative: the symbol with the highest
- * current bid/ask midpoint. Symbols without a usable price remain deterministic
- * via an alphabetical fallback. Custom watchlists do not use this selection.
+ * The three requested core symbols are a FALLBACK ORDER only: they decide
+ * which catalog symbols to try first, never which symbols are allowed. Every
+ * returned symbol is intersected with the broker/account catalog (the
+ * `sources` universe, further narrowed by `eligibleUniverse` when provided),
+ * so a default that the catalog does not expose never renders. Every
+ * remaining detected group except Other then contributes one representative:
+ * the symbol with the highest current bid/ask midpoint. Symbols without a
+ * usable price remain deterministic via an alphabetical fallback. Custom
+ * watchlists do not use this selection.
  */
 export const selectDefaultMarketWatchSymbols = (
   sources: readonly unknown[],
   metadataSources: readonly unknown[] = sources,
+  eligibleUniverse?: readonly unknown[],
 ): string[] => {
   const symbolUniverse = Array.from(new Set(sources.map(readSymbol).filter(Boolean)));
   if (symbolUniverse.length === 0) return [];
@@ -289,5 +295,10 @@ export const selectDefaultMarketWatchSymbols = (
     coveredGroups.add(group.key);
   });
 
-  return selected;
+  // The core list is fallback order only: membership is decided by the
+  // catalog. Intersect with the eligible universe (the T11 quote-eligible
+  // catalog at the call site) via the shared catalog helper so a non-catalog
+  // default can never leak into the UI.
+  if (eligibleUniverse === undefined) return selected;
+  return pruneSymbolsToUniverse(selected, eligibleUniverse);
 };

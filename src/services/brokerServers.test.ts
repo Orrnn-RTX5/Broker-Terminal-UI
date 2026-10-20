@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { normalizeBrokerServers, resolveLoginBrokerTarget } from './brokerServers';
+import {
+  BROKER_SERVER_STORAGE_KEY,
+  DEFAULT_BROKER_SERVER,
+  getStoredBrokerServer,
+  isDefaultBrokerServerValue,
+  normalizeBrokerServers,
+  persistBrokerServer,
+  resolveLoginBrokerTarget,
+} from './brokerServers';
 
 type RuntimeWindow = Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
 
@@ -60,5 +68,52 @@ describe('resolveLoginBrokerTarget', () => {
       broker_id: 'testorrnn',
       server: 'https://testbroker.example',
     });
+  });
+});
+
+describe('white-label fallback server (T-ADD)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('uses a neutral, brand-free fallback (no tenant literals)', () => {
+    expect(DEFAULT_BROKER_SERVER).toBe('Broker');
+    expect(DEFAULT_BROKER_SERVER.toLowerCase()).not.toContain('rtx');
+    expect(DEFAULT_BROKER_SERVER.toLowerCase()).not.toContain('terminal');
+  });
+
+  it('resolves empty input to the neutral fallback with no routing hints', () => {
+    expect(resolveLoginBrokerTarget('')).toEqual({ displayValue: 'Broker' });
+    expect(resolveLoginBrokerTarget('   ')).toEqual({ displayValue: 'Broker' });
+  });
+
+  it('migrates the legacy fallback label to neutral with no routing hints', () => {
+    expect(resolveLoginBrokerTarget('RTX 5 Web Terminal')).toEqual({ displayValue: 'Broker' });
+    expect(isDefaultBrokerServerValue('RTX 5 Web Terminal')).toBe(true);
+    expect(isDefaultBrokerServerValue('  rtx 5 web terminal  ')).toBe(true);
+  });
+
+  it('still recognizes the neutral fallback and rejects real server names', () => {
+    expect(isDefaultBrokerServerValue('Broker')).toBe(true);
+    expect(isDefaultBrokerServerValue('broker_3')).toBe(false);
+    expect(isDefaultBrokerServerValue('MetaQuotes-Demo')).toBe(false);
+    expect(isDefaultBrokerServerValue('example.com:443')).toBe(false);
+    expect(isDefaultBrokerServerValue('')).toBe(false);
+  });
+
+  it('reads an empty store as neutral and keeps real stored servers intact', () => {
+    expect(getStoredBrokerServer()).toBe('Broker');
+    localStorage.setItem(BROKER_SERVER_STORAGE_KEY, 'MetaQuotes-Demo');
+    expect(getStoredBrokerServer()).toBe('MetaQuotes-Demo');
+  });
+
+  it('migrates a legacy stored value to neutral on read', () => {
+    localStorage.setItem(BROKER_SERVER_STORAGE_KEY, 'RTX 5 Web Terminal');
+    expect(getStoredBrokerServer()).toBe('Broker');
+  });
+
+  it('persists empty input as the neutral fallback', () => {
+    expect(persistBrokerServer('')).toBe('Broker');
+    expect(localStorage.getItem(BROKER_SERVER_STORAGE_KEY)).toBe('Broker');
   });
 });

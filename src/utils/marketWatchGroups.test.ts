@@ -103,6 +103,32 @@ describe('Market Watch symbol groups', () => {
     ]);
   });
 
+  it('treats core symbols as fallback order only: non-catalog defaults never render', () => {
+    const sources = [
+      { symbol: 'XAUUSD', category: 'Metals', bid: 2500, ask: 2501 },
+      { symbol: 'BTCUSD', category: 'Crypto', bid: 108000, ask: 108010 },
+      { symbol: 'EURUSD', category: 'Forex', bid: 1.08, ask: 1.09 },
+    ];
+
+    // Eligible catalog omits BTCUSD: catalog members keep the declared
+    // fallback order while the non-catalog default never renders.
+    expect(
+      selectDefaultMarketWatchSymbols(sources, sources, ['XAUUSD', 'EURUSD']),
+    ).toEqual(['XAUUSD', 'EURUSD']);
+
+    // Full catalog: every core symbol renders in the declared fallback order.
+    expect(
+      selectDefaultMarketWatchSymbols(
+        sources,
+        sources,
+        [{ symbol: 'XAUUSD' }, { symbol: 'BTCUSD' }, { symbol: 'EURUSD' }],
+      ),
+    ).toEqual(['XAUUSD', 'BTCUSD', 'EURUSD']);
+
+    // Empty eligible catalog: nothing renders.
+    expect(selectDefaultMarketWatchSymbols(sources, sources, [])).toEqual([]);
+  });
+
   it('uses broker metadata, resolves the legacy EURUSD identity, and falls back alphabetically when prices are absent', () => {
     const defaults = selectDefaultMarketWatchSymbols(
       ['XAUUSD', 'BTCUSD', 'EUROUSD', 'GBPUSD', 'LOW', 'HIGH'],

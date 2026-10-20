@@ -1,13 +1,13 @@
 import { getRuntimeBrokerConfiguration } from '../config/backendTarget.js';
 import type { SavedAccount } from '../store/useAppStore';
 import { getCommittedBrokerAccountSessionScope, type CommittedBrokerAccountSessionScope } from './brokerSession';
-import { DEFAULT_BROKER_SERVER, getStoredBrokerServer } from './brokerServers';
+import { getStoredBrokerServer, isDefaultBrokerServerValue } from './brokerServers';
 
 // Account ownership needs full identities. The logo resolver's hostname-only
 // matching would merge servers on different ports or broker-specific paths.
 export const normalizeSavedAccountServer = (value: string): string => {
     const text = value.trim();
-    if (!text || text === DEFAULT_BROKER_SERVER || text === 'Broker') return '';
+    if (!text || isDefaultBrokerServerValue(text)) return '';
     try {
         const url = new URL(text);
         if (url.protocol === 'https:' || url.protocol === 'http:') {
