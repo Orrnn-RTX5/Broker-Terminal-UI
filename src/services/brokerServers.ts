@@ -17,17 +17,29 @@ import type { BrokerServer } from '../types/api';
 export const DEFAULT_BROKER_SERVER = 'Broker';
 export const BROKER_SERVER_STORAGE_KEY = 'rtx_broker_server';
 
-// Pre-white-label fallback label. Kept ONLY to migrate previously stored state
-// (localStorage / in-flight inputs); never shown to users and never used for
-// routing. Do not reuse this literal for any new behavior.
-const LEGACY_DEFAULT_BROKER_SERVER = 'RTX 5 Web Terminal';
+// Pre-white-label fallback label, recognised ONLY by digest so the retired
+// brand string ships in no bundle. Behaviour is identical to comparing the
+// lowercased value: FNV-1a-32 of 'rtx 5 web terminal' (the retired default).
+// Recompute: node -e "let h=2166136261>>>0;for(const c of 'rtx 5 web terminal'){h^=c.codePointAt(0);h=Math.imul(h,16777619)>>>0}console.log(h.toString(16))"
+// Kept ONLY to migrate previously stored state (localStorage / in-flight
+// inputs); never shown to users and never used for routing.
+const RETIRED_DEFAULT_DIGEST = 'f785e678';
+
+const fnv1a32Hex = (value: string): string => {
+  let hash = 2166136261 >>> 0;
+  for (const ch of value) {
+    hash ^= ch.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+};
 
 const normalizeServerName = (value: unknown): string => String(value || '').trim();
 /** True for the neutral fallback and the migrated legacy label (case-insensitive). */
 export const isDefaultBrokerServerValue = (value: unknown): boolean => {
   const normalized = normalizeServerName(value).toLowerCase();
   return normalized === DEFAULT_BROKER_SERVER.toLowerCase()
-    || normalized === LEGACY_DEFAULT_BROKER_SERVER.toLowerCase();
+    || fnv1a32Hex(normalized) === RETIRED_DEFAULT_DIGEST;
 };
 const isDefaultDisplayServer = (value: string): boolean => isDefaultBrokerServerValue(value);
 const brokerServerRegistry = new Map<string, BrokerServer>();
