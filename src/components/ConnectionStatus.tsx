@@ -136,7 +136,8 @@ export function ConnectionStatus({ reconnectCallback }: ConnectionStatusProps) {
       >
         <div className={`rtx-status-bar__status-dot w-2 h-2 rounded-full ${status.color}`} />
         <span className="rtx-status-bar__metric font-normal text-[13px] leading-[19.5px]">
-          {state === 'connected' ? (latencyMs !== null ? `${tr('Connected')} ${latencyMs.toFixed(0)}ms` : tr('Connected')) : tr(status.text)}
+          {state === 'connected' ? (latencyMs !== null ? `${tr('Connected')} ${latencyMs.toFixed(0)}ms` : tr('Connected'))
+            : state === 'reconnecting' && !isStale ? tr("Reconnecting to server…") : tr(status.text)}
         </span>
         {isStale && (
           <span className="text-orange-400 text-[12px] font-normal ml-1 [.rtx-advanced-view_&]:text-orange-600">{tr("(Stale)")}</span>

@@ -5,6 +5,7 @@
     "Terminal login",
     "Download desktop installer {{value0}}",
     "Download the latest desktop installer",
-    "Fill policy is not supported by the execution venue and is not sent"
+    "Fill policy is not supported by the execution venue and is not sent",
+    "Reconnecting to server…"
   ]
 }

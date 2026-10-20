@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { normalizeBrokerOperationalConfig } from '../services/brokerOperationalConfig';
 import { recordBrokerServerIdentity } from '../services/brokerServerIdentity';
 import { installSavedAccountServerMigration } from '../services/savedAccountServerMigration';
+import { getReconnectDelayMs, isServerUnreachableError } from '../services/serverReachability';
 
 /**
  * useBrokerConfigWarmup — prime the broker's own config document on startup.
@@ -22,15 +23,29 @@ export function useBrokerConfigWarmup(): void {
     // Saved accounts under the build fallback server key join the broker's
     // real key as soon as its config (server_name) is available.
     const stopMigration = installSavedAccountServerMigration();
-    api.config.getConfig()
-      .then((config) => {
-        if (!active) return;
-        normalizeBrokerOperationalConfig(config);
-        recordBrokerServerIdentity(config);
-      })
-      .catch(() => { if (active) normalizeBrokerOperationalConfig(null); });
+    let attempt = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const load = () => {
+      api.config.getConfig()
+        .then((config) => {
+          if (!active) return;
+          normalizeBrokerOperationalConfig(config);
+          recordBrokerServerIdentity(config);
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          if (attempt === 0) normalizeBrokerOperationalConfig(null);
+          // An unreachable API (gateway restart) is retried with a capped
+          // exponential backoff until it answers; other failures are final.
+          if (!isServerUnreachableError(error)) return;
+          retryTimer = setTimeout(load, getReconnectDelayMs(attempt));
+          attempt += 1;
+        });
+    };
+    load();
     return () => {
       active = false;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
       stopMigration();
     };
   }, []);

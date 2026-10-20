@@ -2,6 +2,7 @@ import { toLocalDevProxyUrl } from '../config/localDevProxy';
 import { fetchEarlyPublicStartup } from '../startup/earlyPublicStartup';
 import { assertBrokerRequestAllowed } from '../api/brokerRequestGuard';
 import { getRuntimeBrokerConfiguration } from '../config/backendTarget.js';
+import { MARKET_DATA_TEMPORARILY_UNAVAILABLE } from './serverReachability';
 
 interface PublicCatalogRequest {
   controller: AbortController;
@@ -62,7 +63,7 @@ const requestPublicMarketCatalog = (
         }
         throw new Error(response.status === 401 || response.status === 403
           ? 'This broker requires login to view market data.'
-          : 'Market data is temporarily unavailable. Retrying…');
+          : MARKET_DATA_TEMPORARILY_UNAVAILABLE);
       }
       return response.json();
     };

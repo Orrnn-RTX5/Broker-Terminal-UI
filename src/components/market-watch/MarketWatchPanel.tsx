@@ -12,6 +12,8 @@ import { MarketWatchSaveSetDialog } from './MarketWatchSaveSetDialog';
 import { useMarketWatchExport } from './useMarketWatchExport';
 import { useMarketWatchContextMenu, useMarketWatchDetailsContextMenu } from './useMarketWatchContextMenu';
 import { useMarketWatchPanelModel } from './useMarketWatchPanelModel';
+import { useServerReconnect } from '../../hooks/useServerReconnect';
+import { isServerUnreachableError } from '../../services/serverReachability';
 import { MarketWatchSymbolExplorer } from './MarketWatchSymbolExplorer';
 import { MarketWatchGrid } from './MarketWatchGrid';
 import { MarketWatchSymbolDetails } from './MarketWatchSymbolDetails';
@@ -152,6 +154,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     const {
       loading: watchlistLoading,
       error: watchlistError,
+      reload: reloadWatchlist,
     } = useRemoteWatchlistSync(activeWatchlist?.id);
     const [search, setSearch] = useState('');
     const [highlightIndex, setHighlightIndex] = useState(-1);
@@ -793,12 +796,24 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       pendingStatusRefreshSymbolRef.current = null;
       void reloadActiveMarketSymbols();
     }, [pendingStatusRefreshSymbolRef, reloadActiveMarketSymbols, subscriptionSymbols]);
-    const marketWatchErrors = getMarketWatchDisplayErrors(
+    const marketDataErrors = [
       symbolsError,
       watchlistError,
       quotesError,
       searchUniverse.length === 0 ? activeSymbolsError : null,
+    ];
+    // An unreachable API (gateway restart, network loss, gateway 502/503/504
+    // or timeout) is one "Reconnecting to server…" state with backoff retries,
+    // not a raw transport error. Other errors stay visible as errors.
+    const serverUnreachable = marketDataErrors.some(isServerUnreachableError);
+    const marketWatchErrors = getMarketWatchDisplayErrors(
+      ...marketDataErrors.map(error => (isServerUnreachableError(error) ? null : error)),
     );
+    useServerReconnect(serverUnreachable, () => {
+      void marketInstrumentsSnapshot.reload();
+      void reloadActiveMarketSymbols();
+      void reloadWatchlist();
+    });
     return (
       <>
         {/* Shared Market Watch interaction styles for browser and Electron. */}
@@ -983,6 +998,18 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
 
           {!showSymbolsPanel && (
             <>
+              {serverUnreachable && (
+                <div role="status" aria-live="polite" aria-label={tr("Reconnecting to server…")} style={{
+                  padding: '5px 10px',
+                  borderTop: '1px solid rgba(96,165,250,0.25)',
+                  color: 'var(--text-secondary)',
+                  background: 'rgba(96,165,250,0.08)',
+                  fontSize: 10,
+                  lineHeight: 1.3,
+                }}>
+                  {tr("Reconnecting to server…")}
+                </div>
+              )}
               {marketWatchErrors.length > 0 && (
                 <div role="alert" aria-label={tr("Market Watch errors")} style={{
                   padding: '5px 10px',
