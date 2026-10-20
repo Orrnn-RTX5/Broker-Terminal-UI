@@ -67,4 +67,40 @@ describe('TopToolbar full reconnect (T12)', () => {
   it('chart refresh entry point is a safe no-op with no live streams', () => {
     expect(() => new ChartDataService().refreshCandleStreams()).not.toThrow();
   });
+
+  it('a throwing trade-stream never blocks the other transports', () => {
+    const reconnectQuotes = vi
+      .spyOn(getQuoteSocketManager(), 'reconnect')
+      .mockImplementation(() => undefined);
+    const refreshCharts = vi
+      .spyOn(chartDataService, 'refreshCandleStreams')
+      .mockImplementation(() => undefined);
+    const connectTradeSocket = vi
+      .spyOn(getTradeWebSocketClient(), 'connect')
+      .mockImplementation(() => undefined);
+    const reconnectTradeStream = vi.fn(() => {
+      throw new Error('trade stream down');
+    });
+    const reloadMarketSnapshot = vi.fn();
+
+    expect(() =>
+      refreshAllConnections({ reconnectTradeStream, reloadMarketSnapshot }),
+    ).not.toThrow();
+
+    expect(reconnectTradeStream).toHaveBeenCalledTimes(1);
+    expect(reconnectQuotes).toHaveBeenCalledTimes(1);
+    expect(refreshCharts).toHaveBeenCalledTimes(1);
+    expect(connectTradeSocket).toHaveBeenCalledTimes(1);
+    expect(reloadMarketSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('omitted onRefreshConnection renders a disabled action, never a dead click', () => {
+    const { onRefreshConnection: _omitted, ...baseProps } = toolbarProps(vi.fn());
+    render(<TopToolbar {...baseProps} />);
+
+    const action = screen.getByRole('button', { name: 'Refresh unavailable' });
+    expect((action as HTMLButtonElement).disabled).toBe(true);
+
+    expect(() => fireEvent.click(action)).not.toThrow();
+  });
 });

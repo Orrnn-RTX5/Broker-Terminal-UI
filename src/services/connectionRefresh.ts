@@ -30,9 +30,35 @@ export interface FullConnectionRefreshDeps {
 }
 
 export function refreshAllConnections(deps: FullConnectionRefreshDeps): void {
-  deps.reconnectTradeStream();
-  getQuoteSocketManager().reconnect();
-  chartDataService.refreshCandleStreams();
-  getTradeWebSocketClient().connect();
-  void deps.reloadMarketSnapshot();
+  // Isolate each transport (same pattern as the chart-stream loop in
+  // ChartDataService.refreshCandleStreams): one throwing entry point must
+  // never block the remaining transports. Deps are throw-tolerant by
+  // contract; failures stay local to the failing step.
+  try {
+    deps.reconnectTradeStream();
+  } catch {
+    // One failed trade-stream reconnect must not block the rest.
+  }
+  try {
+    getQuoteSocketManager().reconnect();
+  } catch {
+    // One failed quote reconnect must not block the rest.
+  }
+  try {
+    chartDataService.refreshCandleStreams();
+  } catch {
+    // One failed chart refresh must not block the rest.
+  }
+  try {
+    getTradeWebSocketClient().connect();
+  } catch {
+    // One failed order-socket connect must not block the rest.
+  }
+  try {
+    void Promise.resolve(deps.reloadMarketSnapshot()).catch(() => {
+      // Async snapshot failure stays local; transports above already ran.
+    });
+  } catch {
+    // Sync snapshot throw stays local as well.
+  }
 }
