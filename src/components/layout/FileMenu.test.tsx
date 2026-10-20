@@ -89,13 +89,14 @@ vi.mock('../../hooks/useDesktopRelease', () => ({
         release: {
             version: '9.9.9',
             tagName: 'v9.9.9',
-            releaseUrl: 'https://github.com/rtx5-orrnn/rtx5-terminal-releases/releases/tag/v9.9.9',
-            downloadUrl: 'https://github.com/rtx5-orrnn/rtx5-terminal-releases/releases/download/v9.9.9/RTX.Terminal.Setup.9.9.9.exe',
-            assetName: 'RTX.Terminal.Setup.9.9.9.exe',
+            releaseUrl: 'https://releases.example.test/tag/v9.9.9',
+            downloadUrl: 'https://releases.example.test/Terminal.Setup.9.9.9.exe',
+            assetName: 'Terminal.Setup.9.9.9.exe',
             assetSize: 123,
         },
         status: 'ready',
         error: null,
+        available: true,
     }),
 }));
 

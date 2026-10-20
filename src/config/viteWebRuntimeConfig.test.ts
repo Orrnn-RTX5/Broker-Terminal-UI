@@ -154,6 +154,30 @@ describe('environment-based web runtime configuration', () => {
     expect(JSON.stringify(config)).not.toContain('TEST')
   })
 
+  it('carries the optional tenant release channel and chart defaults into the browser config', () => {
+    expect(createWebRuntimeConfig({})).toMatchObject({
+      DESKTOP_RELEASE_API_URL: '', DEFAULT_CHART_SYMBOL: '',
+      DEFAULT_CHART_TIMEFRAME: '', FIRST_PAINT_HISTORY_COUNT: '',
+    })
+    const passthrough = createWebRuntimeConfig({
+      ...achieverEnvironment,
+      VITE_DESKTOP_RELEASE_API_URL: 'https://releases.independent.test/api/latest?channel=stable',
+      VITE_DEFAULT_CHART_SYMBOL: 'eurusd.r',
+      VITE_DEFAULT_CHART_TIMEFRAME: 'h1',
+      VITE_FIRST_PAINT_HISTORY_COUNT: '250',
+    })
+    expect(passthrough).toMatchObject({
+      DESKTOP_RELEASE_API_URL: 'https://releases.independent.test/api/latest?channel=stable',
+      DEFAULT_CHART_SYMBOL: 'EURUSD.R',
+      DEFAULT_CHART_TIMEFRAME: 'h1',
+      FIRST_PAINT_HISTORY_COUNT: '250',
+    })
+    expect(executeConfig(renderWebRuntimeConfig(passthrough)).RUNTIME_CONFIG).toEqual(expect.objectContaining({
+      DESKTOP_RELEASE_API_URL: 'https://releases.independent.test/api/latest?channel=stable',
+      DEFAULT_CHART_SYMBOL: 'EURUSD.R',
+    }))
+  })
+
   it('respects explicit external API, feed identity, websocket, and mock settings', () => {
     const config = createWebRuntimeConfig({
       ...achieverEnvironment,

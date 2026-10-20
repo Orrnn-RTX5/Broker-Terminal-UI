@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -241,6 +241,32 @@ describe.skipIf(!existsSync(shell))('container broker environment', {
     expect(evaluate(inlineScript(generate({ BROKER_LOGO_URL: url }).html)).RUNTIME_CONFIG.BROKER_LOGO_URL).toBe(url);
     expect(() => generate({ BROKER_LOGO_URL: 'https://private:password@images.independent.test/logo.svg' }))
       .toThrow(/BROKER_LOGO_URL must be a valid HTTPS URL without credentials/);
+  });
+  it('passes the optional tenant release source and chart default through while defaulting to hidden/empty', () => {
+    const empty = evaluate(inlineScript(generate().html)).RUNTIME_CONFIG;
+    expect(empty).toMatchObject({
+      DESKTOP_RELEASE_API_URL: '',
+      DEFAULT_CHART_SYMBOL: '',
+    });
+    const { html } = generate({
+      DESKTOP_RELEASE_API_URL: 'https://releases.independent.test/api/latest?channel=stable',
+      DEFAULT_CHART_SYMBOL: 'eurusd.r',
+    });
+    expect(evaluate(inlineScript(html)).RUNTIME_CONFIG).toMatchObject({
+      DESKTOP_RELEASE_API_URL: 'https://releases.independent.test/api/latest?channel=stable',
+      DEFAULT_CHART_SYMBOL: 'EURUSD.R',
+    });
+  });
+  it.each([
+    ['DESKTOP_RELEASE_API_URL', 'https://user:secret@releases.example.test/latest', /DESKTOP_RELEASE_API_URL must be a valid HTTPS/],
+    ['DESKTOP_RELEASE_API_URL', 'http://releases.example.test/latest', /DESKTOP_RELEASE_API_URL must be a valid HTTPS/],
+    ['DEFAULT_CHART_SYMBOL', 'https://evil.example/BTCUSD', /DEFAULT_CHART_SYMBOL must be a plain symbol/],
+    ['DEFAULT_CHART_SYMBOL', 'TOOLONGTOOLONGTOOLONGTOOLONG', /DEFAULT_CHART_SYMBOL must be a plain symbol/],
+    ['DEFAULT_CHART_TIMEFRAME', 'S15', /DEFAULT_CHART_TIMEFRAME must be one of/],
+    ['FIRST_PAINT_HISTORY_COUNT', 'all', /FIRST_PAINT_HISTORY_COUNT must be a positive integer/],
+    ['FIRST_PAINT_HISTORY_COUNT', '0', /FIRST_PAINT_HISTORY_COUNT must be a positive integer/],
+  ] as const)('rejects malformed optional tenant default %s=%s', (name, value, expected) => {
+    expect(() => generate({ [name]: value })).toThrow(expected);
   });
   it.each(['invalid\nbroker', 'invalid\rbroker', 'invalid\tbroker', 'invalid\u0001broker', 'invalid\u007fbroker'])('rejects control characters in broker identity %j', (id) => {
     expect(() => generate({ BROKER_ID: id })).toThrow(/BROKER_ID must not contain control characters/);

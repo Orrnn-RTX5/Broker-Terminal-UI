@@ -15,6 +15,8 @@ export type BrokerRuntimeConfiguration = {
   brokerLoginHeroMobileUrl: string
   brokerTermsUrl: string
   extraDiscoveryUrls: string[]
+  desktopReleaseApiUrl: string
+  defaultChartSymbol: string
   publicCandleBridge: boolean
   publicMarketApi: string
   allowedOrigins: string[]
@@ -45,6 +47,8 @@ export function selectBrokerRuntimeConfig(candidates: unknown[]): Record<string,
       read(['FEED_BROKER_ID', 'VITE_FEED_BROKER_ID']) || brokerId,
       origin(read(['DISCOVERY_BASE_URL', 'BROKER_DISCOVERY_URL', 'SHARED_DISCOVERY_BASE_URL', 'VITE_DISCOVERY_BASE_URL', 'VITE_BROKER_DISCOVERY_URL', 'VITE_SHARED_DISCOVERY_BASE_URL'])),
       origin(read(['BROKER_DISCOVERY_URL', 'VITE_BROKER_DISCOVERY_URL'])),
+      read(['DESKTOP_RELEASE_API_URL', 'VITE_DESKTOP_RELEASE_API_URL']),
+      read(['DEFAULT_CHART_SYMBOL', 'VITE_DEFAULT_CHART_SYMBOL']).toUpperCase(),
       read(['BROKER_ALLOWED_ORIGINS', 'VITE_BROKER_ALLOWED_ORIGINS']).split(/[\s,]+/).filter(Boolean).map(origin).sort(),
       read(['PUBLIC_MARKET_API', 'VITE_PUBLIC_MARKET_API']) || 'gateway-v2',
       read(['BROKER_LOGIN_HERO_URL', 'VITE_BROKER_LOGIN_HERO_URL']),
@@ -131,6 +135,38 @@ export function validateBrokerRuntimeConfig(
   const brokerLoginHeroUrl = read('BROKER_LOGIN_HERO_URL', 'VITE_BROKER_LOGIN_HERO_URL')
   const brokerLoginHeroMobileUrl = read('BROKER_LOGIN_HERO_MOBILE_URL', 'VITE_BROKER_LOGIN_HERO_MOBILE_URL')
   const brokerTermsUrl = read('BROKER_TERMS_URL', 'VITE_BROKER_TERMS_URL')
+  // Optional tenant download source. Absence hides the download UI; a present
+  // value must be an explicit endpoint (paths/queries allowed for versioned
+  // release APIs) and never credentials-bearing.
+  const parseOptionalEndpoint = (value: string, label: string): string => {
+    if (!value) return ''
+    try {
+      const url = new URL(value)
+      const host = url.hostname.replace(/^\[|\]$/g, '')
+      const local = /^(localhost|127\.0\.0\.1|::1)$/i.test(host) || url.hostname.endsWith('.localhost')
+      const allowedLocalProtocol = (options.allowLocal || options.desktop) && local && url.protocol === 'http:'
+      if (url.protocol !== 'https:' && !allowedLocalProtocol) {
+        errors.push(`${label} must be a public HTTPS URL without credentials.`)
+        return ''
+      }
+      if (url.username || url.password) {
+        errors.push(`${label} must be a public HTTPS URL without credentials.`)
+        return ''
+      }
+      return value
+    } catch {
+      errors.push(`${label} is not a valid URL.`)
+      return ''
+    }
+  }
+  const desktopReleaseApiUrl = parseOptionalEndpoint(
+    read('DESKTOP_RELEASE_API_URL', 'VITE_DESKTOP_RELEASE_API_URL'), 'DESKTOP_RELEASE_API_URL')
+  // Optional tenant chart default. Absence falls back to the first authorized
+  // symbol; a present value must be a plain symbol string, never a URL/host.
+  const defaultChartSymbol = read('DEFAULT_CHART_SYMBOL', 'VITE_DEFAULT_CHART_SYMBOL').toUpperCase()
+  if (defaultChartSymbol && !/^[A-Z0-9._-]{1,20}$/.test(defaultChartSymbol)) {
+    errors.push('DEFAULT_CHART_SYMBOL must be a plain symbol string (A-Z, 0-9, ., _, -).')
+  }
   const publicMarketApi = read('PUBLIC_MARKET_API', 'VITE_PUBLIC_MARKET_API') || 'gateway-v2'
   if (!['gateway-v2', 'mt5-bridge-v1'].includes(publicMarketApi)) errors.push('PUBLIC_MARKET_API must be gateway-v2 or mt5-bridge-v1.')
   for (const [label, value] of [
@@ -151,6 +187,8 @@ export function validateBrokerRuntimeConfig(
     brokerName: read('BROKER_NAME', 'VITE_BROKER_NAME') || defaultMt5Server || brokerId,
     brokerLogoUrl, brokerLoginHeroUrl, brokerLoginHeroMobileUrl, brokerTermsUrl,
     extraDiscoveryUrls: options.desktop ? read('EXTRA_BROKER_DISCOVERY_URLS', 'VITE_EXTRA_BROKER_DISCOVERY_URLS').split(/[\s,]+/).filter(Boolean) : [],
+    desktopReleaseApiUrl,
+    defaultChartSymbol: /^[A-Z0-9._-]{1,20}$/.test(defaultChartSymbol) ? defaultChartSymbol : '',
     publicCandleBridge: /^(true|1|yes|on)$/i.test(read('PUBLIC_CANDLE_BRIDGE', 'VITE_PUBLIC_CANDLE_BRIDGE')),
     publicMarketApi,
     allowedOrigins, errors,

@@ -83,7 +83,7 @@ vi.mock('../../services/api', () => ({
 }));
 
 vi.mock('../../hooks/useDesktopRelease', () => ({
-    useDesktopRelease: () => ({ release: null, status: 'idle', error: null }),
+    useDesktopRelease: () => ({ release: null, status: 'idle', error: null, available: false }),
 }));
 
 vi.mock('../../services/chartPrinter', () => ({
