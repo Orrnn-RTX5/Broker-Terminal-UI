@@ -3,8 +3,10 @@ import type {
   Dispatch,
   MouseEvent as ReactMouseEvent,
   MutableRefObject,
+  RefObject,
   SetStateAction,
 } from 'react';
+import type { Coordinate, ISeriesApi, SeriesType } from 'lightweight-charts';
 
 import { activateActiveChartSource } from '../../../services/activeChartSource';
 import { captureFullPage } from '../../../services/screenshotService';
@@ -19,6 +21,7 @@ export interface TradingChartContextMenuState {
   visible: boolean;
   x: number;
   y: number;
+  clickPrice?: number;
 }
 
 interface UseTradingChartContextMenuStateResult {
@@ -108,6 +111,8 @@ interface UseTradingChartContextMenuControllerOptions {
   applyChartTypeInPlace: (type: ChartType) => boolean;
   chartSettingsRef: MutableRefObject<ChartProperties>;
   clearLocalIndicators: () => void;
+  containerRef?: RefObject<HTMLDivElement | null>;
+  seriesRef?: RefObject<ISeriesApi<SeriesType> | null>;
   loadHistory: (symbol: string, timeframe: Timeframe) => Promise<void>;
   localIndicatorManager: IndicatorManager;
   panelId?: string;
@@ -134,6 +139,8 @@ export function useTradingChartContextMenuController({
   applyChartTypeInPlace,
   chartSettingsRef,
   clearLocalIndicators,
+  containerRef,
+  seriesRef,
   loadHistory,
   localIndicatorManager,
   panelId,
@@ -164,8 +171,29 @@ export function useTradingChartContextMenuController({
       node = node.parentElement;
     }
 
-    setCtxMenu({ visible: true, x: event.clientX, y: event.clientY });
-  }, [activeChartSourceId, setCtxMenu]);
+    // T10: resolve the clicked price at menu-open time via the series scale.
+    // Fail-closed: any missing ref or invalid conversion leaves clickPrice
+    // undefined so the order dialog shows a blank price field as today.
+    let clickPrice: number | undefined;
+    try {
+      const series = seriesRef?.current ?? null;
+      const container = containerRef?.current ?? null;
+      if (series && container && typeof series.coordinateToPrice === 'function') {
+        const rect = container.getBoundingClientRect();
+        const paneY = event.clientY - rect.top;
+        if (Number.isFinite(paneY)) {
+          const raw = series.coordinateToPrice(paneY as Coordinate);
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+            clickPrice = raw;
+          }
+        }
+      }
+    } catch {
+      clickPrice = undefined;
+    }
+
+    setCtxMenu({ visible: true, x: event.clientX, y: event.clientY, clickPrice });
+  }, [activeChartSourceId, containerRef, seriesRef, setCtxMenu]);
 
   const closeCtxMenu = useCallback(() => {
     setCtxMenu(previous => ({ ...previous, visible: false }));

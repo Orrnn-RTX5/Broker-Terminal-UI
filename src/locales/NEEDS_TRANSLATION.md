@@ -7,14 +7,15 @@ as a translation. Machine source of truth for the grace list:
 `translation-todo.json` (read by `catalogs.test.ts`, which still fails on
 any OTHER missing key and still enforces placeholder integrity).
 
-Keys needing translation (4):
+Keys needing translation (5):
 - `brokerWebsite` (en: "Broker website")
 - `Terminal login` (en: "Terminal login")
 - `Download desktop installer {{value0}}` (en: "Download desktop installer {{value0}}", placeholder `{{value0}}` must be preserved)
 - `Download the latest desktop installer` (en: "Download the latest desktop installer")
+- `Fill policy is not supported by the execution venue and is not sent` (en: same; ds-2 T3-fill key)
 
 Status per locale (missing = renders English via fallback until translated):
-ar, de, es, fr, hi, id, it, ja, ko, nl, pl, pt-BR, ru, th, tr, vi, zh-CN, zh-TW: all 4 missing.
+ar, de, es, fr, hi, id, it, ja, ko, nl, pl, pt-BR, ru, th, tr, vi, zh-CN, zh-TW: all 5 missing.
 en: source, nothing missing.
 
 When a translation lands, add the key with its translated value to that

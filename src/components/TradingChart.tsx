@@ -3099,6 +3099,8 @@ useTradingChartTradeRuntime({
     applyChartTypeInPlace,
     chartSettingsRef,
     clearLocalIndicators,
+    containerRef,
+    seriesRef,
     loadHistory,
     localIndicatorManager,
     panelId,

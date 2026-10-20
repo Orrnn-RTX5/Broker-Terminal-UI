@@ -61,6 +61,10 @@ interface OrderPanelProps {
   // type and price instead of blank defaults. Side still follows Buy/Sell.
   initialOrderType?: OrderType;
   initialPrice?: number;
+  // Chart entry-point side (ITEM 2 / T10 side preselection): when provided
+  // ('BUY'/'SELL'), the Buy/Sell submit path defaults to it while both
+  // buttons stay functional. Invalid values are ignored (default flow).
+  initialSide?: 'BUY' | 'SELL';
   marketStatus?: NormalizedMarketStatus;
   /**
    * Symbols the logged-in account may trade (its group catalogue). When
@@ -1042,6 +1046,18 @@ function OrderDialogDomPane({
   );
 }
 
+type DialogSubmitSide = 'buy' | 'sell';
+
+// ITEM 2 (T10 side preselection): normalize the chart-provided side.
+// Fail-closed: anything other than BUY/SELL resolves to null (default flow).
+function normalizeInitialDialogSide(value: unknown): DialogSubmitSide | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'BUY') return 'buy';
+  if (normalized === 'SELL') return 'sell';
+  return null;
+}
+
 // ─── Main Order Dialog ──────────────────────────────────────
 export function OrderPanelDialog({
   isOpen,
@@ -1051,11 +1067,18 @@ export function OrderPanelDialog({
   onSubmitOrder,
   initialOrderType,
   initialPrice,
+  initialSide,
   marketStatus,
   symbols: accountSymbols,
 }: OrderPanelProps) {
   const tr = useUiTranslation();
   const [symbol, setSymbol] = useState(initialSymbol);
+  // ITEM 2 (T10 side preselection): the Buy/Sell submit path defaults to the
+  // chart-implied side while both buttons stay functional (user can switch
+  // by pressing the other button). Null = default flow (absent/invalid).
+  const [selectedSide, setSelectedSide] = useState<DialogSubmitSide | null>(() =>
+    normalizeInitialDialogSide(initialSide),
+  );
   // SUI-T2 keeps honoring explicit caller props; SUI-T8 seeds the rest from
   // the persisted Options trade defaults (no literals).
   const [orderType, setOrderType] = useState<OrderType>(initialOrderType ?? 'Market Execution');
@@ -1184,6 +1207,15 @@ export function OrderPanelDialog({
       setDeviationStr(String(resolveDefaultTradeDeviation(latestTrade)));
     }
   }, [isOpen, initialSymbol]);
+
+  // ITEM 2 (T10 side preselection): re-seed the default submit path on every
+  // open so the dialog follows the latest chart entry point. Manual switches
+  // made while open are left untouched until the next open/prop change.
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedSide(normalizeInitialDialogSide(initialSide));
+    }
+  }, [isOpen, initialSide]);
 
   const spread = ask - bid;
   const spreadDisplay = formatSpreadDisplayWithUnit(symbol, spread, bid, ask);
@@ -1413,6 +1445,7 @@ export function OrderPanelDialog({
         aria-modal="true"
         aria-label={`${tr("New Order · ")}${symbol}`}
         data-order-mode={orderType}
+        data-side={selectedSide ?? undefined}
         data-sidebar-expanded={isSidebarExpanded ? 'true' : 'false'}
         data-show-tick-chart={showTickChart ? 'true' : 'false'}
         data-show-dom={showDom ? 'true' : 'false'}
@@ -1847,7 +1880,13 @@ export function OrderPanelDialog({
             {orderType === 'Market Execution' ? (
               <div className="rtx-order-dialog__field">
                 <label className="rtx-order-dialog__label" htmlFor={fillPolicyFieldId}>{tr("Fill policy")}</label>
-                <div className="rtx-order-dialog__fill-policy-wrap">
+                {/* T3 honesty: no fill_policy wire field exists (IOC/FOK are
+                    refused backend-side), so this control is display-only and
+                    disabled — its value is never sent. */}
+                <div
+                  className="rtx-order-dialog__fill-policy-wrap"
+                  title={tr("Fill policy is not supported by the execution venue and is not sent")}
+                >
                   <div className="rtx-order-dialog__fill-tabs" role="tablist">
                     {(['Fill or Kill', 'Immediate or Cancel', 'Return'] as const).map((policy) => (
                       <button
@@ -1857,6 +1896,9 @@ export function OrderPanelDialog({
                         aria-selected={fillPolicy === policy}
                         className={`rtx-order-dialog__fill-tab ${fillPolicy === policy ? 'rtx-order-dialog__fill-tab--active' : ''}`}
                         onClick={() => setFillPolicy(policy)}
+                        disabled
+                        title={tr("Fill policy is not supported by the execution venue and is not sent")}
+                        aria-describedby={`${fillPolicyFieldId}-unsupported-reason`}
                       >
                         {tr(policy)}
                       </button>
@@ -1867,11 +1909,21 @@ export function OrderPanelDialog({
                     value={fillPolicy}
                     onChange={(e) => setFillPolicy(e.target.value as FillPolicy)}
                     className="rtx-order-dialog__fill-select-sr"
+                    disabled
+                    title={tr("Fill policy is not supported by the execution venue and is not sent")}
+                    aria-describedby={`${fillPolicyFieldId}-unsupported-reason`}
                   >
                     <option value="Fill or Kill">{tr("Fill or Kill")}</option>
                     <option value="Immediate or Cancel">{tr("Immediate or Cancel")}</option>
                     <option value="Return">{tr("Return")}</option>
                   </select>
+                  <div
+                    id={`${fillPolicyFieldId}-unsupported-reason`}
+                    role="note"
+                    className="rtx-order-dialog__margin"
+                  >
+                    {tr("Fill policy is not supported by the execution venue and is not sent")}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1942,17 +1994,19 @@ export function OrderPanelDialog({
               <div className="rtx-order-dialog__actions">
                 <button
                   type="button"
-                  onClick={() => handleSubmit('sell')}
+                  onClick={() => { setSelectedSide('sell'); void handleSubmit('sell'); }}
                   disabled={isPlacing || bid <= 0 || isMarketExecutionBlocked}
                   className="rtx-order-dialog__action rtx-order-dialog__action--sell"
+                  aria-pressed={selectedSide === 'sell'}
                 >
                   {isPlacing ? tr("Placing...") : tr("Sell by Market")}
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSubmit('buy')}
+                  onClick={() => { setSelectedSide('buy'); void handleSubmit('buy'); }}
                   disabled={isPlacing || ask <= 0 || isMarketExecutionBlocked}
                   className="rtx-order-dialog__action rtx-order-dialog__action--buy"
+                  aria-pressed={selectedSide === 'buy'}
                 >
                   {isPlacing ? tr("Placing...") : tr("Buy by Market")}
                 </button>
@@ -1961,17 +2015,19 @@ export function OrderPanelDialog({
               <div className="rtx-order-dialog__actions">
                 <button
                   type="button"
-                  onClick={() => handleSubmit('sell')}
+                  onClick={() => { setSelectedSide('sell'); void handleSubmit('sell'); }}
                   disabled={isPlacing || !isPendingPriceReady}
                   className="rtx-order-dialog__action rtx-order-dialog__action--sell"
+                  aria-pressed={selectedSide === 'sell'}
                 >
                   {isPlacing ? tr("Placing...") : tr("Sell")}
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSubmit('buy')}
+                  onClick={() => { setSelectedSide('buy'); void handleSubmit('buy'); }}
                   disabled={isPlacing || !isPendingPriceReady}
                   className="rtx-order-dialog__action rtx-order-dialog__action--buy"
+                  aria-pressed={selectedSide === 'buy'}
                 >
                   {isPlacing ? tr("Placing...") : tr("Buy")}
                 </button>

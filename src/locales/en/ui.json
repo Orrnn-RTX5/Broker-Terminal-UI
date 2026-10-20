@@ -622,6 +622,7 @@
   "File": "File",
   "Fill or Kill": "Fill or Kill",
   "Fill policy": "Fill policy",
+  "Fill policy is not supported by the execution venue and is not sent": "Fill policy is not supported by the execution venue and is not sent",
   "Filter journal messages": "Filter journal messages",
   "Filter messages…": "Filter messages…",
   "Filters": "Filters",

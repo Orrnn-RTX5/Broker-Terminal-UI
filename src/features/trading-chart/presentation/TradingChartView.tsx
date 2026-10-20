@@ -39,6 +39,7 @@ interface ChartContextMenuState {
   visible: boolean;
   x: number;
   y: number;
+  clickPrice?: number;
 }
 
 interface TradingChartViewProps {
@@ -608,6 +609,7 @@ return (
         visible={ctxMenu.visible}
         x={ctxMenu.x}
         y={ctxMenu.y}
+        clickPrice={ctxMenu.clickPrice}
         symbol={symbol}
         targetContextId={activeChartSourceId}
         currentChartType={localChartType}
