@@ -33,16 +33,16 @@ describe('chart price-scale precision', () => {
     expect(resolveSymbolPriceDigits(symbol, digits)).toBe(digits);
   });
 
-  it('uses valid broker precision before the symbol-name fallback', () => {
+  it('uses valid broker precision from spec sources', () => {
     expect(resolveSymbolPriceDigits('EURUSD', 0)).toBe(0);
     expect(resolveSymbolPriceDigits('XAUUSD', 5)).toBe(5);
     expect(resolveSymbolPriceDigits('UNKNOWN', '2')).toBe(2);
   });
 
-  it('falls back to the symbol precision when broker precision is missing or invalid', () => {
-    expect(resolveSymbolPriceDigits('XAUUSD')).toBe(2);
-    expect(resolveSymbolPriceDigits('USDJPY', Number.NaN)).toBe(3);
-    expect(resolveSymbolPriceDigits('EURUSD', -1)).toBe(5);
+  it('returns null when broker precision is missing or invalid (no symbol-name guessing)', () => {
+    expect(resolveSymbolPriceDigits('XAUUSD')).toBeNull();
+    expect(resolveSymbolPriceDigits('USDJPY', Number.NaN)).toBeNull();
+    expect(resolveSymbolPriceDigits('EURUSD', -1)).toBeNull();
     expect(getInstrumentPriceDigits({ digits: 2.5 })).toBeUndefined();
     expect(getInstrumentPriceDigits(null)).toBeUndefined();
   });

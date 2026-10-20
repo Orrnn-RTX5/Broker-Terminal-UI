@@ -95,8 +95,9 @@ describe('PopupPricesDialog', () => {
     expect(screen.getByLabelText('Change % +20.00%')).toBeInTheDocument();
     expect(screen.getByText('22:13:20.200')).toBeInTheDocument();
     expect(useAppStore.getState().ticks['FUTURE.LAST']).toBeUndefined();
+    // No tick digits: renders the raw value, never a guessed 5-decimal format.
     expect(screen.getByRole('listitem', { name: 'FUTURE.LAST quote' }).querySelector('.price-display'))
-      .toHaveTextContent('120.00000');
+      .toHaveTextContent('120');
   });
 
   it('mirrors configured Market Watch columns and millisecond precision', () => {
@@ -147,7 +148,8 @@ describe('PopupPricesDialog', () => {
 
     const closeCard = screen.getByRole('listitem', { name: 'XAUUSD quote' });
     expect(within(closeCard).getByText('Last close')).toBeInTheDocument();
-    expect(within(closeCard).getByLabelText('XAUUSD Bid 4385.20')).toBeInTheDocument();
+    // No tick digits: raw close value, never the guessed 2-decimal format.
+    expect(within(closeCard).getByLabelText('XAUUSD Bid 4385.2')).toBeInTheDocument();
     expect(within(closeCard).getByLabelText('XAUUSD Ask unavailable')).toBeInTheDocument();
     expect(within(closeCard).getByLabelText('Change % -0.42%')).toHaveAttribute('data-tone', 'negative');
     expect(within(closeCard).getByText('03:04:05.042')).toBeInTheDocument();
@@ -155,8 +157,9 @@ describe('PopupPricesDialog', () => {
 
     const retainedQuoteCard = screen.getByRole('listitem', { name: 'GBPUSD quote' });
     expect(within(retainedQuoteCard).getByText('Quote')).toBeInTheDocument();
-    expect(within(retainedQuoteCard).getByLabelText('GBPUSD Bid 1.27890')).toBeInTheDocument();
-    expect(within(retainedQuoteCard).getByLabelText('GBPUSD Ask 1.27910')).toBeInTheDocument();
+    // No tick digits: raw retained values, never the guessed 5-decimal format.
+    expect(within(retainedQuoteCard).getByLabelText('GBPUSD Bid 1.2789')).toBeInTheDocument();
+    expect(within(retainedQuoteCard).getByLabelText('GBPUSD Ask 1.2791')).toBeInTheDocument();
   });
 
   it('keeps a positive live quote authoritative over retained fallbacks', () => {
