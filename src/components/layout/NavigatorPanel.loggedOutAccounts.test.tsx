@@ -37,6 +37,7 @@ vi.mock('../../services/api', () => ({
 vi.mock('../../services/brokerServers', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../services/brokerServers')>(),
   getStoredBrokerServer: () => 'https://test-broker.example',
+  getRawStoredBrokerServer: () => 'https://test-broker.example',
 }));
 
 vi.mock('../ui/ContextMenu', () => ({

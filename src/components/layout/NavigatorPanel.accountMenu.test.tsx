@@ -25,6 +25,7 @@ vi.mock('../../services/webTrader', () => ({ openWebTrader: mocks.openWebTrader 
 vi.mock('../../services/brokerServers', async (importOriginal) => ({
     ...await importOriginal<typeof import('../../services/brokerServers')>(),
     getStoredBrokerServer: () => 'Orrnn',
+    getRawStoredBrokerServer: () => 'Orrnn',
 }));
 vi.mock('../../startup/runAfterTerminalReady', () => ({ runAfterTerminalReady: () => () => undefined }));
 vi.mock('../../startup/terminalFeatures', () => ({
