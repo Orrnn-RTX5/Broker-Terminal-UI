@@ -188,4 +188,56 @@ describe('protection drag validation', () => {
       expect(resolveTradeLevelDragRole('SELL', 'ENTRY', 1.2, 1.201)).toBe('SL');
     });
   });
+
+  describe('one-tick valid-side drags stay reachable (no stops clamp)', () => {
+    // A level one tick on the valid side passes validation (null) and the
+    // drag produces a submitted update on the valid side. The pre-existing
+    // minimum nudge may still absorb it to the boundary — that is a nudge,
+    // not a refusal: the server enforces side + grid, never a stops
+    // distance, and the update below always reaches modifyPosition.
+    const drag = (side: 'BUY' | 'SELL', role: 'SL' | 'TP', price: number, close: number) => {
+      const violation = protectionLevelViolation({ side, role, price, bid: close, ask: close, digits: 5 });
+      const update = applyTradeLevelDragUpdate({
+        side,
+        grabbedType: role,
+        entryPrice: side === 'BUY' ? close - 0.002 : close + 0.002,
+        finalPrice: price,
+        digits: 5,
+        currentPrice: close,
+      });
+      return { violation, update };
+    };
+
+    it('BUY SL one tick below Bid is reachable on the valid side', () => {
+      const { violation, update } = drag('BUY', 'SL', 1.19999, 1.2);
+      expect(violation).toBeNull();
+      expect(update).not.toBeNull();
+      expect(update!.role).toBe('SL');
+      expect(update!.price).toBeLessThan(1.2);
+    });
+
+    it('BUY TP one tick above Bid is reachable on the valid side', () => {
+      const { violation, update } = drag('BUY', 'TP', 1.20001, 1.2);
+      expect(violation).toBeNull();
+      expect(update).not.toBeNull();
+      expect(update!.role).toBe('TP');
+      expect(update!.price).toBeGreaterThan(1.2);
+    });
+
+    it('SELL SL one tick above Ask is reachable on the valid side', () => {
+      const { violation, update } = drag('SELL', 'SL', 1.20001, 1.2);
+      expect(violation).toBeNull();
+      expect(update).not.toBeNull();
+      expect(update!.role).toBe('SL');
+      expect(update!.price).toBeGreaterThan(1.2);
+    });
+
+    it('SELL TP one tick below Ask is reachable on the valid side', () => {
+      const { violation, update } = drag('SELL', 'TP', 1.19999, 1.2);
+      expect(violation).toBeNull();
+      expect(update).not.toBeNull();
+      expect(update!.role).toBe('TP');
+      expect(update!.price).toBeLessThan(1.2);
+    });
+  });
 });

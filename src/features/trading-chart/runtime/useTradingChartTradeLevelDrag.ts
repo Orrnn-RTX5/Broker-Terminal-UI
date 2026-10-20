@@ -9,9 +9,9 @@ import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import {
   applyTradeLevelDragUpdate,
   getTradeLevelStateKeys,
+  getTradeLevelDragMinDistance,
   normalizeTradeLevelDragPrice,
   protectionLevelViolation,
-  resolveStopsDistancePoints,
   resolveTradeLevelDragRole,
   selectNearestTradeLevel,
   tradeLevelModifyPatch,
@@ -456,19 +456,10 @@ export const useTradingChartTradeLevelDrag = ({
 
         const { tradeObj, grabbedType, entryAnchorY } = dragState;
         const digits = resolvedPriceDigitsRef.current;
-        // Stops-aware standoff: broker stops level when the trade snapshot
-        // or tick carries one, else the configured default (never a
-        // symbol-specific invention). Falls back to the pre-existing
-        // 5-step minimum when nothing is known.
-        const moveTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { stopsLevel?: unknown; stops_level?: unknown } | undefined>;
-        const moveTickStops = moveTicks[tradeObj.symbol] ?? moveTicks[String(tradeObj.symbol).toUpperCase()];
-        const moveStopsPoints = resolveStopsDistancePoints(
-          (tradeObj as { stopsLevel?: unknown })?.stopsLevel
-            ?? (tradeObj as { stops_level?: unknown })?.stops_level
-            ?? moveTickStops?.stopsLevel
-            ?? moveTickStops?.stops_level,
-        );
-        const minStopDistance = moveStopsPoints * Math.pow(10, -digits);
+        // Clamp nudge uses ONLY the pre-existing 5-step minimum: the
+        // backend enforces side + grid, no stops distance, so a
+        // stops-level clamp would block levels the server accepts.
+        const minStopDistance = getTradeLevelDragMinDistance(digits);
         const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
         const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
 
@@ -641,14 +632,8 @@ export const useTradingChartTradeLevelDrag = ({
               // authority for the gap and race cases).
               const submitSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
               const submitRaw = normalizeTradeLevelDragPrice(rawFinalPrice, digits);
-              const submitTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; stopsLevel?: unknown; stops_level?: unknown } | undefined>;
+              const submitTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown } | undefined>;
               const submitTick = submitTicks[tradeObj.symbol] ?? submitTicks[String(tradeObj.symbol).toUpperCase()];
-              const submitStopsPoints = resolveStopsDistancePoints(
-                (tradeObj as { stopsLevel?: unknown })?.stopsLevel
-                  ?? (tradeObj as { stops_level?: unknown })?.stops_level
-                  ?? submitTick?.stopsLevel
-                  ?? submitTick?.stops_level,
-              );
               const submitViolation = protectionLevelViolation({
                 side: submitSide,
                 role: resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, submitRaw),
@@ -663,6 +648,7 @@ export const useTradingChartTradeLevelDrag = ({
                 }));
                 return;
               }
+              const submitMinStopDistance = getTradeLevelDragMinDistance(digits);
               const update = applyTradeLevelDragUpdate({
                 side: tradeObj.side,
                 grabbedType,
@@ -672,8 +658,8 @@ export const useTradingChartTradeLevelDrag = ({
                 currentTp,
                 digits,
                 currentPrice: liveCurrentPrice,
-                minStopDistance: submitStopsPoints * Math.pow(10, -digits),
-                minEntryDistance: grabbedType === 'ENTRY' ? submitStopsPoints * Math.pow(10, -digits) : undefined,
+                minStopDistance: submitMinStopDistance,
+                minEntryDistance: grabbedType === 'ENTRY' ? submitMinStopDistance : undefined,
                 snapEntryToMinDistance: grabbedType === 'ENTRY',
                 entryDragDirection: entryDragDirection ?? undefined,
               });
