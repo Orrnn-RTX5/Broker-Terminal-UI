@@ -5,6 +5,7 @@ import {
     REAL_ACCOUNT_UNAVAILABLE_REASON,
     resolveRealAccountAvailability,
 } from '../../services/realAccountAvailability';
+import englishUi from '../../locales/en/ui.json';
 
 const mocks = vi.hoisted(() => ({
     createAccount: vi.fn(),
@@ -148,6 +149,13 @@ describe('resolveRealAccountAvailability (broker-config driven)', () => {
         expect(REAL_ACCOUNT_UNAVAILABLE_REASON).not.toContain('Broker Two');
         expect(REAL_ACCOUNT_UNAVAILABLE_REASON).not.toMatch(/\d{6}/);
     });
+
+    it('registers the unavailable reason and follow-up copy as locale-catalog keys (English fallback)', () => {
+        const catalog = englishUi as Record<string, string>;
+        expect(catalog[REAL_ACCOUNT_UNAVAILABLE_REASON]).toBe(REAL_ACCOUNT_UNAVAILABLE_REASON);
+        expect(catalog['Continue verification on the broker website']).toBe('Continue verification on the broker website');
+        expect(catalog['The broker did not create a real account for this request.']).toBe('The broker did not create a real account for this request.');
+    });
 });
 
 describe('OpenAccountDialog real-account action (T16)', () => {
@@ -245,5 +253,103 @@ describe('OpenAccountDialog real-account action (T16)', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
         expect(onClose).toHaveBeenCalledTimes(1);
         expect(mocks.login).not.toHaveBeenCalled();
+    });
+});
+
+describe('OpenAccountDialog real-account onboarding and created-type copy (T16 follow-up)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.desktop = true;
+        mocks.configuration = { valid: true, brokerTermsUrl: '' };
+        localStorage.clear();
+        mocks.getCachedBrokerDirectory.mockReset().mockReturnValue(null);
+        mocks.loadAppBrokerDirectory.mockReset().mockResolvedValue(plainBrokers);
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => plainBrokers,
+        }));
+    });
+
+    afterEach(() => {
+        cleanup();
+        vi.unstubAllGlobals();
+    });
+
+    const completeSupportedRealFlow = async (createPayload: Record<string, unknown>) => {
+        mocks.loadAppBrokerDirectory.mockResolvedValue(brokersWithRealContract);
+        mocks.createAccount.mockResolvedValue(createPayload);
+        const onClose = vi.fn();
+        render(<OpenAccountDialog isOpen onClose={onClose} />);
+        await screen.findAllByText('Broker One');
+
+        fireEvent.click(screen.getByText('Broker Two'));
+        fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+        fireEvent.click(await screen.findByRole('radio', { name: 'Real account' }));
+        fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+        fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Robin' } });
+        fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Sharma' } });
+        fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'robin@example.com' } });
+        fireEvent.change(screen.getByLabelText('Mobile phone'), { target: { value: '+91 98 0000 0000' } });
+        fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+        fireEvent.change(screen.getByLabelText('Currency'), { target: { value: 'EUR' } });
+        fireEvent.change(screen.getByLabelText('Leverage'), { target: { value: '200' } });
+        fireEvent.click(screen.getByLabelText('Accept account terms'));
+        fireEvent.click(screen.getByRole('button', { name: 'Create Real Account' }));
+
+        await screen.findByText('Registration Complete');
+        return { onClose };
+    };
+
+    it('exposes the broker onboarding contract link for a supported Real choice', async () => {
+        mocks.loadAppBrokerDirectory.mockResolvedValue(brokersWithRealContract);
+        render(<OpenAccountDialog isOpen onClose={vi.fn()} />);
+        await screen.findAllByText('Broker One');
+
+        fireEvent.click(screen.getByText('Broker Two'));
+        fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+        const link = await screen.findByRole('link', { name: /Continue verification on the broker website/i });
+        expect(link).toHaveAttribute('href', 'https://onboarding.example/real');
+        expect(link).toHaveAttribute('target', '_blank');
+        expect(link.getAttribute('rel')).toContain('noopener');
+    });
+
+    it('shows no onboarding link when the broker advertises no contract', async () => {
+        render(<OpenAccountDialog isOpen onClose={vi.fn()} />);
+        await screen.findAllByText('Broker One');
+
+        // Broker One is pre-selected and advertises no onboarding contract.
+        fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+        await screen.findByRole('radio', { name: 'Real account' });
+        expect(screen.queryByRole('link', { name: /Continue verification on the broker website/i })).not.toBeInTheDocument();
+        expect(screen.getByRole('note')).toHaveTextContent(/Real-account creation is not enabled for this broker configuration/i);
+    });
+
+    it('continues a created real account to the broker onboarding contract', async () => {
+        await completeSupportedRealFlow({
+            login: 400002,
+            currency: 'EUR',
+            leverage: 200,
+            group: 'live-standard',
+        });
+        expect(screen.getByText(/Your real account has been successfully created/i)).toBeInTheDocument();
+        const link = screen.getByRole('link', { name: /Continue verification on the broker website/i });
+        expect(link).toHaveAttribute('href', 'https://onboarding.example/real');
+        expect(link).toHaveAttribute('target', '_blank');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('reports a mismatch fail-closed when a requested real comes back demo', async () => {
+        await completeSupportedRealFlow({
+            login: 400003,
+            currency: 'USD',
+            leverage: 100,
+            group: 'demo-standard',
+        });
+        // Driven by the broker-returned type, not the requested type.
+        expect(screen.getByText(/Your demo account has been successfully created/i)).toBeInTheDocument();
+        expect(screen.queryByText(/Your real account has been successfully created/i)).not.toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent(/The broker did not create a real account for this request/i);
+        expect(screen.queryByRole('link', { name: /Continue verification on the broker website/i })).not.toBeInTheDocument();
     });
 });

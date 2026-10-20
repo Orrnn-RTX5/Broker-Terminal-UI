@@ -1,6 +1,6 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { getAuthenticatedAccountName } from '../../utils/accountDisplayName';
-import { resolveTradingAccountType } from '../../services/tradingAccountType';
+import { resolveTradingAccountType, type TradingAccountType } from '../../services/tradingAccountType';
 import React, { useState, useEffect, useRef } from 'react';
 import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
 import { createPortal } from 'react-dom';
@@ -216,6 +216,10 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [formData, setFormData] = useState<AccountFormData>(EMPTY_ACCOUNT_FORM);
     const [termsAccepted, setTermsAccepted] = useState(false);
     const [createdAccount, setCreatedAccount] = useState<CreatedAccount | null>(null);
+    // Broker-returned classification of the created account. The success
+    // copy is driven from this (not the requested type) so a mismatch
+    // fails closed instead of claiming a real account was created.
+    const [createdAccountType, setCreatedAccountType] = useState<TradingAccountType | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [createError, setCreateError] = useState('');
     const [validationError, setValidationError] = useState('');
@@ -244,6 +248,7 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         setFormData(EMPTY_ACCOUNT_FORM);
         setTermsAccepted(false);
         setCreatedAccount(null);
+        setCreatedAccountType(null);
         setCreateError('');
         setValidationError('');
         setDirectoryError('');
@@ -401,9 +406,13 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             ...accountRecord,
             broker_id: accountRecord.broker_id || submitBroker.broker_id,
         });
+        // Classify from the broker-returned payload via the existing path
+        // so the success copy reflects what was created, not what was asked.
+        const brokerReturnedType = resolveTradingAccountType(response, accountRecord) ?? 'demo';
+        setCreatedAccountType(brokerReturnedType);
         const createdLogin = Number.parseInt(String(accountRecord.login), 10);
         if (Number.isSafeInteger(createdLogin) && createdLogin > 0) {
-            const createdAccountType = resolveTradingAccountType(response, accountRecord) ?? 'demo';
+            const createdAccountType = brokerReturnedType;
             useAppStore.getState().addSavedAccount?.({
                 login: createdLogin,
                 name: request.name,
@@ -637,6 +646,19 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         )}
                     </div>
                 </label>
+
+                {realAccountSupported && realAccountAvailability.onboardingUrl && (
+                    <div className="pl-7">
+                        <a
+                            href={realAccountAvailability.onboardingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[14px] font-normal text-indigo-400 hover:text-indigo-300"
+                        >
+                            {tr("Continue verification on the broker website")}
+                        </a>
+                    </div>
+                )}
 
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
@@ -901,13 +923,33 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     // ─── Step 4: Success ────────────────────────────────────────────────────────
     const renderStep4 = () => {
         if (!createdAccount) return null;
+        // Success copy follows the broker-returned classification stored at
+        // creation time. A requested real that came back non-real reports the
+        // mismatch instead of claiming a real account was created.
+        const createdType = createdAccountType ?? 'demo';
+        const createdTypeMismatch = accountType === 'real' && createdType !== 'real';
         return (
             <div className="flex-1 overflow-y-auto flex flex-col p-6 items-center">
                 <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/20">
                     <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                 </div>
                 <h3 className="rtx-section-title text-white font-semibold text-[16px] leading-6 mb-1">{tr("Registration Complete")}</h3>
-                <p className="mb-6 text-center text-[14px] font-normal text-zinc-400">{accountType === 'real' ? tr("Your real account has been successfully created.") : tr("Your demo account has been successfully created.")}<br />{tr("Save any credentials returned by the broker.")}</p>
+                <p className="mb-6 text-center text-[14px] font-normal text-zinc-400">{createdType === 'real' ? tr("Your real account has been successfully created.") : tr("Your demo account has been successfully created.")}<br />{tr("Save any credentials returned by the broker.")}</p>
+                {createdTypeMismatch && (
+                    <p role="alert" className="mb-4 text-center text-[14px] font-normal text-red-400">
+                        {tr("The broker did not create a real account for this request.")}
+                    </p>
+                )}
+                {createdType === 'real' && realAccountAvailability.onboardingUrl && (
+                    <a
+                        href={realAccountAvailability.onboardingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mb-4 text-[14px] font-normal text-indigo-400 hover:text-indigo-300"
+                    >
+                        {tr("Continue verification on the broker website")}
+                    </a>
+                )}
                 <div className="rtx-open-account-dialog__surface w-full bg-[#1a1c23] border border-zinc-700/50 rounded-xl p-5 flex flex-col gap-3">
                     {[
                         { label: 'Login (Account)', value: createdAccount.login, mono: true, color: 'text-emerald-400', size: 'text-[16px]' },

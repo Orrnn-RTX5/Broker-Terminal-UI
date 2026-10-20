@@ -2157,5 +2157,9 @@
   "The selected broker": "The selected broker",
   "These details are used to request your real account.": "These details are used to request your real account.",
   "Your real account has been successfully created.": "Your real account has been successfully created.",
-  "Deviation": "Deviation"
+  "Real-account creation is not enabled for this broker configuration. Complete identity verification through the broker onboarding channel instead.": "Real-account creation is not enabled for this broker configuration. Complete identity verification through the broker onboarding channel instead.",
+  "Continue verification on the broker website": "Continue verification on the broker website",
+  "The broker did not create a real account for this request.": "The broker did not create a real account for this request.",
+  "Deviation": "Deviation",
+  "Refresh unavailable": "Refresh unavailable"
 }
