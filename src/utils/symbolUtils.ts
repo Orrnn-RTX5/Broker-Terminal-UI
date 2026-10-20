@@ -1,38 +1,43 @@
 /**
- * Utility functions for symbol formatting and calculations
+ * Utility functions for symbol formatting and calculations.
+ *
+ * White-label rule: digits are broker metadata, never derived from the
+ * symbol name. Every resolver here is spec-first: it returns
+ * broker-provided precision, or null when no usable spec value is in scope.
+ * Callers render the raw value (String(value)) when digits are null instead
+ * of guessing.
  */
 
 /**
- * Returns the standard number of decimal digits for a given symbol
- * Pairs with JPY typically have 3 digits, most others have 5.
- * Crypto varies but typical defaults apply.
+ * Returns the first valid broker-spec digits value from the given sources,
+ * or null when none is usable. A valid value is an integer in 0-8, accepted
+ * as a number or a numeric string (e.g. tick?.digits, position.digits,
+ * instrument.digits, record.digits). Symbol names are never inspected, and
+ * there is no fallback constant: unknown precision stays null.
  */
-export function getSymbolDigits(symbol: string): number {
-  if (!symbol) return 5;
-  const sym = symbol.toUpperCase();
-  if (sym.includes('JPY')) return 3;
-  if (sym.includes('BTC') || sym.includes('ETH')) return 2;
-  if (sym.includes('XAU') || sym.includes('XAG') || sym.includes('XPT') || sym.includes('XPD')) return 2;
-  if (sym.includes('NAS') || sym.includes('SPX') || sym.includes('DJ') || sym.includes('US30') || sym.includes('US500') || sym.includes('NDX')) return 2;
-  // Default to 5 digits for standard forex pairs (e.g. EURUSD, GBPUSD)
-  return 5;
+export function resolveSpecDigits(...sources: unknown[]): number | null {
+  for (const source of sources) {
+    if (typeof source !== 'number' && typeof source !== 'string') continue;
+    if (typeof source === 'string' && source.trim() === '') continue;
+    const parsed = typeof source === 'number' ? source : Number(source);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 8) continue;
+    return parsed;
+  }
+  return null;
 }
 
 /**
- * Formats a price value to the correct number of decimal places for a given symbol.
- * If exact digits are known, they can be provided to override the symbol lookup.
+ * Formats a price value with broker-provided digits. Pass broker digits
+ * sources (tick?.digits, position.digits, instrument.digits, ...); the first
+ * valid integer 0-8 wins. Renders the raw value (String(price)) when no spec
+ * digits are available instead of guessing from the symbol name.
  */
-export function formatPrice(price: number, symbolOrDigits?: string | number): string {
+export function formatPrice(price: number, ...digitsSources: unknown[]): string {
   if (typeof price !== 'number' || isNaN(price)) return '0.00000';
-  
-  let digits = 5;
-  
-  if (typeof symbolOrDigits === 'number') {
-    digits = symbolOrDigits;
-  } else if (typeof symbolOrDigits === 'string') {
-    digits = getSymbolDigits(symbolOrDigits);
-  }
-  
+
+  const digits = resolveSpecDigits(...digitsSources);
+  if (digits === null) return String(price);
+
   return price.toFixed(digits);
 }
 

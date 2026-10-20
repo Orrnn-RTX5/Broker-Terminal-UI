@@ -8,7 +8,7 @@ import {
   readDailyChangePriceMode,
   type DailyChangePriceMode,
 } from '../utils/dailyChange';
-import { getSymbolDigits } from '../utils/symbolUtils';
+import { resolveSpecDigits } from '../utils/symbolUtils';
 
 export interface DailyChangePriceModeCatalogRow {
   symbol?: unknown;
@@ -150,12 +150,10 @@ export const readRegisteredSymbolPriceSpec = (symbol: unknown): RegisteredSymbol
   };
 };
 
-/** Broker precision first; existing symbol display convention when omitted. */
-export const resolveDailyChangeDisplayDigits = (symbol: string, quoteDigits?: unknown): number => {
+/** Broker precision first (registered catalog, then quote); null when no spec digits are in scope. Never guessed from the symbol name. */
+export const resolveDailyChangeDisplayDigits = (symbol: string, quoteDigits?: unknown): number | null => {
   const registered = getCurrentDailyChangePriceModeScopeKey() === activeScopeKey ? digitsBySymbol.get(normalizeSymbol(symbol)) : undefined;
-  if (registered !== undefined) return registered;
-  if (typeof quoteDigits === 'number' && Number.isInteger(quoteDigits) && quoteDigits >= 0 && quoteDigits <= 12) return quoteDigits;
-  return getSymbolDigits(symbol);
+  return resolveSpecDigits(registered, quoteDigits);
 };
 
 export const readRegisteredDailyChangePriceMode = (

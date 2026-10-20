@@ -1,4 +1,4 @@
-import { getSymbolDigits } from './symbolUtils';
+import { resolveSpecDigits } from './symbolUtils';
 
 const MAX_SUPPORTED_PRICE_DIGITS = 12;
 
@@ -23,15 +23,24 @@ export const getInstrumentPriceDigits = (instrument: unknown): number | undefine
   return digits ?? undefined;
 };
 
-export const resolveSymbolPriceDigits = (symbol: string, brokerDigits?: unknown): number => (
-  normalizePriceDigits(brokerDigits) ?? getSymbolDigits(symbol)
-);
+/**
+ * Spec-first broker digits for the price scale. The symbol parameter is
+ * retained for call-site compatibility during migration and is deliberately
+ * ignored: no precision is ever guessed from the symbol name. Returns null
+ * when no broker digits are in scope; callers render raw (String(value))
+ * when null.
+ */
+export const resolveSymbolPriceDigits = (symbol: string, brokerDigits?: unknown): number | null => {
+  void symbol;
+  return resolveSpecDigits(brokerDigits);
+};
 
 const axisPriceFormatters = new Map<number, Intl.NumberFormat>();
 
-/** Group large axis values without losing broker precision or trailing zeros. */
-export const formatChartAxisPrice = (price: number, digits: number): string => {
-  const precision = normalizePriceDigits(digits) ?? 2;
+/** Group large axis values without losing broker precision or trailing zeros. Unknown precision renders raw (never a guessed fallback). */
+export const formatChartAxisPrice = (price: number, digits: unknown): string => {
+  const precision = normalizePriceDigits(digits);
+  if (precision === null) return String(price);
   let formatter = axisPriceFormatters.get(precision);
   if (!formatter) {
     formatter = new Intl.NumberFormat('en-US', {
@@ -44,9 +53,16 @@ export const formatChartAxisPrice = (price: number, digits: number): string => {
   return formatter.format(price);
 };
 
-export const getPricePointFromDigits = (digits: number): number => (
-  Math.pow(10, -(normalizePriceDigits(digits) ?? getSymbolDigits('')))
-);
+/**
+ * One symbol point (10^-digits) from broker digits. Returns NaN when no spec
+ * digits are in scope — NaN marks absent precision without inventing a
+ * fallback constant or guessing from a symbol name.
+ */
+export const getPricePointFromDigits = (digits: number): number => {
+  const resolved = resolveSpecDigits(digits);
+  if (resolved === null) return NaN;
+  return Math.pow(10, -resolved);
+};
 
 export interface MinimumVisiblePriceSpanInput {
   point: number;
