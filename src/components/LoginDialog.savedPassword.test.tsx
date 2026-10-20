@@ -49,7 +49,19 @@ const enterCredentials = () => {
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'fixture-password' } });
 };
 
+// Deterministic vault: every hook restore resolves in microtasks (null —
+// nothing saved yet in these flows), so every ready() below is independent of
+// vault timing under load. Direct loadSavedLogin assertions keep using the
+// real vault (restore the spy first); reopen flows are untouched. saveLogin is
+// a different function and is never mocked: saves still hit the real vault.
+const steadyVault = async () => {
+  const savedLogins = await import('../services/savedLogins');
+  const spy = vi.spyOn(savedLogins, 'loadSavedLogin').mockResolvedValue(null);
+  return () => spy.mockRestore();
+};
+
 it('saves on successful opt-in login and fills the masked password on reopening', async () => {
+  const unvault = await steadyVault();
   const first = openDialog();
   await ready();
   expect(screen.getByRole('checkbox', { name: 'Save password' })).not.toBeChecked();
@@ -58,6 +70,7 @@ it('saves on successful opt-in login and fills the masked password on reopening'
   fireEvent.click(screen.getByRole('checkbox', { name: 'Save password' }));
   fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
   await waitFor(() => expect(useAppStore.getState().isAuthenticated).toBe(true));
+  unvault();
   expect(await loadSavedLogin(scope, '12345')).toEqual({ login: '12345', password: 'fixture-password' });
   expect(localStorage.getItem('rtx_saved_password')).toBeNull();
   first.unmount();
@@ -71,15 +84,18 @@ it('saves on successful opt-in login and fills the masked password on reopening'
 });
 
 it('does not save passwords from unchecked or rejected logins', async () => {
+  const unvault = await steadyVault();
   const first = openDialog();
   await ready();
   enterCredentials();
   await ready();
   fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
   await waitFor(() => expect(useAppStore.getState().isAuthenticated).toBe(true));
+  unvault();
   expect(await loadSavedLogin(scope, '12345')).toBeNull();
   first.unmount();
   runtime.login.mockRejectedValue(new Error('Invalid login'));
+  const unvault2 = await steadyVault();
   openDialog();
   await ready();
   enterCredentials();
@@ -87,6 +103,7 @@ it('does not save passwords from unchecked or rejected logins', async () => {
   fireEvent.click(screen.getByRole('checkbox', { name: 'Save password' }));
   fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
   await screen.findByText('Invalid login');
+  unvault2();
   expect(await loadSavedLogin(scope, '12345')).toBeNull();
 });
 
