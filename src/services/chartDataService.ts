@@ -404,6 +404,7 @@ const messageMatchesCandleSubscription = (
 
 export class ChartDataService {
   private readonly candleStreams = new Map<string, SharedCandleStream>();
+  private readonly candleStreamRefreshers = new Set<() => void>();
 
   normalizeTimeframe(timeframe: string): ApiTimeframe {
     return normalizeBackendCandleTimeframe(timeframe);
@@ -725,6 +726,21 @@ export class ChartDataService {
       return [];
     }
     throw lastError ?? new Error('Failed to load candles');
+  }
+
+  /**
+   * Full-reconnect entry point for chart/data candle streams.
+   * Reuses each live transport's existing refresh path; it adds no new
+   * socket layer and leaves scope/auth guards untouched (broker-agnostic).
+   */
+  refreshCandleStreams(): void {
+    for (const refresh of Array.from(this.candleStreamRefreshers)) {
+      try {
+        refresh();
+      } catch {
+        // Keep sibling streams isolated; one failed refresh must not block the rest.
+      }
+    }
   }
 
   subscribeCandles(options: CandleStreamOptions): CandleStreamSubscription {
@@ -1168,6 +1184,10 @@ export class ChartDataService {
       reconnectPendingWhileSuspended = false;
       connect();
     };
+    const refreshCandleStream = (): void => {
+      refreshConnection('Manual connection refresh');
+    };
+    this.candleStreamRefreshers.add(refreshCandleStream);
 
     const handleOnline = () => {
       if (closed) return;
@@ -1213,6 +1233,7 @@ export class ChartDataService {
 
     return {
       close: () => {
+        this.candleStreamRefreshers.delete(refreshCandleStream);
         closed = true;
         clearReconnectTimer();
         clearOpenTimer();

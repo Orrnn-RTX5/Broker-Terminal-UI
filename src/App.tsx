@@ -31,7 +31,7 @@ import { AlertsContainer } from './components/AlertsContainer';
 import { getPositionCloseScope, markPositionsClosed, unmarkPositionsClosed, useAppStore, type Account, type Position } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
-import { getQuoteSocketManager } from './services/quoteSocketManager';
+import { refreshAllConnections } from './services/connectionRefresh';
 import { captureTradeOrderIntent } from './services/orderLatencyTelemetry';
 import { WS_ENDPOINTS } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -1139,10 +1139,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     url: WS_ENDPOINTS.general,
     autoConnect: isAuthenticated,
   });
+  // T12: FULL reconnect for every caller (toolbar + Network Rescan). Each
+  // transport reuses its own existing reconnect/refresh entry point.
   const refreshDesktopConnection = useCallback(() => {
-    reconnect();
-    getQuoteSocketManager().reconnect();
-    void activeMarketSnapshot.reload();
+    refreshAllConnections({
+      reconnectTradeStream: reconnect,
+      reloadMarketSnapshot: () => activeMarketSnapshot.reload(),
+    });
   }, [activeMarketSnapshot.reload, reconnect]);
   const previousTradeConnectionStateRef = useRef(connectionState);
 
@@ -1181,10 +1184,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
 
 
-  // Update reconnect callback ref for StatusBar
+  // Network Rescan (StatusBar) performs the same FULL reconnect as the toolbar.
   useEffect(() => {
-    reconnectCallbackRef.current = reconnect;
-  }, [reconnect]);
+    reconnectCallbackRef.current = refreshDesktopConnection;
+  }, [refreshDesktopConnection]);
 
   // Log connection state changes
   useEffect(() => {
