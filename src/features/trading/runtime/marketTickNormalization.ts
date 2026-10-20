@@ -27,7 +27,8 @@ export interface NormalizedRealtimeTick extends QuoteSessionRange, QuoteTradingS
   low24h?: number;
   volume?: number;
   last?: number;
-  digits?: number;
+  /** Broker price precision; null means the feed published none (render raw). */
+  digits?: number | null;
   open?: number;
   close?: number;
 }

@@ -30,7 +30,7 @@ import {
   type MarketWatchColumnId,
 } from '../../utils/marketWatchView';
 import { formatSpreadDisplay } from '../../utils/spread';
-import { getSymbolDigits } from '../../utils/symbolUtils';
+import { resolveSpecDigits } from '../../utils/symbolUtils';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
 import { getLatestMarketWatchTimestamp } from './marketWatchPanelModel';
@@ -152,11 +152,12 @@ const readSymbolMapValue = <T,>(values: ReadonlyMap<string, T> | undefined, symb
   values?.get(symbol) ?? values?.get(symbol.toUpperCase())
 );
 
-const tickDigits = (tick: Tick | undefined, symbol: string): number => (
-  Number.isInteger(tick?.digits) && Number(tick?.digits) >= 0 && Number(tick?.digits) <= 10
-    ? Number(tick?.digits)
-    : getSymbolDigits(symbol)
-);
+// Spec digits only (validated live tick); unknown renders raw downstream.
+// Symbol retained for call-site compatibility and ignored (never guessed).
+const tickDigits = (tick: Tick | undefined, symbol: string): number | null => {
+  void symbol;
+  return resolveSpecDigits(tick?.digits);
+};
 
 const quoteDate = (timestamp: number | undefined): Date | null => {
   if (!Number.isFinite(timestamp) || Number(timestamp) <= 0) return null;
@@ -226,23 +227,23 @@ function PopupPriceCard({
       <div className="rtx-popup-prices__quote-grid">
         <div
           className="rtx-popup-prices__price rtx-popup-prices__price--bid"
-          aria-label={`${symbol} ${tr('Bid')} ${bid > 0 ? bid.toFixed(digits) : tr('unavailable')}`}
+          aria-label={`${symbol} ${tr('Bid')} ${bid > 0 ? (digits === null ? String(bid) : bid.toFixed(digits)) : tr('unavailable')}`}
         >
           <span>{tr('Bid')}</span>
           <span aria-hidden="true">
             {bid > 0
-              ? <PriceDisplay price={bid} symbol={symbol} digits={digits} size="lg" />
+              ? <PriceDisplay price={bid} symbol={symbol} digits={digits ?? undefined} size="lg" />
               : '—'}
           </span>
         </div>
         <div
           className="rtx-popup-prices__price rtx-popup-prices__price--ask"
-          aria-label={`${symbol} ${tr('Ask')} ${ask > 0 ? ask.toFixed(digits) : tr('unavailable')}`}
+          aria-label={`${symbol} ${tr('Ask')} ${ask > 0 ? (digits === null ? String(ask) : ask.toFixed(digits)) : tr('unavailable')}`}
         >
           <span>{tr('Ask')}</span>
           <span aria-hidden="true">
             {ask > 0
-              ? <PriceDisplay price={ask} symbol={symbol} digits={digits} size="lg" />
+              ? <PriceDisplay price={ask} symbol={symbol} digits={digits ?? undefined} size="lg" />
               : '—'}
           </span>
         </div>
@@ -254,7 +255,7 @@ function PopupPriceCard({
             <div className="rtx-popup-prices__metric">
               <span>{tr('Last')}</span>
               <strong>{finiteNumber(resolvedDisplayMetadata.last) !== null
-                ? <PriceDisplay price={Number(resolvedDisplayMetadata.last)} symbol={symbol} digits={digits} />
+                ? <PriceDisplay price={Number(resolvedDisplayMetadata.last)} symbol={symbol} digits={digits ?? undefined} />
                 : '—'}</strong>
             </div>
           )}
@@ -262,7 +263,7 @@ function PopupPriceCard({
             <div className="rtx-popup-prices__metric">
               <span>{tr('High')}</span>
               <strong>{finiteNumber(tick?.high ?? tick?.high24h) !== null
-                ? <PriceDisplay price={Number(tick?.high ?? tick?.high24h)} symbol={symbol} digits={digits} />
+                ? <PriceDisplay price={Number(tick?.high ?? tick?.high24h)} symbol={symbol} digits={digits ?? undefined} />
                 : '—'}</strong>
             </div>
           )}
@@ -270,7 +271,7 @@ function PopupPriceCard({
             <div className="rtx-popup-prices__metric">
               <span>{tr('Low')}</span>
               <strong>{finiteNumber(tick?.low ?? tick?.low24h) !== null
-                ? <PriceDisplay price={Number(tick?.low ?? tick?.low24h)} symbol={symbol} digits={digits} />
+                ? <PriceDisplay price={Number(tick?.low ?? tick?.low24h)} symbol={symbol} digits={digits ?? undefined} />
                 : '—'}</strong>
             </div>
           )}
@@ -325,7 +326,7 @@ function PopupPriceCard({
                 <span>{tr(MARKET_WATCH_COLUMN_HEADERS[column])}</span>
                 <strong>
                   {resolved.kind === 'price' && resolved.numericValue !== null && resolved.numericValue !== 0 ? (
-                    <PriceDisplay price={resolved.numericValue} symbol={symbol} digits={digits} />
+                    <PriceDisplay price={resolved.numericValue} symbol={symbol} digits={digits ?? undefined} />
                   ) : (
                     resolved.formatted ?? '—'
                   )}

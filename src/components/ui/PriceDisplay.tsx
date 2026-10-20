@@ -4,14 +4,14 @@
  * matching standard MT5 terminal style.
  */
 import React from 'react';
-import { getSymbolDigits } from '../../utils/symbolUtils';
+import { resolveSpecDigits } from '../../utils/symbolUtils';
 
 
 
 interface PriceDisplayProps {
     /** The numeric price value */
     price: number;
-    /** Symbol name for digit detection, e.g. "BTCUSD" */
+    /** Symbol label (display context only; never used for digit detection) */
     symbol: string;
     /** Optional explicit digits override */
     digits?: number;
@@ -30,9 +30,10 @@ interface PriceDisplayProps {
  * Example (BTCUSD 67895.43):
  *   small: "67895."  big: "43"
  */
+// Symbol prop retained for call-site compatibility; precision comes only
+// from the explicit digits override (never the symbol name).
 export const PriceDisplay: React.FC<PriceDisplayProps> = ({
     price,
-    symbol,
     digits: explicitDigits,
     className = '',
     size = 'sm',
@@ -41,7 +42,11 @@ export const PriceDisplay: React.FC<PriceDisplayProps> = ({
         return <span className={className}>-</span>;
     }
 
-    const d = explicitDigits ?? getSymbolDigits(symbol);
+    // Spec digits only (explicit override); unknown precision renders raw.
+    const d = resolveSpecDigits(explicitDigits);
+    if (d === null) {
+        return <span className={`price-display ${className} whitespace-nowrap`}>{String(price)}</span>;
+    }
     const full = price.toFixed(d);
 
     let smallPart: string;
@@ -78,8 +83,12 @@ export const PriceDisplay: React.FC<PriceDisplayProps> = ({
  * Mostly you should use the <PriceDisplay> component instead.
  */
 export function formatPriceParts(price: number, symbol: string, explicitDigits?: number): { small: string; big: string } {
-    const d = explicitDigits ?? getSymbolDigits(symbol);
+    // Spec digits only (explicit override); unknown precision renders raw.
+    // The symbol parameter is retained for call-site compatibility and ignored.
+    void symbol;
+    const d = resolveSpecDigits(explicitDigits);
     if (!Number.isFinite(price) || price === 0) return { small: '-', big: '' };
+    if (d === null) return { small: String(price), big: '' };
     const full = price.toFixed(d);
     if (d <= 1) return { small: full, big: '' };
     if (d === 2) {

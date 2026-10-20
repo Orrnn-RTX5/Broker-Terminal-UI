@@ -3,7 +3,7 @@ import api from '../../../services/api';
 import { useAppStore } from '../../../store/useAppStore';
 import { useConfirmStore } from '../../../store/useConfirmStore';
 import { useUiTranslation } from '../../../hooks/useUiTranslation';
-import { formatPrice, getSymbolDigits } from '../../../utils/symbolUtils';
+import { formatPrice, resolveSpecDigits } from '../../../utils/symbolUtils';
 
 export type PendingOrderView = {
   ticket: number;
@@ -85,6 +85,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
 }: PendingOrdersPanelProps) {
   const tr = useUiTranslation();
   const storeOrders = useAppStore((s) => s.orders);
+  const storeTicks = useAppStore((s) => s.ticks);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -207,7 +208,10 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
           </thead>
           <tbody>
             {orders.map((order) => {
-              const digits = getSymbolDigits(order.symbol);
+              // Spec digits only (live tick); unknown renders raw downstream.
+              const orderTick = (storeTicks ?? {})[order.symbol]
+                ?? (storeTicks ?? {})[order.symbol.toUpperCase()];
+              const digits = resolveSpecDigits(orderTick?.digits);
               return (
                 <tr key={order.ticket} className="border-t border-zinc-800 hover:bg-zinc-800/40" data-ticket={order.ticket}>
                   <td className="px-2 py-1 text-zinc-300">{order.ticket}</td>

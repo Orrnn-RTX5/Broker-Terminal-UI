@@ -19,7 +19,7 @@ import {
     shouldBlockSymbolTrading,
     type NormalizedMarketStatus,
 } from '../utils/marketStatus';
-import { getSymbolDigits } from '../utils/symbolUtils';
+import { resolveSpecDigits } from '../utils/symbolUtils';
 import { formatOrderError, isStaleOrderError } from '../utils/orderError';
 import { TradeUnavailableDialog } from './TradeUnavailableDialog';
 import {
@@ -235,10 +235,11 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         return () => obs.disconnect();
     }, []);
 
-    const digits = tick?.digits || getSymbolDigits(symbol);
+    // Spec digits only (live tick); unknown precision renders raw downstream.
+    const digits = resolveSpecDigits(tick?.digits);
 
-    const formatPrice = useCallback((price: number, d: number) => {
-        const parts = formatPriceParts(price, symbol, d);
+    const formatPrice = useCallback((price: number, d: number | null) => {
+        const parts = formatPriceParts(price, symbol, d ?? undefined);
         return { ...parts, pip: '' };
     }, [symbol]);
 

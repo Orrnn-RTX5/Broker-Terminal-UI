@@ -7,7 +7,7 @@ import { useLiveAccountMetrics } from '../../../hooks/useLiveAccountMetrics';
 import type { ToolboxTradePosition } from '../../../hooks/useToolboxTradeData';
 import { ContextMenu, type ContextMenuItemConfig } from '../../../components/ui/ContextMenu';
 import { Icon } from '../../../components/ui/Icon';
-import { formatPrice, getSymbolDigits } from '../../../utils/symbolUtils';
+import { formatPrice, resolveSpecDigits } from '../../../utils/symbolUtils';
 import { rememberTradeHistoryPositionLevels } from '../../../utils/tradeHistoryLevelCache';
 import {
   resolveTradeProfit,
@@ -638,7 +638,17 @@ export const TradeTab = memo(function TradeTab({
         const openPrice = Number(pos.price_open ?? pos.open_price ?? pos.openPrice ?? pos.entryPrice ?? pos.price);
         const currentPrice = Number(pos.price_current ?? pos.current_price ?? pos.currentPrice ?? pos.livePrice);
         if (pos.hasBackendCurrentPrice === false || !Number.isFinite(openPrice) || !Number.isFinite(currentPrice) || openPrice <= 0 || currentPrice <= 0) return null;
-        const pointSize = Math.pow(10, -getSymbolDigits(pos.symbol ?? ''));
+        // Spec digits only (position, then live tick); unknown precision
+        // cannot express points — return null (renders METRIC_UNAVAILABLE).
+        const ticks = (useAppStore.getState().ticks ?? {}) as Record<string, { digits?: unknown } | undefined>;
+        const symbol = pos.symbol ?? '';
+        const tick = ticks[symbol] ?? ticks[symbol.toUpperCase()];
+        const specDigits = resolveSpecDigits(
+          (pos as { digits?: unknown })?.digits,
+          tick?.digits,
+        );
+        if (specDigits === null) return null;
+        const pointSize = Math.pow(10, -specDigits);
         const direction = String(pos.side).toUpperCase() === 'BUY' ? 1 : -1;
         const points = ((currentPrice - openPrice) / pointSize) * direction;
         return Number.isFinite(points) ? points : null;
