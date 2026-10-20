@@ -66,6 +66,15 @@ const lockedHelpResource = {
     unavailableReason: 'This Help resource is currently unavailable.',
 } as const;
 
+// T14: release/beta notes have no surface to open. No changelog or
+// release-notes view exists in-app, and broker config exposes no
+// release-notes URL, so these stay disabled-with-reason (never a dead
+// click, never a hardcoded link).
+const unavailableReleaseNotes = {
+    disabled: true,
+    unavailableReason: 'Documentation is not configured for this deployment',
+} as const;
+
 const DESKTOP_MENU_KEYS = ['File', 'View', 'Insert', 'Charts', 'Tools', 'Window', 'Help'] as const;
 
 export interface MenuBarProps {
@@ -291,6 +300,15 @@ export const MenuBar = ({
 
     const openShortcutHelp = () => {
         runTerminalShortcutAction('help.shortcuts');
+    };
+
+    // T14: About has no dedicated dialog in-app, so it surfaces the build
+    // version (existing appVersion module) through the existing
+    // rtx:order-feedback toast surface instead of a dead click.
+    const openAboutVersion = () => {
+        window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+            detail: { message: `Version ${getAppVersion()}`, type: 'success' },
+        }));
     };
 
     const fontSizeMenuItem: MenuItem = {
@@ -649,12 +667,12 @@ export const MenuBar = ({
                 label: t('menu.help.checkForUpdates'),
                 icon: <Icon name="download" size="sm" className="text-blue-500" />,
                 children: [
-                    { label: 'Latest Release Version', icon: <Icon name="check-circle" size="xs" className="text-emerald-500" /> },
-                    { label: 'Latest Beta Version', icon: <Icon name="alert-triangle" size="xs" className="text-amber-500" /> }
+                    { label: 'Latest Release Version', icon: <Icon name="check-circle" size="xs" className="text-emerald-500" />, ...unavailableReleaseNotes },
+                    { label: 'Latest Beta Version', icon: <Icon name="alert-triangle" size="xs" className="text-amber-500" />, ...unavailableReleaseNotes }
                 ]
             },
             { divider: true, label: '' },
-            { label: t('menu.help.about'), icon: <Icon name="box" size="sm" /> }
+            { label: t('menu.help.about'), icon: <Icon name="box" size="sm" />, action: openAboutVersion }
         ]
     };
 
