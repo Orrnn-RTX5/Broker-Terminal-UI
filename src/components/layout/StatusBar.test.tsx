@@ -12,6 +12,7 @@ vi.mock('../../hooks/useUiTranslation', () => ({
 }));
 vi.mock('../../hooks/useTerminalTitle', () => ({
   WEB_TERMINAL_TITLE: 'Web Terminal',
+  getWebTerminalTitle: () => 'Web Terminal',
   useTerminalBrokerInfo: () => ({
     accountId: '---',
     brokerName: 'Test Broker',

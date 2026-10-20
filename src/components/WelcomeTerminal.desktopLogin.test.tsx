@@ -280,7 +280,8 @@ describe('desktop broker directory login', () => {
     expect(document.querySelector('.rtx-login-overlay')).toHaveAttribute('data-broker-id', nexa.broker_id);
     expect(document.documentElement).toHaveAttribute('data-broker-id', nexa.broker_id);
     expect(document.documentElement).toHaveStyle('--rtx-broker-accent: #6D4AFF');
-    expect(document.title).toBe(`Terminal - ${nexa.broker_name}`);
+    expect(document.title).toContain(`- ${nexa.broker_name}`);
+    expect(document.title).not.toMatch(/RTX/);
     expect(document.querySelector('.rtx-login-broker-identity')).toHaveTextContent(nexa.broker_name);
     expect(document.querySelector('.rtx-login-broker-identity-logo img')).toHaveAttribute('src', nexa.logo_url);
     expect(document.querySelector('.rtx-login-visual img')).toHaveAttribute('src', expect.stringContaining('trading-desk-hero'));
@@ -290,7 +291,8 @@ describe('desktop broker directory login', () => {
     );
     selectBroker(gta.broker_name);
     await waitFor(() => expect(loginButton()).toBeEnabled());
-    expect(document.title).toBe(`Terminal - ${gta.broker_name}`);
+    expect(document.title).toContain(`- ${gta.broker_name}`);
+    expect(document.title).not.toMatch(/RTX/);
     expect(document.documentElement).toHaveAttribute('data-broker-id', gta.broker_id);
     expect(document.documentElement.style.getPropertyValue('--rtx-broker-accent')).toBe('');
     expect(document.querySelector('.rtx-login-broker-identity')).toHaveTextContent(gta.broker_name);

@@ -113,7 +113,7 @@ describe('broker presentation', () => {
 
     expect(document.documentElement).toHaveAttribute('data-broker-id', 'Nexa');
     expect(document.documentElement).toHaveStyle('--rtx-broker-accent: #6D4AFF');
-    expect(document.title).toBe('Terminal - Nexa');
+    expect(document.title).toBe('Web Terminal - Nexa');
 
     applyBrokerChrome({
       brokerId: 'gta_broker',
@@ -122,7 +122,7 @@ describe('broker presentation', () => {
     });
     expect(document.documentElement).toHaveAttribute('data-broker-id', 'gta_broker');
     expect(document.documentElement.style.getPropertyValue('--rtx-broker-accent')).toBe('');
-    expect(document.title).toBe('Terminal - Grow Trading Academy');
+    expect(document.title).toBe('Web Terminal - Grow Trading Academy');
   });
 
   it('derives the login title from broker config, never a vendor default (ds-16)', () => {

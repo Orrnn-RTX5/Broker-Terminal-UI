@@ -89,7 +89,7 @@ describe('DesktopWindowShell', () => {
     const shell = view.container.querySelector('[data-rtx-desktop-shell="true"]');
     expect(shell).not.toBeNull();
     expect(document.documentElement.classList.contains('rtx-desktop-shell-active')).toBe(true);
-    expect(view.getByText('Terminal')).toBeTruthy();
+    expect(view.getByText('Web Terminal')).toBeTruthy();
 
     fireEvent.click(view.getByRole('button', { name: 'Minimize window' }));
     fireEvent.click(view.getByRole('button', { name: 'Maximize window' }));
@@ -161,7 +161,7 @@ describe('DesktopWindowShell', () => {
     });
 
     await waitFor(() => {
-      expect(view.getByText('Terminal - Nexa')).toBeTruthy();
+      expect(view.getByText('Web Terminal - Nexa')).toBeTruthy();
       expect(view.container.querySelector('.rtx-desktop-titlebar__icon')).toHaveAttribute(
         'src',
         'https://directory.example.test/nexa.ico',
