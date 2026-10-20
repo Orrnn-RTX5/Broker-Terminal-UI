@@ -45,20 +45,26 @@ describe('Close All source contract', () => {
     expect(bulkHandler).not.toContain('accountV2Api.closeAllPositions');
   });
 
-  it('executes Close All, In-Profit, and In-Loss directly without a confirmation sheet', () => {
+  it('routes Close All, In-Profit, and In-Loss through the confirmation sheet (SUI-T4)', () => {
     const execution = bulkHandler.indexOf('bulkCloseInFlightScopesRef.current.add(closeSessionScope);');
     const closeRequest = bulkHandler.indexOf('await closePositionsLocalFirst({');
+    const gate = bulkHandler.indexOf('await confirmBulkCloseForSession({');
     const beforeExecution = bulkHandler.slice(0, execution);
 
     expect(bulkStart).toBeGreaterThan(-1);
     expect(bulkHandler).toContain("type: 'ALL' | 'WINNERS' | 'LOSERS'");
     expect(bulkHandler).toContain('if (localCandidates.length === 0) return;');
-    expect(appSource).not.toContain('confirmBulkCloseForSession');
-    expect(appSource).not.toContain('useBulkCloseConfirmStore');
-    expect(appSource).not.toContain('BulkCloseConfirmDialog');
+    expect(appSource).toContain('confirmBulkCloseForSession');
+    expect(appSource).toContain('useBulkCloseConfirmStore');
+    expect(appSource).toContain('BulkCloseConfirmDialog');
     expect(execution).toBeGreaterThan(-1);
     expect(closeRequest).toBeGreaterThan(execution);
-    expect(beforeExecution).not.toContain('await ');
+    // The confirm gate resolves before any close request; dismiss returns
+    // before closePositionsLocalFirst with zero side effects.
+    expect(gate).toBeGreaterThan(execution);
+    expect(gate).toBeLessThan(closeRequest);
+    expect(bulkHandler).toContain('if (!bulkCloseConfirmed) return;');
+    expect(bulkHandler.indexOf('if (!bulkCloseConfirmed) return;')).toBeLessThan(closeRequest);
     expect(beforeExecution).not.toContain('getPositions(');
     expect(beforeExecution).not.toContain('setTimeout');
     expect(beforeExecution).not.toContain('requestAnimationFrame');
