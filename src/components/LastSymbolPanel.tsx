@@ -37,6 +37,7 @@ import {
     normalizeExactBrokerSymbol,
     resolveExactBrokerSymbolValue,
 } from '../utils/exactBrokerSymbol';
+import { resolveSpecDigits } from '../utils/symbolUtils';
 
 const PANEL_WIDTH = 368;
 const PANEL_EDGE_GAP = 12;
@@ -126,36 +127,19 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
     const ask = tick?.ask ?? 0;
     const spread = ask - bid;
 
-    /** Return decimal places for any symbol */
-    const getSymbolDigits = (sym: string): number => {
-        if (!sym) return 5;
-        const s = sym.toUpperCase();
-        if (s.includes('JPY')) return 3;
-        if (s.includes('BTC')) return 2;
-        if (s.includes('ETH')) return 2;
-        if (s.includes('LTC') || s.includes('SOL') || s.includes('XRP') || s.includes('BNB') || s.includes('DOT') || s.includes('ADA')) return 4;
-        if (s.includes('XAU') || s.includes('XAG') || s.includes('XPT') || s.includes('XPD')) return 2;
-        if (s.includes('NAS') || s.includes('SPX') || s.includes('DJ') || s.includes('US30') || s.includes('US500') || s.includes('NDX')) return 2;
-        return 5;
-    };
-
-    /** Return pip size for any symbol (used for spread display and SL/TP calculation) */
-    const getSymbolPipSize = (sym: string): number => {
-        if (!sym) return 0.0001;
-        const s = sym.toUpperCase();
-        if (s.includes('JPY')) return 0.01;
-        if (s.includes('BTC')) return 1;
-        if (s.includes('ETH')) return 0.1;
-        if (s.includes('LTC') || s.includes('SOL')) return 0.01;
-        if (s.includes('XRP') || s.includes('BNB') || s.includes('DOT') || s.includes('ADA')) return 0.0001;
-        if (s.includes('XAU') || s.includes('XAG') || s.includes('XPT') || s.includes('XPD')) return 0.01;
-        if (s.includes('NAS') || s.includes('SPX') || s.includes('DJ') || s.includes('US30') || s.includes('US500') || s.includes('NDX')) return 0.1;
-        return 0.0001;
-    };
-
-    const pipSize = getSymbolPipSize(lastSymbol);
+    // TERM-DIGITS-WL: catalog (spec) digits only — tick?.digits via
+    // resolveSpecDigits. No symbol-name table, no fallback constant. Unknown
+    // precision stays null: prices render raw (String(value)), and pip-size
+    // math that cannot run without precision degrades honestly (see below).
+    const digits = resolveSpecDigits(tick?.digits);
+    // Pip derived from broker digits with the same exponent rule as
+    // OrderPanelDialog's liveDigits override (3/5-digit feeds quote a
+    // fractional pip, so pip = 10^-(digits-1); otherwise pip = 10^-digits).
+    // Null when precision is unknown: no invented pip.
+    const pipSize = digits === null
+        ? null
+        : Math.pow(10, -(digits === 3 || digits === 5 ? digits - 1 : digits));
     const spreadDisplay = formatSpreadDisplayWithUnit(lastSymbol, tick?.spread ?? spread, bid, ask);
-    const digits = tick?.digits || getSymbolDigits(lastSymbol);
 
     // FIX: Closing/summary ownership follows the same exact contract identity
     // as its quote; case/whitespace may differ but punctuation never aliases.
@@ -164,21 +148,25 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
     );
     const totalPnL = lastSymbolPositions.reduce((sum, p) => sum + (p.unrealizedPnL || 0), 0);
 
-    const isJPY = lastSymbol.includes('JPY') || pipSize === 0.01;
-
     // Calculate risk-based lot
     const calculateRiskLot = useCallback(() => {
         if (!useRiskSizing || !account) return volume;
+        // Without broker precision no pip value can be estimated honestly;
+        // keep the manual volume instead of inventing one from the name.
+        if (pipSize === null) return volume;
         const balance = account.balance || 0;
         const riskAmount = (balance * riskPercent) / 100;
         const slDistance = slPips * pipSize;
         if (slDistance <= 0) return volume;
 
-        // Approximate pip value (simplified — real calculation needs contract size)
-        const pipValue = isJPY ? 1000 : 10; // Per standard lot
+        // Approximate pip value (simplified — real calculation needs contract size).
+        // Spec-derived only: 0.01-pip symbols (JPY, 2/3-digit feeds) value at
+        // 1000/lot, everything else at 10/lot — the same mapping the old name
+        // table produced via pipSize === 0.01, without inspecting the name.
+        const pipValue = pipSize === 0.01 ? 1000 : 10; // Per standard lot
         const lot = riskAmount / (slPips * pipValue);
         return Math.max(0.01, Math.round(lot * 100) / 100);
-    }, [useRiskSizing, account, volume, riskPercent, slPips, pipSize, isJPY]);
+    }, [useRiskSizing, account, volume, riskPercent, slPips, pipSize]);
 
     const effectiveLot = useRiskSizing ? calculateRiskLot() : volume;
     const tradeBlockedMessage = getMarketStatusTradeBlockMessage(marketStatus, lastSymbol);
@@ -261,8 +249,9 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
                 // standard Last Symbol orders can use the fixed low-latency WS
                 // contract. User-authored comments elsewhere are still kept on REST.
 
-                // Auto SL/TP
-                if (autoSLTP && slPips > 0) {
+                // Auto SL/TP needs broker precision; with unknown digits the
+                // order submits unprotected (no guessed pip, no fallback).
+                if (autoSLTP && slPips > 0 && pipSize !== null) {
                     const basePrice = side === 'BUY' ? ask : bid;
                     if (basePrice > 0) {
                         orderData.price_sl =
@@ -546,7 +535,7 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
                                 <span className="last-symbol-trade-button__quote-label">{tr("Bid")}</span>
                             </span>
                             <span className="last-symbol-trade-button__price">
-                                {bid > 0 ? bid.toFixed(digits) : '—'}
+                                {bid > 0 ? (digits === null ? String(bid) : bid.toFixed(digits)) : '—'}
                             </span>
                         </button>
 
@@ -563,7 +552,7 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
                                 <span className="last-symbol-trade-button__quote-label">{tr("Ask")}</span>
                             </span>
                             <span className="last-symbol-trade-button__price">
-                                {ask > 0 ? ask.toFixed(digits) : '—'}
+                                {ask > 0 ? (digits === null ? String(ask) : ask.toFixed(digits)) : '—'}
                             </span>
                         </button>
                     </div>

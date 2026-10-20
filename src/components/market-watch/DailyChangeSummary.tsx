@@ -6,7 +6,7 @@ import { dailyChangeDescription } from '../../utils/dailyChangeSession';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 
 /** Shared symbol-price header summary; uses the existing per-symbol subscription. */
-export function DailyChangeSummary({ symbol, digits }: { symbol: string; digits: number }) {
+export function DailyChangeSummary({ symbol, digits }: { symbol: string; digits?: number | null }) {
   const tr = useUiTranslation();
   const tick = useTick(symbol);
   const metadata = useMarketWatchDisplayMetadata(symbol);
