@@ -41,7 +41,8 @@ const compatible = (a?: string, b?: string): boolean => !a || !b || a === b;
 export const getSavedAccountServerMigrationContext = (): SavedAccountServerMigrationContext | null => {
   const fallbackServer = getBuildFallbackServer();
   const serverName = getKnownBrokerServerName();
-  if (!fallbackServer || !serverName) return null;
+  // A broker whose published name equals the fallback has nothing to migrate.
+  if (!fallbackServer || !serverName || sameLabel(serverName, fallbackServer)) return null;
   return { fallbackServer, brokerId: getCurrentBrokerId(), serverName };
 };
 
@@ -106,7 +107,7 @@ export const migrateFallbackServerAccounts = (
   ctx: SavedAccountServerMigrationContext,
 ): SavedAccount[] => {
   const source = accounts as SavedAccount[];
-  if (!text(ctx.fallbackServer) || !text(ctx.serverName)) return source;
+  if (!text(ctx.fallbackServer) || !text(ctx.serverName) || sameLabel(ctx.serverName, ctx.fallbackServer)) return source;
   if (!accounts.some(account => isFallbackRow(account, ctx))) return source;
   const target = resolveTargetKey(accounts, ctx);
 

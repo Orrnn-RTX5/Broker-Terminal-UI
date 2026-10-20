@@ -11,6 +11,7 @@ import { useOneClickTrading, useSettingsStore } from '../store/useSettingsStore'
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 import { ChangePasswordDialog } from './ChangePasswordDialog';
 import { openBottomDockTab } from '../services/bottomDockNavigation';
+import { resolveServerDisplayLabel } from '../services/brokerServerIdentity';
 
 interface AccountPanelProps {
   onClose: () => void;
@@ -206,9 +207,9 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose }) => {
                   <span
                     className="text-[13px] leading-[19.5px] font-normal truncate max-w-[160px]"
                     style={{ color: 'var(--text-primary, #e2e2e8)' }}
-                    title={savedAccountMeta.server}
+                    title={resolveServerDisplayLabel(savedAccountMeta.server)}
                   >
-                    {savedAccountMeta.server}
+                    {resolveServerDisplayLabel(savedAccountMeta.server)}
                   </span>
                 </div>
               )}

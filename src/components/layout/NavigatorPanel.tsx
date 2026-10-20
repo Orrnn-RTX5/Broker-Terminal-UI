@@ -12,6 +12,7 @@ import { ChangePasswordDialog } from '../ChangePasswordDialog';
 import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
 import { useSavedAccountServerMigration } from '../../services/savedAccountServerMigration';
+import { useKnownBrokerServerName } from '../../services/brokerServerIdentity';
 import { brokerV2Api } from '../../api/trade';
 import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
 import { buildBrokerDirectoryLogoUrl, getConfiguredBrokerLogoUrl, isPlaceholderBrokerLogoUrl } from '../BrokerLogoImage';
@@ -129,6 +130,7 @@ export const NavigatorPanel: React.FC = () => {
     // join the broker's real key once its config is available (re-renders the
     // group labels with the broker-published server name as well).
     useSavedAccountServerMigration();
+    const knownBrokerServerName = useKnownBrokerServerName();
     // Capture aliases at committed login boundaries, not while another broker
     // is being selected. Same-login broker switches also change this scope.
     const { brokerScope, accountServerIdentities, storedBrokerLogo } = useMemo(() => {
@@ -147,7 +149,7 @@ export const NavigatorPanel: React.FC = () => {
             accountServerIdentities: getSavedAccountServerIdentities(),
             storedBrokerLogo: storageMatches ? stored : undefined,
         };
-    }, [sessionScope]);
+    }, [sessionScope, knownBrokerServerName]);
 
     // Keep every saved account for future login; scope only the authenticated
     // tree and Favorites. Logged-out Favorites remain quick-login shortcuts.

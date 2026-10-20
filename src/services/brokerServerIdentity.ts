@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { getRuntimeBrokerConfiguration } from '../config/backendTarget.js';
+import { getRuntimeBrokerConfiguration, isDesktopBackendTarget } from '../config/backendTarget.js';
 
 /**
  * The server name the broker publishes (white-label, display only).
@@ -43,9 +43,23 @@ const readStorage = (key: string): string => {
   }
 };
 
-/** The broker this deployment (or the selected desktop session) talks to. */
-export const getCurrentBrokerId = (): string =>
-  readRuntime().brokerId || text(readStorage('broker_id')) || text(readStorage('rtx_broker_id'));
+const isDesktop = (): boolean => {
+  try {
+    return isDesktopBackendTarget();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The broker this terminal talks to: the pinned deployment broker on web,
+ * the selected broker on desktop (a desktop build can switch brokers).
+ */
+export const getCurrentBrokerId = (): string => {
+  const selected = text(readStorage('broker_id')) || text(readStorage('rtx_broker_id'));
+  const deployment = readRuntime().brokerId;
+  return isDesktop() ? selected || deployment : deployment || selected;
+};
 
 /** The build fallback server label (runtime DEFAULT_MT5_SERVER). */
 export const getBuildFallbackServer = (): string => readRuntime().defaultMt5Server;
@@ -70,11 +84,22 @@ export const getKnownBrokerServerName = (): string => {
   return stored.serverName;
 };
 
-const readServerEntryLabel = (entry: unknown, brokerId: string): string => {
-  if (!entry || typeof entry !== 'object') return '';
-  const record = entry as { broker_id?: unknown; server?: unknown };
-  if (brokerId && text(record.broker_id) && text(record.broker_id) !== brokerId) return '';
-  return text(record.server);
+type ServerEntry = { broker_id?: unknown; server?: unknown };
+
+/**
+ * The current broker's `/broker/servers` entry label: the entry the session
+ * selected (remembered server) when listed, otherwise the broker's first one.
+ * Entries of other brokers, or without a broker id while one is known, never
+ * name this broker.
+ */
+const selectServerEntryLabel = (servers: readonly unknown[], brokerId: string): string => {
+  const labels = servers
+    .filter((entry): entry is ServerEntry => Boolean(entry) && typeof entry === 'object')
+    .filter(entry => (brokerId ? text(entry.broker_id) === brokerId : true))
+    .map(entry => text(entry.server))
+    .filter(Boolean);
+  const remembered = text(readStorage('rtx_broker_server'));
+  return labels.find(label => sameLabel(label, remembered)) || labels[0] || '';
 };
 
 /**
@@ -91,9 +116,7 @@ export const recordBrokerServerIdentity = (config: unknown, servers: readonly un
   const fromConfig = documentBrokerId && brokerId && documentBrokerId !== brokerId
     ? ''
     : text(document?.server_name) || text(document?.serverName);
-  const serverName = fromConfig
-    || servers.map(entry => readServerEntryLabel(entry, brokerId)).find(Boolean)
-    || '';
+  const serverName = fromConfig || selectServerEntryLabel(servers, brokerId);
   if (!serverName) return '';
   const current = readStoredIdentity();
   if (current?.serverName === serverName && current.brokerId === brokerId) return serverName;
@@ -106,7 +129,7 @@ export const recordBrokerServerIdentity = (config: unknown, servers: readonly un
   return serverName;
 };
 
-/** Forget the recorded server name (tests and broker switches). */
+/** Forget the recorded server name (tests; a broker switch is handled by the broker id key). */
 export const clearKnownBrokerServerName = (): void => {
   try {
     localStorage.removeItem(STORAGE_KEY);

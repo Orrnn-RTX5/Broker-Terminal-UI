@@ -809,11 +809,11 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     const marketWatchErrors = getMarketWatchDisplayErrors(
       ...marketDataErrors.map(error => (isServerUnreachableError(error) ? null : error)),
     );
-    useServerReconnect(serverUnreachable, () => {
-      void marketInstrumentsSnapshot.reload();
-      void reloadActiveMarketSymbols();
-      void reloadWatchlist();
-    });
+    const reconnectingToServer = useServerReconnect(serverUnreachable, () => Promise.allSettled([
+      marketInstrumentsSnapshot.reload(),
+      reloadActiveMarketSymbols(),
+      reloadWatchlist(),
+    ]));
     return (
       <>
         {/* Shared Market Watch interaction styles for browser and Electron. */}
@@ -998,7 +998,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
 
           {!showSymbolsPanel && (
             <>
-              {serverUnreachable && (
+              {reconnectingToServer && (
                 <div role="status" aria-live="polite" aria-label={tr("Reconnecting to server…")} style={{
                   padding: '5px 10px',
                   borderTop: '1px solid rgba(96,165,250,0.25)',

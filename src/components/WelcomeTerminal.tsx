@@ -23,6 +23,7 @@ import {
 } from '../config/backendTarget.js';
 import { filterBrokerDirectory, firstSelectableBroker, getDirectoryBrokerServerUrl, isDirectoryBrokerSelectable, isBrokerSuspended } from '../services/brokerDiscovery';
 import { loadAppBrokerDirectory } from '../services/brokerDirectory';
+import { resolveServerDisplayLabel, useKnownBrokerServerName } from '../services/brokerServerIdentity';
 import {
     applyBrokerChrome,
     loadBrokerPresentation,
@@ -523,6 +524,9 @@ export function WelcomeTerminal({
     onPreloadTerminalPresentation,
 }: WelcomeTerminalProps) {
     const tr = useUiTranslation();
+    // Re-render broker labels when the broker-published server name arrives
+    // (it replaces the build fallback label of the configured broker).
+    useKnownBrokerServerName();
     useDesktopStartupReady();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -1350,7 +1354,7 @@ export function WelcomeTerminal({
                                                                         broker={item}
                                                                         fallback={<i aria-hidden="true">B</i>}
                                                                     />
-                                                                    <strong>{item.broker_name}</strong>
+                                                                    <strong>{resolveServerDisplayLabel(item.broker_name)}</strong>
                                                                 </span>
                                                                 {suspended ? <em>{tr("Suspended")}</em> : unavailable ? <em>{tr("Unavailable")}</em> : item.region ? <em>{item.region}</em> : null}
                                                             </button>

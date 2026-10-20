@@ -1,5 +1,5 @@
 import { getRuntimeBrokerConfiguration, isDesktopBackendTarget } from '../config/backendTarget.js';
-import { resolveServerDisplayLabel } from './brokerServerIdentity';
+import { getKnownBrokerServerName, resolveServerDisplayLabel } from './brokerServerIdentity';
 
 const text = (value: unknown): string => String(value ?? '').trim();
 const identity = (value: unknown): string => text(value).replace(/\/+$/, '').toLowerCase();
@@ -23,6 +23,9 @@ export const isBrokerName = (value: unknown): boolean => {
  * shown exactly as resolved.
  */
 export function brokerDisplayName(server: string, ...names: unknown[]): string {
+  // A server keyed by the broker-published name displays as that name.
+  const publishedName = getKnownBrokerServerName();
+  if (publishedName && identity(server) === identity(publishedName)) return publishedName;
   return resolveServerDisplayLabel(resolveBrokerDisplayLabel(server, names));
 }
 

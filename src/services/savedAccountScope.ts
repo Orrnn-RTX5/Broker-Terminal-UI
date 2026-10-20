@@ -2,6 +2,7 @@ import { getRuntimeBrokerConfiguration } from '../config/backendTarget.js';
 import type { SavedAccount } from '../store/useAppStore';
 import { getCommittedBrokerAccountSessionScope, type CommittedBrokerAccountSessionScope } from './brokerSession';
 import { getRawStoredBrokerServer, isDefaultBrokerServerValue } from './brokerServers';
+import { getKnownBrokerServerName } from './brokerServerIdentity';
 
 // Account ownership needs full identities. The logo resolver's hostname-only
 // matching would merge servers on different ports or broker-specific paths.
@@ -64,6 +65,9 @@ export const getSavedAccountServerIdentities = (): Set<string> => {
         && matchesConfiguredServer) {
         add(config.brokerName || '');
         add(config.defaultMt5Server || '');
+        // The server name this broker publishes (broker config server_name):
+        // the key fallback-label accounts are migrated to.
+        add(getKnownBrokerServerName());
     }
     return identities;
 };

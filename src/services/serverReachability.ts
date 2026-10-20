@@ -22,7 +22,9 @@ const TRANSPORT_FAILURE_MESSAGES: readonly RegExp[] = [
   /^load failed$/i,
   /^network ?error$/i,
   /^network request failed$/i,
-  /\btimed out after \d+ seconds?\.?$/i,
+  /\btimed out after \d+(?:\.\d+)? seconds?\.?$/i,
+  // A gateway answering for an unavailable upstream (apiClient status text).
+  /^HTTP Error: 50[234]$/i,
 ];
 
 const GATEWAY_UNAVAILABLE_STATUSES = new Set([502, 503, 504]);
