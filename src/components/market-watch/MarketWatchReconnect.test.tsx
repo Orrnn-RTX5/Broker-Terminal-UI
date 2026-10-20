@@ -29,7 +29,10 @@ const panel = () => (
   <MarketWatchPanel allSymbols={SYMBOLS} selectedSymbol="BTCUSD" onSymbolSelect={() => undefined} />
 );
 
-const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+// Async act flushes the settled retry promises between timer steps.
+const advance = async (ms: number) => {
+  await act(async () => { vi.advanceTimersByTime(ms); });
+};
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -72,7 +75,7 @@ afterEach(() => {
 });
 
 describe('Market Watch unreachable API', () => {
-  it('shows "Reconnecting to server…" instead of "Failed to fetch", retries with backoff, then recovers', () => {
+  it('shows "Reconnecting to server…" instead of "Failed to fetch", retries with backoff, then recovers', async () => {
     // Gateway down: the catalog and the feed status both fail at transport level.
     marketHooks.instrumentSymbols = [];
     marketHooks.activeSymbols = [];
@@ -89,15 +92,15 @@ describe('Market Watch unreachable API', () => {
 
     // First retry after 1 s, the next one 2 s later (exponential backoff).
     expect(marketHooks.reloadInstruments).not.toHaveBeenCalled();
-    advance(999);
+    await advance(999);
     expect(marketHooks.reloadInstruments).not.toHaveBeenCalled();
-    advance(1);
+    await advance(1);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(1);
     expect(marketHooks.reloadActiveSymbols).toHaveBeenCalledTimes(1);
     expect(marketHooks.reloadWatchlist).toHaveBeenCalledTimes(1);
-    advance(1999);
+    await advance(1999);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(1);
-    advance(1);
+    await advance(1);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(2);
 
     // The API answers again: the next render has data and no transport error.
@@ -110,36 +113,62 @@ describe('Market Watch unreachable API', () => {
     expect(screen.queryByRole('status', { name: RECONNECTING })).not.toBeInTheDocument();
     expect(screen.queryByRole('alert', { name: 'Market Watch errors' })).not.toBeInTheDocument();
     expect(screen.getByText('EURUSD')).toBeInTheDocument();
-    advance(60_000);
+    await advance(60_000);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(2);
   });
 
-  it('starts the backoff again from 1 s after a recovery and a new outage', () => {
+  it('starts the backoff again from 1 s after a recovery that holds and a new outage', async () => {
     marketHooks.symbolsError = 'Failed to fetch';
     const { rerender } = render(panel());
-    advance(1000);
-    advance(2000);
+    await advance(1000);
+    await advance(2000);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(2);
 
     marketHooks.symbolsError = null;
     rerender(panel());
+    await advance(5000);
+    expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(2);
     marketHooks.symbolsError = 'Failed to fetch';
     rerender(panel());
 
-    advance(999);
+    await advance(999);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(2);
-    advance(1);
+    await advance(1);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(3);
   });
 
-  it('caps the backoff delay at 30 s', () => {
+  it('stays in one steady reconnecting state while a retry is in flight', async () => {
+    marketHooks.symbolsError = 'Failed to fetch';
+    let settleRetry!: () => void;
+    marketHooks.reloadInstruments.mockImplementationOnce(() => {
+      // A real reload clears its error while the request is in flight.
+      marketHooks.symbolsError = null;
+      return new Promise<void>((resolve) => { settleRetry = resolve; });
+    });
+    const { rerender } = render(panel());
+    await advance(1000);
+    rerender(panel());
+    expect(screen.getByRole('status', { name: RECONNECTING })).toBeInTheDocument();
+    expect(screen.queryByRole('alert', { name: 'Market Watch errors' })).not.toBeInTheDocument();
+
+    // The request fails again: the next retry waits the doubled delay.
+    marketHooks.symbolsError = 'Failed to fetch';
+    await act(async () => { settleRetry(); });
+    rerender(panel());
+    await advance(1999);
+    expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(2);
+  });
+
+  it('caps the backoff delay at 30 s', async () => {
     marketHooks.symbolsError = 'Failed to fetch';
     render(panel());
-    for (const delay of [1000, 2000, 4000, 8000, 16000, 30000, 30000]) advance(delay);
+    for (const delay of [1000, 2000, 4000, 8000, 16000, 30000, 30000]) await advance(delay);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(7);
-    advance(29_999);
+    await advance(29_999);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(7);
-    advance(1);
+    await advance(1);
     expect(marketHooks.reloadInstruments).toHaveBeenCalledTimes(8);
   });
 
@@ -148,6 +177,9 @@ describe('Market Watch unreachable API', () => {
     'NetworkError when attempting to fetch resource.',
     'Load failed',
     'Market data is temporarily unavailable. Retrying…',
+    'HTTP Error: 502',
+    'HTTP Error: 503',
+    'Request timed out after 2.5 seconds',
   ])('treats the transport failure "%s" from the watchlist or catalog as reconnecting', (message) => {
     marketHooks.watchlistError = message;
     render(panel());
@@ -156,13 +188,13 @@ describe('Market Watch unreachable API', () => {
     expect(screen.getByText('EURUSD')).toBeInTheDocument();
   });
 
-  it('keeps non-transport errors visible and does not start the reconnect loop for them', () => {
+  it('keeps non-transport errors visible and does not start the reconnect loop for them', async () => {
     marketHooks.symbolsError = 'Broker API configuration error (BROKER_SCOPE_UNAVAILABLE): broker market-data scope is unavailable.';
     render(panel());
 
     expect(screen.getByRole('alert', { name: 'Market Watch errors' })).toHaveTextContent('BROKER_SCOPE_UNAVAILABLE');
     expect(screen.queryByRole('status', { name: RECONNECTING })).not.toBeInTheDocument();
-    advance(60_000);
+    await advance(60_000);
     expect(marketHooks.reloadInstruments).not.toHaveBeenCalled();
   });
 });

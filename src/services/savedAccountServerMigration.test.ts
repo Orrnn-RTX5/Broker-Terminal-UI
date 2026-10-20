@@ -172,4 +172,18 @@ describe('saved-account migration against the store', () => {
     expect(applySavedAccountServerMigration()).toBe(false);
     expect(useAppStore.getState().savedAccounts).toBe(migrated);
   });
+
+  it('leaves every account alone when the broker publishes the fallback label as its server name', () => {
+    const accounts = [
+      account(200001, FALLBACK, { isFavorite: true }),
+      account(200002, BROKER_ID, { brokerId: BROKER_ID }),
+    ];
+    useAppStore.setState({ savedAccounts: accounts });
+    recordBrokerServerIdentity({ server_name: ' Local-Dev ' });
+
+    expect(getSavedAccountServerMigrationContext()).toBeNull();
+    expect(applySavedAccountServerMigration()).toBe(false);
+    expect(useAppStore.getState().savedAccounts).toBe(accounts);
+    expect(migrateFallbackServerAccounts(accounts, { ...ctx, serverName: 'LOCAL-DEV' })).toBe(accounts);
+  });
 });

@@ -97,6 +97,25 @@ describe('Navigator server groups', () => {
     expect(favourites.getByText(/Second/)).toBeInTheDocument();
   });
 
+  it('keeps legacy accounts visible when they move to the broker server name key', () => {
+    useAppStore.setState({
+      savedAccounts: [
+        saved(200001, 'Owner', FALLBACK),
+        saved(200002, 'Second', FALLBACK, { isFavorite: false }),
+      ],
+    });
+    render(<NavigatorPanel />);
+    act(() => { recordBrokerServerIdentity({ server_name: SERVER_NAME }); });
+
+    expect(new Set(useAppStore.getState().savedAccounts.map(a => a.server))).toEqual(new Set([SERVER_NAME]));
+    expect(screen.getAllByText(SERVER_NAME)).toHaveLength(1);
+    expect(screen.queryByText(FALLBACK)).not.toBeInTheDocument();
+    expect(screen.getAllByText('200001: Owner').length).toBeGreaterThan(0);
+    expect(screen.getByText('200002: Second')).toBeInTheDocument();
+    const favourites = within(screen.getByRole('region', { name: 'Favorites' }));
+    expect(favourites.getByText(/Owner/)).toBeInTheDocument();
+  });
+
   it('merges as soon as the broker config arrives after the first render', () => {
     render(<NavigatorPanel />);
     act(() => { recordBrokerServerIdentity({ server_name: SERVER_NAME }); });
