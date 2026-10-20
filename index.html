@@ -278,8 +278,19 @@
             var startupRequests = { brokerId: validatedBrokerConfig.brokerId, symbolsUrl: publicStartupRequestUrl(apiHost + (gatewayMarket ? '/api/v2/instruments' : '/api/v1/market/symbols')) };
             startupRequests.symbols = fetch(startupRequests.symbolsUrl, { credentials: 'omit', cache: 'no-store', redirect: 'error', headers: publicHeaders });
             if (!sessionCandidate) {
-              startupRequests.candlesUrl = publicStartupRequestUrl(apiHost + '/api/v2/candles/BTCUSD?timeframe=M1&limit=500');
-              startupRequests.candles = fetch(startupRequests.candlesUrl, { credentials: 'omit', cache: 'no-store', redirect: 'error', headers: { 'X-Broker-ID': validatedBrokerConfig.brokerId } });
+              // Tenant-configured first-chart warmup: the symbol comes from deployment
+              // config only (validatedBrokerConfig.defaultChartSymbol). When unset,
+              // skip the candles warmup instead of fetching a compiled-in market —
+              // the app falls back to the first authorized symbol once loaded.
+              var warmupSymbol = String((validatedBrokerConfig && validatedBrokerConfig.defaultChartSymbol) || '').trim().toUpperCase();
+              if (/^[A-Z0-9._-]{1,20}$/.test(warmupSymbol)) {
+                var warmupTimeframe = String(firstConfiguredValue([runtimeConfig.DEFAULT_CHART_TIMEFRAME, runtimeConfig.VITE_DEFAULT_CHART_TIMEFRAME]) || '').toUpperCase();
+                if (['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'].indexOf(warmupTimeframe) === -1) warmupTimeframe = 'M1';
+                var warmupCount = parseInt(firstConfiguredValue([runtimeConfig.FIRST_PAINT_HISTORY_COUNT, runtimeConfig.VITE_FIRST_PAINT_HISTORY_COUNT]), 10);
+                if (!isFinite(warmupCount) || warmupCount <= 0) warmupCount = 500;
+                startupRequests.candlesUrl = publicStartupRequestUrl(apiHost + '/api/v2/candles/' + encodeURIComponent(warmupSymbol) + '?timeframe=' + warmupTimeframe + '&limit=' + warmupCount);
+                startupRequests.candles = fetch(startupRequests.candlesUrl, { credentials: 'omit', cache: 'no-store', redirect: 'error', headers: { 'X-Broker-ID': validatedBrokerConfig.brokerId } });
+              }
             }
             window.__RTX_EARLY_PUBLIC_STARTUP__ = startupRequests;
           }

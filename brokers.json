@@ -1,29 +1,31 @@
 {
-  "_comment": "Schema reference only. The deploy pipeline reads the real broker manifest from the ORRNN-RTX5-Broker-Infra repo (or the BROKERS_JSON secret) at deploy time — NOT from this file. Do not commit live SSH hosts, users, ports, or internal IPs here.",
+  "_comment": "Schema reference only. The deploy pipeline reads the real broker manifest from the ORRNN-RTX5-Broker-Infra repo (or the BROKERS_JSON secret) at deploy time — NOT from this file. Do not commit live broker IDs, domains, SSH hosts, users, ports, or internal IPs here; use yourbroker placeholders as below.",
   "brokers": [
     {
-      "id": "grow-trading-academy",
-      "name": "Grow Trading Academy",
+      "id": "your-broker-id",
+      "name": "Your Broker",
       "enabled": true,
-      "domain": "webterminal.growtradingacademy.com",
-      "backend_url": "https://services.growtradingacademy.com",
+      "domain": "webterminal.yourbroker.com",
+      "backend_url": "https://services.yourbroker.com",
       "env": {
         "BACKEND_TARGET": "web",
-        "API_HOST": "https://services.growtradingacademy.com",
-        "API_HOST_EXT": "https://services.growtradingacademy.com",
-        "WS_HOST": "wss://services.growtradingacademy.com",
-        "DEFAULT_MT5_SERVER": "Web Terminal",
-        "DISCOVERY_BASE_URL": "https://superbackend.orrnn.com",
+        "API_HOST": "https://services.yourbroker.com",
+        "API_HOST_EXT": "https://services.yourbroker.com",
+        "WS_HOST": "wss://services.yourbroker.com",
+        "DEFAULT_MT5_SERVER": "YourBroker-Live",
+        "DISCOVERY_BASE_URL": "https://directory.yourbroker.com",
+        "DESKTOP_RELEASE_API_URL": "",
+        "DEFAULT_CHART_SYMBOL": "",
         "USE_MOCK_DISCOVERY": "false"
       },
       "services": {
         "frontend": {
-          "container_name": "rtx5-webterminal-grow-trading-academy",
+          "container_name": "rtx5-webterminal-your-broker-id",
           "health_path": "/"
         },
         "backend_env": {
           "VITE_APP_MODE": "web-terminal",
-          "VITE_BROKER_ID": "grow-trading-academy"
+          "VITE_BROKER_ID": "your-broker-id"
         }
       }
     }

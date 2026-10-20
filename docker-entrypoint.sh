@@ -77,6 +77,10 @@ broker_logo_url="${BROKER_LOGO_URL-${VITE_BROKER_LOGO_URL-}}"
 broker_login_hero_url="${BROKER_LOGIN_HERO_URL-${VITE_BROKER_LOGIN_HERO_URL-}}"
 broker_login_hero_mobile_url="${BROKER_LOGIN_HERO_MOBILE_URL-${VITE_BROKER_LOGIN_HERO_MOBILE_URL-}}"
 broker_terms_url="${BROKER_TERMS_URL-${VITE_BROKER_TERMS_URL-}}"
+desktop_release_api_url="${DESKTOP_RELEASE_API_URL-${VITE_DESKTOP_RELEASE_API_URL-}}"
+default_chart_symbol="${DEFAULT_CHART_SYMBOL-${VITE_DEFAULT_CHART_SYMBOL-}}"
+default_chart_timeframe="${DEFAULT_CHART_TIMEFRAME-${VITE_DEFAULT_CHART_TIMEFRAME-}}"
+first_paint_history_count="${FIRST_PAINT_HISTORY_COUNT-${VITE_FIRST_PAINT_HISTORY_COUNT-}}"
 
 config_error() {
   printf 'RTX runtime config: %s\n' "$1" >&2
@@ -165,6 +169,51 @@ validate_public_url BROKER_LOGO_URL "$broker_logo_url"
 validate_public_url BROKER_LOGIN_HERO_URL "$broker_login_hero_url"
 validate_public_url BROKER_LOGIN_HERO_MOBILE_URL "$broker_login_hero_mobile_url"
 validate_public_url BROKER_TERMS_URL "$broker_terms_url"
+# Optional tenant download source. Empty hides the desktop download UI; a
+# present value must be an explicit endpoint without credentials.
+validate_optional_endpoint() {
+  asset_label="$1"
+  asset_url="$2"
+  [ -n "$asset_url" ] || return 0
+  case "$asset_url" in
+    [Hh][Tt][Tt][Pp][Ss]://*) ;;
+    [Hh][Tt][Tt][Pp]://localhost*|[Hh][Tt][Tt][Pp]://127.0.0.1*|[Hh][Tt][Tt][Pp]://\[::1\]*) ;;
+    *) config_error "$asset_label must be a valid HTTPS URL without credentials" ;;
+  esac
+  endpoint_authority="${asset_url#*://}"
+  endpoint_authority="${endpoint_authority%%/*}"
+  endpoint_authority="${endpoint_authority%%\?*}"
+  endpoint_authority="${endpoint_authority%%#*}"
+  case "$endpoint_authority" in
+    *[@]*) config_error "$asset_label must be a valid HTTPS URL without credentials" ;;
+  esac
+}
+validate_optional_endpoint DESKTOP_RELEASE_API_URL "$desktop_release_api_url"
+# Optional tenant chart default. Empty falls back to the first authorized
+# symbol; a present value must be a plain symbol string, never a URL or host.
+if [ -n "$default_chart_symbol" ]; then
+  upper_symbol="$(printf '%s' "$default_chart_symbol" | tr '[:lower:]' '[:upper:]')"
+  case "$upper_symbol" in
+    *[!A-Z0-9._-]*) config_error 'DEFAULT_CHART_SYMBOL must be a plain symbol string' ;;
+  esac
+  if [ "${#upper_symbol}" -gt 20 ]; then
+    config_error 'DEFAULT_CHART_SYMBOL must be a plain symbol string'
+  fi
+  default_chart_symbol="$upper_symbol"
+fi
+case "$default_chart_timeframe" in
+  ''|M1|M5|M15|M30|H1|H4|D1|W1|MN) ;;
+  m1|m5|m15|m30|h1|h4|d1|w1|mn) default_chart_timeframe="$(printf '%s' "$default_chart_timeframe" | tr '[:lower:]' '[:upper:]')" ;;
+  *) config_error 'DEFAULT_CHART_TIMEFRAME must be one of M1 M5 M15 M30 H1 H4 D1 W1 MN' ;;
+esac
+if [ -n "$first_paint_history_count" ]; then
+  case "$first_paint_history_count" in
+    ''|*[!0-9]*) config_error 'FIRST_PAINT_HISTORY_COUNT must be a positive integer' ;;
+  esac
+  if [ "$first_paint_history_count" -eq 0 ]; then
+    config_error 'FIRST_PAINT_HISTORY_COUNT must be a positive integer'
+  fi
+fi
 
 broker_origin_allowed() {
   [ "$1" = "$api_origin" ] && return 0
@@ -225,6 +274,10 @@ EOF
   append_string_setting BROKER_LOGIN_HERO_URL "$broker_login_hero_url"
   append_string_setting BROKER_LOGIN_HERO_MOBILE_URL "$broker_login_hero_mobile_url"
   append_string_setting BROKER_TERMS_URL "$broker_terms_url"
+  append_string_setting DESKTOP_RELEASE_API_URL "$desktop_release_api_url"
+  append_string_setting DEFAULT_CHART_SYMBOL "$default_chart_symbol"
+  append_string_setting DEFAULT_CHART_TIMEFRAME "$default_chart_timeframe"
+  append_string_setting FIRST_PAINT_HISTORY_COUNT "$first_paint_history_count"
   append_string_setting PUBLIC_MARKET_API "$public_market_api"
   printf '  config.USE_MOCK_DISCOVERY = false;\n' >> "${runtime_tmp}"
   printf '  config.PUBLIC_CANDLE_BRIDGE = %s;\n' "$(js_bool "$public_candle_bridge")" >> "${runtime_tmp}"

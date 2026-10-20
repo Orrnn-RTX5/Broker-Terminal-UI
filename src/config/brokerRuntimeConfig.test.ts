@@ -177,4 +177,34 @@ describe('broker-neutral complete runtime configuration', () => {
     expect(resolveBrokerBackendUrl({ broker_id: 'selected', server_url: 'http://127.0.0.1:8090' })).toBe('http://127.0.0.1:8090')
     delete (window as any).electronAPI
   })
+
+  it('keeps the desktop release source and chart default optional, validated, and conflict-aware', () => {
+    expect(validateBrokerRuntimeConfig(fixture())).toMatchObject({
+      valid: true, desktopReleaseApiUrl: '', defaultChartSymbol: '',
+    })
+    const configured = validateBrokerRuntimeConfig({
+      ...fixture(),
+      DESKTOP_RELEASE_API_URL: 'https://releases.independent.example/api/latest?channel=stable',
+      DEFAULT_CHART_SYMBOL: 'eurusd.r',
+    })
+    expect(configured.valid).toBe(true)
+    expect(configured).toMatchObject({
+      desktopReleaseApiUrl: 'https://releases.independent.example/api/latest?channel=stable',
+      defaultChartSymbol: 'EURUSD.R',
+    })
+    expect(validateBrokerRuntimeConfig({ ...fixture(), VITE_DESKTOP_RELEASE_API_URL: 'https://releases.independent.example/api/latest' }).desktopReleaseApiUrl)
+      .toBe('https://releases.independent.example/api/latest')
+    for (const value of ['http://releases.independent.example/latest', 'https://user:secret@releases.independent.example/latest', 'not-a-url']) {
+      expect(validateBrokerRuntimeConfig({ ...fixture(), DESKTOP_RELEASE_API_URL: value }).valid).toBe(false)
+    }
+    expect(validateBrokerRuntimeConfig({ ...fixture(), DEFAULT_CHART_SYMBOL: 'https://evil.example/BTCUSD' }).valid).toBe(false)
+    expect(selectBrokerRuntimeConfig([
+      { ...fixture(), DESKTOP_RELEASE_API_URL: 'https://one.example/api/latest' },
+      { ...fixture(), DESKTOP_RELEASE_API_URL: 'https://two.example/api/latest' },
+    ])?.CONFIG_ERRORS).toContain('Conflicting deployment runtime configuration sources.')
+    expect(selectBrokerRuntimeConfig([
+      { ...fixture(), DEFAULT_CHART_SYMBOL: 'EURUSD' },
+      { ...fixture(), DEFAULT_CHART_SYMBOL: 'XAUUSD' },
+    ])?.CONFIG_ERRORS).toContain('Conflicting deployment runtime configuration sources.')
+  })
 })
