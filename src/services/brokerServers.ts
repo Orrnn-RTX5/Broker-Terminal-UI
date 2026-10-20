@@ -1,5 +1,6 @@
 import { brokerV2Api } from '../api/trade';
 import {
+  getRuntimeBrokerConfiguration,
   normalizeBrokerInfo,
   normalizeBrokerInfoForTarget,
   resolveBrokerBackendUrl,
@@ -17,30 +18,51 @@ import type { BrokerServer } from '../types/api';
 export const DEFAULT_BROKER_SERVER = 'Broker';
 export const BROKER_SERVER_STORAGE_KEY = 'rtx_broker_server';
 
-// Pre-white-label fallback label, recognised ONLY by digest so the retired
-// brand string ships in no bundle. Behaviour is identical to comparing the
-// lowercased value: FNV-1a-32 of 'rtx 5 web terminal' (the retired default).
-// Recompute: node -e "let h=2166136261>>>0;for(const c of 'rtx 5 web terminal'){h^=c.codePointAt(0);h=Math.imul(h,16777619)>>>0}console.log(h.toString(16))"
-// Kept ONLY to migrate previously stored state (localStorage / in-flight
-// inputs); never shown to users and never used for routing.
-const RETIRED_DEFAULT_DIGEST = 'f785e678';
+// Broker-neutral stored-server rule (white-label): on load, a remembered
+// server is honoured ONLY when it belongs to the current broker's runtime
+// server list (deployment runtime config). Anything else is discarded and
+// the first configured server is used (neutral fallback when unconfigured).
+// No brand names, no hashes, no per-broker special cases anywhere.
+export interface RuntimeBrokerServerConfig {
+  defaultMt5Server?: unknown;
+  brokerId?: unknown;
+  broker_id?: unknown;
+  apiHost?: unknown;
+  apiHostExt?: unknown;
+}
 
-const fnv1a32Hex = (value: string): string => {
-  let hash = 2166136261 >>> 0;
-  for (const ch of value) {
-    hash ^= ch.codePointAt(0) ?? 0;
-    hash = Math.imul(hash, 16777619) >>> 0;
+const readRuntimeServerConfig = (): RuntimeBrokerServerConfig | null => {
+  try {
+    return getRuntimeBrokerConfiguration() as RuntimeBrokerServerConfig | null;
+  } catch {
+    return null;
   }
-  return hash.toString(16).padStart(8, '0');
+};
+
+/** Servers the current broker deployment configures, display order first. */
+export const getConfiguredBrokerServers = (): string[] => {
+  const config = readRuntimeServerConfig();
+  const seen = new Set<string>();
+  const servers: string[] = [];
+  for (const value of [config?.defaultMt5Server, config?.brokerId, config?.broker_id, config?.apiHost, config?.apiHostExt]) {
+    const name = normalizeServerName(value);
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    servers.push(name);
+  }
+  return servers;
+};
+
+const isConfiguredBrokerServer = (value: string): boolean => {
+  const normalized = normalizeServerName(value).toLowerCase();
+  if (!normalized) return false;
+  return getConfiguredBrokerServers().some((server) => server.toLowerCase() === normalized);
 };
 
 const normalizeServerName = (value: unknown): string => String(value || '').trim();
-/** True for the neutral fallback and the migrated legacy label (case-insensitive). */
-export const isDefaultBrokerServerValue = (value: unknown): boolean => {
-  const normalized = normalizeServerName(value).toLowerCase();
-  return normalized === DEFAULT_BROKER_SERVER.toLowerCase()
-    || fnv1a32Hex(normalized) === RETIRED_DEFAULT_DIGEST;
-};
+/** True for the neutral fallback label (case-insensitive). */
+export const isDefaultBrokerServerValue = (value: unknown): boolean =>
+  normalizeServerName(value).toLowerCase() === DEFAULT_BROKER_SERVER.toLowerCase();
 const isDefaultDisplayServer = (value: string): boolean => isDefaultBrokerServerValue(value);
 const brokerServerRegistry = new Map<string, BrokerServer>();
 
@@ -53,8 +75,10 @@ export interface LoginBrokerTarget {
 export const getStoredBrokerServer = (): string => {
   if (typeof window === 'undefined') return DEFAULT_BROKER_SERVER;
   const stored = normalizeServerName(localStorage.getItem(BROKER_SERVER_STORAGE_KEY));
-  // Previously stored legacy labels migrate to the neutral fallback on read.
-  return !stored || isDefaultBrokerServerValue(stored) ? DEFAULT_BROKER_SERVER : stored;
+  if (!stored || isDefaultBrokerServerValue(stored)) return DEFAULT_BROKER_SERVER;
+  if (isConfiguredBrokerServer(stored)) return stored;
+  // Not in the current broker's runtime list: discard, use first configured.
+  return getConfiguredBrokerServers()[0] || DEFAULT_BROKER_SERVER;
 };
 
 export const persistBrokerServer = (server: string): string => {
@@ -124,7 +148,7 @@ const looksLikeBrokerServerAddress = (value: string): boolean => {
 
 export const resolveLoginBrokerTarget = (serverInput: string): LoginBrokerTarget => {
   const raw = normalizeServerName(serverInput);
-  // Empty and legacy fallback labels carry no routing hint; normalize to neutral.
+  // Empty input carries no routing hint; normalize to neutral.
   const displayValue = !raw || isDefaultBrokerServerValue(raw) ? DEFAULT_BROKER_SERVER : raw;
 
   if (isDefaultDisplayServer(displayValue)) {

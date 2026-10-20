@@ -87,10 +87,12 @@ describe('white-label fallback server (T-ADD)', () => {
     expect(resolveLoginBrokerTarget('   ')).toEqual({ displayValue: 'Broker' });
   });
 
-  it('migrates the legacy fallback label to neutral with no routing hints', () => {
-    expect(resolveLoginBrokerTarget('RTX 5 Web Terminal')).toEqual({ displayValue: 'Broker' });
-    expect(isDefaultBrokerServerValue('RTX 5 Web Terminal')).toBe(true);
-    expect(isDefaultBrokerServerValue('  rtx 5 web terminal  ')).toBe(true);
+  it('passes unknown labels through with no routing hints (no brand list)', () => {
+    expect(resolveLoginBrokerTarget('Retired Default Server')).toEqual({
+      displayValue: 'Retired Default Server',
+      broker_id: 'Retired Default Server',
+    });
+    expect(isDefaultBrokerServerValue('Retired Default Server')).toBe(false);
   });
 
   it('still recognizes the neutral fallback and rejects real server names', () => {
@@ -101,15 +103,39 @@ describe('white-label fallback server (T-ADD)', () => {
     expect(isDefaultBrokerServerValue('')).toBe(false);
   });
 
-  it('reads an empty store as neutral and keeps real stored servers intact', () => {
+  it('reads an empty store as neutral and keeps runtime-listed servers intact', () => {
     expect(getStoredBrokerServer()).toBe('Broker');
-    localStorage.setItem(BROKER_SERVER_STORAGE_KEY, 'MetaQuotes-Demo');
-    expect(getStoredBrokerServer()).toBe('MetaQuotes-Demo');
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      BROKER_ID: 'acme',
+      DEFAULT_MT5_SERVER: 'Acme-Live',
+      API_HOST: 'https://acme.example.com',
+    };
+    try {
+      localStorage.setItem(BROKER_SERVER_STORAGE_KEY, 'Acme-Live');
+      expect(getStoredBrokerServer()).toBe('Acme-Live');
+    } finally {
+      delete (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__;
+      localStorage.clear();
+    }
   });
 
-  it('migrates a legacy stored value to neutral on read', () => {
-    localStorage.setItem(BROKER_SERVER_STORAGE_KEY, 'RTX 5 Web Terminal');
+  it('discards stored servers outside the runtime list, using first configured (ds-16)', () => {
+    localStorage.setItem(BROKER_SERVER_STORAGE_KEY, 'Some Stale Server');
     expect(getStoredBrokerServer()).toBe('Broker');
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      BROKER_ID: 'acme',
+      DEFAULT_MT5_SERVER: 'Acme-Live',
+      API_HOST: 'https://acme.example.com',
+    };
+    try {
+      localStorage.setItem(BROKER_SERVER_STORAGE_KEY, 'Some Stale Server');
+      expect(getStoredBrokerServer()).toBe('Acme-Live');
+    } finally {
+      delete (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__;
+      localStorage.clear();
+    }
   });
 
   it('persists empty input as the neutral fallback', () => {
