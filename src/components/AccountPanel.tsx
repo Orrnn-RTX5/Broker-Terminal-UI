@@ -7,7 +7,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import { Icon } from './ui/Icon';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { useSettingsStore } from '../store/useSettingsStore';
+import { useOneClickTrading, useSettingsStore } from '../store/useSettingsStore';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 import { ChangePasswordDialog } from './ChangePasswordDialog';
 import { openBottomDockTab } from '../services/bottomDockNavigation';
@@ -29,7 +29,7 @@ interface Transaction {
 export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose }) => {
   const tr = useUiTranslation();
   const { account, accountId, savedAccounts } = useAppStore();
-  const oneClickTrading = useSettingsStore((state) => state.trade.oneClickTrading);
+  const oneClickTrading = useOneClickTrading();
   const updateTradeSettings = useSettingsStore((state) => state.updateTradeSettings);
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);

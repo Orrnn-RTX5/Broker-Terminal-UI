@@ -67,7 +67,7 @@ import { TerminalStartupBoundary } from './startup/TerminalStartupBoundary';
 import { useBrokerConfigWarmup } from './startup/brokerConfigWarmup';
 
 import { useLastSymbolStore } from './store/useLastSymbolStore';
-import { resolveOpenOrderTargetSymbol, useSettingsStore } from './store/useSettingsStore';
+import { resolveOpenOrderTargetSymbol, selectTradeDefaults, useSettingsStore } from './store/useSettingsStore';
 import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
 import { tradingV2Api } from './api/trade';
@@ -1573,7 +1573,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     // SUI-T8: honor the Options default-symbol mode for ticket opens without
     // an explicit symbol. `automatic` preserves the active-chart behavior;
     // `last-used` prefers the last traded symbol.
-    const targetSymbol = resolveOpenOrderTargetSymbol(useSettingsStore.getState().trade, {
+    const targetSymbol = resolveOpenOrderTargetSymbol(selectTradeDefaults(useSettingsStore.getState()), {
       explicitSymbol,
       activeChartSymbol,
       selectedSymbol: normalizeSymbolName(selectedSymbol),

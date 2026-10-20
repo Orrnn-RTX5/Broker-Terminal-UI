@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { renderHook } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -154,5 +156,27 @@ describe('SUI-T8 settings-store trade wiring', () => {
     expect(requiresTradeConfirmation(false)).toBe(true);
     expect(requiresTradeConfirmation({ oneClickTrading: false })).toBe(true);
     expect(requiresTradeConfirmation({ oneClickTrading: true })).toBe(false);
+  });
+});
+
+describe('SUI-T8 trade-selector real consumers (T8-I2)', () => {
+  const readSource = (path: string): string =>
+    readFileSync(resolve(process.cwd(), path), 'utf8');
+
+  it('wires every trade selector/hook into at least one non-test consumer', () => {
+    // Exact export names verified: selectOneClickTrading (no selectOneClick
+    // export exists), selectTradeDefaults, useOneClickTrading, useTradeDefaults.
+    const storeSource = readSource('src/store/useSettingsStore.ts');
+    expect(storeSource).toContain('export const selectOneClickTrading');
+    expect(storeSource).toContain('export const selectTradeDefaults');
+    expect(storeSource).toContain('export const useOneClickTrading');
+    expect(storeSource).toContain('export const useTradeDefaults');
+    expect(storeSource).not.toContain('export const selectOneClick ');
+
+    // Read-only consumers (no order-wire payload change).
+    expect(readSource('src/components/AccountPanel.tsx')).toContain('useOneClickTrading()');
+    expect(readSource('src/app/ui/useTerminalCommandEvents.ts')).toContain('selectOneClickTrading(');
+    expect(readSource('src/App.tsx')).toContain('selectTradeDefaults(');
+    expect(readSource('src/components/OrderPanelDialog.tsx')).toContain('useTradeDefaults()');
   });
 });

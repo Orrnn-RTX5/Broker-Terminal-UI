@@ -18,7 +18,7 @@ import { resolveChartPropertiesTarget, type ChartPropertiesEventDetail } from '.
 import type { ChartPrintData, PrintPreferences } from '../../services/chartPrinter';
 import { hasArrangedChartWindows } from '../../utils/chartSymbolTabs';
 import { normalizeSymbolName } from '../../utils/symbolEligibility';
-import { resolveQuickTradeRoute, useSettingsStore } from '../../store/useSettingsStore';
+import { resolveQuickTradeRoute, selectOneClickTrading, useSettingsStore } from '../../store/useSettingsStore';
 import { translateUi } from '../../hooks/useUiTranslation';
 import type { UiMessage } from '../../utils/uiFeedback';
 import type { ActionFeedbackType } from '../../components/notifications/ActionFeedbackToast';
@@ -233,7 +233,7 @@ export const useTerminalCommandEvents = ({
       if (allowedSymbol) setSelectedSymbol(allowedSymbol);
       // SUI-T8: the Options one-click setting gates the instant path. When it
       // is OFF, route to the New Order ticket instead of placing immediately.
-      if (resolveQuickTradeRoute(useSettingsStore.getState().trade.oneClickTrading) === 'confirm') {
+      if (resolveQuickTradeRoute(selectOneClickTrading(useSettingsStore.getState())) === 'confirm') {
         openOrderPanelForSymbol(allowedSymbol || event.detail?.symbol);
         return;
       }
