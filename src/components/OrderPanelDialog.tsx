@@ -2,6 +2,12 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
+import {
+  resolveDefaultTradeDeviation,
+  resolveDefaultTradeVolume,
+  useSettingsStore,
+  useTradeDefaults,
+} from '../store/useSettingsStore';
 import { getEffectiveChartColors, useChartSettingsStore } from '../store/useChartSettingsStore';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import { useLiveOrderBook } from '../hooks/useLiveMarketData';
@@ -166,6 +172,16 @@ export const resolveDialogExpirationTimestamp = (
   if (!(seconds * 1000 > nowMs)) throw new Error('Expiration must be in the future');
   return seconds;
 };
+
+// SUI-T8: the ticket's last lot size feeds `last-used` volume mode. Kept at
+// module scope so the field initializer and the open-reset share one read path.
+function readStoredLotSize(): unknown {
+  try {
+    return localStorage.getItem('lastLotSize');
+  } catch {
+    return undefined;
+  }
+}
 
 type TickChartColors = {
   background: string;
@@ -1040,8 +1056,20 @@ export function OrderPanelDialog({
 }: OrderPanelProps) {
   const tr = useUiTranslation();
   const [symbol, setSymbol] = useState(initialSymbol);
+  // SUI-T2 keeps honoring explicit caller props; SUI-T8 seeds the rest from
+  // the persisted Options trade defaults (no literals).
   const [orderType, setOrderType] = useState<OrderType>(initialOrderType ?? 'Market Execution');
-  const [volumeStr, setVolumeStr] = useState(() => localStorage.getItem('lastLotSize') || '0.01');
+  // SUI-T8: seed the ticket from the persisted Options trade defaults.
+  // `default` mode uses the configured default; `last-used` volume mode
+  // prefers the ticket's last lot size. Every fallback derives from the
+  // store itself — never a literal.
+  const tradeDefaults = useTradeDefaults();
+  const [volumeStr, setVolumeStr] = useState(() =>
+    String(resolveDefaultTradeVolume(tradeDefaults, { lastUsedVolume: readStoredLotSize() })),
+  );
+  const [deviationStr, setDeviationStr] = useState(() =>
+    String(resolveDefaultTradeDeviation(tradeDefaults)),
+  );
   const [priceStr, setPriceStr] = useState(() => (
     initialPrice !== undefined && Number.isFinite(initialPrice) && initialPrice > 0
       ? String(initialPrice)
@@ -1148,6 +1176,12 @@ export function OrderPanelDialog({
     if (isOpen) {
       setSymbol(initialSymbol);
       setError(null);
+      // SUI-T8: re-seed ticket defaults from Options on every open so the
+      // dialog follows settings edits made while it was closed. Drafts
+      // edited while the dialog is open are intentionally left untouched.
+      const latestTrade = useSettingsStore.getState().trade;
+      setVolumeStr(String(resolveDefaultTradeVolume(latestTrade, { lastUsedVolume: readStoredLotSize() })));
+      setDeviationStr(String(resolveDefaultTradeDeviation(latestTrade)));
     }
   }, [isOpen, initialSymbol]);
 
@@ -1226,6 +1260,7 @@ export function OrderPanelDialog({
   const parsedStopLimitPrice = Number.parseFloat(stopLimitPriceStr);
   const parsedStopLoss = Number.parseFloat(stopLossStr);
   const parsedTakeProfit = Number.parseFloat(takeProfitStr);
+  const parsedDeviation = Number.parseInt(deviationStr, 10);
 
   const isPendingPriceReady = orderType === 'Market Execution'
     ? true
@@ -1276,6 +1311,9 @@ export function OrderPanelDialog({
         type: side,
         volume,
         symbol,
+        ...(effectiveOrderType === 'Market Execution' && Number.isFinite(parsedDeviation) && parsedDeviation >= 0
+          ? { deviation: parsedDeviation }
+          : {}),
         ...(effectiveOrderType !== 'Market Execution' ? {
           orderType: effectiveOrderType,
           price: Number.isFinite(parsedPrice) && parsedPrice > 0 ? parsedPrice : undefined,
@@ -1308,6 +1346,7 @@ export function OrderPanelDialog({
     onClose,
     onSubmitOrder,
     orderType,
+    parsedDeviation,
     parsedPrice,
     parsedStopLimitPrice,
     parsedStopLoss,
@@ -1346,6 +1385,7 @@ export function OrderPanelDialog({
 
   const symbolFieldId = `new-order-${symbol}-symbol`;
   const volumeFieldId = `new-order-${symbol}-volume`;
+  const deviationFieldId = `new-order-${symbol}-deviation`;
   const priceFieldId = `new-order-${symbol}-price`;
   const stopLimitPriceFieldId = `new-order-${symbol}-stop-limit-price`;
   const stopLossFieldId = `new-order-${symbol}-stop-loss`;
@@ -1615,6 +1655,37 @@ export function OrderPanelDialog({
                 </span>
               </div>
             </div>
+
+            {orderType === 'Market Execution' && (
+              <div className="rtx-order-dialog__field">
+                <label className="rtx-order-dialog__label" htmlFor={deviationFieldId}>{tr("Deviation")}</label>
+                <div className="rtx-order-dialog__volume-row">
+                  <div className="rtx-order-dialog__volume-control">
+                    <input
+                      id={deviationFieldId}
+                      type="text"
+                      inputMode="numeric"
+                      value={deviationStr}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*$/.test(val)) {
+                          setDeviationStr(val);
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = Number.parseInt(deviationStr, 10);
+                        setDeviationStr(
+                          Number.isFinite(parsed) && parsed >= 0
+                            ? String(parsed)
+                            : String(resolveDefaultTradeDeviation(useSettingsStore.getState().trade)),
+                        );
+                      }}
+                      className="rtx-order-dialog__volume-input"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {orderType !== 'Market Execution' && (
               <>

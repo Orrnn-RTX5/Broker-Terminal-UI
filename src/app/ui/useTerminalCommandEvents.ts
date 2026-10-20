@@ -3,7 +3,8 @@ import type { ChartSymbolAnchor } from '../../components/ChartSymbolDropdown';
 import type { ChartType, Timeframe } from '../../types/chart';
 import type { DockContainer, DockPanelConfig } from '../../services/dockManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
-import { useSettingsStore } from '../../store/useSettingsStore';
+import { isUnavailableDockSection, unavailableDockSections } from '../../config/terminalToolAvailability';
+import { openBottomDockTab, type BottomDockNavigationTab } from '../../services/bottomDockNavigation';
 import { getActiveChartCommandTarget } from '../../services/chartCommandTarget';
 import { getDockPanelChartType } from '../../services/chartTypeCommand';
 import {
@@ -18,6 +19,7 @@ import { resolveChartPropertiesTarget, type ChartPropertiesEventDetail } from '.
 import type { ChartPrintData, PrintPreferences } from '../../services/chartPrinter';
 import { hasArrangedChartWindows } from '../../utils/chartSymbolTabs';
 import { normalizeSymbolName } from '../../utils/symbolEligibility';
+import { resolveQuickTradeRoute, selectOneClickTrading, useSettingsStore } from '../../store/useSettingsStore';
 import { translateUi } from '../../hooks/useUiTranslation';
 import type { UiMessage } from '../../utils/uiFeedback';
 import type { ActionFeedbackType } from '../../components/notifications/ActionFeedbackToast';
@@ -192,6 +194,25 @@ export const useTerminalCommandEvents = ({
     };
     const handleTogglePanel = (event: CustomEvent<string>) => {
       const panelType = event.detail;
+      // SUI-T15: Insert > Experts/Scripts reveal their bottom-dock tab through
+      // the existing dock navigation and never add or remove the Navigator.
+      const expertsScriptsTab: Record<string, BottomDockNavigationTab> = {
+        Experts: 'Experts',
+        Scripts: 'Code Base',
+      };
+      const expertsScriptsTarget = expertsScriptsTab[panelType];
+      if (expertsScriptsTarget) {
+        // SUI-T15-guard: Experts/Code Base tabs sit under the existing
+        // availability lock (BottomDock refuses them silently). Refuse here
+        // instead through the existing toast surface so the request is never
+        // a silent no-op; available tabs open exactly as before.
+        if (isUnavailableDockSection(expertsScriptsTarget)) {
+          displayToast(translateUi(unavailableDockSections[expertsScriptsTarget]), 'error');
+          return;
+        }
+        openBottomDockTab(expertsScriptsTarget);
+        return;
+      }
       const store = useDockLayoutStore.getState();
       const layout = store.layout;
       const existing = findPanel(layout.root, panelType)
@@ -226,13 +247,11 @@ export const useTerminalCommandEvents = ({
       const allowedSymbol = getAllowedSymbol(event.detail?.symbol);
       if (event.detail?.symbol && !allowedSymbol) return;
       if (allowedSymbol) setSelectedSymbol(allowedSymbol);
-      let oneClick = false;
-      try {
-        oneClick = useSettingsStore.getState()?.trade?.oneClickTrading === true;
-      } catch {
-        oneClick = false;
-      }
-      if (!oneClick) {
+      // SUI-T8: the Options one-click setting gates the instant path. When it
+      // is OFF, route to the New Order ticket instead of placing immediately.
+      // (Subsumes the inline oneClickTrading flag check: shared resolvers,
+      // covered by quickTrade tests on both sides.)
+      if (resolveQuickTradeRoute(selectOneClickTrading(useSettingsStore.getState())) === 'confirm') {
         openOrderPanelForSymbol(allowedSymbol || event.detail?.symbol);
         return;
       }

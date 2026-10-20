@@ -33,6 +33,7 @@ import {
 import { formatPriceParts } from './ui/PriceDisplay';
 import { resolveExactBrokerSymbolValue } from '../utils/exactBrokerSymbol';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
+import { resolveDefaultTradeVolume, useSettingsStore } from '../store/useSettingsStore';
 import './OneClickTrading.css';
 import { hasAuthenticatedTradingSession, requireTradingAuth } from '../services/tradingAuthGate';
 
@@ -118,9 +119,39 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     // FIX: Keep the user's editable text separate from the executable number.
     // A numeric-only controlled state rejected the temporary empty value needed
     // to replace 0.01, so the leading zero was restored before typing 1 or more.
-    const [volumeDraft, setVolumeDraft] = useState(() => (
-        formatTradeVolume(volumeConstraints.min, volumeConstraints)
-    ));
+    // SUI-T8: seed the lot input from the Options trade defaults (`default`
+    // mode uses the configured default volume, `last-used` prefers the ticket's
+    // last lot size), clamped to this symbol's broker lot grid.
+    const settingsDefaultVolume = useSettingsStore((state) => state.trade.defaultVolume);
+    const settingsDefaultVolumeMode = useSettingsStore((state) => state.trade.defaultVolumeMode);
+    const [volumeDraft, setVolumeDraft] = useState(() => {
+        let lastUsedVolume: unknown;
+        try {
+            lastUsedVolume = localStorage.getItem('lastLotSize');
+        } catch {
+            lastUsedVolume = undefined;
+        }
+        return formatTradeVolume(
+            normalizeTradeVolume(
+                resolveDefaultTradeVolume(useSettingsStore.getState().trade, {
+                    lastUsedVolume,
+                    emptyVolumeSeed: volumeConstraints.min,
+                }),
+                volumeConstraints,
+            ),
+            volumeConstraints,
+        );
+    });
+    useEffect(() => {
+        if (settingsDefaultVolumeMode !== 'default') return;
+        setVolumeDraft(formatTradeVolume(
+            normalizeTradeVolume(
+                resolveDefaultTradeVolume(useSettingsStore.getState().trade),
+                volumeConstraints,
+            ),
+            volumeConstraints,
+        ));
+    }, [settingsDefaultVolumeMode, settingsDefaultVolume, volumeConstraints]);
     const [flashSide, setFlashSide] = useState<'buy' | 'sell' | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [blockedMessage, setBlockedMessage] = useState<string | null>(null);

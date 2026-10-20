@@ -31,11 +31,13 @@ export interface ApiResponse<T = unknown> {
 export interface BrokerConfig {
   brokerName: string;
   logo_url?: string;
+  // Broker-supplied operating values (white-label: any broker's strings, never
+  // code literals — see normalizeBrokerOperationalConfig for the neutral read).
   priceFeedLP: string;
-  executionMode: 'ABOOK' | 'BBOOK';
+  executionMode: string;
   defaultLeverage: number;
   defaultBalance: number;
-  marginMode: 'HEDGING' | 'NETTING';
+  marginMode: string;
   maxTicksPerSymbol: number;
   disabledSymbols?: Record<string, boolean>;
 }
@@ -149,6 +151,7 @@ import {
   type PollOrderCommandOptions,
 } from './orderCommandLifecycle';
 import { getStoredBrokerServer, resolveLoginBrokerTarget } from './brokerServers';
+import { normalizeBrokerOperationalConfig } from './brokerOperationalConfig';
 import {
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
@@ -1141,17 +1144,11 @@ export const configApi = {
         skipAuth: true,
       });
     } catch (error) {
-      // Some deployments do not expose the v2 broker config yet.
+      // Some deployments do not expose the v2 broker config yet. Fall back to
+      // neutral values — the broker's own config document is the only source
+      // of broker-specific values (white-label: no code literals here).
       if (error instanceof ApiError && error.status === 404) {
-        return {
-          brokerName: 'RTX',
-          priceFeedLP: 'YOFX',
-          executionMode: 'ABOOK',
-          defaultLeverage: 1000,
-          defaultBalance: 0,
-          marginMode: 'HEDGING',
-          maxTicksPerSymbol: 1000,
-        };
+        return { ...normalizeBrokerOperationalConfig(null) };
       }
       throw error;
     }
@@ -1214,7 +1211,7 @@ export const adminApi = {
     return apiClient.get<{ mode: string; description: unknown; priceFeed: string }>('/admin/execution-mode');
   },
 
-  async setExecutionMode(mode: 'ABOOK' | 'BBOOK'): Promise<unknown> {
+  async setExecutionMode(mode: string): Promise<unknown> {
     return apiClient.post<unknown>('/admin/execution-mode', { mode });
   },
 

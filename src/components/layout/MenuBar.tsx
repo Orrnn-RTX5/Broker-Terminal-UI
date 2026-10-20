@@ -19,7 +19,7 @@ import { getChartPanelCount, MAX_CHART_PANELS } from '../../services/dockManager
 import { useDrawingSidebarStore } from '../../store/useDrawingSidebarStore';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import { TERMINAL_RESOLUTION_PRESETS, useTerminalResolutionStore } from '../../store/useTerminalResolutionStore';
-import { lockedTerminalTool, unavailableDockSections } from '../../config/terminalToolAvailability';
+import { isUnavailableDockSection, lockedTerminalTool, unavailableDockSections } from '../../config/terminalToolAvailability';
 import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
@@ -64,6 +64,15 @@ interface ApplicationLauncherItem {
 const lockedHelpResource = {
     disabled: true,
     unavailableReason: 'This Help resource is currently unavailable.',
+} as const;
+
+// T14: release/beta notes have no surface to open. No changelog or
+// release-notes view exists in-app, and broker config exposes no
+// release-notes URL, so these stay disabled-with-reason (never a dead
+// click, never a hardcoded link).
+const unavailableReleaseNotes = {
+    disabled: true,
+    unavailableReason: 'Documentation is not configured for this deployment',
 } as const;
 
 const DESKTOP_MENU_KEYS = ['File', 'View', 'Insert', 'Charts', 'Tools', 'Window', 'Help'] as const;
@@ -293,6 +302,15 @@ export const MenuBar = ({
         runTerminalShortcutAction('help.shortcuts');
     };
 
+    // T14: About has no dedicated dialog in-app, so it surfaces the build
+    // version (existing appVersion module) through the existing
+    // rtx:order-feedback toast surface instead of a dead click.
+    const openAboutVersion = () => {
+        window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+            detail: { message: `Version ${getAppVersion()}`, type: 'success' },
+        }));
+    };
+
     const fontSizeMenuItem: MenuItem = {
         label: 'Font Size',
         icon: <Icon name="text" size="sm" />,
@@ -483,8 +501,12 @@ export const MenuBar = ({
                 ]
             },
             { divider: true, label: '' },
-            { label: t('menu.insert.experts'), icon: <Icon name="cpu" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
-            { label: t('menu.insert.scripts'), icon: <Icon name="code" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
+            // SUI-T15-guard: Experts/Scripts open locked bottom-dock tabs, so
+            // the menu shows the existing availability lock as disabled state
+            // with reason (same pattern as Economic Calendar) instead of a
+            // click BottomDock would refuse silently.
+            { label: t('menu.insert.experts'), icon: <Icon name="cpu" size="sm" />, disabled: isUnavailableDockSection('Experts'), unavailableReason: isUnavailableDockSection('Experts') ? unavailableDockSections.Experts : undefined, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Experts' })); setActiveMenu(null); } },
+            { label: t('menu.insert.scripts'), icon: <Icon name="code" size="sm" />, disabled: isUnavailableDockSection('Code Base'), unavailableReason: isUnavailableDockSection('Code Base') ? unavailableDockSections['Code Base'] : undefined, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Scripts' })); setActiveMenu(null); } },
         ],
         Charts: [
             { label: t('menu.charts.depthOfMarket'), icon: <Icon name="box" size="sm" />, ...terminalShortcut('view.depth-of-market') },
@@ -649,12 +671,12 @@ export const MenuBar = ({
                 label: t('menu.help.checkForUpdates'),
                 icon: <Icon name="download" size="sm" className="text-blue-500" />,
                 children: [
-                    { label: 'Latest Release Version', icon: <Icon name="check-circle" size="xs" className="text-emerald-500" /> },
-                    { label: 'Latest Beta Version', icon: <Icon name="alert-triangle" size="xs" className="text-amber-500" /> }
+                    { label: 'Latest Release Version', icon: <Icon name="check-circle" size="xs" className="text-emerald-500" />, ...unavailableReleaseNotes },
+                    { label: 'Latest Beta Version', icon: <Icon name="alert-triangle" size="xs" className="text-amber-500" />, ...unavailableReleaseNotes }
                 ]
             },
             { divider: true, label: '' },
-            { label: t('menu.help.about'), icon: <Icon name="box" size="sm" /> }
+            { label: t('menu.help.about'), icon: <Icon name="box" size="sm" />, action: openAboutVersion }
         ]
     };
 

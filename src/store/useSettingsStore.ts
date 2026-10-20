@@ -393,3 +393,139 @@ export const useTradeSettings = () => useSettingsStore((state) => state.trade);
 export const useAutomationSettings = () => useSettingsStore((state) => state.automation);
 export const useNotificationsSettings = () => useSettingsStore((state) => state.notifications);
 export const useKeyboardShortcutsSettings = () => useSettingsStore((state) => state.keyboardShortcuts);
+
+// --- SUI-T8 consumer interface: trade defaults + one-click ---
+// The Options dialog persists these values; the selectors/hooks/resolvers below
+// are the single read path for order-path consumers. All helpers are
+// broker-config-driven (they only read the persisted settings + caller-provided
+// runtime context) and carry zero broker/tenant/symbol literals.
+
+/** Direct selector for the one-click setting (no subscription churn for event handlers). */
+export const selectOneClickTrading = (state: SettingsState): boolean =>
+  state.trade.oneClickTrading;
+
+/** Direct selector for the full trade-defaults section. */
+export const selectTradeDefaults = (state: SettingsState): TradeSettings =>
+  state.trade;
+
+/** Reactive hook for the one-click setting. */
+export const useOneClickTrading = (): boolean =>
+  useSettingsStore((state) => state.trade.oneClickTrading);
+
+/** Reactive hook for the trade-defaults section. */
+export const useTradeDefaults = (): TradeSettings =>
+  useSettingsStore((state) => state.trade);
+
+/** Last-used runtime context supplied by the caller (order ticket, chart, panel). */
+export interface LastUsedTradeContext {
+  lastUsedVolume?: unknown;
+  lastUsedDeviation?: unknown;
+  lastUsedSymbol?: unknown;
+  selectedSymbol?: unknown;
+  /**
+   * Broker-driven seed used only when `last-used` mode has no last-used value
+   * yet (e.g. the instrument lot-grid minimum). Lets a panel keep its
+   * broker-minimum initial state until the trader actually trades.
+   */
+  emptyVolumeSeed?: unknown;
+  emptyDeviationSeed?: unknown;
+}
+
+const readPositiveVolume = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const readNonNegativeDeviation = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+};
+
+const readSymbolName = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+/**
+ * Resolve the effective default order volume (lots) from the persisted trade
+ * settings. `default` mode always uses the configured default; `last-used`
+ * mode prefers the caller's last-used volume and falls back to the configured
+ * default. The final fallback is the store's own default, never a literal.
+ */
+export const resolveDefaultTradeVolume = (
+  trade: TradeSettings,
+  context: LastUsedTradeContext = {},
+): number => {
+  const configured = readPositiveVolume(trade.defaultVolume)
+    ?? readPositiveVolume(defaultSettings.trade.defaultVolume)
+    ?? 0;
+  if (trade.defaultVolumeMode === 'default') return configured;
+  return readPositiveVolume(context.lastUsedVolume)
+    ?? readPositiveVolume(context.emptyVolumeSeed)
+    ?? configured;
+};
+
+/**
+ * Resolve the effective default deviation (points) from the persisted trade
+ * settings. Same mode contract as the volume resolver.
+ */
+export const resolveDefaultTradeDeviation = (
+  trade: TradeSettings,
+  context: LastUsedTradeContext = {},
+): number => {
+  const configured = readNonNegativeDeviation(trade.defaultDeviation)
+    ?? readNonNegativeDeviation(defaultSettings.trade.defaultDeviation)
+    ?? 0;
+  if (trade.defaultDeviationMode === 'default') return configured;
+  return readNonNegativeDeviation(context.lastUsedDeviation)
+    ?? readNonNegativeDeviation(context.emptyDeviationSeed)
+    ?? configured;
+};
+
+/**
+ * Resolve the effective default order symbol from the persisted trade
+ * settings. `automatic` mode follows the active/selected symbol;
+ * `last-used` mode prefers the last traded symbol. Returns '' when neither
+ * source yields a symbol; eligibility filtering stays with the caller.
+ */
+export const resolveDefaultOrderSymbol = (
+  trade: TradeSettings,
+  context: LastUsedTradeContext = {},
+): string => {
+  const selected = readSymbolName(context.selectedSymbol);
+  const lastUsed = readSymbolName(context.lastUsedSymbol);
+  if (trade.defaultSymbolMode === 'last-used') return lastUsed ?? selected ?? '';
+  return selected ?? lastUsed ?? '';
+};
+
+/** Routing decision for instant (one-click) order paths. */
+export type QuickTradeRoute = 'instant' | 'confirm';
+
+/**
+ * Map the one-click setting to a quick-trade route: one-click ON places
+ * immediately; one-click OFF must open the confirm ticket instead.
+ */
+export const resolveQuickTradeRoute = (oneClickTrading: boolean): QuickTradeRoute =>
+  oneClickTrading ? 'instant' : 'confirm';
+
+/** True when an instant order path must confirm first (one-click OFF). */
+export const requiresTradeConfirmation = (
+  trade: Pick<TradeSettings, 'oneClickTrading'> | boolean,
+): boolean => (typeof trade === 'boolean' ? trade : trade.oneClickTrading) === false;
+
+/**
+ * Resolve the New Order ticket's initial symbol through the persisted default
+ * symbol mode. An explicit caller-provided symbol always wins; otherwise the
+ * default-symbol resolver decides between the active chart/selected symbol
+ * and the last traded symbol.
+ */
+export const resolveOpenOrderTargetSymbol = (
+  trade: TradeSettings,
+  symbols: { explicitSymbol?: unknown; activeChartSymbol?: unknown; selectedSymbol?: unknown; lastUsedSymbol?: unknown },
+): string => readSymbolName(symbols.explicitSymbol)
+  ?? resolveDefaultOrderSymbol(trade, {
+    selectedSymbol: readSymbolName(symbols.activeChartSymbol)
+      ?? readSymbolName(symbols.selectedSymbol),
+    lastUsedSymbol: symbols.lastUsedSymbol,
+  });

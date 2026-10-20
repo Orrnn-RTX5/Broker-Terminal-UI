@@ -381,18 +381,22 @@ describe('OpenAccountDialog account flows', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('does not create a real account without a broker KYC/onboarding contract', async () => {
+    it('disables the real-account option without a broker onboarding contract instead of closing without effect', async () => {
         const onClose = vi.fn();
         await renderDialog(onClose);
         fireEvent.click(screen.getByRole('button', { name: /Next/ }));
-        fireEvent.click(screen.getByRole('radio', { name: 'Real account' }));
+        const realOption = screen.getByRole('radio', { name: 'Real account' });
+        expect(realOption).toBeDisabled();
+        expect(screen.getByRole('note')).toHaveTextContent(/Real-account creation is not enabled for this broker configuration/i);
+        // A disabled option cannot be chosen in a real browser. If a stale
+        // real selection ever reaches Next anyway, the guard explains and
+        // keeps the dialog open instead of closing without effect.
+        fireEvent.click(realOption);
         fireEvent.click(screen.getByRole('button', { name: /Next/ }));
-
-        expect(await screen.findByText('Identity verification is required')).toBeInTheDocument();
-        expect(screen.getByText(/will not create or fund a real account automatically/i)).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-
-        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('alert')).toHaveTextContent(/Real-account creation is not enabled for this broker configuration/i);
+        expect(screen.getByRole('radio', { name: 'Real account' })).toBeInTheDocument();
+        expect(screen.queryByLabelText('First name')).not.toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
         expect(mocks.createAccount).not.toHaveBeenCalled();
         expect(mocks.login).not.toHaveBeenCalled();
     });

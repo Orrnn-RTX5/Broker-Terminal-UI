@@ -40,7 +40,7 @@ interface TopToolbarProps {
     symbol: string;
     marketStatus?: NormalizedMarketStatus & { loading?: boolean };
     feedStatus: DesktopFeedSnapshot;
-    onRefreshConnection: () => void;
+    onRefreshConnection?: () => void;
     onLoadTemplate?: (template: any) => void;
     desktopDrawingTools?: React.ReactNode;
     accountBrokerName?: string;
@@ -409,6 +409,7 @@ const MainToolbar = ({
     toolbarState,
     dispatchCommand,
     symbol,
+    onRefreshConnection,
     desktopDrawingTools,
     accountBrokerName,
     profileSymbols,
@@ -909,6 +910,18 @@ const MainToolbar = ({
                             </>
                         )}
 
+                        {/* T12: full reconnect across every transport via onRefreshConnection.
+                            The callback is optional: without a wired refresh entry point the
+                            action renders disabled with reason instead of a dead click. */}
+                        <MT5Divider />
+                        <MT5Group label={tr("Connection")}>
+                            <CommandIconButton
+                                icon="refresh"
+                                title={onRefreshConnection ? tr("Refresh connection") : tr("Refresh unavailable")}
+                                onClick={onRefreshConnection}
+                                disabled={!onRefreshConnection}
+                            />
+                        </MT5Group>
                     </div>
 
                     {/* Keep a usable row end without hiding any toolbar actions. */}
@@ -998,6 +1011,7 @@ interface CommandIconButtonProps {
     title: string;
     active?: boolean;
     onClick?: () => void;
+    disabled?: boolean;
     selectionRole?: 'radio';
     className?: string;
     ariaHasPopup?: React.AriaAttributes['aria-haspopup'];
@@ -1005,13 +1019,15 @@ interface CommandIconButtonProps {
     ariaControls?: string;
 }
 
-const CommandIconButton = ({ icon, title, active, selectionRole, onClick, className, ariaHasPopup, ariaExpanded, ariaControls }: CommandIconButtonProps) => (
+const CommandIconButton = ({ icon, title, active, selectionRole, onClick, disabled, className, ariaHasPopup, ariaExpanded, ariaControls }: CommandIconButtonProps) => (
     <button
         type="button"
         onClick={onClick}
         title={title}
+        disabled={disabled}
         role={selectionRole}
         aria-label={title}
+        aria-disabled={disabled || undefined}
         aria-checked={selectionRole === 'radio' ? active : undefined}
         aria-pressed={selectionRole ? undefined : active === undefined ? undefined : active}
         aria-haspopup={ariaHasPopup}

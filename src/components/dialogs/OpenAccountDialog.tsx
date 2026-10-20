@@ -1,6 +1,6 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { getAuthenticatedAccountName } from '../../utils/accountDisplayName';
-import { resolveTradingAccountType } from '../../services/tradingAccountType';
+import { resolveTradingAccountType, type TradingAccountType } from '../../services/tradingAccountType';
 import React, { useState, useEffect, useRef } from 'react';
 import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
 import { createPortal } from 'react-dom';
@@ -16,6 +16,7 @@ import {
     resolveBrokerExtApiUrl,
 } from '../../config/backendTarget.js';
 import { isBrokerSuspended, type BrokerDiscoveryItem } from '../../services/brokerDiscovery';
+import { resolveRealAccountAvailability } from '../../services/realAccountAvailability';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
 import { persistBrokerSessionDiscovery } from '../../services/brokerSession';
 import { useAppStore } from '../../store/useAppStore';
@@ -215,6 +216,10 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [formData, setFormData] = useState<AccountFormData>(EMPTY_ACCOUNT_FORM);
     const [termsAccepted, setTermsAccepted] = useState(false);
     const [createdAccount, setCreatedAccount] = useState<CreatedAccount | null>(null);
+    // Broker-returned classification of the created account. The success
+    // copy is driven from this (not the requested type) so a mismatch
+    // fails closed instead of claiming a real account was created.
+    const [createdAccountType, setCreatedAccountType] = useState<TradingAccountType | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [createError, setCreateError] = useState('');
     const [validationError, setValidationError] = useState('');
@@ -243,6 +248,7 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         setFormData(EMPTY_ACCOUNT_FORM);
         setTermsAccepted(false);
         setCreatedAccount(null);
+        setCreatedAccountType(null);
         setCreateError('');
         setValidationError('');
         setDirectoryError('');
@@ -285,6 +291,12 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         : brokers;
 
     const selectedBroker = brokers.find(b => String(b.id) === selected);
+    // Real-account creation is broker-config driven: this build's
+    // self-registration wiring provisions demo accounts only, so the Real
+    // option is available only when the selected broker's config advertises
+    // a real-account onboarding contract. No broker is named here.
+    const realAccountAvailability = resolveRealAccountAvailability(selectedBroker);
+    const realAccountSupported = realAccountAvailability.supported;
     const runtimeConfiguration = isDesktopBackendTarget() ? null : getRuntimeBrokerConfiguration();
     const termsUrl = runtimeConfiguration?.valid ? runtimeConfiguration.brokerTermsUrl : '';
 
@@ -363,7 +375,11 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         closeDialog();
     };
 
-    const createDemoAccount = async () => {
+    // Shared creation wiring for demo and (when the broker config advertises
+    // a real-account onboarding contract) real accounts. No parallel flow:
+    // both types collect details through the same steps and submit through
+    // the same broker account-creation endpoint.
+    const createTradingAccount = async (requestedType: AccountType) => {
         const { submitBroker, brokerExtApiUrl } = resolveSelectedBrokerRouting();
         const request = {
             name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
@@ -382,15 +398,21 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             ? responseRecord.account as CreatedAccount
             : response as CreatedAccount;
         if (!accountRecord?.login) {
-            throw new Error('The broker did not return the new demo account login.');
+            throw new Error(requestedType === 'real'
+                ? 'The broker did not return the new real account login.'
+                : 'The broker did not return the new demo account login.');
         }
         setCreatedAccount({
             ...accountRecord,
             broker_id: accountRecord.broker_id || submitBroker.broker_id,
         });
+        // Classify from the broker-returned payload via the existing path
+        // so the success copy reflects what was created, not what was asked.
+        const brokerReturnedType = resolveTradingAccountType(response, accountRecord) ?? 'demo';
+        setCreatedAccountType(brokerReturnedType);
         const createdLogin = Number.parseInt(String(accountRecord.login), 10);
         if (Number.isSafeInteger(createdLogin) && createdLogin > 0) {
-            const createdAccountType = resolveTradingAccountType(response, accountRecord) ?? 'demo';
+            const createdAccountType = brokerReturnedType;
             useAppStore.getState().addSavedAccount?.({
                 login: createdLogin,
                 name: request.name,
@@ -430,13 +452,25 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             return;
         }
 
+        if (step === 1 && accountType === 'real' && !realAccountSupported) {
+            // Stale selection for a broker without a real-account onboarding
+            // contract (e.g. the broker changed after the type was picked):
+            // explain and stay open instead of advancing or closing.
+            setValidationError(realAccountAvailability.reason);
+            return;
+        }
+
         if (step === 1) {
             setStep(2);
             return;
         }
 
-        if (step === 2 && accountType === 'real') {
-            closeDialog();
+        if (step === 2 && accountType === 'real' && !realAccountSupported) {
+            // The terminal has no real-account creation contract for this
+            // broker configuration: guide back to the account-type choice
+            // instead of closing the dialog without effect.
+            setValidationError(realAccountAvailability.reason);
+            setStep(1);
             return;
         }
 
@@ -468,9 +502,9 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             }
             try {
                 setIsCreating(true);
-                await createDemoAccount();
+                await createTradingAccount(accountType);
             } catch (err: unknown) {
-                setCreateError(getErrorMessage(err, 'Failed to create demo account'));
+                setCreateError(getErrorMessage(err, accountType === 'real' ? 'Failed to create real account' : 'Failed to create demo account'));
             } finally {
                 setIsCreating(false);
             }
@@ -598,15 +632,33 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     </div>
                 </label>
 
-                <label className="flex items-start gap-3 cursor-pointer group">
+                <label className="flex items-start gap-3 cursor-pointer group" aria-disabled={!realAccountSupported}>
                     <div className="flex items-center h-5">
-                        <input aria-label={tr("Real account")} type="radio" checked={accountType === 'real'} onChange={() => { setAccountType('real'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
+                        <input aria-label={tr("Real account")} type="radio" checked={accountType === 'real'} disabled={!realAccountSupported} aria-describedby={!realAccountSupported ? 'rtx-real-account-unavailable-reason' : undefined} onChange={() => { setAccountType('real'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
                     <div>
                         <div className="text-[14px] leading-5 font-medium text-zinc-200 transition-colors group-hover:text-white">{tr("Open a real account for live trading")}</div>
                         <div className="rtx-reading-text mt-1 text-[16px] font-normal leading-6 text-zinc-500">{tr("A real account requires additional proof of identity. You will need to provide copies of identification documents.")}</div>
+                        {!realAccountSupported && (
+                            <div id="rtx-real-account-unavailable-reason" role="note" className="rtx-reading-text mt-2 text-[14px] font-normal leading-5 text-amber-400/90">
+                                {selectedBroker?.broker_name || tr('The selected broker')} — {tr(realAccountAvailability.reason)}
+                            </div>
+                        )}
                     </div>
                 </label>
+
+                {realAccountSupported && realAccountAvailability.onboardingUrl && (
+                    <div className="pl-7">
+                        <a
+                            href={realAccountAvailability.onboardingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[14px] font-normal text-indigo-400 hover:text-indigo-300"
+                        >
+                            {tr("Continue verification on the broker website")}
+                        </a>
+                    </div>
+                )}
 
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
@@ -744,7 +796,7 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     error={validationError === 'Select a country from the list.' ? tr(validationError) : undefined}
                 />
             </div>
-            <p className="rtx-account-note">{tr("These details are used to open your demo account.")}</p>
+            <p className="rtx-account-note">{accountType === 'real' ? tr("These details are used to request your real account.") : tr("These details are used to open your demo account.")}</p>
         </div>
     );
 
@@ -783,7 +835,10 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         </div>
     );
 
-    const renderStep2 = () => accountType === 'real' ? (
+    // A real type without a broker-config onboarding contract shows the
+    // verification notice (its Next guides back instead of closing); a
+    // config-supported real type collects details through the shared forms.
+    const renderStep2 = () => accountType === 'real' && !realAccountSupported ? (
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-6">
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-5">
                 <div className="rtx-section-title mb-3 flex items-center gap-2 text-[16px] leading-6 font-semibold text-amber-300">
@@ -868,13 +923,33 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     // ─── Step 4: Success ────────────────────────────────────────────────────────
     const renderStep4 = () => {
         if (!createdAccount) return null;
+        // Success copy follows the broker-returned classification stored at
+        // creation time. A requested real that came back non-real reports the
+        // mismatch instead of claiming a real account was created.
+        const createdType = createdAccountType ?? 'demo';
+        const createdTypeMismatch = accountType === 'real' && createdType !== 'real';
         return (
             <div className="flex-1 overflow-y-auto flex flex-col p-6 items-center">
                 <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/20">
                     <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                 </div>
                 <h3 className="rtx-section-title text-white font-semibold text-[16px] leading-6 mb-1">{tr("Registration Complete")}</h3>
-                <p className="mb-6 text-center text-[14px] font-normal text-zinc-400">{tr("Your demo account has been successfully created.")}<br />{tr("Save any credentials returned by the broker.")}</p>
+                <p className="mb-6 text-center text-[14px] font-normal text-zinc-400">{createdType === 'real' ? tr("Your real account has been successfully created.") : tr("Your demo account has been successfully created.")}<br />{tr("Save any credentials returned by the broker.")}</p>
+                {createdTypeMismatch && (
+                    <p role="alert" className="mb-4 text-center text-[14px] font-normal text-red-400">
+                        {tr("The broker did not create a real account for this request.")}
+                    </p>
+                )}
+                {createdType === 'real' && realAccountAvailability.onboardingUrl && (
+                    <a
+                        href={realAccountAvailability.onboardingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mb-4 text-[14px] font-normal text-indigo-400 hover:text-indigo-300"
+                    >
+                        {tr("Continue verification on the broker website")}
+                    </a>
+                )}
                 <div className="rtx-open-account-dialog__surface w-full bg-[#1a1c23] border border-zinc-700/50 rounded-xl p-5 flex flex-col gap-3">
                     {[
                         { label: 'Login (Account)', value: createdAccount.login, mono: true, color: 'text-emerald-400', size: 'text-[16px]' },
@@ -910,24 +985,24 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const getHeader = () => {
         if (step === 0) return { title: 'Open an Account', sub: 'Select a broker to get started' };
         if (step === 1) return { title: 'Open an account', sub: 'Trade real or virtual money and gain experience' };
-        if (step === 2 && accountType === 'real') return { title: 'Real Account Application', sub: 'Complete identity verification with your broker' };
-        if (step === 2) return { title: 'Demo Account Details', sub: 'Enter the account holder information' };
-        if (step === 3) return { title: 'Demo Account Settings', sub: 'Configure currency and leverage for your new account' };
+        if (step === 2 && accountType === 'real' && !realAccountSupported) return { title: 'Real Account Application', sub: 'Complete identity verification with your broker' };
+        if (step === 2) return { title: accountType === 'real' ? 'Real Account Details' : 'Demo Account Details', sub: 'Enter the account holder information' };
+        if (step === 3) return { title: accountType === 'real' ? 'Real Account Settings' : 'Demo Account Settings', sub: 'Configure currency and leverage for your new account' };
         return { title: 'Registration Successful', sub: 'Your new account details' };
     };
 
     const header = getHeader();
     const desktopSteps = accountType === 'existing'
         ? ['Broker', 'Account type']
-        : accountType === 'real' ? ['Broker', 'Account type', 'Verification']
+        : accountType === 'real' && !realAccountSupported ? ['Broker', 'Account type', 'Verification']
             : ['Broker', 'Account type', 'Details', 'Settings'];
     const isStepValid = step === 0 ? Boolean(selectedBroker) && !loadingBrokers : true;
     const actionLabel = isCreating
         ? accountType === 'existing' ? 'Connecting...' : 'Creating...'
         : step === 1 && accountType === 'existing' ? 'Connect'
-            : step === 2 && accountType === 'real' ? 'Done'
+            : step === 2 && accountType === 'real' && !realAccountSupported ? 'Back to account types'
                 : step < 3 ? 'Next >'
-                    : step === 3 ? 'Create Demo Account'
+                    : step === 3 ? (accountType === 'real' ? 'Create Real Account' : 'Create Demo Account')
                         : 'Finish';
 
     return createPortal(

@@ -1,7 +1,7 @@
 import { useDockLayoutStore } from '../store/useDockLayoutStore';
 import type { DockContainer, DockPanelConfig } from './dockManager';
 
-export type BottomDockNavigationTab = 'History' | 'Toolbox' | 'Historical Data';
+export type BottomDockNavigationTab = 'History' | 'Toolbox' | 'Historical Data' | 'Experts' | 'Code Base';
 let requestedTab: BottomDockNavigationTab | null = null;
 
 export const getRequestedBottomDockTab = (): BottomDockNavigationTab | null => requestedTab;

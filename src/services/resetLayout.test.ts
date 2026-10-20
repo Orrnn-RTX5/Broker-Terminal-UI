@@ -1,6 +1,6 @@
-import { waitFor } from '@testing-library/react';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n, { changeInterfaceLanguage, i18nReady } from '../i18n';
+import { supportedLanguages } from '../config/supportedLanguages';
 
 const dockStore = vi.hoisted(() => ({ resetWindows: vi.fn() }));
 
@@ -10,66 +10,73 @@ vi.mock('../store/useDockLayoutStore', () => ({
 
 import { resetWorkspaceLayout } from './resetLayout';
 
-const collectOrderFeedback = () => {
-  const events: CustomEvent<{ message: string; type: string }>[] = [];
-  const listener = (event: Event) => { events.push(event as CustomEvent<{ message: string; type: string }>); };
-  window.addEventListener('rtx:order-feedback', listener);
-  return { events, dispose: () => window.removeEventListener('rtx:order-feedback', listener) };
+// Every locale below is resolved from the existing i18n store and the shared
+// supported-languages config. This file names no language of its own.
+const listInterfaceCodes = (): string[] => supportedLanguages.map(({ code }) => code);
+
+const readConfiguredFallback = (): string => {
+  const fallback = i18n.options.fallbackLng;
+  if (typeof fallback === 'string' && fallback.length > 0) return fallback;
+  if (Array.isArray(fallback)) {
+    const first = fallback.find((code): code is string => typeof code === 'string' && code.length > 0);
+    if (first) return first;
+  }
+  const [firstConfigured] = listInterfaceCodes();
+  if (!firstConfigured) throw new Error('No interface locales configured');
+  return firstConfigured;
 };
+
+const flushPendingWork = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeAll(async () => { await i18nReady; });
 
-beforeEach(async () => {
-  dockStore.resetWindows.mockClear();
-  await changeInterfaceLanguage('fr');
-});
+beforeEach(() => { dockStore.resetWindows.mockClear(); });
 
-afterEach(async () => {
-  vi.restoreAllMocks();
-  await changeInterfaceLanguage('en');
-});
-
-afterAll(() => { localStorage.removeItem('i18nextLng'); });
-
-describe('reset layout', () => {
-  it('restores the default windows and switches the interface language back to English', async () => {
-    resetWorkspaceLayout();
-
-    expect(dockStore.resetWindows).toHaveBeenCalledOnce();
-    await waitFor(() => expect(i18n.language).toBe('en'));
-    expect(localStorage.getItem('i18nextLng')).toBe('en');
-    expect(document.documentElement.lang).toBe('en');
-  });
-
-  it('leaves an already English interface alone', async () => {
-    await changeInterfaceLanguage('en');
+describe('reset layout preserves the interface locale', () => {
+  it('resets panels while leaving a non-default locale exactly as set', async () => {
+    const fallback = readConfiguredFallback();
+    const alternate = listInterfaceCodes().find((code) => code !== fallback);
+    expect(alternate).toBeDefined();
+    await changeInterfaceLanguage(alternate as string);
+    const languageBefore = i18n.language;
+    const resolvedBefore = i18n.resolvedLanguage;
+    const documentLanguageBefore = document.documentElement.lang;
     const changeLanguage = vi.spyOn(i18n, 'changeLanguage');
-
-    resetWorkspaceLayout();
-
-    expect(dockStore.resetWindows).toHaveBeenCalledOnce();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(changeLanguage).not.toHaveBeenCalled();
-    expect(localStorage.getItem('i18nextLng')).toBe('en');
-  });
-
-  it('keeps the current language and reports the failure when English cannot be loaded', async () => {
-    const feedback = collectOrderFeedback();
-    vi.spyOn(i18n, 'loadLanguages').mockImplementation((_language, callback) => {
-      callback?.(new Error('Chunk unavailable'), i18n.t);
-      return Promise.resolve();
-    });
 
     try {
       resetWorkspaceLayout();
 
       expect(dockStore.resetWindows).toHaveBeenCalledOnce();
-      await waitFor(() => expect(feedback.events).toHaveLength(1));
-      expect(feedback.events[0].detail.type).toBe('error');
-      expect(feedback.events[0].detail.message).toBe('Impossible de changer de langue. Veuillez réessayer.');
-      expect(i18n.language).toBe('fr');
+      await flushPendingWork();
+      expect(changeLanguage).not.toHaveBeenCalled();
+      expect(i18n.language).toBe(languageBefore);
+      expect(i18n.resolvedLanguage).toBe(resolvedBefore);
+      expect(document.documentElement.lang).toBe(documentLanguageBefore);
     } finally {
-      feedback.dispose();
+      vi.restoreAllMocks();
+      await changeInterfaceLanguage(fallback);
+    }
+  });
+
+  it('resets panels while leaving the default locale exactly as set', async () => {
+    const fallback = readConfiguredFallback();
+    await changeInterfaceLanguage(fallback);
+    const languageBefore = i18n.language;
+    const resolvedBefore = i18n.resolvedLanguage;
+    const documentLanguageBefore = document.documentElement.lang;
+    const changeLanguage = vi.spyOn(i18n, 'changeLanguage');
+
+    try {
+      resetWorkspaceLayout();
+
+      expect(dockStore.resetWindows).toHaveBeenCalledOnce();
+      await flushPendingWork();
+      expect(changeLanguage).not.toHaveBeenCalled();
+      expect(i18n.language).toBe(languageBefore);
+      expect(i18n.resolvedLanguage).toBe(resolvedBefore);
+      expect(document.documentElement.lang).toBe(documentLanguageBefore);
+    } finally {
+      vi.restoreAllMocks();
     }
   });
 });

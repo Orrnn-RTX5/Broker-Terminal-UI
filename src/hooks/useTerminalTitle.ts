@@ -9,6 +9,7 @@ import { RTX5_API_URL, normalizeServerUrl } from '../config/api';
 import { runAfterTerminalReady } from '../startup/runAfterTerminalReady';
 import { setBrokerServerTimeZoneFromConfig } from '../services/brokerServerClock';
 import { onSessionChange } from '../services/brokerSession';
+import { normalizeBrokerOperationalConfig } from '../services/brokerOperationalConfig';
 import {
     buildBrokerDirectoryLogoUrl,
     getConfiguredBrokerLogoUrl,
@@ -68,6 +69,7 @@ type BrokerTitleConfig = {
     server_name?: string;
     logo_url?: string;
     marginMode?: string;
+    margin_mode?: string;
 };
 
 const matchesBrokerServer = (server: BrokerServer, serverName: string): boolean => {
@@ -171,9 +173,10 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
                 // The broker may declare its server timezone for the server clock.
                 if (config) setBrokerServerTimeZoneFromConfig(config);
 
-                // 1. Margin mode from config
+                // 1. Margin mode from the broker config (camelCase or
+                // snake_case — anything else stays on the neutral Hedge).
                 if (config) {
-                    if (config.marginMode === 'NETTING') {
+                    if (normalizeBrokerOperationalConfig(config).marginMode === 'NETTING') {
                         setMarginMode('Netting');
                     } else {
                         setMarginMode('Hedge');

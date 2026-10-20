@@ -135,6 +135,10 @@ export const normalizeRealtimeTick = (
     asUnknownRecord(envelope),
     ...ancestorEnvelopes.map(asUnknownRecord),
   ]) ?? readBrokerTimestampMs([asUnknownRecord(candle)], ['time']);
+  // White-label: the liquidity-provider tag is broker-published metadata. When
+  // the feed does not publish one the tick carries no `lp` (consumers render
+  // the neutral empty state) instead of another broker's literal.
+  const publishedLp = typeof record.lp === 'string' ? record.lp.trim() : '';
 
   return {
     symbol,
@@ -144,7 +148,7 @@ export const normalizeRealtimeTick = (
     timestamp: sourceTimestamp ?? Date.now(),
     sourceTimestamp,
     tradingStatus: readQuoteTradingStatus(record),
-    lp: typeof record.lp === 'string' && record.lp.trim() ? record.lp : 'YOFX',
+    ...(publishedLp ? { lp: publishedLp } : {}),
     dailyChange: resolveDailyChangePercent(
       readDailyChangePercent(dailyChangeContext),
       bid,

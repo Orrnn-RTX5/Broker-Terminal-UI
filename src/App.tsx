@@ -31,7 +31,7 @@ import { AlertsContainer } from './components/AlertsContainer';
 import { getPositionCloseScope, markPositionsClosed, unmarkPositionsClosed, useAppStore, type Account, type Position } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
-import { getQuoteSocketManager } from './services/quoteSocketManager';
+import { refreshAllConnections } from './services/connectionRefresh';
 import { captureTradeOrderIntent } from './services/orderLatencyTelemetry';
 import { WS_ENDPOINTS } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -64,8 +64,10 @@ import {
 } from './startup/authenticatedSessionHandoff';
 import { TerminalLoadFallback } from './startup/TerminalLoadFallback';
 import { TerminalStartupBoundary } from './startup/TerminalStartupBoundary';
+import { useBrokerConfigWarmup } from './startup/brokerConfigWarmup';
 
 import { useLastSymbolStore } from './store/useLastSymbolStore';
+import { resolveOpenOrderTargetSymbol, selectTradeDefaults, useSettingsStore } from './store/useSettingsStore';
 import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
 import { tradingV2Api } from './api/trade';
@@ -182,14 +184,6 @@ const toSettingsChartType = (chartType: ChartType) => {
 
 const SELECTED_SYMBOL_STORAGE_KEY = 'rtx5_selected_symbol';
 
-interface BrokerConfig {
-  brokerName: string;
-  priceFeedLP: string;
-  executionMode: string;
-  defaultLeverage: number;
-  marginMode: string;
-}
-
 interface AppProps {
   initialSessionHandoff?: AuthenticatedSessionHandoff | null;
   onSessionEnded?: () => void;
@@ -246,7 +240,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     return (saved as ChartType) || 'candlestick';
   });
   const [timeframe, setTimeframe] = useState<Timeframe>(DEFAULT_CHART_TIMEFRAME);
-  const [, setBrokerConfig] = useState<BrokerConfig | null>(null);
   const [dockHeight, setDockHeight] = useState(() => {
     const saved = localStorage.getItem('dockHeight');
     return saved ? parseInt(saved, 10) : 250;
@@ -744,18 +737,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     setRestoredLayoutAccountId(accountId);
   }, [isAuthenticated, accountId]);
 
-  // Broker config — /api/config is not deployed yet, use defaults directly
-  useEffect(() => {
-    setBrokerConfig({
-      brokerName: 'RTX',
-      priceFeedLP: 'YOFX',
-      executionMode: 'ABOOK',
-      defaultLeverage: 1000,
-      defaultBalance: 0,
-      marginMode: 'HEDGING',
-      maxTicksPerSymbol: 1000,
-    } as any);
-  }, []);
+  // Broker config warmup — operating values come from the broker's own
+  // /api/v2/broker/config document (white-label: no per-broker literals in
+  // code). The shared warmup primes that document on startup through the
+  // neutral-fallback normalization; each consumer holds its own normalized
+  // read, so this owns no UI state.
+  useBrokerConfigWarmup();
 
   const {
     refreshPositions,
@@ -785,7 +772,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!closeLogin) {
       if (showFailureFeedback) {
         publishOrderFeedback(
-          [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(' — No trading account is selected. Please sign in again.')],
+          [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(' — '), feedbackLabel('No trading account is selected. Please sign in again.')],
           'error',
         );
       }
@@ -869,7 +856,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!position) return;
     const login = getLiveTradingLogin();
     if (!login) {
-      publishOrderFeedback('No trading account is selected. Please sign in again.');
+      publishOrderFeedback([feedbackLabel('No trading account is selected. Please sign in again.')]);
       return;
     }
     const operationContext = captureTradeOperationContext(login);
@@ -913,7 +900,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!position) return;
     const login = getLiveTradingLogin();
     if (!login) {
-      publishOrderFeedback('No trading account is selected. Please sign in again.');
+      publishOrderFeedback([feedbackLabel('No trading account is selected. Please sign in again.')]);
       return;
     }
     const operationContext = captureTradeOperationContext(login);
@@ -1236,10 +1223,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     url: WS_ENDPOINTS.general,
     autoConnect: isAuthenticated,
   });
+  // T12: FULL reconnect for every caller (toolbar + Network Rescan). Each
+  // transport reuses its own existing reconnect/refresh entry point.
   const refreshDesktopConnection = useCallback(() => {
-    reconnect();
-    getQuoteSocketManager().reconnect();
-    void activeMarketSnapshot.reload();
+    refreshAllConnections({
+      reconnectTradeStream: reconnect,
+      reloadMarketSnapshot: () => activeMarketSnapshot.reload(),
+    });
   }, [activeMarketSnapshot.reload, reconnect]);
   const previousTradeConnectionStateRef = useRef(connectionState);
 
@@ -1278,10 +1268,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
 
 
-  // Update reconnect callback ref for StatusBar
+  // Network Rescan (StatusBar) performs the same FULL reconnect as the toolbar.
   useEffect(() => {
-    reconnectCallbackRef.current = reconnect;
-  }, [reconnect]);
+    reconnectCallbackRef.current = refreshDesktopConnection;
+  }, [refreshDesktopConnection]);
 
   // Log connection state changes
   useEffect(() => {
@@ -1682,7 +1672,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const activeChartSymbol = normalizeSymbolName(
       getActiveChartCommandTarget(selectedSymbol, timeframe).symbol,
     );
-    const targetSymbol = explicitSymbol || activeChartSymbol || normalizeSymbolName(selectedSymbol);
+    // SUI-T8: honor the Options default-symbol mode for ticket opens without
+    // an explicit symbol. `automatic` preserves the active-chart behavior;
+    // `last-used` prefers the last traded symbol.
+    const targetSymbol = resolveOpenOrderTargetSymbol(selectTradeDefaults(useSettingsStore.getState()), {
+      explicitSymbol,
+      activeChartSymbol,
+      selectedSymbol: normalizeSymbolName(selectedSymbol),
+      lastUsedSymbol: useLastSymbolStore.getState().lastSymbol,
+    });
     if (!requireNewOrderAuth(targetSymbol)) return false;
     const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);
 
