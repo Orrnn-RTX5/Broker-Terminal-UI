@@ -233,4 +233,17 @@ describe('independent chart symbol navigation', () => {
     updates.forEach(update => useDockLayoutStore.getState().updatePanelProps(update.id, { props: update.props, title: update.title }));
     expect(getChartPanelSymbolUpdates(useDockLayoutStore.getState().layout, resolve, 'BTCUSD-PRO', 'M1')).toEqual([]);
   });
+
+  it('labels a symbol-less placeholder chart before the catalog is current without touching saved charts', () => {
+    const layout = fixture();
+    const all = getChartPanels(layout);
+    all[0].props = { timeframe: 'M1' }; all[0].title = 'Chart,M1';
+    const savedBefore = all.slice(1).map(panel => ({ ...panel, props: { ...panel.props } }));
+    const partialResolve = () => '';
+    expect(getChartPanelSymbolUpdates(layout, partialResolve, 'ADAUSD', 'M5', false)).toEqual([
+      { id: 'chart-0', title: 'ADAUSD,M1', props: { symbol: 'ADAUSD', timeframe: 'M1' } },
+    ]);
+    expect(getChartPanelSymbolUpdates(layout, partialResolve, '', 'M5', false)).toEqual([]);
+    expect(getChartPanels(layout).slice(1)).toEqual(savedBefore);
+  });
 });

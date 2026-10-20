@@ -113,9 +113,19 @@ export const getChartPanelSymbolUpdates = (
   fallbackSymbol: string,
   fallbackTimeframe: string,
   catalogCurrent = true,
-): Array<Pick<DockPanelConfig, 'id' | 'chartSymbolTabs'> & { props: Record<string, unknown>; title: string }> => !catalogCurrent ? [] : (
+): Array<Pick<DockPanelConfig, 'id' | 'chartSymbolTabs'> & { props: Record<string, unknown>; title: string }> => (
   getChartPanels(layout).flatMap(panel => {
     const requested = panel.props?.symbol ?? panel.title?.split(',')[0];
+    if (!catalogCurrent) {
+      // A partial catalog must never invalidate a saved symbol, but a
+      // symbol-less placeholder (no tenant default chart symbol) has nothing to
+      // lose: bind it to the symbol it already renders so its tab is labelled.
+      const placeholder = !String(panel.props?.symbol ?? '').trim()
+        && ['', 'CHART'].includes(normalizeExactBrokerSymbol(requested));
+      if (!placeholder || !fallbackSymbol) return [];
+      const timeframe = panel.props?.timeframe || fallbackTimeframe;
+      return [{ id: panel.id, props: { ...panel.props, symbol: fallbackSymbol, timeframe }, title: `${fallbackSymbol},${timeframe}` }];
+    }
     const resolved = resolveSymbol(requested);
     const chartSymbolTabs = panel.chartSymbolTabs?.filter(tab => resolveSymbol(tab.symbol));
     const tabsChanged = chartSymbolTabs?.length !== panel.chartSymbolTabs?.length;
