@@ -1058,6 +1058,17 @@ function normalizeInitialDialogSide(value: unknown): DialogSubmitSide | null {
   return null;
 }
 
+/**
+ * Draft side for the order-panel draft pipeline (App openOrderPanelForSymbol).
+ * Fail-closed: only exact BUY/SELL (any case, trimmed) produce a preselected
+ * side; everything else yields undefined (dialog default flow).
+ */
+export function resolveOrderPanelSide(value: unknown): 'BUY' | 'SELL' | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toUpperCase();
+  return normalized === 'BUY' || normalized === 'SELL' ? normalized : undefined;
+}
+
 // ─── Main Order Dialog ──────────────────────────────────────
 export function OrderPanelDialog({
   isOpen,

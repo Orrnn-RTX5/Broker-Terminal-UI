@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAppStore } from '../store/useAppStore';
-import { OrderPanelDialog } from './OrderPanelDialog';
+import { OrderPanelDialog, resolveOrderPanelSide } from './OrderPanelDialog';
 
 vi.mock('../hooks/useSymbolMarketStatus', () => ({
   useSymbolMarketStatus: () => ({
@@ -175,5 +175,21 @@ describe('OrderPanelDialog initialSide preselection (SUI-T10)', () => {
     expect(sellButton.getAttribute('aria-pressed')).toBe('false');
     expect(buyButton.disabled).toBe(false);
     expect(sellButton.disabled).toBe(false);
+  });
+});
+
+describe('resolveOrderPanelSide draft plumbing (ds-16)', () => {
+  it('passes through exact BUY/SELL sides for dialog preselect', () => {
+    expect(resolveOrderPanelSide('BUY')).toBe('BUY');
+    expect(resolveOrderPanelSide('sell')).toBe('SELL');
+    expect(resolveOrderPanelSide('  Buy  ')).toBe('BUY');
+  });
+
+  it('fails closed to undefined for anything else (dialog default flow)', () => {
+    expect(resolveOrderPanelSide(undefined)).toBeUndefined();
+    expect(resolveOrderPanelSide(null)).toBeUndefined();
+    expect(resolveOrderPanelSide('')).toBeUndefined();
+    expect(resolveOrderPanelSide('SIDEWAYS')).toBeUndefined();
+    expect(resolveOrderPanelSide(42)).toBeUndefined();
   });
 });
