@@ -103,6 +103,8 @@ const marketHooksState = vi.hoisted(() => ({
   symbolsError: null as string | null,
   watchlistError: null as string | null,
   reloadActiveSymbols: vi.fn().mockResolvedValue(undefined),
+  reloadInstruments: vi.fn().mockResolvedValue(undefined),
+  reloadWatchlist: vi.fn().mockResolvedValue(undefined),
   loadSymbolSpecification: vi.fn().mockResolvedValue(null),
   useActiveMarketSymbols: vi.fn(),
   useLiveQuotes: vi.fn((symbols: string[]) => {
@@ -127,13 +129,13 @@ vi.mock('../../../hooks/useLiveMarketData', () => ({
     loading: marketHooksState.instrumentsLoading,
     accountCatalogStatus: marketHooksState.accountCatalogStatus,
     error: marketHooksState.symbolsError,
-    reload: vi.fn(),
+    reload: marketHooksState.reloadInstruments,
     loadSymbolSpecification: marketHooksState.loadSymbolSpecification,
   }),
   useRemoteWatchlistSync: () => ({
     loading: false,
     error: marketHooksState.watchlistError,
-    reload: vi.fn(),
+    reload: marketHooksState.reloadWatchlist,
   }),
 }));
 
