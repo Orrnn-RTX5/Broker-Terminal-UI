@@ -69,11 +69,19 @@ const refreshPendingOrders = async (loginId: number): Promise<void> => {
 type PendingOrdersPanelProps = {
   onModifyOrder: (order: PendingOrderView) => void;
   onCancelOrder: (ticket: number) => Promise<void> | void;
+  // Bulk handler with ONE confirm owned by the handler (SUI-T5). When wired,
+  // bulk cancel delegates to it (no panel-local confirm, no per-ticket loop);
+  // otherwise the panel falls back to the per-ticket no-confirm core with one
+  // confirm — never through the confirming single path.
+  onCancelBulkOrders?: (tickets: number[]) => Promise<void> | void;
+  onCancelOrderWithoutConfirm?: (ticket: number) => Promise<void> | void;
 };
 
 export const PendingOrdersPanel = memo(function PendingOrdersPanel({
   onModifyOrder,
   onCancelOrder,
+  onCancelBulkOrders,
+  onCancelOrderWithoutConfirm,
 }: PendingOrdersPanelProps) {
   const tr = useUiTranslation();
   const storeOrders = useAppStore((s) => s.orders);
@@ -110,6 +118,20 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
   const cancelMany = useCallback(async (mode: 'ALL' | 'BUY' | 'SELL') => {
     const targets = orders.filter((o) => mode === 'ALL' || o.side === mode);
     if (targets.length === 0 || busy) return;
+    if (onCancelBulkOrders) {
+      // Single-confirm bulk path (SUI-T5): the handler owns the ONE confirm,
+      // sequential per-ticket keys, refresh and rethrow.
+      setBusy(true);
+      setError(null);
+      try {
+        await onCancelBulkOrders(targets.map((o) => o.ticket));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Bulk cancel failed');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     const confirmed = await useConfirmStore.getState().showConfirm(
       tr('Cancel'),
       mode === 'ALL'
@@ -120,8 +142,12 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
     setBusy(true);
     setError(null);
     try {
+      // Fallback path: never through the confirming single path — use the
+      // no-confirm core when wired, else the single handler (degraded: its
+      // own confirm fires per ticket).
+      const cancelOne = onCancelOrderWithoutConfirm ?? onCancelOrder;
       for (const order of targets) {
-        await onCancelOrder(order.ticket);
+        await cancelOne(order.ticket);
       }
       const loginId = currentLoginId();
       if (loginId) await refreshPendingOrders(loginId);
@@ -130,7 +156,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
     } finally {
       setBusy(false);
     }
-  }, [orders, busy, onCancelOrder, tr]);
+  }, [orders, busy, onCancelOrder, onCancelBulkOrders, onCancelOrderWithoutConfirm, tr]);
 
   if (orders.length === 0) {
     return (

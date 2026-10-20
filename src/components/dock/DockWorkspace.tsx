@@ -103,6 +103,8 @@ interface DockWorkspaceProps {
     onClosePosition: (id: string | number) => void;
     onModifyPosition: (id: number, sl: number, tp: number) => void;
     onCancelOrder: (id: string | number) => void;
+    onCancelBulkOrders?: (tickets: Array<string | number>) => Promise<void> | void;
+    onCancelOrderWithoutConfirm?: (id: string | number) => Promise<void> | void;
     onCloseBulk: (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => void;
 }
 
@@ -121,6 +123,8 @@ export const DockWorkspace = React.memo(function DockWorkspace({
     onClosePosition,
     onModifyPosition,
     onCancelOrder,
+    onCancelBulkOrders,
+    onCancelOrderWithoutConfirm,
     onCloseBulk
 }: DockWorkspaceProps) {
     const tr = useUiTranslation();
@@ -305,6 +309,8 @@ export const DockWorkspace = React.memo(function DockWorkspace({
                             onClosePosition={onClosePosition as any}
                             onModifyPosition={onModifyPosition}
                             onCancelOrder={onCancelOrder as any}
+                            onCancelBulkOrders={onCancelBulkOrders as any}
+                            onCancelOrderWithoutConfirm={onCancelOrderWithoutConfirm as any}
                             onCloseBulk={onCloseBulk as any}
                             historyInstrumentCatalog={historyInstrumentCatalog}
                         />

@@ -148,6 +148,50 @@ describe('PendingOrdersPanel (real store + backend shapes)', () => {
     expect(useAppStore.getState().orders).toHaveLength(2);
   });
 
+  it('bulk cancel delegates once to the wired bulk handler (no per-ticket loop)', async () => {
+    const onModify = vi.fn();
+    const onCancel = vi.fn();
+    const onCancelBulk = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <PendingOrdersPanel
+        onModifyOrder={onModify}
+        onCancelOrder={onCancel}
+        onCancelBulkOrders={onCancelBulk}
+      />,
+    );
+    fireEvent.click(screen.getByText('Cancel All'));
+
+    await waitFor(() => {
+      expect(onCancelBulk).toHaveBeenCalledTimes(1);
+    });
+    expect(onCancelBulk).toHaveBeenCalledWith([34671, 34672]);
+    // No per-ticket fallback, no panel-local confirm path taken.
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('fallback bulk loop uses the no-confirm core, never the confirming single path', async () => {
+    const onModify = vi.fn();
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    const onCancelNoConfirm = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <PendingOrdersPanel
+        onModifyOrder={onModify}
+        onCancelOrder={onCancel}
+        onCancelOrderWithoutConfirm={onCancelNoConfirm}
+      />,
+    );
+    fireEvent.click(screen.getByText('Cancel All'));
+
+    await waitFor(() => {
+      expect(onCancelNoConfirm).toHaveBeenCalledTimes(2);
+    });
+    expect(onCancelNoConfirm).toHaveBeenNthCalledWith(1, 34671);
+    expect(onCancelNoConfirm).toHaveBeenNthCalledWith(2, 34672);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
   it('shows the empty state when no pendings rest', () => {
     act(() => {
       useAppStore.getState().setOrders([]);
