@@ -23,6 +23,7 @@ import { getStoredAccountLogin } from '../api/tradeGateway';
 import { api } from '../services/api';
 import { buildOrderTicketSymbolOptions } from '../utils/accountSymbolUniverse';
 import { resolveSymbolDescription } from '../utils/symbolDescription';
+import { resolveSpecDigits } from '../utils/symbolUtils';
 import '../styles/order-panel-dialog.css';
 
 // Symbol display names
@@ -1182,6 +1183,10 @@ export function OrderPanelDialog({
 
   const config = getInstrumentConfig(symbol, tick?.digits);
   const { digits, pipSize, contractSize } = config;
+  // TERM-DIGITS-WL (new-order SL/TP + price/stop-limit): catalog digits only
+  // (tick?.digits via resolveSpecDigits). No name table, no fallback constant.
+  // Unknown precision stays null -> raw String(value), no rounding/point math.
+  const specDigits = resolveSpecDigits(tick?.digits);
   const chartColors = useMemo(
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
     [chartSettings, isAdvancedUntitledLight],
@@ -1291,15 +1296,26 @@ export function OrderPanelDialog({
     direction: 1 | -1,
     anchorPrice: number,
   ) => {
-    const step = Math.max(Math.pow(10, -Math.max(0, digits)), pipSize || 0.01);
+    // New-order price stepping uses catalog digits only (no heuristic pipSize,
+    // no fallback). Unknown digits = raw value, no rounding/point math.
     const parsed = Number.parseFloat(currentValue);
+    if (specDigits === null) {
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        const seed = anchorPrice > 0 ? anchorPrice : (bid || ask || 0);
+        setter(seed > 0 ? String(seed) : '');
+        return;
+      }
+      setter(String(parsed));
+      return;
+    }
+    const step = Math.pow(10, -specDigits);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       const seed = anchorPrice > 0 ? anchorPrice : (bid || ask || step);
-      setter(seed.toFixed(digits));
+      setter(seed.toFixed(specDigits));
       return;
     }
     const next = Math.max(0, parsed + direction * step);
-    setter(next.toFixed(digits));
+    setter(next.toFixed(specDigits));
   };
 
   const parsedPrice = Number.parseFloat(priceStr);
@@ -1335,6 +1351,8 @@ export function OrderPanelDialog({
 
       const slVal = overrideProtection?.priceSl !== undefined
         ? overrideProtection.priceSl
+        // TERM-DIGITS-WL: submit raw parsed SL/TP (no toFixed rounding here;
+        // display rounding happens onBlur/step via catalog specDigits only).
         : (Number.isFinite(parsedStopLoss) && parsedStopLoss > 0 ? parsedStopLoss : undefined);
       const tpVal = overrideProtection?.priceTp !== undefined
         ? overrideProtection.priceTp
@@ -1403,24 +1421,31 @@ export function OrderPanelDialog({
   ]);
 
   const handleSelectDomPrice = useCallback((clickedPrice: number, side: 'buy' | 'sell') => {
-    setPriceStr(clickedPrice.toFixed(digits));
+    // New-order price display uses catalog digits only; unknown = raw value.
+    setPriceStr(specDigits === null ? String(clickedPrice) : clickedPrice.toFixed(specDigits));
     if (orderType === 'Market Execution') {
       setOrderType('Limit Order');
     }
     void side;
-  }, [digits, orderType]);
+  }, [specDigits, orderType]);
 
   const handleDomMarketAction = useCallback((side: 'buy' | 'sell', slPoints: number, tpPoints: number) => {
-    const point = Math.pow(10, -Math.max(0, digits));
+    // New-order SL/TP submit uses catalog point only; unknown digits cannot
+    // express points, so submit without protection (no guessing, no fallback).
     const refPrice = side === 'buy' ? ask : bid;
+    if (specDigits === null) {
+      void handleSubmit(side, { priceSl: undefined, priceTp: undefined, forceMarket: true });
+      return;
+    }
+    const point = Math.pow(10, -specDigits);
     const priceSl = slPoints > 0 && refPrice > 0
-      ? Number((side === 'buy' ? refPrice - slPoints * point : refPrice + slPoints * point).toFixed(digits))
+      ? Number((side === 'buy' ? refPrice - slPoints * point : refPrice + slPoints * point).toFixed(specDigits))
       : undefined;
     const priceTp = tpPoints > 0 && refPrice > 0
-      ? Number((side === 'buy' ? refPrice + tpPoints * point : refPrice - tpPoints * point).toFixed(digits))
+      ? Number((side === 'buy' ? refPrice + tpPoints * point : refPrice - tpPoints * point).toFixed(specDigits))
       : undefined;
     void handleSubmit(side, { priceSl, priceTp, forceMarket: true });
-  }, [ask, bid, digits, handleSubmit]);
+  }, [ask, bid, specDigits, handleSubmit]);
 
   if (!isOpen) return null;
 
@@ -1751,7 +1776,7 @@ export function OrderPanelDialog({
                         }}
                         onBlur={() => {
                           const parsed = Number.parseFloat(priceStr);
-                          setPriceStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '');
+                          setPriceStr(Number.isFinite(parsed) && parsed >= 0 ? (specDigits === null ? String(parsed) : parsed.toFixed(specDigits)) : '');
                         }}
                         className="rtx-order-dialog__volume-input"
                       />
@@ -1791,7 +1816,7 @@ export function OrderPanelDialog({
                         }}
                         onBlur={() => {
                           const parsed = Number.parseFloat(stopLimitPriceStr);
-                          setStopLimitPriceStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '');
+                          setStopLimitPriceStr(Number.isFinite(parsed) && parsed >= 0 ? (specDigits === null ? String(parsed) : parsed.toFixed(specDigits)) : '');
                         }}
                         className="rtx-order-dialog__volume-input"
                       />
@@ -1832,7 +1857,7 @@ export function OrderPanelDialog({
                     }}
                     onBlur={() => {
                       const parsed = Number.parseFloat(stopLossStr);
-                      setStopLossStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '');
+                      setStopLossStr(Number.isFinite(parsed) && parsed >= 0 ? (specDigits === null ? String(parsed) : parsed.toFixed(specDigits)) : '');
                     }}
                     className="rtx-order-dialog__volume-input"
                   />
@@ -1869,7 +1894,7 @@ export function OrderPanelDialog({
                     }}
                     onBlur={() => {
                       const parsed = Number.parseFloat(takeProfitStr);
-                      setTakeProfitStr(Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(digits) : '');
+                      setTakeProfitStr(Number.isFinite(parsed) && parsed >= 0 ? (specDigits === null ? String(parsed) : parsed.toFixed(specDigits)) : '');
                     }}
                     className="rtx-order-dialog__volume-input"
                   />
