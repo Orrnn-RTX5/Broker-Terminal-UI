@@ -1,5 +1,6 @@
 import { API_V2_BASE_URL } from '../config/api';
 import { getRuntimeBrokerConfiguration, isDesktopBackendTarget } from '../config/backendTarget.js';
+import { toLocalDevProxyUrl } from '../config/localDevProxy';
 import { apiClient } from './client';
 import type { AccountClassificationFields } from '../types/api';
 
@@ -69,7 +70,7 @@ export const registerRuntimeBrokerDemoAccount = async (
     name: input.name.trim(),
     broker_id: brokerId,
   }, {
-    baseUrl: desktop ? API_V2_BASE_URL : `${configuration.apiHostExt.replace(/\/+$/, '')}/api/v2`,
+    baseUrl: desktop ? API_V2_BASE_URL : `${toLocalDevProxyUrl(configuration.apiHostExt.replace(/\/+$/, ''))}/api/v2`,
     skipDynamicUrl: true,
     skipAuth: true,
   });

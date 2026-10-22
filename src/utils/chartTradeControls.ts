@@ -274,10 +274,10 @@ export const DARK_CHART_TRADE_COLORS = {
   text: '#f4f4f5',
   actionIcon: '#f4f4f6',
   actionHover: '#292a30',
-  buy: '#dbeafe',
-  sell: '#fee2e2',
-  buyBackground: '#233143',
-  sellBackground: '#38292e',
+  buy: '#72b0ff',
+  sell: '#ff8589',
+  buyBackground: '#191a1e',
+  sellBackground: '#191a1e',
   tp: '#9dd2c8',
   sl: '#e9c18a',
   profit: '#72b0ff',
@@ -473,7 +473,6 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     ? LIGHT_CHART_TRADE_COLORS.surface
     : DARK_CHART_TRADE_COLORS.surface;
   const plainBorderColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.border : DARK_CHART_TRADE_COLORS.border;
-  const plainDividerColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.divider : DARK_CHART_TRADE_COLORS.divider;
   const plainActionColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.action : DARK_CHART_TRADE_COLORS.action;
 
   const root = document.createElement('div');
@@ -548,14 +547,15 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     root.style.boxShadow = `0 0 0 1px ${plainBorderColor}`;
     root.style.textShadow = 'none';
     chipGroup.className = 'rtx-trade-primary';
+    chipGroup.style.alignItems = 'center';
     chipGroup.style.border = '1px solid transparent';
-    chipGroup.style.borderLeftColor = plainDividerColor;
     chipGroup.style.borderRadius = '0';
     chipGroup.style.height = '21px';
     chipGroup.style.boxSizing = 'border-box';
     chipGroup.style.overflow = 'hidden';
     chipGroup.style.minWidth = '0';
-    chipGroup.style.gap = '3px';
+    chipGroup.style.padding = '0 2px 0 7px';
+    chipGroup.style.gap = '7px';
     chipGroup.style.backgroundColor = plainBackground;
     for (const chip of [volumeChip, pips.chip, money.chip]) {
       chip.style.backgroundColor = 'transparent';
@@ -567,7 +567,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       chip.style.lineHeight = '17px';
       chip.style.letterSpacing = 'normal';
       chip.style.fontVariantNumeric = 'tabular-nums';
-      chip.style.padding = '0 1px';
+      chip.style.padding = '0';
       chip.style.marginLeft = '0';
       chip.style.height = '19px';
     }
@@ -578,16 +578,15 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     }
     // Compact entry information, with the account currency after the P/L.
     pips.chip.style.display = 'none';
-    volumeChip.style.backgroundColor = isLightSurface
-      ? (side === 'BUY' ? '#edf3ff' : '#fff0f1')
-      : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buyBackground : DARK_CHART_TRADE_COLORS.sellBackground);
+    volumeChip.style.backgroundColor = plainBackground;
     volumeChip.style.color = plainSideColor;
     volumeChip.style.fontWeight = 'inherit';
     volumeChip.style.setProperty('--rtx-type-weight', 'inherit');
-    // Separate each reading unit without adding padding around the toolbar.
-    volumeChip.style.gap = '3px';
+    // Explicit flex gap keeps side/volume and value/currency visually separated
+    // because CSS Flexbox collapses leading/trailing spaces inside flex items.
+    volumeChip.style.gap = '4px';
     volumeText.style.color = plainNeutralColor;
-    money.chip.style.gap = '3px';
+    money.chip.style.gap = '4px';
     money.valueEl.style.fontWeight = 'inherit';
     money.valueEl.style.setProperty('--rtx-type-weight', 'inherit');
     const currencySuffix = money.chip.firstElementChild as HTMLElement;
@@ -631,10 +630,6 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       button.style.borderRadius = '0';
       button.style.backgroundColor = restingBackground;
       button.querySelector('svg')?.setAttribute('stroke-width', '1.75');
-      if (isClose) {
-        button.style.borderLeft = `1px solid ${plainDividerColor}`;
-        button.style.borderRadius = '0';
-      }
       button.addEventListener('mouseenter', () => {
         button.style.backgroundColor = isLightSurface
           ? (isClose ? '#fff0f1' : LIGHT_CHART_TRADE_COLORS.actionHover)
@@ -660,7 +655,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     buttonGroup.prepend(secondaryGroup);
     const brackets = document.createElement('span');
     brackets.className = 'rtx-trade-brackets';
-    brackets.style.cssText = 'display:inline-flex;align-items:center;gap:3px;';
+    brackets.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:0 2px 0 1px;';
     buttonGroup.appendChild(brackets);
     chipGroup.appendChild(closeButton);
     root.appendChild(buttonGroup);

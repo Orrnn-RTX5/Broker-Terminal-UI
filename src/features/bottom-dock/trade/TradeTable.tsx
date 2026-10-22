@@ -11,18 +11,21 @@ import {
 import type { ClosePositionAction } from '../../../contracts/tradeActions';
 import type { ToolboxTradePosition } from '../../../hooks/useToolboxTradeData';
 import { useUiTranslation } from '../../../hooks/useUiTranslation';
-import type { Account } from '../../../store/useAppStore';
+import { useAppStore, type Account } from '../../../store/useAppStore';
 import {
   formatPositionProfit,
   resolveTradeProfit,
   toBackendFinancialNumber,
 } from '../../../components/BottomDock.trade';
+import { dispatchChartPositionAction } from '../../../utils/chartTradeControls';
+import { buildTradeShareUrl, copyTextToClipboard } from '../../../utils/tradeShareLink';
 import { Icon } from '../../../components/ui/Icon';
 import { TradeMetricValue, UnavailableTradeMetric } from './TradeMetricValue';
 import {
   getTradeColumnDef,
   METRIC_UNAVAILABLE,
   TRADE_COLUMN_HOVER_COMMENTS,
+  TRADE_FIXED_COLUMN_DEFS,
   type TradeColumnDef,
   type TradeColumnKey,
   type TradeColumnWidthKey,
@@ -150,10 +153,15 @@ const TradeTableRow = memo(function TradeTableRow({
 
   // Quotes change current price and P/L far more often than position identity,
   // entry details or protection levels. Preserve that presentation per row.
+  const normalizedSide = String(position.side ?? '').trim().toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
   const {
     placementLabel, ticketLabel, timeLabel, openPriceLabel, stopLossLabel, takeProfitLabel,
     placementSummary, rowComment, stopLossTitle, takeProfitTitle,
-    stopLossActionLabel, takeProfitActionLabel, closeActionLabel, closeTitle,
+    stopLossActionLabel, takeProfitActionLabel,
+    shareActionLabel, shareTitle,
+    reverseActionLabel, reverseTitle,
+    doubleActionLabel, doubleTitle,
+    closeActionLabel, closeTitle,
   } = useMemo(() => {
     const placementLabel = placementState === 'accepted' ? tr('Accepted')
       : placementState === 'processing' ? tr('Processing')
@@ -169,18 +177,29 @@ const TradeTableRow = memo(function TradeTableRow({
     const rowComment = isPendingPlacement
       ? placementSummary
       : `${rowSummary}\n${tr('Ticket: {{value0}}', { value0: ticketLabel })}\n${modifyPositionLabel} · ${contextMenuLabel}`;
+    const sameSideDirection = normalizedSide === 'SELL' ? tr('Sell') : tr('Buy');
+    const oppositeSideDirection = normalizedSide === 'SELL' ? tr('Buy') : tr('Sell');
+    const shareBaseLabel = tr('Share position');
+    const reverseBaseLabel = `${tr('Reverse position')} (${tr('Trade')} ${volumeLabel} ${tr('Lots')} ${oppositeSideDirection})`;
+    const doubleBaseLabel = `${tr('Double position')} (${tr('Trade')} ${volumeLabel} ${tr('Lots')} ${sameSideDirection})`;
     return {
       placementLabel, ticketLabel, timeLabel, openPriceLabel, stopLossLabel, takeProfitLabel, placementSummary, rowComment,
       stopLossTitle: `${tr('Stop Loss: {{value0}}', { value0: stopLossLabel })} · ${modifyPositionLabel}`,
       takeProfitTitle: `${tr('Take Profit: {{value0}}', { value0: takeProfitLabel })} · ${modifyPositionLabel}`,
       stopLossActionLabel: `${modifyPositionLabel} · ${tr('Stop Loss:')} #${positionId}`,
       takeProfitActionLabel: `${modifyPositionLabel} · ${tr('Take Profit:')} #${positionId}`,
+      shareActionLabel: isPendingPlacement ? `${placementLabel} · ${shareBaseLabel}` : shareBaseLabel,
+      shareTitle: isPendingPlacement ? rowComment : shareBaseLabel,
+      reverseActionLabel: isPendingPlacement ? `${placementLabel} · ${reverseBaseLabel}` : reverseBaseLabel,
+      reverseTitle: isPendingPlacement ? rowComment : reverseBaseLabel,
+      doubleActionLabel: isPendingPlacement ? `${placementLabel} · ${doubleBaseLabel}` : doubleBaseLabel,
+      doubleTitle: isPendingPlacement ? rowComment : doubleBaseLabel,
       closeActionLabel: isPendingPlacement ? placementLabel : tr('Close position {{value0}}', { value0: ticket }),
       closeTitle: isPendingPlacement ? rowComment : tr('Close position {{value0}}', { value0: ticketLabel }),
     };
   }, [
     contextMenuLabel, formatTradeLevel, formatTradePrice, formatTradeTime, isPendingPlacement,
-    isTerminalPlacementFailure, modifyPositionLabel, openTime, placementError, placementPlaceholder,
+    isTerminalPlacementFailure, modifyPositionLabel, normalizedSide, openTime, placementError, placementPlaceholder,
     placementState, positionId, rawOpenPrice, rawStopLoss, rawTakeProfit, sideLabel, symbolLabel, ticket, tr, volumeLabel,
   ]);
 
@@ -389,22 +408,123 @@ const TradeTableRow = memo(function TradeTableRow({
         </td>
       )}
 
-      {/* Close Button */}
-      <td className="px-0.5 py-[2px] text-center">
-        <button
-          type="button"
-          aria-label={closeActionLabel}
-          title={closeTitle}
-          disabled={isPendingPlacement}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (isPendingPlacement) return;
-            onClosePosition(position.id);
-          }}
-          className="rtx-trade-close-button mx-auto flex h-6 w-6 cursor-default items-center justify-center rounded-sm border border-transparent text-[12px] font-normal leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:cursor-default disabled:text-zinc-600 disabled:hover:border-transparent disabled:hover:bg-transparent"
-        >
-          {isPendingPlacement ? (isTerminalPlacementFailure ? '!' : '…') : 'x'}
-        </button>
+      {/* cTrader-style Position Actions: Share, Reverse, Double, Close */}
+      <td
+        className="pl-2.5 pr-4 py-[2px] text-center whitespace-nowrap"
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <div className="rtx-trade-row-actions flex items-center justify-center gap-[7px]">
+          <button
+            type="button"
+            aria-label={shareActionLabel}
+            title={shareTitle}
+            disabled={isPendingPlacement}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (isPendingPlacement) return;
+              const numericTicket = Number(ticket ?? positionId);
+              const parsedTime = typeof openTime === 'number'
+                ? (openTime > 1_000_000_000_000 ? Math.floor(openTime / 1000) : Math.floor(openTime))
+                : typeof openTime === 'string' && openTime.trim()
+                  ? Math.floor(new Date(openTime).getTime() / 1000)
+                  : 0;
+              const shareUrl = buildTradeShareUrl({
+                version: 1,
+                ticket: Number.isFinite(numericTicket) && numericTicket > 0 ? Math.floor(numericTicket) : 0,
+                symbol: symbolLabel,
+                timeframe: String(useAppStore.getState().selectedTimeframe || 'M1'),
+                side: normalizedSide,
+                volume: Number(position.volume) || 0,
+                entryPrice: Number.isFinite(rawOpenPrice) && rawOpenPrice > 0 ? rawOpenPrice : 0,
+                entryTime: Number.isFinite(parsedTime) && parsedTime > 0 ? parsedTime : 0,
+                sl: Number(rawStopLoss) || 0,
+                tp: Number(rawTakeProfit) || 0,
+              });
+              void copyTextToClipboard(shareUrl);
+            }}
+            className="rtx-trade-action-button rtx-trade-share-button flex h-[24px] w-[24px] shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-600/50 bg-[#383d48] text-zinc-100 transition-colors hover:border-zinc-500/70 hover:bg-[#4b5262] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 disabled:cursor-default disabled:opacity-45"
+          >
+            <svg width="15" height="15" viewBox="0 0 14 14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="10.6" cy="3" r="1.7" />
+              <circle cx="3.4" cy="7" r="1.7" />
+              <circle cx="10.6" cy="11" r="1.7" />
+              <path d="M4.9 6.1 9.1 3.9M4.9 7.9l4.2 2.2" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            aria-label={reverseActionLabel}
+            title={reverseTitle}
+            disabled={isPendingPlacement}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (isPendingPlacement) return;
+              const targetTicket = Number(positionId ?? ticket);
+              if (!Number.isFinite(targetTicket) || targetTicket <= 0) return;
+              dispatchChartPositionAction({
+                action: 'reverse',
+                ticket: targetTicket,
+                symbol: symbolLabel,
+              });
+            }}
+            className="rtx-trade-action-button rtx-trade-reverse-button flex h-[24px] w-[24px] shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-600/50 bg-[#383d48] text-zinc-100 transition-colors hover:border-zinc-500/70 hover:bg-[#4b5262] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 disabled:cursor-default disabled:opacity-45"
+          >
+            <svg width="15" height="15" viewBox="0 0 14 14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3.4 11.8V6.9a3.4 3.4 0 0 1 6.8 0v3.3" />
+              <path d="M8.2 8.2l2 2.2 2-2.2" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            aria-label={doubleActionLabel}
+            title={doubleTitle}
+            disabled={isPendingPlacement}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (isPendingPlacement) return;
+              const targetTicket = Number(positionId ?? ticket);
+              if (!Number.isFinite(targetTicket) || targetTicket <= 0) return;
+              dispatchChartPositionAction({
+                action: 'double',
+                ticket: targetTicket,
+                symbol: symbolLabel,
+              });
+            }}
+            className="rtx-trade-action-button rtx-trade-double-button flex h-[24px] w-[24px] shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-600/50 bg-[#383d48] text-zinc-100 transition-colors hover:border-zinc-500/70 hover:bg-[#4b5262] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 disabled:cursor-default disabled:opacity-45"
+          >
+            <svg width="15" height="15" viewBox="0 0 14 14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4.5 11.4V3.4" />
+              <path d="M2.4 5.5 4.5 3.4l2.1 2.1" />
+              <path d="M9.5 11.4V3.4" />
+              <path d="M7.4 5.5 9.5 3.4l2.1 2.1" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            aria-label={closeActionLabel}
+            title={closeTitle}
+            disabled={isPendingPlacement}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (isPendingPlacement) return;
+              onClosePosition(position.id);
+            }}
+            className="rtx-trade-action-button rtx-trade-close-button flex h-[24px] w-[24px] shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-600/50 bg-[#383d48] text-[13px] font-normal leading-none text-zinc-100 transition-colors hover:border-red-500/70 hover:bg-[#dc2626] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:cursor-default disabled:opacity-45"
+          >
+            {isPendingPlacement ? (
+              isTerminalPlacementFailure ? '!' : '…'
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round">
+                <path d="M3.6 3.6l6.8 6.8M10.4 3.6l-6.8 6.8" />
+              </svg>
+            )}
+          </button>
+        </div>
       </td>
     </tr>
     {isTerminalPlacementFailure && (
@@ -573,6 +693,8 @@ export function TradeTable({
     profitMode, selectedPositionKey, setSelectedPositionKey, tr, visibleOptionalColumnCount,
   ]);
 
+  const closeColumnWidth = Math.max(columnWidths.close || 0, TRADE_FIXED_COLUMN_DEFS.close.minWidth);
+
   return (
     <div className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
       <table
@@ -584,7 +706,7 @@ export function TradeTable({
           {visibleTradeColumns.map(column => (
             <col key={column.key} style={{ width: columnWidths[column.key] }} />
           ))}
-          <col style={{ width: columnWidths.close }} />
+          <col style={{ width: closeColumnWidth }} />
         </colgroup>
         <thead className="rtx-trade-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-normal text-[12px] leading-[18px] uppercase border-y border-zinc-700/70 select-none shadow-[0_1px_0_0_rgba(255,255,255,0.04)]">
           <tr className="h-[30px]">
@@ -596,11 +718,13 @@ export function TradeTable({
               return renderHeader(column);
             })}
             <th
-              className="px-0.5 py-[3px] text-center"
-              style={{ width: columnWidths.close }}
+              className="pl-2.5 pr-4 py-[3px] text-center"
+              style={{ width: closeColumnWidth }}
               aria-label={tr('Close position')}
               title={tr(TRADE_COLUMN_HOVER_COMMENTS.close)}
-            />
+            >
+              <span className="block px-2">{tr('Actions')}</span>
+            </th>
           </tr>
         </thead>
         {tableBody}

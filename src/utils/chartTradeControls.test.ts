@@ -287,6 +287,9 @@ describe('createEntryTradeControlBar', () => {
     expect(root.style.transform).toBe('translateY(-50%)');
     expect(root.tabIndex).toBe(0);
     expect(root.querySelector('.rtx-trade-chip--volume')?.textContent).toBe(`${side} 0.01`);
+    expect(root.querySelector<HTMLElement>('.rtx-trade-chip--volume')?.style.gap).toBe('4px');
+    expect(root.querySelector<HTMLElement>('.rtx-trade-chip--money')?.style.gap).toBe('4px');
+    expect(root.querySelector<HTMLElement>('.rtx-trade-primary')?.style.gap).toBe('7px');
     expect(root.querySelector<HTMLElement>('.rtx-trade-chip--pips')?.style.display).toBe('none');
     setLiveMetrics(10, 1.75);
     expect(root.querySelector('.rtx-trade-chip--money')?.textContent).toBe('+1.75 EUR');
@@ -336,9 +339,10 @@ describe('createEntryTradeControlBar', () => {
     const reverse = root.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--reverse')!;
     const close = root.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--close')!;
 
-    expect(primary).toHaveStyle({ borderTopColor: 'rgba(0, 0, 0, 0)', borderLeftColor: '#4b5563', backgroundColor: '#191a1e' });
+    expect(primary).toHaveStyle({ borderTopColor: 'rgba(0, 0, 0, 0)', borderLeftColor: 'rgba(0, 0, 0, 0)', backgroundColor: '#191a1e' });
     expect(secondary).toHaveStyle({ borderTopColor: 'rgba(0, 0, 0, 0)', backgroundColor: '#191a1e' });
-    expect(volume).toHaveStyle({ backgroundColor: '#233143', color: '#dbeafe' });
+    expect(volume).toHaveStyle({ backgroundColor: '#191a1e', color: '#72b0ff' });
+    expect(textContrast(volume.style.color, volume.style.backgroundColor)).toBeGreaterThanOrEqual(7);
     expect(reverse).toHaveStyle({ color: '#f4f4f6' });
     expect(close).toHaveStyle({ color: '#e5e7eb' });
     reverse.dispatchEvent(new MouseEvent('mouseenter'));
