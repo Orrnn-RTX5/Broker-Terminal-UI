@@ -18,6 +18,11 @@ import {
   onCommittedBrokerAccountSessionScopeChange,
 } from '../services/brokerSession';
 import {
+  clearCachedAccountSessions,
+  forgetAccountSession,
+  rememberAccountSession,
+} from '../services/accountSessionCache';
+import {
   areCanonicalUpstreamTicksEqual,
   coalesceFreshestTickEntries,
   compareCanonicalTickFreshness,
@@ -817,6 +822,16 @@ export const useAppStore = create<AppState>()(
             };
           });
           commitBrokerAccountSessionScope(nextSessionScope);
+          if (isAuth && accountId && authToken) {
+            rememberAccountSession({
+              brokerId: nextSessionScope.brokerId,
+              serverUrl: nextSessionScope.serverUrl,
+              login: accountId,
+              authToken,
+              refreshToken: refreshToken || undefined,
+              expiresAt: expiresAt || undefined,
+            });
+          }
           if (sessionChangeReason) emitSessionChange(sessionChangeReason);
         },
 
@@ -837,6 +852,18 @@ export const useAppStore = create<AppState>()(
               tokenExpiresAt: expiresAt !== undefined ? expiresAt : state.tokenExpiresAt
             };
           });
+          const currentState = useAppStore.getState();
+          const committedScope = getCommittedBrokerAccountSessionScope();
+          if (currentState.isRefreshing && currentState.isAuthenticated && currentState.accountId && authToken) {
+            rememberAccountSession({
+              brokerId: committedScope.brokerId,
+              serverUrl: committedScope.serverUrl,
+              login: currentState.accountId,
+              authToken,
+              refreshToken: refreshToken !== undefined ? refreshToken : currentState.refreshToken,
+              expiresAt: expiresAt !== undefined ? expiresAt : currentState.tokenExpiresAt,
+            });
+          }
           // FIX: Token refresh must rotate every socket, not only notify API
           // consumers through the browser event.
           if (tokenRotated) emitSessionChange('token_rotation');
@@ -1061,7 +1088,13 @@ export const useAppStore = create<AppState>()(
         addSavedAccount: (account) =>
           set((state) => ({ savedAccounts: upsertSavedAccount(state.savedAccounts, account) })),
 
-        removeSavedAccount: (login, server, identity) =>
+        removeSavedAccount: (login, server, identity) => {
+          const scope = getCommittedBrokerAccountSessionScope();
+          forgetAccountSession({
+            brokerId: identity?.brokerId || scope.brokerId,
+            serverUrl: identity?.serverUrl || scope.serverUrl,
+            login,
+          });
           set((state) => ({
             savedAccounts: state.savedAccounts.filter((a) => (
               a.login !== login || (server !== undefined && a.server !== server)
@@ -1069,7 +1102,8 @@ export const useAppStore = create<AppState>()(
                 a.brokerId !== identity.brokerId || a.serverUrl !== identity.serverUrl
               ))
             ))
-          })),
+          }));
+        },
 
         setActiveAccount: (login) => {
           let accountChanged = false;
@@ -1133,6 +1167,7 @@ export const useAppStore = create<AppState>()(
 
         reset: () => {
           resetMarkedClosedPositions();
+          clearCachedAccountSessions();
           closedPositionTickets.clear();
           closedPositionScope = '';
           set((state) => ({ ...initialState, savedAccounts: state.savedAccounts }));

@@ -33,17 +33,17 @@ export const getChartGridRenderingOptions = (
     squareVisible,
     fixedGrid: {
       visible: squareVisible,
-      ...(settings.showBackgroundLogo !== undefined
+      ...(settings.showBackgroundLogo !== undefined || settings.backgroundLogoMode !== undefined
         ? {
-            showBackgroundLogo: settings.showBackgroundLogo && settings.backgroundLogoMode !== 'none',
+            showBackgroundLogo: settings.showBackgroundLogo !== false && settings.backgroundLogoMode !== 'none',
             ...(settings.backgroundLogoOpacity !== undefined
               ? { backgroundLogoOpacity: settings.backgroundLogoOpacity }
               : {}),
             ...(customLogoSrc ? { backgroundLogoSrc: customLogoSrc } : {}),
-            ...(colors.background !== undefined
-              ? { isLightBackground: isLightChartBackground(colors.background) }
-              : {}),
           }
+        : {}),
+      ...(colors.background !== undefined
+        ? { isLightBackground: isLightChartBackground(colors.background) }
         : {}),
       lineStyle: settings.gridLineStyle,
       profile: settings.gridType === 'mt5' ? 'fine' : 'square',

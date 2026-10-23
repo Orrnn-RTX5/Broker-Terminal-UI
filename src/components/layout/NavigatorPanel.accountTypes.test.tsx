@@ -1,7 +1,7 @@
 import React from 'react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NavigatorPanel } from './NavigatorPanel';
 import { useAppStore, type SavedAccount } from '../../store/useAppStore';
@@ -88,5 +88,82 @@ describe('Navigator account type icons', () => {
       expect(css).toContain(`[data-account-type="${type}"] { color: var(--navigator-account-${type}); }`);
     }
     expect(css).toContain('[data-active="true"] { opacity: 1; }');
+  });
+
+  it('groups demo-created and credential-login accounts under one broker node and styles non-connected accounts in grey', () => {
+    const brokerId = 'alpha-broker';
+    const serverUrl = 'https://alpha.example';
+    localStorage.setItem('broker_id', brokerId);
+    localStorage.setItem('broker_name', 'Alpha');
+    localStorage.setItem('server_url', serverUrl);
+    useAppStore.setState({
+      isAuthenticated: true,
+      accountId: '200003',
+      savedAccounts: [
+        { login: 200003, name: 'demo acc1', server: 'Alpha', brokerId, serverUrl, accountType: 'demo', isLive: false, lastUsed: 2 },
+        { login: 200091, name: 'Demo Trader', server: 'alpha-broker', brokerId, serverUrl, accountType: 'demo', isLive: false, lastUsed: 1 },
+      ],
+    });
+    commitBrokerAccountSessionScope({ authenticated: true, accountId: '200003', brokerId, serverUrl });
+    render(<NavigatorPanel />);
+
+    expect(screen.getAllByText('Alpha')).toHaveLength(1);
+    const activeRow = screen.getByText('200003: demo acc1').closest('.navigator-tree-item__row')!;
+    const inactiveRow = screen.getByText('200091: Demo Trader').closest('.navigator-tree-item__row')!;
+    expect(activeRow).toHaveAttribute('data-account-active', 'true');
+    expect(inactiveRow).toHaveAttribute('data-account-active', 'false');
+    expect(within(activeRow as HTMLElement).getByRole('img', { name: 'Demo account' })).toHaveAttribute('data-active', 'true');
+    expect(within(inactiveRow as HTMLElement).getByRole('img', { name: 'Demo account' })).toHaveAttribute('data-active', 'false');
+    expect(css).toContain('.navigator-panel .navigator-account-icon[data-active="false"]');
+    expect(css).toContain('color: var(--navigator-account-inactive, #71717a);');
+  });
+
+  it('switches between authenticated demo and real accounts on double-click without requiring login again', () => {
+    const brokerId = 'alpha-broker';
+    const serverUrl = 'https://alpha.example';
+    localStorage.setItem('broker_id', brokerId);
+    localStorage.setItem('broker_name', 'Alpha');
+    localStorage.setItem('server_url', serverUrl);
+    localStorage.setItem('rtx_broker_server', 'Alpha');
+
+    useAppStore.getState().setAuthenticated(true, '200003', 'token-demo-200003', 'refresh-200003', Date.now() + 3600_000, {
+      login: 200003,
+      name: 'Demo Trader',
+      server: 'Alpha',
+      brokerId,
+      serverUrl,
+      accountType: 'demo',
+      isLive: false,
+      lastUsed: 1,
+    });
+    useAppStore.getState().setAuthenticated(true, '200091', 'token-real-200091', 'refresh-200091', Date.now() + 3600_000, {
+      login: 200091,
+      name: 'Real Trader',
+      server: 'Alpha',
+      brokerId,
+      serverUrl,
+      accountType: 'real',
+      isLive: true,
+      lastUsed: 2,
+    });
+
+    render(<NavigatorPanel />);
+
+    const demoRow = screen.getByText('200003: Demo Trader').closest('.navigator-tree-item__row')!;
+    const realRow = screen.getByText('200091: Real Trader').closest('.navigator-tree-item__row')!;
+    expect(demoRow).toHaveAttribute('data-account-active', 'false');
+    expect(realRow).toHaveAttribute('data-account-active', 'true');
+
+    fireEvent.doubleClick(demoRow);
+    expect(useAppStore.getState().accountId).toBe('200003');
+    expect(useAppStore.getState().authToken).toBe('token-demo-200003');
+    expect(screen.getByText('200003: Demo Trader').closest('.navigator-tree-item__row')).toHaveAttribute('data-account-active', 'true');
+    expect(screen.getByText('200091: Real Trader').closest('.navigator-tree-item__row')).toHaveAttribute('data-account-active', 'false');
+
+    fireEvent.doubleClick(screen.getByText('200091: Real Trader').closest('.navigator-tree-item__row')!);
+    expect(useAppStore.getState().accountId).toBe('200091');
+    expect(useAppStore.getState().authToken).toBe('token-real-200091');
+    expect(screen.getByText('200091: Real Trader').closest('.navigator-tree-item__row')).toHaveAttribute('data-account-active', 'true');
+    expect(screen.getByText('200003: Demo Trader').closest('.navigator-tree-item__row')).toHaveAttribute('data-account-active', 'false');
   });
 });

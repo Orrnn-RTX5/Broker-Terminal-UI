@@ -32,6 +32,12 @@ const watermarkImageCache = new Map<string, HTMLImageElement>();
 const lightWatermarkCanvasCache = new Map<string, HTMLCanvasElement>();
 const watermarkLoadListeners = new Set<() => void>();
 
+export const isDefaultBrandWatermarkSrc = (customSrc?: string): boolean => {
+  const trimmed = customSrc?.trim();
+  if (!trimmed) return true;
+  return /(?:^|\/)brand\/rtx5-chart-watermark\.png(?:[?#].*)?$/i.test(trimmed);
+};
+
 const resolveDefaultWatermarkUrl = (): string => {
   if (typeof document !== 'undefined' && document.baseURI) {
     try {
@@ -84,18 +90,20 @@ const getLightTintedWatermarkSource = (
     for (let i = 0; i < data.length; i += 4) {
       const a = data[i + 3]!;
       if (a === 0) continue;
-      const r = data[i]!;
       const g = data[i + 1]!;
       const b = data[i + 2]!;
-      // Keep the green '5' accent, tint white 'X' wings to slate for light backgrounds
-      if (g - b > 30) {
-        data[i] = 101;
-        data[i + 1] = 163;
-        data[i + 2] = 13;
-      } else if (r > 200 && g > 200 && b > 200) {
-        data[i] = 15;
-        data[i + 1] = 23;
-        data[i + 2] = 42;
+      // Keep the green '5' accent vivid against light chart surfaces while
+      // softening the slate 'X' wings so the watermark stays balanced.
+      if (g - b > 24) {
+        data[i] = 56;
+        data[i + 1] = 142;
+        data[i + 2] = 20;
+        data[i + 3] = a;
+      } else {
+        data[i] = 51;
+        data[i + 1] = 65;
+        data[i + 2] = 85;
+        data[i + 3] = Math.round(a * 0.62);
       }
     }
     ctx.putImageData(imageData, 0, 0);
