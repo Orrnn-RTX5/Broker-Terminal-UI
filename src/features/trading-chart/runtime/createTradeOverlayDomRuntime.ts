@@ -288,8 +288,8 @@ export const createTradeOverlayDomRuntime = ({
       if (options.role) line.dataset.role = options.role;
       const lineColor = options.lineColor ?? color;
       const lineWidth = options.lineWidthPx ?? 1;
-      const lineOpacity = options.role === 'SL' || options.role === 'TP' ? 0.68 : 0.92;
-      line.style.cssText = `position:absolute;display:none;height:0;border-top:${lineWidth}px dashed ${lineColor};transform:scaleY(0.75);transform-origin:top left;z-index:12;pointer-events:none;opacity:${lineOpacity};`;
+      const lineOpacity = options.role === 'SL' || options.role === 'TP' ? 0.9 : 1;
+      line.style.cssText = `position:absolute;display:none;height:0;border-top:${lineWidth}px dashed ${lineColor};z-index:12;pointer-events:none;opacity:${lineOpacity};`;
       appendOverlayNode(line, { kind: 'horizontal-line', price }, 'active');
 
       if (options.tradeKey && options.role) {
@@ -420,15 +420,20 @@ export const createTradeOverlayDomRuntime = ({
       badge.dataset.tradeAxisKey = key;
       badge.textContent = seriesRef.current.priceFormatter().format(price);
       const lightSurface = isChartSurfaceLight();
-      const background = chartThemeRef.current.background ?? (lightSurface ? '#fafbfc' : '#000000');
       const lightEntryColors: Record<string, string> = {
         [TRADE_ENTRY_LINE_BUY_COLOR]: LIGHT_CHART_TRADE_COLORS.buy,
         [TRADE_ENTRY_LINE_SELL_COLOR]: LIGHT_CHART_TRADE_COLORS.sell,
       };
       const axisColor = lightSurface ? (lightEntryColors[color] ?? color) : color;
-      badge.style.cssText = `position:absolute;display:none;right:0;height:20px;align-items:center;justify-content:flex-end;padding:0 6px;box-sizing:border-box;border:1px solid ${axisColor};border-radius:3px;background-color:${background};color:${axisColor};font-family:${CHART_AXIS_FONT_FAMILY};font-size:14px;font-weight:500;line-height:18px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;transform:translateY(-50%);pointer-events:none;z-index:8;`;
-      badge.style.setProperty('--rtx-type-size', '14px');
-      badge.style.setProperty('--rtx-type-weight', '500');
+      const background = lightSurface
+        ? (chartThemeRef.current.background ?? '#fafbfc')
+        : '#141821';
+      const backgroundImage = lightSurface
+        ? 'none'
+        : `linear-gradient(${colorWithAlpha(axisColor, 0.24, '#141821')}, ${colorWithAlpha(axisColor, 0.24, '#141821')})`;
+      badge.style.cssText = `position:absolute;display:none;right:0;height:18px;align-items:center;justify-content:flex-end;padding:0 6px;box-sizing:border-box;border:1px solid ${axisColor};border-radius:3px;background-color:${background};background-image:${backgroundImage};color:${axisColor};font-family:${CHART_AXIS_FONT_FAMILY};font-size:12px;font-weight:600;line-height:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;transform:translateY(-50%);pointer-events:none;z-index:8;`;
+      badge.style.setProperty('--rtx-type-size', '12px');
+      badge.style.setProperty('--rtx-type-weight', '600');
       badge.style.setProperty('--rtx-type-family', CHART_AXIS_FONT_FAMILY);
       appendActiveInteractionNode(badge, { kind: 'axis-price-badge', price });
     };
@@ -609,7 +614,7 @@ export const createTradeOverlayDomRuntime = ({
       });
       controlBar.root.dataset.entryPrice = String(trade.entryPrice);
       bindChartUiTranslation(controlBar.root, () => { controlBar.root.title = getLocalizedTradeTitle(trade); });
-      // Entry controls retain their actual price for placement above the line.
+      // Entry controls retain their actual price for placement centered on the line.
       appendTradeControls(controlBar.root, trade.entryPrice);
 
       const refreshLiveMetrics = () => {
@@ -641,19 +646,27 @@ export const createTradeOverlayDomRuntime = ({
         const accent = role === 'TP'
           ? (lightSurface ? LIGHT_CHART_TRADE_COLORS.tp : DARK_CHART_TRADE_COLORS.tp)
           : (lightSurface ? LIGHT_CHART_TRADE_COLORS.sl : DARK_CHART_TRADE_COLORS.sl);
-        const restingBorderColor = `${accent}80`;
+        const restingBorderColor = `${accent}d9`;
         Object.assign(chip.style, {
           position: 'static', display: 'inline-flex', transform: 'none',
-          fontWeight: 'inherit', fontFamily: 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)', fontSize: 'inherit', letterSpacing: 'normal',
-          color: accent, padding: '0 4px', height: '17px', lineHeight: '15px', boxSizing: 'border-box',
+          fontWeight: '600', fontFamily: 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)', fontSize: '10.5px', letterSpacing: '0.02em',
+          color: accent, padding: '0 4px', height: '14px', lineHeight: '12px', boxSizing: 'border-box',
           minWidth: '22px', justifyContent: 'center', flex: '0 0 auto',
           backgroundColor: lightSurface
             ? (role === 'TP' ? '#e1f2ed' : '#fff0cc')
-            : (role === 'TP' ? '#21332f' : '#362f24'),
-          border: `1px solid ${restingBorderColor}`, borderRadius: '3px', textShadow: 'none',
+            : (role === 'TP' ? '#143825' : '#3b2814'),
+          border: `1px solid ${restingBorderColor}`, borderRadius: '2px', textShadow: 'none',
         });
-        chip.style.setProperty('--rtx-type-size', 'inherit');
-        chip.style.setProperty('--rtx-type-weight', 'inherit');
+        chip.style.setProperty('--rtx-type-size', '10.5px');
+        chip.style.setProperty('--rtx-type-weight', '600');
+        const dragLabel = chip.querySelector<HTMLElement>('.rtx-trade-level-drag-label');
+        if (dragLabel) {
+          dragLabel.style.fontSize = '10.5px';
+          dragLabel.style.fontWeight = '600';
+          dragLabel.style.letterSpacing = '0.02em';
+          dragLabel.style.setProperty('--rtx-type-size', '10.5px');
+          dragLabel.style.setProperty('--rtx-type-weight', '600');
+        }
         chip.addEventListener('mouseenter', () => {
           chip.style.borderColor = accent;
           chip.style.borderStyle = 'solid';
@@ -752,7 +765,7 @@ export const createTradeOverlayDomRuntime = ({
         chartBackground: chartThemeRef.current.background,
         onHoverChange: active => {
           for (const node of levelNodes) {
-            if (node.classList.contains('rtx-trade-level-line')) node.style.opacity = active ? '1' : '0.68';
+            if (node.classList.contains('rtx-trade-level-line')) node.style.opacity = active ? '1' : '0.9';
           }
         },
         isLightSurface: lightSurface,

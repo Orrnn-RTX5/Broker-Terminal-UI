@@ -2152,5 +2152,19 @@
   "Dark Theme Accent": "Dark Theme Accent",
   "Appearance & Theme Settings": "Appearance & Theme Settings",
   "Appearance & Themes": "Appearance & Themes",
-  "Close appearance settings": "Close appearance settings"
+  "Close appearance settings": "Close appearance settings",
+  "Hide Background Logo": "배경 로고 숨기기",
+  "Show Background Logo": "배경 로고 표시",
+  "Background image": "배경 이미지",
+  "URL": "URL",
+  "Use default image URL": "기본 이미지 URL 사용",
+  "Local file": "로컬 파일",
+  "Choose file": "파일 선택",
+  "Opacity": "불투명도",
+  "Chart and axes": "차트 및 축",
+  "Apply changes to the default template": "기본 템플릿에 변경 사항 적용",
+  "Apply changes to all open charts": "열려 있는 모든 차트에 변경 사항 적용",
+  "Share position": "포지션 공유",
+  "Reverse position": "포지션 반전",
+  "Double position": "포지션 두 배"
 }

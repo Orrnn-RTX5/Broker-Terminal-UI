@@ -30,6 +30,7 @@ vi.mock('../../api/client', () => ({
 vi.mock('../../config/api', () => ({
     BROKER_DISCOVERY_URL: 'https://directory.test',
     normalizeBrokerServerUrl: (value: string) => value.replace(/\/$/, ''),
+    toLocalDevProxyUrl: (value: string) => value,
     updateDynamicUrls: mocks.updateDynamicUrls,
 }));
 

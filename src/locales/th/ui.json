@@ -2152,5 +2152,19 @@
   "Dark Theme Accent": "Dark Theme Accent",
   "Appearance & Theme Settings": "Appearance & Theme Settings",
   "Appearance & Themes": "Appearance & Themes",
-  "Close appearance settings": "Close appearance settings"
+  "Close appearance settings": "Close appearance settings",
+  "Hide Background Logo": "ซ่อนโลโก้พื้นหลัง",
+  "Show Background Logo": "แสดงโลโก้พื้นหลัง",
+  "Background image": "ภาพพื้นหลัง",
+  "URL": "URL",
+  "Use default image URL": "ใช้ URL รูปภาพเริ่มต้น",
+  "Local file": "ไฟล์ในเครื่อง",
+  "Choose file": "เลือกไฟล์",
+  "Opacity": "ความทึบแสง",
+  "Chart and axes": "กราฟและแกน",
+  "Apply changes to the default template": "ใช้การเปลี่ยนแปลงกับเทมเพลตเริ่มต้น",
+  "Apply changes to all open charts": "ใช้การเปลี่ยนแปลงกับกราฟที่เปิดอยู่ทั้งหมด",
+  "Share position": "แชร์โพซิชัน",
+  "Reverse position": "กลับด้านโพซิชัน",
+  "Double position": "เพิ่มโพซิชันเป็นสองเท่า"
 }

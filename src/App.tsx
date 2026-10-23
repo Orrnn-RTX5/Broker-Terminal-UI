@@ -861,7 +861,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
   const handleReversePosition = async (ticket: number) => {
     const position = (useAppStore.getState().positions as Position[])
-      .find((candidate) => Number(candidate.id) === ticket);
+      .find((candidate) => Number(candidate.id ?? (candidate as { ticket?: unknown }).ticket) === ticket);
     if (!position) return;
     const login = getLiveTradingLogin();
     if (!login) {
@@ -873,7 +873,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const actionKey = createSessionScopedTicketKey(operationContext.sessionScope, ticket);
     if (chartPositionActionBusyRef.current.has(actionKey)) return;
     const intentAtMs = captureTradeOrderIntent();
-    const reverseSide = position.side === 'BUY' ? 'sell' : 'buy';
+    const isBuySide = String(position.side ?? '').trim().toUpperCase() === 'BUY';
+    const reverseSide = isBuySide ? 'sell' : 'buy';
     const { symbol: positionSymbol, volume: positionVolume } = position;
     chartPositionActionBusyRef.current.add(actionKey);
     try {
@@ -890,13 +891,17 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       }, { intentAtMs });
       if (!isTradeOperationContextCurrent(operationContext)) return;
       publishOrderFeedback(
-        [feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Completed'), feedbackValue(' · '), feedbackLabel(reverseSide.toUpperCase()), feedbackValue(` ${positionVolume} ${positionSymbol}`)],
+        [feedbackLabel('Position closed'), feedbackValue(` #${ticket} → `), feedbackLabel(reverseSide.toUpperCase()), feedbackValue(` ${positionVolume} ${positionSymbol}`)],
         'success',
       );
+      refreshPositions(login, { allowWsCommit: true });
+      refreshOrdersAndHistory(login).catch(err => console.error('[Trade] Failed to refresh orders/history after chart position action:', err));
       window.dispatchEvent(new Event('rtx:force-refresh-positions'));
     } catch (err) {
       console.error('[Chart] Reverse position failed:', err);
       publishOrderFeedback([feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Completed'), feedbackValue(' · '), feedbackLabel(reverseSide === 'buy' ? 'Buy Market' : 'Sell Market'), feedbackValue(': '), feedbackLabel('Order failed'), feedbackValue(` — ${formatOrderError(err)}`)]);
+      refreshPositions(login, { allowWsCommit: true });
+      refreshOrdersAndHistory(login).catch(err => console.error('[Trade] Failed to refresh orders/history after chart position action:', err));
       window.dispatchEvent(new Event('rtx:force-refresh-positions'));
     } finally {
       chartPositionActionBusyRef.current.delete(actionKey);
@@ -905,7 +910,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
   const handleDoublePosition = async (ticket: number) => {
     const position = (useAppStore.getState().positions as Position[])
-      .find((candidate) => Number(candidate.id) === ticket);
+      .find((candidate) => Number(candidate.id ?? (candidate as { ticket?: unknown }).ticket) === ticket);
     if (!position) return;
     const login = getLiveTradingLogin();
     if (!login) {
@@ -920,16 +925,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     chartPositionActionBusyRef.current.add(actionKey);
     try {
       await api.orders.placeMarketOrder({
-        side: position.side === 'SELL' ? 'sell' : 'buy',
+        side: String(position.side ?? '').trim().toUpperCase() === 'SELL' ? 'sell' : 'buy',
         symbol: position.symbol,
         volume: position.volume,
         login,
       }, { intentAtMs });
       if (!isTradeOperationContextCurrent(operationContext)) return;
       publishOrderFeedback(
-        [feedbackValue(`#${ticket} · `), feedbackLabel(position.side), feedbackValue(` +${position.volume} ${position.symbol} · `), feedbackLabel('Completed')],
+        [feedbackValue(`#${ticket} · `), feedbackLabel(position.side), feedbackValue(` +${position.volume} ${position.symbol}`)],
         'success',
       );
+      refreshPositions(login, { allowWsCommit: true });
+      refreshOrdersAndHistory(login).catch(err => console.error('[Trade] Failed to refresh orders/history after chart position action:', err));
       window.dispatchEvent(new Event('rtx:force-refresh-positions'));
     } catch (err) {
       console.error('[Chart] Double position failed:', err);

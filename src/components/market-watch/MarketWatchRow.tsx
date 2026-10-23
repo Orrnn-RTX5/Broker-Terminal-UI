@@ -131,6 +131,17 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   const hasDailyData = dailyPct !== null;
   const dailyAmount = readFiniteDailyChange(resolvedDisplayMetadata.dailyChangePrice)
     ?? (closedDailyChange != null && mayUseClosedDailyChange(resolvedDisplayMetadata) ? readFiniteDailyChange(readCurrentMarketWatchDailyChangePrice(symbol)) : null);
+  const showSeparateDailyChangePrice = columns.includes('dailyChangePrice');
+  const referenceCurrentPrice = bid > 0 ? bid : (lastClose && lastClose.close > 0 ? lastClose.close : 0);
+  const tickPreviousClose = readFiniteDailyChange(tick?.close);
+  const inlineDailyAmount = !showSeparateDailyChangePrice && hasDailyData
+    ? (dailyAmount
+      ?? (tickPreviousClose !== null && tickPreviousClose > 0 && bid > 0
+        ? bid - tickPreviousClose
+        : (referenceCurrentPrice > 0 && 100 + dailyPct > 0
+          ? referenceCurrentPrice - referenceCurrentPrice / (1 + dailyPct / 100)
+          : null)))
+    : null;
   const dailyTitle = (closedDailyChange != null && mayUseClosedDailyChange(resolvedDisplayMetadata) ? describeCurrentMarketWatchDailyChange(symbol) : dailyChangeDescription(resolvedDisplayMetadata.daily));
   const bidFlash = usePriceFlash(bid);
   const askFlash = usePriceFlash(ask);
@@ -193,8 +204,8 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
         aria-disabled={!isChartOpenable}
         title={!isChartOpenable ? tr('{{value0}} chart is currently unavailable', { value0: displaySymbol }) : undefined}
       >
-        <td style={{ padding: '3px 8px', whiteSpace: 'nowrap', maxWidth: 0 }}>
-          <div className="rtx-market-watch__symbol-content" style={{ display: 'flex', alignItems: 'center', columnGap: 5, minWidth: 0 }}>
+        <td style={{ padding: '3px 6px', whiteSpace: 'nowrap', maxWidth: 0 }}>
+          <div className="rtx-market-watch__symbol-content" style={{ display: 'flex', alignItems: 'center', columnGap: 3, minWidth: 0 }}>
             {hasData && bidDirection === 'up' && (
               <svg className="rtx-market-watch__direction rtx-market-watch__direction--up" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: MARKET_WATCH_QUOTE_UP_COLOR, opacity: quoteDataOpacity }}>
                 <path d="M2 8L8 2M3.5 2H8V6.5" stroke="currentColor" strokeWidth="1" />
@@ -210,7 +221,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
             )}
             <span aria-label={displaySymbol} className="rtx-market-watch__symbol" style={{
               flexShrink: 0,
-              maxWidth: 'calc(100% - 15px)',
+              maxWidth: 'calc(100% - 13px)',
               fontSize: 13,
               fontWeight: 500,
               color: 'var(--text-primary)',
@@ -342,7 +353,11 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
               letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',
             }}>
-              {hasDailyData ? formatDailyChange(dailyPct, 2, true) : <span style={{ color: '#50505a' }}>{!tick && !displayMetadata ? '…' : '—'}</span>}
+              {hasDailyData
+                ? (inlineDailyAmount !== null
+                  ? `${formatDailyChange(inlineDailyAmount, resolveDailyChangeDisplayDigits(symbol, tick?.digits ?? priceDigits))} (${formatDailyChange(dailyPct, 2, true)})`
+                  : formatDailyChange(dailyPct, 2, true))
+                : <span style={{ color: '#50505a' }}>{!tick && !displayMetadata ? '…' : '—'}</span>}
             </span>
           </td>
         )}

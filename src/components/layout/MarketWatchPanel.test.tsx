@@ -196,10 +196,10 @@ describe('MarketWatchPanel symbol visibility', () => {
       expect(screen.queryByRole('columnheader', { name: 'Spread' })).not.toBeInTheDocument();
 
       const btcCells = Array.from(screen.getByText('BTCUSD').closest('tr')!.querySelectorAll('td'));
-      expect(btcCells.at(-1)).toHaveTextContent('+0.19%');
+      expect(btcCells.at(-1)).toHaveTextContent('+123.27 (+0.19%)');
 
-      const positiveChange = screen.getByText('+0.19%');
-      const negativeChange = screen.getByText('-0.36%');
+      const positiveChange = screen.getByText('+123.27 (+0.19%)');
+      const negativeChange = screen.getByText('-8.67 (-0.36%)');
       expect(screen.queryByText('0.19%')).not.toBeInTheDocument();
       expect(positiveChange).toHaveClass('rtx-market-watch__daily--up');
       expect(positiveChange).toHaveStyle({ color: 'var(--color-quote-up)' });

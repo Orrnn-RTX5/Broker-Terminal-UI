@@ -35,4 +35,20 @@ describe('chart grid type selection', () => {
     expect(options.nativeGrid.vertLines.visible).toBe(false);
     expect(options.nativeGrid.horzLines.visible).toBe(false);
   });
+
+  it('forwards showBackgroundLogo and theme lightness to the bottom-layer primitive options', () => {
+    const darkLogoOn = getChartGridRenderingOptions(
+      { gridType: 'square', gridLineStyle: 'dashed', showGrid: false, showBackgroundLogo: true },
+      { ...colors, background: '#000000' },
+    );
+    expect(darkLogoOn.fixedGrid.showBackgroundLogo).toBe(true);
+    expect(darkLogoOn.fixedGrid.isLightBackground).toBe(false);
+
+    const lightLogoOff = getChartGridRenderingOptions(
+      { gridType: 'square', gridLineStyle: 'dashed', showGrid: true, showBackgroundLogo: false },
+      { ...colors, background: '#fafbfc' },
+    );
+    expect(lightLogoOff.fixedGrid.showBackgroundLogo).toBe(false);
+    expect(lightLogoOff.fixedGrid.isLightBackground).toBe(true);
+  });
 });

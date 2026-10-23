@@ -263,15 +263,21 @@ describe('createEntryTradeControlBar', () => {
     for (const action of ['share', 'reverse', 'double', 'close']) {
       const button = root.querySelector<HTMLButtonElement>(`.rtx-trade-control-btn--${action}`)!;
       expect(button.querySelector('svg')?.getAttribute('stroke')).toBe('currentColor');
-      expect(button).toHaveStyle({ width: '19px', height: '19px' });
+      expect(button).toHaveStyle({ width: '16px', height: '16px' });
       button.click();
     }
     const capsule = root.querySelector('.rtx-trade-primary')!;
+    const reversePath = root.querySelector('.rtx-trade-control-btn--reverse svg path')?.getAttribute('d');
+    expect(reversePath).toBe('M3.5 13V7.6a3.6 3.6 0 0 1 7.2 0v3.6M8.5 9l2.2 2.4L12.9 9');
+    expect(root.style.getPropertyValue('--rtx-type-size')).toBe('max(12px, calc(var(--rtx-ui-font-size, 14px) - 2px))');
+    expect(root.style.getPropertyValue('--rtx-trade-entry-weight')).toBe('400');
+    expect(root.querySelector<HTMLElement>('.rtx-trade-side-label')?.style.getPropertyValue('--rtx-type-weight')).toBe('600');
+    expect(root.querySelector<HTMLElement>('.rtx-trade-chip--money .rtx-trade-chip-value')?.style.getPropertyValue('--rtx-type-weight')).toBe('600');
     expect(capsule.querySelector('.rtx-trade-chip--volume')).not.toBeNull();
     expect(capsule.querySelector('.rtx-trade-chip--money')).not.toBeNull();
     expect(capsule.lastElementChild).toBe(root.querySelector('.rtx-trade-control-btn--close'));
-    expect(capsule).toHaveStyle({ height: '21px' });
-    expect(root).toHaveStyle({ minHeight: '21px', flexWrap: 'wrap' });
+    expect(capsule).toHaveStyle({ height: '18px' });
+    expect(root).toHaveStyle({ minHeight: '18px', flexWrap: 'wrap' });
     expect(root.querySelector('.rtx-trade-brackets')).not.toBeNull();
     expect(onShare).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls.map(([action]) => action)).toEqual(['reverse', 'double', 'close']);
@@ -534,7 +540,7 @@ describe('createTradeLevelControlBar', () => {
     expect(dragLabels[0]).toHaveTextContent(role);
     expect(dragLabels[0].className).toBe('rtx-trade-level-drag-label');
     const remove = bar.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--remove')!;
-    expect(remove).toHaveStyle({ width: '24px', height: '24px' });
+    expect(remove).toHaveStyle({ width: '16px', height: '16px' });
     expect(remove).not.toBeNull();
     remove.click();
     expect(onRemove).toHaveBeenCalledTimes(1);

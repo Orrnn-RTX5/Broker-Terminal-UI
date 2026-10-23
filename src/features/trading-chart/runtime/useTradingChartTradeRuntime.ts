@@ -700,7 +700,6 @@ export const useTradingChartTradeRuntime = ({
         );
         return {
           key, anchorY, width, height,
-          placement: element.dataset.role === 'ENTRY' ? 'above' as const : undefined,
           preferredLeft: element.dataset.align === 'right'
             ? plotWidth - width - 16
             : Number.parseFloat(element.dataset.leftInset ?? '') || 16,
@@ -709,9 +708,9 @@ export const useTradingChartTradeRuntime = ({
       const placements = layoutTradeControls(inputs, plotWidth);
       for (const placement of placements) {
         const element = controlNodes.get(placement.key)!.element;
-        element.style.left = `${placement.left}px`;
+        element.style.left = `${snapCssPixel(placement.left)}px`;
         element.style.right = 'auto';
-        element.style.top = `${placement.top + placement.height / 2}px`;
+        element.style.top = `${snapCssPixel(placement.top + placement.height / 2)}px`;
         element.dataset.priceAnchorOffsetY = String(placement.offsetY);
         element.dataset.priceAnchorY = String(placement.anchorY);
       }

@@ -264,4 +264,28 @@ describe('ChartContextMenu grid choices', () => {
       useTemplateStore.setState(initial);
     }
   });
+
+  it('shows and toggles the chart background logo from the right-click context menu', async () => {
+    const onToggleBackgroundLogo = vi.fn();
+    const onOpenBackgroundImage = vi.fn();
+    const { onClose } = renderMenu('line', {
+      showBackgroundLogo: true,
+      onToggleBackgroundLogo,
+      onOpenBackgroundImage,
+    });
+    const hideItem = screen.getByRole('menuitemcheckbox', { name: 'Hide Background Logo' });
+    expect(hideItem).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(hideItem);
+    expect(onClose).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onToggleBackgroundLogo).toHaveBeenCalledOnce());
+
+    cleanup();
+    renderMenu('line', { showBackgroundLogo: false, onToggleBackgroundLogo, onOpenBackgroundImage });
+    const showItem = screen.getByRole('menuitemcheckbox', { name: 'Show Background Logo' });
+    expect(showItem).toHaveAttribute('aria-checked', 'false');
+
+    const bgImageItem = screen.getByRole('menuitem', { name: 'Background image' });
+    fireEvent.click(bgImageItem);
+    await waitFor(() => expect(onOpenBackgroundImage).toHaveBeenCalledOnce());
+  });
 });

@@ -5,6 +5,8 @@ export type ChartTypeEnum = "Bar" | "Candlesticks" | "Line" | "Area";
 export type ChartGridLineStyle = "dashed" | "solid";
 // The legacy persisted id "mt5" identifies the user-facing Fine grid.
 export type ChartGridType = "square" | "scale" | "mt5";
+export type ChartBackgroundLogoMode = "none" | "default" | "url" | "file";
+export type ChartBackgroundLogoArea = "chart" | "chart_and_axes";
 export type ColorScheme =
   | "Green on Black"
   | "Green and White"
@@ -46,6 +48,13 @@ export interface ChartProperties {
   showLastPriceLine: boolean;
   showPeriodSeparators: boolean;
   showGrid: boolean;
+  showBackgroundLogo: boolean;
+  backgroundLogoMode?: ChartBackgroundLogoMode;
+  backgroundLogoOpacity?: number;
+  backgroundLogoArea?: ChartBackgroundLogoArea;
+  backgroundLogoUrl?: string;
+  backgroundLogoFileName?: string;
+  backgroundLogoFileDataUrl?: string;
   gridType: ChartGridType;
   gridLineStyle: ChartGridLineStyle;
   showTickVolumes: boolean;
@@ -166,6 +175,13 @@ export const defaultChartProperties: ChartProperties = {
   showLastPriceLine: false,
   showPeriodSeparators: true,
   showGrid: true,
+  showBackgroundLogo: true,
+  backgroundLogoMode: "default",
+  backgroundLogoOpacity: 18,
+  backgroundLogoArea: "chart",
+  backgroundLogoUrl: "",
+  backgroundLogoFileName: "",
+  backgroundLogoFileDataUrl: "",
   gridType: "square",
   gridLineStyle: "dashed",
   showTickVolumes: false,
@@ -272,6 +288,7 @@ export const normalizeChartProperties = (properties?: PersistedChartProperties |
     ...defaultChartProperties,
     ...(properties ?? {}),
     colorScheme,
+    showBackgroundLogo: properties?.showBackgroundLogo ?? defaultChartProperties.showBackgroundLogo,
     gridType: properties?.gridType === "scale" || properties?.gridType === "mt5" ? properties.gridType : "square",
     gridLineStyle: properties?.gridLineStyle === "solid" ? "solid" : "dashed",
     showTradeHistoryBoxes: properties?.showTradeHistoryBoxes ?? defaultChartProperties.showTradeHistoryBoxes,

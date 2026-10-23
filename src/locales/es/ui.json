@@ -2152,5 +2152,19 @@
   "Dark Theme Accent": "Dark Theme Accent",
   "Appearance & Theme Settings": "Appearance & Theme Settings",
   "Appearance & Themes": "Appearance & Themes",
-  "Close appearance settings": "Close appearance settings"
+  "Close appearance settings": "Close appearance settings",
+  "Hide Background Logo": "Ocultar logotipo de fondo",
+  "Show Background Logo": "Mostrar logotipo de fondo",
+  "Background image": "Imagen de fondo",
+  "URL": "URL",
+  "Use default image URL": "Usar URL de imagen predeterminada",
+  "Local file": "Archivo local",
+  "Choose file": "Elegir archivo",
+  "Opacity": "Opacidad",
+  "Chart and axes": "Gráfico y ejes",
+  "Apply changes to the default template": "Aplicar cambios a la plantilla predeterminada",
+  "Apply changes to all open charts": "Aplicar cambios a todos los gráficos abiertos",
+  "Share position": "Compartir posición",
+  "Reverse position": "Invertir posición",
+  "Double position": "Duplicar posición"
 }

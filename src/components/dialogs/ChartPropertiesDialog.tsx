@@ -34,6 +34,7 @@ const showOptions = [
   { key: 'showLastPriceLine', label: 'Show last price line' },
   { key: 'showPeriodSeparators', label: 'Show period separators' },
   { key: 'showGrid', label: 'Show grid' },
+  { key: 'showBackgroundLogo', label: 'Show background logo' },
   { key: 'showTickVolumes', label: 'Show tick volumes' },
   { key: 'showRealVolumes', label: 'Show real volumes' },
   { key: 'showTradeLevels', label: 'Show trade levels' },
@@ -50,6 +51,7 @@ const showOptions = [
     | 'showLastPriceLine'
     | 'showPeriodSeparators'
     | 'showGrid'
+    | 'showBackgroundLogo'
     | 'showTickVolumes'
     | 'showRealVolumes'
     | 'showTradeLevels'

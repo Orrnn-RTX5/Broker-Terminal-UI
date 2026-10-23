@@ -18,7 +18,7 @@ import {
     Activity, AlignJustify, Volume2, Layers,
     Trash2, FileText, TrendingUp,
     ArrowUpDown, Type, Shapes, MoveHorizontal, MoveVertical,
-    Eye, EyeOff,
+    Eye, EyeOff, Image as ImageIcon,
 } from 'lucide-react';
 
 interface ChartContextMenuProps {
@@ -40,6 +40,7 @@ interface ChartContextMenuProps {
     showTradeHistory?: boolean;
     showTradeHistoryLine?: boolean;
     showOHLC?: boolean;
+    showBackgroundLogo?: boolean;
     onChangeChartType: (type: ChartType) => void;
     onChangeTimeframe: (tf: Timeframe) => void;
     onToggleOneClickTrading: () => void;
@@ -53,6 +54,8 @@ interface ChartContextMenuProps {
     onToggleTradeHistory?: () => void;
     onToggleTradeHistoryLine?: () => void;
     onToggleOHLC?: () => void;
+    onToggleBackgroundLogo?: () => void;
+    onOpenBackgroundImage?: () => void;
     onOpenProperties: () => void;
     onSaveAsPicture: () => void;
     onPrintChart: () => void;
@@ -396,6 +399,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     showTradeHistory = true,
     showTradeHistoryLine = true,
     showOHLC = true,
+    showBackgroundLogo = true,
     onChangeChartType,
     onChangeTimeframe,
     onToggleOneClickTrading,
@@ -409,6 +413,8 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     onToggleTradeHistory,
     onToggleTradeHistoryLine,
     onToggleOHLC,
+    onToggleBackgroundLogo,
+    onOpenBackgroundImage,
     onOpenProperties,
     onSaveAsPicture,
     onRefresh,
@@ -903,6 +909,16 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 onClick={() => closeThen(() => { onToggleOHLC?.(); })}
             />
 
+            {/* ── Background Logo ── */}
+            <MenuItem
+                icon={showBackgroundLogo
+                    ? <Eye size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />
+                    : <EyeOff size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
+                label={showBackgroundLogo ? tr("Hide Background Logo") : tr("Show Background Logo")}
+                checked={showBackgroundLogo}
+                onClick={() => closeThen(() => { onToggleBackgroundLogo?.(); })}
+            />
+
             <MenuSeparator />
 
             {/* ── Zoom ── */}
@@ -928,6 +944,19 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             />
 
             <MenuSeparator />
+
+            {/* ── Background image (cTrader modal dialog) ── */}
+            <MenuItem
+                icon={<ImageIcon size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
+                label={tr("Background image")}
+                onClick={() => closeThen(() => {
+                    if (onOpenBackgroundImage) {
+                        onOpenBackgroundImage();
+                    } else {
+                        onToggleBackgroundLogo?.();
+                    }
+                })}
+            />
 
             {/* ── Save as Picture ── */}
             <MenuItem

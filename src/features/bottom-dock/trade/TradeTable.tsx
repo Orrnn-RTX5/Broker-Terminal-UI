@@ -434,7 +434,7 @@ const TradeTableRow = memo(function TradeTableRow({
                 version: 1,
                 ticket: Number.isFinite(numericTicket) && numericTicket > 0 ? Math.floor(numericTicket) : 0,
                 symbol: symbolLabel,
-                timeframe: String(useAppStore.getState().selectedTimeframe || 'M1'),
+                timeframe: String(useAppStore.getState().timeframe || 'M1'),
                 side: normalizedSide,
                 volume: Number(position.volume) || 0,
                 entryPrice: Number.isFinite(rawOpenPrice) && rawOpenPrice > 0 ? rawOpenPrice : 0,

@@ -307,6 +307,70 @@ const sendProxyError = (res: ServerResponse, statusCode: number, message: string
   res.end(message)
 }
 
+const BROKER_PROXY_CONNECT_TIMEOUT_MS = 2_500
+const BROKER_PROXY_MAX_CONNECT_ATTEMPTS = 4
+
+const brokerHttpProxyAgent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 2,
+  maxFreeSockets: 2,
+  keepAliveMsecs: 1_000,
+})
+
+const brokerHttpsProxyAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 1,
+  maxFreeSockets: 1,
+  keepAliveMsecs: 1_000,
+})
+
+const brokerTlsHandshakeQueues = new Map<string, Promise<void>>()
+
+const serializeBrokerTlsHandshake = (host: string, connectTask: (release: () => void) => void): void => {
+  const key = host.toLowerCase()
+  const previous = brokerTlsHandshakeQueues.get(key) ?? Promise.resolve()
+  let releaseGate!: () => void
+  const gate = new Promise<void>((resolve) => {
+    releaseGate = resolve
+  })
+  const current = previous.then(() => gate)
+  brokerTlsHandshakeQueues.set(key, current)
+
+  void previous.then(() => {
+    let released = false
+    const release = () => {
+      if (released) return
+      released = true
+      releaseGate()
+      if (brokerTlsHandshakeQueues.get(key) === current) {
+        brokerTlsHandshakeQueues.delete(key)
+      }
+    }
+    connectTask(release)
+  })
+}
+
+const isRetriablePreResponseProxyError = (
+  error: unknown,
+  socketConnected: boolean,
+  reusedSocket: boolean,
+  method?: string,
+): boolean => {
+  const message = getErrorMessage(error)
+  if (message === 'BROKER_PROXY_CONNECT_TIMEOUT') return true
+  if (!socketConnected || reusedSocket) return true
+  const normalizedMethod = String(method || 'GET').toUpperCase()
+  const idempotent =
+    normalizedMethod === 'GET'
+    || normalizedMethod === 'HEAD'
+    || normalizedMethod === 'OPTIONS'
+    || normalizedMethod === 'PUT'
+    || normalizedMethod === 'DELETE'
+  if (!idempotent) return false
+  const code = getErrorCode(error)
+  return code === 'ECONNRESET' || code === 'EPIPE' || code === 'ETIMEDOUT' || /socket hang up/i.test(message)
+}
+
 const forwardRequest = (
   req: IncomingMessage,
   res: ServerResponse,
@@ -315,6 +379,7 @@ const forwardRequest = (
   onResponseBody?: (body: Buffer) => void
 ): void => {
   const transport = target.protocol === 'https:' ? https : http
+  const agent = target.protocol === 'https:' ? brokerHttpsProxyAgent : brokerHttpProxyAgent
   const headers = copyProxyHeaders(req.headers)
   if (onResponseBody) {
     for (const key of Object.keys(headers)) {
@@ -322,46 +387,160 @@ const forwardRequest = (
     }
   }
 
-  const requestOptions: http.RequestOptions & https.RequestOptions = {
-    protocol: target.protocol,
-    hostname: target.hostname,
-    port: target.port,
-    path: `${target.pathname}${target.search}`,
-    method: req.method,
-    headers,
-    ...createPinnedConnectionOptions(resolvedAddresses),
-    rejectUnauthorized: true,
-  }
+  const requestChunks: Buffer[] = []
+  let activeProxyReq: http.ClientRequest | null = null
+  let clientClosed = false
 
-  if (target.protocol === 'https:' && !isIP(target.hostname.replace(/^\[|\]$/g, ''))) {
-    requestOptions.servername = target.hostname
-  }
-
-  const proxyReq = transport.request(requestOptions, (proxyRes) => {
-    const responseHeaders = copyProxyHeaders(proxyRes.headers)
-    res.writeHead(proxyRes.statusCode || 502, proxyRes.statusMessage, responseHeaders)
-
-    if (!onResponseBody) {
-      proxyRes.pipe(res)
-      return
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      clientClosed = true
+      activeProxyReq?.destroy()
     }
-
-    const chunks: Buffer[] = []
-    proxyRes.on('data', (chunk: Buffer) => {
-      chunks.push(Buffer.from(chunk))
-    })
-    proxyRes.on('end', () => {
-      const body = Buffer.concat(chunks)
-      onResponseBody(body)
-      res.end(body)
-    })
   })
 
-  proxyReq.on('error', (error) => {
+  req.on('data', (chunk: Buffer) => {
+    requestChunks.push(Buffer.from(chunk))
+  })
+
+  req.on('error', (error) => {
     sendProxyError(res, 502, `Broker proxy request failed: ${error.message}`)
   })
 
-  req.pipe(proxyReq)
+  req.on('end', () => {
+    if (clientClosed) return
+    const requestBody = Buffer.concat(requestChunks)
+
+    const attemptForward = (attempt: number): void => {
+      if (clientClosed || res.headersSent || res.writableEnded) return
+
+      const runAttempt = (releaseHandshake: () => void): void => {
+        if (clientClosed || res.headersSent || res.writableEnded) {
+          releaseHandshake()
+          return
+        }
+
+        const requestOptions: http.RequestOptions & https.RequestOptions = {
+          protocol: target.protocol,
+          hostname: target.hostname,
+          port: target.port,
+          path: `${target.pathname}${target.search}`,
+          method: req.method,
+          headers,
+          agent,
+          ...createPinnedConnectionOptions(resolvedAddresses),
+          rejectUnauthorized: true,
+        }
+
+        if (target.protocol === 'https:' && !isIP(target.hostname.replace(/^\[|\]$/g, ''))) {
+          requestOptions.servername = target.hostname
+        }
+
+        let responseStarted = false
+        let socketConnected = false
+        let connectTimer: ReturnType<typeof setTimeout> | null = null
+        let settled = false
+
+        const clearConnectTimer = () => {
+          if (connectTimer !== null) {
+            clearTimeout(connectTimer)
+            connectTimer = null
+          }
+        }
+
+        const proxyReq = transport.request(requestOptions, (proxyRes) => {
+          responseStarted = true
+          socketConnected = true
+          clearConnectTimer()
+          releaseHandshake()
+
+          const responseHeaders = copyProxyHeaders(proxyRes.headers)
+          res.writeHead(proxyRes.statusCode || 502, proxyRes.statusMessage, responseHeaders)
+
+          if (!onResponseBody) {
+            proxyRes.pipe(res)
+            return
+          }
+
+          const chunks: Buffer[] = []
+          proxyRes.on('data', (chunk: Buffer) => {
+            chunks.push(Buffer.from(chunk))
+          })
+          proxyRes.on('end', () => {
+            const body = Buffer.concat(chunks)
+            onResponseBody(body)
+            res.end(body)
+          })
+        })
+
+        activeProxyReq = proxyReq
+
+        proxyReq.on('socket', (socket: Socket & { encrypted?: boolean }) => {
+          if (!socket.connecting) {
+            socketConnected = true
+            releaseHandshake()
+            return
+          }
+
+          connectTimer = setTimeout(() => {
+            if (!socketConnected && !responseStarted) {
+              releaseHandshake()
+              proxyReq.destroy(new Error('BROKER_PROXY_CONNECT_TIMEOUT'))
+            }
+          }, BROKER_PROXY_CONNECT_TIMEOUT_MS)
+
+          const markConnected = () => {
+            socketConnected = true
+            clearConnectTimer()
+            releaseHandshake()
+          }
+
+          const releaseOnSocketEnd = () => {
+            clearConnectTimer()
+            releaseHandshake()
+          }
+
+          if (target.protocol === 'https:') {
+            socket.once('secureConnect', markConnected)
+          } else {
+            socket.once('connect', markConnected)
+          }
+          socket.once('error', releaseOnSocketEnd)
+          socket.once('close', releaseOnSocketEnd)
+        })
+
+        proxyReq.on('error', (error) => {
+          clearConnectTimer()
+          releaseHandshake()
+          if (settled || clientClosed) return
+          settled = true
+
+          if (
+            !responseStarted
+            && attempt < BROKER_PROXY_MAX_CONNECT_ATTEMPTS
+            && isRetriablePreResponseProxyError(error, socketConnected, Boolean(proxyReq.reusedSocket), req.method)
+          ) {
+            attemptForward(attempt + 1)
+            return
+          }
+
+          sendProxyError(res, 502, `Broker proxy request failed: ${error.message}`)
+        })
+
+        if (requestBody.length > 0) {
+          proxyReq.write(requestBody)
+        }
+        proxyReq.end()
+      }
+
+      if (target.protocol === 'https:') {
+        serializeBrokerTlsHandshake(target.hostname, runAttempt)
+      } else {
+        runAttempt(() => {})
+      }
+    }
+
+    attemptForward(1)
+  })
 }
 
 const isBrokerDiscoveryResponse = (prefix: string, target: URL): boolean => {
@@ -404,13 +583,23 @@ const bridgeWebSocketUpgrade = (
   const connectionOptions = createPinnedConnectionOptions(resolvedAddresses)
 
   let outbound: Socket | null = null
+  let clientClosed = false
   const fail = () => {
+    clientClosed = true
     socket.destroy()
     outbound?.destroy()
   }
   socket.on('error', fail)
+  socket.on('close', () => {
+    clientClosed = true
+    outbound?.destroy()
+  })
 
   const startPiping = (out: Socket) => {
+    if (clientClosed || socket.destroyed) {
+      out.destroy()
+      return
+    }
     outbound = out
     out.on('error', fail)
     out.write(requestHead)
@@ -419,25 +608,113 @@ const bridgeWebSocketUpgrade = (
     out.pipe(socket)
   }
 
-  if (useTls) {
-    const tlsSocket = tls.connect(
-      {
-        host: target.hostname,
-        port,
-        servername: target.hostname,
-        rejectUnauthorized: true,
-        ...connectionOptions,
-      },
-      () => startPiping(tlsSocket),
-    )
-    tlsSocket.on('error', fail)
-  } else {
-    const netSocket = net.connect(
-      { host: target.hostname, port, ...connectionOptions },
-      () => startPiping(netSocket),
-    )
-    netSocket.on('error', fail)
+  const attemptUpgradeConnect = (attempt: number) => {
+    if (clientClosed || socket.destroyed) return
+
+    if (useTls) {
+      serializeBrokerTlsHandshake(target.hostname, (release) => {
+        if (clientClosed || socket.destroyed) {
+          release()
+          return
+        }
+
+        let connected = false
+        let attemptSettled = false
+        const tlsSocket = tls.connect(
+          {
+            host: target.hostname,
+            port,
+            servername: target.hostname,
+            rejectUnauthorized: true,
+            ...connectionOptions,
+          },
+          () => {
+            if (attemptSettled) return
+            connected = true
+            attemptSettled = true
+            clearTimeout(connectTimer)
+            release()
+            startPiping(tlsSocket)
+          },
+        )
+
+        const connectTimer = setTimeout(() => {
+          if (!connected && !attemptSettled) {
+            attemptSettled = true
+            release()
+            tlsSocket.destroy()
+            if (attempt < BROKER_PROXY_MAX_CONNECT_ATTEMPTS) {
+              attemptUpgradeConnect(attempt + 1)
+            } else {
+              fail()
+            }
+          }
+        }, BROKER_PROXY_CONNECT_TIMEOUT_MS)
+
+        tlsSocket.on('error', () => {
+          clearTimeout(connectTimer)
+          release()
+          if (connected) {
+            fail()
+            return
+          }
+          if (!attemptSettled) {
+            attemptSettled = true
+            tlsSocket.destroy()
+            if (attempt < BROKER_PROXY_MAX_CONNECT_ATTEMPTS) {
+              attemptUpgradeConnect(attempt + 1)
+            } else {
+              fail()
+            }
+          }
+        })
+      })
+    } else {
+      let connected = false
+      let attemptSettled = false
+      const netSocket = net.connect(
+        { host: target.hostname, port, ...connectionOptions },
+        () => {
+          if (attemptSettled) return
+          connected = true
+          attemptSettled = true
+          clearTimeout(connectTimer)
+          startPiping(netSocket)
+        },
+      )
+
+      const connectTimer = setTimeout(() => {
+        if (!connected && !attemptSettled) {
+          attemptSettled = true
+          netSocket.destroy()
+          if (attempt < BROKER_PROXY_MAX_CONNECT_ATTEMPTS) {
+            attemptUpgradeConnect(attempt + 1)
+          } else {
+            fail()
+          }
+        }
+      }, BROKER_PROXY_CONNECT_TIMEOUT_MS)
+
+      netSocket.on('error', () => {
+        clearTimeout(connectTimer)
+        if (connected) {
+          fail()
+          return
+        }
+        if (!attemptSettled) {
+          attemptSettled = true
+          netSocket.destroy()
+          if (attempt < BROKER_PROXY_MAX_CONNECT_ATTEMPTS) {
+            attemptUpgradeConnect(attempt + 1)
+          } else {
+            fail()
+          }
+        }
+      })
+    }
   }
+
+  attemptUpgradeConnect(1)
 }
 
 const dynamicBrokerWsProxyPlugin = (prefix: string, access: BrokerProxyAccess): Plugin => ({

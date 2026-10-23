@@ -2152,5 +2152,19 @@
   "Dark Theme Accent": "Dark Theme Accent",
   "Appearance & Theme Settings": "Appearance & Theme Settings",
   "Appearance & Themes": "Appearance & Themes",
-  "Close appearance settings": "Close appearance settings"
+  "Close appearance settings": "Close appearance settings",
+  "Hide Background Logo": "पृष्ठभूमि लोगो छिपाएँ",
+  "Show Background Logo": "पृष्ठभूमि लोगो दिखाएँ",
+  "Background image": "पृष्ठभूमि छवि",
+  "URL": "URL",
+  "Use default image URL": "डिफ़ॉल्ट छवि URL का उपयोग करें",
+  "Local file": "लोकल फ़ाइल",
+  "Choose file": "फ़ाइल चुनें",
+  "Opacity": "अपारदर्शिता",
+  "Chart and axes": "चार्ट और अक्ष",
+  "Apply changes to the default template": "डिफ़ॉल्ट टेम्पलेट पर परिवर्तन लागू करें",
+  "Apply changes to all open charts": "सभी खुले चार्ट पर परिवर्तन लागू करें",
+  "Share position": "पोज़िशन साझा करें",
+  "Reverse position": "पोज़िशन उलटें",
+  "Double position": "पोज़िशन दोगुनी करें"
 }

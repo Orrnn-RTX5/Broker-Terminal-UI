@@ -241,4 +241,64 @@ describe('SquareChartGridPrimitive', () => {
     timePane.renderer()!.draw(target as never);
     expect(context.fillText).not.toHaveBeenCalled();
   });
+
+  it('draws the centered RTX5 background watermark logo in the bottom layer even when grid is hidden, and hides it when showBackgroundLogo is false', () => {
+    const fillStyles: string[] = [];
+    const context = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      setLineDash: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      closePath: vi.fn(),
+      fill: vi.fn(() => { fillStyles.push(context.fillStyle); }),
+      stroke: vi.fn(),
+      lineWidth: 1,
+      lineCap: 'butt',
+      lineDashOffset: 0,
+      strokeStyle: '',
+      fillStyle: '',
+    };
+    const target = {
+      useBitmapCoordinateSpace: (draw: (scope: unknown) => void) => draw({
+        context,
+        bitmapSize: { width: 800, height: 500 },
+        horizontalPixelRatio: 1,
+        verticalPixelRatio: 1,
+      }),
+    };
+
+    const primitive = new SquareChartGridPrimitive({
+      visible: false,
+      showBackgroundLogo: true,
+      isLightBackground: false,
+      cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,
+      verticalColor: '#222',
+      horizontalColor: '#333',
+    });
+
+    primitive.paneViews()[0]!.renderer()!.draw(target as never);
+    expect(context.fill).toHaveBeenCalledTimes(2);
+    expect(fillStyles).toEqual([
+      'rgba(255, 255, 255, 0.180)',
+      'rgba(128, 195, 66, 0.207)',
+    ]);
+    expect(context.stroke).not.toHaveBeenCalled();
+
+    context.fill.mockClear();
+    fillStyles.length = 0;
+    primitive.applyOptions({ isLightBackground: true });
+    primitive.paneViews()[0]!.renderer()!.draw(target as never);
+    expect(context.fill).toHaveBeenCalledTimes(2);
+    expect(fillStyles).toEqual([
+      'rgba(15, 23, 42, 0.153)',
+      'rgba(101, 163, 13, 0.207)',
+    ]);
+
+    context.fill.mockClear();
+    primitive.applyOptions({ showBackgroundLogo: false });
+    primitive.paneViews()[0]!.renderer()!.draw(target as never);
+    expect(context.fill).not.toHaveBeenCalled();
+  });
 });
