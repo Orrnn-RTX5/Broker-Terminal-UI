@@ -1,5 +1,3 @@
-import { normalizeSavedAccountServer } from './savedAccountScope';
-
 export interface CachedAccountSession {
   login: string;
   brokerId: string;
@@ -18,10 +16,24 @@ const memorySessions = new Map<string, CachedAccountSession>();
 const normalizeKeyPart = (value: string | undefined | null): string =>
   String(value || '').trim();
 
+const normalizeSessionServerUrl = (value: string): string => {
+  const text = value.trim();
+  if (!text) return '';
+  try {
+    const url = new URL(text);
+    if (url.protocol === 'https:' || url.protocol === 'http:') {
+      return `${url.origin}${url.pathname.replace(/\/+$/, '')}${url.search}${url.hash}`;
+    }
+  } catch {
+    // Keep non-URL server identifiers as-is
+  }
+  return text;
+};
+
 const buildExactKey = (brokerId: string, serverUrl: string, login: string): string =>
   JSON.stringify([
     normalizeKeyPart(brokerId).toLowerCase(),
-    normalizeSavedAccountServer(normalizeKeyPart(serverUrl)).toLowerCase(),
+    normalizeSessionServerUrl(normalizeKeyPart(serverUrl)).toLowerCase(),
     normalizeKeyPart(login),
   ]);
 
