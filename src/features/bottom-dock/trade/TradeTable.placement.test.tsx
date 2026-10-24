@@ -76,7 +76,7 @@ const createProps = (positions: ToolboxTradePosition[]): ComponentProps<typeof T
 
 describe('Trade placement status presentation', () => {
   it.each([
-    ['pending', 'Pending'], ['accepted', 'Accepted'], ['processing', 'Processing'],
+    ['pending', '--'], ['accepted', 'Accepted'], ['processing', 'Processing'],
   ] as const)('shows %s distinctly without adding a second row or enabling trade actions', (state, label) => {
     const props = createProps([provisionalPosition(state)]);
     const view = render(<TradeTable {...props} />);
@@ -136,7 +136,7 @@ describe('Trade placement status presentation', () => {
     props.isColumnVisible = key => key !== 'ticket' && key !== 'comment';
     const view = render(<TradeTable {...props} />);
     const symbolCell = view.container.querySelector('tbody tr td')!;
-    expect(symbolCell).toHaveTextContent(state === 'pending' ? 'BTCUSDPending' : 'BTCUSDRejected');
+    expect(symbolCell).toHaveTextContent(state === 'pending' ? 'BTCUSD--' : 'BTCUSDRejected');
     if (state === 'rejected') {
       expect(screen.getByRole('status')).toHaveTextContent('Order limit reached.');
       expect(screen.getByRole('status').closest('td')).toHaveAttribute('colspan', String(props.visibleOptionalColumnCount + 2));
@@ -238,9 +238,10 @@ describe('Trade row updates', () => {
     const pending = provisionalPosition('pending');
     const props = createProps([pending]);
     const view = render(<TradeTable {...props} />);
+    expect(screen.getByText('--')).toBeVisible();
     view.rerender(<TradeTable {...props} displayedLivePositions={[{ ...pending, placementState: 'accepted' }]} />);
     expect(screen.getByRole('button', { name: 'Accepted' })).toBeDisabled();
-    expect(screen.queryByText('Pending')).not.toBeInTheDocument();
+    expect(screen.queryByText('--')).not.toBeInTheDocument();
     view.rerender(<TradeTable {...props} displayedLivePositions={[{
       ...pending, placementState: 'rejected', placementErrorMessage: 'Volume limit',
     }]} />);

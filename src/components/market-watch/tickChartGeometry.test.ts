@@ -73,6 +73,19 @@ describe('buildTickChartGeometry', () => {
     expect(geometry.askTag.label).toBe(String(ticks(40).at(-1)!.ask));
   });
 
+  it('expands price-scale ticks when observed quote precision is finer than catalog digits', () => {
+    const subCentTicks: TickChartPoint[] = [
+      { timestamp: START, bid: 0.2055, ask: 0.2057 },
+      { timestamp: START + 1_000, bid: 0.2063, ask: 0.2065 },
+      { timestamp: START + 2_000, bid: 0.2068, ask: 0.2070 },
+    ];
+    const geometry = buildTickChartGeometry(subCentTicks, layout({ digits: 2 }))!;
+    expect(geometry.priceTicks.length).toBeGreaterThan(0);
+    expect(geometry.labelDigits).toBe(4);
+    expect(geometry.bidTag.label).toBe('0.2068');
+    expect(geometry.askTag.label).toBe('0.2070');
+  });
+
   it('starts the time axis with the date and ends with the newest tick time', () => {
     const geometry = buildTickChartGeometry(ticks(300), layout())!;
     const labels = geometry.timeTicks.map(tick => tick.label);

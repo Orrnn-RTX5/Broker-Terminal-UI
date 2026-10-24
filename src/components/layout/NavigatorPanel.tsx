@@ -15,9 +15,9 @@ import { useSavedAccountServerMigration } from '../../services/savedAccountServe
 import { useKnownBrokerServerName } from '../../services/brokerServerIdentity';
 import * as tradeApiModule from '../../api/trade';
 import { brokerV2Api } from '../../api/trade';
-import { parseTokenExpiresAt, setRefreshToken, setToken } from '../../api/client';
+import { getToken, parseTokenExpiresAt, setRefreshToken, setToken } from '../../api/client';
 import { normalizeBrokerServerUrl, toLocalDevProxyUrl } from '../../config/api';
-import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
+import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget, resolveBrokerExtApiUrl } from '../../config/backendTarget.js';
 import { buildBrokerDirectoryLogoUrl, getConfiguredBrokerLogoUrl, isPlaceholderBrokerLogoUrl } from '../BrokerLogoImage';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
 import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
@@ -28,7 +28,7 @@ import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession, normali
 import { getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
 import { getCachedAccountSession, rememberAccountSession } from '../../services/accountSessionCache';
 import { loadSavedLogin, supportsSavedLogins } from '../../services/savedLogins';
-import { resolveDisplayAccountType, resolveTradingAccountType, type TradingAccountType } from '../../services/tradingAccountType';
+import { getBrokerSavedAccountTypes, resolveDisplayAccountType, resolveTradingAccountType, type TradingAccountType } from '../../services/tradingAccountType';
 import './NavigatorPanel.css';
 
 const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
@@ -327,11 +327,17 @@ export const NavigatorPanel: React.FC = () => {
         };
     }, [serverLogoKey, logoScopeKey, storedBrokerLogo]);
 
+    const { hasDemoAndRealAccounts } = useMemo(
+        () => getBrokerSavedAccountTypes(visibleAccounts),
+        [visibleAccounts],
+    );
+    const hideAccountCreationScreens = Boolean(isAuthenticated && hasDemoAndRealAccounts);
+
     const handleLoginToAccount = (acc?: SavedAccount) => {
         if (acc) {
             setSelectedAccountForLogin(acc);
             setLoginDialogOpen(true);
-        } else if (typeof window !== 'undefined' && (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__) {
+        } else if (!hideAccountCreationScreens && typeof window !== 'undefined' && (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__) {
             window.dispatchEvent(new CustomEvent('rtx:openTradeAuth'));
         } else {
             setSelectedAccountForLogin(null);
@@ -348,65 +354,135 @@ export const NavigatorPanel: React.FC = () => {
         localStorage.setItem('rtx_last_login', String(acc.login));
         localStorage.removeItem('rtx_saved_password');
 
-        if (isAuthenticated && typeof useAppStore.getState === 'function') {
-            const targetBrokerId = acc.brokerId || brokerScope.brokerId || getStoredNavigatorValue('broker_id') || getStoredNavigatorValue('rtx_broker_id');
+        if (typeof useAppStore.getState === 'function') {
+            const currentStoreState = useAppStore.getState();
+            const currentActiveToken = currentStoreState?.authToken || getToken();
+            if (isAuthenticated && accountId && currentActiveToken) {
+                rememberAccountSession({
+                    brokerId: brokerScope.brokerId || getStoredNavigatorValue('broker_id') || getStoredNavigatorValue('rtx_broker_id') || acc.brokerId || acc.server,
+                    serverUrl: brokerScope.serverUrl || getStoredNavigatorValue('server_url') || getStoredNavigatorValue('backend_url') || acc.serverUrl,
+                    login: accountId,
+                    authToken: currentActiveToken,
+                    refreshToken: currentStoreState?.refreshToken || getStoredNavigatorValue('refresh_token') || undefined,
+                    expiresAt: currentStoreState?.tokenExpiresAt || undefined,
+                });
+            }
+            const targetBrokerId = acc.brokerId || brokerScope.brokerId || getStoredNavigatorValue('broker_id') || getStoredNavigatorValue('rtx_broker_id') || acc.server;
             const targetServerUrl = acc.serverUrl || brokerScope.serverUrl || getStoredNavigatorValue('server_url') || getStoredNavigatorValue('backend_url');
 
-            const cachedSession = getCachedAccountSession({
-                brokerId: targetBrokerId,
-                serverUrl: targetServerUrl,
-                login: acc.login,
-            });
-            if (cachedSession?.authToken) {
-                setToken(cachedSession.authToken);
-                if (cachedSession.refreshToken) {
-                    setRefreshToken(cachedSession.refreshToken);
+            const applyCachedTokenSession = (sessionToApply: NonNullable<ReturnType<typeof getCachedAccountSession>>) => {
+                if (!sessionToApply.authToken) return false;
+                if (sessionToApply.refreshToken) {
+                    setRefreshToken(sessionToApply.refreshToken);
                     sessionStorage.removeItem('refresh_token');
                 } else {
                     localStorage.removeItem('refresh_token');
                     sessionStorage.removeItem('refresh_token');
                 }
-                if (cachedSession.expiresAt) {
-                    localStorage.setItem('token_expires_at', String(cachedSession.expiresAt));
+                if (sessionToApply.expiresAt) {
+                    localStorage.setItem('token_expires_at', String(sessionToApply.expiresAt));
                     sessionStorage.removeItem('token_expires_at');
                 } else {
                     localStorage.removeItem('token_expires_at');
                     sessionStorage.removeItem('token_expires_at');
                 }
+                setToken(sessionToApply.authToken);
                 const store = useAppStore.getState();
                 store.setAuthenticated?.(
                     true,
                     String(acc.login),
-                    cachedSession.authToken,
-                    cachedSession.refreshToken,
-                    cachedSession.expiresAt,
+                    sessionToApply.authToken,
+                    sessionToApply.refreshToken,
+                    sessionToApply.expiresAt,
                     { ...acc, lastUsed: Date.now() },
                 );
-                store.setAuthTokens?.(cachedSession.authToken, cachedSession.refreshToken, cachedSession.expiresAt);
+                store.setAuthTokens?.(sessionToApply.authToken, sessionToApply.refreshToken, sessionToApply.expiresAt);
                 store.setActiveAccount?.(acc.login);
+                return true;
+            };
+
+            const cachedSession = getCachedAccountSession({
+                brokerId: targetBrokerId,
+                serverUrl: targetServerUrl,
+                login: acc.login,
+            }) || (brokerScope.serverUrl && brokerScope.serverUrl !== targetServerUrl
+                ? getCachedAccountSession({
+                    brokerId: targetBrokerId,
+                    serverUrl: brokerScope.serverUrl,
+                    login: acc.login,
+                })
+                : null);
+            const hasVerifiedUnexpiredToken = Boolean(
+                cachedSession?.authToken
+                && (!cachedSession.password || (cachedSession.expiresAt && cachedSession.expiresAt > Date.now())),
+            );
+            if (cachedSession && hasVerifiedUnexpiredToken && applyCachedTokenSession(cachedSession)) {
                 return;
             }
 
-            if (targetBrokerId && targetServerUrl && supportsSavedLogins() && tradeApiModule.authV2Api?.login) {
+            if (targetBrokerId && targetServerUrl && (cachedSession?.password || supportsSavedLogins())) {
                 try {
                     setSwitchingLogin(acc.login);
-                    const savedCred = await loadSavedLogin({ brokerId: targetBrokerId, serverUrl: targetServerUrl }, String(acc.login));
-                    if (savedCred?.password) {
-                        const cleanUrl = toLocalDevProxyUrl(normalizeBrokerServerUrl(targetServerUrl).replace(/\/$/, ''));
-                        const data = await tradeApiModule.authV2Api.login({
+                    let passwordToUse = cachedSession?.password || '';
+                    if (!passwordToUse && supportsSavedLogins()) {
+                        const candidateUrls = Array.from(new Set([
+                            targetServerUrl,
+                            brokerScope.serverUrl,
+                            getStoredNavigatorValue('market_api_url'),
+                            getStoredNavigatorValue('server_url'),
+                            getStoredNavigatorValue('backend_url'),
+                            resolveBrokerExtApiUrl({
+                                broker_id: targetBrokerId,
+                                server_url: targetServerUrl,
+                                backend_url: getStoredNavigatorValue('backend_url') || targetServerUrl,
+                                market_api_url: getStoredNavigatorValue('market_api_url') || targetServerUrl,
+                            }),
+                        ].filter(Boolean)));
+                        for (const url of candidateUrls) {
+                            try {
+                                const savedCred = await loadSavedLogin({ brokerId: targetBrokerId, serverUrl: url }, String(acc.login));
+                                if (savedCred?.password) {
+                                    passwordToUse = savedCred.password;
+                                    break;
+                                }
+                            } catch {
+                                // Ignore non-URL candidates or vault errors and continue
+                            }
+                        }
+                    }
+                    const loginFn = 'authV2Api' in tradeApiModule ? tradeApiModule.authV2Api?.login : undefined;
+                    if (passwordToUse && loginFn) {
+                        const extApiUrl = resolveBrokerExtApiUrl({
+                            broker_id: targetBrokerId,
+                            server_url: targetServerUrl,
+                            backend_url: getStoredNavigatorValue('backend_url') || targetServerUrl,
+                            market_api_url: getStoredNavigatorValue('market_api_url') || targetServerUrl,
+                        }) || targetServerUrl;
+                        const cleanUrl = toLocalDevProxyUrl(normalizeBrokerServerUrl(extApiUrl).replace(/\/$/, ''));
+                        const data = await loginFn({
                             username: String(acc.login),
-                            password: savedCred.password,
+                            password: passwordToUse,
                             broker_id: targetBrokerId,
                         }, {
                             baseUrl: `${cleanUrl}/api/v2`,
                             skipDynamicUrl: true,
                             persistSession: false,
                         });
-                        const token = data.access_token || data.token;
+                        const token = data?.access_token || data?.token;
                         if (token) {
-                            const expiresAt = parseTokenExpiresAt(data.expires_at) ?? undefined;
+                            const expiresInSec = Number((data as { expires_in?: unknown }).expires_in);
+                            const expiresAt = parseTokenExpiresAt(data.expires_at)
+                                ?? (Number.isFinite(expiresInSec) && expiresInSec > 0 ? Date.now() + expiresInSec * 1000 : undefined);
                             const tradingAccountType = resolveTradingAccountType(data) ?? acc.accountType;
-                            setToken(token);
+                            rememberAccountSession({
+                                brokerId: targetBrokerId,
+                                serverUrl: targetServerUrl,
+                                login: acc.login,
+                                authToken: token,
+                                refreshToken: data.refresh_token,
+                                expiresAt,
+                                password: passwordToUse,
+                            });
                             if (data.refresh_token) {
                                 setRefreshToken(data.refresh_token);
                                 sessionStorage.removeItem('refresh_token');
@@ -421,6 +497,7 @@ export const NavigatorPanel: React.FC = () => {
                                 localStorage.removeItem('token_expires_at');
                                 sessionStorage.removeItem('token_expires_at');
                             }
+                            setToken(token);
                             const store = useAppStore.getState();
                             store.setAuthenticated?.(
                                 true,
@@ -440,16 +517,20 @@ export const NavigatorPanel: React.FC = () => {
                         }
                     }
                 } catch {
-                    // Fall through to interactive login dialog if silent login fails
+                    // Fall through to cached token or interactive login dialog if silent login fails
                 } finally {
                     setSwitchingLogin(null);
                 }
+            }
+
+            if (cachedSession?.authToken && applyCachedTokenSession(cachedSession)) {
+                return;
             }
         }
 
         addSavedAccount({ ...acc, lastUsed: Date.now() });
         handleLoginToAccount(acc);
-    }, [isAccountActive, switchingLogin, isAuthenticated, brokerScope, addSavedAccount]);
+    }, [isAccountActive, switchingLogin, isAuthenticated, accountId, brokerScope, addSavedAccount]);
 
     const openAccountMenuItem: ContextMenuItemConfig = {
         label: 'Open an Account',
@@ -459,8 +540,7 @@ export const NavigatorPanel: React.FC = () => {
     };
 
     const getAccountContextMenuItems = (acc: SavedAccount): ContextMenuItemConfig[] => [
-        openAccountMenuItem,
-        { divider: true },
+        ...(!hideAccountCreationScreens ? [openAccountMenuItem, { divider: true } as ContextMenuItemConfig] : []),
         {
             label: 'Login to Trade Account',
             icon: <Icon name="user" size="xs" />,
@@ -518,7 +598,7 @@ export const NavigatorPanel: React.FC = () => {
     ];
 
     const getGeneralAccountContextMenuItems = () => [
-        openAccountMenuItem,
+        ...(!hideAccountCreationScreens ? [openAccountMenuItem] : []),
         {
             label: 'Login to Trade Account',
             icon: <Icon name="user" size="xs" />,
@@ -559,9 +639,6 @@ export const NavigatorPanel: React.FC = () => {
                                                     isLast={isLastAccount}
                                                     isFavorite={acc.isFavorite}
                                                     accountActive={isActive}
-                                                    onItemClick={() => {
-                                                        void handleSwitchAccount(acc);
-                                                    }}
                                                     onItemDoubleClick={() => {
                                                         void handleSwitchAccount(acc);
                                                     }}
@@ -692,7 +769,7 @@ export const NavigatorPanel: React.FC = () => {
                 isOpen={loginDialogOpen}
                 onClose={() => setLoginDialogOpen(false)}
                 initialLogin={selectedAccountForLogin?.login.toString()}
-                initialServer={selectedAccountForLogin?.server}
+                initialServer={selectedAccountForLogin?.brokerId || selectedAccountForLogin?.server}
             />
             </RetainedLazyFeature>
 
@@ -854,7 +931,17 @@ function TreeItem({
                 )}
                 {!isExpandable && <span className="w-3 flex-shrink-0" />}
                 <span className={`navigator-tree-item__icon flex-shrink-0 ${disabled ? 'text-zinc-600' : isInactiveAccount ? 'text-zinc-500 group-hover:text-zinc-400' : 'text-zinc-300 group-hover:text-zinc-100'}`}>{icon}</span>
-                <span className={`navigator-tree-item__label truncate text-[14px] font-normal ${disabled ? 'text-zinc-500' : isInactiveAccount ? 'text-zinc-500 group-hover:text-zinc-400' : 'text-zinc-100 group-hover:text-white'}`}>{label}</span>
+                <span
+                    className={`navigator-tree-item__label truncate text-[14px] font-normal ${disabled
+                        ? 'text-zinc-500'
+                        : isInactiveAccount
+                            ? 'navigator-tree-item__label--inactive text-zinc-500 group-hover:text-zinc-400'
+                            : 'text-zinc-100 group-hover:text-white'
+                        }`}
+                    data-account-active={accountActive === undefined ? undefined : String(accountActive)}
+                >
+                    {label}
+                </span>
                 {isFavorite && (
                     <span className="ml-auto mr-1 flex-shrink-0" title={tr('Favorite account')} aria-label={tr('Favorite account')}>
                         <Icon name="star" size="xs" className="text-amber-400" />

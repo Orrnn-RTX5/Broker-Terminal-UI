@@ -8,7 +8,8 @@ import {
 } from '../config/api';
 import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
 import { debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
-import { getAccessToken, getRefreshToken as getBoundRefreshToken } from '../services/brokerSession';
+import { getAccessToken, getCommittedBrokerAccountSessionScope, getRefreshToken as getBoundRefreshToken } from '../services/brokerSession';
+import { getCachedAccountSession, invalidateAccountSessionToken, rememberAccountSession } from '../services/accountSessionCache';
 import { assertBrokerRequestAllowed } from './brokerRequestGuard';
 
 type DynamicBrokerTarget = {
@@ -92,7 +93,7 @@ export class ApiError extends Error {
 }
 
 // Get auth token from localStorage
-const getToken = (): string | null => {
+export const getToken = (): string | null => {
   return getAccessToken();
 };
 
@@ -365,6 +366,124 @@ const handleResponse = async <T>(
 
       if (!originalRequest?.context || !refreshToken || responseUrl.includes('/api/refresh')) {
         throwIfAborted(signal);
+        if (!responseUrl.includes('/api/refresh') && originalRequest && typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+          const requestAccessToken = getRequestBearerToken(originalRequest.init);
+          const committedScope = getCommittedBrokerAccountSessionScope();
+          const activeLogin = String(
+            committedScope.accountId
+            || localStorage.getItem('rtx_last_login')
+            || localStorage.getItem('rtx_saved_username')
+            || '',
+          ).trim();
+          const brokerId = String(
+            committedScope.brokerId
+            || localStorage.getItem('broker_id')
+            || localStorage.getItem('rtx_broker_id')
+            || '',
+          ).trim();
+          const serverUrl = String(
+            committedScope.serverUrl
+            || localStorage.getItem('server_url')
+            || localStorage.getItem('backend_url')
+            || '',
+          ).trim();
+          const cachedSession = activeLogin && brokerId && requestAccessToken && requestAccessToken === getToken()
+            ? getCachedAccountSession({ brokerId, serverUrl, login: activeLogin })
+            : null;
+          if (cachedSession?.password) {
+            const reloginKey = `relogin:${brokerId.toLowerCase()}:${activeLogin}`;
+            let reloginState = refreshStates.get(reloginKey);
+            if (!reloginState) {
+              const reloginController = new AbortController();
+              const reloginTimeoutId = setTimeout(() => reloginController.abort(), 30000);
+              const reloginPromise = (async (): Promise<string> => {
+                invalidateAccountSessionToken({ brokerId, serverUrl, login: activeLogin });
+                const loginEndpoint = getDynamicUrl(`${API_V2_BASE_URL}/auth/login`);
+                assertBrokerRequestAllowed(loginEndpoint);
+                const loginResponse = await fetch(loginEndpoint, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    username: activeLogin,
+                    password: cachedSession.password,
+                    broker_id: brokerId,
+                  }),
+                  signal: reloginController.signal,
+                  redirect: 'error',
+                });
+                if (!loginResponse.ok) {
+                  throw new Error('Relogin failed');
+                }
+                const data = await readResponseJson<Record<string, unknown>>(
+                  loginResponse,
+                  reloginController.signal,
+                );
+                const nextAccessToken = typeof data.access_token === 'string'
+                  ? data.access_token
+                  : typeof data.token === 'string'
+                    ? data.token
+                    : null;
+                if (!nextAccessToken) {
+                  throw new Error('No access token in relogin response');
+                }
+                let expiresAt: number | undefined;
+                if (data.expires_at) {
+                  expiresAt = parseTokenExpiresAt(data.expires_at) ?? undefined;
+                } else if (data.expires_in) {
+                  const expiresIn = Number(data.expires_in);
+                  if (Number.isFinite(expiresIn)) {
+                    expiresAt = Date.now() + expiresIn * 1000;
+                  }
+                }
+                if (getToken() === requestAccessToken) {
+                  setToken(nextAccessToken);
+                  if (typeof data.refresh_token === 'string') {
+                    setRefreshToken(data.refresh_token);
+                  }
+                  if (expiresAt) {
+                    localStorage.setItem('token_expires_at', String(expiresAt));
+                  }
+                  rememberAccountSession({
+                    brokerId,
+                    serverUrl,
+                    login: activeLogin,
+                    authToken: nextAccessToken,
+                    refreshToken: typeof data.refresh_token === 'string' ? data.refresh_token : undefined,
+                    expiresAt,
+                    password: cachedSession.password,
+                  });
+                  dispatchTokenUpdated();
+                }
+                return nextAccessToken;
+              })();
+              reloginState = { promise: reloginPromise, controller: reloginController };
+              refreshStates.set(reloginKey, reloginState);
+              void reloginPromise.finally(() => {
+                clearTimeout(reloginTimeoutId);
+                if (refreshStates.get(reloginKey)?.promise === reloginPromise) {
+                  refreshStates.delete(reloginKey);
+                }
+              }).catch(() => undefined);
+            }
+            try {
+              const reloginToken = await awaitWithAbort(reloginState.promise, signal);
+              throwIfAborted(signal);
+              assertBrokerRequestAllowed(originalRequest.url);
+              if (!isDesktopBackendTarget() && getToken() !== reloginToken) {
+                throw new ApiError(401, 'The broker session changed during token refresh.');
+              }
+              const retryRequest = withBearerToken(originalRequest, reloginToken);
+              const retryResponse = await fetch(retryRequest.url, retryRequest.init);
+              throwIfAborted(signal);
+              return handleResponse<T>(retryResponse, {
+                ...retryRequest,
+                authRecoveryEnabled: false,
+              });
+            } catch (error) {
+              if (signal?.aborted) throw getAbortReason(signal);
+            }
+          }
+        }
         if (!originalRequest || isRequestContextCurrent(originalRequest)) removeToken();
         dispatchUnauthorized(originalRequest?.init);
         throw new ApiError(response.status, 'Unauthorized / Session Expired');

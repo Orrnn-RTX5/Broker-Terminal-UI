@@ -1,11 +1,12 @@
 import { useEffect, type RefObject } from 'react';
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
+import { buildChartSeriesPriceFormat } from '../../../utils/chartPriceScale';
 
 interface PriceFormatOptions {
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
   squareGridHostSeriesRef: RefObject<ISeriesApi<'Line'> | null>;
   isDisposedRef: RefObject<boolean>;
-  digits: number;
+  digits: number | null;
   point: number;
 }
 
@@ -15,7 +16,7 @@ export function useTradingChartPriceFormat({
 }: PriceFormatOptions): void {
   useEffect(() => {
     if (isDisposedRef.current) return;
-    const priceFormat = { type: 'price' as const, precision: digits, minMove: point };
+    const priceFormat = buildChartSeriesPriceFormat(digits, point);
     try {
       squareGridHostSeriesRef.current?.applyOptions({ priceFormat });
       seriesRef.current?.applyOptions({ priceFormat });

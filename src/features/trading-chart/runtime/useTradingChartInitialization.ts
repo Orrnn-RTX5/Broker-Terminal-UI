@@ -22,7 +22,7 @@ import type { ChartInteractionOwnership } from '../../../utils/chartInteractionO
 import { createChartInteractionOwnership } from '../../../utils/chartInteractionOwnership';
 import type { ChartPostInteractionCoordinator } from '../../../utils/chartPostInteractionCoordinator';
 import { resolveVisibleRangeHistoryAction } from '../../../services/chartHistoryLoader';
-import { computeMinimumVisiblePriceSpan } from '../../../utils/chartPriceScale';
+import { buildChartSeriesPriceFormat, computeMinimumVisiblePriceSpan } from '../../../utils/chartPriceScale';
 import { computePriceAxisDragRange } from '../../../utils/priceAxisDragZoom';
 import { createChartWheelSmoothing } from '../../../utils/chartWheelSmoothing';
 import {
@@ -111,7 +111,7 @@ interface UseTradingChartInitializationOptions {
   postInteractionCoordinatorRef: RefObject<ChartPostInteractionCoordinator | null>;
   priceLineRef: RefObject<unknown>;
   repaintTradeOverlayGeometryRef: RefObject<() => void>;
-  resolvedPriceDigitsRef: RefObject<number>;
+  resolvedPriceDigitsRef: RefObject<number | null>;
   resolvedPricePointRef: RefObject<number>;
   scheduleDrawingRenderAfterChartData: (activeSymbol: string, activeTimeframe: Timeframe) => void;
   scheduleQueuedChartRenderFlush: (immediate?: boolean) => void;
@@ -239,11 +239,10 @@ useChartInitializationLifetime(() => {
       priceScaleId: 'right',
       // The first series on a price scale supplies its tick increment, even
       // when that series is transparent and contains only whitespace.
-      priceFormat: {
-        type: 'price',
-        precision: resolvedPriceDigitsRef.current,
-        minMove: resolvedPricePointRef.current,
-      },
+      priceFormat: buildChartSeriesPriceFormat(
+        resolvedPriceDigitsRef.current,
+        resolvedPricePointRef.current,
+      ),
       priceLineVisible: false,
       lastValueVisible: false,
       crosshairMarkerVisible: false,

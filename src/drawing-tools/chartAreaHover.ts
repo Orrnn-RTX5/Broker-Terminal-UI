@@ -24,7 +24,7 @@ export interface AreaPointHoverModel {
 export const buildAreaPointHoverLabel = (
   timeSeconds: number,
   price: number,
-  digits: number,
+  digits: number | null,
   timeframe: string,
   offsetSeconds: number,
   locale = 'en',

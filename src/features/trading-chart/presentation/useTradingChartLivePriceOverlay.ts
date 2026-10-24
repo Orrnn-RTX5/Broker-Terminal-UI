@@ -23,7 +23,7 @@ interface UseTradingChartLivePriceOverlayOptions {
   currentCandleRef: MutableRefObject<Candle | null>;
   isDisposedRef: MutableRefObject<boolean>;
   lastPriceLineRef: MutableRefObject<IPriceLine | null>;
-  resolvedPriceDigitsRef: MutableRefObject<number>;
+  resolvedPriceDigitsRef: MutableRefObject<number | null>;
   seriesRef: MutableRefObject<ISeriesApi<SeriesType> | null>;
 }
 

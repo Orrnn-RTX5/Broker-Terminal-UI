@@ -86,8 +86,9 @@ export const saveLogin = async (scope: SavedLoginScope, login: string, password:
 export const loadSavedLogin = async (scope: SavedLoginScope, login = ''): Promise<{ login: string; password: string } | null> => {
   if (!supportsSavedLogins()) return null;
   const scopeKey = savedLoginScopeKey(scope);
-  const record = login.trim()
-    ? await read<EncryptedLogin>(recordKey(scopeKey, login))
+  const trimmedLogin = login.trim();
+  const record = trimmedLogin
+    ? await read<EncryptedLogin>(recordKey(scopeKey, trimmedLogin))
     : await transact<EncryptedLogin | undefined>('readonly', (store, done) => {
       const request = store.getAll();
       request.onsuccess = () => done((request.result as EncryptedLogin[])
@@ -98,7 +99,7 @@ export const loadSavedLogin = async (scope: SavedLoginScope, login = ''): Promis
   const key = await read<CryptoKey>(KEY);
   if (!key) throw new Error('Saved password is unavailable. Please enter it again.');
   const plaintext = await crypto.subtle.decrypt({
-    name: 'AES-GCM', iv: record.iv, additionalData: encoder.encode(recordKey(scopeKey, record.login)),
+    name: 'AES-GCM', iv: record.iv, additionalData: encoder.encode(recordKey(record.scope, record.login)),
   }, key, record.ciphertext);
   return { login: record.login, password: new TextDecoder().decode(plaintext) };
 };

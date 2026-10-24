@@ -50,6 +50,7 @@ import {
   TRADE_LEVEL_MIN_DRAG_PX,
   TRADE_LEVEL_OPTIMISTIC_GRACE_MS,
 } from '../presentation/tradeOverlayPresentation';
+import { getEntryLineColor } from './tradeOverlayRuntimeConstants';
 import type {
   ActiveTradeSnapshot,
   TradeLevelModifyRequestId,
@@ -95,6 +96,76 @@ const readDragPriceSpec = (symbol: string): {
 } => {
   const registered = readRegisteredSymbolPriceSpec(symbol);
   return { digits: registered.digits, tickSize: registered.tickSize, quote: readTradeValidationQuote(symbol) };
+};
+
+const formatTradeWarningPrice = (value: number, digits: number | null, fallbackDigits?: number): string => {
+  const safeDigits = digits !== null && Number.isInteger(digits) && digits >= 0
+    ? digits
+    : (typeof fallbackDigits === 'number' && Number.isInteger(fallbackDigits) && fallbackDigits >= 0 ? fallbackDigits : null);
+  return safeDigits !== null
+    ? value.toLocaleString('en-US', { minimumFractionDigits: safeDigits, maximumFractionDigits: safeDigits })
+    : String(value);
+};
+
+const buildTradeLevelRefusalWarning = ({
+  side,
+  role,
+  entryPrice,
+  closePrice,
+  digits,
+  fallbackDigits,
+  reason,
+  tr,
+}: {
+  side: 'BUY' | 'SELL';
+  role: 'SL' | 'TP';
+  entryPrice: number;
+  closePrice: number;
+  digits: number | null;
+  fallbackDigits?: number;
+  reason: string;
+  tr: <T>(source: T, values?: Record<string, unknown>) => T;
+}) => {
+  const formattedEntry = formatTradeWarningPrice(entryPrice, digits, fallbackDigits);
+  const formattedClose = formatTradeWarningPrice(closePrice, digits, fallbackDigits);
+  const closeLabel = side === 'BUY' ? tr('Bid') : tr('Ask');
+  const isAtEntry = formattedClose === formattedEntry;
+  const invalidDirection = role === 'SL'
+    ? (side === 'BUY' ? 'above' : 'below')
+    : (side === 'BUY' ? 'below' : 'above');
+  const validDirection = invalidDirection === 'above' ? 'below' : 'above';
+  const roleLabel = role === 'SL' ? tr('Stop Loss') : tr('Take Profit');
+  const referenceLabel = isAtEntry ? tr('trade price') : closeLabel;
+  const badgeText = invalidDirection === 'above'
+    ? `${tr('Cannot set')} ${tr(role)} ${tr('above')} ${referenceLabel} (${formattedClose})`
+    : `${tr('Cannot set')} ${tr(role)} ${tr('below')} ${referenceLabel} (${formattedClose})`;
+  const title = role === 'SL'
+    ? tr('Cannot Set Stop Loss')
+    : tr('Cannot Set Take Profit');
+  const description = isAtEntry
+    ? (
+      invalidDirection === 'above'
+        ? `${roleLabel} ${tr('cannot be set above the trade price')} (${formattedEntry}).`
+        : `${roleLabel} ${tr('cannot be set below the trade price')} (${formattedEntry}).`
+    )
+    : (
+      invalidDirection === 'above'
+        ? `${roleLabel} ${tr('cannot be set above the current')} ${closeLabel} (${formattedClose}).`
+        : `${roleLabel} ${tr('cannot be set below the current')} ${closeLabel} (${formattedClose}).`
+    );
+  const hint = validDirection === 'below'
+    ? `${tr('For a')} ${tr(side)} ${tr('position, place')} ${roleLabel} ${tr('below')} ${formattedClose}.`
+    : `${tr('For a')} ${tr(side)} ${tr('position, place')} ${roleLabel} ${tr('above')} ${formattedClose}.`;
+  return {
+    badgeText: `\u26A0 ${badgeText}`,
+    notice: {
+      title,
+      description,
+      metaLabel: tr('Trade Price'),
+      meta: isAtEntry ? `${side} @ ${formattedEntry}` : `${side} @ ${formattedEntry} (${closeLabel} ${formattedClose})`,
+      hint: reason || hint,
+    },
+  };
 };
 
 export const useTradingChartTradeLevelDrag = ({
@@ -143,7 +214,18 @@ export const useTradingChartTradeLevelDrag = ({
        */
       painted:
         | { kind: 'valid'; price: number; role: 'SL' | 'TP' }
-        | { kind: 'refused'; reason: string }
+        | {
+            kind: 'refused';
+            reason: string;
+            role: 'SL' | 'TP';
+            notice: {
+              title: string;
+              description: string;
+              metaLabel: string;
+              meta: string;
+              hint: string;
+            };
+          }
         | null;
     } | null = null;
     let lastLevelClick: { tradeKey: string; role: 'SL' | 'TP'; at: number } | null = null;
@@ -154,7 +236,7 @@ export const useTradingChartTradeLevelDrag = ({
     const hideDraggedLevelControls = (tradeKey: string, role: 'SL' | 'TP') => {
       const overlayHost = overlayRef.current?.parentElement ?? overlayRef.current;
       overlayHost?.querySelectorAll<HTMLElement>(
-        `.rtx-trade-controls[data-trade-key="${tradeKey}"][data-role="${role}"]`,
+        `.rtx-trade-controls[data-trade-key="${tradeKey}"][data-role="${role}"], .rtx-trade-dock-chip[data-trade-key="${tradeKey}"][data-role="${role}"]`,
       ).forEach((node) => {
         node.style.visibility = 'hidden';
         hiddenDragControlBars.push(node);
@@ -258,17 +340,37 @@ export const useTradingChartTradeLevelDrag = ({
 
     const getDragRoleColor = (role: 'SL' | 'TP') => role === 'TP' ? '#00a256' : '#eb415c';
 
-    // Red preview with the reason; nothing is submitted while it is shown.
-    const paintBlockedDrag = (reason: string, y: number) => {
+    // Live warning preview on the chart when dragged to the invalid side; nothing is submitted on release.
+    const paintBlockedDrag = (reason: string, y: number, badgeText: string, entryPrice: number) => {
       if (!dragLineOverlay || !dragBadgeOverlay) return;
+      const lightSurface = isChartSurfaceLight();
       dragLineOverlay.style.borderTopColor = '#ef4444';
       dragLineOverlay.title = reason;
       dragBadgeOverlay.style.opacity = '1';
+      dragBadgeOverlay.style.background = lightSurface ? '#fef2f2' : 'rgba(69, 10, 10, 0.94)';
       dragBadgeOverlay.style.borderColor = '#ef4444';
+      dragBadgeOverlay.style.color = lightSurface ? '#b91c1c' : '#fecaca';
+      dragBadgeOverlay.style.boxShadow = lightSurface
+        ? '0 2px 6px rgba(185, 28, 28, 0.16)'
+        : '0 2px 8px rgba(0, 0, 0, 0.55)';
       dragBadgeOverlay.title = reason;
+      const previewBadge = dragBadgeOverlay;
+      bindChartUiTranslation(previewBadge, () => {
+        previewBadge.textContent = badgeText;
+      });
       dragLineOverlay.style.transform = `translate3d(0, ${y}px, 0)`;
       dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${y}px))`;
-      if (dragZoneOverlay) dragZoneOverlay.style.display = 'none';
+      if (dragZoneOverlay && seriesRef.current) {
+        const entryY = seriesRef.current.priceToCoordinate(entryPrice);
+        if (entryY !== null && Number.isFinite(entryY)) {
+          dragZoneOverlay.style.display = 'block';
+          dragZoneOverlay.style.top = `${Math.min(entryY, y)}px`;
+          dragZoneOverlay.style.height = `${Math.abs(y - entryY)}px`;
+          dragZoneOverlay.style.backgroundColor = 'rgba(239, 68, 68, 0.12)';
+        } else {
+          dragZoneOverlay.style.display = 'none';
+        }
+      }
     };
 
     const findClosestLevelForTrade = (
@@ -550,7 +652,7 @@ export const useTradingChartTradeLevelDrag = ({
             digits,
             tickSize: moveSpec.tickSize,
           });
-          const color = violation ? '#ef4444' : (moveSide === 'SELL' ? '#f59e0b' : '#0ea5e9');
+          const color = violation ? '#ef4444' : getEntryLineColor(moveSide, 'pending');
           dragLineOverlay.style.borderTopColor = color;
           dragLineOverlay.title = violation ?? '';
           dragBadgeOverlay.style.opacity = '1';
@@ -569,11 +671,11 @@ export const useTradingChartTradeLevelDrag = ({
             side: tradeObj.side,
             grabbedType,
             price: rawPrice,
-            quote: moveQuote,
+            quote: null,
             digits,
             tickSize: moveSpec.tickSize,
             stopsLevel: readRegisteredSymbolStopsLevel(tradeObj.symbol),
-            isNewLevel,
+            isNewLevel: false,
             entryPrice: tradeObj.entryPrice,
           })
           : null;
@@ -587,7 +689,6 @@ export const useTradingChartTradeLevelDrag = ({
             currentTp: tradeObj.tp,
             digits,
             tickSize: moveSpec.tickSize,
-            currentPrice: moveClose ?? undefined,
             minStopDistance,
             minEntryDistance: grabbedType === 'ENTRY' ? minEntryDistance : undefined,
             snapEntryToMinDistance: grabbedType === 'ENTRY',
@@ -610,15 +711,12 @@ export const useTradingChartTradeLevelDrag = ({
 
         const price = previewUpdate.price;
         const role = previewUpdate.role;
-        // A fresh quote validates the dropped level locally: a broker-invalid side is
-        // painted red with the reason and is not submitted (see pointerup). Without
-        // a fresh quote nothing is refused here; the painted level is what release sends.
+        // Validate against the live close when fresh (matching the backend rules_modify.go check).
         const moveSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
-        // Checked on the dropped price (before clamp for SL/TP) and the painted price.
-        const droppedPrice = grabbedType === 'ENTRY' ? price : (dropPrice ?? price);
+        const droppedPrice = dropPrice ?? price;
         const droppedRole = grabbedType === 'ENTRY'
           ? role
-          : resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, droppedPrice, moveClose);
+          : resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, droppedPrice);
         const moveViolation = moveQuote
           ? (
             protectionLevelViolation({
@@ -642,8 +740,26 @@ export const useTradingChartTradeLevelDrag = ({
           )
           : null;
         if (moveViolation) {
-          dragState.painted = { kind: 'refused', reason: moveViolation };
-          paintBlockedDrag(moveViolation, y);
+          const closePrice = moveQuote
+            ? (moveSide === 'BUY' ? moveQuote.bid : moveQuote.ask)
+            : tradeObj.entryPrice;
+          const warning = buildTradeLevelRefusalWarning({
+            side: moveSide,
+            role: droppedRole,
+            entryPrice: tradeObj.entryPrice,
+            closePrice,
+            digits,
+            fallbackDigits: resolvedPriceDigitsRef.current,
+            reason: moveViolation,
+            tr,
+          });
+          dragState.painted = {
+            kind: 'refused',
+            reason: moveViolation,
+            role: droppedRole,
+            notice: warning.notice,
+          };
+          paintBlockedDrag(moveViolation, y, warning.badgeText, closePrice);
           return;
         }
         // The release submits exactly this painted price (M4); no silent drift.
@@ -655,10 +771,7 @@ export const useTradingChartTradeLevelDrag = ({
         const color = getDragRoleColor(role);
         const palette = getTradeOverlayCardPalette(role, isChartSurfaceLight());
 
-        // Draw at the clamped price coordinate so the level sticks to the broker-valid
-        // boundary instead of following the pointer into a zone the broker would reject.
-        const clampedY = seriesRef.current.priceToCoordinate(price);
-        const drawY = clampedY === null || !Number.isFinite(clampedY) ? y : (clampedY as number);
+        const drawY = y;
 
         dragLineOverlay.style.borderTopColor = color;
         dragBadgeOverlay.style.opacity = '1';
@@ -822,19 +935,22 @@ export const useTradingChartTradeLevelDrag = ({
               if (!paint) return;
               if (paint.kind === 'refused') {
                 window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
-                  detail: { message: paint.reason, type: 'error' },
+                  detail: {
+                    message: paint.reason,
+                    type: 'error',
+                    notice: paint.notice,
+                  },
                 }));
                 return;
               }
               const submitSpec = readDragPriceSpec(tradeObj.symbol);
               const digits = submitSpec.digits;
+              const submitSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
               // Fresh quote: the painted price AND role must still be valid for the live close.
               // Otherwise (stale or missing quote): send the painted level exactly, server-final.
               const submitQuote = submitSpec.quote;
               if (submitQuote) {
-                const submitClose = protectionClosePrice(tradeObj.side, submitQuote.bid, submitQuote.ask);
-                const submitSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
-                const roleNow = resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, paint.price, submitClose);
+                const roleNow = resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, paint.price);
                 const violation = protectionLevelViolation({
                   side: submitSide,
                   role: paint.role,

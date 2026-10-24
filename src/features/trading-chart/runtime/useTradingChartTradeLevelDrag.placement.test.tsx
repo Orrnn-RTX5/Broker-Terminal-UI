@@ -222,6 +222,18 @@ describe('displaced trade control gestures', () => {
     expect(modifyPosition).not.toHaveBeenCalled();
   });
 
+  it.each(['SL', 'TP'] as const)('hides a docked %s chip on the entry line once dragged past the threshold', role => {
+    const h = harness(role, 0, true, { sl: 0, tp: 0 });
+    h.send('pointerdown', 100, h.target);
+    expect(h.target.style.visibility).not.toBe('hidden');
+    h.send('pointermove', role === 'TP' ? 93 : 107);
+    expect(h.target.style.visibility).toBe('hidden');
+    expect(h.bar.style.visibility).not.toBe('hidden');
+    h.send('pointercancel', role === 'TP' ? 93 : 107);
+    expect(h.target.style.visibility).not.toBe('hidden');
+    expect(modifyPosition).not.toHaveBeenCalled();
+  });
+
   it.each(['pointercancel', 'lostpointercapture', 'blur', 'visibilitychange'])('restores the level and cancels without submitting on %s', interruption => {
     const h = harness('SL', 0);
     h.send('pointerdown', 150, h.target);
@@ -652,13 +664,23 @@ describe('drag SL/TP precision comes from broker data only', () => {
 });
 
 describe('drag validation uses the live close and fails closed', () => {
-  const feedback = (): { messages: string[]; stop: () => void } => {
+  const feedback = (): {
+    messages: string[];
+    notices: Array<{ title: string; description: string; metaLabel: string; meta: string; hint: string } | undefined>;
+    stop: () => void;
+  } => {
     const messages: string[] = [];
+    const notices: Array<{ title: string; description: string; metaLabel: string; meta: string; hint: string } | undefined> = [];
     const listener = (event: Event) => {
-      messages.push(String((event as CustomEvent<{ message: string }>).detail.message));
+      const detail = (event as CustomEvent<{
+        message: string;
+        notice?: { title: string; description: string; metaLabel: string; meta: string; hint: string };
+      }>).detail;
+      messages.push(String(detail.message));
+      notices.push(detail.notice);
     };
     window.addEventListener('rtx:order-feedback', listener);
-    return { messages, stop: () => window.removeEventListener('rtx:order-feedback', listener) };
+    return { messages, notices, stop: () => window.removeEventListener('rtx:order-feedback', listener) };
   };
 
   it('a stale quote is not validated locally: the level is sent for the server to decide', () => {
@@ -730,58 +752,112 @@ describe('drag validation uses the live close and fails closed', () => {
     expect(log.messages).toContain('SL 905.00 must be below Bid 900.00');
   });
 
-  it('a take-profit chip dragged short below the Bid snaps above the Bid by the seed distance', () => {
-    // Live spread 0.50 at 2 digits is the seed distance (above the 5-point buffer).
+  it('refuses a take-profit chip dragged below the entry price on a BUY trade (no send)', () => {
     registerCatalogDigits('XAUUSD', 2);
-    const h = harness('TP', 0, false, { sl: 850, tp: 0 });
-    h.send('pointerdown', 50, h.target);
-    h.send('pointermove', 101);
-    h.send('pointerup', 101);
-    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_tp: 900.5 });
+    const log = feedback();
+    const h = harness('TP', 0, true, { sl: 850, tp: 0 });
+    h.send('pointerdown', 100, h.target);
+    h.send('pointermove', 107);
+    const preview = h.overlay.querySelector<HTMLElement>('.rtx-trade-drag-price-badge');
+    expect(preview?.textContent).toBe('⚠ Cannot set TP below trade price (900.00)');
+    h.send('pointerup', 107);
+    log.stop();
+    expect(modifyPosition).not.toHaveBeenCalled();
+    expect(log.messages).toContain('TP 893.00 must be above Bid 900.00');
+    expect(log.notices[0]).toEqual({
+      title: 'Cannot Set Take Profit',
+      description: 'Take Profit cannot be set below the trade price (900.00).',
+      metaLabel: 'Trade Price',
+      meta: 'BUY @ 900.00',
+      hint: 'TP 893.00 must be above Bid 900.00',
+    });
   });
 
-  it('a stop-loss chip dropped above the Bid snaps below the Bid by the seed distance', () => {
+  it('refuses a stop-loss chip dropped above the entry price on a BUY trade (no send)', () => {
     registerCatalogDigits('XAUUSD', 2);
-    const h = harness('SL', 0, false, { sl: 0, tp: 950 });
-    h.send('pointerdown', 150, h.target);
-    h.send('pointermove', 95);
-    h.send('pointerup', 95);
-    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 899.5 });
+    const log = feedback();
+    const h = harness('SL', 0, true, { sl: 0, tp: 950 });
+    h.send('pointerdown', 100, h.target);
+    h.send('pointermove', 93);
+    const preview = h.overlay.querySelector<HTMLElement>('.rtx-trade-drag-price-badge');
+    expect(preview?.textContent).toBe('⚠ Cannot set SL above trade price (900.00)');
+    h.send('pointerup', 93);
+    log.stop();
+    expect(modifyPosition).not.toHaveBeenCalled();
+    expect(log.messages).toContain('SL 907.00 must be below Bid 900.00');
+    expect(log.notices[0]).toEqual({
+      title: 'Cannot Set Stop Loss',
+      description: 'Stop Loss cannot be set above the trade price (900.00).',
+      metaLabel: 'Trade Price',
+      meta: 'BUY @ 900.00',
+      hint: 'SL 907.00 must be below Bid 900.00',
+    });
   });
 
-  it('a BUY in profit: an entry-line drop between entry and the live Bid is a stop loss (valid), not refused', () => {
-    // Entry 900, Bid 905 (profit). Dropping at 902 is below Bid, so it is an SL.
+  it('allows trailing SL above entry when below live Bid on a BUY in profit, and refuses SL above live Bid', () => {
     registerCatalogDigits('XAUUSD', 2);
     quote.bid = 905;
     quote.ask = 905.5;
-    const h = harness('ENTRY', 0);
-    h.send('pointerdown', 100, h.target);
-    h.send('pointermove', 98);
-    h.send('pointerup', 98);
-    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 902 });
+    const refusedLog = feedback();
+    const refusedHarness = harness('SL', 0, true, { sl: 0, tp: 950 });
+    refusedHarness.send('pointerdown', 100, refusedHarness.target);
+    refusedHarness.send('pointermove', 94);
+    const preview = refusedHarness.overlay.querySelector<HTMLElement>('.rtx-trade-drag-price-badge');
+    expect(preview?.textContent).toBe('⚠ Cannot set SL above Bid (905.00)');
+    refusedHarness.send('pointerup', 94);
+    refusedLog.stop();
+    expect(modifyPosition).not.toHaveBeenCalled();
+    expect(refusedLog.messages).toContain('SL 906.00 must be below Bid 905.00');
+
+    const trailingHarness = harness('SL', 0, true, { sl: 0, tp: 950 });
+    trailingHarness.send('pointerdown', 100, trailingHarness.target);
+    trailingHarness.send('pointermove', 96);
+    trailingHarness.send('pointerup', 96);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 904 });
   });
 
-  it('a BUY in loss: an entry-line drop between the live Bid and entry is a take profit (valid), not refused', () => {
-    // Entry 900, Bid 895 (loss). Dropping at 897 is above Bid, so it is a TP.
+  it('refuses setting TP above Ask and SL below Ask on a SELL trade (reverse)', () => {
     registerCatalogDigits('XAUUSD', 2);
-    quote.bid = 895;
-    quote.ask = 895.5;
-    const h = harness('ENTRY', 0);
-    h.send('pointerdown', 100, h.target);
-    h.send('pointermove', 103);
-    h.send('pointerup', 103);
-    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_tp: 897 });
+    const tpLog = feedback();
+    const tpHarness = harness('TP', 0, true, { sl: 950, tp: 0 });
+    tpHarness.trade.side = 'SELL' as unknown as 'BUY';
+    tpHarness.send('pointerdown', 100, tpHarness.target);
+    tpHarness.send('pointermove', 93);
+    tpHarness.send('pointerup', 93);
+    tpLog.stop();
+    expect(modifyPosition).not.toHaveBeenCalled();
+    expect(tpLog.messages).toContain('TP 907.00 must be below Ask 900.50');
+
+    const slLog = feedback();
+    const slHarness = harness('SL', 0, true, { sl: 0, tp: 850 });
+    slHarness.trade.side = 'SELL' as unknown as 'BUY';
+    slHarness.send('pointerdown', 100, slHarness.target);
+    slHarness.send('pointermove', 107);
+    slHarness.send('pointerup', 107);
+    slLog.stop();
+    expect(modifyPosition).not.toHaveBeenCalled();
+    expect(slLog.messages).toContain('SL 893.00 must be above Ask 900.50');
   });
 });
 
 describe('drag release sends only the painted level', () => {
-  const feedback = (): { messages: string[]; stop: () => void } => {
+  const feedback = (): {
+    messages: string[];
+    notices: Array<{ title: string; description: string; metaLabel: string; meta: string; hint: string } | undefined>;
+    stop: () => void;
+  } => {
     const messages: string[] = [];
+    const notices: Array<{ title: string; description: string; metaLabel: string; meta: string; hint: string } | undefined> = [];
     const listener = (event: Event) => {
-      messages.push(String((event as CustomEvent<{ message: string }>).detail.message));
+      const detail = (event as CustomEvent<{
+        message: string;
+        notice?: { title: string; description: string; metaLabel: string; meta: string; hint: string };
+      }>).detail;
+      messages.push(String(detail.message));
+      notices.push(detail.notice);
     };
     window.addEventListener('rtx:order-feedback', listener);
-    return { messages, stop: () => window.removeEventListener('rtx:order-feedback', listener) };
+    return { messages, notices, stop: () => window.removeEventListener('rtx:order-feedback', listener) };
   };
 
   it('a real drag that painted nothing sends nothing (treated as a click)', () => {
@@ -811,10 +887,10 @@ describe('drag release sends only the painted level', () => {
     const log = feedback();
     const h = harness('ENTRY', 0);
     h.send('pointerdown', 100, h.target);
-    h.send('pointermove', 103); // paints 897 as a TP (above Bid 895)
-    quote.bid = 899; // the close moves above the painted price
-    quote.ask = 899.5;
-    h.send('pointerup', 103);
+    h.send('pointermove', 93); // paints 907 as a TP (above Entry 900 and Bid 895)
+    quote.bid = 909; // the close moves above the painted price
+    quote.ask = 909.5;
+    h.send('pointerup', 93);
     log.stop();
     expect(modifyPosition).not.toHaveBeenCalled();
     expect(log.messages).toEqual(['Price moved, drag again']);

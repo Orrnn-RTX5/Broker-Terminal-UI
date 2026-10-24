@@ -29,14 +29,14 @@ html.rtx-skin-untitled-light .navigator-panel {
 .navigator-panel .navigator-account-icon[data-account-type="contest"] { color: var(--navigator-account-contest); }
 .navigator-panel .navigator-account-icon[data-active="false"],
 .navigator-panel .navigator-account-icon[data-active="false"][data-account-type] {
-    color: var(--navigator-account-inactive, #71717a);
+    color: var(--navigator-account-inactive, #71717a) !important;
     opacity: 0.75;
 }
 
 .navigator-panel .navigator-tree-item__row[data-account-active="false"] .navigator-tree-item__label {
-    color: var(--navigator-account-inactive-text, #71717a);
+    color: var(--navigator-account-inactive-text, #71717a) !important;
 }
 
 .navigator-panel .navigator-tree-item__row[data-account-active="false"]:hover .navigator-tree-item__label {
-    color: var(--navigator-account-inactive-hover-text, #a1a1aa);
+    color: var(--navigator-account-inactive-hover-text, #a1a1aa) !important;
 }

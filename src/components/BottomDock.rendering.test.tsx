@@ -135,14 +135,14 @@ describe('Trade rendering latency', () => {
 
     trade.pendingPositions = [{ ...makePosition(-1), clientOrderId: 'new-order', placementState: 'pending' }];
     rerender(<BottomDock {...props} />);
-    expect(screen.getByText('Pending')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Pending' })).toBeDisabled();
+    expect(screen.getByText('--')).toBeVisible();
+    expect(screen.getByRole('button', { name: '--' })).toBeDisabled();
 
     trade.positions = [...trade.positions, makePosition(72)];
     trade.pendingPositions = [];
     rerender(<BottomDock {...props} />);
-    expect(screen.queryByText('Pending')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Pending' })).not.toBeInTheDocument();
+    expect(screen.queryByText('--')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '--' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close position 72' })).toBeEnabled();
     expect(Date.now()).toBe(startedAt);
   });

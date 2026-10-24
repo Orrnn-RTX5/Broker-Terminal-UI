@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildChartSeriesPriceFormat,
   computeMinimumVisiblePriceSpan,
   formatChartAxisPrice,
   getInstrumentPriceDigits,
   getPricePointFromDigits,
+  inferObservedPriceDigits,
+  inferPriceDigitsFromValue,
   normalizePriceDigits,
+  resolveEffectiveChartPriceDigits,
   resolveSymbolPriceDigits,
 } from './chartPriceScale';
 import { computePriceAxisDragRange } from './priceAxisDragZoom';
@@ -56,6 +60,42 @@ describe('chart price-scale precision', () => {
 
   it.each(digitCases)('derives one $label point from $digits digits', ({ digits, point }) => {
     expect(getPricePointFromDigits(digits)).toBeCloseTo(point, 12);
+  });
+
+  it('infers observed decimal precision from candle OHLC and live quote values without symbol hardcoding', () => {
+    expect(inferPriceDigitsFromValue(0.2068)).toBe(4);
+    expect(inferPriceDigitsFromValue(1.027)).toBe(3);
+    expect(inferPriceDigitsFromValue(2910)).toBe(0);
+    expect(inferPriceDigitsFromValue(null)).toBeNull();
+
+    const subCentCandles = [
+      { open: 0.2058, high: 0.2062, low: 0.2055, close: 0.2060 },
+      { open: 0.2060, high: 0.2074, low: 0.2059, close: 0.2068 },
+    ];
+    const observed = inferObservedPriceDigits(subCentCandles);
+    expect(observed).toBe(4);
+    // When catalog metadata reports coarser digits (e.g. 2) than the actual 4-decimal OHLC feed,
+    // effective chart precision expands to 4 so PriceTickMarkBuilder does not step by 0.01 over a 0.0019 range.
+    const effective = resolveEffectiveChartPriceDigits(2, observed);
+    expect(effective).toBe(4);
+    expect(getPricePointFromDigits(effective)).toBeCloseTo(0.0001, 12);
+    expect(buildChartSeriesPriceFormat(effective, getPricePointFromDigits(effective))).toEqual({
+      type: 'price',
+      precision: 4,
+      minMove: 0.0001,
+    });
+  });
+
+  it('retains higher catalog precision when observed prices end in trailing zeros and guards null series format', () => {
+    const roundCandles = [{ open: 1.1, high: 1.12, low: 1.09, close: 1.11 }];
+    expect(resolveEffectiveChartPriceDigits(5, inferObservedPriceDigits(roundCandles))).toBe(5);
+    expect(resolveEffectiveChartPriceDigits(null, inferObservedPriceDigits(roundCandles))).toBe(2);
+    expect(resolveEffectiveChartPriceDigits(null, null)).toBeNull();
+    expect(buildChartSeriesPriceFormat(null, Number.NaN)).toEqual({
+      type: 'price',
+      precision: 2,
+      minMove: 0.01,
+    });
   });
 });
 

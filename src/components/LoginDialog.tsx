@@ -29,9 +29,10 @@ import {
     mergeBrokerPresentation,
 } from '../services/brokerPresentation';
 import { pickDiscoveryBroker, type BrokerServerItem } from './WelcomeTerminal';
-import { User, X, ChevronDown, LockKeyhole, LoaderCircle, Server, AlertCircle } from 'lucide-react';
+import { User, X, ChevronDown, LockKeyhole, Eye, EyeOff, LoaderCircle, Server, AlertCircle } from 'lucide-react';
 import '../styles/login-dialog.css';
 import { useSavedLogin } from '../hooks/useSavedLogin';
+import { rememberAccountSession } from '../services/accountSessionCache';
 import {
     beginLoginPerformanceMeasurement,
     markAuthenticationAccepted,
@@ -114,6 +115,7 @@ export function LoginDialog({
         } : null,
     );
     const [searchQuery, setSearchQuery] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(null);
     const healthAbortRef = useRef<AbortController | null>(null);
@@ -143,6 +145,7 @@ export function LoginDialog({
     const closeDialog = useCallback(() => {
         invalidatePendingLogin();
         setLoading(false);
+        setShowPassword(false);
         onClose();
     }, [invalidatePendingLogin, onClose]);
 
@@ -151,6 +154,7 @@ export function LoginDialog({
         if (!isOpen) invalidatePendingLogin();
         if (isOpen) {
             setError(null);
+            setShowPassword(false);
             setSearchQuery('');
             setTimeout(() => loginInputRef.current?.select(), 100);
         }
@@ -417,6 +421,19 @@ export function LoginDialog({
             if (!token) throw new Error('No authentication token received');
             markAuthenticationAccepted();
 
+            const prevState = useAppStore.getState();
+            const prevToken = prevState.authToken || localStorage.getItem('auth_token');
+            if (prevState.isAuthenticated && prevState.accountId && prevToken) {
+                rememberAccountSession({
+                    brokerId: localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || submitBroker.broker_id,
+                    serverUrl: localStorage.getItem('server_url') || localStorage.getItem('backend_url') || brokerServerUrl,
+                    login: prevState.accountId,
+                    authToken: prevToken,
+                    refreshToken: prevState.refreshToken || localStorage.getItem('refresh_token') || undefined,
+                    expiresAt: prevState.tokenExpiresAt || undefined,
+                });
+            }
+
             persistBrokerSessionDiscovery({
                 ...data,
                 access_token: token,
@@ -467,6 +484,13 @@ export function LoginDialog({
                 }
                 localStorage.setItem('token_expires_at', String(expiresAt));
                 sessionStorage.removeItem('token_expires_at');
+            } else if ((data as { expires_in?: unknown }).expires_in) {
+                const expiresIn = Number((data as { expires_in?: unknown }).expires_in);
+                if (Number.isFinite(expiresIn) && expiresIn > 0) {
+                    expiresAt = Date.now() + expiresIn * 1000;
+                    localStorage.setItem('token_expires_at', String(expiresAt));
+                    sessionStorage.removeItem('token_expires_at');
+                }
             } else {
                 localStorage.removeItem('token_expires_at');
                 sessionStorage.removeItem('token_expires_at');
@@ -475,6 +499,15 @@ export function LoginDialog({
             markPostAuthenticationPhase('auth-session-persist');
             const loginNum = parseInt(String(accountId), 10);
             const tradingAccountType = resolveTradingAccountType(data);
+            rememberAccountSession({
+                brokerId: data.broker_id || submitBroker.broker_id,
+                serverUrl: data.server_url || data.broker_server || brokerServerUrl || brokerExtApiUrl,
+                login: String(accountId),
+                authToken: token,
+                refreshToken: data.refresh_token,
+                expiresAt,
+                password,
+            });
             useAppStore.getState().setAuthenticated(
                 true,
                 String(accountId),
@@ -625,9 +658,26 @@ export function LoginDialog({
                                 type="text"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="rtx-login-input rtx-secret-input"
+                                className={`rtx-login-input rtx-login-password-input${showPassword ? '' : ' rtx-secret-input'}`}
                                 placeholder={tr("Password")}
                             />
+                            <button
+                                type="button"
+                                className="rtx-login-password-toggle"
+                                aria-label={tr(showPassword ? "Hide password" : "Show password")}
+                                aria-controls={`${dialogId}-password`}
+                                aria-pressed={showPassword}
+                                title={tr(showPassword ? "Hide password" : "Show password")}
+                                disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => setShowPassword((current) => !current)}
+                            >
+                                {showPassword ? (
+                                    <EyeOff size={17} aria-hidden="true" />
+                                ) : (
+                                    <Eye size={17} aria-hidden="true" />
+                                )}
+                            </button>
                         </div>
                     </div>
 

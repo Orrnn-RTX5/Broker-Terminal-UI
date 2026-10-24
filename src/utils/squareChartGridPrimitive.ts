@@ -278,13 +278,15 @@ export const drawChartBackgroundWatermark = (
     const drawY = (centerYCss - drawHeightCss * 0.5) * safeVpr;
     const drawW = drawWidthCss * safeHpr;
     const drawH = drawHeightCss * safeVpr;
-    const isCustom = Boolean(customSrc?.trim());
-    const drawSource = isLightBackground && !isCustom
+    const isDefaultLogo = isDefaultBrandWatermarkSrc(customSrc);
+    const drawSource = isLightBackground && isDefaultLogo
       ? getLightTintedWatermarkSource(loadedImage, loadedImage.src)
       : loadedImage;
 
     context.save();
-    context.globalAlpha = normalizedOpacity;
+    context.globalAlpha = isLightBackground && isDefaultLogo
+      ? Math.min(1, normalizedOpacity * 1.25)
+      : normalizedOpacity;
     context.imageSmoothingEnabled = true;
     if ('imageSmoothingQuality' in context) {
       context.imageSmoothingQuality = 'high';
@@ -310,7 +312,7 @@ export const drawChartBackgroundWatermark = (
     }
   }
   context.fillStyle = isLightBackground
-    ? `rgba(15, 23, 42, ${Math.min(1, normalizedOpacity * 0.85).toFixed(3)})`
+    ? `rgba(51, 65, 85, ${Math.min(1, normalizedOpacity * 0.78).toFixed(3)})`
     : `rgba(255, 255, 255, ${normalizedOpacity.toFixed(3)})`;
   context.fill();
 
@@ -321,7 +323,7 @@ export const drawChartBackgroundWatermark = (
     traceWatermarkPolygon(context, RTX5_WATERMARK_ACCENT_FIVE, centerXCss, centerYCss, unitScaleCss, safeHpr, safeVpr);
   }
   context.fillStyle = isLightBackground
-    ? `rgba(101, 163, 13, ${Math.min(1, normalizedOpacity * 1.15).toFixed(3)})`
+    ? `rgba(56, 142, 20, ${Math.min(1, normalizedOpacity * 1.25).toFixed(3)})`
     : `rgba(128, 195, 66, ${Math.min(1, normalizedOpacity * 1.15).toFixed(3)})`;
   context.fill();
   context.restore();
@@ -651,6 +653,9 @@ export class SquareChartGridPrimitive implements ISeriesPrimitive<Time> {
       ...options,
       cellSizeCssPx: normalizeCellSize(options.cellSizeCssPx ?? this.options.cellSizeCssPx),
     };
+    if (this.options.showBackgroundLogo) {
+      getLoadedWatermarkImage(this.options.backgroundLogoSrc);
+    }
     this.requestUpdate?.();
   }
 }

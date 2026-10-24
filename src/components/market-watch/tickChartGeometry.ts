@@ -1,3 +1,5 @@
+import { inferPriceDigitsFromValue } from '../../utils/chartPriceScale';
+
 export const MARKET_WATCH_TICK_CHART_LIMIT = 2_000;
 
 /** MT5 draws one tick per pixel column at most; denser history scrolls off the left. */
@@ -136,14 +138,29 @@ export function buildTickChartGeometry(
   const candidates = points.slice(-MARKET_WATCH_TICK_CHART_LIMIT);
   if (candidates.length === 0 || width <= 0 || height <= 0) return null;
 
+  let observedDigits = 0;
+  if (digits !== null) {
+    const sampleStart = Math.max(0, candidates.length - 128);
+    for (let index = sampleStart; index < candidates.length; index += 1) {
+      const point = candidates[index];
+      const bidDigits = inferPriceDigitsFromValue(point.bid) ?? 0;
+      const askDigits = inferPriceDigitsFromValue(point.ask) ?? 0;
+      const lastDigits = point.last !== undefined && Number.isFinite(point.last) && point.last > 0
+        ? (inferPriceDigitsFromValue(point.last) ?? 0)
+        : 0;
+      observedDigits = Math.max(observedDigits, bidDigits, askDigits, lastDigits);
+    }
+  }
+  const effectiveDigits = digits === null ? null : clamp(Math.max(digits, observedDigits), 0, MAX_DIGITS);
+
   const characterWidth = fontSize * CHARACTER_WIDTH_RATIO;
   const textWidth = (text: string): number => text.length * characterWidth;
   const widestPrice = candidates.reduce((widest, point) => Math.max(
     widest,
-    textWidth(formatTickChartPrice(point.ask, digits)),
-    textWidth(formatTickChartPrice(point.bid, digits)),
+    textWidth(formatTickChartPrice(point.ask, effectiveDigits)),
+    textWidth(formatTickChartPrice(point.bid, effectiveDigits)),
     point.last !== undefined && Number.isFinite(point.last) && point.last > 0
-      ? textWidth(formatTickChartPrice(point.last, digits))
+      ? textWidth(formatTickChartPrice(point.last, effectiveDigits))
       : 0,
   ), 0);
   const axisWidth = Math.ceil(widestPrice + LABEL_PADDING_PX * 2 + AXIS_TICK_PX);
@@ -171,7 +188,7 @@ export function buildTickChartGeometry(
       ? Math.max(point.bid, point.ask, point.last)
       : Math.max(point.bid, point.ask)
   )));
-  const brokerStep = digits === null ? 0 : 10 ** -digits;
+  const brokerStep = effectiveDigits === null ? 0 : 10 ** -effectiveDigits;
   const observedRange = maximum - minimum;
   const padding = observedRange > 0
     ? observedRange * PRICE_PADDING_RATIO
@@ -183,7 +200,7 @@ export function buildTickChartGeometry(
   const minimumLabelSpacing = fontSize * MIN_PRICE_LABEL_SPACING_RATIO;
   const { step, decimals } = niceStep(priceRange * minimumLabelSpacing / Math.max(plotHeight, 1), brokerStep);
   const lineCount = Math.ceil(priceRange / step) + 1;
-  const labelDigits = digits ?? decimals;
+  const labelDigits = effectiveDigits === null ? decimals : Math.max(effectiveDigits, decimals);
   const yAt = (price: number): number => plot.top + (1 - (price - minimum) / priceRange) * plotHeight;
   const xAt = (index: number): number => (
     visibleCount === 1
@@ -268,7 +285,7 @@ export function buildTickChartGeometry(
   if (lastPoints.length > 0) {
     const latestLast = lastPoints[lastPoints.length - 1].price;
     const lastY = clamp(yAt(latestLast), plot.top + halfTag, plot.bottom - halfTag);
-    lastTag = { y: lastY, label: formatTickChartPrice(latestLast, digits) };
+    lastTag = { y: lastY, label: formatTickChartPrice(latestLast, effectiveDigits) };
   }
 
   return {
@@ -287,8 +304,8 @@ export function buildTickChartGeometry(
     priceTicks,
     timeTicks,
     separators,
-    askTag: { y: askY, label: formatTickChartPrice(latest.ask, digits) },
-    bidTag: { y: bidY, label: formatTickChartPrice(latest.bid, digits) },
+    askTag: { y: askY, label: formatTickChartPrice(latest.ask, effectiveDigits) },
+    bidTag: { y: bidY, label: formatTickChartPrice(latest.bid, effectiveDigits) },
     lastTag,
     tagHeight,
     latest,
@@ -337,11 +354,12 @@ export function buildTickChartCrosshair(
     : plot.left + (index / (visibleCount - 1)) * drawWidth;
   const y = clamp(pointer.y, plot.top, plot.bottom);
 
+  const effectiveDigits = digits === null ? null : Math.max(digits, labelDigits);
   const priceRange = maximumPrice - minimumPrice;
   const price = minimumPrice + (1 - (y - plot.top) / plotHeight) * priceRange;
   const halfTag = tagHeight / 2;
   const priceTagY = clamp(y, plot.top + halfTag, plot.bottom - halfTag);
-  const priceTagLabel = formatTickChartPrice(price, digits ?? labelDigits);
+  const priceTagLabel = formatTickChartPrice(price, effectiveDigits ?? labelDigits);
 
   const characterWidth = fontSize * CHARACTER_WIDTH_RATIO;
   const textWidth = (text: string): number => text.length * characterWidth;
@@ -355,7 +373,7 @@ export function buildTickChartCrosshair(
   );
   const timeTagY = plot.bottom + 1;
 
-  const pillLabel = `${formatTickChartPrice(point.bid, digits)} / ${formatTickChartPrice(point.ask, digits)}`;
+  const pillLabel = `${formatTickChartPrice(point.bid, effectiveDigits)} / ${formatTickChartPrice(point.ask, effectiveDigits)}`;
   const pillWidth = Math.min(
     Math.max(1, plotWidth - CROSSHAIR_PILL_INSET_PX * 2),
     Math.ceil(textWidth(pillLabel) + LABEL_PADDING_PX * 2),

@@ -99,7 +99,7 @@ describe('cTrader-style position controls contract', () => {
     expect(chartSource).toContain('el.style.width = `${priceScaleWidth}px`;');
     expect(chartSource).toContain('snappedY + 10 > plotHeight');
     expect(chartSource).toContain('pointer-events:none;z-index:8;');
-    expect(chartSource).toContain('addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side));');
+    expect(chartSource).toContain('addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side, trade.kind));');
     // Disable native collision shifting in both chart creation and hot apply.
     // Close prices then overlap at their real coordinate instead of forming a
     // misleading vertical stack when the visible price range is very wide.
@@ -206,11 +206,13 @@ describe('cTrader-style position controls contract', () => {
   it('groups exact entry prices while preserving side colors and ticket-specific controls', () => {
     expect(chartSource).toContain("const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';");
     expect(chartSource).toContain("const TRADE_ENTRY_LINE_SELL_COLOR = '#ef4444';");
+    expect(chartSource).toContain("const TRADE_PENDING_BUY_LINE_COLOR = '#ea580c';");
+    expect(chartSource).toContain("const TRADE_PENDING_SELL_LINE_COLOR = '#ec4899';");
     expect(chartSource).toContain('createEntryPriceLevels(sortedActiveSnapshots, new Set(nextActiveSnapshots.keys()));');
     expect(chartSource).toContain('createEntryControlsForTrade(trade, levels, { showAxisPriceLine: false });');
     const entries = chartSection('const createEntryPriceLevels =', 'const submitTradeLevelChange =');
     expect(entries).toContain('groups.get(trade.entryPrice)');
-    expect(entries).toContain('getEntryLineColor(first.side)');
+    expect(entries).toContain('getEntryLineColor(first.side, first.kind)');
     expect(entries).toContain('chartThemeRef.current.axisText');
     expect(entries).toContain('group.length === 1 && liveTradeKeys.has(first.key)');
     expect(entries).toContain('addTradeAxisPriceLine(`entry-price:${price}`, price, color);');

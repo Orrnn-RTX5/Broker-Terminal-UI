@@ -409,7 +409,6 @@ const MainToolbar = ({
     toolbarState,
     dispatchCommand,
     symbol,
-    onRefreshConnection,
     desktopDrawingTools,
     accountBrokerName,
     profileSymbols,
@@ -909,19 +908,6 @@ const MainToolbar = ({
                                 />
                             </>
                         )}
-
-                        {/* T12: full reconnect across every transport via onRefreshConnection.
-                            The callback is optional: without a wired refresh entry point the
-                            action renders disabled with reason instead of a dead click. */}
-                        <MT5Divider />
-                        <MT5Group label={tr("Connection")}>
-                            <CommandIconButton
-                                icon="refresh"
-                                title={onRefreshConnection ? tr("Refresh connection") : tr("Refresh unavailable")}
-                                onClick={onRefreshConnection}
-                                disabled={!onRefreshConnection}
-                            />
-                        </MT5Group>
                     </div>
 
                     {/* Keep a usable row end without hiding any toolbar actions. */}

@@ -136,13 +136,15 @@ export const DockWorkspace = React.memo(function DockWorkspace({
     }, [allSymbols, chartSymbols]);
     const priceDigitsBySymbol = useMemo(() => {
         const digitsBySymbol = new Map<string, number>();
-        allSymbols.forEach((instrument) => {
+        const mergeDigits = (catalog: unknown[]) => catalog.forEach((instrument) => {
             const instrumentSymbol = getInstrumentSymbolName(instrument);
             const digits = getInstrumentPriceDigits(instrument);
             if (instrumentSymbol && digits !== undefined) digitsBySymbol.set(instrumentSymbol, digits);
         });
+        mergeDigits(allSymbols);
+        mergeDigits(marketInstrumentsSnapshot.authorizedInstruments);
         return digitsBySymbol;
-    }, [allSymbols]);
+    }, [allSymbols, marketInstrumentsSnapshot.authorizedInstruments]);
     const volumeMetadataBySymbol = useMemo(() => {
         const metadataBySymbol = new Map<string, TradeVolumeMetadata>();
         const mergeCatalog = (catalog: unknown[]) => catalog.forEach((instrument) => {

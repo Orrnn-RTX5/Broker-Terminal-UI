@@ -1,6 +1,6 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { getAuthenticatedAccountName } from '../../utils/accountDisplayName';
-import { resolveTradingAccountType, type TradingAccountType } from '../../services/tradingAccountType';
+import { getBrokerSavedAccountTypes, resolveTradingAccountType, type TradingAccountType } from '../../services/tradingAccountType';
 import React, { useState, useEffect, useRef } from 'react';
 import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
 import { createPortal } from 'react-dom';
@@ -24,6 +24,8 @@ import type { BrokerServer } from '../../types/api';
 import { CountryCombobox } from './CountryCombobox';
 import './open-account-dialog.css';
 import { TradeAuthDialog } from '../TradeAuthDialog';
+import { rememberAccountSession } from '../../services/accountSessionCache';
+import { saveLogin, supportsSavedLogins } from '../../services/savedLogins';
 
 // Palette cycling for broker avatar gradients
 const GRADIENTS = [
@@ -190,7 +192,21 @@ const availableDirectoryBrokers = (rows: BrokerDiscoveryItem[]): BrokerServer[] 
 
 export const OpenAccountDialog: React.FC<Props> = (props) => {
     if (!isDesktopBackendTarget()) {
-        return <TradeAuthDialog {...props} initialMode="demo" intent={null} onAuthenticated={props.onClose} />;
+        const storeState = typeof useAppStore.getState === 'function' ? useAppStore.getState() : undefined;
+        const runtimeConfig = getRuntimeBrokerConfiguration();
+        const { hasDemoAndRealAccounts } = getBrokerSavedAccountTypes(storeState?.savedAccounts, {
+            brokerId: runtimeConfig.brokerId || (typeof localStorage !== 'undefined' ? localStorage.getItem('broker_id') : ''),
+            server: runtimeConfig.defaultMt5Server || (typeof localStorage !== 'undefined' ? localStorage.getItem('rtx_broker_server') : ''),
+            serverUrl: runtimeConfig.apiHost || runtimeConfig.apiHostExt || (typeof localStorage !== 'undefined' ? localStorage.getItem('server_url') : ''),
+        });
+        return (
+            <TradeAuthDialog
+                {...props}
+                initialMode={hasDemoAndRealAccounts ? 'login' : 'demo'}
+                intent={null}
+                onAuthenticated={props.onClose}
+            />
+        );
     }
     return <DesktopOpenAccountDialog {...props} />;
 };
@@ -299,6 +315,20 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const realAccountSupported = realAccountAvailability.supported;
     const runtimeConfiguration = isDesktopBackendTarget() ? null : getRuntimeBrokerConfiguration();
     const termsUrl = runtimeConfiguration?.valid ? runtimeConfiguration.brokerTermsUrl : '';
+    const storeStateForBroker = typeof useAppStore.getState === 'function' ? useAppStore.getState() : undefined;
+    const { hasDemoAndRealAccounts } = getBrokerSavedAccountTypes(
+        storeStateForBroker?.savedAccounts,
+        selectedBroker
+            ? {
+                  brokerId: selectedBroker.broker_id,
+                  brokerName: selectedBroker.broker_name,
+                  server: selectedBroker.server,
+                  serverUrl: selectedBroker.server_url || selectedBroker.backend_url,
+              }
+            : undefined,
+    );
+    const effectiveAccountType: AccountType = hasDemoAndRealAccounts ? 'existing' : accountType;
+    const activeExistingBroker = existingBroker || (effectiveAccountType === 'existing' ? selectedBroker || null : null);
 
     const resolveSelectedBrokerRouting = (broker: BrokerServer | undefined = selectedBroker) => {
         if (!broker) throw new Error('Please select a broker server.');
@@ -342,6 +372,19 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             throw new Error('The broker did not return a valid account login.');
         }
 
+        const prevState = useAppStore.getState();
+        const prevToken = prevState.authToken || localStorage.getItem('auth_token');
+        if (prevState.isAuthenticated && prevState.accountId && prevToken) {
+            rememberAccountSession({
+                brokerId: localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || submitBroker.broker_id,
+                serverUrl: localStorage.getItem('server_url') || localStorage.getItem('backend_url') || brokerServerUrl,
+                login: prevState.accountId,
+                authToken: prevToken,
+                refreshToken: prevState.refreshToken || localStorage.getItem('refresh_token') || undefined,
+                expiresAt: prevState.tokenExpiresAt || undefined,
+            });
+        }
+
         persistBrokerSessionDiscovery({
             ...submitBroker,
             ...data,
@@ -360,6 +403,23 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
         const expiresAt = parseTokenExpiresAt(data.expires_at) ?? undefined;
         const tradingAccountType = resolveTradingAccountType(data);
+        const resolvedBrokerId = String(data.broker_id || submitBroker.broker_id || '').trim();
+        const resolvedServerUrl = String(data.server_url || data.broker_server || brokerServerUrl || brokerExtApiUrl || '').trim();
+        rememberAccountSession({
+            brokerId: resolvedBrokerId,
+            serverUrl: resolvedServerUrl,
+            login: accountId,
+            authToken: token,
+            refreshToken: data.refresh_token,
+            expiresAt,
+            password: existingPassword,
+        });
+        if (existingPassword && resolvedBrokerId && supportsSavedLogins()) {
+            const candidateUrls = Array.from(new Set([resolvedServerUrl, brokerExtApiUrl].filter(Boolean)));
+            for (const url of candidateUrls) {
+                void saveLogin({ brokerId: resolvedBrokerId, serverUrl: url }, accountId, existingPassword).catch(() => undefined);
+            }
+        }
         const store = useAppStore.getState();
         store.setAuthTokens(token, data.refresh_token, expiresAt);
         store.setAuthenticated(true, accountId, token, data.refresh_token, expiresAt, {
@@ -413,12 +473,55 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         const createdLogin = Number.parseInt(String(accountRecord.login), 10);
         if (Number.isSafeInteger(createdLogin) && createdLogin > 0) {
             const createdAccountType = brokerReturnedType;
+            const createdBrokerId = String(accountRecord.broker_id || submitBroker.broker_id || '').trim();
+            const storeState = useAppStore.getState();
+            const activeSameBrokerAccount = storeState.isAuthenticated
+                ? storeState.savedAccounts?.find(
+                    item => String(item.login) === String(storeState.accountId)
+                        && String(item.brokerId || '').toLowerCase() === createdBrokerId.toLowerCase(),
+                )
+                : undefined;
+            const activeBrokerId = typeof localStorage !== 'undefined'
+                ? String(localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '').trim()
+                : '';
+            const activeServerUrl = typeof localStorage !== 'undefined'
+                ? String(localStorage.getItem('server_url') || localStorage.getItem('backend_url') || '').trim()
+                : '';
+            const createdServerUrl = activeSameBrokerAccount?.serverUrl
+                || (
+                    activeBrokerId
+                    && activeBrokerId.toLowerCase() === createdBrokerId.toLowerCase()
+                    && activeServerUrl
+                        ? activeServerUrl
+                        : (resolveBrokerBackendUrl(submitBroker) || submitBroker.server_url || submitBroker.backend_url || brokerExtApiUrl)
+                );
+            const createdToken = String(
+                (responseRecord?.access_token as string)
+                || (responseRecord?.token as string)
+                || ((accountRecord as unknown as Record<string, unknown>)?.access_token as string)
+                || ((accountRecord as unknown as Record<string, unknown>)?.token as string)
+                || '',
+            ).trim();
+            const createdPassword = String(accountRecord.master_password || '').trim();
+            rememberAccountSession({
+                brokerId: createdBrokerId,
+                serverUrl: createdServerUrl,
+                login: createdLogin,
+                authToken: createdToken || undefined,
+                password: createdPassword || undefined,
+            });
+            if (createdPassword && createdBrokerId && supportsSavedLogins()) {
+                const candidateUrls = Array.from(new Set([createdServerUrl, brokerExtApiUrl].filter(Boolean)));
+                for (const url of candidateUrls) {
+                    void saveLogin({ brokerId: createdBrokerId, serverUrl: url }, String(createdLogin), createdPassword).catch(() => undefined);
+                }
+            }
             useAppStore.getState().addSavedAccount?.({
                 login: createdLogin,
                 name: request.name,
                 server: accountRecord.server || submitBroker.broker_name || submitBroker.broker_id,
-                brokerId: accountRecord.broker_id || submitBroker.broker_id,
-                serverUrl: resolveBrokerBackendUrl(submitBroker) || submitBroker.server_url || submitBroker.backend_url,
+                brokerId: createdBrokerId,
+                serverUrl: createdServerUrl,
                 accountType: createdAccountType,
                 isLive: createdAccountType === 'real',
                 lastUsed: Date.now(),
@@ -436,11 +539,15 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 setValidationError('Please select a broker server.');
                 return;
             }
+            if (hasDemoAndRealAccounts) {
+                setAccountType('existing');
+                setExistingBroker(selectedBroker);
+            }
             setStep(1);
             return;
         }
 
-        if (step === 1 && accountType === 'existing') {
+        if (step === 1 && effectiveAccountType === 'existing') {
             try {
                 setIsCreating(true);
                 await connectExistingAccount();
@@ -622,9 +729,10 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const renderStep1 = () => (
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-5">
             <div className="flex flex-col gap-6 pt-2">
+                {!hasDemoAndRealAccounts && <>
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
-                        <input aria-label={tr("Demo account")} type="radio" checked={accountType === 'demo'} onChange={() => { setAccountType('demo'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
+                        <input aria-label={tr("Demo account")} type="radio" checked={effectiveAccountType === 'demo'} onChange={() => { setAccountType('demo'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div>
                         <div className="text-[14px] leading-5 font-medium text-zinc-200 transition-colors group-hover:text-white">{tr("Open a demo account to trade virtual money without risk")}</div>
@@ -634,7 +742,7 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
                 <label className="flex items-start gap-3 cursor-pointer group" aria-disabled={!realAccountSupported}>
                     <div className="flex items-center h-5">
-                        <input aria-label={tr("Real account")} type="radio" checked={accountType === 'real'} disabled={!realAccountSupported} aria-describedby={!realAccountSupported ? 'rtx-real-account-unavailable-reason' : undefined} onChange={() => { setAccountType('real'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500 disabled:cursor-not-allowed disabled:opacity-50" />
+                        <input aria-label={tr("Real account")} type="radio" checked={effectiveAccountType === 'real'} disabled={!realAccountSupported} aria-describedby={!realAccountSupported ? 'rtx-real-account-unavailable-reason' : undefined} onChange={() => { setAccountType('real'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
                     <div>
                         <div className="text-[14px] leading-5 font-medium text-zinc-200 transition-colors group-hover:text-white">{tr("Open a real account for live trading")}</div>
@@ -658,15 +766,14 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                             {tr("Continue verification on the broker website")}
                         </a>
                     </div>
-                )}
-
+                )}</>}
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
-                        <input aria-label={tr("Existing account")} type="radio" checked={accountType === 'existing'} onChange={() => { setAccountType('existing'); setExistingBroker(selectedBroker || null); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
+                        <input aria-label={tr("Existing account")} type="radio" checked={effectiveAccountType === 'existing'} onChange={() => { setAccountType('existing'); setExistingBroker(selectedBroker || null); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div className="w-full">
                         <div className="text-[14px] leading-5 font-medium text-zinc-200 transition-colors group-hover:text-white">{tr("Connect with an existing trade account")}</div>
-                        {accountType === 'existing' && (
+                        {effectiveAccountType === 'existing' && (
                             <div className="mt-3 flex flex-col gap-2">
                                 <div className="flex items-center gap-3">
                                     <span className="w-16 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Login:")}</span>
@@ -706,11 +813,11 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                             className="rtx-open-account-dialog__server-trigger flex h-[32px] w-full items-center justify-between gap-2 rounded border border-zinc-700 bg-[#1a1c23] px-2 text-left text-[14px] font-normal outline-none focus:border-indigo-500"
                                         >
                                             <div className="flex items-center gap-2 truncate flex-1">
-                                                {existingBroker ? (
+                                                {activeExistingBroker ? (
                                                     <>
-                                                        <DropdownBrokerLogo broker={existingBroker} index={0} />
+                                                        <DropdownBrokerLogo broker={activeExistingBroker} index={0} />
                                                         <span className="truncate text-zinc-300">
-                                                            {existingBroker.broker_name} <span className="font-mono text-[14px] font-normal text-zinc-600">({existingBroker.broker_id})</span>
+                                                            {activeExistingBroker.broker_name} <span className="font-mono text-[14px] font-normal text-zinc-600">({activeExistingBroker.broker_id})</span>
                                                         </span>
                                                     </>
                                                 ) : (
@@ -992,14 +1099,14 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     };
 
     const header = getHeader();
-    const desktopSteps = accountType === 'existing'
+    const desktopSteps = effectiveAccountType === 'existing'
         ? ['Broker', 'Account type']
         : accountType === 'real' && !realAccountSupported ? ['Broker', 'Account type', 'Verification']
             : ['Broker', 'Account type', 'Details', 'Settings'];
     const isStepValid = step === 0 ? Boolean(selectedBroker) && !loadingBrokers : true;
     const actionLabel = isCreating
-        ? accountType === 'existing' ? 'Connecting...' : 'Creating...'
-        : step === 1 && accountType === 'existing' ? 'Connect'
+        ? effectiveAccountType === 'existing' ? 'Connecting...' : 'Creating...'
+        : step === 1 && effectiveAccountType === 'existing' ? 'Connect'
             : step === 2 && accountType === 'real' && !realAccountSupported ? 'Back to account types'
                 : step < 3 ? 'Next >'
                     : step === 3 ? (accountType === 'real' ? 'Create Real Account' : 'Create Demo Account')

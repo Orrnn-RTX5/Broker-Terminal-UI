@@ -133,11 +133,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):n
   outline: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(button):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(button):not(:where(.rtx-desktop-shell .rtx-login-overlay *, .rtx-trade-control-btn)) {
   color: #475467;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(button:not(:disabled):hover):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(button:not(:disabled):hover):not(:where(.rtx-desktop-shell .rtx-login-overlay *, .rtx-trade-control-btn)) {
   background-color: #f9fafb !important;
   border-color: #d0d5dd !important;
   color: #101828 !important;
@@ -467,12 +467,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__icon {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .navigator-tree-item__chevron,
-html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .navigator-tree-item__icon,
-html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .navigator-tree-item__label {
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:not([data-account-active="false"]):hover .navigator-tree-item__icon,
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:not([data-account-active="false"]):not([aria-disabled="true"]):hover .navigator-tree-item__label {
   color: #101828 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__label {
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:not([data-account-active="false"]):not([aria-disabled="true"]) .navigator-tree-item__label {
   color: #475467 !important;
 }
 
@@ -1157,11 +1157,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .
   color: #7E57C2 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .navigator-tree-item__label {
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:not([data-account-active="false"]):not([aria-disabled="true"]):hover .navigator-tree-item__label {
   color: #101828 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__label {
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:not([data-account-active="false"]):not([aria-disabled="true"]) .navigator-tree-item__label {
   color: #334155 !important;
 }
 

@@ -929,6 +929,16 @@ export function WelcomeTerminal({
             const appStore = useAppStore.getState();
             const loginNum = parseInt(String(accountId), 10);
             const tradingAccountType = resolveTradingAccountType(data);
+            const loginStoreModule = await loginStoreRuntimePromise;
+            loginStoreModule.rememberAccountSession?.({
+                brokerId: data.broker_id || submitBroker.broker_id,
+                serverUrl: isDesktopBrokerSelection ? brokerServerUrl : (data.server_url || data.broker_server || brokerServerUrl || brokerExtApiUrl),
+                login: String(accountId),
+                authToken: token,
+                refreshToken: data.refresh_token,
+                expiresAt: sessionHandoff.expiresAt ?? undefined,
+                password,
+            });
             appStore.setAuthenticated(
                 true,
                 String(accountId),

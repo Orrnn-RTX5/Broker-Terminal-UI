@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     getCachedBrokerDirectory: vi.fn(),
     desktop: true,
     configuration: { valid: true, brokerTermsUrl: '' },
+    savedAccounts: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock('../../api/trade', () => ({
@@ -59,6 +60,7 @@ vi.mock('../../store/useAppStore', () => ({
         getState: () => ({
             setAuthTokens: mocks.setAuthTokens,
             setAuthenticated: mocks.setAuthenticated,
+            savedAccounts: mocks.savedAccounts,
         }),
     },
 }));
@@ -115,6 +117,7 @@ describe('OpenAccountDialog account flows', () => {
         vi.clearAllMocks();
         mocks.desktop = true;
         mocks.configuration = { valid: true, brokerTermsUrl: '' };
+        mocks.savedAccounts = [];
         localStorage.clear();
         mocks.loadAppBrokerDirectory.mockReset().mockResolvedValue(brokers);
         mocks.getCachedBrokerDirectory.mockReset().mockReturnValue(null);
@@ -421,5 +424,20 @@ describe('OpenAccountDialog account flows', () => {
 
         expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid positive account ID.');
         expect(mocks.login).not.toHaveBeenCalled();
+    });
+
+    it('hides demo and real account creation options once both demo and real accounts are created for the broker', async () => {
+        mocks.savedAccounts = [
+            { login: 200001, name: 'Real Trader', server: 'Broker One', brokerId: 'broker-one', accountType: 'real', isLive: true },
+            { login: 200091, name: 'Demo Trader', server: 'Broker One', brokerId: 'broker-one', accountType: 'demo', isLive: false },
+        ];
+        await renderDialog();
+        fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+
+        expect(screen.queryByRole('radio', { name: 'Demo account' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('radio', { name: 'Real account' })).not.toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: 'Existing account' })).toBeChecked();
+        expect(screen.getByLabelText('Existing account ID')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
     });
 });

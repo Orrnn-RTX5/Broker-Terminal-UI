@@ -19,6 +19,7 @@ import {
 } from '../../../services/candleAggregationService';
 import { createRenderedPriceReference, type RenderedPriceReference } from '../../../services/chartPriceGuards';
 import { drawingManager } from '../../../services/drawingManager';
+import { buildChartSeriesPriceFormat } from '../../../utils/chartPriceScale';
 import type { ChartInteractionOwnership } from '../../../utils/chartInteractionOwnership';
 import type { ChartPostInteractionCoordinator } from '../../../utils/chartPostInteractionCoordinator';
 import type { LogicalRangeLike } from '../../../utils/candleHistory';
@@ -100,7 +101,7 @@ interface UseTradingChartReconfigurationOptions {
   renderedPriceReferenceRef: RefObject<RenderedPriceReference | null>;
   resetLiveQuotePriceGuard: () => void;
   resetVisibleRangeOnNextDataRef: RefObject<boolean>;
-  resolvedPriceDigits: number;
+  resolvedPriceDigits: number | null;
   resolvedPricePoint: number;
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
   setTextInputOverlay: Dispatch<SetStateAction<TextInputOverlay | null>>;
@@ -230,7 +231,7 @@ export const useTradingChartReconfiguration = (options: UseTradingChartReconfigu
         const digits = resolvedPriceDigits;
         const minMove = resolvedPricePoint;
         seriesRef.current.applyOptions({
-          priceFormat: { type: 'price', precision: digits, minMove }
+          priceFormat: buildChartSeriesPriceFormat(digits, minMove),
         });
 
         // Reuse the exact new symbol's session cache before the next paint.

@@ -169,4 +169,21 @@ describe('Navigator account context menu', () => {
         expect(mocks.logout).toHaveBeenCalledOnce();
         confirm.mockRestore();
     });
+
+    it('hides Open an Account from context menus once both demo and real accounts are created and logged in', () => {
+        mocks.savedAccounts = [
+            { login: 200001, name: 'Trader', server: 'Orrnn', accountType: 'real', isLive: true },
+            { login: 200091, name: 'Arijit Nayak', server: 'Orrnn', accountType: 'demo', isLive: false },
+        ];
+        const { unmount } = render(<NavigatorPanel />);
+        const menu = rightClickAccount('200001: Trader');
+        expect(within(menu).queryByRole('menuitem', { name: 'Open an AccountInsert' })).not.toBeInTheDocument();
+        expect(within(menu).getByRole('menuitem', { name: 'Login to Trade AccountEnter' })).toBeInTheDocument();
+        unmount();
+
+        render(<NavigatorPanel />);
+        fireEvent.contextMenu(screen.getByText('Accounts'));
+        expect(screen.queryByRole('menuitem', { name: 'Open an AccountInsert' })).not.toBeInTheDocument();
+        expect(screen.getByRole('menuitem', { name: 'Login to Trade AccountEnter' })).toBeInTheDocument();
+    });
 });

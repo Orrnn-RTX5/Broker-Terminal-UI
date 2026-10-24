@@ -263,11 +263,15 @@ describe('enterprise light visual-system contract', () => {
     expect(lightCss).toMatch(/\.rtx-timeframe-strip \.rtx-timeframe-option\s*\{[^}]*font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;/);
   });
 
-  it('neutralizes pink trade stripes while preserving a quiet selected row', () => {
+  it('neutralizes pink trade stripes while preserving a quiet selected row and readable trade action buttons', () => {
     expect(lightCss).toContain('.rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected):nth-child(even)');
     expect(lightCss).toMatch(/\.rtx-trade-table tbody tr\.rtx-trade-row[\s\S]*?background: var\(--rtx-light-panel\) !important;/);
     expect(lightCss).toContain('background: var(--rtx-light-selected) !important;');
     expect(lightCss).not.toMatch(/#f3e5f5/i);
+    expect(lightCss).toMatch(/\.rtx-trade-action-button,\s*html\.rtx-advanced-view\.rtx-skin-untitled-light \.rtx-trade-close-button\s*\{[\s\S]*?background: var\(--rtx-light-panel-muted\) !important;[\s\S]*?color: var\(--rtx-light-text-secondary\) !important;/);
+    expect(lightCss).toMatch(/\.rtx-trade-action-button:not\(:disabled\):hover\s*\{[\s\S]*?color: var\(--rtx-light-accent\) !important;/);
+    expect(lightCss).toMatch(/\.rtx-trade-close-button:not\(:disabled\):hover\s*\{[\s\S]*?background: var\(--color-loss\) !important;[\s\S]*?color: #ffffff !important;/);
+    expect(legacyLightCss).toContain('.rtx-trade-control-btn');
   });
 
   it('separates blue/red quote movement from green/red daily performance', () => {

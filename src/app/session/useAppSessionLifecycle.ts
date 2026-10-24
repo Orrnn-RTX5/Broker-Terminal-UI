@@ -9,7 +9,7 @@ import {
 import { api } from '../../services/api';
 import { brokerApi } from '../../api/brokerApi';
 import { chartDataService } from '../../services/chartDataService';
-import { getAccessToken, getRefreshToken, getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
+import { commitBrokerAccountSessionScope, getAccessToken, getRefreshToken, getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
 import { ensureConfiguredWebSession } from '../../startup/configuredWebSession';
 import { seedValidatedSessionAccountSummary } from '../../services/tradeStartupSnapshot';
 import { updateDynamicUrls } from '../../config/api';
@@ -164,6 +164,11 @@ export const useAppSessionLifecycle = ({
 
   useEffect(() => {
     const handleTokenUpdated = () => {
+      const latestToken = getStoredAuthToken();
+      const store = useAppStore.getState();
+      if (latestToken && store.isAuthenticated && store.authToken !== latestToken) {
+        useAppStore.setState({ authToken: latestToken });
+      }
       setTokenSessionVersion((value) => value + 1);
       validateStoredAuthSession('auth_token_missing');
     };
@@ -260,6 +265,10 @@ export const useAppSessionLifecycle = ({
         const authenticatedLogin = parsePositiveLogin(lastAccountId || undefined);
         if (authenticatedLogin) {
           const restoredAccountId = String(authenticatedLogin);
+          commitBrokerAccountSessionScope({
+            authenticated: true,
+            accountId: restoredAccountId,
+          });
           setIsAuthenticated(true);
           setAccountId(restoredAccountId);
           console.log('[Session] Restored active authenticated store session for:', restoredAccountId);
@@ -285,8 +294,7 @@ export const useAppSessionLifecycle = ({
           || authSessionGenerationRef.current !== sessionGeneration
           || !getStoredAuthToken()) return;
         const restoredAccountId = accountData.id || String(loginId);
-        const expiresAtString = localStorage.getItem('token_expires_at');
-        const expiresAt = expiresAtString ? new Date(expiresAtString).getTime() : undefined;
+        const expiresAt = parseStoredTokenExpiryMs(localStorage.getItem('token_expires_at')) ?? undefined;
         const activeToken = getAccessToken();
         const activeRefresh = getRefreshToken();
         if (!activeToken) throw new Error('Session restore did not produce an access token');

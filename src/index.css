@@ -808,8 +808,16 @@ html:not(.rtx-skin-untitled-light) .navigator-tree-item__row:hover {
   background: var(--bg-quaternary) !important;
 }
 
-html:not(.rtx-skin-untitled-light) .navigator-tree-item__label {
+html:not(.rtx-skin-untitled-light) .navigator-tree-item__row:not([data-account-active="false"]):not([aria-disabled="true"]) .navigator-tree-item__label {
   color: var(--text-primary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .navigator-tree-item__row[data-account-active="false"] .navigator-tree-item__label {
+  color: var(--navigator-account-inactive-text, #71717a) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .navigator-tree-item__row[data-account-active="false"]:hover .navigator-tree-item__label {
+  color: var(--navigator-account-inactive-hover-text, #a1a1aa) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .navigator-tree-item__chevron,

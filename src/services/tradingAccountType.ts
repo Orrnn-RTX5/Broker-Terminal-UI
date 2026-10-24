@@ -150,3 +150,70 @@ export const resolveDisplayAccountType = (...sources: unknown[]): TradingAccount
   }
   return 'real';
 };
+
+export interface BrokerAccountScopeQuery {
+  brokerId?: string | null;
+  brokerName?: string | null;
+  server?: string | null;
+  serverUrl?: string | null;
+}
+
+export interface BrokerSavedAccountPresence {
+  hasDemoAccount: boolean;
+  hasRealAccount: boolean;
+  hasDemoAndRealAccounts: boolean;
+}
+
+const normalizeScopeToken = (value: unknown): string =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+const normalizeScopeUrl = (value: unknown): string =>
+  normalizeScopeToken(value).replace(/\/+$/, '');
+
+export const getBrokerSavedAccountTypes = (
+  accounts: readonly unknown[] | undefined | null,
+  query?: BrokerAccountScopeQuery,
+): BrokerSavedAccountPresence => {
+  if (!Array.isArray(accounts) || accounts.length === 0) {
+    return { hasDemoAccount: false, hasRealAccount: false, hasDemoAndRealAccounts: false };
+  }
+
+  const queryBrokerId = normalizeScopeToken(query?.brokerId);
+  const queryBrokerName = normalizeScopeToken(query?.brokerName);
+  const queryServer = normalizeScopeToken(query?.server);
+  const queryServerUrl = normalizeScopeUrl(query?.serverUrl);
+  const hasFilter = Boolean(queryBrokerId || queryBrokerName || queryServer || queryServerUrl);
+  const nameTokens = new Set([queryBrokerId, queryBrokerName, queryServer].filter(Boolean));
+
+  let hasDemoAccount = false;
+  let hasRealAccount = false;
+
+  for (const item of accounts) {
+    const record = asRecord(item);
+    if (!record) continue;
+
+    if (hasFilter) {
+      const recBrokerId = normalizeScopeToken(record.brokerId ?? record.broker_id);
+      const recServer = normalizeScopeToken(record.server);
+      const recServerUrl = normalizeScopeUrl(record.serverUrl ?? record.server_url);
+
+      const matchesNameOrId = (recBrokerId && nameTokens.has(recBrokerId))
+        || (recServer && nameTokens.has(recServer));
+      const matchesUrl = Boolean(queryServerUrl && recServerUrl && queryServerUrl === recServerUrl);
+
+      if (!matchesNameOrId && !matchesUrl) continue;
+    }
+
+    const accountType = resolveDisplayAccountType(record);
+    if (accountType === 'demo') hasDemoAccount = true;
+    else if (accountType === 'real') hasRealAccount = true;
+
+    if (hasDemoAccount && hasRealAccount) break;
+  }
+
+  return {
+    hasDemoAccount,
+    hasRealAccount,
+    hasDemoAndRealAccounts: hasDemoAccount && hasRealAccount,
+  };
+};

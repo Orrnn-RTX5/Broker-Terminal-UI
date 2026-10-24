@@ -1,6 +1,7 @@
 import { resolveSpecDigits } from './symbolUtils';
 
 const MAX_SUPPORTED_PRICE_DIGITS = 12;
+const MAX_OBSERVED_PRICE_DIGITS = 8;
 
 // Lightweight Charts' nominal label height is ceil(fontSize * 2.5), but its
 // margin extension and integer-coordinate math need a little more room at the
@@ -15,6 +16,80 @@ export const normalizePriceDigits = (value: unknown): number | null => {
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_SUPPORTED_PRICE_DIGITS) return null;
   return parsed;
+};
+
+export const inferPriceDigitsFromValue = (value: unknown): number | null => {
+  const num = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim() !== ''
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isFinite(num) || num <= 0) return null;
+  const fixed = Math.abs(num).toFixed(MAX_OBSERVED_PRICE_DIGITS);
+  const dotIndex = fixed.indexOf('.');
+  if (dotIndex < 0) return 0;
+  const trimmed = fixed.slice(dotIndex + 1).replace(/0+$/, '');
+  return trimmed.length;
+};
+
+export const inferObservedPriceDigits = (
+  candles?: ReadonlyArray<{ open?: unknown; high?: unknown; low?: unknown; close?: unknown }> | null,
+  livePrices?: readonly unknown[],
+): number | null => {
+  let maxDigits: number | null = null;
+  const consider = (value: unknown) => {
+    const digits = inferPriceDigitsFromValue(value);
+    if (digits !== null && (maxDigits === null || digits > maxDigits)) {
+      maxDigits = digits;
+    }
+  };
+
+  if (Array.isArray(candles) && candles.length > 0) {
+    const startIndex = Math.max(0, candles.length - 128);
+    for (let index = startIndex; index < candles.length; index += 1) {
+      const candle = candles[index];
+      if (!candle) continue;
+      consider(candle.open);
+      consider(candle.high);
+      consider(candle.low);
+      consider(candle.close);
+    }
+  }
+
+  if (Array.isArray(livePrices)) {
+    for (let index = 0; index < livePrices.length; index += 1) {
+      consider(livePrices[index]);
+    }
+  }
+
+  return maxDigits;
+};
+
+export const resolveEffectiveChartPriceDigits = (
+  specDigits: unknown,
+  observedDigits?: unknown,
+): number | null => {
+  const resolvedSpec = resolveSpecDigits(specDigits);
+  const resolvedObserved = resolveSpecDigits(observedDigits);
+  if (resolvedSpec !== null && resolvedObserved !== null) {
+    return Math.max(resolvedSpec, resolvedObserved);
+  }
+  return resolvedSpec ?? resolvedObserved;
+};
+
+export const buildChartSeriesPriceFormat = (
+  digits: unknown,
+  point?: unknown,
+): { type: 'price'; precision: number; minMove: number } => {
+  const resolvedDigits = normalizePriceDigits(digits) ?? 2;
+  const explicitPoint = typeof point === 'number' && Number.isFinite(point) && point > 0
+    ? point
+    : Math.pow(10, -resolvedDigits);
+  return {
+    type: 'price',
+    precision: resolvedDigits,
+    minMove: explicitPoint,
+  };
 };
 
 export const getInstrumentPriceDigits = (instrument: unknown): number | undefined => {
@@ -58,7 +133,7 @@ export const formatChartAxisPrice = (price: number, digits: unknown): string => 
  * digits are in scope — NaN marks absent precision without inventing a
  * fallback constant or guessing from a symbol name.
  */
-export const getPricePointFromDigits = (digits: number): number => {
+export const getPricePointFromDigits = (digits: number | null | undefined): number => {
   const resolved = resolveSpecDigits(digits);
   if (resolved === null) return NaN;
   return Math.pow(10, -resolved);

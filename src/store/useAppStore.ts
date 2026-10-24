@@ -20,6 +20,7 @@ import {
 import {
   clearCachedAccountSessions,
   forgetAccountSession,
+  invalidateAccountSessionToken,
   rememberAccountSession,
 } from '../services/accountSessionCache';
 import {
@@ -39,6 +40,7 @@ import {
 } from './appTickSessionFields';
 
 export {
+  rememberAccountSession,
   retainSameQuoteDayDailyChange,
   retainSameQuoteDayDisplayFields,
   retainSameQuoteDayLast,
@@ -933,6 +935,19 @@ export const useAppStore = create<AppState>()(
         },
 
         logout: () => {
+          const currentState = useAppStore.getState();
+          const currentScope = getCommittedBrokerAccountSessionScope();
+          const logoutLogin = currentState.accountId
+            || (typeof window !== 'undefined'
+              ? (localStorage.getItem('rtx_last_login') || localStorage.getItem('rtx_saved_username'))
+              : null);
+          if (logoutLogin) {
+            invalidateAccountSessionToken({
+              brokerId: currentScope.brokerId || (typeof window !== 'undefined' ? (localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id')) : ''),
+              serverUrl: currentScope.serverUrl || (typeof window !== 'undefined' ? (localStorage.getItem('server_url') || localStorage.getItem('backend_url')) : ''),
+              login: logoutLogin,
+            });
+          }
           // Clear local storage items related to auth session only
           if (typeof window !== 'undefined') {
             localStorage.removeItem('auth_token');

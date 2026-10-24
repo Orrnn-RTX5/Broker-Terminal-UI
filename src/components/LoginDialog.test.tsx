@@ -286,4 +286,25 @@ describe('LoginDialog', () => {
       expect(localStorage.getItem('rtx_last_login')).toBeNull();
     },
   );
+
+  it('toggles password masking with the eye button and resets on reopen', async () => {
+    const view = render(<LoginDialog isOpen onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled());
+    const passwordInput = screen.getByLabelText('Password', { exact: true });
+    expect(passwordInput).toHaveClass('rtx-secret-input');
+
+    const showButton = screen.getByRole('button', { name: 'Show password' });
+    expect(showButton).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(showButton);
+    expect(passwordInput).not.toHaveClass('rtx-secret-input');
+    const hideButton = screen.getByRole('button', { name: 'Hide password' });
+    expect(hideButton).toHaveAttribute('aria-pressed', 'true');
+
+    view.rerender(<LoginDialog isOpen={false} onClose={vi.fn()} />);
+    view.rerender(<LoginDialog isOpen onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled());
+    expect(screen.getByLabelText('Password', { exact: true })).toHaveClass('rtx-secret-input');
+    expect(screen.getByRole('button', { name: 'Show password' })).toHaveAttribute('aria-pressed', 'false');
+  });
 });

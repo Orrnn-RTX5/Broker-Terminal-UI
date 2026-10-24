@@ -19,6 +19,16 @@ type AuthenticatedStylesModule = typeof import('./authenticatedStyles');
 let appModulePromise: Promise<AppModule> | null = null;
 let resolvedAppModule: AppModule | null = null;
 let authenticatedStylesPromise: Promise<AuthenticatedStylesModule> | null = null;
+let preloadFailureCount = 0;
+
+const importAppModule = (): Promise<AppModule> => {
+  if (preloadFailureCount > 0 && import.meta.env.DEV && !import.meta.env.VITEST) {
+    return import('./App').catch(
+      () => import(/* @vite-ignore */ `./App?t=${Date.now()}`) as Promise<AppModule>,
+    );
+  }
+  return import('./App');
+};
 
 /** Safe presentation-only warmup that may overlap the authentication request. */
 export const preloadAuthenticatedPresentation = (): Promise<AuthenticatedStylesModule> => {
@@ -49,15 +59,17 @@ export const preloadAuthenticatedTerminal = (): Promise<AppModule> => {
     // the shell, but do not make authentication handoff wait for it.
     void preloadTradingChartRuntime().catch(() => undefined);
     appModulePromise = Promise.all([
-      import('./App'),
+      importAppModule(),
       import('./i18n').then((module) => module.i18nReady),
       preloadAuthenticatedPresentation(),
     ])
       .then(([appModule]) => {
+        preloadFailureCount = 0;
         resolvedAppModule = appModule;
         return appModule;
       })
       .catch((error) => {
+        preloadFailureCount += 1;
         appModulePromise = null;
         resolvedAppModule = null;
         throw error;
@@ -66,6 +78,18 @@ export const preloadAuthenticatedTerminal = (): Promise<AppModule> => {
 
   return appModulePromise;
 };
+
+const TERMINAL_LOAD_AUTORELOAD_KEY = 'rtx_terminal_load_autoreload';
+
+if (
+  import.meta.hot
+  && !import.meta.env.VITEST
+  && typeof window !== 'undefined'
+  && typeof document !== 'undefined'
+  && document.querySelector('[data-terminal-module-error="true"]')
+) {
+  window.location.reload();
+}
 
 interface StoredSessionTerminalLoaderProps {
   initialSessionHandoff: AuthenticatedSessionHandoff | null;
@@ -87,18 +111,44 @@ function StoredSessionTerminalLoader({
     if (terminalModule || initialSessionHandoff) return;
 
     let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     setLoadFailed(false);
     void loadTerminal().then(
       (module) => {
-        if (active) setTerminalModule(module);
+        if (!active) return;
+        try {
+          window.sessionStorage.removeItem(TERMINAL_LOAD_AUTORELOAD_KEY);
+        } catch {
+          // Ignore storage errors in restricted environments.
+        }
+        setTerminalModule(module);
       },
       () => {
-        if (active) setLoadFailed(true);
+        if (!active) return;
+        if (loadTerminal === preloadAuthenticatedTerminal && !import.meta.env.VITEST) {
+          if (loadAttempt === 0) {
+            retryTimer = setTimeout(() => {
+              if (active) setLoadAttempt(1);
+            }, 250);
+            return;
+          }
+          try {
+            if (window.sessionStorage.getItem(TERMINAL_LOAD_AUTORELOAD_KEY) !== '1') {
+              window.sessionStorage.setItem(TERMINAL_LOAD_AUTORELOAD_KEY, '1');
+              window.location.reload();
+              return;
+            }
+          } catch {
+            // Fall through to manual retry UI if sessionStorage is unavailable.
+          }
+        }
+        setLoadFailed(true);
       },
     );
 
     return () => {
       active = false;
+      if (retryTimer !== null) clearTimeout(retryTimer);
     };
   }, [initialSessionHandoff, loadAttempt, loadTerminal, terminalModule]);
 
@@ -125,6 +175,13 @@ function StoredSessionTerminalLoader({
         <button
           type="button"
           onClick={() => {
+            if (loadTerminal === preloadAuthenticatedTerminal && !import.meta.env.VITEST) {
+              try {
+                window.sessionStorage.removeItem(TERMINAL_LOAD_AUTORELOAD_KEY);
+              } catch {
+                // Ignore storage errors.
+              }
+            }
             setLoadFailed(false);
             setLoadAttempt((attempt) => attempt + 1);
           }}

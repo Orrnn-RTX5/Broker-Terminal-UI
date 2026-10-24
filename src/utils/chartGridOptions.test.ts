@@ -50,5 +50,12 @@ describe('chart grid type selection', () => {
     );
     expect(lightLogoOff.fixedGrid.showBackgroundLogo).toBe(false);
     expect(lightLogoOff.fixedGrid.isLightBackground).toBe(true);
+
+    const lightModeNone = getChartGridRenderingOptions(
+      { gridType: 'square', gridLineStyle: 'dashed', showGrid: true, showBackgroundLogo: true, backgroundLogoMode: 'none' },
+      { ...colors, background: '#fafbfc' },
+    );
+    expect(lightModeNone.fixedGrid.showBackgroundLogo).toBe(false);
+    expect(lightModeNone.fixedGrid.isLightBackground).toBe(true);
   });
 });

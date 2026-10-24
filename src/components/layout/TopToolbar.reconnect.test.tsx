@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getTradeWebSocketClient } from '../../api/tradeSocket';
@@ -9,7 +9,7 @@ import { refreshAllConnections } from '../../services/connectionRefresh';
 import { getQuoteSocketManager } from '../../services/quoteSocketManager';
 
 const toolbarProps = (
-  onRefreshConnection: () => void,
+  onRefreshConnection?: () => void,
 ): ComponentProps<typeof TopToolbar> => ({
   chartType: 'candlestick',
   timeframe: 'M5',
@@ -25,16 +25,14 @@ afterEach(() => {
 });
 
 describe('TopToolbar full reconnect (T12)', () => {
-  it('routes the toolbar reconnect action through onRefreshConnection', () => {
-    const onRefreshConnection = vi.fn();
-    render(<TopToolbar {...toolbarProps(onRefreshConnection)} />);
+  it('does not render the Refresh connection toolbar icon button', () => {
+    render(<TopToolbar {...toolbarProps(vi.fn())} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh connection' }));
-
-    expect(onRefreshConnection).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Refresh connection' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Refresh unavailable' })).toBeNull();
   });
 
-  it('toolbar action -> onRefreshConnection -> all transports reconnect', () => {
+  it('refreshAllConnections reconnects all transports', () => {
     const reconnectQuotes = vi
       .spyOn(getQuoteSocketManager(), 'reconnect')
       .mockImplementation(() => undefined);
@@ -47,15 +45,7 @@ describe('TopToolbar full reconnect (T12)', () => {
     const reconnectTradeStream = vi.fn();
     const reloadMarketSnapshot = vi.fn();
 
-    render(
-      <TopToolbar
-        {...toolbarProps(() =>
-          refreshAllConnections({ reconnectTradeStream, reloadMarketSnapshot }),
-        )}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh connection' }));
+    refreshAllConnections({ reconnectTradeStream, reloadMarketSnapshot });
 
     expect(reconnectTradeStream).toHaveBeenCalledTimes(1);
     expect(reconnectQuotes).toHaveBeenCalledTimes(1);
@@ -92,15 +82,5 @@ describe('TopToolbar full reconnect (T12)', () => {
     expect(refreshCharts).toHaveBeenCalledTimes(1);
     expect(connectTradeSocket).toHaveBeenCalledTimes(1);
     expect(reloadMarketSnapshot).toHaveBeenCalledTimes(1);
-  });
-
-  it('omitted onRefreshConnection renders a disabled action, never a dead click', () => {
-    const { onRefreshConnection: _omitted, ...baseProps } = toolbarProps(vi.fn());
-    render(<TopToolbar {...baseProps} />);
-
-    const action = screen.getByRole('button', { name: 'Refresh unavailable' });
-    expect((action as HTMLButtonElement).disabled).toBe(true);
-
-    expect(() => fireEvent.click(action)).not.toThrow();
   });
 });

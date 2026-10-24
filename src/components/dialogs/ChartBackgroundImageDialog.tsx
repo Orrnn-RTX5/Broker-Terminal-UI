@@ -150,6 +150,64 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
 
   if (!isOpen) return null;
 
+  const isLightTheme =
+    typeof document !== 'undefined' &&
+    document.documentElement.classList.contains('rtx-skin-untitled-light');
+
+  const palette = isLightTheme
+    ? {
+        backdrop: 'rgba(15, 23, 42, 0.28)',
+        surface: '#ffffff',
+        surfaceBorder: '#cfd8e3',
+        shadow: '0 20px 50px rgba(15, 23, 42, 0.18)',
+        titleBarBg: '#f8fafc',
+        titleBarBorder: '1px solid #e2e8f0',
+        titleBarText: '#0f172a',
+        closeButtonText: '#475569',
+        headingText: '#0f172a',
+        bodyText: '#1e293b',
+        mutedText: '#64748b',
+        divider: '#e2e8f0',
+        inputBg: '#f8fafc',
+        inputBorder: '#cbd5e1',
+        inputText: '#0f172a',
+        radioBg: '#ffffff',
+        radioBorderChecked: '#009245',
+        radioBorderUnchecked: '#94a3b8',
+        radioDot: '#009245',
+        checkboxBgUnchecked: '#ffffff',
+        checkboxBorderUnchecked: '#94a3b8',
+        secondaryBtnBg: '#f1f5f9',
+        secondaryBtnBorder: '1px solid #cbd5e1',
+        secondaryBtnText: '#1e293b',
+      }
+    : {
+        backdrop: 'rgba(0, 0, 0, 0.25)',
+        surface: '#2d2e32',
+        surfaceBorder: '#45474d',
+        shadow: '0 20px 50px rgba(0, 0, 0, 0.65)',
+        titleBarBg: '#ffffff',
+        titleBarBorder: 'none',
+        titleBarText: '#18181b',
+        closeButtonText: '#3f3f46',
+        headingText: '#ffffff',
+        bodyText: '#e4e4e7',
+        mutedText: '#9ca3af',
+        divider: '#3a3c42',
+        inputBg: '#1b1c1f',
+        inputBorder: '#222327',
+        inputText: '#f4f4f5',
+        radioBg: '#1b1c1f',
+        radioBorderChecked: '#9ca3af',
+        radioBorderUnchecked: '#4b5563',
+        radioDot: '#d4d4d8',
+        checkboxBgUnchecked: '#1b1c1f',
+        checkboxBorderUnchecked: '#1b1c1f',
+        secondaryBtnBg: '#52555c',
+        secondaryBtnBorder: 'none',
+        secondaryBtnText: '#ffffff',
+      };
+
   const defaultWatermarkDisplayUrl =
     typeof window !== 'undefined' && window.location?.origin
       ? `${window.location.origin}${RTX5_DEFAULT_CHART_WATERMARK_SRC}`
@@ -213,8 +271,8 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
         width: 12,
         height: 12,
         borderRadius: '50%',
-        background: '#1b1c1f',
-        border: checked ? '1.5px solid #9ca3af' : '1.5px solid #4b5563',
+        background: palette.radioBg,
+        border: checked ? `1.5px solid ${palette.radioBorderChecked}` : `1.5px solid ${palette.radioBorderUnchecked}`,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -228,7 +286,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
             width: 5,
             height: 5,
             borderRadius: '50%',
-            background: '#d4d4d8',
+            background: palette.radioDot,
           }}
         />
       )}
@@ -241,8 +299,8 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
         width: 13,
         height: 13,
         borderRadius: 2,
-        background: checked ? '#009245' : '#1b1c1f',
-        border: checked ? '1px solid #009245' : '1px solid #1b1c1f',
+        background: checked ? '#009245' : palette.checkboxBgUnchecked,
+        border: checked ? '1px solid #009245' : `1px solid ${palette.checkboxBorderUnchecked}`,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -266,7 +324,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
         position: 'fixed',
         inset: 0,
         zIndex: 10050,
-        background: 'rgba(0, 0, 0, 0.25)',
+        background: palette.backdrop,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -280,13 +338,14 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
         role="dialog"
         aria-modal="true"
         aria-label={`${tr('Background image')} - ${symbol}, ${timeframe}`}
+        data-theme={isLightTheme ? 'light' : 'dark'}
         style={{
           width: 356,
-          background: '#2d2e32',
-          border: '1px solid #45474d',
+          background: palette.surface,
+          border: `1px solid ${palette.surfaceBorder}`,
           borderRadius: 2,
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.65)',
-          color: '#e4e4e7',
+          boxShadow: palette.shadow,
+          color: palette.bodyText,
           overflow: 'hidden',
           userSelect: 'none',
         }}
@@ -300,8 +359,9 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
             justifyContent: 'space-between',
             height: 28,
             padding: '0 10px',
-            background: '#ffffff',
-            color: '#18181b',
+            background: palette.titleBarBg,
+            borderBottom: palette.titleBarBorder,
+            color: palette.titleBarText,
             fontSize: 12,
             fontWeight: 400,
           }}
@@ -316,14 +376,16 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
           </div>
           <button
             type="button"
+            className="rtx-bg-image-dialog__close"
             aria-label={tr('Close')}
             onClick={handleCancel}
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#3f3f46',
+              color: palette.closeButtonText,
               cursor: 'pointer',
               padding: 2,
+              borderRadius: 3,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -340,7 +402,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
             style={{
               fontSize: 19,
               fontWeight: 700,
-              color: '#ffffff',
+              color: palette.headingText,
               lineHeight: '24px',
               marginBottom: 4,
             }}
@@ -358,7 +420,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                 width: 74,
                 fontSize: 12,
                 cursor: 'pointer',
-                color: '#e4e4e7',
+                color: palette.bodyText,
               }}
               onClick={() => setMode('none')}
             >
@@ -378,7 +440,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                 flexShrink: 0,
                 fontSize: 12,
                 cursor: 'pointer',
-                color: '#e4e4e7',
+                color: palette.bodyText,
               }}
               onClick={() => setMode('default')}
             >
@@ -395,9 +457,9 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                 height: 22,
                 padding: '0 8px',
                 fontSize: 11.5,
-                color: '#f4f4f5',
-                background: '#1b1c1f',
-                border: '1px solid #222327',
+                color: palette.inputText,
+                background: palette.inputBg,
+                border: `1px solid ${palette.inputBorder}`,
                 borderRadius: 3,
                 outline: 'none',
                 cursor: 'pointer',
@@ -416,7 +478,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                 flexShrink: 0,
                 fontSize: 12,
                 cursor: 'pointer',
-                color: '#e4e4e7',
+                color: palette.bodyText,
               }}
               onClick={() => setMode('url')}
             >
@@ -437,15 +499,16 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                 height: 22,
                 padding: '0 8px',
                 fontSize: 11.5,
-                color: '#f4f4f5',
-                background: '#1b1c1f',
-                border: '1px solid #222327',
+                color: palette.inputText,
+                background: palette.inputBg,
+                border: `1px solid ${palette.inputBorder}`,
                 borderRadius: 3,
                 outline: 'none',
               }}
             />
             <button
               type="button"
+              className="rtx-bg-image-dialog__secondary"
               title={tr('Use default image URL')}
               onClick={() => {
                 setMode('url');
@@ -454,10 +517,10 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
               style={{
                 width: 24,
                 height: 22,
-                background: '#52555c',
-                border: 'none',
+                background: palette.secondaryBtnBg,
+                border: palette.secondaryBtnBorder,
                 borderRadius: 3,
-                color: '#e4e4e7',
+                color: palette.secondaryBtnText,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -480,7 +543,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                 flexShrink: 0,
                 fontSize: 12,
                 cursor: 'pointer',
-                color: '#e4e4e7',
+                color: palette.bodyText,
               }}
               onClick={() => setMode('file')}
             >
@@ -500,9 +563,9 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                 height: 22,
                 padding: '0 8px',
                 fontSize: 11.5,
-                color: '#f4f4f5',
-                background: '#1b1c1f',
-                border: '1px solid #222327',
+                color: palette.inputText,
+                background: palette.inputBg,
+                border: `1px solid ${palette.inputBorder}`,
                 borderRadius: 3,
                 outline: 'none',
                 cursor: 'pointer',
@@ -517,6 +580,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
             />
             <button
               type="button"
+              className="rtx-bg-image-dialog__secondary"
               onClick={() => {
                 setMode('file');
                 fileInputRef.current?.click();
@@ -525,9 +589,9 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                 height: 22,
                 padding: '0 10px',
                 fontSize: 11.5,
-                color: '#ffffff',
-                background: '#52555c',
-                border: 'none',
+                color: palette.secondaryBtnText,
+                background: palette.secondaryBtnBg,
+                border: palette.secondaryBtnBorder,
                 borderRadius: 3,
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
@@ -538,11 +602,11 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
             </button>
           </div>
 
-          <div style={{ height: 1, background: '#3a3c42', margin: '2px 0' }} />
+          <div style={{ height: 1, background: palette.divider, margin: '2px 0' }} />
 
           {/* Opacity Slider Row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 22 }}>
-            <span style={{ width: 74, flexShrink: 0, fontSize: 12, color: '#9ca3af' }}>
+            <span style={{ width: 74, flexShrink: 0, fontSize: 12, color: palette.mutedText }}>
               {tr('Opacity')}
             </span>
             <input
@@ -563,7 +627,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
 
           {/* Area Row */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-            <span style={{ width: 74, flexShrink: 0, fontSize: 12, color: '#e4e4e7', lineHeight: '18px' }}>
+            <span style={{ width: 74, flexShrink: 0, fontSize: 12, color: palette.bodyText, lineHeight: '18px' }}>
               {tr('Area')}
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -574,7 +638,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                   gap: 7,
                   fontSize: 12,
                   cursor: mode === 'none' ? 'default' : 'pointer',
-                  color: '#e4e4e7',
+                  color: palette.bodyText,
                   opacity: mode === 'none' ? 0.45 : 1,
                 }}
                 onClick={() => {
@@ -591,7 +655,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
                   gap: 7,
                   fontSize: 12,
                   cursor: mode === 'none' ? 'default' : 'pointer',
-                  color: '#e4e4e7',
+                  color: palette.bodyText,
                   opacity: mode === 'none' ? 0.45 : 1,
                 }}
                 onClick={() => {
@@ -604,11 +668,11 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
             </div>
           </div>
 
-          <div style={{ height: 1, background: '#3a3c42', margin: '2px 0' }} />
+          <div style={{ height: 1, background: palette.divider, margin: '2px 0' }} />
 
           {/* Template & Open Charts Checkboxes */}
           <label
-            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer', color: '#e4e4e7' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer', color: palette.bodyText }}
             onClick={() => setApplyToDefaultTemplate((prev) => !prev)}
           >
             {renderCheckbox(applyToDefaultTemplate)}
@@ -616,7 +680,7 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
           </label>
 
           <label
-            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer', color: '#e4e4e7' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer', color: palette.bodyText }}
             onClick={() => setApplyToAllOpenCharts((prev) => !prev)}
           >
             {renderCheckbox(applyToAllOpenCharts)}
@@ -627,13 +691,14 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <button
               type="button"
+              className="rtx-bg-image-dialog__save"
               data-testid="chart-background-image-save"
               onClick={handleSave}
               style={{
                 flex: 1,
                 height: 24,
                 background: '#009245',
-                border: 'none',
+                border: '1px solid #009245',
                 borderRadius: 3,
                 color: '#ffffff',
                 fontSize: 12,
@@ -645,15 +710,16 @@ export const ChartBackgroundImageDialog: React.FC<ChartBackgroundImageDialogProp
             </button>
             <button
               type="button"
+              className="rtx-bg-image-dialog__secondary"
               data-testid="chart-background-image-cancel"
               onClick={handleCancel}
               style={{
                 flex: 1,
                 height: 24,
-                background: '#52555c',
-                border: 'none',
+                background: palette.secondaryBtnBg,
+                border: palette.secondaryBtnBorder,
                 borderRadius: 3,
-                color: '#ffffff',
+                color: palette.secondaryBtnText,
                 fontSize: 12,
                 fontWeight: 500,
                 cursor: 'pointer',

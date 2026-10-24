@@ -11,7 +11,6 @@ import {
   createDockedLevelChip,
   createEntryTradeControlBar,
   createTradeLevelControlBar,
-  dispatchChartPositionModify,
   DARK_CHART_TRADE_COLORS,
   LIGHT_CHART_TRADE_COLORS,
   estimateTradeLevelMoney,
@@ -52,6 +51,8 @@ import {
   getEntryLineColor,
   TRADE_ENTRY_LINE_BUY_COLOR,
   TRADE_ENTRY_LINE_SELL_COLOR,
+  TRADE_PENDING_BUY_LINE_COLOR,
+  TRADE_PENDING_SELL_LINE_COLOR,
 } from './tradeOverlayRuntimeConstants';
 import type {
   ActiveTradeSnapshot,
@@ -387,8 +388,10 @@ export const createTradeOverlayDomRuntime = ({
     ].join(' Â· ');
 
     const getTradeTicket = (tradeKey: string): number => {
-      const ticket = Number.parseInt(tradeKey.replace(/^(trade|order):/, ''), 10);
-      return Number.isFinite(ticket) && ticket > 0 ? ticket : 0;
+      const raw = tradeKey.replace(/^(trade|order):/, '');
+      if (!/^\d+$/.test(raw)) return 0;
+      const ticket = Number(raw);
+      return Number.isSafeInteger(ticket) && ticket > 0 ? ticket : 0;
     };
 
     const findStorePosition = (ticket: number): TradePositionRecord | null => {
@@ -437,15 +440,13 @@ export const createTradeOverlayDomRuntime = ({
       const lightEntryColors: Record<string, string> = {
         [TRADE_ENTRY_LINE_BUY_COLOR]: LIGHT_CHART_TRADE_COLORS.buy,
         [TRADE_ENTRY_LINE_SELL_COLOR]: LIGHT_CHART_TRADE_COLORS.sell,
+        [TRADE_PENDING_BUY_LINE_COLOR]: LIGHT_CHART_TRADE_COLORS.pendingBuy,
+        [TRADE_PENDING_SELL_LINE_COLOR]: LIGHT_CHART_TRADE_COLORS.pendingSell,
       };
       const axisColor = lightSurface ? (lightEntryColors[color] ?? color) : color;
-      const background = lightSurface
-        ? (chartThemeRef.current.background ?? '#fafbfc')
-        : '#141821';
-      const backgroundImage = lightSurface
-        ? 'none'
-        : `linear-gradient(${colorWithAlpha(axisColor, 0.24, '#141821')}, ${colorWithAlpha(axisColor, 0.24, '#141821')})`;
-      badge.style.cssText = `position:absolute;display:none;right:0;height:18px;align-items:center;justify-content:flex-end;padding:0 6px;box-sizing:border-box;border:1px solid ${axisColor};border-radius:3px;background-color:${background};background-image:${backgroundImage};color:${axisColor};font-family:${CHART_AXIS_FONT_FAMILY};font-size:12px;font-weight:600;line-height:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;transform:translateY(-50%);pointer-events:none;z-index:8;`;
+      const borderColor = colorWithAlpha(axisColor, lightSurface ? 0.38 : 0.48, axisColor);
+      const background = chartThemeRef.current.background ?? (lightSurface ? '#fafbfc' : '#000000');
+      badge.style.cssText = `position:absolute;display:none;right:0;height:18px;align-items:center;justify-content:flex-end;padding:0 6px;box-sizing:border-box;border:1px solid ${borderColor};border-radius:3px;background-color:${background};background-image:none;color:${axisColor};font-family:${CHART_AXIS_FONT_FAMILY};font-size:12px;font-weight:600;line-height:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;transform:translateY(-50%);pointer-events:none;z-index:8;`;
       badge.style.setProperty('--rtx-type-size', '12px');
       badge.style.setProperty('--rtx-type-weight', '600');
       badge.style.setProperty('--rtx-type-family', CHART_AXIS_FONT_FAMILY);
@@ -467,9 +468,11 @@ export const createTradeOverlayDomRuntime = ({
       }
       for (const [price, group] of groups) {
         const first = group[0];
-        const sameSide = group.every(trade => trade.side === first.side);
-        const color = sameSide
-          ? getEntryLineColor(first.side)
+        const sameSideAndKind = group.every(
+          trade => trade.side === first.side && (trade.kind === 'pending') === (first.kind === 'pending'),
+        );
+        const color = sameSideAndKind
+          ? getEntryLineColor(first.side, first.kind)
           : chartThemeRef.current.axisText || (isChartSurfaceLight() ? '#475569' : '#b9bcc6');
         const owner = group.length === 1 && liveTradeKeys.has(first.key) ? first : undefined;
         createPriceLevel('', price, color, {
@@ -751,7 +754,7 @@ export const createTradeOverlayDomRuntime = ({
       refreshLiveMetrics();
 
       if (options.showAxisPriceLine !== false) {
-        addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side));
+        addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side, trade.kind));
       }
 
       // Keep both levels reachable from the entry strip, including when an
@@ -794,34 +797,6 @@ export const createTradeOverlayDomRuntime = ({
         const before = role === 'TP' ? brackets.querySelector('.rtx-trade-dock-chip--sl') : null;
         brackets.insertBefore(chip, before);
       };
-      const appendExistingLevelButton = (role: 'SL' | 'TP', price: number) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        // Existing levels open the dialog; they must not start a drag from the
-        // entry price, which can be far from their actual SL/TP price.
-        button.className = `rtx-trade-control-btn rtx-trade-control-btn--modify rtx-trade-dock-chip rtx-trade-dock-chip--${role.toLowerCase()}`;
-        button.dataset.tradeKey = trade.key;
-        button.dataset.role = role;
-        button.setAttribute('aria-haspopup', 'dialog');
-        bindChartUiTranslation(button, () => {
-          button.textContent = tr(role);
-          button.title = getLocalizedTradeTitle(trade, role, price);
-          button.setAttribute('aria-label', button.title);
-        });
-        button.addEventListener('pointerdown', event => event.stopPropagation());
-        button.addEventListener('mousedown', event => event.stopPropagation());
-        button.addEventListener('click', event => {
-          event.stopPropagation();
-          dispatchChartPositionModify({
-            ticket: Number(trade.key.replace(/^(trade|order):/, '')),
-            symbol: trade.symbol,
-            sessionScope: brokerAccountSessionScope,
-            kind: trade.kind === 'pending' ? 'pending-order' : 'position',
-          });
-        });
-        button.style.cursor = 'pointer';
-        appendDockChip(button, role);
-      };
       if (!(levels.sl > 0)) {
         const slChip = createDockedLevelChip({
           tradeKey: trade.key,
@@ -833,8 +808,6 @@ export const createTradeOverlayDomRuntime = ({
         });
         bindChartUiTranslation(slChip, () => { slChip.title = getLocalizedTradeTitle(trade, 'SL'); });
         appendDockChip(slChip, 'SL');
-      } else {
-        appendExistingLevelButton('SL', levels.sl);
       }
       if (!(levels.tp > 0)) {
         const tpChip = createDockedLevelChip({
@@ -847,8 +820,10 @@ export const createTradeOverlayDomRuntime = ({
         });
         bindChartUiTranslation(tpChip, () => { tpChip.title = getLocalizedTradeTitle(trade, 'TP'); });
         appendDockChip(tpChip, 'TP');
-      } else {
-        appendExistingLevelButton('TP', levels.tp);
+      }
+      const brackets = controlBar.root.querySelector<HTMLElement>('.rtx-trade-brackets');
+      if (brackets && brackets.childElementCount === 0) {
+        brackets.style.display = 'none';
       }
     };
 

@@ -89,8 +89,8 @@ interface UseTradingChartTradeRuntimeOptions {
   prevSymbolRef: RefObject<string>;
   prevTimeframeRef: RefObject<Timeframe>;
   repaintTradeOverlayGeometryRef: RefObject<() => void>;
-  resolvedPriceDigits: number;
-  resolvedPriceDigitsRef: RefObject<number>;
+  resolvedPriceDigits: number | null;
+  resolvedPriceDigitsRef: RefObject<number | null>;
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
   symbol: string;
   timeframe: Timeframe;

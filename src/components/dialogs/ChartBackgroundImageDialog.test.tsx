@@ -22,7 +22,24 @@ describe('ChartBackgroundImageDialog', () => {
   });
 
   afterEach(() => {
+    document.documentElement.classList.remove('rtx-skin-untitled-light');
     cleanup();
+  });
+
+  it('uses light-theme surface and text palette when rtx-skin-untitled-light is active', () => {
+    document.documentElement.classList.add('rtx-skin-untitled-light');
+    render(
+      <ChartBackgroundImageDialog
+        isOpen={true}
+        symbol="BTCUSD"
+        timeframe="M1"
+        onClose={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('data-theme', 'light');
+    expect(dialog).toHaveStyle({ background: '#ffffff' });
   });
 
   it('renders the cTrader-style Background image dialog, live-previews changes, and reverts on Cancel', () => {

@@ -6,6 +6,7 @@ import React, { Suspense, useState, useEffect, useLayoutEffect, useRef } from 'r
 import { useTranslation } from 'react-i18next';
 import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { useAppStore } from '../../store/useAppStore';
+import { getBrokerSavedAccountTypes } from '../../services/tradingAccountType';
 import { chartPrinter, type PrintPreferences, type ChartPrintData } from '../../services/chartPrinter';
 import {
     getActiveChartSource,
@@ -104,6 +105,10 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     };
     const [workspaceProfiles, setWorkspaceProfiles] = useState<WorkspaceProfileSummary[]>([]);
     const recentlyClosedCharts = useDockLayoutStore(state => state.recentlyClosedCharts);
+    const isAuthenticated = useAppStore(state => state.isAuthenticated);
+    const savedAccounts = useAppStore(state => state.savedAccounts);
+    const { hasDemoAndRealAccounts } = getBrokerSavedAccountTypes(savedAccounts);
+    const hideOpenAccountOption = Boolean(isAuthenticated && hasDemoAndRealAccounts);
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
 
     useLayoutEffect(() => {
@@ -185,7 +190,6 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     // Get current symbol and timeframe from store
     const selectedSymbol = useAppStore(state => state.selectedSymbol);
     const timeframe = useAppStore(state => state.timeframe);
-    const isAuthenticated = useAppStore(state => state.isAuthenticated);
     // SUI-T19b: no reactive workspace-modified source exists; best available
     // live dirty-state is open positions + pending orders (mirrors exitHandler).
     const openTradesCount = useAppStore(state => state.positions?.length ?? 0);
@@ -740,16 +744,18 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 <div className="rtx-menu-divider" role="separator"></div>
 
                 {/* Open an Account */}
-                <button
-                    onClick={() => setShowOpenAccountDialog(true)}
-                    className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title={tr("Register new trading account")}
-                >
-                    <div className="w-4 flex items-center justify-center">
-                        <Icon name="user-plus" size="sm" className="text-blue-400" />
-                    </div>
-                    <span className="flex-1">{t('menu.file.openAccount')}</span>
-                </button>
+                {!hideOpenAccountOption && (
+                    <button
+                        onClick={() => setShowOpenAccountDialog(true)}
+                        className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
+                        title={tr("Register new trading account")}
+                    >
+                        <div className="w-4 flex items-center justify-center">
+                            <Icon name="user-plus" size="sm" className="text-blue-400" />
+                        </div>
+                        <span className="flex-1">{t('menu.file.openAccount')}</span>
+                    </button>
+                )}
 
                 {/* Login to Trade Account */}
                 <button

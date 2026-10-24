@@ -292,8 +292,8 @@ describe('SquareChartGridPrimitive', () => {
     primitive.paneViews()[0]!.renderer()!.draw(target as never);
     expect(context.fill).toHaveBeenCalledTimes(2);
     expect(fillStyles).toEqual([
-      'rgba(15, 23, 42, 0.153)',
-      'rgba(101, 163, 13, 0.207)',
+      'rgba(51, 65, 85, 0.140)',
+      'rgba(56, 142, 20, 0.225)',
     ]);
 
     context.fill.mockClear();

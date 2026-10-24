@@ -282,6 +282,8 @@ export const DARK_CHART_TRADE_COLORS = {
   actionHover: '#292a30',
   buy: '#72b0ff',
   sell: '#ff8589',
+  pendingBuy: '#ea580c',
+  pendingSell: '#ec4899',
   buyBackground: '#191a1e',
   sellBackground: '#191a1e',
   tp: '#4ade80',
@@ -300,6 +302,8 @@ export const LIGHT_CHART_TRADE_COLORS = {
   actionHover: '#e2e8f0',
   buy: '#153eaa',
   sell: '#981b24',
+  pendingBuy: '#c2410c',
+  pendingSell: '#db2777',
   tp: '#05564f',
   sl: '#664300',
   profit: '#153eaa',
@@ -470,12 +474,19 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     tradeKey, ticket, symbol, side, volume, isLightSurface, leftInset,
     currencyLabel = 'USD', title, onAction, onShare,
   } = options;
-  const sideColor = (isLightSurface ? TRADE_CONTROL_LIGHT_SIDE_COLORS : TRADE_CONTROL_SIDE_COLORS)[side];
+  const isPending = options.kind === 'pending';
+  const sideColor = isPending
+    ? (side === 'BUY'
+      ? (isLightSurface ? LIGHT_CHART_TRADE_COLORS.pendingBuy : DARK_CHART_TRADE_COLORS.pendingBuy)
+      : (isLightSurface ? LIGHT_CHART_TRADE_COLORS.pendingSell : DARK_CHART_TRADE_COLORS.pendingSell))
+    : (isLightSurface ? TRADE_CONTROL_LIGHT_SIDE_COLORS : TRADE_CONTROL_SIDE_COLORS)[side];
   const surface = getTradeControlSurface(isLightSurface);
   const actionHoverColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.buy : TRADE_CONTROL_ACTION_HOVER_COLOR;
-  const plainSideColor = isLightSurface
-    ? (side === 'BUY' ? LIGHT_CHART_TRADE_COLORS.buy : LIGHT_CHART_TRADE_COLORS.sell)
-    : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buy : DARK_CHART_TRADE_COLORS.sell);
+  const plainSideColor = isPending
+    ? sideColor
+    : (isLightSurface
+      ? (side === 'BUY' ? LIGHT_CHART_TRADE_COLORS.buy : LIGHT_CHART_TRADE_COLORS.sell)
+      : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buy : DARK_CHART_TRADE_COLORS.sell));
   const plainNeutralColor = isLightSurface ? '#111827' : DARK_CHART_TRADE_COLORS.text;
   const plainBackground = isLightSurface
     ? LIGHT_CHART_TRADE_COLORS.surface

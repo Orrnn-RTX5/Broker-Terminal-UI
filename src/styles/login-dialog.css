@@ -322,9 +322,45 @@
   }
 
   .rtx-login-select,
-  .rtx-login-server-input {
-    padding-inline-end: 36px;
+  .rtx-login-server-input,
+  .rtx-login-password-input {
+    padding-inline-end: 40px;
     appearance: none;
+  }
+
+  .rtx-login-password-toggle {
+    position: absolute;
+    inset-inline-end: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0 !important;
+    border-radius: 6px;
+    background: transparent !important;
+    color: var(--login-muted) !important;
+    cursor: pointer;
+    transition: color 140ms ease, background-color 140ms ease;
+  }
+
+  .rtx-login-password-toggle:hover:not(:disabled) {
+    background: var(--login-hover) !important;
+    color: var(--login-text) !important;
+  }
+
+  .rtx-login-password-toggle:focus-visible {
+    outline: 2px solid var(--login-focus);
+    outline-offset: -1px;
+  }
+
+  .rtx-login-password-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .rtx-login-select-chevron {

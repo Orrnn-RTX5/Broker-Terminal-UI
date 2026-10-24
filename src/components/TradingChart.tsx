@@ -42,7 +42,14 @@ import { candleAggregationService, getTimeframeSeconds, type OHLCV, type Timefra
 import { useAppStore } from '../store/useAppStore';
 import { isDesktopBackendTarget } from '../config/backendTarget.js';
 import { commandBus } from '../services/commandBus';
-import { formatChartAxisPrice, getPricePointFromDigits, resolveSymbolPriceDigits } from '../utils/chartPriceScale';
+import {
+  buildChartSeriesPriceFormat,
+  formatChartAxisPrice,
+  getPricePointFromDigits,
+  inferObservedPriceDigits,
+  resolveEffectiveChartPriceDigits,
+  resolveSymbolPriceDigits,
+} from '../utils/chartPriceScale';
 import { SquareChartGridPrimitive } from '../utils/squareChartGridPrimitive';
 import { getChartGridRenderingOptions } from '../utils/chartGridOptions';
 import { createChartGridTimeProjection, type ChartGridTimeProjection } from '../utils/chartGridTimeProjection';
@@ -128,14 +135,32 @@ export const TradingChart = React.memo(function TradingChart({
   volumeStep,
 }: TradingChartProps) {
   const tr = useUiTranslation();
-  const resolvedPriceDigits = resolveSymbolPriceDigits(symbol, priceDigits);
-  const resolvedPricePoint = getPricePointFromDigits(resolvedPriceDigits);
-  const resolvedPriceDigitsRef = useRef(resolvedPriceDigits);
-  const resolvedPricePointRef = useRef(resolvedPricePoint);
-  resolvedPriceDigitsRef.current = resolvedPriceDigits;
-  resolvedPricePointRef.current = resolvedPricePoint;
   const authToken = useAppStore((state) => state.authToken);
   const brokerAccountSessionScope = useBrokerAccountSessionScope();
+  const observedPriceDigitsScopeKey = `${brokerAccountSessionScope || 'default-account'}:${symbol.trim().toUpperCase()}`;
+  const [observedPriceDigitsState, setObservedPriceDigitsState] = useState<{
+    scopeKey: string;
+    digits: number | null;
+  }>({
+    scopeKey: observedPriceDigitsScopeKey,
+    digits: null,
+  });
+  const observedPriceDigitsRef = useRef<number | null>(null);
+  if (observedPriceDigitsState.scopeKey !== observedPriceDigitsScopeKey) {
+    observedPriceDigitsRef.current = null;
+  } else {
+    observedPriceDigitsRef.current = observedPriceDigitsState.digits;
+  }
+  const specPriceDigits = resolveSymbolPriceDigits(symbol, priceDigits);
+  const resolvedPriceDigits = resolveEffectiveChartPriceDigits(
+    specPriceDigits,
+    observedPriceDigitsRef.current,
+  );
+  const resolvedPricePoint = getPricePointFromDigits(resolvedPriceDigits);
+  const resolvedPriceDigitsRef = useRef<number | null>(resolvedPriceDigits);
+  const resolvedPricePointRef = useRef<number>(resolvedPricePoint);
+  resolvedPriceDigitsRef.current = resolvedPriceDigits;
+  resolvedPricePointRef.current = resolvedPricePoint;
   const chartMarketSource = getChartMarketSourceIdentity();
   const previousChartLoginPresentationRef = useRef({
     sessionScope: brokerAccountSessionScope,
@@ -429,13 +454,50 @@ export const TradingChart = React.memo(function TradingChart({
   } | null>(null);
   const renderedLegendSignatureRef = useRef<string | null>(null);
 
+  const syncObservedChartPriceDigits = useCallback((
+    candlesSample?: ReadonlyArray<Candle> | null,
+    livePricesSample?: readonly unknown[],
+  ): number | null => {
+    const inferred = inferObservedPriceDigits(candlesSample, livePricesSample);
+    const activeSymbol = symbol.trim().toUpperCase();
+    const activeScopeKey = `${brokerAccountSessionScope || 'default-account'}:${activeSymbol}`;
+    if (inferred !== null && (observedPriceDigitsRef.current === null || inferred > observedPriceDigitsRef.current)) {
+      observedPriceDigitsRef.current = inferred;
+      setObservedPriceDigitsState(prev => (
+        prev.scopeKey === activeScopeKey && prev.digits !== null && prev.digits >= inferred
+          ? prev
+          : { scopeKey: activeScopeKey, digits: inferred }
+      ));
+    }
+    const nextDigits = resolveEffectiveChartPriceDigits(
+      resolveSymbolPriceDigits(activeSymbol, priceDigits),
+      observedPriceDigitsRef.current,
+    );
+    const nextPoint = getPricePointFromDigits(nextDigits);
+    const formatChanged = resolvedPriceDigitsRef.current !== nextDigits
+      || (!Number.isNaN(nextPoint) && resolvedPricePointRef.current !== nextPoint);
+    resolvedPriceDigitsRef.current = nextDigits;
+    resolvedPricePointRef.current = nextPoint;
+    if (formatChanged) {
+      const priceFormat = buildChartSeriesPriceFormat(nextDigits, nextPoint);
+      try {
+        squareGridHostSeriesRef.current?.applyOptions({ priceFormat });
+        seriesRef.current?.applyOptions({ priceFormat });
+      } catch {
+        // Series can be disposed during fast symbol/tab switches.
+      }
+    }
+    return nextDigits;
+  }, [brokerAccountSessionScope, priceDigits, symbol]);
+
   const updateLegendDOM = useCallback((o: number, h: number, l: number, c: number, v: number) => {
-    const digits = resolvedPriceDigitsRef.current;
+    const digits = syncObservedChartPriceDigits(undefined, [o, h, l, c]);
+    const formatPrice = (val: number) => (digits === null ? String(val) : val.toFixed(digits));
     const pending = {
-      open: o.toFixed(digits),
-      high: h.toFixed(digits),
-      low: l.toFixed(digits),
-      close: c.toFixed(digits),
+      open: formatPrice(o),
+      high: formatPrice(h),
+      low: formatPrice(l),
+      close: formatPrice(c),
       volume: Math.round(v).toLocaleString(),
       signature: '',
     };
@@ -466,7 +528,7 @@ export const TradingChart = React.memo(function TradingChart({
       return;
     }
     legendRenderFrameRef.current = window.requestAnimationFrame(flushLegendDOM);
-  }, [legendRefs]);
+  }, [legendRefs, syncObservedChartPriceDigits]);
 
   useEffect(() => {
     renderedLegendSignatureRef.current = null;
@@ -1561,6 +1623,7 @@ export const TradingChart = React.memo(function TradingChart({
     periodSeparatorsRef.current = periodSeparators;
 
     try {
+      syncObservedChartPriceDigits(candlesForRender);
       if (seriesData.length > 0) {
         suppressVisibleRangeHistoryLoad();
       }
@@ -1676,7 +1739,7 @@ export const TradingChart = React.memo(function TradingChart({
       console.warn(`[Chart] Error setting chart data for ${pending.reason}:`, e);
       return false;
     }
-  }, [applyAreaTrendColors, applyInitialVisibleLogicalRange, discardRetainedPublicChartSurface, getCandlesForFullRender, getClosedMarketRenderCandles, markCandlesReady, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, setLoadingPhase, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
+  }, [applyAreaTrendColors, applyInitialVisibleLogicalRange, discardRetainedPublicChartSurface, getCandlesForFullRender, getClosedMarketRenderCandles, markCandlesReady, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, setLoadingPhase, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, syncObservedChartPriceDigits, timeframe]);
 
   postInteractionCallbacksRef.current.paintModel = () => flushQueuedChartRender(true);
 
@@ -2131,11 +2194,10 @@ useTradingChartInitialization({
   // Builds the price series for a chart type with the current theme and symbol precision.
   const createPriceSeries = useCallback((chart: IChartApi, type: ChartType): ISeriesApi<SeriesType> => {
     let series: ISeriesApi<SeriesType>;
-    const priceFormatOpts = {
-      type: 'price' as const,
-      precision: resolvedPriceDigitsRef.current,
-      minMove: resolvedPricePointRef.current,
-    };
+    const priceFormatOpts = buildChartSeriesPriceFormat(
+      resolvedPriceDigitsRef.current,
+      resolvedPricePointRef.current,
+    );
     const theme = chartThemeRef.current;
 
     switch (type) {
@@ -2932,7 +2994,8 @@ useTradingChartDrawingCommands({
         const actualTime = series.dataByIndex(index)?.time;
         const time = typeof actualTime === 'number' ? actualTime : projectDrawingTimeAtLogical(series, scale, index, getTimeframeSeconds(drawingRuntimeContextRef.current.timeframe as AggTimeframe));
         if (time === null || !Number.isFinite(time)) return null;
-        return { logical: index, time, price: Number(price.toFixed(resolvedPriceDigitsRef.current)) };
+        const currentDigits = resolvedPriceDigitsRef.current;
+        return { logical: index, time, price: currentDigits === null ? price : Number(price.toFixed(currentDigits)) };
       },
       resolve: point => {
         const scale = chart.timeScale();
@@ -2959,7 +3022,7 @@ useTradingChartDrawingCommands({
           formatTime: time => formatTradingChartCrosshairLabel(time as Time, drawingRuntimeContextRef.current.timeframe, brokerTimeOffsetSecRef.current),
         };
       },
-      metrics: (start, end) => rulerMetrics(start, end, lastRenderedCandlesRef.current, resolvedPriceDigitsRef.current, getPricePointFromDigits(resolvedPriceDigitsRef.current)),
+      metrics: (start, end) => rulerMetrics(start, end, lastRenderedCandlesRef.current, resolvedPriceDigitsRef.current as number, getPricePointFromDigits(resolvedPriceDigitsRef.current)),
     });
     const unsubscribe = commandBus.subscribe('SELECT_TOOL', payload => {
       ruler.select(payload.tool === 'ruler' && (payload.targetContextId ?? getActiveChartSource()?.id) === contextId);

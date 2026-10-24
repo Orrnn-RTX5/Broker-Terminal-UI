@@ -2,11 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTradeOverlayDomRuntime } from './createTradeOverlayDomRuntime';
 import { ApiError } from '../../../api/client';
 import type { ActiveTradeSnapshot, TradeLevelOverride } from './tradeRuntimeContracts';
-import {
-  CHART_POSITION_MODIFY_EVENT,
-  resolveChartPositionModifyTarget,
-  type ChartPositionModifyDetail,
-} from '../../../utils/chartTradeControls';
+import { CHART_POSITION_MODIFY_EVENT } from '../../../utils/chartTradeControls';
 
 const modifyPosition = vi.hoisted(() => vi.fn());
 const storeState = vi.hoisted(() => ({ positions: [] as Array<{ id: number; symbol: string }> }));
@@ -108,11 +104,10 @@ describe('SL/TP chart controls', () => {
     for (const [index, control] of Array.from(controls).entries()) {
       expect(control.dataset.entryPrice).toBe(String(trade.entryPrice));
       expect(control.dataset.tradeKey).toBe(owners[index].key);
-      control.querySelector<HTMLButtonElement>('button.rtx-trade-dock-chip--sl')!.click();
+      expect(control.querySelector('.rtx-trade-dock-chip--sl')).toBeNull();
+      expect(control.querySelector('.rtx-trade-dock-chip--tp')).toBeNull();
     }
-    const modifications = dispatch.mock.calls.map(([event]) => event)
-      .filter(event => event.type === CHART_POSITION_MODIFY_EVENT) as CustomEvent<ChartPositionModifyDetail>[];
-    expect(modifications.map(event => event.detail.ticket)).toEqual([9302300, 9302301]);
+    expect(dispatch).not.toHaveBeenCalled();
     expect(modifyPosition).not.toHaveBeenCalled();
     expect(options.tradeLevelOverridesRef.current.size).toBe(0);
   });
@@ -181,58 +176,42 @@ describe('SL/TP chart controls', () => {
     { sl: 87000, tp: 0 },
     { sl: 0, tp: 85118.19 },
     { sl: 87000, tp: 85118.19 },
-  ])('keeps entry access to both levels without chart coordinates: %j', levels => {
+  ])('shows docked SL/TP words on the entry line only when those levels are not set: %j', levels => {
     const { host, runtime } = createRuntime();
     runtime.createEntryControlsForTrade(trade, levels);
     const entry = host.querySelector('.rtx-trade-controls--entry')!;
+    let expectedDockedCount = 0;
     for (const role of ['SL', 'TP'] as const) {
-      const chip = entry.querySelector<HTMLElement>(`.rtx-trade-dock-chip--${role.toLowerCase()}`)!;
-      expect(chip).not.toBeNull();
-      expect(chip.dataset.tradeKey).toBe(trade.key);
-      expect(chip.dataset.role).toBe(role);
-      expect(chip.style.display).toBe('inline-flex');
+      const chip = entry.querySelector<HTMLElement>(`.rtx-trade-dock-chip--${role.toLowerCase()}`);
       if (levels[role === 'SL' ? 'sl' : 'tp'] > 0) {
-        expect(chip.matches('button.rtx-trade-control-btn')).toBe(true);
-        expect(chip).toHaveAttribute('type', 'button');
-        expect(chip).toHaveAttribute('aria-haspopup', 'dialog');
-        expect(chip).toHaveAttribute('aria-label', expect.stringContaining('Modify Position'));
-        expect(chip.title).toContain(levels[role === 'SL' ? 'sl' : 'tp'].toFixed(2));
+        expect(chip).toBeNull();
       } else {
-        expect(chip.matches('div.rtx-trade-level-badge')).toBe(true);
-        expect(chip.classList.contains('rtx-trade-control-btn')).toBe(false);
+        expectedDockedCount += 1;
+        expect(chip).not.toBeNull();
+        expect(chip!.dataset.tradeKey).toBe(trade.key);
+        expect(chip!.dataset.role).toBe(role);
+        expect(chip!.style.display).toBe('inline-flex');
+        expect(chip!.matches('div.rtx-trade-level-badge')).toBe(true);
+        expect(chip!.classList.contains('rtx-trade-control-btn')).toBe(false);
       }
     }
-    expect(entry.querySelectorAll('.rtx-trade-brackets > *')).toHaveLength(2);
+    const brackets = entry.querySelector<HTMLElement>('.rtx-trade-brackets')!;
+    expect(brackets.querySelectorAll(':scope > *')).toHaveLength(expectedDockedCount);
+    if (expectedDockedCount === 0) {
+      expect(brackets.style.display).toBe('none');
+    }
   });
 
-  it.each(['SL', 'TP'] as const)('opens Modify Position for the exact %s identity without submitting a change', role => {
-    const { host, options, runtime } = createRuntime();
-    const owner = { ...trade, symbol: 'BTCUSD.pro' };
-    const dispatch = vi.spyOn(window, 'dispatchEvent');
-    runtime.createEntryControlsForTrade(owner, { sl: 87000, tp: 85118.19 });
-    const button = host.querySelector<HTMLButtonElement>(`button.rtx-trade-dock-chip--${role.toLowerCase()}`)!;
-    const chartPointerDown = vi.fn();
-    const chartMouseDown = vi.fn();
-    host.addEventListener('pointerdown', chartPointerDown);
-    host.addEventListener('mousedown', chartMouseDown);
-    for (const type of ['pointerdown', 'mousedown']) {
-      const event = new Event(type, { bubbles: true, cancelable: true });
-      button.dispatchEvent(event);
-      expect(event.defaultPrevented).toBe(false);
-    }
-    expect(chartPointerDown).not.toHaveBeenCalled();
-    expect(chartMouseDown).not.toHaveBeenCalled();
-    button.click();
-    const events = dispatch.mock.calls.map(([event]) => event)
-      .filter(event => event.type === CHART_POSITION_MODIFY_EVENT) as CustomEvent<ChartPositionModifyDetail>[];
-    expect(events).toHaveLength(1);
-    expect(events[0].detail).toEqual({ ticket: 9302300, symbol: 'BTCUSD.pro', sessionScope: options.brokerAccountSessionScope });
-    const position = { id: 9302300, symbol: 'BTCUSD.pro' };
-    expect(resolveChartPositionModifyTarget(events[0].detail, options.brokerAccountSessionScope, [position])).toBe(position);
-    expect(resolveChartPositionModifyTarget(events[0].detail, 'OtherBroker:200003', [position])).toBeNull();
-    expect(resolveChartPositionModifyTarget(events[0].detail, options.brokerAccountSessionScope, [{ ...position, symbol: 'BTCUSD' }])).toBeNull();
-    expect(modifyPosition).not.toHaveBeenCalled();
-    expect(options.tradeLevelOverridesRef.current.size).toBe(0);
+  it.each(['SL', 'TP'] as const)('moves the %s word from the entry line to the level line once set', role => {
+    const { host, runtime } = createRuntime();
+    const levels = role === 'SL' ? { sl: 87000, tp: 0 } : { sl: 0, tp: 85118.19 };
+    runtime.createEntryControlsForTrade(trade, levels);
+    runtime.createLevelControlsForTrade(trade, role, levels);
+    const entry = host.querySelector('.rtx-trade-controls--entry')!;
+    expect(entry.querySelector(`.rtx-trade-dock-chip--${role.toLowerCase()}`)).toBeNull();
+    const levelBar = host.querySelector<HTMLElement>(`.rtx-trade-controls--${role.toLowerCase()}`)!;
+    expect(levelBar).not.toBeNull();
+    expect(levelBar.querySelector('.rtx-trade-chip--role')).toHaveTextContent(role);
   });
 
   it('refuses a level change for a ticket known closed: no request, one refresh, plain message', () => {
@@ -281,7 +260,9 @@ describe('SL/TP chart controls', () => {
     const { host, runtime } = createRuntime();
     const dispatch = vi.spyOn(window, 'dispatchEvent');
     runtime.createEntryControlsForTrade({ ...trade, key }, { sl: 87000, tp: 85118.19 });
-    host.querySelector<HTMLButtonElement>('button.rtx-trade-dock-chip--sl')!.click();
+    expect(host.querySelector('.rtx-trade-controls--entry')).toBeNull();
+    runtime.createLevelControlsForTrade({ ...trade, key }, 'SL', { sl: 87000, tp: 85118.19 });
+    host.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--remove')!.click();
     expect(dispatch.mock.calls.some(([event]) => event.type === CHART_POSITION_MODIFY_EVENT)).toBe(false);
     expect(modifyPosition).not.toHaveBeenCalled();
   });
@@ -313,7 +294,47 @@ describe('SL/TP chart controls', () => {
     const axisBadge = host.querySelector<HTMLElement>(`[data-trade-axis-key='${trade.key}:entry']`)!;
     expect(axisBadge).toHaveStyle({
       backgroundColor: '#fafbfc',
+      backgroundImage: 'none',
       color: side === 'BUY' ? '#153eaa' : '#981b24',
+    });
+  });
+
+  it.each([
+    { side: 'BUY' as const, lineColor: '#ea580c', orderType: 'buy_limit' },
+    { side: 'SELL' as const, lineColor: '#ec4899', orderType: 'sell_limit' },
+  ])('renders a deep orange line for pending BUY and a magenta line for pending SELL (%s)', ({ side, lineColor, orderType }) => {
+    const { host, options, runtime } = createRuntime(false);
+    options.seriesRef.current = {
+      priceFormatter: () => ({ format: (price: number) => price.toFixed(2) }),
+    } as NonNullable<RuntimeOptions['seriesRef']['current']>;
+    const pendingOrder = {
+      ...trade,
+      key: 'order:4501',
+      kind: 'pending' as const,
+      side,
+      orderType,
+    };
+    runtime.createEntryPriceLevels([pendingOrder], new Set([pendingOrder.key]));
+    runtime.createEntryControlsForTrade(pendingOrder, { sl: 0, tp: 0 });
+    expect(host.querySelector('.rtx-trade-level-line--entry')).toHaveStyle({ borderTopColor: lineColor });
+    expect(host.querySelector<HTMLElement>(`[data-trade-axis-key='${pendingOrder.key}:entry']`)).toHaveStyle({ color: lineColor });
+    expect(host.querySelector<HTMLElement>('.rtx-trade-controls--entry .rtx-trade-chip--volume')).toHaveStyle({ color: lineColor });
+  });
+
+  it.each(['BUY', 'SELL'] as const)('renders the dark %s entry price-axis box with a subtle light border and without a colored shadow or gradient background', side => {
+    const { host, options, runtime } = createRuntime(false);
+    options.seriesRef.current = {
+      priceFormatter: () => ({ format: (price: number) => price.toFixed(2) }),
+    } as NonNullable<RuntimeOptions['seriesRef']['current']>;
+    runtime.createEntryControlsForTrade({ ...trade, side }, { sl: 0, tp: 0 });
+    const axisBadge = host.querySelector<HTMLElement>(`[data-trade-axis-key='${trade.key}:entry']`)!;
+    const expectedColor = side === 'BUY' ? '#2962ff' : '#ef4444';
+    const expectedBorderColor = side === 'BUY' ? 'rgba(41, 98, 255, 0.48)' : 'rgba(239, 68, 68, 0.48)';
+    expect(axisBadge).toHaveStyle({
+      backgroundColor: '#000000',
+      backgroundImage: 'none',
+      borderColor: expectedBorderColor,
+      color: expectedColor,
     });
   });
 

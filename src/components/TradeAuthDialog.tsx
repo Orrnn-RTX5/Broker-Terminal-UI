@@ -10,14 +10,16 @@ import type { TradingAuthIntent } from '../services/tradingAuthGate';
 import { useBrokerLoginPolicy } from '../hooks/useBrokerLoginPolicy';
 import { getRuntimeBrokerConfiguration, isElectronRuntime } from '../config/backendTarget.js';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
+import { rememberAccountSession } from '../services/accountSessionCache';
 import { saveLogin, supportsSavedLogins } from '../services/savedLogins';
+import { getBrokerSavedAccountTypes } from '../services/tradingAccountType';
 
 interface TradeAuthDialogProps {
   isOpen: boolean;
   intent: TradingAuthIntent | null;
   onClose: () => void;
   onAuthenticated: (accountId: string) => void;
-  initialMode?: 'choice' | 'demo';
+  initialMode?: 'choice' | 'demo' | 'login';
 }
 
 type DialogMode = 'choice' | 'login' | 'demo';
@@ -60,14 +62,22 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
   const configuration = getRuntimeBrokerConfiguration();
   const configurationIdentity = JSON.stringify(configuration);
   const termsUrl = configuration.valid ? configuration.brokerTermsUrl : '';
+  const storeState = typeof useAppStore.getState === 'function' ? useAppStore.getState() : undefined;
+  const { hasDemoAndRealAccounts } = getBrokerSavedAccountTypes(storeState?.savedAccounts, {
+    brokerId: brokerId || configuration.brokerId,
+    brokerName: brokerPolicy?.displayName,
+    server: configuration.defaultMt5Server,
+    serverUrl: configuration.apiHost || configuration.apiHostExt,
+  });
+  const effectiveInitialMode: DialogMode = hasDemoAndRealAccounts ? 'login' : initialMode;
 
   useEffect(() => {
     if (!isOpen) return;
-    setMode(initialMode);
+    setMode(effectiveInitialMode);
     setError(null);
     setPassword('');
     setConfirmPassword('');
-  }, [isOpen, initialMode]);
+  }, [isOpen, effectiveInitialMode]);
 
   useLayoutEffect(() => {
     if (!isOpen || brokerPolicyError) {
@@ -122,7 +132,28 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
     const expiresAt = parseTokenExpiresAt(response.expires_at)
       || (response.expires_in ? Date.now() + response.expires_in * 1000 : undefined);
 
-    persistBrokerSessionDiscovery({ broker_id: brokerId, broker_name: brokerPolicy?.displayName });
+    const sessionServerUrl = localStorage.getItem('server_url')
+      || localStorage.getItem('backend_url')
+      || configuration.apiHost
+      || configuration.apiHostExt
+      || '';
+    const prevState = useAppStore.getState();
+    const prevToken = prevState.authToken || localStorage.getItem('auth_token');
+    if (prevState.isAuthenticated && prevState.accountId && prevToken) {
+      rememberAccountSession({
+        brokerId: localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || brokerId,
+        serverUrl: sessionServerUrl,
+        login: prevState.accountId,
+        authToken: prevToken,
+        refreshToken: prevState.refreshToken || localStorage.getItem('refresh_token') || undefined,
+        expiresAt: prevState.tokenExpiresAt || undefined,
+      });
+    }
+    persistBrokerSessionDiscovery({
+      broker_id: brokerId,
+      broker_name: brokerPolicy?.displayName,
+      ...(sessionServerUrl ? { server_url: sessionServerUrl, backend_url: sessionServerUrl } : {}),
+    });
     setToken(token);
     if (response.refresh_token) {
       setRefreshToken(response.refresh_token);
@@ -139,6 +170,17 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
     localStorage.setItem('rtx_last_login', accountId);
     localStorage.setItem('rtx_saved_username', accountId);
     localStorage.removeItem('rtx_saved_password');
+
+    const demoServerUrl = configuration.apiHostExt || configuration.apiHost || sessionServerUrl;
+    rememberAccountSession({
+      brokerId,
+      serverUrl: sessionServerUrl || demoServerUrl,
+      login: accountId,
+      authToken: token,
+      refreshToken: response.refresh_token,
+      expiresAt,
+      password,
+    });
 
     const login = Number.parseInt(accountId, 10);
     const hasValidLogin = Number.isFinite(login) && login > 0;
@@ -157,9 +199,11 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
     if (hasValidLogin) {
       store.setActiveAccount(login);
     }
-    const demoServerUrl = configuration.apiHostExt || configuration.apiHost || localStorage.getItem('server_url') || localStorage.getItem('backend_url') || '';
-    if (password && demoServerUrl && supportsSavedLogins()) {
-      void saveLogin({ brokerId, serverUrl: demoServerUrl }, accountId, password).catch(() => undefined);
+    if (password && supportsSavedLogins()) {
+      const candidateUrls = Array.from(new Set([demoServerUrl, sessionServerUrl].filter(Boolean)));
+      for (const url of candidateUrls) {
+        void saveLogin({ brokerId, serverUrl: url }, accountId, password).catch(() => undefined);
+      }
     }
 
     onAuthenticated(accountId);
@@ -199,14 +243,15 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
 
   if (!isOpen) return null;
 
-  if (mode === 'login' && brokerId) {
+  const loginBrokerId = brokerId || (hasDemoAndRealAccounts ? configuration.brokerId : '');
+  if ((mode === 'login' || hasDemoAndRealAccounts) && loginBrokerId && !brokerPolicyError) {
     return (
       <LoginDialog
         isOpen
-        onClose={() => setMode('choice')}
+        onClose={hasDemoAndRealAccounts ? closeDialog : () => setMode('choice')}
         onLoginSuccess={onAuthenticated}
-        initialServer={brokerId}
-        lockedBrokerId={brokerId}
+        initialServer={loginBrokerId}
+        lockedBrokerId={loginBrokerId}
         lockedBrokerDisplayName={brokerPolicy?.displayName}
       />
     );
@@ -324,23 +369,25 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
                   </span>
                 </button>
 
-                <button
-                  type="button"
-                  className="rtx-auth-action rtx-auth-action--secondary"
-                  onClick={() => setMode('demo')}
-                  disabled={!brokerId}
-                >
-                  <span className="rtx-auth-action__icon" aria-hidden="true">
-                    <UserPlus size={17} strokeWidth={1.9} />
-                  </span>
-                  <span className="rtx-auth-action__copy">
-                    <span className="rtx-auth-action__label">Create demo account</span>
-                    <span className="rtx-auth-action__description">Practice with virtual funds</span>
-                  </span>
-                  <span className="rtx-auth-action__cta" aria-hidden="true">
-                    <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" />
-                  </span>
-                </button>
+                {!hasDemoAndRealAccounts && (
+                  <button
+                    type="button"
+                    className="rtx-auth-action rtx-auth-action--secondary"
+                    onClick={() => setMode('demo')}
+                    disabled={!brokerId}
+                  >
+                    <span className="rtx-auth-action__icon" aria-hidden="true">
+                      <UserPlus size={17} strokeWidth={1.9} />
+                    </span>
+                    <span className="rtx-auth-action__copy">
+                      <span className="rtx-auth-action__label">Create demo account</span>
+                      <span className="rtx-auth-action__description">Practice with virtual funds</span>
+                    </span>
+                    <span className="rtx-auth-action__cta" aria-hidden="true">
+                      <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" />
+                    </span>
+                  </button>
+                )}
               </div>
 
               {brokerPolicyError && (

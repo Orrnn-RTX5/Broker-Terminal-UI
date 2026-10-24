@@ -510,9 +510,18 @@ html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row {
   transition: background-color 120ms ease, color 120ms ease !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__label {
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:not([data-account-active="false"]):not([aria-disabled="true"]) .navigator-tree-item__label {
   color: var(--rtx-light-text) !important;
   line-height: 1.5 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row[data-account-active="false"] .navigator-tree-item__label {
+  color: var(--navigator-account-inactive-text, #94a3b8) !important;
+  line-height: 1.5 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row[data-account-active="false"]:hover .navigator-tree-item__label {
+  color: var(--navigator-account-inactive-hover-text, #64748b) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.navigator-tree-item__chevron, .navigator-tree-item__icon) {
@@ -1510,14 +1519,58 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-tra
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-action-button,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button {
-  color: #ffffff !important;
+  background: var(--rtx-light-panel-muted) !important;
+  border: 1px solid var(--rtx-light-border) !important;
+  color: var(--rtx-light-text-secondary) !important;
   border-radius: 3px !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row:hover .rtx-trade-action-button,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row:hover .rtx-trade-close-button,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row.rtx-trade-row--selected .rtx-trade-action-button,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row.rtx-trade-row--selected .rtx-trade-close-button,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row[aria-selected="true"] .rtx-trade-action-button,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row[aria-selected="true"] .rtx-trade-close-button {
+  background: #ffffff !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-action-button:not(:disabled):hover {
+  background: var(--rtx-light-selected-strong) !important;
+  border-color: var(--rtx-light-accent) !important;
+  color: var(--rtx-light-accent) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button:not(:disabled):hover {
+  background: var(--color-loss) !important;
+  border-color: var(--color-loss) !important;
+  color: #ffffff !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-action-button:focus-visible,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button:focus-visible {
   outline: 2px solid var(--rtx-light-accent) !important;
   outline-offset: 1px;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bg-image-dialog__save:not(:disabled):hover {
+  background: #007d3b !important;
+  border-color: #007d3b !important;
+  color: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bg-image-dialog__secondary:not(:disabled):hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bg-image-dialog__close:not(:disabled):hover {
+  background: #f1f5f9 !important;
+  border-color: transparent !important;
+  color: #0f172a !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-period-dialog [role="alert"] {

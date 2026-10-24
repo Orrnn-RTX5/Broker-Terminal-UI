@@ -20,7 +20,7 @@ export interface UseCrosshairOptions {
   seriesRef: RefObject<ISeriesApi<any> | null>;
   containerRef: RefObject<HTMLDivElement | null>;
   enabled: boolean;
-  digits?: number;
+  digits?: number | null;
   timeframe?: string;
   brokerOffsetSeconds?: number;
   marker?: 'cross' | 'dot';
@@ -223,7 +223,7 @@ export function useCrosshair({
         if (price === null) {
           priceLabel.style.opacity = '0';
         } else {
-          const text = price.toFixed(latestDigits);
+          const text = latestDigits == null ? String(price) : price.toFixed(latestDigits);
           if (priceLabel.textContent !== text) priceLabel.textContent = text;
           priceLabel.style.opacity = '1';
           const labelWidth = priceScaleWidth;

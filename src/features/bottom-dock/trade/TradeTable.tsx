@@ -165,7 +165,7 @@ const TradeTableRow = memo(function TradeTableRow({
     const placementLabel = placementState === 'accepted' ? tr('Accepted')
       : placementState === 'processing' ? tr('Processing')
         : placementState === 'rejected' ? tr('Rejected')
-          : placementState === 'expired' ? tr('Expired') : tr('Pending');
+          : placementState === 'expired' ? tr('Expired') : '--';
     const ticketLabel = isPendingPlacement ? placementLabel : String(ticket ?? '-');
     const timeLabel = formatTradeTime(openTime);
     const openPriceLabel = isPendingPlacement ? placementPlaceholder : formatTradePrice(rawOpenPrice, symbolLabel);
