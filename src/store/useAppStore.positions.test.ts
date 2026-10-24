@@ -5,6 +5,9 @@ import { commitBrokerAccountSessionScope } from '../services/brokerSession';
 
 import {
   getPositionCloseScope,
+  beginPositionsRead,
+  getPositionsAuthoritativeSeq,
+  isConfirmedClosedBySnapshot,
   isPositionMarkedClosed,
   markPositionsClosed,
   RECENT_OPEN_POSITION_RETENTION_MS,
@@ -351,5 +354,86 @@ describe('closed positions and recent-open retention', () => {
 
     vi.advanceTimersByTime(RECENT_OPEN_POSITION_RETENTION_MS + 1);
     expect(ids()).toEqual([222]);
+  });
+});
+
+describe('confirmed open tickets and authoritative snapshots', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.getState().reset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    useAppStore.getState().reset();
+  });
+
+  const ids = () => useAppStore.getState().positions.map(({ id }) => id).sort((a, b) => a - b);
+  const recent = () => ({ chartEntryTime: new Date().toISOString() });
+
+  it('removes a ticket at once when a later authoritative snapshot omits it after confirming it', () => {
+    useAppStore.getState().setPositions([position(501, recent())], { readStartedAt: beginPositionsRead() });
+    expect(ids()).toEqual([501]);
+
+    useAppStore.getState().setPositions([], { readStartedAt: beginPositionsRead() });
+
+    expect(ids()).toEqual([]);
+    expect(isConfirmedClosedBySnapshot(501)).toBe(true);
+  });
+
+  it('keeps a fill that no snapshot has confirmed for the retention window, then drops it', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-24T12:00:00.000Z'));
+    useAppStore.getState().setPositions([position(502, recent())]);
+
+    useAppStore.getState().setPositions([], { readStartedAt: beginPositionsRead() });
+    expect(ids()).toEqual([502]);
+    expect(isConfirmedClosedBySnapshot(502)).toBe(false);
+
+    vi.advanceTimersByTime(RECENT_OPEN_POSITION_RETENTION_MS + 1);
+    expect(ids()).toEqual([]);
+  });
+
+  it('a stream close frame still removes a confirmed ticket at once', () => {
+    useAppStore.getState().setPositions([position(503, recent())], { readStartedAt: beginPositionsRead() });
+
+    useAppStore.getState().setPositions([], { closedTickets: [503] });
+
+    expect(ids()).toEqual([]);
+  });
+
+  it('forgets a close once a later snapshot lists the ticket again', () => {
+    useAppStore.getState().setPositions([position(504, recent())], { readStartedAt: beginPositionsRead() });
+    useAppStore.getState().setPositions([], { readStartedAt: beginPositionsRead() });
+    useAppStore.getState().setPositions([position(504, recent())], { readStartedAt: beginPositionsRead() });
+
+    expect(ids()).toEqual([504]);
+    expect(isConfirmedClosedBySnapshot(504)).toBe(false);
+  });
+
+  it('requests one history refresh when a confirmed ticket is dropped by a snapshot', () => {
+    vi.useFakeTimers();
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    useAppStore.getState().setPositions([position(505, recent())], { readStartedAt: beginPositionsRead() });
+    useAppStore.getState().setPositions([], { readStartedAt: beginPositionsRead() });
+    vi.runOnlyPendingTimers();
+
+    const requests = dispatch.mock.calls.map(([event]) => event).filter((event) => event.type === 'rtx:refresh-trade-history-requested');
+    expect(requests).toHaveLength(1);
+  });
+
+  it('does not let a confirmed ticket block an empty authoritative snapshot', () => {
+    useAppStore.getState().setPositions([position(506, recent())], { readStartedAt: beginPositionsRead() });
+
+    expect(shouldReplaceOpenPositionSnapshot([], useAppStore.getState().positions)).toBe(true);
+  });
+
+  it('bumps the authoritative sequence only for writes that carry a broker snapshot', () => {
+    const before = getPositionsAuthoritativeSeq();
+    useAppStore.getState().setPositions([position(507)]);
+    expect(getPositionsAuthoritativeSeq()).toBe(before);
+    useAppStore.getState().setPositions([position(507)], { readStartedAt: beginPositionsRead() });
+    expect(getPositionsAuthoritativeSeq()).toBe(before + 1);
   });
 });

@@ -671,6 +671,7 @@ describe('BottomDock History live-deal integration', () => {
         let columnsMenu = await findSubmenuContaining('Market Value');
         expect(getMenuLabels(columnsMenu)).toEqual([
             'Ticket',
+            'Status',
             'Market Value',
             'Commission',
             'Swap',
@@ -682,6 +683,7 @@ describe('BottomDock History live-deal integration', () => {
         expect(within(columnsMenu).queryByText('Show All Columns')).not.toBeInTheDocument();
         expect(within(columnsMenu).queryByText('Reset Columns')).not.toBeInTheDocument();
         expect(within(columnsMenu).getByText('Ticket').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"] svg')).toBeInTheDocument();
+        expect(within(columnsMenu).getByText('Status').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"] svg')).toBeInTheDocument();
         expect(within(columnsMenu).getByText('Change %').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"] svg')).toBeInTheDocument();
         expect(within(columnsMenu).getByText('Market Value').closest('[role="menuitem"]')?.querySelector('[aria-hidden="true"] svg')).toBeNull();
 
@@ -693,6 +695,7 @@ describe('BottomDock History live-deal integration', () => {
         await waitFor(() => expect(screen.queryByRole('columnheader', { name: 'Ticket' })).not.toBeInTheDocument());
         expect(JSON.parse(localStorage.getItem('rtx5_history_columns_v2') ?? '{}')).toEqual({
             ticket: false,
+            status: true,
             marketValue: true,
             commission: false,
             swap: false,
@@ -701,6 +704,31 @@ describe('BottomDock History live-deal integration', () => {
             magicNumber: false,
             comment: false,
         });
+    });
+
+    it('renders FILLED, CANCELLED, EXPIRED, and REJECTED status badges in Orders history view', async () => {
+        useAppStore.setState({ accountId: '300007', positions: [] });
+        vi.spyOn(tradeGatewayApi, 'getHistoryDataSet').mockResolvedValue(historyDataSet({
+            orders: [
+                { ...orderHistoryTrade, id: 810_101, orderTicket: 810_101, status: 'triggered' },
+                { ...orderHistoryTrade, id: 810_102, orderTicket: 810_102, status: 'cancelled', closePrice: 0 },
+                { ...orderHistoryTrade, id: 810_103, orderTicket: 810_103, status: 'expired', closePrice: 0 },
+                { ...orderHistoryTrade, id: 810_104, orderTicket: 810_104, status: 'rejected', closePrice: 0 },
+            ],
+        }));
+
+        renderHistoryDock();
+        fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
+        await screen.findByTitle('Ticket: 610001');
+
+        const menu = await openHistorySurfaceMenu();
+        fireEvent.click(within(menu).getByText('Orders'));
+        await screen.findByTitle('Ticket: 810101');
+
+        expect(screen.getByTestId('history-row-status-810101')).toHaveTextContent('FILLED');
+        expect(screen.getByTestId('history-row-status-810102')).toHaveTextContent('CANCELLED');
+        expect(screen.getByTestId('history-row-status-810103')).toHaveTextContent('EXPIRED');
+        expect(screen.getByTestId('history-row-status-810104')).toHaveTextContent('REJECTED');
     });
 
     it('validates and applies an inclusive local Custom Period', async () => {

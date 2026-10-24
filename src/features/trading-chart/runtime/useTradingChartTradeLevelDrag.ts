@@ -5,19 +5,29 @@ import api from '../../../services/api';
 import { useAppStore } from '../../../store/useAppStore';
 import { rememberTradeHistoryPositionLevels } from '../../../utils/tradeHistoryLevelCache';
 import { describeProtectionRefusal, formatOrderError } from '../../../utils/orderError';
+import {
+  handleStalePositionRefusal,
+  isPositionKnownClosed,
+  refuseSendForClosedPosition,
+  requestPositionsRefresh,
+} from '../../../utils/stalePositionRefusal';
 import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import {
   applyTradeLevelDragUpdate,
   getTradeLevelStateKeys,
   getTradeLevelDragMinDistance,
   normalizeTradeLevelDragPrice,
+  pendingOrderPriceViolation,
+  protectionClosePrice,
   protectionLevelViolation,
+  resolveDropPriceForRole,
   resolveTradeLevelDragRole,
   roundProtectionLevelToGrid,
   selectNearestTradeLevel,
   tradeLevelModifyPatch,
 } from '../../../utils/tradeLevelDrag';
-import { readRegisteredSymbolPriceSpec } from '../../../services/dailyChangePriceModeRegistry';
+import { readTradeValidationQuote } from '../../../services/tradeValidationQuote';
+import { readRegisteredSymbolPriceSpec, readRegisteredSymbolStopsLevel } from '../../../services/dailyChangePriceModeRegistry';
 import {
   bindChartUiTranslation,
   dispatchChartPositionModify,
@@ -71,19 +81,20 @@ interface UseTradingChartTradeLevelDragOptions {
   tradeLevelOverridesRef: RefObject<Map<string, TradeLevelOverride>>;
 }
 
-type DragQuote = { bid?: unknown; ask?: unknown } | undefined;
-
 /**
- * SL/TP price geometry for a drag: the symbol's own broker catalog data only
- * (scoped instrument registry). Never the chart's name-table fallback nor
- * quote digits (the tick normalizer may fill those from the name table):
- * unknown precision keeps the raw dragged number (digits null).
+ * SL/TP price geometry and validation quote for a drag. Geometry is the symbol's
+ * own broker catalog data only (scoped instrument registry): unknown precision
+ * keeps the raw dragged number (digits null). The quote is the same fresh
+ * Market Watch tick every pre-send check uses; null (missing or stale) means
+ * the drag must not be validated or sent.
  */
-const readDragPriceSpec = (symbol: string): { digits: number | null; tickSize: number | null; quote: DragQuote } => {
-  const ticks = (useAppStore.getState().ticks ?? {}) as Record<string, DragQuote>;
-  const quote = ticks[symbol] ?? ticks[String(symbol).toUpperCase()];
+const readDragPriceSpec = (symbol: string): {
+  digits: number | null;
+  tickSize: number | null;
+  quote: { bid: number; ask: number } | null;
+} => {
   const registered = readRegisteredSymbolPriceSpec(symbol);
-  return { digits: registered.digits, tickSize: registered.tickSize, quote };
+  return { digits: registered.digits, tickSize: registered.tickSize, quote: readTradeValidationQuote(symbol) };
 };
 
 export const useTradingChartTradeLevelDrag = ({
@@ -107,7 +118,7 @@ export const useTradingChartTradeLevelDrag = ({
   tradeLevelOptimisticGraceUntilRef,
   tradeLevelOverridesRef,
 }: UseTradingChartTradeLevelDragOptions): void => {
-  // ── Drag to Spawn MT5 Trade Levels ──
+  // â”€â”€ Drag to Spawn MT5 Trade Levels â”€â”€
   useEffect(() => {
     if (!isActive) return;
 
@@ -126,6 +137,14 @@ export const useTradingChartTradeLevelDrag = ({
       controlOffsetY: number;
       didDrag: boolean;
       pointerId: number;
+      /**
+       * What pointermove last showed. Release sends only a VALID painted level, exactly
+       * as painted (price and role). A refused (red) paint sends nothing and repeats its reason.
+       */
+      painted:
+        | { kind: 'valid'; price: number; role: 'SL' | 'TP' }
+        | { kind: 'refused'; reason: string }
+        | null;
     } | null = null;
     let lastLevelClick: { tradeKey: string; role: 'SL' | 'TP'; at: number } | null = null;
     // Level bars hidden while their level is being dragged (the live preview
@@ -238,6 +257,19 @@ export const useTradingChartTradeLevelDrag = ({
     };
 
     const getDragRoleColor = (role: 'SL' | 'TP') => role === 'TP' ? '#00a256' : '#eb415c';
+
+    // Red preview with the reason; nothing is submitted while it is shown.
+    const paintBlockedDrag = (reason: string, y: number) => {
+      if (!dragLineOverlay || !dragBadgeOverlay) return;
+      dragLineOverlay.style.borderTopColor = '#ef4444';
+      dragLineOverlay.title = reason;
+      dragBadgeOverlay.style.opacity = '1';
+      dragBadgeOverlay.style.borderColor = '#ef4444';
+      dragBadgeOverlay.title = reason;
+      dragLineOverlay.style.transform = `translate3d(0, ${y}px, 0)`;
+      dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${y}px))`;
+      if (dragZoneOverlay) dragZoneOverlay.style.display = 'none';
+    };
 
     const findClosestLevelForTrade = (
       trade: ActiveTradeSnapshot,
@@ -427,7 +459,7 @@ export const useTradingChartTradeLevelDrag = ({
           ? getFinitePriceCoordinate(closestTrade.entryPrice) ?? y
           : y;
         const initialOverlayY = grabbedType === 'ENTRY' ? entryAnchorY : y;
-        dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY, pointerDownY: y, controlOffsetY, didDrag: false, pointerId: e.pointerId };
+        dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY, pointerDownY: y, controlOffsetY, didDrag: false, pointerId: e.pointerId, painted: null };
 
         dragLineOverlay = document.createElement('div');
         dragLineOverlay.style.cssText = `position:absolute;left:0;right:${getPriceScaleOffset()}px;top:0;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translate3d(0, ${initialOverlayY}px, 0);will-change:transform;`;
@@ -479,24 +511,83 @@ export const useTradingChartTradeLevelDrag = ({
         // 0). The entry-line dead zone below is a gesture threshold, not a
         // stops rule.
         const minStopDistance = 0;
-        const minEntryDistance = getTradeLevelDragMinDistance(digits);
-        const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
+        const minEntryDistance = getTradeLevelDragMinDistance(digits, moveSpec.tickSize);
+        // Validation quote = the Market Watch tick, only when fresh; otherwise null,
+        // which means "not validated here" (the server decides on release).
+        const moveQuote = moveSpec.quote;
+        const moveClose = moveQuote ? protectionClosePrice(tradeObj.side, moveQuote.bid, moveQuote.ask) : null;
+        const liveCurrentPrice = moveClose ?? tradeObj.currentPrice;
         const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
 
         // Entry-line clicks are ignored, but any real vertical drag should create SL/TP.
         // Existing SL/TP levels remain freely repositionable.
         const hasRealEntryDrag = entryDragDirection !== null;
         const showPreview = grabbedType === 'ENTRY' ? hasRealEntryDrag : dragState.didDrag;
-        const previewUpdate = showPreview
+        if (tradeObj.kind === 'pending' && grabbedType === 'ENTRY') {
+          if (!showPreview) {
+            dragLineOverlay.style.borderTopColor = 'transparent';
+            dragBadgeOverlay.style.opacity = '0';
+            if (dragZoneOverlay) dragZoneOverlay.style.display = 'none';
+            return;
+          }
+          const nextEntryPrice = normalizeTradeLevelDragPrice(
+            roundProtectionLevelToGrid(rawPrice, digits, moveSpec.tickSize),
+            digits,
+          );
+          const moveTick = moveQuote;
+          const moveBid = Number(moveTick?.bid) || liveCurrentPrice;
+          const moveAsk = Number(moveTick?.ask) || liveCurrentPrice;
+          const moveSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
+          const violation = pendingOrderPriceViolation({
+            orderType: tradeObj.orderType || (moveSide === 'SELL' ? 'sell_limit' : 'buy_limit'),
+            side: moveSide,
+            price: nextEntryPrice,
+            limitPrice: tradeObj.limitPrice,
+            sl: tradeObj.sl,
+            tp: tradeObj.tp,
+            bid: moveBid,
+            ask: moveAsk,
+            digits,
+            tickSize: moveSpec.tickSize,
+          });
+          const color = violation ? '#ef4444' : (moveSide === 'SELL' ? '#f59e0b' : '#0ea5e9');
+          dragLineOverlay.style.borderTopColor = color;
+          dragLineOverlay.title = violation ?? '';
+          dragBadgeOverlay.style.opacity = '1';
+          dragBadgeOverlay.style.borderColor = color;
+          dragBadgeOverlay.title = violation ?? '';
+          dragBadgeOverlay.textContent = `${(tradeObj.orderType || moveSide).replace(/_/g, ' ').toUpperCase()} ${digits === null ? String(nextEntryPrice) : nextEntryPrice.toFixed(digits)}`;
+          dragLineOverlay.style.transform = `translate3d(0, ${y}px, 0)`;
+          dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${y}px))`;
+          if (dragZoneOverlay) dragZoneOverlay.style.display = 'none';
+          return;
+        }
+        const levelsNow = getCurrentTradeLevels(tradeObj);
+        const isNewLevel = (grabbedType === 'SL' && !(levelsNow.sl > 0)) || (grabbedType === 'TP' && !(levelsNow.tp > 0));
+        const dropPrice = showPreview
+          ? resolveDropPriceForRole({
+            side: tradeObj.side,
+            grabbedType,
+            price: rawPrice,
+            quote: moveQuote,
+            digits,
+            tickSize: moveSpec.tickSize,
+            stopsLevel: readRegisteredSymbolStopsLevel(tradeObj.symbol),
+            isNewLevel,
+            entryPrice: tradeObj.entryPrice,
+          })
+          : null;
+        const previewUpdate = dropPrice !== null
           ? applyTradeLevelDragUpdate({
             side: tradeObj.side,
             grabbedType,
             entryPrice: tradeObj.entryPrice,
-            finalPrice: roundProtectionLevelToGrid(rawPrice, digits, moveSpec.tickSize),
+            finalPrice: dropPrice,
             currentSl: tradeObj.sl,
             currentTp: tradeObj.tp,
             digits,
-            currentPrice: liveCurrentPrice,
+            tickSize: moveSpec.tickSize,
+            currentPrice: moveClose ?? undefined,
             minStopDistance,
             minEntryDistance: grabbedType === 'ENTRY' ? minEntryDistance : undefined,
             snapEntryToMinDistance: grabbedType === 'ENTRY',
@@ -505,6 +596,7 @@ export const useTradingChartTradeLevelDrag = ({
           : null;
 
         if (!previewUpdate || !Number.isFinite(previewUpdate.price) || previewUpdate.price <= 0) {
+          dragState.painted = null;
           const idleY = grabbedType === 'ENTRY' ? entryAnchorY : y;
           dragLineOverlay.style.borderTopColor = 'transparent';
           dragBadgeOverlay.style.opacity = '0';
@@ -518,37 +610,48 @@ export const useTradingChartTradeLevelDrag = ({
 
         const price = previewUpdate.price;
         const role = previewUpdate.role;
-        // Mark a level dragged onto the broker-invalid side red with the
-        // reason (submitting stays blocked until it is valid — see pointerup).
-        // Real Bid/Ask from the store (spread-aware); snapshot price fallback.
-        const moveTick = moveSpec.quote;
-        const moveBid = Number(moveTick?.bid) || liveCurrentPrice;
-        const moveAsk = Number(moveTick?.ask) || liveCurrentPrice;
-        // Unknown precision degrades the check to side-only (never guessed).
+        // A fresh quote validates the dropped level locally: a broker-invalid side is
+        // painted red with the reason and is not submitted (see pointerup). Without
+        // a fresh quote nothing is refused here; the painted level is what release sends.
         const moveSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
-        const moveRaw = normalizeTradeLevelDragPrice(roundProtectionLevelToGrid(rawPrice, digits, moveSpec.tickSize), digits);
-        const moveViolation = protectionLevelViolation({
-          side: moveSide,
-          role: resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, moveRaw),
-          price: moveRaw,
-          bid: moveBid,
-          ask: moveAsk,
-          digits,
-          tickSize: moveSpec.tickSize,
-        });
+        // Checked on the dropped price (before clamp for SL/TP) and the painted price.
+        const droppedPrice = grabbedType === 'ENTRY' ? price : (dropPrice ?? price);
+        const droppedRole = grabbedType === 'ENTRY'
+          ? role
+          : resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, droppedPrice, moveClose);
+        const moveViolation = moveQuote
+          ? (
+            protectionLevelViolation({
+              side: moveSide,
+              role: droppedRole,
+              price: droppedPrice,
+              bid: moveQuote.bid,
+              ask: moveQuote.ask,
+              digits,
+              tickSize: moveSpec.tickSize,
+            })
+            ?? protectionLevelViolation({
+              side: moveSide,
+              role,
+              price,
+              bid: moveQuote.bid,
+              ask: moveQuote.ask,
+              digits,
+              tickSize: moveSpec.tickSize,
+            })
+          )
+          : null;
         if (moveViolation) {
-          dragLineOverlay.style.borderTopColor = '#ef4444';
-          dragLineOverlay.title = moveViolation;
-          dragBadgeOverlay.style.opacity = '1';
-          dragBadgeOverlay.style.borderColor = '#ef4444';
-          dragBadgeOverlay.title = moveViolation;
-          dragLineOverlay.style.transform = `translate3d(0, ${y}px, 0)`;
-          dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${y}px))`;
-          if (dragZoneOverlay) dragZoneOverlay.style.display = 'none';
+          dragState.painted = { kind: 'refused', reason: moveViolation };
+          paintBlockedDrag(moveViolation, y);
           return;
         }
-        dragLineOverlay.title = '';
-        dragBadgeOverlay.title = '';
+        // The release submits exactly this painted price (M4); no silent drift.
+        dragState.painted = { kind: 'valid', price, role };
+        // A chip with no fresh quote has no close to snap to: say so in the preview.
+        const unsnappedChip = !moveQuote && isNewLevel;
+        dragLineOverlay.title = unsnappedChip ? tr('Price updating, please retry') : '';
+        dragBadgeOverlay.title = dragLineOverlay.title;
         const color = getDragRoleColor(role);
         const palette = getTradeOverlayCardPalette(role, isChartSurfaceLight());
 
@@ -631,11 +734,12 @@ export const useTradingChartTradeLevelDrag = ({
               ? null
               : { tradeKey: tradeObj.key, role, at: clickedAt };
             if (isDoubleLevelClick) {
-              const ticket = Number.parseInt(tradeObj.key.replace(/^trade:/, ''), 10);
+              const ticket = Number.parseInt(tradeObj.key.replace(/^(trade|order):/, ''), 10);
               dispatchChartPositionModify({
                 ticket,
                 symbol: tradeObj.symbol,
                 sessionScope: brokerAccountSessionScope,
+                kind: tradeObj.kind === 'pending' ? 'pending-order' : 'position',
               });
             }
           } else if (rawFinalPrice !== null) {
@@ -646,52 +750,125 @@ export const useTradingChartTradeLevelDrag = ({
               // A cross-button action can start while this gesture is active.
               if (blockPendingTradeLevelChange(tradeObj)) return;
               const { sl: currentSl, tp: currentTp } = getCurrentTradeLevels(tradeObj);
-              const submitSpec = readDragPriceSpec(tradeObj.symbol);
-              const digits = submitSpec.digits;
-              const submitFinalPrice = roundProtectionLevelToGrid(rawFinalPrice, digits, submitSpec.tickSize);
-              const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
-              // Block broker-invalid drops before sending: the level must sit
-              // on the valid side of the live close (the server stays final
-              // authority for the gap and race cases).
-              const submitSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
-              const submitRaw = normalizeTradeLevelDragPrice(submitFinalPrice, digits);
-              const submitTick = submitSpec.quote;
-              const submitViolation = protectionLevelViolation({
-                side: submitSide,
-                role: resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, submitRaw),
-                price: submitRaw,
-                bid: Number(submitTick?.bid) || liveCurrentPrice,
-                ask: Number(submitTick?.ask) || liveCurrentPrice,
-                digits,
-                tickSize: submitSpec.tickSize,
-              });
-              if (submitViolation) {
+              if (tradeObj.kind === 'pending') {
+                const pendingSpec = readDragPriceSpec(tradeObj.symbol);
+                const pendingDigits = pendingSpec.digits;
+                const submitFinalPrice = roundProtectionLevelToGrid(rawFinalPrice, pendingDigits, pendingSpec.tickSize);
+                const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
+                const submitSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
+                const submitRaw = normalizeTradeLevelDragPrice(submitFinalPrice, pendingDigits);
+                const submitTick = pendingSpec.quote;
+                const ticket = Number(tradeObj.key.replace(/^(trade|order):/, ''));
+                if (!ticket) return;
+                const nextPrice = grabbedType === 'ENTRY' ? submitRaw : tradeObj.entryPrice;
+                const nextSl = grabbedType === 'SL' ? submitRaw : (currentSl || 0);
+                const nextTp = grabbedType === 'TP' ? submitRaw : (currentTp || 0);
+                const pendingViolation = pendingOrderPriceViolation({
+                  orderType: tradeObj.orderType || (submitSide === 'SELL' ? 'sell_limit' : 'buy_limit'),
+                  side: submitSide,
+                  price: nextPrice,
+                  limitPrice: tradeObj.limitPrice,
+                  sl: nextSl,
+                  tp: nextTp,
+                  bid: Number(submitTick?.bid) || liveCurrentPrice,
+                  ask: Number(submitTick?.ask) || liveCurrentPrice,
+                  digits: pendingDigits,
+                  tickSize: pendingSpec.tickSize,
+                });
+                if (pendingViolation) {
+                  window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                    detail: { message: pendingViolation, type: 'error' },
+                  }));
+                  return;
+                }
+                const prevEntryPrice = tradeObj.entryPrice;
+                const prevLevels = { sl: currentSl || 0, tp: currentTp || 0 };
+                tradeObj.entryPrice = nextPrice;
+                setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, { sl: nextSl, tp: nextTp });
+                setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, { sl: nextSl, tp: nextTp });
+                window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+                api.orders.modifyPendingOrder(ticket, {
+                  price: nextPrice,
+                  ...(tradeObj.limitPrice ? { price_limit: tradeObj.limitPrice } : {}),
+                  price_sl: nextSl,
+                  price_tp: nextTp,
+                  ...(tradeObj.stateVersion ? { state_version: tradeObj.stateVersion } : {}),
+                })
+                  .then(() => {
+                    const loginId = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+                    if (Number.isFinite(loginId) && loginId > 0) {
+                      void api.orders.getPendingOrders(loginId)
+                        .then((orders) => useAppStore.getState().setOrders(orders as any))
+                        .catch(() => undefined);
+                    }
+                    window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                      detail: { message: `Order #${ticket} modified`, type: 'success' },
+                    }));
+                  })
+                  .catch((err) => {
+                    tradeObj.entryPrice = prevEntryPrice;
+                    setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, prevLevels);
+                    setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, prevLevels);
+                    window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+                    window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                      detail: { message: formatOrderError(err), type: 'error' },
+                    }));
+                  });
+                return;
+              }
+              // Only the level the user saw painted can be sent. No paint: nothing to send
+              // (a click). A refused (red) paint: nothing is sent; its shown reason is repeated.
+              const paint = dragState.painted;
+              if (!paint) return;
+              if (paint.kind === 'refused') {
                 window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
-                  detail: { message: submitViolation, type: 'error' },
+                  detail: { message: paint.reason, type: 'error' },
                 }));
                 return;
               }
-              // Same rule as the preview: no minimum distance (one tick past
-              // the close); the entry dead zone is a gesture threshold only.
-              const submitMinEntryDistance = getTradeLevelDragMinDistance(digits);
-              const update = applyTradeLevelDragUpdate({
-                side: tradeObj.side,
-                grabbedType,
-                entryPrice: tradeObj.entryPrice,
-                finalPrice: submitFinalPrice,
-                currentSl,
-                currentTp,
-                digits,
-                currentPrice: liveCurrentPrice,
-                minStopDistance: 0,
-                minEntryDistance: grabbedType === 'ENTRY' ? submitMinEntryDistance : undefined,
-                snapEntryToMinDistance: grabbedType === 'ENTRY',
-                entryDragDirection: entryDragDirection ?? undefined,
-              });
+              const submitSpec = readDragPriceSpec(tradeObj.symbol);
+              const digits = submitSpec.digits;
+              // Fresh quote: the painted price AND role must still be valid for the live close.
+              // Otherwise (stale or missing quote): send the painted level exactly, server-final.
+              const submitQuote = submitSpec.quote;
+              if (submitQuote) {
+                const submitClose = protectionClosePrice(tradeObj.side, submitQuote.bid, submitQuote.ask);
+                const submitSide = tradeObj.side === 'SELL' ? 'SELL' : 'BUY';
+                const roleNow = resolveTradeLevelDragRole(tradeObj.side, grabbedType, tradeObj.entryPrice, paint.price, submitClose);
+                const violation = protectionLevelViolation({
+                  side: submitSide,
+                  role: paint.role,
+                  price: paint.price,
+                  bid: submitQuote.bid,
+                  ask: submitQuote.ask,
+                  digits,
+                  tickSize: submitSpec.tickSize,
+                });
+                if (violation || roleNow !== paint.role) {
+                  window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                    detail: { message: tr('Price moved, drag again'), type: 'error' },
+                  }));
+                  return;
+                }
+              }
+              // The sent level is the painted level, with the painted role (no re-derivation, no re-clamp).
+              const update = {
+                role: paint.role,
+                price: paint.price,
+                sl: paint.role === 'SL' ? paint.price : currentSl || 0,
+                tp: paint.role === 'TP' ? paint.price : currentTp || 0,
+              };
 
               if (update) {
                 const ticket = Number(tradeObj.key.replace('trade:', ''));
                 if (ticket) {
+                  // Pre-send check: a line whose position already closed must not reach the modify API.
+                  if (isPositionKnownClosed(ticket)) {
+                    window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                      detail: { message: refuseSendForClosedPosition(ticket, { refresh: requestPositionsRefresh, tr }), type: 'error' },
+                    }));
+                    return;
+                  }
                   const { sl, tp } = update;
                   const previousLevels = {
                     sl: currentSl || 0,
@@ -775,15 +952,23 @@ export const useTradingChartTradeLevelDrag = ({
                     // Name the offending level against the live quote when the
                     // server refused the geometry (never a bare "Failed").
                     // Broker spec digits only; unknown precision degrades
-                    // the naming to side-only — never guessed.
+                    // the naming to side-only â€” never guessed.
+                    const staleMessage = handleStalePositionRefusal(err, ticket, { refresh: requestPositionsRefresh, tr });
+                    if (staleMessage) {
+                      window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                        detail: { message: staleMessage, type: 'error' },
+                      }));
+                      return;
+                    }
                     const refusalSpec = readDragPriceSpec(tradeObj.symbol);
                     const dragTick = refusalSpec.quote;
                     const dragRefusal = describeProtectionRefusal(err, {
                       side: String(tradeObj.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
                       sl,
                       tp,
-                      bid: Number(dragTick?.bid) || tradeObj.currentPrice || 0,
-                      ask: Number(dragTick?.ask) || tradeObj.currentPrice || 0,
+                      // Same fresh quote as the send path; no quote means no side naming (server text).
+                      bid: dragTick?.bid ?? 0,
+                      ask: dragTick?.ask ?? 0,
                       digits: refusalSpec.digits,
                     });
                     window.dispatchEvent(new CustomEvent('rtx:order-feedback', {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { formatPrice } from '../../utils/symbolUtils';
 import { readRegisteredSymbolPriceSpec } from '../../services/dailyChangePriceModeRegistry';
 import { extractBackendAccountRecord, isBackendAccountForLogin, isOtherBrokerId } from '../../services/backendAccountMetrics';
@@ -7,21 +7,24 @@ import { createStateInvalidator } from '../../services/stateInvalidation';
 import { enqueueLiveTick } from '../../services/liveTickDispatcher';
 import { isEnhancedStoreHandledTickFrame, type WebSocketMessage } from '../../services/websocket-enhanced';
 import { isTradeSubscriptionControlFrame } from '../../services/tradeStreamMessage';
-import { decodePositionStreamMessage } from '../../services/tradePositionStream';
-import { requestPositionSnapshotRevalidation } from '../../services/positionSnapshotSafety';
+import { decodePositionStreamMessage, getPositionStreamTicket } from '../../services/tradePositionStream';
+import { markPositionsStreamFrameIfStructural, requestPositionSnapshotRevalidation } from '../../services/positionSnapshotSafety';
 import { POSITION_CLOSED_EVENTS, readPositionStreamBatch, readPositionStreamEvent, reconcilePositionStreamBatch } from '../../services/positionStream';
 import { dispatchTradeOverlayCloseState } from '../../services/tradeOverlayHistory';
 import { markPositionsClosed, useAppStore, type Account, type Position } from '../../store/useAppStore';
 import { useAlertStore } from '../../store/useAlertStore';
 import { useMarketDataStore, type CandleUpdate } from '../../store/useMarketDataStore';
 import { useNotificationStore } from '../../store/useNotificationStore';
+import { createPendingLifecycleDeduper, parsePendingOrderLifecycleFrame } from '../../services/pendingOrderStream';
 import { normalizeRealtimeTick, parseTickPayloadContexts, toNumber, WS_DEBUG } from '../../features/trading/runtime/marketTickNormalization';
+import { publishOrderFeedback } from './orderFeedback';
 import {
   extractAccountMetrics,
   getPositionEventName,
   getPositionEventTicket,
   normalizeAccountSummary,
 } from './positionRuntime';
+import { createStreamHistoryCoalescer } from './tradeHistoryFreshness';
 
 type Subscribe = (channel: string, callback: (data: unknown) => void) => () => void;
 type UnknownRecord = Record<string, unknown>;
@@ -65,8 +68,6 @@ export const useTradeStreamRuntime = ({
   refreshOrdersAndHistory,
   reloadMarketSymbols,
 }: UseTradeStreamRuntimeOptions): void => {
-  const historyRefreshTimerRef = useRef<number | null>(null);
-
   useEffect(() => {
     if (!isAuthenticated) return undefined;
 
@@ -82,6 +83,13 @@ export const useTradeStreamRuntime = ({
         void reloadMarketSymbols();
       }
     });
+
+    // Stream-driven History refetches: leading + trailing + close fallback, see tradeHistoryFreshness.
+    const historyCoalescer = createStreamHistoryCoalescer({
+      refresh: (login) => refreshOrdersAndHistory(login),
+      isCurrent: (login) => isSessionActive() && getLiveTradingLogin() === login,
+    });
+    const pendingLifecycleDeduper = createPendingLifecycleDeduper();
 
     const unsubscribe = subscribe('*', (message: unknown) => {
       try {
@@ -135,6 +143,7 @@ export const useTradeStreamRuntime = ({
           if (!isSessionActive() || getLiveTradingLogin() !== acceptedLogin) return;
 
           markTradeWsMessage();
+          markPositionsStreamFrameIfStructural(decoded.rows, decoded.closedTickets);
           incrementPositionsStreamVersion();
           try {
             markPositionsClosed(decoded.closedTickets);
@@ -143,6 +152,9 @@ export const useTradeStreamRuntime = ({
             const ticket = getPositionEventTicket(data);
             if (!isSessionActive() || getLiveTradingLogin() !== acceptedLogin) return;
 
+            const touchedTickets = decoded.rows
+              .map((row) => getPositionStreamTicket(row))
+              .filter((value): value is number => value !== null);
             if (POSITION_CLOSED_EVENTS.has(eventName) && ticket) {
               const { position } = readPositionStreamEvent(data);
               const closeResult = reconcilePositionStreamBatch(useAppStore.getState().positions, {
@@ -156,13 +168,15 @@ export const useTradeStreamRuntime = ({
                 useAppStore.getState().positions.filter((position) => position.id !== ticket),
                 { closedTickets: [ticket] },
               );
-              void refreshOrdersAndHistory(acceptedLogin).catch((error) => console.error('[WS POSITIONS HISTORY REFRESH ERROR]', error));
+              historyCoalescer.onFrame(acceptedLogin, 'close');
             } else if (batch) {
               const result = reconcilePositionStreamBatch(useAppStore.getState().positions, batch);
               markPositionsClosed(result.closedTickets);
               const normalized = reconcileOptimisticClosedPositions(result.positions as Position[]);
               if (!isSessionActive() || getLiveTradingLogin() !== acceptedLogin) return;
-              useAppStore.getState().setPositions(normalized, { closedTickets: result.closedTickets });
+              // A stream snapshot merges rows and never removes the tickets it omits
+              // (no complete-account marker exists; removal needs a close record or a REST read).
+              useAppStore.getState().setPositions(normalized, { closedTickets: result.closedTickets, touchedTickets });
               if (result.needsRevalidation) requestPositionSnapshotRevalidation();
             } else {
               const { position } = readPositionStreamEvent(data);
@@ -174,7 +188,7 @@ export const useTradeStreamRuntime = ({
               markPositionsClosed(result.closedTickets);
               useAppStore.getState().setPositions(
                 reconcileOptimisticClosedPositions(result.positions as Position[]),
-                { closedTickets: result.closedTickets },
+                { closedTickets: result.closedTickets, touchedTickets },
               );
               if (result.needsRevalidation || eventName === 'position_partial_close') requestPositionSnapshotRevalidation();
             }
@@ -186,7 +200,7 @@ export const useTradeStreamRuntime = ({
             if (confirmedClosedTickets.length) {
               markServerClosedTickets(confirmedClosedTickets);
               dispatchTradeOverlayCloseState(confirmedClosedTickets, 'confirmed');
-              void refreshOrdersAndHistory(acceptedLogin).catch((error) => console.error('[WS POSITIONS HISTORY REFRESH ERROR]', error));
+              historyCoalescer.onFrame(acceptedLogin, 'close');
             }
           } catch (error) {
             console.error('[WS POSITIONS ERROR]', error);
@@ -194,16 +208,81 @@ export const useTradeStreamRuntime = ({
           return;
         }
 
-        if (data.channel?.startsWith('orders.') || data.channel?.startsWith('deals.')) {
-          const login = getAcceptedChannelLogin(data.channel);
+        if (data.channel?.startsWith('orders.') || data.channel?.startsWith('rtx5.pending_orders.') || data.channel?.startsWith('deals.')) {
+          const login = getAcceptedChannelLogin(
+            data.channel.startsWith('rtx5.pending_orders.')
+              ? `orders.${data.channel.slice('rtx5.pending_orders.'.length)}`
+              : data.channel,
+          );
           if (!login || isTradeSubscriptionControlFrame(data)) return;
           markTradeWsMessage();
-          if (historyRefreshTimerRef.current === null) {
-            historyRefreshTimerRef.current = window.setTimeout(() => {
-              historyRefreshTimerRef.current = null;
-              void refreshOrdersAndHistory(login).catch((error) => console.error('[WS HISTORY REFRESH ERROR]', error));
-            }, 50);
+          if (data.channel.startsWith('orders.') || data.channel.startsWith('rtx5.pending_orders.')) {
+            const currentOrders = (useAppStore.getState().orders ?? []) as unknown as ReadonlyArray<Record<string, unknown>>;
+            const notice = parsePendingOrderLifecycleFrame(data.channel, data.data ?? data, currentOrders);
+            if (notice && pendingLifecycleDeduper.shouldEmit(notice.dedupeKey)) {
+              const specDigits = readRegisteredSymbolPriceSpec(notice.symbol)?.digits;
+              const priceLabel = notice.price > 0 ? formatPrice(notice.price, specDigits ?? undefined) : '';
+              if (notice.status === 'filled' || notice.status === 'triggered') {
+                const msg = `${notice.orderType} #${notice.ticket} filled: ${notice.side} ${notice.volume} ${notice.symbol}${priceLabel ? ` @ ${priceLabel}` : ''}`;
+                publishOrderFeedback(msg, 'success', {
+                  title: 'Pending Order Filled',
+                  description: msg,
+                  meta: `#${notice.ticket}`,
+                  metaIcon: 'check-circle',
+                });
+                useNotificationStore.getState().addNotification({
+                  type: 'trading',
+                  severity: 'info',
+                  title: 'Pending Order Filled',
+                  message: msg,
+                });
+                playAlertSound();
+              } else if (notice.status === 'limit_activated') {
+                const msg = `Stop-Limit #${notice.ticket} triggered: Limit order active${priceLabel ? ` @ ${priceLabel}` : ''}`;
+                publishOrderFeedback(msg, 'success', {
+                  title: 'Stop-Limit Triggered',
+                  description: msg,
+                  meta: `#${notice.ticket}`,
+                  metaIcon: 'clock',
+                });
+                useNotificationStore.getState().addNotification({
+                  type: 'trading',
+                  severity: 'info',
+                  title: 'Stop-Limit Triggered',
+                  message: msg,
+                });
+              } else if (notice.status === 'expired') {
+                const msg = `Pending order #${notice.ticket} (${notice.symbol}) expired`;
+                publishOrderFeedback(msg, 'error', {
+                  title: 'Pending Order Expired',
+                  description: msg,
+                  meta: `#${notice.ticket}`,
+                  metaIcon: 'clock',
+                });
+                useNotificationStore.getState().addNotification({
+                  type: 'trading',
+                  severity: 'warning',
+                  title: 'Pending Order Expired',
+                  message: msg,
+                });
+              } else if (notice.status === 'rejected') {
+                const msg = `Pending order #${notice.ticket} rejected at trigger${notice.reason ? `: ${notice.reason}` : ''}`;
+                publishOrderFeedback(msg, 'error', {
+                  title: 'Pending Fill Rejected',
+                  description: msg,
+                  meta: `#${notice.ticket}`,
+                  metaIcon: 'alert-triangle',
+                });
+                useNotificationStore.getState().addNotification({
+                  type: 'trading',
+                  severity: 'error',
+                  title: 'Pending Fill Rejected',
+                  message: msg,
+                });
+              }
+            }
           }
+          historyCoalescer.onFrame(login, 'order');
           return;
         }
 
@@ -305,10 +384,7 @@ export const useTradeStreamRuntime = ({
     return () => {
       invalidator.dispose();
       unsubscribe();
-      if (historyRefreshTimerRef.current !== null) {
-        window.clearTimeout(historyRefreshTimerRef.current);
-        historyRefreshTimerRef.current = null;
-      }
+      historyCoalescer.dispose();
     };
   }, [
     getAcceptedChannelLogin,

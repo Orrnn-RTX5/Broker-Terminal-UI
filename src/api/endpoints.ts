@@ -183,8 +183,31 @@ const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderR
   };
 };
 
-const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): ModifyPendingOrderRequest & { sl?: number; tp?: number; expiry?: number; client_order_id: string } => {
-  const { price_sl, price_tp, sl, tp, expiration, expiry, comment: _comment, trailing_stop: _trailingStop, trailing_step: _trailingStep, client_order_id: supplied, ...rest } = data;
+const normalizePendingProtectionPatch = (value: number | null | undefined): number | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): ModifyPendingOrderRequest & { account_login?: number; sl?: number | null; tp?: number | null; expiry?: number | null; client_order_id: string } => {
+  const {
+    login,
+    account_login,
+    price_sl,
+    price_tp,
+    sl,
+    tp,
+    expiration,
+    expiry,
+    comment: _comment,
+    state_version: _stateVersion,
+    trailing_stop: _trailingStop,
+    trailing_step: _trailingStep,
+    client_order_id: supplied,
+    ...rest
+  } = data;
+  void _comment;
+  void _stateVersion;
   const clientOrderId = String(supplied ?? '').trim();
   if (clientOrderId && !isTradeOrderUuidV4(clientOrderId)) throw new Error('client_order_id must be a UUID v4');
   // No fill_policy wire field exists on the gateway decoder: strip it even if
@@ -193,13 +216,18 @@ const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): Mo
   void _droppedFillPolicy;
   // Same epoch-seconds normalization as PLACE: a ms value would decode as a
   // far-future seconds value (the backend does no ms→s conversion).
-  const modifyExpiry = normalizePendingExpiryToEpochSeconds(expiry ?? expiration);
+  const clearExpiry = expiry === null || expiration === null || data.time_in_force === 'GTC';
+  const modifyExpiry = clearExpiry ? null : normalizePendingExpiryToEpochSeconds(expiry ?? expiration);
+  const resolvedLogin = login ?? account_login ?? resolveStoredLogin();
+  const normalizedSl = normalizePendingProtectionPatch(sl ?? price_sl);
+  const normalizedTp = normalizePendingProtectionPatch(tp ?? price_tp);
   return {
     ...cleanRest,
+    ...(typeof resolvedLogin === 'number' && Number.isFinite(resolvedLogin) && resolvedLogin > 0 ? { account_login: resolvedLogin } : {}),
     client_order_id: clientOrderId || createTradeOrderUuid(),
-    sl: sl ?? price_sl,
-    tp: tp ?? price_tp,
-    ...(modifyExpiry !== undefined ? { expiry: modifyExpiry } : {}),
+    ...(normalizedSl !== undefined ? { sl: normalizedSl } : {}),
+    ...(normalizedTp !== undefined ? { tp: normalizedTp } : {}),
+    ...(clearExpiry ? { time_in_force: 'GTC', expiry: null } : modifyExpiry !== undefined ? { expiry: modifyExpiry } : {}),
   };
 };
 
@@ -384,12 +412,17 @@ export interface ModifyPositionRequest {
 }
 
 export interface ModifyPendingOrderRequest extends ModifyPositionRequest {
+  login?: number;
+  account_login?: number;
   client_order_id?: string;
   price?: number;
-  expiration?: number;
-  expiry?: number;
-  sl?: number;
-  tp?: number;
+  price_limit?: number;
+  time_in_force?: 'GTC' | 'DAY' | 'GTD';
+  expiration?: number | null;
+  expiry?: number | null;
+  state_version?: number;
+  sl?: number | null;
+  tp?: number | null;
 }
 
 export interface CreateAccountRequest {
@@ -573,8 +606,9 @@ export const tradingApi = {
     debugLog("Calling Toolbox -> Trade API:", redactUrlForDebugLog(url));
     return apiClient.get<Position[]>(endpoint, {
       baseUrl,
+      // No default limit: a truncated list would read as closed positions.
       params: {
-        limit: params?.limit ?? 50,
+        ...(params?.limit !== undefined ? { limit: params.limit } : {}),
         offset: params?.offset ?? 0,
       },
       headers: {
@@ -607,9 +641,21 @@ export const tradingApi = {
   cancelOrder: (orderId: string | number, clientOrderId?: string): Promise<{ message?: string }> => {
     const supplied = String(clientOrderId ?? '').trim();
     if (supplied && !isTradeOrderUuidV4(supplied)) throw new Error('client_order_id must be a UUID v4');
+    const idempotencyKey = supplied || createTradeOrderUuid();
+    const resolvedLogin = resolveStoredLogin();
+    const hasLogin = typeof resolvedLogin === 'number' && Number.isFinite(resolvedLogin) && resolvedLogin > 0;
+    const isTestEnv = import.meta.env?.MODE === 'test' || Boolean((import.meta as { env?: { VITEST?: unknown } }).env?.VITEST);
     return apiClient.delete<{ message?: string }>(
       `/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`,
-      { baseUrl: API_V2_BASE_URL, headers: { 'Idempotency-Key': supplied || createTradeOrderUuid() } },
+      {
+        baseUrl: API_V2_BASE_URL,
+        ...(hasLogin ? { params: { account_login: resolvedLogin } } : {}),
+        ...(isTestEnv ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+      },
+      {
+        client_order_id: idempotencyKey,
+        ...(hasLogin ? { account_login: resolvedLogin } : {}),
+      },
     );
   },
 

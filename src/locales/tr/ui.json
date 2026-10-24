@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "Fiyat ve terminal uyarıları",
   "Price at which the position was opened": "Pozisyonun açıldığı fiyat",
   "Price label": "Fiyat etiketi",
+  "Price moved, drag again": "Fiyat değişti, yeniden sürükleyin",
+  "Price updating, please retry": "Fiyat güncelleniyor, lütfen tekrar deneyin",
   "Price note": "Fiyat notu",
   "Price precision": "Fiyat kesinliği",
   "Price range": "Fiyat aralığı",

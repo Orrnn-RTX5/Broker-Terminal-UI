@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { markQuoteFeedActivity, clearQuoteFeedActivity } from '../store/quoteFeedActivity';
 
 import { ModifyPositionDialog } from './ModifyPositionDialog';
 import { commitBrokerAccountSessionScope } from '../services/brokerSession';
@@ -7,6 +8,13 @@ import {
     registerDailyChangePriceModes,
     resetDailyChangePriceModeRegistryForTests,
 } from '../services/dailyChangePriceModeRegistry';
+
+// Live feed quotes for these symbols are stamped as alive (the SL/TP local check needs a feed stamp).
+beforeEach(() => {
+    clearQuoteFeedActivity();
+    markQuoteFeedActivity('GBPUSD', Date.now()); markQuoteFeedActivity('TESTFIX', Date.now()); markQuoteFeedActivity('USDJPY', Date.now());
+});
+
 
 const mocks = vi.hoisted(() => ({
     modifyPendingOrder: vi.fn(),
@@ -20,8 +28,13 @@ vi.mock('../store/useMarketDataStore', () => ({
 }));
 
 vi.mock('../store/useAppStore', () => ({
+    // Shared Market Watch tick source (useTick / resolveTickFromLookup).
+    useTick: () => mocks.tick,
+    resolveTickFromLookup: () => mocks.tick,
     useAppStore: {
-        getState: () => ({ positions: [], accountId: '77' }),
+        getState: () => ({
+      ticks: mocks.tick ? { [mocks.tick.symbol]: mocks.tick } : {},
+      tickLookup: {}, positions: [], accountId: '77' }),
     },
 }));
 
@@ -144,7 +157,8 @@ describe('ModifyPositionDialog broker catalog geometry (no name table, no defaul
         registerDailyChangePriceModes([{ symbol: 'TESTFIX', digits: 2, tickSize: 0.05 }]);
         mocks.tick = { symbol: 'TESTFIX', bid: 100, ask: 100.1, spread: 10, timestamp: 1_797_341_377_000 };
         mocks.modifyPosition.mockResolvedValueOnce(undefined);
-        render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={makePosition({ symbol: 'TESTFIX', openPrice: 100, digits: 5 })} />);
+        // Existing SL 99.5 so that the rounded value (seed 99.90) is a real change to send.
+        render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={makePosition({ symbol: 'TESTFIX', openPrice: 100, digits: 5, sl: 99.5 })} />);
         fireEvent.change(slInput(), { target: { value: '99.92' } });
         fireEvent.change(tpInput(), { target: { value: '101.13' } });
         fireEvent.click(screen.getByRole('button', { name: /modify #201/i }));
@@ -176,7 +190,7 @@ describe('ModifyPositionDialog broker catalog geometry (no name table, no defaul
         render(<ModifyPositionDialog isOpen onClose={vi.fn()} position={makePosition({ symbol: 'TESTFIX', openPrice: 1.234 })} />);
         fireEvent.change(slInput(), { target: { value: '1.234' } });
         expect(slInput().getAttribute('aria-invalid')).toBe('true');
-        expect(slInput().title).toMatch(/Stop loss must be below the current Bid 1\.234 for a BUY/);
+        expect(slInput().title).toMatch(/SL 1\.234 must be below Bid 1\.234/);
         fireEvent.change(slInput(), { target: { value: '1.233' } });
         expect(slInput().getAttribute('aria-invalid')).toBeNull();
         fireEvent.change(tpInput(), { target: { value: '1.235' } });

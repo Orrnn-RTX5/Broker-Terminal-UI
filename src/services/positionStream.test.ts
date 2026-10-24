@@ -106,9 +106,9 @@ describe('account position stream reconciliation', () => {
     expect(result.needsRevalidation).toBe(true);
   });
 
-  it('only removes absent tickets for an explicitly complete snapshot', () => {
+  it('merges a stream snapshot: it upserts its rows and never removes the tickets it omits', () => {
     const batch = readPositionStreamBatch({ data: { type: 'positions_snapshot', positions: [bitcoin] } })!;
-    expect(reconcilePositionStreamBatch(initial(), batch).positions.map((position) => position.id)).toEqual([20166]);
+    expect(reconcilePositionStreamBatch(initial(), batch).positions).toHaveLength(2);
     const delta = readPositionStreamBatch({ data: { type: 'pnl_update', snapshot: true, positions: [bitcoin] } })!;
     expect(reconcilePositionStreamBatch(initial(), delta).positions).toHaveLength(2);
   });

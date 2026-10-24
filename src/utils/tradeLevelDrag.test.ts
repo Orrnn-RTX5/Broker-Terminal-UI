@@ -5,6 +5,9 @@ import {
   clampTradeLevelToCurrentPrice,
   createTradeLevelOverrideFingerprint,
   normalizeTradeLevelDragPrice,
+  pendingOrderPriceViolation,
+  protectionLevelViolation,
+  resolveDropPriceForRole,
   resolveTradeLevelDragRole,
   selectNearestTradeLevel,
 } from './tradeLevelDrag';
@@ -425,10 +428,10 @@ describe('tradeLevelDrag', () => {
     ], 104, 12)).toEqual({ grabbedType: 'ENTRY', distance: 4 });
   });
 
-  it('clamps a BUY stop loss that lands above the current price to the valid side', () => {
-    // Losing BUY: entry well above the current market price. Dragging the entry
-    // line down stops below the entry but stays above the current price, which a
-    // broker would reject. The level must clamp below the current price.
+  it('labels a BUY entry-line drop above the live Bid as a take profit (valid side, not clamped)', () => {
+    // Losing BUY: entry (63960) above the close (63821.35). A drop at 63928 is
+    // above the close, so it is a TP (above Bid is the valid side). The old
+    // entry-relative rule labelled it SL and clamped it below the close.
     const update = applyTradeLevelDragUpdate({
       side: 'BUY',
       grabbedType: 'ENTRY',
@@ -443,9 +446,32 @@ describe('tradeLevelDrag', () => {
     });
 
     expect(update).toEqual({
+      role: 'TP',
+      price: 63928,
+      sl: 0,
+      tp: 63928,
+    });
+  });
+
+  it('labels a BUY entry-line drop below the live Bid as a stop loss (valid side)', () => {
+    // Same losing BUY: a drop at 63800 is below the close, so it is an SL.
+    const update = applyTradeLevelDragUpdate({
+      side: 'BUY',
+      grabbedType: 'ENTRY',
+      entryPrice: 63960,
+      finalPrice: 63800,
+      currentSl: 0,
+      currentTp: 64000,
+      digits: 2,
+      currentPrice: 63821.35,
+      entryDragDirection: -1,
+      snapEntryToMinDistance: true,
+    });
+
+    expect(update).toEqual({
       role: 'SL',
-      price: 63821.3,
-      sl: 63821.3,
+      price: 63800,
+      sl: 63800,
       tp: 64000,
     });
   });
@@ -472,12 +498,37 @@ describe('tradeLevelDrag', () => {
     });
   });
 
-  it('clamps a SELL stop loss that lands below the current price to the valid side', () => {
+  it('labels a SELL entry-line drop below the live Ask as a take profit (valid side, not clamped)', () => {
+    // Losing SELL: entry (1.10000) below the Ask (1.10010). A drop at 1.10005 is
+    // below the Ask, so it is a TP (below Ask is the valid side).
     const update = applyTradeLevelDragUpdate({
       side: 'SELL',
       grabbedType: 'ENTRY',
       entryPrice: 1.10000,
       finalPrice: 1.10005,
+      currentSl: 0,
+      currentTp: 1.09000,
+      digits: 5,
+      currentPrice: 1.10010,
+      entryDragDirection: 1,
+      snapEntryToMinDistance: true,
+    });
+
+    expect(update).toEqual({
+      role: 'TP',
+      price: 1.10005,
+      sl: 0,
+      tp: 1.10005,
+    });
+  });
+
+  it('labels a SELL entry-line drop above the live Ask as a stop loss (valid side)', () => {
+    // Same losing SELL: a drop at 1.10015 is above the Ask, so it is an SL.
+    const update = applyTradeLevelDragUpdate({
+      side: 'SELL',
+      grabbedType: 'ENTRY',
+      entryPrice: 1.10000,
+      finalPrice: 1.10015,
       currentSl: 0,
       currentTp: 1.09000,
       digits: 5,
@@ -559,5 +610,229 @@ describe('tradeLevelDrag', () => {
     // SELL: SL above current, TP below current.
     expect(clampTradeLevelToCurrentPrice('SELL', 'SL', 1.10005, 1.10010, 0.00005, 5)).toBe(1.10015);
     expect(clampTradeLevelToCurrentPrice('SELL', 'TP', 1.10020, 1.10010, 0.00005, 5)).toBe(1.10005);
+  });
+
+  it('pendingOrderPriceViolation validates pending trigger and SL/TP placement', () => {
+    expect(pendingOrderPriceViolation({
+      orderType: 'buy_limit',
+      side: 'BUY',
+      price: 1.09900,
+      bid: 1.10000,
+      ask: 1.10010,
+      digits: 5,
+    })).toBeNull();
+
+    expect(pendingOrderPriceViolation({
+      orderType: 'buy_limit',
+      side: 'BUY',
+      price: 1.10020,
+      bid: 1.10000,
+      ask: 1.10010,
+      digits: 5,
+    })).toMatch(/Buy Limit price must be below Ask/i);
+
+    expect(pendingOrderPriceViolation({
+      orderType: 'sell_limit',
+      side: 'SELL',
+      price: 1.09990,
+      bid: 1.10000,
+      ask: 1.10010,
+      digits: 5,
+    })).toMatch(/Sell Limit price must be above Bid/i);
+
+    expect(pendingOrderPriceViolation({
+      orderType: 'buy_stop',
+      side: 'BUY',
+      price: 1.10000,
+      bid: 1.10000,
+      ask: 1.10010,
+      digits: 5,
+    })).toMatch(/Buy Stop price must be above Ask/i);
+
+    expect(pendingOrderPriceViolation({
+      orderType: 'sell_stop',
+      side: 'SELL',
+      price: 1.10010,
+      bid: 1.10000,
+      ask: 1.10010,
+      digits: 5,
+    })).toMatch(/Sell Stop price must be below Bid/i);
+  });
+
+  it('rounds BUY SL dragged to 81736.68 down away from Bid 81736.70 onto the 0.25 tick grid (MED-3)', () => {
+    const bid = 81736.70;
+    const ask = 81736.95;
+    const digits = 2;
+    const tickSize = 0.25;
+    const dropPrice = resolveDropPriceForRole({
+      side: 'BUY',
+      grabbedType: 'SL',
+      price: 81736.68,
+      quote: { bid, ask },
+      digits,
+      tickSize,
+      isNewLevel: false,
+    });
+    const previewUpdate = applyTradeLevelDragUpdate({
+      side: 'BUY',
+      grabbedType: 'SL',
+      entryPrice: 81750.00,
+      finalPrice: dropPrice,
+      currentSl: 81700.00,
+      currentTp: 81800.00,
+      digits,
+      currentPrice: bid,
+      minStopDistance: 0,
+    });
+
+    expect(dropPrice).toBe(81736.50);
+    expect(previewUpdate?.price).toBe(81736.50);
+    expect(previewUpdate?.price).toBe(dropPrice);
+    expect(
+      protectionLevelViolation({
+        side: 'BUY',
+        role: 'SL',
+        price: dropPrice,
+        bid,
+        ask,
+        digits,
+        tickSize,
+      }),
+    ).toBeNull();
+  });
+
+  it('rounds BUY TP up away from Bid 81736.70 onto the 0.25 tick grid (MED-3)', () => {
+    const bid = 81736.70;
+    const ask = 81736.95;
+    const digits = 2;
+    const tickSize = 0.25;
+    const dropPrice = resolveDropPriceForRole({
+      side: 'BUY',
+      grabbedType: 'TP',
+      price: 81736.72,
+      quote: { bid, ask },
+      digits,
+      tickSize,
+      isNewLevel: false,
+    });
+    const previewUpdate = applyTradeLevelDragUpdate({
+      side: 'BUY',
+      grabbedType: 'TP',
+      entryPrice: 81700.00,
+      finalPrice: dropPrice,
+      currentSl: 81650.00,
+      currentTp: 81800.00,
+      digits,
+      currentPrice: bid,
+      minStopDistance: 0,
+    });
+
+    expect(dropPrice).toBe(81736.75);
+    expect(previewUpdate?.price).toBe(81736.75);
+    expect(previewUpdate?.price).toBe(dropPrice);
+    expect(
+      protectionLevelViolation({
+        side: 'BUY',
+        role: 'TP',
+        price: dropPrice,
+        bid,
+        ask,
+        digits,
+        tickSize,
+      }),
+    ).toBeNull();
+  });
+
+  it('rounds SELL SL and SELL TP away from Ask 81736.95 onto the 0.25 tick grid (MED-3)', () => {
+    const bid = 81736.70;
+    const ask = 81736.95;
+    const digits = 2;
+    const tickSize = 0.25;
+
+    const slDropPrice = resolveDropPriceForRole({
+      side: 'SELL',
+      grabbedType: 'SL',
+      price: 81736.97,
+      quote: { bid, ask },
+      digits,
+      tickSize,
+      isNewLevel: false,
+    });
+    const slPreview = applyTradeLevelDragUpdate({
+      side: 'SELL',
+      grabbedType: 'SL',
+      entryPrice: 81700.00,
+      finalPrice: slDropPrice,
+      currentSl: 81750.00,
+      currentTp: 81650.00,
+      digits,
+      currentPrice: ask,
+      minStopDistance: 0,
+    });
+
+    expect(slDropPrice).toBe(81737.00);
+    expect(slPreview?.price).toBe(81737.00);
+    expect(slPreview?.price).toBe(slDropPrice);
+    expect(
+      protectionLevelViolation({
+        side: 'SELL',
+        role: 'SL',
+        price: slDropPrice,
+        bid,
+        ask,
+        digits,
+        tickSize,
+      }),
+    ).toBeNull();
+
+    const tpDropPrice = resolveDropPriceForRole({
+      side: 'SELL',
+      grabbedType: 'TP',
+      price: 81736.93,
+      quote: { bid, ask },
+      digits,
+      tickSize,
+      isNewLevel: false,
+    });
+    const tpPreview = applyTradeLevelDragUpdate({
+      side: 'SELL',
+      grabbedType: 'TP',
+      entryPrice: 81750.00,
+      finalPrice: tpDropPrice,
+      currentSl: 81800.00,
+      currentTp: 81700.00,
+      digits,
+      currentPrice: ask,
+      minStopDistance: 0,
+    });
+
+    expect(tpDropPrice).toBe(81736.75);
+    expect(tpPreview?.price).toBe(81736.75);
+    expect(tpPreview?.price).toBe(tpDropPrice);
+    expect(
+      protectionLevelViolation({
+        side: 'SELL',
+        role: 'TP',
+        price: tpDropPrice,
+        bid,
+        ask,
+        digits,
+        tickSize,
+      }),
+    ).toBeNull();
+  });
+
+  it('accepts large-magnitude 5-digit price 123456.12345 on the 0.00001 tick grid (MED-4)', () => {
+    expect(
+      protectionLevelViolation({
+        side: 'SELL',
+        role: 'TP',
+        price: 123456.12345,
+        bid: 123460,
+        ask: 123460.5,
+        digits: 5,
+        tickSize: 0.00001,
+      }),
+    ).toBeNull();
   });
 });

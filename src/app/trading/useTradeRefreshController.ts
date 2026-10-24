@@ -7,8 +7,13 @@ import {
 import { api } from '../../services/api';
 import { applyPositionStreamUpdate, decodePositionStreamMessage } from '../../services/tradePositionStream';
 import { beginTradeHistoryRefresh } from '../../services/terminalHistory';
-import { useAppStore, type Order, type Position } from '../../store/useAppStore';
+import { beginPositionsRead, useAppStore, type Order, type Position } from '../../store/useAppStore';
+import { markPositionsReadSettled, markPositionsReadStarted } from '../../services/positionSnapshotSafety';
 import { parsePositiveLogin } from '../session/sessionIdentity';
+import {
+  bindDefaultHistoryFreshnessOwner,
+  createHistoryFreshnessOwner,
+} from './tradeHistoryFreshness';
 import { fetchOrderHistory, getErrorMessage } from './orderHistoryRefresh';
 import {
   applyOpenPositionSnapshot,
@@ -65,10 +70,11 @@ export const useTradeRefreshController = ({
     }
 
     const request = (async () => {
+      markPositionsReadStarted();
       try {
         const restRead = beginTradeRestRead();
         const startedAuthToken = useAppStore.getState().authToken;
-        const positionsVersion = positionsStreamVersionRef.current;
+        const positionsReadStartedAt = beginPositionsRead();
         const positionsPayload = await api.positions.getPositions(requestedLogin);
         const activeLogin = parsePositiveLogin(useAppStore.getState().accountId || accountIdRef.current || undefined);
         if (!isAuthenticatedRef.current || activeLogin !== requestedLogin) return;
@@ -77,17 +83,20 @@ export const useTradeRefreshController = ({
 
         const currentPositions = useAppStore.getState().positions;
         const decoded = decodePositionStreamMessage({ data: { positions: positionsPayload } });
+        // Stream frames arriving during the read do not make it partial. The store
+        // decides omitted tickets from readStartedAt; only a structurally partial list
+        // (decoded as patch) closes nothing.
         const normalized = reconcileOptimisticClosedPositions(decoded
-          ? applyPositionStreamUpdate(currentPositions, {
-            ...decoded,
-            source: 'rest',
-            kind: positionsStreamVersionRef.current > positionsVersion ? 'patch' : 'snapshot',
-          }, (raw) => normalizePositions([raw])[0])
+          ? applyPositionStreamUpdate(currentPositions, { ...decoded, source: 'rest' }, (raw) => normalizePositions([raw])[0])
           : normalizePositions(positionsPayload), { clearConfirmedAbsent: true });
-        applyOpenPositionSnapshot(normalized);
+        applyOpenPositionSnapshot(normalized, {
+          readStartedAt: positionsReadStartedAt,
+          complete: decoded === null || decoded.kind === 'snapshot',
+        });
       } catch (error) {
         console.warn('[App] refreshPositions failed:', getErrorMessage(error, 'Position refresh failed'));
       } finally {
+        markPositionsReadSettled();
         refreshPositionsInFlightRef.current = null;
         const pendingRefresh = refreshPositionsPendingRef.current;
         refreshPositionsPendingRef.current = null;
@@ -103,7 +112,6 @@ export const useTradeRefreshController = ({
     getLiveTradingLogin,
     isAuthenticatedRef,
     isStaleTradeRestRead,
-    positionsStreamVersionRef,
     reconcileOptimisticClosedPositions,
   ]);
 
@@ -214,6 +222,18 @@ export const useTradeRefreshController = ({
     window.addEventListener('rtx:refresh-trade-history-requested', handleHistoryRefreshRequest);
     return () => window.removeEventListener('rtx:refresh-trade-history-requested', handleHistoryRefreshRequest);
   }, [getLiveTradingLogin, isAuthenticatedRef, refreshOrdersAndHistory]);
+
+  // Order and close call sites outside hooks refresh History through this owner.
+  // It is bound once per mount and reads the latest callbacks through a ref, so a
+  // new callback identity never disposes fallbacks that are still pending.
+  const historyOwnerLatestRef = useRef({ refreshOrdersAndHistory, getLiveTradingLogin });
+  useEffect(() => {
+    historyOwnerLatestRef.current = { refreshOrdersAndHistory, getLiveTradingLogin };
+  }, [getLiveTradingLogin, refreshOrdersAndHistory]);
+  useEffect(() => bindDefaultHistoryFreshnessOwner(createHistoryFreshnessOwner(
+    (login) => historyOwnerLatestRef.current.refreshOrdersAndHistory(login),
+    (login) => isAuthenticatedRef.current && historyOwnerLatestRef.current.getLiveTradingLogin() === login,
+  )), [isAuthenticatedRef]);
 
   return { refreshPositions, refreshOrdersAndHistory };
 };

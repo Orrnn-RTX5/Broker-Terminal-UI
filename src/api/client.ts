@@ -762,8 +762,8 @@ export const apiClient = {
     executeRequest<T>('PATCH', endpoint, options, body),
 
   // DELETE request
-  delete: <T>(endpoint: string, options?: ApiRequestOptions): Promise<T> =>
-    executeRequest<T>('DELETE', endpoint, options),
+  delete: <T>(endpoint: string, options?: ApiRequestOptions, body?: unknown): Promise<T> =>
+    executeRequest<T>('DELETE', endpoint, options, body),
 
   // Request with retry logic
   requestWithRetry: async <T>(

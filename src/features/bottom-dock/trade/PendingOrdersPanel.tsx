@@ -12,9 +12,13 @@ export type PendingOrderView = {
   side: 'BUY' | 'SELL';
   volume: number;
   price: number;
+  limitPrice?: number | null;
   sl: number;
   tp: number;
   expiry: number | null;
+  timeInForce?: 'GTC' | 'DAY' | 'GTD';
+  comment?: string;
+  stateVersion?: number;
   timeSetup: number | null;
   status: string;
 };
@@ -36,10 +40,15 @@ export const toPendingOrderView = (row: Record<string, any>): PendingOrderView |
   const lowerType = orderType.toLowerCase();
   const side: 'BUY' | 'SELL' = lowerType.startsWith('sell') ? 'SELL' : 'BUY';
   const volume = toFiniteNumber(row.volume ?? row.quantity) ?? 0;
-  const price = toFiniteNumber(row.price ?? row.price_decimal) ?? 0;
+  const price = toFiniteNumber(row.price ?? row.price_trigger ?? row.price_decimal) ?? 0;
+  const limitPrice = toFiniteNumber(row.price_limit ?? row.limitPrice);
   const sl = toFiniteNumber(row.price_sl ?? row.sl ?? row.sl_decimal) ?? 0;
   const tp = toFiniteNumber(row.price_tp ?? row.tp ?? row.tp_decimal) ?? 0;
   const expiry = toFiniteNumber(row.time_expiry ?? row.expiry ?? row.expiration);
+  const rawTif = String(row.time_in_force ?? '').trim().toUpperCase();
+  const timeInForce: 'GTC' | 'DAY' | 'GTD' = rawTif === 'DAY' ? 'DAY' : rawTif === 'GTD' || (expiry && expiry > 0) ? 'GTD' : 'GTC';
+  const comment = typeof row.comment === 'string' ? row.comment : '';
+  const stateVersion = toFiniteNumber(row.state_version) ?? undefined;
   const timeSetup = toFiniteNumber(row.time_setup ?? row.time_create);
   return {
     ticket: Math.trunc(ticket),
@@ -48,9 +57,13 @@ export const toPendingOrderView = (row: Record<string, any>): PendingOrderView |
     side,
     volume,
     price,
+    limitPrice,
     sl,
     tp,
     expiry,
+    timeInForce,
+    comment,
+    stateVersion,
     timeSetup,
     status: String(row.status ?? 'pending'),
   };

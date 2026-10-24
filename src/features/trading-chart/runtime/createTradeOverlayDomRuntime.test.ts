@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTradeOverlayDomRuntime } from './createTradeOverlayDomRuntime';
+import { ApiError } from '../../../api/client';
 import type { ActiveTradeSnapshot, TradeLevelOverride } from './tradeRuntimeContracts';
 import {
   CHART_POSITION_MODIFY_EVENT,
@@ -8,9 +9,20 @@ import {
 } from '../../../utils/chartTradeControls';
 
 const modifyPosition = vi.hoisted(() => vi.fn());
+const storeState = vi.hoisted(() => ({ positions: [] as Array<{ id: number; symbol: string }> }));
+const knownClosed = vi.hoisted(() => new Set<number>());
 vi.mock('../../../services/api', () => ({ default: { positions: { modifyPosition } } }));
 vi.mock('../../../store/useAppStore', () => ({
-  useAppStore: { getState: () => ({ accountId: '200003', account: { currency: 'USD' }, positions: [] }) },
+  markPositionsClosed: vi.fn(),
+  isConfirmedClosedPosition: (ticket: number) => knownClosed.has(ticket),
+  isConfirmedClosedBySnapshot: () => false,
+  isPositionMarkedClosed: () => false,
+  resolveTickFromLookup: (ticks: Record<string, unknown>, _lookup: unknown, symbol: string) => ticks[symbol],
+  useAppStore: {
+    getState: () => ({
+      accountId: '200003', account: { currency: 'USD' }, positions: storeState.positions, setPositions: vi.fn(), ticks: {}, tickLookup: {},
+    }),
+  },
 }));
 vi.mock('../../../utils/tradeHistoryLevelCache', () => ({ rememberTradeHistoryPositionLevels: vi.fn() }));
 
@@ -58,6 +70,7 @@ describe('SL/TP chart controls', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     modifyPosition.mockReset().mockResolvedValue(undefined);
+    storeState.positions = [{ id: 9302300, symbol: 'BTCUSD' }, { id: 9302301, symbol: 'BTCUSD' }];
   });
   afterEach(() => {
     document.body.replaceChildren();
@@ -220,6 +233,48 @@ describe('SL/TP chart controls', () => {
     expect(resolveChartPositionModifyTarget(events[0].detail, options.brokerAccountSessionScope, [{ ...position, symbol: 'BTCUSD' }])).toBeNull();
     expect(modifyPosition).not.toHaveBeenCalled();
     expect(options.tradeLevelOverridesRef.current.size).toBe(0);
+  });
+
+  it('refuses a level change for a ticket known closed: no request, one refresh, plain message', () => {
+    knownClosed.add(9302300);
+    storeState.positions = [];
+    const { host, options, runtime } = createRuntime();
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    runtime.createLevelControlsForTrade(trade, 'SL', { sl: 87000, tp: 85118.19 });
+    host.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--remove')!.click();
+
+    expect(modifyPosition).not.toHaveBeenCalled();
+    const feedback = dispatch.mock.calls.map(([event]) => event)
+      .filter((event) => event.type === 'rtx:order-feedback')
+      .map((event) => (event as CustomEvent<{ message: string; type: string }>).detail);
+    expect(feedback).toEqual([{ message: 'Position 9302300 already closed', type: 'error' }]);
+    expect(dispatch.mock.calls.filter(([event]) => event.type === 'rtx:force-refresh-positions')).toHaveLength(1);
+    expect(options.tradeLevelOverridesRef.current.size).toBe(0);
+    knownClosed.clear();
+  });
+
+  it('sends a level change for a ticket missing from the store that is not known closed', () => {
+    storeState.positions = [];
+    const { host, runtime } = createRuntime();
+    runtime.createLevelControlsForTrade(trade, 'SL', { sl: 87000, tp: 85118.19 });
+    host.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--remove')!.click();
+
+    expect(modifyPosition).toHaveBeenCalledWith(9302300, expect.anything());
+  });
+
+  it('answers a refused level modify for a closed position with the plain message instead of a raw refusal', async () => {
+    modifyPosition.mockRejectedValueOnce(new ApiError(404, 'Position not found', { error: 'NOT_FOUND', message: 'Position not found' }));
+    const { host, runtime } = createRuntime();
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    runtime.createLevelControlsForTrade(trade, 'SL', { sl: 87000, tp: 85118.19 });
+    host.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--remove')!.click();
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+
+    const messages = dispatch.mock.calls.map(([event]) => event)
+      .filter((event) => event.type === 'rtx:order-feedback')
+      .map((event) => (event as CustomEvent<{ message: string }>).detail.message);
+    expect(messages).toEqual(['Position 9302300 is no longer open']);
   });
 
   it.each(['trade:9302300invalid', 'trade:9302300.5', 'trade:9007199254740992'])('does not turn an invalid ticket into a Modify request: %s', key => {

@@ -27,6 +27,7 @@ import {
   coalesceFreshestTickEntries,
   compareCanonicalTickFreshness,
 } from '../utils/liveTickSemantics';
+import { resolveTickStoreKey } from './tickStoreKey';
 import { QUOTE_SESSION_RANGE_FIELDS, type QuoteSessionRange } from '../utils/quoteSessionRange';
 import type { QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
 import {
@@ -118,6 +119,12 @@ export const RECENT_OPEN_POSITION_RETENTION_MS = 30_000;
 let closedPositionScope = '';
 const closedPositionTickets = new Set<number>();
 
+// Bumped by every write that carries a broker snapshot (REST open-positions load,
+// full stream snapshot). Overlay code compares it between passes to tell an
+// authoritative absence apart from a transient gap in the store.
+let positionsAuthoritativeSeq = 0;
+export const getPositionsAuthoritativeSeq = (): number => positionsAuthoritativeSeq;
+
 export const isConfirmedClosedPosition = (ticket: number): boolean => {
   const state = useAppStore.getState();
   return closedPositionScope === `${state.accountId ?? ''}:${state.authToken ?? ''}`
@@ -186,6 +193,38 @@ const isRetainableOpenPosition = (position: Position, now: number): boolean => (
 // Tickets kept only by recent-open retention, and the timer that drops them once
 // retention ends even if no further position update arrives.
 let retainedOnlyTickets = new Set<number>();
+
+// Positions read clock. Every broker read takes a start stamp (beginPositionsRead) and
+// every stream or local write stamps the tickets it touches. Stamps only compare.
+let positionsReadClock = 0;
+const nextPositionsClock = (): number => {
+  positionsReadClock += 1;
+  return positionsReadClock;
+};
+/** Call before issuing a complete positions read; pass the result as readStartedAt. */
+export const beginPositionsRead = (): number => nextPositionsClock();
+
+// Tickets a complete broker read has listed, with the start stamp of the read that
+// confirmed them. A later complete read that omits a confirmed ticket closes it, unless
+// a stream or local write touched the ticket after that read started. Recent-open
+// retention protects only fills that no read has confirmed yet (the fast-fill gap).
+const confirmedAt = new Map<number, number>();
+// Ticket -> stamp of the last stream or local write that touched it.
+const touchedAt = new Map<number, number>();
+// Start stamp of the newest committed complete read. Older complete reads are discarded.
+let lastCommittedReadStartedAt = 0;
+// Confirmed tickets that a later read omitted, with their expiry. Chart and Trade
+// read this decision through isConfirmedClosedBySnapshot instead of keeping them.
+const closedBySnapshotTickets = new Map<number, number>();
+
+export const isConfirmedClosedBySnapshot = (ticket: unknown, now = Date.now()): boolean => {
+  const id = Number(ticket);
+  const expiresAt = closedBySnapshotTickets.get(id);
+  if (expiresAt === undefined) return false;
+  if (expiresAt > now) return true;
+  closedBySnapshotTickets.delete(id);
+  return false;
+};
 let retentionPruneTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const shouldReplaceOpenPositionSnapshot = (
@@ -194,7 +233,7 @@ export const shouldReplaceOpenPositionSnapshot = (
   now = Date.now(),
 ): boolean => (
   incoming.length > 0
-  || !current.some((position) => isRetainableOpenPosition(position, now))
+  || !current.some((position) => isRetainableOpenPosition(position, now) && !confirmedAt.has(Number(position.id)))
 );
 
 const isRenderableOpenPosition = (position: Pick<Position, 'symbol' | 'volume' | 'quantity'>): boolean => (
@@ -356,7 +395,7 @@ interface AppState {
   setTicksBatch: (ticks: readonly AppTickEntry[]) => void;
   setTicks: (ticks: Record<string, Tick>) => void;
   setSelectedSymbol: (symbol: string) => void;
-  setPositions: (positions: Position[], options?: { closedTickets?: number[]; removedTickets?: number[] }) => void;
+  setPositions: (positions: Position[], options?: { closedTickets?: number[]; removedTickets?: number[]; touchedTickets?: readonly number[]; readStartedAt?: number; unlistedTickets?: readonly number[] }) => void;
   setOrders: (orders: Order[]) => void;
   setTrades: (trades: Trade[]) => void;
   setAccount: (account: Account | null) => void;
@@ -741,22 +780,10 @@ export const resolveTickFromLookup = (
   tickLookup: Record<string, string>,
   symbol: string,
 ): Tick | undefined => {
-  const rawSymbol = symbol || '';
-  const normalizedSymbol = normalizeTickLookupKey(rawSymbol);
-  if (!normalizedSymbol) return undefined;
-
-  const exact = ticks[normalizedSymbol] || ticks[rawSymbol];
-  if (exact) return exact;
-
-  // FIX: Stream/execution lookup is exact. A base-symbol fallback can price a
-  // position or order for XAUUSD with XAUUSD.raw (or another broker contract).
-  const lookupKey = tickLookup[normalizedSymbol];
-  const lookupTick = lookupKey ? ticks[lookupKey] : undefined;
-  if (!lookupTick) return undefined;
-  return normalizeTickLookupKey(lookupKey) === normalizedSymbol
-    || normalizeTickLookupKey(lookupTick.symbol) === normalizedSymbol
-    ? lookupTick
-    : undefined;
+  // Same key rule as the SL/TP feed-activity stamp (store/tickStoreKey.ts). Stream and
+  // execution lookup stays exact: no base-symbol fallback (XAUUSD never resolves to XAUUSD.RAW).
+  const key = resolveTickStoreKey(ticks, tickLookup, symbol);
+  return key === undefined ? undefined : ticks[key];
 };
 
 let lastHistoryCachePositions: Position[] | null = null;
@@ -955,10 +982,28 @@ export const useAppStore = create<AppState>()(
             if (scope !== closedPositionScope) {
               closedPositionScope = scope;
               closedPositionTickets.clear();
+              confirmedAt.clear();
+              touchedAt.clear();
+              closedBySnapshotTickets.clear();
             }
             for (const ticket of options.closedTickets ?? []) closedPositionTickets.add(Number(ticket));
             while (closedPositionTickets.size > 4096) closedPositionTickets.delete(closedPositionTickets.values().next().value!);
             const removed = new Set(options.removedTickets ?? []);
+            const readStartedAt = options.readStartedAt;
+            // A complete read that started before the newest committed one is stale: discard it.
+            if (readStartedAt !== undefined && readStartedAt < lastCommittedReadStartedAt) return {};
+            if (readStartedAt === undefined) {
+              // Stream and local writes touch their tickets. A complete read that started
+              // earlier must not close a ticket that a newer write has touched.
+              const stamp = nextPositionsClock();
+              // Only the tickets this write concerns: a full-list write does not touch the rest.
+              for (const ticket of options.touchedTickets ?? []) {
+                touchedAt.set(Number(ticket), stamp);
+                closedBySnapshotTickets.delete(Number(ticket));
+              }
+              for (const ticket of removed) touchedAt.set(ticket, stamp);
+              for (const ticket of options.closedTickets ?? []) touchedAt.set(Number(ticket), stamp);
+            }
             // Position streams can update on every tick. Index once so a burst
             // of filled orders merges in O(n), instead of doing an O(n) find
             // for every incoming row and blocking the next Buy/Sell click.
@@ -967,7 +1012,14 @@ export const useAppStore = create<AppState>()(
               if (closedPositionTickets.has(Number(incoming.id)) || removed.has(Number(incoming.id))) return [];
               const existing = existingById.get(incoming.id);
               if (existing && isOlderPositionVersion(incoming, existing)) return [existing];
+              // A row a stream or local write touched after this complete read started is newer than the read's row.
+              if (existing && readStartedAt !== undefined) {
+                const touched = touchedAt.get(Number(incoming.id));
+                if (touched !== undefined && touched > readStartedAt) return [existing];
+              }
               if (!existing) {
+                // An admitted ticket is a new row: any close marker it carried is stale.
+                closedBySnapshotTickets.delete(Number(incoming.id));
                 // Price/P&L deltas can arrive before the authoritative open-
                 // position snapshot. Do not expose those sparse records as
                 // blank rows; admit the ticket once symbol and volume exist.
@@ -1039,13 +1091,35 @@ export const useAppStore = create<AppState>()(
             // A lagged REST/WS snapshot can omit a fill that the click path
             // already admitted. Keep that ticket on the chart and in Trade
             // until the broker snapshot catches up or the short retention ends.
+            // A ticket an earlier snapshot confirmed is not retained when a later
+            // authoritative snapshot omits it (see confirmedAt).
             const now = Date.now();
             const nextIds = new Set(nextPositions.map((position) => position.id));
             const retained = new Set<number>();
+            const snapshotClosedTickets: number[] = [];
+            const keptNewer = new Set<number>();
             let retentionEndsAt = Number.POSITIVE_INFINITY;
             for (const existing of state.positions) {
               if (closedPositionTickets.has(Number(existing.id)) || removed.has(Number(existing.id))) continue;
               if (nextIds.has(existing.id)) continue;
+              if (readStartedAt !== undefined) {
+                const id = Number(existing.id);
+                const touched = touchedAt.get(id);
+                if (touched !== undefined && touched > readStartedAt) {
+                  // Touched after this read started: the newer stream or local row stays.
+                  nextPositions.push(existing);
+                  nextIds.add(existing.id);
+                  keptNewer.add(existing.id);
+                  continue;
+                }
+                const unconfirmedFill = !confirmedAt.has(id)
+                  && isRenderableOpenPosition(existing) && isRetainableOpenPosition(existing, now);
+                if (!unconfirmedFill) {
+                  // Listed by an earlier complete read (or no longer a fresh fill) and absent now: closed.
+                  snapshotClosedTickets.push(id);
+                  continue;
+                }
+              }
               if (!isRenderableOpenPosition(existing) || !isRetainableOpenPosition(existing, now)) continue;
               nextPositions.push(existing);
               nextIds.add(existing.id);
@@ -1057,6 +1131,45 @@ export const useAppStore = create<AppState>()(
             }
 
             retainedOnlyTickets = retained;
+            removed.forEach((ticket) => confirmedAt.delete(Number(ticket)));
+            for (const ticket of options.closedTickets ?? []) confirmedAt.delete(Number(ticket));
+            if (readStartedAt !== undefined) {
+              // This read confirms every ticket it listed. Retention-only fills, rows kept
+              // by a newer write, and rows the caller admitted without the read listing
+              // them stay unconfirmed.
+              const unlisted = new Set(options.unlistedTickets ?? []);
+              for (const position of nextPositions) {
+                if (!retained.has(position.id) && !keptNewer.has(position.id) && !unlisted.has(Number(position.id))) {
+                  confirmedAt.set(Number(position.id), readStartedAt);
+                }
+              }
+              for (const ticket of confirmedAt.keys()) {
+                if (!nextIds.has(ticket)) confirmedAt.delete(ticket);
+              }
+              const expiresAt = now + CLOSED_POSITION_TICKET_TTL_MS;
+              for (const ticket of snapshotClosedTickets) {
+                confirmedAt.delete(ticket);
+                closedBySnapshotTickets.set(ticket, expiresAt);
+              }
+              // Commit: this read is now the newest. Sweep expired markers and stamps
+              // that no later read can need.
+              lastCommittedReadStartedAt = readStartedAt;
+              positionsAuthoritativeSeq += 1;
+              for (const [ticket, until] of closedBySnapshotTickets) {
+                if (until <= now) closedBySnapshotTickets.delete(ticket);
+              }
+              for (const [ticket, stamp] of touchedAt) {
+                if (stamp <= readStartedAt) touchedAt.delete(ticket);
+              }
+            }
+            if (snapshotClosedTickets.length > 0) {
+              // Ask history for the closed row, the same refresh a missing chart trade requests.
+              if (typeof window !== 'undefined') {
+                window.setTimeout(() => window.dispatchEvent(new CustomEvent('rtx:refresh-trade-history-requested', {
+                  detail: { login: Number.parseInt(String(state.accountId ?? ''), 10) },
+                })), 0);
+              }
+            }
             if (retentionPruneTimer !== null) clearTimeout(retentionPruneTimer);
             // Re-apply without the retained tickets: any still inside their window
             // are retained again (and rescheduled); expired ones leave the chart.
@@ -1171,6 +1284,9 @@ export const useAppStore = create<AppState>()(
           clearCachedAccountSessions();
           closedPositionTickets.clear();
           closedPositionScope = '';
+          confirmedAt.clear();
+          touchedAt.clear();
+          closedBySnapshotTickets.clear();
           set((state) => ({ ...initialState, savedAccounts: state.savedAccounts }));
         },
       }),

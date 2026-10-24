@@ -59,12 +59,14 @@ export const dispatchChartPositionAction = (detail: ChartPositionActionDetail): 
 // ---------------------------------------------------------------------------
 
 export const CHART_POSITION_MODIFY_EVENT = 'rtx:chart-position-modify';
+export const CHART_PENDING_ORDER_CANCEL_EVENT = 'rtx:chart-pending-order-cancel';
 export const CHART_TRADE_LEVEL_CLICK_SLOP_PX = 4;
 
 export interface ChartPositionModifyDetail {
   ticket: number;
   symbol: string;
   sessionScope: string;
+  kind?: 'position' | 'pending-order';
 }
 
 export const dispatchChartPositionModify = (detail: ChartPositionModifyDetail): void => {
@@ -437,6 +439,8 @@ export interface EntryTradeControlBarOptions {
   ticket: number;
   symbol: string;
   side: ChartTradeSide;
+  kind?: 'position' | 'pending';
+  orderTypeLabel?: string;
   volume: number;
   isLightSurface: boolean;
   leftInset: number;
@@ -503,7 +507,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     sideText.style.letterSpacing = '0.02em';
     sideText.style.setProperty('--rtx-type-weight', '600');
     bindChartUiTranslation(sideText, () => {
-      sideText.textContent = `${tr(side)} `;
+      sideText.textContent = `${tr(options.orderTypeLabel || side)} `;
     });
     volumeChip.appendChild(sideText);
   }
@@ -624,15 +628,23 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   }
   const emitAction = (action: ChartPositionActionType) => {
     onAction?.(action);
-    dispatchChartPositionAction({ action, ticket, symbol });
+    if (options.kind !== 'pending') {
+      dispatchChartPositionAction({ action, ticket, symbol });
+    }
   };
   const plainTextColor = options.plainLabel ? plainActionColor : undefined;
-  if (onShare) {
+  if (onShare && options.kind !== 'pending') {
     buttonGroup.appendChild(createControlButton('share', 'Copy trade share link', options.plainLabel ? webShareSvg : shareSvg, isLightSurface ? '#5f6b7a' : TRADE_CONTROL_SHARE_COLOR, isLightSurface ? '#64748b' : TRADE_CONTROL_SHARE_HOVER_COLOR, onShare, plainTextColor));
   }
-  buttonGroup.appendChild(createControlButton('reverse', 'Reverse position (open the opposite side)', options.plainLabel ? webReverseSvg : reverseSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('reverse'), plainTextColor));
-  buttonGroup.appendChild(createControlButton('double', 'Double position (open the same trade again)', options.plainLabel ? webDoubleSvg : doubleSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('double'), plainTextColor));
-  buttonGroup.appendChild(createControlButton('close', 'Close position', options.plainLabel ? webCloseSvg : closeSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('close'), plainTextColor));
+  const reverseBtn = createControlButton('reverse', 'Reverse position (open the opposite side)', options.plainLabel ? webReverseSvg : reverseSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('reverse'), plainTextColor);
+  const doubleBtn = createControlButton('double', 'Double position (open the same trade again)', options.plainLabel ? webDoubleSvg : doubleSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('double'), plainTextColor);
+  if (options.kind === 'pending') {
+    reverseBtn.style.display = 'none';
+    doubleBtn.style.display = 'none';
+  }
+  buttonGroup.appendChild(reverseBtn);
+  buttonGroup.appendChild(doubleBtn);
+  buttonGroup.appendChild(createControlButton('close', options.kind === 'pending' ? 'Cancel pending order' : 'Close position', options.plainLabel ? webCloseSvg : closeSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('close'), plainTextColor));
 
   if (options.plainLabel) {
     for (const button of buttonGroup.querySelectorAll('button')) {

@@ -166,7 +166,7 @@ describe('cTrader-style position controls contract', () => {
     expect(pointerRelease).toContain('dispatchChartPositionModify({');
     expect(pointerRelease).toContain('sessionScope: brokerAccountSessionScope');
     expect(pointerRelease).toContain('} else if (rawFinalPrice !== null) {');
-    expect(pointerRelease).toContain('applyTradeLevelDragUpdate({');
+    expect(pointerRelease).toContain('const paint = dragState.painted;');
     expect(pointerRelease).toContain('api.positions.modifyPosition(ticket, tradeLevelModifyPatch(update.role, update.price))');
   });
 

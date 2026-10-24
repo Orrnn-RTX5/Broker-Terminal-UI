@@ -85,11 +85,22 @@ export const upsertImmediatePosition = (position: Position): void => {
     ? positions.map((existing, index) => index === existingIndex ? { ...existing, ...position } : existing)
     : [position, ...positions];
 
-  store.setPositions(nextPositions);
+  store.setPositions(nextPositions, { touchedTickets: [position.id] });
 };
 
-export const applyOpenPositionSnapshot = (incoming: Position[]): void => {
+/**
+ * Applies a positions read. A complete read decides closure for the tickets it omits,
+ * by its start stamp (see setPositions). A partial read only merges and closes nothing.
+ */
+export const applyOpenPositionSnapshot = (
+  incoming: Position[],
+  read: { readStartedAt: number; complete: boolean },
+): void => {
   const store = useAppStore.getState();
+  if (read.complete) {
+    store.setPositions(incoming, { readStartedAt: read.readStartedAt });
+    return;
+  }
   if (shouldReplaceOpenPositionSnapshot(incoming, store.positions as unknown as Position[])) {
     store.setPositions(incoming);
   }

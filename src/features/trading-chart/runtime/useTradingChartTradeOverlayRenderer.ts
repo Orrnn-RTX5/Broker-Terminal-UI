@@ -1,8 +1,8 @@
-import type { RefObject } from 'react';
+import { useRef, type RefObject } from 'react';
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { useActiveChartRuntimeEffect } from '../../../hooks/useActiveChartRuntimeEffect';
 import type { TradingChartVisibleRuntime } from '../../../hooks/useTradingChartVisibleRuntime';
-import { isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
+import { getPositionsAuthoritativeSeq, isConfirmedClosedBySnapshot, isPositionMarkedClosed, useAppStore } from '../../../store/useAppStore';
 import {
   clampChartOpacityPercent,
   defaultChartProperties,
@@ -164,6 +164,9 @@ export const useTradingChartTradeOverlayRenderer = ({
   updateLabelPositions,
   visibleRuntime,
 }: UseTradingChartTradeOverlayRendererOptions): void => {
+  // Last authoritative positions snapshot seen by a render pass (null before the first pass).
+  // Hook-level ref: the render pass runs inside the effect callback, where hooks are not allowed.
+  const lastAuthoritativePositionsSeqRef = useRef<number | null>(null);
   useActiveChartRuntimeEffect(visibleRuntime.overlay, () => {
     if (isDisposedRef.current || !seriesRef.current || !chartRef.current || !symbol) return;
 
@@ -300,6 +303,9 @@ export const useTradingChartTradeOverlayRenderer = ({
       const tradeHistoryLineOpacity = tradeHistoryLineOpacityPercent / 100;
       const appState = useAppStore.getState();
       const appPositions: TradePositionRecord[] = Array.isArray(appState.positions) ? appState.positions : [];
+      const appOrders: Array<Record<string, unknown>> = Array.isArray(appState.orders)
+        ? (appState.orders as unknown as Array<Record<string, unknown>>)
+        : [];
       const appTrades = Array.isArray(appState.trades) ? appState.trades : [];
       const liveTrailTime = getLiveTrailTime();
       const isMatchingTradeSymbol = (rawSymbol: unknown) => {
@@ -407,6 +413,19 @@ export const useTradingChartTradeOverlayRenderer = ({
           && !isPositionMarkedClosed(position.id, now);
       });
 
+      // A broker snapshot written since the previous pass that no longer lists a
+      // ticket proves it closed; the grace window below only covers gaps that no
+      // snapshot has confirmed yet.
+      const authoritativePositionsSeq = getPositionsAuthoritativeSeq();
+      const lastAuthoritativePositionsSeq = lastAuthoritativePositionsSeqRef.current;
+      lastAuthoritativePositionsSeqRef.current = authoritativePositionsSeq;
+      const hasFreshAuthoritativeSnapshot = lastAuthoritativePositionsSeq !== null
+        && lastAuthoritativePositionsSeq !== authoritativePositionsSeq;
+      // The store decides confirmed-then-absent tickets; a fresh snapshot covers the rest.
+      const isExcludedByAuthoritativeSnapshot = (key: string): boolean => isConfirmedClosedBySnapshot(getTradeTicket(key))
+        || (hasFreshAuthoritativeSnapshot
+          && !appPositions.some((position) => `trade:${String(getPositionId(position))}` === key));
+
       const nextActiveSnapshots = new Map<string, ActiveTradeSnapshot>();
 
       for (const position of matchingPositions) {
@@ -463,11 +482,63 @@ export const useTradingChartTradeOverlayRenderer = ({
         pendingMissingActiveTradesRef.current.delete(key);
       }
 
+      for (const rawOrder of appOrders) {
+        const rawStatus = String(rawOrder?.status ?? 'pending').trim().toLowerCase();
+        if (['cancelled', 'canceled', 'expired', 'rejected', 'filled', 'triggered'].includes(rawStatus)) {
+          continue;
+        }
+        const orderSymbol = String(rawOrder?.symbol ?? '').trim().toUpperCase();
+        if (!orderSymbol || orderSymbol !== normalizedChartSymbol) continue;
+        const orderId = String(rawOrder?.ticket ?? rawOrder?.id ?? '').trim();
+        if (!orderId || orderId === '0') continue;
+        const orderVolume = Number(rawOrder?.volume ?? rawOrder?.quantity ?? rawOrder?.lots ?? 0) || 0;
+        if (!(orderVolume > 0)) continue;
+        const orderPrice = pickPositiveNumber(rawOrder?.price, rawOrder?.price_trigger, rawOrder?.openPrice, rawOrder?.open_price);
+        if (!(orderPrice > 0)) continue;
+        const rawOrderType = String(rawOrder?.type ?? rawOrder?.orderType ?? '').trim().toLowerCase();
+        const orderSide: TradeSide = String(rawOrder?.side ?? rawOrderType).toUpperCase().includes('SELL') ? 'SELL' : 'BUY';
+        const rawOrderTime = normalizeUnixSeconds(rawOrder?.time_setup ?? rawOrder?.time_create ?? rawOrder?.created_at) ?? normalizeUnixSeconds(Date.now());
+        const mappedOrderTime = resolveStableTradeEntryTime(
+          null,
+          rawOrderTime,
+          mapTradeTimestampToChartTime,
+          liveTrailTime,
+        );
+        const entryTime = canResolveOverlayTime(mappedOrderTime)
+          ? mappedOrderTime
+          : (liveTrailTime ?? mappedOrderTime);
+        const key = `order:${orderId}`;
+        nextActiveSnapshots.set(key, {
+          key,
+          kind: 'pending',
+          orderType: rawOrderType || (orderSide === 'SELL' ? 'sell_limit' : 'buy_limit'),
+          symbol: normalizedChartSymbol,
+          side: orderSide,
+          volume: orderVolume,
+          entryPrice: orderPrice,
+          limitPrice: pickPositiveNumber(rawOrder?.price_limit, rawOrder?.limitPrice),
+          entryTime: entryTime || normalizeUnixSeconds(Date.now()) || 1,
+          entryExecutionTime: rawOrderTime ?? entryTime ?? 1,
+          currentPrice: getLiveTrailPrice(orderSide, orderPrice) ?? orderPrice,
+          currentTime: liveTrailTime ?? entryTime ?? 1,
+          sl: pickPositiveNumber(rawOrder?.price_sl, rawOrder?.sl),
+          tp: pickPositiveNumber(rawOrder?.price_tp, rawOrder?.tp),
+          expiry: Number(rawOrder?.time_expiry ?? rawOrder?.expiry ?? 0) || null,
+          comment: typeof rawOrder?.comment === 'string' ? rawOrder.comment : undefined,
+          stateVersion: Number(rawOrder?.state_version ?? 0) || undefined,
+        });
+        pendingMissingActiveTradesRef.current.delete(key);
+      }
+
       const renderActiveSnapshots = new Map(nextActiveSnapshots);
       const visuallyRetainedActiveTradeKeys = new Set<string>();
 
       activeTradeSnapshotsRef.current.forEach((previousTrade, key) => {
         if (previousTrade.symbol !== normalizedChartSymbol || nextActiveSnapshots.has(key)) return;
+        if (previousTrade.kind === 'pending') {
+          pendingMissingActiveTradesRef.current.delete(key);
+          return;
+        }
         if (!shouldKeepMissingActiveTradeOverlay({
           tradeKey: key,
           closeSuppressedTradeKeys,
@@ -478,6 +549,14 @@ export const useTradingChartTradeOverlayRenderer = ({
           return;
         }
 
+        // Grace window (pendingMissingActiveTradesRef): a missing row alone is not
+        // proof of execution. Lagged or partial stream/REST updates can omit an open
+        // position for a moment, so it is kept until closure is confirmed. A fresh
+        // broker snapshot that excludes the ticket confirms it, so it is dropped now.
+        if (isExcludedByAuthoritativeSnapshot(key)) {
+          pendingMissingActiveTradesRef.current.delete(key);
+          return;
+        }
         if (!pendingMissingActiveTradesRef.current.has(key)) {
           pendingMissingActiveTradesRef.current.set(key, { trade: previousTrade, missingSince: now });
           scheduleHistoryRefresh();
@@ -488,6 +567,7 @@ export const useTradingChartTradeOverlayRenderer = ({
         if (
           pending.trade.symbol !== normalizedChartSymbol
           || nextActiveSnapshots.has(key)
+          || isExcludedByAuthoritativeSnapshot(key)
           || !shouldKeepMissingActiveTradeOverlay({
             tradeKey: key,
             closeSuppressedTradeKeys,

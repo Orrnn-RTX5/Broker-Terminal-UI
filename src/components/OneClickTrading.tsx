@@ -21,6 +21,7 @@ import {
 } from '../utils/marketStatus';
 import { resolveSpecDigits } from '../utils/symbolUtils';
 import { formatOrderError, isStaleOrderError } from '../utils/orderError';
+import { refreshHistoryAfterFill } from '../app/trading/tradeHistoryFreshness';
 import { TradeUnavailableDialog } from './TradeUnavailableDialog';
 import {
     formatTradeVolume,
@@ -98,7 +99,7 @@ const upsertImmediatePosition = (position: Position) => {
         ? store.positions.map((existing, index) => index === existingIndex ? { ...existing, ...position } : existing)
         : [position, ...store.positions];
 
-    store.setPositions(nextPositions);
+    store.setPositions(nextPositions, { touchedTickets: [position.id] });
 };
 
 export const OneClickTrading: React.FC<OneClickTradingProps> = ({
@@ -369,6 +370,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             const chartEntryTime = new Date().toISOString();
             const result = await orderPromise;
             if (!ownsOrderSession()) return;
+            refreshHistoryAfterFill(login);
             // Concurrent clicks settle independently. If an earlier order was
             // rejected while this newer one was still executing, the newer
             // success must clear that stale banner immediately; it must never

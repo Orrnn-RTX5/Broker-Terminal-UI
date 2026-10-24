@@ -24,7 +24,9 @@ import { api } from '../services/api';
 import { buildOrderTicketSymbolOptions } from '../utils/accountSymbolUniverse';
 import { resolveSymbolDescription } from '../utils/symbolDescription';
 import { resolveSpecDigits } from '../utils/symbolUtils';
-import { readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
+import { readRegisteredSymbolPriceSpec, readRegisteredSymbolStopsLevel } from '../services/dailyChangePriceModeRegistry';
+import { handleStalePositionRefusal, requestPositionsRefresh } from '../utils/stalePositionRefusal';
+import { refreshHistoryAfterFill } from '../app/trading/tradeHistoryFreshness';
 import '../styles/order-panel-dialog.css';
 
 // Symbol display names
@@ -88,6 +90,8 @@ export interface OrderPanelInstrumentRow {
   digits?: number;
   tickSize?: number;
   contractSize?: number;
+  stops_level?: number;
+  stopsLevel?: number;
 }
 
 export interface OrderPanelInstrumentConfig {
@@ -102,6 +106,22 @@ export interface OrderPanelInstrumentConfig {
 const readPositiveFinite = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
 );
+
+const readNonNegativeInt = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
+};
+
+export function resolveInstrumentStopsLevel(
+  sym: string,
+  instrument?: Partial<OrderPanelInstrumentRow> | null,
+  liveTick?: { stops_level?: unknown; stopsLevel?: unknown } | null,
+): number | null {
+  return readRegisteredSymbolStopsLevel(sym)
+    ?? readNonNegativeInt(instrument?.stops_level ?? instrument?.stopsLevel)
+    ?? readNonNegativeInt(liveTick?.stops_level ?? liveTick?.stopsLevel);
+}
 
 /**
  * TERM-DIGITS-WL: instrument properties come ONLY from broker data, never
@@ -174,11 +194,25 @@ function formatDefaultExpirationDate(): string {
   return `${dd}.${mm}.${yy} ${hh}:${min}`;
 }
 
-// Parse a dialog expiration date string `DD.MM.YY HH:mm` (local time) to a
-// Date, or null when unparseable. Strict shape: rejects overflow dates
+// Parse a dialog expiration date string `DD.MM.YY HH:mm` or ISO `YYYY-MM-DDTHH:mm`
+// (local time) to a Date, or null when unparseable. Strict shape: rejects overflow dates
 // (e.g. 31.02.26) by round-tripping the components.
 const parseDialogExpirationDate = (value: string): Date | null => {
-  const match = /^(\d{2})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})$/.exec(value.trim());
+  const trimmed = value.trim();
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?$/.exec(trimmed);
+  if (isoMatch) {
+    const [, yyyy, mm, dd, hh = '00', min = '00'] = isoMatch;
+    const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min), 0, 0);
+    if (
+      date.getFullYear() !== Number(yyyy)
+      || date.getMonth() !== Number(mm) - 1
+      || date.getDate() !== Number(dd)
+      || date.getHours() !== Number(hh)
+      || date.getMinutes() !== Number(min)
+    ) return null;
+    return date;
+  }
+  const match = /^(\d{2})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})$/.exec(trimmed);
   if (!match) return null;
   const [, dd, mm, yy, hh, min] = match;
   const date = new Date(2000 + Number(yy), Number(mm) - 1, Number(dd), Number(hh), Number(min), 0, 0);
@@ -188,6 +222,31 @@ const parseDialogExpirationDate = (value: string): Date | null => {
     || date.getMinutes() !== Number(min)
   ) return null;
   return date;
+};
+
+export const formatDateTimeLocalValue = (ms: number): string => {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+export const parseDateTimeLocalToDisplay = (isoLocal: string): string => {
+  const parsed = parseDialogExpirationDate(isoLocal);
+  if (!parsed) return isoLocal;
+  const dd = String(parsed.getDate()).padStart(2, '0');
+  const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+  const yy = String(parsed.getFullYear()).slice(-2);
+  const hh = String(parsed.getHours()).padStart(2, '0');
+  const min = String(parsed.getMinutes()).padStart(2, '0');
+  return `${dd}.${mm}.${yy} ${hh}:${min}`;
+};
+
+export const formatDisplayToDateTimeLocal = (value: string, dateOnly = false): string => {
+  const parsed = parseDialogExpirationDate(value);
+  if (!parsed) return '';
+  const full = formatDateTimeLocalValue(parsed.getTime());
+  return dateOnly ? full.slice(0, 10) : full;
 };
 
 /**
@@ -831,8 +890,13 @@ function OrderDialogDomPane({
     setIsClosingPosition(true);
     try {
       await api.positions.closePosition(selectedPositionTicket);
-    } catch {
-      // Handled by global trade feedback
+      refreshHistoryAfterFill(Number(useAppStore.getState().accountId));
+    } catch (err) {
+      const message = handleStalePositionRefusal(err, Number(selectedPositionTicket), { refresh: requestPositionsRefresh, tr });
+      if (message !== null) {
+        window.dispatchEvent(new CustomEvent('rtx:order-feedback', { detail: { message, type: 'error' } }));
+      }
+      // Other refusals are reported by the global trade feedback.
     } finally {
       setIsClosingPosition(false);
     }
@@ -1261,6 +1325,10 @@ export function OrderPanelDialog({
     priceStep,
     contractSize,
   } = getInstrumentConfig(symbol, tick?.digits, catalogInstrument);
+  const specStopsLevel = useMemo(
+    () => resolveInstrumentStopsLevel(symbol, catalogInstrument, tick as { stops_level?: unknown; stopsLevel?: unknown } | undefined),
+    [catalogInstrument, symbol, tick],
+  );
   const chartColors = useMemo(
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
     [chartSettings, isAdvancedUntitledLight],
@@ -1436,6 +1504,57 @@ export function OrderPanelDialog({
         ? overrideProtection.priceTp
         : (Number.isFinite(parsedTakeProfit) && parsedTakeProfit > 0 ? parsedTakeProfit : undefined);
 
+      if (specStopsLevel !== null && specStopsLevel > 0 && specDigits !== null) {
+        const minDist = specStopsLevel * Math.pow(10, -specDigits);
+        const eps = Math.pow(10, -(specDigits + 3));
+        if (effectiveOrderType === 'Market Execution') {
+          const refPrice = side === 'buy' ? bid : ask;
+          const refLabel = side === 'buy' ? 'Bid' : 'Ask';
+          if (refPrice > 0) {
+            if (slVal !== undefined) {
+              const bound = side === 'buy' ? refPrice - minDist : refPrice + minDist;
+              const violated = side === 'buy' ? slVal > bound + eps : slVal < bound - eps;
+              if (violated) {
+                setError(`Stop loss must be ${side === 'buy' ? 'at most' : 'at least'} ${bound.toFixed(specDigits)} (minimum distance ${specStopsLevel} pts from ${refLabel} ${refPrice.toFixed(specDigits)})`);
+                setIsPlacing(false);
+                return;
+              }
+            }
+            if (tpVal !== undefined) {
+              const bound = side === 'buy' ? refPrice + minDist : refPrice - minDist;
+              const violated = side === 'buy' ? tpVal < bound - eps : tpVal > bound + eps;
+              if (violated) {
+                setError(`Take profit must be ${side === 'buy' ? 'at least' : 'at most'} ${bound.toFixed(specDigits)} (minimum distance ${specStopsLevel} pts from ${refLabel} ${refPrice.toFixed(specDigits)})`);
+                setIsPlacing(false);
+                return;
+              }
+            }
+          }
+        } else if (Number.isFinite(parsedPrice) && parsedPrice > 0) {
+          const entryRef = effectiveOrderType === 'Stop Limit Order' && Number.isFinite(parsedStopLimitPrice) && parsedStopLimitPrice > 0
+            ? parsedStopLimitPrice
+            : parsedPrice;
+          if (slVal !== undefined) {
+            const bound = side === 'buy' ? entryRef - minDist : entryRef + minDist;
+            const violated = side === 'buy' ? slVal > bound + eps : slVal < bound - eps;
+            if (violated) {
+              setError(`Pending order SL must be ${side === 'buy' ? 'at most' : 'at least'} ${bound.toFixed(specDigits)} (minimum distance ${specStopsLevel} pts)`);
+              setIsPlacing(false);
+              return;
+            }
+          }
+          if (tpVal !== undefined) {
+            const bound = side === 'buy' ? entryRef + minDist : entryRef - minDist;
+            const violated = side === 'buy' ? tpVal < bound - eps : tpVal > bound + eps;
+            if (violated) {
+              setError(`Pending order TP must be ${side === 'buy' ? 'at least' : 'at most'} ${bound.toFixed(specDigits)} (minimum distance ${specStopsLevel} pts)`);
+              setIsPlacing(false);
+              return;
+            }
+          }
+        }
+      }
+
       // SUI-T2: convert the expiration choice to epoch seconds here. GTC
       // omits expiry; Today/Specified resolve to a timestamp; invalid or past
       // dated values block submit fail-closed (never 0/NaN).
@@ -1493,6 +1612,10 @@ export function OrderPanelDialog({
     parsedStopLimitPrice,
     parsedStopLoss,
     parsedTakeProfit,
+    ask,
+    bid,
+    specDigits,
+    specStopsLevel,
     symbol,
     tr,
     volumeStr,
@@ -2069,6 +2192,23 @@ export function OrderPanelDialog({
                     onChange={(e) => setExpirationDateStr(e.target.value)}
                     className="rtx-order-dialog__control rtx-order-dialog__expiration-date-input"
                   />
+                  {(expiration === 'Specified' || expiration === 'Specified day') && (
+                    <input
+                      aria-label={tr("Expiration date picker")}
+                      data-testid="order-dialog-expiration-picker"
+                      type={expiration === 'Specified day' ? 'date' : 'datetime-local'}
+                      value={formatDisplayToDateTimeLocal(expirationDateStr, expiration === 'Specified day')}
+                      onChange={(e) => {
+                        const rawVal = e.target.value;
+                        if (!rawVal) return;
+                        const nextDisplay = expiration === 'Specified day'
+                          ? parseDateTimeLocalToDisplay(`${rawVal}T23:59`)
+                          : parseDateTimeLocalToDisplay(rawVal);
+                        setExpirationDateStr(nextDisplay);
+                      }}
+                      className="rtx-order-dialog__control rtx-order-dialog__expiration-date-picker ml-1"
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -2105,6 +2245,14 @@ export function OrderPanelDialog({
                 {formatMt5QuotePrice(bid, specDigits)} / {formatMt5QuotePrice(ask, specDigits)}
               </span>
               <span className="rtx-order-dialog__spread-sr">{tr("Spread: ")}{spreadDisplay}</span>
+              {specStopsLevel !== null && specStopsLevel > 0 && (
+                <span
+                  className="rtx-order-dialog__margin ml-2"
+                  data-testid="order-dialog-stops-level"
+                >
+                  {tr("Min stop distance")}: {specStopsLevel} pts
+                </span>
+              )}
             </div>
 
             {orderType === 'Market Execution' ? (

@@ -6,6 +6,21 @@
     "Download desktop installer {{value0}}",
     "Download the latest desktop installer",
     "Fill policy is not supported by the execution venue and is not sent",
-    "Reconnecting to server…"
+    "Reconnecting to server…",
+    "Position {{ticket}} already closed ({{reason}}) at {{price}}",
+    "Position {{ticket}} already closed ({{reason}})",
+    "Position {{ticket}} already closed at {{price}}",
+    "Position {{ticket}} already closed",
+    "Position {{ticket}} is no longer open",
+    "closed manually",
+    "stop out",
+    "close by",
+    "close all",
+    "by the broker",
+    "Position {{ticket}} is not in the current positions list; refreshing",
+    "Account busy — previous orders are still processing. Please retry.",
+    "Limit Price:",
+    "Expiration mode",
+    "Expiration date picker"
   ]
 }

@@ -1,5 +1,6 @@
 import { normalizeBrokerTimestampMs, readBrokerTimestampMs } from '../utils/brokerStreamSemantics';
 import { shouldDeferEmptyPositionSnapshot } from './positionSnapshotSafety';
+import { readPositionStateVersion } from './positionStateVersion';
 
 const toFinite = (v: unknown, fallback = 0): number => {
   // FIX: Partial account packets may carry omitted/null fields or Money-like
@@ -221,14 +222,9 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
   };
 };
 
-const positionVersion = (raw: any): string | undefined => {
-  const value = raw?.state_version_text ?? raw?.state_version;
-  if (typeof value === 'number' && (!Number.isSafeInteger(value) || value < 0)) return undefined;
-  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
-  const text = String(value);
-  if (!/^\d+$/.test(text)) return undefined;
-  return text.replace(/^0+(?=\d)/, '');
-};
+const positionVersion = (raw: any): string | undefined => (
+  readPositionStateVersion(raw?.state_version_text ?? raw?.state_version) ?? undefined
+);
 
 // Do not coerce version strings to Number: PostgreSQL bigint exceeds JS's
 // exact integer range. Unversioned legacy messages remain compatible.
@@ -285,7 +281,10 @@ export const reconcilePositionStreamBatch = <T extends { id: number }>(
   batch: PositionStreamBatch,
 ): { positions: T[]; needsRevalidation: boolean; closedTickets: number[] } => {
   const currentById = new Map(current.map((position) => [Number(position.id), position]));
-  const nextById = batch.mode === 'snapshot' ? new Map<number, T>() : new Map(currentById);
+  // Stream snapshots merge like deltas: they upsert the rows they carry and never remove the
+  // tickets they omit (no backend marks a stream snapshot as complete-account). Removal comes
+  // from explicit close records, or from a complete REST read that confirmed the ticket.
+  const nextById = new Map(currentById);
   let needsRevalidation = false;
   const closedTickets = new Set<number>();
   for (const raw of batch.positions) {

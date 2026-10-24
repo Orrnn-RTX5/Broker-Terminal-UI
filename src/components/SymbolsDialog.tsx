@@ -34,7 +34,7 @@ interface SymbolSpec {
   sector?: string;
   industry?: string;
   spread?: string | number;
-  stopsLevel?: number;
+  stopsLevel?: number | null;
   marginCurrency?: string;
   currency?: string;
   baseCurrency?: string;
@@ -217,6 +217,10 @@ const normalizeInstrument = (raw: any): SymbolSpec | null => {
   const contractSize = readPositiveSpecNumber(raw?.contract_size ?? raw?.contractSize);
   const bid = Number(raw?.bid);
   const ask = Number(raw?.ask);
+  const rawStopsLevel = raw?.stops_level ?? raw?.stopsLevel;
+  const parsedStopsLevel = rawStopsLevel === null || rawStopsLevel === undefined || rawStopsLevel === ''
+    ? null
+    : Number(rawStopsLevel);
 
   return {
     id: String(raw?.id ?? name),
@@ -233,7 +237,9 @@ const normalizeInstrument = (raw: any): SymbolSpec | null => {
     ask: Number.isFinite(ask) ? ask : undefined,
     ...sector,
     spread: raw?.spread ?? 'floating',
-    stopsLevel: Number(raw?.stops_level ?? raw?.stopsLevel ?? 0),
+    stopsLevel: parsedStopsLevel !== null && Number.isFinite(parsedStopsLevel) && parsedStopsLevel >= 0
+      ? Math.trunc(parsedStopsLevel)
+      : null,
     // Broker-published only; never sliced from the symbol name.
     marginCurrency: raw?.margin_currency ?? raw?.marginCurrency,
     swapLong: Number(raw?.swap_long ?? raw?.swapLong ?? 0),
@@ -906,7 +912,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
     { label: 'Digits', value: selectedSymbol.digits ?? '—', color: 'text-[var(--text-primary)]' },
     { label: 'Contract size', value: selectedSymbol.contractSize === null ? '—' : `${selectedSymbol.contractSize} ${selectedSymbol.marginCurrency || ''}`.trim(), color: 'text-[var(--text-primary)]' },
     { label: 'Spread', value: selectedSymbol.spread || 'floating', color: 'text-[var(--text-primary)]' },
-    { label: 'Stops level', value: selectedSymbol.stopsLevel || 20, color: 'text-[var(--text-primary)]' },
+    { label: 'Stops level', value: selectedSymbol.stopsLevel ?? '—', color: 'text-[var(--text-primary)]' },
     { label: 'Margin currency', value: selectedSymbol.marginCurrency || '—', color: 'text-[var(--color-profit)]' },
     { label: 'Tick size', value: selectedSymbol.tickSize ?? '—', color: 'text-[var(--text-primary)]' },
     { label: 'Trading enabled', value: selectedSymbol.tradingEnabled ? 'Yes' : 'No', color: 'text-[var(--text-primary)]' },

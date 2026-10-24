@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "Cảnh báo giá và thiết bị đầu cuối",
   "Price at which the position was opened": "Giá mở vị thế",
   "Price label": "Nhãn giá",
+  "Price moved, drag again": "Giá đã thay đổi, hãy kéo lại",
+  "Price updating, please retry": "Giá đang cập nhật, vui lòng thử lại",
   "Price note": "Bảng giá",
   "Price precision": "Độ chính xác về giá",
   "Price range": "Khoảng giá",

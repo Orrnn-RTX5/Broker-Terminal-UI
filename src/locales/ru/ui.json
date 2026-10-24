@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "Ценовые оповещения и уведомления терминала",
   "Price at which the position was opened": "Цена открытия позиции",
   "Price label": "Ценник",
+  "Price moved, drag again": "Цена изменилась, перетащите снова",
+  "Price updating, please retry": "Цена обновляется, повторите попытку",
   "Price note": "Примечание к цене",
   "Price precision": "Точность цены",
   "Price range": "Диапазон цен",

@@ -21,6 +21,7 @@ import { DailyChangeSummary } from './market-watch/DailyChangeSummary';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAppStore } from '../store/useAppStore';
+import { refreshHistoryAfterFill } from '../app/trading/tradeHistoryFreshness';
 import { api } from '../services/api';
 import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { isShortcutInput, isShortcutLocalScope, isShortcutOverlay, shouldIgnoreShortcutEvent } from '../services/keyboardShortcutManager';
@@ -38,6 +39,7 @@ import {
     resolveExactBrokerSymbolValue,
 } from '../utils/exactBrokerSymbol';
 import { getPipSizeFromDigits, resolveSpecDigits } from '../utils/symbolUtils';
+import { handleStalePositionRefusal } from '../utils/stalePositionRefusal';
 import { readRegisteredSymbolContractSpec, readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
 
 const PANEL_WIDTH = 368;
@@ -274,6 +276,7 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
                 // Do not serialize deliberate one-click orders behind a prior
                 // terminal fill; every call owns separate durable correlation IDs.
                 await orderPromise;
+                refreshHistoryAfterFill(Number(accountId));
                 setLastSymbol(exactLastSymbol, side);
                 window.dispatchEvent(new Event('rtx:force-refresh-positions'));
                 flash(`${tr(side)} ${effectiveLot} ${lastSymbol} ✓`, 'success');
@@ -297,19 +300,29 @@ const accountCurrencyDigits = resolveAccountCurrencyDigits(account);
             // Only positions the backend confirmed closed leave the list; a
             // rejected close keeps its row open.
             const closedIds = new Set<number>();
+            let staleMessage: string | null = null;
             for (const pos of lastSymbolPositions) {
                 try {
                     await api.positions.closePosition(String(pos.id));
                     closedIds.add(pos.id);
                 } catch (e) {
-                    console.error('Failed to close position', pos.id, e);
+                    // Already closed on the broker: the row is gone, with a plain message.
+                    const message = handleStalePositionRefusal(e, pos.id, { refresh: () => undefined, tr });
+                    if (message !== null) {
+                        closedIds.add(pos.id);
+                        if (staleMessage === null) staleMessage = message;
+                    } else {
+                        console.error('Failed to close position', pos.id, e);
+                    }
                 }
             }
             useAppStore.getState().setPositions(useAppStore.getState().positions.filter(
                 (position) => !closedIds.has(position.id),
             ));
+            if (closedIds.size > 0) refreshHistoryAfterFill(Number(useAppStore.getState().accountId));
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-            flash(`${tr('closed')}: ${closedIds.size} · ${lastSymbol} ✓`, 'success');
+            if (staleMessage !== null) flash(staleMessage, 'error');
+            else flash(`${tr('closed')}: ${closedIds.size} · ${lastSymbol} ✓`, 'success');
         } catch (err: unknown) {
             flash(err instanceof Error ? err.message : `${tr('Close positions')}: ${tr('Failed')}`, 'error');
         } finally {

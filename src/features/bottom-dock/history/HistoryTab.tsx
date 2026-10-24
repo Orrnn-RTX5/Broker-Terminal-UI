@@ -26,6 +26,7 @@ import './history-summary.css';
 import './history-status.css';
 import {
   DEFAULT_HISTORY_COLUMNS,
+  getHistoryStatusBadgeClass,
   HISTORY_AUTO_ARRANGE_STORAGE_KEY,
   HISTORY_COLUMN_DEFS,
   HISTORY_COLUMN_STORAGE_KEY,
@@ -33,6 +34,7 @@ import {
   HISTORY_SHOW_MILLISECONDS_STORAGE_KEY,
   HISTORY_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY,
   HISTORY_VOLUME_MODE_STORAGE_KEY,
+  resolveHistoryRowStatus,
   type HistoryColumnKey,
   type HistoryColumnVisibility,
   type HistoryContextMenuState,
@@ -775,6 +777,7 @@ ${rows}
                             <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>T/P</th>
                             <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-28`}>{tr("Time")}</th>
                             <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-22`}>{tr("Price")}</th>
+                            {isColumnVisible('status') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-22`}>{tr("Status")}</th>}
                             {isColumnVisible('marketValue') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-24`}>{tr("Market Value")}</th>}
                             {isColumnVisible('commission') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>{tr("Commission")}</th>}
                             {isColumnVisible('swap') && <th className={`px-1.5 py-[3px] text-center ${headerDividerClass} w-20`}>{tr("Swap")}</th>}
@@ -810,6 +813,10 @@ ${rows}
                             const changePercent = getHistoryChangePercent(order);
                             const changePercentLabel = formatHistoryPercent(order);
                             const profitLabel = formatMoney(order.profit);
+                            const rowStatus = resolveHistoryRowStatus(order);
+                            const closePriceCellLabel = rowStatus !== 'FILLED' && !(Number(order.closePrice) > 0)
+                                ? '—'
+                                : formatPriceCell(order.closePrice, order.symbol);
                             return (
                                 <tr
                                     key={`${tradeKey}-${index}`}
@@ -833,7 +840,12 @@ ${rows}
                                         <span className={(order.tp ?? 0) > 0 ? "rtx-history-tp-value text-profit px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>{formatLevelCell(order.tp, order.symbol)}</span>
                                     </td>
                                     <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums whitespace-nowrap`} title={tr("Close time: {{value0}}", { value0: formatTs(order.closeTime) })}>{formatTs(order.closeTime)}</td>
-                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums`} title={tr("Close price: {{value0}}", { value0: formatPriceCell(order.closePrice, order.symbol) })}>{formatPriceCell(order.closePrice, order.symbol)}</td>
+                                    <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums`} title={tr("Close price: {{value0}}", { value0: closePriceCellLabel })}>{closePriceCellLabel}</td>
+                                    {isColumnVisible('status') && (
+                                        <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center whitespace-nowrap`} data-testid={`history-row-status-${order.id}`} title={tr("Status: {{value0}}", { value0: tr(rowStatus) })}>
+                                            <span className={getHistoryStatusBadgeClass(rowStatus)}>{tr(rowStatus)}</span>
+                                        </td>
+                                    )}
                                     {isColumnVisible('marketValue') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center text-zinc-100 tabular-nums`} title={tr("Market Value: {{value0}}", { value0: marketValueLabel })}>{marketValueLabel}</td>}
                                     {isColumnVisible('commission') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums ${moneyColor(order.commission)}`} title={tr("Commission: {{value0}}", { value0: formatMoney(order.commission) })}>{formatMoney(order.commission)}</td>}
                                     {isColumnVisible('swap') && <td className={`px-1.5 py-[2px] ${cellDividerClass} text-center tabular-nums ${moneyColor(order.swap)}`} title={tr("Swap: {{value0}}", { value0: formatMoney(order.swap) })}>{formatMoney(order.swap)}</td>}

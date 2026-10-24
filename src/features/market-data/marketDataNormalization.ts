@@ -1,4 +1,4 @@
-import { enqueueLiveTick } from '../../services/liveTickDispatcher';
+import { enqueueSnapshotTick } from '../../services/liveTickDispatcher';
 import {
   composeDailyChangeQuoteContext,
   readDailyChangeLastPrice,
@@ -421,7 +421,8 @@ export const normalizeOrderBook = (raw: unknown, fallbackSymbol?: string): LiveO
 };
 
 export const upsertTick = (tick: Tick & Partial<AppTick>): void => {
-  enqueueLiveTick(tick.symbol, tick);
+  // REST and catalogue snapshots: their quote may be old, so they never stamp feed activity.
+  enqueueSnapshotTick(tick.symbol, tick);
 };
 
 const hasUsablePrice = (value: unknown): value is number =>

@@ -17,6 +17,8 @@ export interface DailyChangePriceModeCatalogRow {
   /** Normalized catalog fields (MarketInstrument), read when no spec row carries them. */
   digits?: unknown;
   tickSize?: unknown;
+  /** Catalog minimum SL/TP distance in points (stops level), when the broker publishes one. */
+  stopsLevel?: unknown;
   contractSize?: unknown;
 }
 
@@ -24,6 +26,7 @@ let activeScopeKey = '';
 let modesBySymbol = new Map<string, DailyChangePriceMode>();
 let digitsBySymbol = new Map<string, number>();
 let tickSizeBySymbol = new Map<string, number>();
+let stopsLevelBySymbol = new Map<string, number>();
 let contractSizeBySymbol = new Map<string, number>();
 let contractUnitBySymbol = new Map<string, string>();
 
@@ -43,6 +46,7 @@ const resetForScope = (scope: CommittedBrokerAccountSessionScope): void => {
   modesBySymbol = new Map();
   digitsBySymbol = new Map();
   tickSizeBySymbol = new Map();
+  stopsLevelBySymbol = new Map();
   contractSizeBySymbol = new Map();
   contractUnitBySymbol = new Map();
 };
@@ -81,6 +85,21 @@ export const getCurrentDailyChangePriceModeScopeKey = (): string => {
 const readPositiveNumber = (value: unknown): number | null => {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+/** Catalog stops level (points): the normalized field first, then the raw spec row; absent or zero is null. */
+const readCatalogStopsLevel = (
+  row: DailyChangePriceModeCatalogRow,
+  specification: Record<string, unknown> | undefined,
+): number | null => {
+  const normalized = readPositiveNumber(row.stopsLevel);
+  if (normalized !== null) return normalized;
+  const nested = asRecord(specification?.specification);
+  for (const source of [specification, nested]) {
+    const value = readPositiveNumber(source?.stops_level ?? source?.stopsLevel ?? source?.trade_stops_level);
+    if (value !== null) return value;
+  }
+  return null;
 };
 
 /** Broker tick size: the normalized catalog field first, then the raw spec row. */
@@ -147,6 +166,7 @@ export const registerDailyChangePriceModes = (
   const next = new Map<string, DailyChangePriceMode>();
   const nextDigits = new Map<string, number>();
   const nextTickSizes = new Map<string, number>();
+  const nextStopsLevels = new Map<string, number>();
   const nextContractSizes = new Map<string, number>();
   const nextContractUnits = new Map<string, string>();
   rows.forEach((row) => {
@@ -158,6 +178,8 @@ export const registerDailyChangePriceModes = (
     if (symbol && typeof digits === 'number' && Number.isInteger(digits) && digits >= 0 && digits <= 12) nextDigits.set(symbol, digits);
     const tickSize = readCatalogTickSize(row, specification);
     if (symbol && tickSize !== null) nextTickSizes.set(symbol, tickSize);
+    const stopsLevel = readCatalogStopsLevel(row, specification);
+    if (symbol && stopsLevel !== null) nextStopsLevels.set(symbol, stopsLevel);
     const contractSize = readCatalogContractSize(row, specification);
     if (symbol && contractSize !== null) nextContractSizes.set(symbol, contractSize);
     const contractUnit = readCatalogContractUnit(specification);
@@ -167,9 +189,18 @@ export const registerDailyChangePriceModes = (
   modesBySymbol = next;
   digitsBySymbol = nextDigits;
   tickSizeBySymbol = nextTickSizes;
+  stopsLevelBySymbol = nextStopsLevels;
   contractSizeBySymbol = nextContractSizes;
   contractUnitBySymbol = nextContractUnits;
   return true;
+};
+
+/** Catalog stops level in points for the symbol, or null when the catalog publishes none (scoped like the price spec). */
+export const readRegisteredSymbolStopsLevel = (symbol: unknown): number | null => {
+  const currentScopeKey = getCurrentDailyChangePriceModeScopeKey();
+  const normalizedSymbol = normalizeSymbol(symbol);
+  if (!currentScopeKey || currentScopeKey !== activeScopeKey || !normalizedSymbol) return null;
+  return stopsLevelBySymbol.get(normalizedSymbol) ?? null;
 };
 
 export interface RegisteredSymbolPriceSpec {

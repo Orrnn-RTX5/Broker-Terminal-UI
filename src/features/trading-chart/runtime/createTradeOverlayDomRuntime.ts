@@ -26,7 +26,14 @@ import {
   tradeLevelModifyPatch,
 } from '../../../utils/tradeLevelDrag';
 import { readRegisteredSymbolPriceSpec } from '../../../services/dailyChangePriceModeRegistry';
+import { readTradeValidationQuote } from '../../../services/tradeValidationQuote';
 import { describeProtectionRefusal, formatOrderError } from '../../../utils/orderError';
+import {
+  handleStalePositionRefusal,
+  isPositionKnownClosed,
+  refuseSendForClosedPosition,
+  requestPositionsRefresh,
+} from '../../../utils/stalePositionRefusal';
 import type { Timeframe, TradingViewChartTheme } from '../../../types/chart';
 import { CHART_AXIS_FONT_FAMILY, clampAlpha, colorWithAlpha } from '../presentation/chartTheme';
 import {
@@ -363,7 +370,7 @@ export const createTradeOverlayDomRuntime = ({
       appendOverlayNode(badge, { kind: 'price-badge', price }, 'active');
     };
 
-    // ── cTrader-style position controls ────────────────────────────────────
+    // â”€â”€ cTrader-style position controls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const getAccountCurrencyLabel = (): string => {
       const currency = String(useAppStore.getState().account?.currency || '').trim().toUpperCase();
       return currency || 'USD';
@@ -374,13 +381,13 @@ export const createTradeOverlayDomRuntime = ({
       tr('{{value0}} lots', { value0: trade.volume }),
       tr('Ticket: {{value0}}', { value0: getTradeTicketLabel(trade.key) || trade.key }),
       role
-        ? tr(role === 'SL' ? 'Stop Loss: {{value0}}' : 'Take Profit: {{value0}}', { value0: price ? formatTradeLevelBadgePrice(price) : '—' })
+        ? tr(role === 'SL' ? 'Stop Loss: {{value0}}' : 'Take Profit: {{value0}}', { value0: price ? formatTradeLevelBadgePrice(price) : 'â€”' })
         : tr('Open price: {{value0}}', { value0: formatTradeLevelBadgePrice(trade.entryPrice) }),
       tr(role ? 'Modify Position' : 'Add stop loss and take profit'),
-    ].join(' · ');
+    ].join(' Â· ');
 
     const getTradeTicket = (tradeKey: string): number => {
-      const ticket = Number.parseInt(tradeKey.replace(/^trade:/, ''), 10);
+      const ticket = Number.parseInt(tradeKey.replace(/^(trade|order):/, ''), 10);
       return Number.isFinite(ticket) && ticket > 0 ? ticket : 0;
     };
 
@@ -477,7 +484,7 @@ export const createTradeOverlayDomRuntime = ({
       }
     };
 
-    // Optimistic SL/TP submission used by the level-bar ✕ buttons. Mirrors the
+    // Optimistic SL/TP submission used by the level-bar âœ• buttons. Mirrors the
     // drag-release flow: override immediately, then reconcile or roll back.
     const submitTradeLevelChange = (
       tradeObj: ActiveTradeSnapshot,
@@ -487,6 +494,13 @@ export const createTradeOverlayDomRuntime = ({
     ) => {
       const ticket = getTradeTicket(tradeObj.key);
       if (!ticket) return;
+      // Pre-send check: a level whose position already closed must not reach the modify API.
+      if (isPositionKnownClosed(ticket)) {
+        window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+          detail: { message: refuseSendForClosedPosition(ticket, { refresh: requestPositionsRefresh, tr }), type: 'error' },
+        }));
+        return;
+      }
       if (getTradeLevelStateKeys(tradeObj).some(key => pendingTradeLevelModifyRequestsRef.current.has(key))) {
         window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
           detail: { message: `${tr('Modify Position')}: ${tr('Processing...')}`, type: 'error' },
@@ -499,8 +513,6 @@ export const createTradeOverlayDomRuntime = ({
       // chart's name-table digits, quote digits (the tick normalizer may
       // fill them from the name table) or a default. Unknown precision sends
       // the level unrounded and the check degrades to side-only.
-      const submitTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown } | undefined>;
-      const submitTick = submitTicks[tradeObj.symbol] ?? submitTicks[String(tradeObj.symbol).toUpperCase()] ?? null;
       const submitSpec = readRegisteredSymbolPriceSpec(tradeObj.symbol);
       const submitDigits = submitSpec.digits;
       const submitTickSize = submitSpec.tickSize;
@@ -512,15 +524,20 @@ export const createTradeOverlayDomRuntime = ({
         ...nextLevels,
         ...(role === 'SL' ? { sl: submitPrice } : { tp: submitPrice }),
       };
-      const submitViolation = protectionLevelViolation({
-        side: String(tradeObj.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
-        role,
-        price: submitPrice,
-        bid: Number(submitTick?.bid) || 0,
-        ask: Number(submitTick?.ask) || 0,
-        digits: submitDigits,
-        tickSize: submitTickSize,
-      });
+      // Validated locally only against a fresh Market Watch quote (same source as the
+      // chart and Market Watch rows). Without one the request is sent and the server decides.
+      const submitQuote = submitPrice > 0 ? readTradeValidationQuote(tradeObj.symbol) : null;
+      const submitViolation = submitQuote
+        ? protectionLevelViolation({
+          side: String(tradeObj.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+          role,
+          price: submitPrice,
+          bid: submitQuote.bid,
+          ask: submitQuote.ask,
+          digits: submitDigits,
+          tickSize: submitTickSize,
+        })
+        : null;
       if (submitViolation) {
         window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
           detail: { message: submitViolation, type: 'error' },
@@ -574,11 +591,27 @@ export const createTradeOverlayDomRuntime = ({
         },
       }));
 
-      api.positions.modifyPosition(ticket, tradeLevelModifyPatch(role, role === 'SL' ? nextLevels.sl || 0 : nextLevels.tp || 0))
+      const submitPromise = tradeObj.kind === 'pending'
+        ? api.orders.modifyPendingOrder(ticket, {
+            price: tradeObj.entryPrice,
+            ...(role === 'SL' ? { price_sl: nextLevels.sl || 0 } : { price_tp: nextLevels.tp || 0 }),
+          })
+        : api.positions.modifyPosition(ticket, tradeLevelModifyPatch(role, role === 'SL' ? nextLevels.sl || 0 : nextLevels.tp || 0));
+
+      submitPromise
         .then(() => {
           if (!isCurrentRequest()) return;
           clearCurrentRequest();
-          window.setTimeout(() => window.dispatchEvent(new Event('rtx:force-refresh-positions')), 250);
+          if (tradeObj.kind === 'pending') {
+            const loginId = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+            if (Number.isFinite(loginId) && loginId > 0) {
+              void api.orders.getPendingOrders(loginId)
+                .then((orders) => useAppStore.getState().setOrders(orders as any))
+                .catch(() => undefined);
+            }
+          } else {
+            window.setTimeout(() => window.dispatchEvent(new Event('rtx:force-refresh-positions')), 250);
+          }
         })
         .catch((err) => {
           if (!isCurrentRequest()) return;
@@ -605,14 +638,20 @@ export const createTradeOverlayDomRuntime = ({
           }));
           // Name the offending level against the live quote when the server
           // refused the geometry (never a bare "Failed").
-          const domTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown; digits?: unknown } | undefined>;
-          const domTick = domTicks[tradeObj.symbol] ?? domTicks[String(tradeObj.symbol).toUpperCase()] ?? null;
+          const staleMessage = handleStalePositionRefusal(err, ticket, { refresh: requestPositionsRefresh, tr });
+          if (staleMessage) {
+            window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+              detail: { message: staleMessage, type: 'error' },
+            }));
+            return;
+          }
+          const domQuote = readTradeValidationQuote(tradeObj.symbol);
           const domRefusal = describeProtectionRefusal(err, {
             side: String(tradeObj.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
             sl: nextLevels.sl || 0,
             tp: nextLevels.tp || 0,
-            bid: Number(domTick?.bid) || 0,
-            ask: Number(domTick?.ask) || 0,
+            bid: domQuote?.bid ?? 0,
+            ask: domQuote?.ask ?? 0,
             digits: submitDigits,
           });
           window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
@@ -638,6 +677,8 @@ export const createTradeOverlayDomRuntime = ({
         ticket,
         symbol: trade.symbol,
         side: trade.side,
+        kind: trade.kind,
+        orderTypeLabel: trade.orderType ? trade.orderType.replace(/_/g, ' ').toUpperCase() : undefined,
         volume: trade.volume,
         isLightSurface: lightSurface,
         plainLabel: true,
@@ -645,6 +686,24 @@ export const createTradeOverlayDomRuntime = ({
         leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
         currencyLabel,
         title: `${trade.side} ${trade.volume} ${ticketLabel} @ ${entryPriceLabel}. Drag above/below to create TP or SL.`,
+        onAction: (action) => {
+          if (trade.kind === 'pending' && action === 'close') {
+            void api.orders.cancelOrder(String(ticket))
+              .then(() => {
+                const loginId = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+                if (Number.isFinite(loginId) && loginId > 0) {
+                  return api.orders.getPendingOrders(loginId).then((orders) => {
+                    useAppStore.getState().setOrders(orders as any);
+                  });
+                }
+              })
+              .catch((err) => {
+                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                  detail: { message: formatOrderError(err), type: 'error' },
+                }));
+              });
+          }
+        },
         onShare: () => {
           const shareUrl = buildTradeShareUrl({
             version: 1,
@@ -661,8 +720,8 @@ export const createTradeOverlayDomRuntime = ({
           void copyTextToClipboard(shareUrl).then((copied) => {
             window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
               detail: copied
-                ? { message: `${tr('Copied')} · ${tr('Trade')} URL: ${ticketLabel || trade.symbol}`, type: 'success' }
-                : { message: `${tr('Copy')} · ${tr('Failed')}`, type: 'error' },
+                ? { message: `${tr('Copied')} Â· ${tr('Trade')} URL: ${ticketLabel || trade.symbol}`, type: 'success' }
+                : { message: `${tr('Copy')} Â· ${tr('Failed')}`, type: 'error' },
             }));
           });
         },
@@ -754,9 +813,10 @@ export const createTradeOverlayDomRuntime = ({
         button.addEventListener('click', event => {
           event.stopPropagation();
           dispatchChartPositionModify({
-            ticket: Number(trade.key.replace(/^trade:/, '')),
+            ticket: Number(trade.key.replace(/^(trade|order):/, '')),
             symbol: trade.symbol,
             sessionScope: brokerAccountSessionScope,
+            kind: trade.kind === 'pending' ? 'pending-order' : 'position',
           });
         });
         button.style.cursor = 'pointer';
@@ -854,7 +914,7 @@ export const createTradeOverlayDomRuntime = ({
       );
     };
 
-    // ── end cTrader-style position controls ────────────────────────────────
+    // â”€â”€ end cTrader-style position controls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
   return {

@@ -110,7 +110,7 @@ export const createTradeOverlayModelRuntime = ({
     };
 
     const getTradeTicketLabel = (tradeKey: string): string => {
-      const ticket = tradeKey.replace(/^trade:/, '');
+      const ticket = tradeKey.replace(/^(trade|order):/, '');
       return ticket ? `#${ticket}` : '';
     };
 

@@ -7,7 +7,9 @@ import { pickAccountDisplayName } from '../../utils/accountDisplayName';
 import { resolveTradingAccountType } from '../../services/tradingAccountType';
 import { applyPositionStreamUpdate, decodePositionStreamMessage } from '../../services/tradePositionStream';
 import { loadSessionTradeSnapshot } from '../../services/tradeStartupSnapshot';
-import { useAppStore, type Position } from '../../store/useAppStore';
+import { beginPositionsRead, useAppStore, type Position } from '../../store/useAppStore';
+import { markPositionsReadSettled, markPositionsReadStarted } from '../../services/positionSnapshotSafety';
+import { startPositionsSafetyNet } from './positionsSafetyNet';
 import { parsePositiveLogin } from '../session/sessionIdentity';
 import type { RefreshPositionsOptions, TradeRestRead } from './tradeRuntimeContracts';
 import { applyOpenPositionSnapshot, normalizeAccountSummary, normalizePositions } from './positionRuntime';
@@ -93,9 +95,10 @@ export const useAccountSnapshotRuntime = ({
       }
 
       const request = (async () => {
+        markPositionsReadStarted();
         try {
           const restRead = beginTradeRestRead();
-          const positionsVersion = positionsStreamVersionRef.current;
+          const positionsReadStartedAt = beginPositionsRead();
           const accountScope = getCommittedBrokerAccountSessionScope();
           if (!accountScope.authenticated || accountScope.accountId !== String(loginId)) return;
           const metricsScope = getCommittedBrokerAccountSessionScopeKey(accountScope);
@@ -166,18 +169,18 @@ export const useAccountSnapshotRuntime = ({
             const currentPositions = useAppStore.getState().positions;
             const decoded = decodePositionStreamMessage({ data: { positions: positionsPayload } });
             const normalized = decoded
-              ? applyPositionStreamUpdate(currentPositions, {
-                ...decoded,
-                source: 'rest',
-                kind: positionsStreamVersionRef.current > positionsVersion ? 'patch' : 'snapshot',
-              }, (raw) => normalizePositions([raw])[0])
+              ? applyPositionStreamUpdate(currentPositions, { ...decoded, source: 'rest' }, (raw) => normalizePositions([raw])[0])
               : normalizePositions(positionsPayload);
-            applyOpenPositionSnapshot(reconcileOptimisticClosedPositions(normalized, { clearConfirmedAbsent: true }));
+            applyOpenPositionSnapshot(reconcileOptimisticClosedPositions(normalized, { clearConfirmedAbsent: true }), {
+              readStartedAt: positionsReadStartedAt,
+              complete: decoded === null || decoded.kind === 'snapshot',
+            });
           }
           activeAccountDataRef.current = loginId;
         } catch (error) {
           if (isInitial) console.error('Failed to fetch account data:', error);
         } finally {
+          markPositionsReadSettled();
           if (isInitial && setupActive && isAuthenticatedRef.current && accountIdRef.current === String(loginId)) {
             setInitialTradeSnapshotSettledFor(String(loginId));
           }
@@ -205,6 +208,12 @@ export const useAccountSnapshotRuntime = ({
       });
     });
 
+    // Safety net: one complete positions read per interval, so a close frame lost on a live
+    // socket is caught. Stopped with this effect (logout, account change) and while hidden.
+    const stopPositionsSafetyNet = startPositionsSafetyNet({
+      read: () => { void refreshPositions(loginId, { allowWsCommit: true }); },
+    });
+
     const handleTradeStreamRecovery = () => {
       void fetchAccountHeartbeat(false);
       void refreshPositions(loginId, { allowWsCommit: true });
@@ -213,6 +222,7 @@ export const useAccountSnapshotRuntime = ({
     window.addEventListener('rtx:trade-stream-recovered', handleTradeStreamRecovery);
     return () => {
       setupActive = false;
+      stopPositionsSafetyNet();
       window.removeEventListener('rtx:trade-stream-recovered', handleTradeStreamRecovery);
     };
   }, [

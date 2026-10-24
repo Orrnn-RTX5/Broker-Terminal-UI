@@ -29,29 +29,28 @@ type Combo = {
   code: 'INVALID_STOPS' | 'INVALID_SL_TP';
   sl?: number;
   tp?: number;
-  levelLabel: string;
-  closeLabel: string;
+  expectedRefusal: string;
 };
 
 const COMBOS: Combo[] = [
   // BUY SL must be below Bid → violation is sl >= Bid.
-  { side: 'BUY', role: 'SL', code: 'INVALID_STOPS', sl: 100.1, levelLabel: 'Stop loss', closeLabel: 'Bid' },
-  { side: 'BUY', role: 'SL', code: 'INVALID_SL_TP', sl: 100.1, levelLabel: 'Stop loss', closeLabel: 'Bid' },
+  { side: 'BUY', role: 'SL', code: 'INVALID_STOPS', sl: 100.1, expectedRefusal: 'SL 100.10 must be below Bid 100.00' },
+  { side: 'BUY', role: 'SL', code: 'INVALID_SL_TP', sl: 100.1, expectedRefusal: 'SL 100.10 must be below Bid 100.00' },
   // BUY TP must be above Bid → violation is tp <= Bid.
-  { side: 'BUY', role: 'TP', code: 'INVALID_STOPS', tp: 99.9, levelLabel: 'Take profit', closeLabel: 'Bid' },
-  { side: 'BUY', role: 'TP', code: 'INVALID_SL_TP', tp: 99.9, levelLabel: 'Take profit', closeLabel: 'Bid' },
+  { side: 'BUY', role: 'TP', code: 'INVALID_STOPS', tp: 99.9, expectedRefusal: 'TP 99.90 must be above Bid 100.00' },
+  { side: 'BUY', role: 'TP', code: 'INVALID_SL_TP', tp: 99.9, expectedRefusal: 'TP 99.90 must be above Bid 100.00' },
   // SELL SL must be above Ask → violation is sl <= Ask.
-  { side: 'SELL', role: 'SL', code: 'INVALID_STOPS', sl: 99.9, levelLabel: 'Stop loss', closeLabel: 'Ask' },
-  { side: 'SELL', role: 'SL', code: 'INVALID_SL_TP', sl: 99.9, levelLabel: 'Stop loss', closeLabel: 'Ask' },
+  { side: 'SELL', role: 'SL', code: 'INVALID_STOPS', sl: 99.9, expectedRefusal: 'SL 99.90 must be above Ask 100.05' },
+  { side: 'SELL', role: 'SL', code: 'INVALID_SL_TP', sl: 99.9, expectedRefusal: 'SL 99.90 must be above Ask 100.05' },
   // SELL TP must be below Ask → violation is tp >= Ask.
-  { side: 'SELL', role: 'TP', code: 'INVALID_STOPS', tp: 100.15, levelLabel: 'Take profit', closeLabel: 'Ask' },
-  { side: 'SELL', role: 'TP', code: 'INVALID_SL_TP', tp: 100.15, levelLabel: 'Take profit', closeLabel: 'Ask' },
+  { side: 'SELL', role: 'TP', code: 'INVALID_STOPS', tp: 100.15, expectedRefusal: 'TP 100.15 must be below Ask 100.05' },
+  { side: 'SELL', role: 'TP', code: 'INVALID_SL_TP', tp: 100.15, expectedRefusal: 'TP 100.15 must be below Ask 100.05' },
 ];
 
 describe('protection toast (SL/TP refusal)', () => {
   it.each(COMBOS)(
     '$side $role-violation $code shows plain-words toast without raw code',
-    ({ side, code, sl, tp, levelLabel, closeLabel }) => {
+    ({ side, code, sl, tp, expectedRefusal }) => {
       const err = makeGatewayErr(code);
 
       const refusal = describeProtectionRefusal(err, {
@@ -63,11 +62,8 @@ describe('protection toast (SL/TP refusal)', () => {
         digits: DIGITS,
       });
 
-      // Plain-words sentence names the offending level vs the live Bid/Ask + side.
-      expect(refusal).not.toBeNull();
-      expect(refusal!).toContain(levelLabel);
-      expect(refusal!).toContain(closeLabel);
-      expect(refusal!).toContain(side);
+      // Plain-words sentence names the offending level, direction, and live Bid/Ask bound.
+      expect(refusal).toBe(expectedRefusal);
 
       // Toast fallback is mapped copy, not a raw-code echo and not Failed-only.
       const formatted = formatOrderError(err);

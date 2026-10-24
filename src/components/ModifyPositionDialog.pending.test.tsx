@@ -1,8 +1,16 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { markQuoteFeedActivity, clearQuoteFeedActivity } from '../store/quoteFeedActivity';
 
 import { ModifyPositionDialog } from './ModifyPositionDialog';
 import { commitBrokerAccountSessionScope } from '../services/brokerSession';
+
+// Live feed quotes for these symbols are stamped as alive (the SL/TP local check needs a feed stamp).
+beforeEach(() => {
+    clearQuoteFeedActivity();
+    markQuoteFeedActivity('BTCUSD', Date.now());
+});
+
 
 const mocks = vi.hoisted(() => ({
   modifyPendingOrder: vi.fn(),
@@ -21,8 +29,13 @@ vi.mock('../store/useMarketDataStore', () => ({
 }));
 
 vi.mock('../store/useAppStore', () => ({
+  // Shared Market Watch tick source (useTick / resolveTickFromLookup).
+  useTick: () => mocks.tick,
+  resolveTickFromLookup: () => mocks.tick,
   useAppStore: {
     getState: () => ({
+      ticks: mocks.tick ? { [mocks.tick.symbol]: mocks.tick } : {},
+      tickLookup: {},
       positions: mocks.positions,
       accountId: '200313',
       setPositions: mocks.setPositions,
@@ -92,7 +105,7 @@ describe('ModifyPositionDialog pending-order', () => {
     expect(expiryInput).toBeTruthy();
 
     fireEvent.change(priceInput, { target: { value: '81700.5' } });
-    fireEvent.change(expiryInput, { target: { value: '1792504500' } });
+    fireEvent.change(expiryInput, { target: { value: '2030-01-01T12:00' } });
 
     const slInput = document.getElementById('modify-position-34671-sl') as HTMLInputElement;
     fireEvent.change(slInput, { target: { value: '81600' } });
@@ -111,7 +124,8 @@ describe('ModifyPositionDialog pending-order', () => {
     expect(payload.comment).toBeUndefined();
     expect(payload.trailing_stop).toBeUndefined();
     expect(payload.trailing_step).toBeUndefined();
-    expect(payload.expiry).toBe(1792504500);
+    expect(payload.time_in_force).toBe('GTD');
+    expect(payload.expiry).toBe(Math.floor(Date.parse('2030-01-01T12:00') / 1000));
   });
 
   it('refreshes the pending list from the backend after modify', async () => {

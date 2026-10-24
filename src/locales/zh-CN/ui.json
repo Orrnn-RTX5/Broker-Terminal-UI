@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "价格和终端提醒",
   "Price at which the position was opened": "持仓开仓价格",
   "Price label": "价格标签",
+  "Price moved, drag again": "价格已变动，请重新拖动",
+  "Price updating, please retry": "价格更新中，请重试",
   "Price note": "价格说明",
   "Price precision": "价格精准",
   "Price range": "价格范围",

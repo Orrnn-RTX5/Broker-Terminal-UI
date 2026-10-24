@@ -26,6 +26,7 @@ const reconcile = (
   evidence: 'none' | 'broker' | 'history' | 'close-request',
   side: 'BUY' | 'SELL' = 'BUY',
   currentPrice = 83000,
+  excluded = false,
 ) => {
   const now = Date.now();
   const trade: ActiveTradeSnapshot = {
@@ -41,6 +42,7 @@ const reconcile = (
     now, normalizedChartSymbol: trade.symbol,
     nextActiveSnapshots: new Map(), renderActiveSnapshots, visuallyRetainedActiveTradeKeys: new Set(),
     pendingMissingActiveTradesRef, closeSuppressedTradeKeys,
+    isExcludedByAuthoritativeSnapshot: () => excluded,
     realClosedTradeKeys: new Set(evidence === 'history' ? [trade.key] : []),
     shouldKeepMissingActiveTradeOverlay, isPositionMarkedClosed: () => evidence === 'broker',
     getTradeTicket: (key: string) => Number(key.replace('trade:', '')),
@@ -67,6 +69,19 @@ describe('authoritative chart position closure', () => {
     const h = reconcile(evidence);
     expect(h.renderActiveSnapshots.has(h.trade.key)).toBe(false);
     expect(h.pendingMissingActiveTradesRef.current.has(h.trade.key)).toBe(false);
+  });
+
+  it('keeps a missing trade through a transient gap that no authoritative snapshot has excluded', () => {
+    const h = reconcile('none', 'BUY', 83000, false);
+    expect(h.renderActiveSnapshots.get(h.trade.key)).toBe(h.trade);
+    expect(h.pendingMissingActiveTradesRef.current.get(h.trade.key)?.trade).toBe(h.trade);
+  });
+
+  it('drops a missing trade at once when the store reports it confirmed-then-absent or a fresh snapshot excludes it', () => {
+    const h = reconcile('none', 'BUY', 83000, true);
+    expect(h.renderActiveSnapshots.has(h.trade.key)).toBe(false);
+    expect(h.pendingMissingActiveTradesRef.current.has(h.trade.key)).toBe(false);
+    expect(h.visuallyRetainedActiveTradeKeys.has(h.trade.key)).toBe(false);
   });
 
   it('uses one bounded history recheck and cancels it after the missing trade is resolved', () => {

@@ -13,16 +13,22 @@ export type TradeLevelModifyRequestId = number;
 
 export interface ActiveTradeSnapshot {
   key: string;
+  kind?: 'position' | 'pending';
+  orderType?: string;
   symbol: string;
   side: TradeSide;
   volume: number;
   entryPrice: number;
+  limitPrice?: number;
   entryTime: number;
   entryExecutionTime: number;
   currentPrice: number;
   currentTime: number;
   sl?: number;
   tp?: number;
+  expiry?: number | null;
+  comment?: string;
+  stateVersion?: number;
 }
 
 export type ClosedTradeSnapshot = ClosedTradeOverlaySnapshot;

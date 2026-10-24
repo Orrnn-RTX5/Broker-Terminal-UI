@@ -1021,6 +1021,10 @@ export const ordersApi = {
     if (isStopLimit && (!Number.isFinite(stopLimitPrice) || stopLimitPrice <= 0)) {
       throw new Error('Stop limit price must be a positive number for stop limit orders');
     }
+    const rawPrice = Number(data.price);
+    if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
+      throw new Error('Price must be greater than zero');
+    }
     const expiry = endpoints.normalizePendingExpiryToEpochSeconds(data.expiration ?? data.expiry);
     const comment = typeof data.comment === 'string' && data.comment.trim() ? data.comment : undefined;
     const result = await endpoints.tradingApi.placePendingOrder({
@@ -1029,7 +1033,7 @@ export const ordersApi = {
       side: normalizeSideForApi(data.side),
       volume: requireVolume(data.volume),
       type: type as endpoints.PendingOrderRequest['type'],
-      price: requireVolume(data.price),
+      price: rawPrice,
       ...(isStopLimit ? { price_limit: stopLimitPrice } : {}),
       price_sl: data.price_sl ?? data.sl,
       price_tp: data.price_tp ?? data.tp,
@@ -1061,9 +1065,14 @@ export const ordersApi = {
     if (!Number.isFinite(ticket) || ticket <= 0) throw new Error('Invalid pending order ticket');
     return endpoints.tradingApi.modifyPendingOrder(ticket, {
       price: data.price,
+      ...(data.price_limit !== undefined ? { price_limit: data.price_limit } : {}),
+      ...(data.time_in_force !== undefined ? { time_in_force: data.time_in_force } : {}),
+      ...(data.comment !== undefined ? { comment: data.comment } : {}),
+      ...(data.state_version !== undefined ? { state_version: data.state_version } : {}),
       price_sl: data.price_sl ?? data.sl,
       price_tp: data.price_tp ?? data.tp,
-      expiration: data.expiration ?? data.expiry,
+      expiration: data.expiration !== undefined ? data.expiration : data.expiry,
+      expiry: data.expiry !== undefined ? data.expiry : data.expiration,
       client_order_id: data.client_order_id,
     });
   },

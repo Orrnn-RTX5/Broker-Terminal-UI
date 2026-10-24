@@ -1,3 +1,5 @@
+import { readPositionStateVersion } from './positionStateVersion';
+
 type PositionRecord = Record<string, any>;
 
 export interface DecodedPositionStreamMessage {
@@ -25,13 +27,9 @@ export const getPositionStreamTicket = (value: PositionRecord): number | null =>
 };
 
 /** Versions are decimal strings: converting them to Number loses close ordering. */
-export const getPositionStreamVersion = (value: PositionRecord): string | null => {
-  const version = value.state_version_text ?? value.state_version;
-  if (typeof version === 'number' && !Number.isSafeInteger(version)) return null;
-  if (typeof version !== 'number' && typeof version !== 'string') return null;
-  const text = String(version).trim();
-  return /^\d+$/.test(text) ? BigInt(text).toString() : null;
-};
+export const getPositionStreamVersion = (value: PositionRecord): string | null => (
+  readPositionStateVersion(value.state_version_text ?? value.state_version)
+);
 
 const isCloseEvent = (event: string): boolean => (
   ['close', 'closed', 'position_close', 'position_closed', 'sl_hit', 'tp_hit', 'stop_out'].includes(event)

@@ -1,6 +1,6 @@
 import { lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RetainedLazyFeature } from '../../../startup/RetainedLazyFeature';
-import { useUiTranslation } from '../../../hooks/useUiTranslation';
+import { translateUi, useUiTranslation } from '../../../hooks/useUiTranslation';
 import { useAppStore, type Account } from '../../../store/useAppStore';
 import { useChartSettingsStore } from '../../../store/useChartSettingsStore';
 import { useLiveAccountMetrics } from '../../../hooks/useLiveAccountMetrics';
@@ -30,6 +30,7 @@ import { getCurrentBrokerAccountSessionScopeKey, normalizeTradeSymbol } from '..
 import { TradeMetricValue, UnavailableTradeMetric } from './TradeMetricValue';
 import { TradeTable } from './TradeTable';
 import { closePositionsBy, buildCloseByPairKey, findCloseByCounterpart, readCloseByLegTicket } from '../../../api/closeBy';
+import { handleStalePositionRefusal, requestPositionsRefresh } from '../../../utils/stalePositionRefusal';
 import { publishOrderFeedback } from '../../../app/trading/orderFeedback';
 import { useConfirmStore } from '../../../store/useConfirmStore';
 import { feedbackLabel, feedbackValue } from '../../../utils/uiFeedback';
@@ -841,6 +842,12 @@ ${rows}
             return true;
         } catch (err) {
             console.error('Failed to close positions by each other:', err);
+            // Either leg already closed on the broker (the 409 names the closed leg): plain message.
+            const staleMessage = handleStalePositionRefusal(err, Number(rowTicket), { refresh: requestPositionsRefresh, tr: translateUi });
+            if (staleMessage) {
+                publishOrderFeedback([feedbackValue(staleMessage)], 'error');
+                return false;
+            }
             publishOrderFeedback(
                 [feedbackLabel('Close by'), feedbackValue(` #${rowTicket} / #${pairTicket}: `), feedbackLabel('Failed'), feedbackValue(` — ${formatOrderError(err)}`)],
                 'error',

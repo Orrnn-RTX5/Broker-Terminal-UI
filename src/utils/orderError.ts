@@ -150,7 +150,24 @@ const readStructuredBackendError = (
   return { code, message: scrub(message) };
 };
 
+const TOO_MANY_ORDERS_MESSAGE = 'Account busy — previous orders are still processing. Please retry.';
+
+/**
+ * TOO_MANY_ORDERS: the server refused the order before booking it, so nothing
+ * changed and no refresh is needed. Two transports carry it: REST (HTTP 429)
+ * and the trade WebSocket, whose rejection has no HTTP status but keeps the
+ * backend code on a preserved order error (OrderCommandTerminalError, status
+ * "rejected" or "expired").
+ */
+const isTooManyOrdersRefusal = (err: unknown): boolean => {
+  if (!isRecord(err) || extractErrorCode(err).toUpperCase() !== 'TOO_MANY_ORDERS') return false;
+  if (Number(err.status) === 429) return true;
+  return err.preserveBackendOrderError === true || err.status === 'rejected' || err.status === 'expired';
+};
+
 export const formatOrderError = (err: unknown): string => {
+  if (isTooManyOrdersRefusal(err)) return TOO_MANY_ORDERS_MESSAGE;
+
   if (isRecord(err) && err.preserveBackendOrderError === true) {
     const code = readString(err.code);
     const backendMessage = readString(err.backendMessage);

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { markQuoteFeedActivity, clearQuoteFeedActivity } from '../../../store/quoteFeedActivity';
 import { useTradingChartTradeLevelDrag } from './useTradingChartTradeLevelDrag';
 import { commitBrokerAccountSessionScope } from '../../../services/brokerSession';
 import {
@@ -10,11 +11,36 @@ import {
 
 const { modifyPosition } = vi.hoisted(() => ({ modifyPosition: vi.fn(() => new Promise(() => undefined)) }));
 vi.mock('../../../services/api', () => ({ default: { positions: { modifyPosition } } }));
-vi.mock('../../../store/useAppStore', () => ({ useAppStore: { getState: () => ({ positions: [], accountId: 123 }) } }));
+// Fresh two-sided quote (the Market Watch tick the drag validates against). Bid 900 is the
+// BUY close, so entry-line roles match the entry-based fixtures below.
+const quote = vi.hoisted(() => ({ bid: 900, ask: 900.5, ageMs: 0 }));
+vi.mock('../../../store/useAppStore', () => ({
+  useAppStore: {
+    getState: () => ({
+      positions: [],
+      accountId: 123,
+      ticks: { XAUUSD: { symbol: 'XAUUSD', bid: quote.bid, ask: quote.ask, timestamp: Date.now() - quote.ageMs } },
+      tickLookup: {},
+    }),
+  },
+  resolveTickFromLookup: (ticks: Record<string, unknown>, _lookup: unknown, symbol: string) => ticks[symbol],
+  isConfirmedClosedPosition: () => false,
+  isConfirmedClosedBySnapshot: () => false,
+  markPositionsClosed: vi.fn(),
+}));
 vi.mock('../../../utils/tradeHistoryLevelCache', () => ({ rememberTradeHistoryPositionLevels: vi.fn() }));
+
+// Every quote here is a live feed quote: stamp the feed as alive for XAUUSD. Stale cases age the stamp.
+beforeEach(() => {
+  clearQuoteFeedActivity();
+  markQuoteFeedActivity('XAUUSD', Date.now());
+});
 
 afterEach(() => {
   cleanup();
+  quote.bid = 900;
+  quote.ask = 900.5;
+  quote.ageMs = 0;
   document.body.innerHTML = '';
   vi.clearAllMocks();
   vi.restoreAllMocks();
@@ -29,7 +55,12 @@ const registerCatalogDigits = (symbol: string, digits: number) => {
   registerDailyChangePriceModes([{ symbol, digits }]);
 };
 
-function harness(role: 'SL' | 'TP' | 'ENTRY', offset: number, docked = false) {
+function harness(
+  role: 'SL' | 'TP' | 'ENTRY',
+  offset: number,
+  docked = false,
+  levels: { sl: number; tp: number } = { sl: 850, tp: 950 },
+) {
   const wrapper = document.createElement('div');
   wrapper.className = 'rtx-chart-wrapper';
   const container = document.createElement('div');
@@ -60,7 +91,7 @@ function harness(role: 'SL' | 'TP' | 'ENTRY', offset: number, docked = false) {
   const trade = {
     key: 'trade:987', symbol: 'XAUUSD', side: 'BUY' as const, volume: 1,
     entryPrice: 900, currentPrice: 900, entryTime: 1000, entryExecutionTime: 1000, currentTime: 1100,
-    sl: 850, tp: 950,
+    sl: levels.sl, tp: levels.tp,
   };
   const options = {
     activeToolRef: ref(null), activeTradeSnapshotsRef: ref(new Map([[trade.key, trade]])),
@@ -617,5 +648,175 @@ describe('drag SL/TP precision comes from broker data only', () => {
     h.send('pointermove', 157);
     h.send('pointerup', 157);
     expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 899.99 });
+  });
+});
+
+describe('drag validation uses the live close and fails closed', () => {
+  const feedback = (): { messages: string[]; stop: () => void } => {
+    const messages: string[] = [];
+    const listener = (event: Event) => {
+      messages.push(String((event as CustomEvent<{ message: string }>).detail.message));
+    };
+    window.addEventListener('rtx:order-feedback', listener);
+    return { messages, stop: () => window.removeEventListener('rtx:order-feedback', listener) };
+  };
+
+  it('a stale quote is not validated locally: the level is sent for the server to decide', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    markQuoteFeedActivity('XAUUSD', Date.now() - 120_000);
+    const log = feedback();
+    const h = harness('SL', 0);
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157);
+    h.send('pointerup', 157);
+    log.stop();
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 843 });
+    expect(log.messages).toEqual([]);
+  });
+
+  it('a one-sided quote is not validated locally: the level is sent for the server to decide', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    quote.bid = 0;
+    const h = harness('SL', 0);
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157);
+    h.send('pointerup', 157);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 843 });
+  });
+
+  it('a stop-loss chip with no fresh quote submits the dropped level as-is (server-final, no snap)', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    quote.bid = 0;
+    const h = harness('SL', 0, false, { sl: 0, tp: 950 });
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157);
+    h.send('pointerup', 157);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 843 });
+  });
+
+  it('submits exactly the price last painted by the preview when it is still valid (M4)', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    const h = harness('SL', 0);
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157);
+    h.send('pointerup', 157);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 843 });
+  });
+
+  it('refuses a painted level that the live quote no longer accepts: "Price moved, drag again" (M4)', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    const log = feedback();
+    const h = harness('SL', 0);
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157);
+    // The quote moves below the painted 843 before the release: 843 is no longer below Bid.
+    quote.bid = 840;
+    quote.ask = 840.5;
+    h.send('pointerup', 157);
+    log.stop();
+    expect(modifyPosition).not.toHaveBeenCalled();
+    expect(log.messages).toEqual(['Price moved, drag again']);
+  });
+
+  it('refuses a BUY stop loss dropped above the live Bid and names the bound (no send)', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    const log = feedback();
+    const h = harness('SL', 0);
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 95);
+    h.send('pointerup', 95);
+    log.stop();
+    expect(modifyPosition).not.toHaveBeenCalled();
+    expect(log.messages).toContain('SL 905.00 must be below Bid 900.00');
+  });
+
+  it('a take-profit chip dragged short below the Bid snaps above the Bid by the seed distance', () => {
+    // Live spread 0.50 at 2 digits is the seed distance (above the 5-point buffer).
+    registerCatalogDigits('XAUUSD', 2);
+    const h = harness('TP', 0, false, { sl: 850, tp: 0 });
+    h.send('pointerdown', 50, h.target);
+    h.send('pointermove', 101);
+    h.send('pointerup', 101);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_tp: 900.5 });
+  });
+
+  it('a stop-loss chip dropped above the Bid snaps below the Bid by the seed distance', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    const h = harness('SL', 0, false, { sl: 0, tp: 950 });
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 95);
+    h.send('pointerup', 95);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 899.5 });
+  });
+
+  it('a BUY in profit: an entry-line drop between entry and the live Bid is a stop loss (valid), not refused', () => {
+    // Entry 900, Bid 905 (profit). Dropping at 902 is below Bid, so it is an SL.
+    registerCatalogDigits('XAUUSD', 2);
+    quote.bid = 905;
+    quote.ask = 905.5;
+    const h = harness('ENTRY', 0);
+    h.send('pointerdown', 100, h.target);
+    h.send('pointermove', 98);
+    h.send('pointerup', 98);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 902 });
+  });
+
+  it('a BUY in loss: an entry-line drop between the live Bid and entry is a take profit (valid), not refused', () => {
+    // Entry 900, Bid 895 (loss). Dropping at 897 is above Bid, so it is a TP.
+    registerCatalogDigits('XAUUSD', 2);
+    quote.bid = 895;
+    quote.ask = 895.5;
+    const h = harness('ENTRY', 0);
+    h.send('pointerdown', 100, h.target);
+    h.send('pointermove', 103);
+    h.send('pointerup', 103);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_tp: 897 });
+  });
+});
+
+describe('drag release sends only the painted level', () => {
+  const feedback = (): { messages: string[]; stop: () => void } => {
+    const messages: string[] = [];
+    const listener = (event: Event) => {
+      messages.push(String((event as CustomEvent<{ message: string }>).detail.message));
+    };
+    window.addEventListener('rtx:order-feedback', listener);
+    return { messages, stop: () => window.removeEventListener('rtx:order-feedback', listener) };
+  };
+
+  it('a real drag that painted nothing sends nothing (treated as a click)', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    const h = harness('SL', 0);
+    h.coordinateToPrice.mockReturnValueOnce(null); // the pointermove paints nothing
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157);
+    h.send('pointerup', 157);
+    expect(modifyPosition).not.toHaveBeenCalled();
+  });
+
+  it('a valid painted level is sent exactly as painted when the feed goes silent before release (server-final)', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    const h = harness('SL', 0);
+    h.send('pointerdown', 150, h.target);
+    h.send('pointermove', 157); // paints 843 (valid below Bid 900)
+    markQuoteFeedActivity('XAUUSD', Date.now() - 120_000); // the feed is silent past the age
+    h.send('pointerup', 157);
+    expect(modifyPosition).toHaveBeenCalledExactlyOnceWith(987, { price_sl: 843 });
+  });
+
+  it('an ENTRY level painted as a TP is refused when the live close moves past it before release', () => {
+    registerCatalogDigits('XAUUSD', 2);
+    quote.bid = 895; // BUY in loss: entry 900 is above Bid
+    quote.ask = 895.5;
+    const log = feedback();
+    const h = harness('ENTRY', 0);
+    h.send('pointerdown', 100, h.target);
+    h.send('pointermove', 103); // paints 897 as a TP (above Bid 895)
+    quote.bid = 899; // the close moves above the painted price
+    quote.ask = 899.5;
+    h.send('pointerup', 103);
+    log.stop();
+    expect(modifyPosition).not.toHaveBeenCalled();
+    expect(log.messages).toEqual(['Price moved, drag again']);
   });
 });

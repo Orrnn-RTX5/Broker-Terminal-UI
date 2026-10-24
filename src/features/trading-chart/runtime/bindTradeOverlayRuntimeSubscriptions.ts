@@ -112,7 +112,11 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
       const currentTick = resolveSymbolTick(state.ticks);
       const previousTick = resolveSymbolTick(previousState.ticks);
 
-      if (state.positions !== previousState.positions || state.trades !== previousState.trades) {
+      if (
+        state.positions !== previousState.positions
+        || state.orders !== previousState.orders
+        || state.trades !== previousState.trades
+      ) {
         queueTradeOverlayRender(true);
         return;
       }

@@ -130,7 +130,7 @@ describe('useTradeRefreshController', () => {
     await act(() => controller.result.current.refreshPositions(123));
 
     expect(api.positions.getPositions).toHaveBeenCalledWith(123);
-    expect(applyOpenPositionSnapshot).toHaveBeenCalledWith(positions);
+    expect(applyOpenPositionSnapshot).toHaveBeenCalledWith(positions, { readStartedAt: expect.any(Number), complete: true });
   });
 
   it('drops a REST position response after the account session changes', async () => {

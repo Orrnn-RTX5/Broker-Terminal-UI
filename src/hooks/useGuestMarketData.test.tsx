@@ -4,7 +4,7 @@ import { useGuestMarketData } from './useGuestMarketData';
 
 const mocks = vi.hoisted(() => ({ load: vi.fn(), tick: vi.fn() }));
 vi.mock('../services/publicMarket', () => ({ loadPublicQuotes: mocks.load }));
-vi.mock('../services/liveTickDispatcher', () => ({ enqueueLiveTick: mocks.tick }));
+vi.mock('../services/liveTickDispatcher', () => ({ enqueueSnapshotTick: mocks.tick }));
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 
 it('refreshes public quotes with upstream time and stops immediately when authentication begins', async () => {

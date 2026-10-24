@@ -20,18 +20,20 @@ import {
     ZoomOut,
 } from 'lucide-react';
 import '../styles/modify-position-dialog.css';
-import { useCurrentTick } from '../store/useMarketDataStore';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, useTick } from '../store/useAppStore';
 import api from '../services/api';
 import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { describeProtectionRefusal, formatOrderError } from '../utils/orderError';
+import { handleStalePositionRefusal, requestPositionsRefresh } from '../utils/stalePositionRefusal';
+import { refreshHistoryAfterFill } from '../app/trading/tradeHistoryFreshness';
 import {
     defaultProtectionLevel,
     protectionLevelViolation,
     readKnownPriceDigits,
     roundProtectionLevelToGrid,
 } from '../utils/tradeLevelDrag';
-import { readRegisteredSymbolContractSpec, readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
+import { readTradeValidationQuote } from '../services/tradeValidationQuote';
+import { readRegisteredSymbolContractSpec, readRegisteredSymbolPriceSpec, readRegisteredSymbolStopsLevel } from '../services/dailyChangePriceModeRegistry';
 import { getFallbackSymbolDescription } from '../utils/symbolDescription';
 import {
     getCommittedBrokerAccountSessionScope,
@@ -49,10 +51,15 @@ interface ModifyPositionDialogProps {
         id: number;
         symbol: string;
         side: 'BUY' | 'SELL';
+        orderType?: string;
         volume: number;
         openPrice: number;
+        limitPrice?: number | null;
         sl: number;
         tp: number;
+        expiry?: number | null;
+        timeInForce?: 'GTC' | 'DAY' | 'GTD';
+        stateVersion?: number;
         comment?: string;
     } | null;
 }
@@ -300,7 +307,13 @@ export function ModifyPositionDialog(props: ModifyPositionDialogProps) {
 
 function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, position, kind = 'position' }: Omit<ModifyPositionDialogProps, 'position'> & { position: ModifyPosition }) {
     const tr = useUiTranslation();
-    const tick = useCurrentTick(position.symbol);
+    // Same tick Market Watch rows display (app store, tick lookup). The fresh
+    // quote (null when stale or missing) drives seeding and red marking; submit
+    // re-reads it and, without a fresh quote, sends the changed levels for the
+    // server to decide.
+    const tick = useTick(position.symbol);
+    // Render-time read of the shared quote (same key and stamp as submit). Store changes re-render via useTick.
+    const liveQuote = readTradeValidationQuote(position.symbol);
     // Price geometry from the symbol's own broker data only: the loaded
     // instrument catalog (scoped registry), then the position row. Never
     // the symbol-name table nor quote digits (the tick normalizer may fill
@@ -310,28 +323,35 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     const specDigits = registeredPriceSpec.digits
         ?? readKnownPriceDigits((position as { digits?: unknown })?.digits);
     const specTickSize = registeredPriceSpec.digits === null ? null : registeredPriceSpec.tickSize;
-    // Seed an empty SL/TP on the VALID side (never '0.00'): live quote first,
-    // else the open price as reference (degraded but side-correct; the
-    // server stays final authority and the mapped error names any residual).
-    // With no reference price at all the inputs stay blank AND disabled with
-    // a visible reason (fail-closed: no fake zero is ever shown or sent).
-    const tickBid = Number((tick as { bid?: unknown } | null)?.bid) || 0;
-    const tickAsk = Number((tick as { ask?: unknown } | null)?.ask) || 0;
-    const hasProtectionReference = tickBid > 0 || tickAsk > 0 || position.openPrice > 0;
+    // Seed an empty SL/TP on the VALID side (never '0.00'), from the FRESH live quote
+    // only. Without a fresh quote the field stays blank: the open price is an entry,
+    // not a close, and is never used as one. Inputs are disabled only when there is
+    // neither a raw store tick nor an open price, shown with a visible reason.
+    const tickBid = liveQuote?.bid ?? 0;
+    const tickAsk = liveQuote?.ask ?? 0;
+    const rawTickHasSide = (Number((tick as { bid?: unknown } | null)?.bid) || 0) > 0
+        || (Number((tick as { ask?: unknown } | null)?.ask) || 0) > 0;
+    const hasProtectionReference = rawTickHasSide || position.openPrice > 0;
     const seedProtectionLevel = (role: 'SL' | 'TP'): string => {
+      // Pending orders keep blank SL/TP unset unless the trader enters one;
+      // seeding from the live quote would place SL/TP relative to market
+      // rather than the pending trigger price.
+      if (kind === 'pending-order') return '';
       // No spec digits: cannot round or step, so seed nothing (blank). The
       // submit path sends UNROUNDED and the server validates the grid.
       if (specDigits === null) return '';
-      const refPrice = position.openPrice > 0 ? position.openPrice : 0;
+      if (!liveQuote) return '';
       const seeded = defaultProtectionLevel({
         side: String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
         role,
-        bid: tickBid > 0 ? tickBid : refPrice,
-        ask: tickAsk > 0 ? tickAsk : refPrice,
+        bid: tickBid,
+        ask: tickAsk,
         digits: specDigits,
+        tickSize: specTickSize,
         distancePoints: (position as { stopsLevel?: unknown })?.stopsLevel
           ?? (position as { stops_level?: unknown })?.stops_level
-          ?? (tick as { stopsLevel?: unknown } | null)?.stopsLevel,
+          ?? (tick as { stopsLevel?: unknown } | null)?.stopsLevel
+          ?? readRegisteredSymbolStopsLevel(position.symbol),
       });
       return seeded !== null ? roundProtectionLevelToGrid(seeded, specDigits, specTickSize).toFixed(specDigits) : '';
     };
@@ -341,7 +361,26 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     // Pending-order entry price + expiry (pending kind only; positions keep
     // their fill price and have no expiry).
     const [priceStr, setPriceStr] = useState(() => position.openPrice > 0 ? fmtExisting(position.openPrice) : '');
-    const [expiryStr, setExpiryStr] = useState('');
+    const [limitPriceStr, setLimitPriceStr] = useState(() => (
+      typeof position.limitPrice === 'number' && position.limitPrice > 0
+        ? fmtExisting(position.limitPrice)
+        : ''
+    ));
+    const [pendingExpiryMode, setPendingExpiryMode] = useState<'GTC' | 'TODAY' | 'SPECIFIED'>(() => {
+      if (position.timeInForce === 'DAY') return 'TODAY';
+      if (position.timeInForce === 'GTD' || (typeof position.expiry === 'number' && position.expiry > 0)) return 'SPECIFIED';
+      return 'GTC';
+    });
+    const [expiryStr, setExpiryStr] = useState(() => {
+      if (typeof position.expiry === 'number' && position.expiry > 0) {
+        const d = new Date(position.expiry * 1000);
+        if (!Number.isNaN(d.getTime())) {
+          const pad = (n: number) => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+      }
+      return '';
+    });
     const [volumeStr, setVolumeStr] = useState(() => position.volume.toFixed(2));
     const [comment, setComment] = useState(() => position.comment ?? '');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -587,14 +626,16 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
     // Live red marking while typing: a level on the broker-invalid side or
     // off the price grid is marked with the reason before submit.
     const dialogSide = String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
-    const slViolation = protectionLevelViolation({
+    // Marking uses the fresh quote only; without one nothing is marked here and
+    // submit sends the changed levels for the server to decide.
+    const slViolation = kind === 'position' && liveQuote ? protectionLevelViolation({
         side: dialogSide, role: 'SL', price: parseFloat(sl) || 0,
-        bid, ask, digits: specDigits, tickSize: specTickSize,
-    });
-    const tpViolation = protectionLevelViolation({
+        bid: liveQuote.bid, ask: liveQuote.ask, digits: specDigits, tickSize: specTickSize,
+    }) : null;
+    const tpViolation = kind === 'position' && liveQuote ? protectionLevelViolation({
         side: dialogSide, role: 'TP', price: parseFloat(tp) || 0,
-        bid, ask, digits: specDigits, tickSize: specTickSize,
-    });
+        bid: liveQuote.bid, ask: liveQuote.ask, digits: specDigits, tickSize: specTickSize,
+    }) : null;
     const dialogTitleId = `modify-position-${position.id}-title`;
     const symbolFieldId = `modify-position-${position.id}-symbol`;
     const typeLabelId = `modify-position-${position.id}-type-label`;
@@ -625,6 +666,39 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
             setError(tr("No live price is available to place Stop Loss or Take Profit levels"));
             return;
         }
+        // Re-validate every changed level against the latest fresh quote at send time.
+        // Local refusal only with a fresh quote: without one the changed levels are sent
+        // and the server decides. Removing a level (0) needs no quote.
+        if (kind === 'position') {
+            const checkSl = roundProtectionLevel(parseFloat(sl) || 0);
+            const checkTp = roundProtectionLevel(parseFloat(tp) || 0);
+            const changedLevels = [
+                { role: 'SL' as const, price: checkSl, changed: checkSl !== initialLevelsRef.current.sl },
+                { role: 'TP' as const, price: checkTp, changed: checkTp !== initialLevelsRef.current.tp },
+            ].filter(level => level.changed && level.price > 0);
+            if (changedLevels.length > 0) {
+                // Only a fresh quote validates locally. Without one the levels are sent
+                // and the server decides (no local refusal, no local price in the text).
+                const sendQuote = readTradeValidationQuote(position.symbol);
+                const refusal = sendQuote
+                    ? changedLevels
+                        .map(level => protectionLevelViolation({
+                            side: dialogSide,
+                            role: level.role,
+                            price: level.price,
+                            bid: sendQuote.bid,
+                            ask: sendQuote.ask,
+                            digits: specDigits,
+                            tickSize: specTickSize,
+                        }))
+                        .find((reason): reason is string => reason !== null)
+                    : undefined;
+                if (refusal) {
+                    setError(refusal);
+                    return;
+                }
+            }
+        }
         setIsSubmitting(true);
         setError(null);
         setSuccessMessage(null);
@@ -643,6 +717,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                 ...(tpVal !== initialLevelsRef.current.tp ? { price_tp: tpVal } : {}),
             };
 
+            // Pending-order modify is not checked locally: its SL/TP rule is relative to the
+            // pending price, not the live close (out of scope; follow-up).
             if (kind === 'pending-order') {
                 const priceVal = parseFloat(priceStr) || 0;
                 if (!(priceVal > 0)) {
@@ -650,12 +726,39 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                     setIsSubmitting(false);
                     return;
                 }
-                const expiryVal = Number.parseInt(expiryStr.trim(), 10);
+                const isStopLimit = String(position.orderType ?? '').toLowerCase().includes('stop_limit');
+                const limitPriceVal = isStopLimit ? (parseFloat(limitPriceStr) || 0) : undefined;
+                if (isStopLimit && !(limitPriceVal && limitPriceVal > 0)) {
+                    setError('Enter a valid stop-limit price');
+                    setIsSubmitting(false);
+                    return;
+                }
+                let modifyExpiryPayload: { time_in_force?: 'GTC' | 'DAY' | 'GTD'; expiry?: number | null } = {};
+                const trimmedExpiry = expiryStr.trim();
+                if (pendingExpiryMode === 'GTC') {
+                    if (position.expiry && position.expiry > 0) {
+                        modifyExpiryPayload = { time_in_force: 'GTC', expiry: null };
+                    }
+                } else if (pendingExpiryMode === 'TODAY') {
+                    const end = new Date();
+                    end.setHours(23, 59, 59, 0);
+                    modifyExpiryPayload = { time_in_force: 'DAY', expiry: Math.floor(end.getTime() / 1000) };
+                } else if (pendingExpiryMode === 'SPECIFIED' && trimmedExpiry) {
+                    const numeric = /^\d+$/.test(trimmedExpiry) ? Number.parseInt(trimmedExpiry, 10) : Number.NaN;
+                    const parsedMs = Number.isFinite(numeric) ? numeric * 1000 : Date.parse(trimmedExpiry);
+                    if (!Number.isFinite(parsedMs) || parsedMs <= Date.now()) {
+                        setError('Expiration must be in the future');
+                        setIsSubmitting(false);
+                        return;
+                    }
+                    modifyExpiryPayload = { time_in_force: 'GTD', expiry: Math.floor(parsedMs / 1000) };
+                }
                 await api.orders.modifyPendingOrder(position.id, {
                     price: priceVal,
+                    ...(limitPriceVal ? { price_limit: limitPriceVal } : {}),
                     price_sl: slVal,
                     price_tp: tpVal,
-                    ...(Number.isFinite(expiryVal) && expiryVal > 0 ? { expiry: expiryVal } : {}),
+                    ...modifyExpiryPayload,
                 });
                 // Refresh the pending list from the backend (the positions
                 // patch below does not apply to pending rows).
@@ -695,14 +798,22 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
         } catch (err: unknown) {
             if (!isCurrentDialogSession(mutationContext)) return;
             console.error('[Modify] Error:', err);
+            // Already closed on the broker: plain message instead of a raw refusal.
+            const staleMessage = kind === 'position'
+                ? handleStalePositionRefusal(err, position.id, { refresh: requestPositionsRefresh, tr })
+                : null;
+            if (staleMessage) {
+                setError(staleMessage);
+                return;
+            }
             // Name the offending level against the live quote when the
             // server refused the geometry (never a bare failure message).
             const refusal = kind === 'position' ? describeProtectionRefusal(err, {
                 side: String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
                 sl: slVal,
                 tp: tpVal,
-                bid: Number((tick as { bid?: unknown } | null)?.bid) || 0,
-                ask: Number((tick as { ask?: unknown } | null)?.ask) || 0,
+                bid: readTradeValidationQuote(position.symbol)?.bid ?? 0,
+                ask: readTradeValidationQuote(position.symbol)?.ask ?? 0,
                 digits: specDigits,
             }) : null;
             setError(refusal ?? getErrorMessage(err));
@@ -749,6 +860,34 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
             setError('Volume must be greater than zero');
             return;
         }
+        // Hedge SL/TP: the same local side check as a modify, against the fresh
+        // quote only (order side BUY: Bid, SELL: Ask). Without a fresh quote the
+        // levels are sent and the server decides. Out of scope here: new-order
+        // placement in useOrderExecution / LastSymbolPanel (follow-up).
+        const hedgeSl = roundProtectionLevel(Number.parseFloat(sl) || 0);
+        const hedgeTp = roundProtectionLevel(Number.parseFloat(tp) || 0);
+        const hedgeQuote = hedgeSl > 0 || hedgeTp > 0 ? readTradeValidationQuote(position.symbol) : null;
+        if (hedgeQuote) {
+            const hedgeRefusal = [
+                { role: 'SL' as const, price: hedgeSl },
+                { role: 'TP' as const, price: hedgeTp },
+            ]
+                .filter(level => level.price > 0)
+                .map(level => protectionLevelViolation({
+                    side,
+                    role: level.role,
+                    price: level.price,
+                    bid: hedgeQuote.bid,
+                    ask: hedgeQuote.ask,
+                    digits: specDigits,
+                    tickSize: specTickSize,
+                }))
+                .find((reason): reason is string => reason !== null);
+            if (hedgeRefusal) {
+                setError(hedgeRefusal);
+                return;
+            }
+        }
 
         setIsSubmitting(true);
         setError(null);
@@ -765,6 +904,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                 price_tp: tpVal > 0 ? tpVal : undefined,
                 comment: comment.trim() || undefined,
             }, { intentAtMs });
+            refreshHistoryAfterFill(Number(useAppStore.getState().accountId));
             if (!isCurrentDialogSession(mutationContext)) return;
             setSuccessMessage(`${side === 'BUY' ? 'Buy' : 'Sell'} market order placed successfully`);
             refreshPositionsAfterTrade();
@@ -814,6 +954,7 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                 return;
             }
             await api.positions.closePosition(String(position.id), isPartialClose ? { volume: actionVolume } : undefined);
+            refreshHistoryAfterFill(Number(useAppStore.getState().accountId));
             if (!isCurrentDialogSession(mutationContext)) return;
             if (!isPartialClose) {
                 const store = useAppStore.getState();
@@ -834,7 +975,8 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
         } catch (err: unknown) {
             if (!isCurrentDialogSession(mutationContext)) return;
             console.error('[Close by Market] Error:', err);
-            setError(getErrorMessage(err));
+            const staleMessage = handleStalePositionRefusal(err, position.id, { refresh: requestPositionsRefresh, tr });
+            setError(staleMessage ?? getErrorMessage(err));
         } finally {
             if (isCurrentDialogSession(mutationContext)) {
                 setIsSubmitting(false);
@@ -1533,18 +1675,47 @@ function ModifyPositionDialogContent({ isOpen, onClose, onClosePosition, positio
                                     />
                                 </div>
 
-                                {/* Expiry, unix seconds, optional (pending orders only) */}
+                                {/* Expiry mode + date-time picker (pending orders only) */}
+                                {String(position.orderType ?? '').toLowerCase().includes('stop_limit') && (
+                                    <div className="rtx-modify-field-row">
+                                        <label htmlFor={`${priceFieldId}-limit`} className="rtx-modify-label text-[14px] font-normal">{tr("Limit Price:")}</label>
+                                        <input
+                                            id={`${priceFieldId}-limit`}
+                                            type="number"
+                                            step={priceStepAttr}
+                                            value={limitPriceStr}
+                                            onChange={(e) => setLimitPriceStr(e.target.value)}
+                                            className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price"
+                                        />
+                                    </div>
+                                )}
                                 <div className="rtx-modify-field-row">
                                     <label htmlFor={expiryFieldId} className="rtx-modify-label text-[14px] font-normal">{tr("Expiry:")}</label>
-                                    <input
-                                        id={expiryFieldId}
-                                        type="number"
-                                        step="1"
-                                        value={expiryStr}
-                                        placeholder="Unix time, empty to keep"
-                                        onChange={(e) => setExpiryStr(e.target.value)}
-                                        className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price"
-                                    />
+                                    <div className="flex items-center gap-1.5 flex-1">
+                                        <select
+                                            aria-label={tr("Expiration mode")}
+                                            value={pendingExpiryMode}
+                                            onChange={(e) => setPendingExpiryMode(e.target.value as 'GTC' | 'TODAY' | 'SPECIFIED')}
+                                            className="rtx-modify-input w-28"
+                                        >
+                                            <option value="GTC">{tr("GTC")}</option>
+                                            <option value="TODAY">{tr("Today")}</option>
+                                            <option value="SPECIFIED">{tr("Specified")}</option>
+                                        </select>
+                                        <input
+                                            id={expiryFieldId}
+                                            data-testid="modify-pending-expiry-picker"
+                                            type="datetime-local"
+                                            disabled={pendingExpiryMode !== 'SPECIFIED'}
+                                            value={expiryStr}
+                                            placeholder="YYYY-MM-DDTHH:mm"
+                                            onChange={(e) => {
+                                                setPendingExpiryMode('SPECIFIED');
+                                                setExpiryStr(e.target.value);
+                                            }}
+                                            className="rtx-modify-input rtx-modify-input--mono rtx-modify-input--price flex-1"
+                                        />
+                                    </div>
                                 </div>
                             </>
                         )}

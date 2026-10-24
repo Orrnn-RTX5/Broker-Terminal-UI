@@ -9,6 +9,7 @@ export type HistorySymbolFilter =
 
 export type HistoryColumnKey =
   | 'ticket'
+  | 'status'
   | 'marketValue'
   | 'commission'
   | 'swap'
@@ -16,6 +17,33 @@ export type HistoryColumnKey =
   | 'changePercent'
   | 'magicNumber'
   | 'comment';
+
+export type CanonicalHistoryOrderStatus = 'FILLED' | 'CANCELLED' | 'EXPIRED' | 'REJECTED' | 'PENDING';
+
+export function resolveHistoryRowStatus(trade: Trade): CanonicalHistoryOrderStatus {
+  const raw = String(trade.status ?? '').trim().toLowerCase();
+  if (raw === 'cancelled' || raw === 'canceled') return 'CANCELLED';
+  if (raw === 'expired') return 'EXPIRED';
+  if (raw === 'rejected') return 'REJECTED';
+  if (raw === 'pending' || raw === 'placed' || raw === 'open') return 'PENDING';
+  return 'FILLED';
+}
+
+export function getHistoryStatusBadgeClass(status: CanonicalHistoryOrderStatus): string {
+  switch (status) {
+    case 'CANCELLED':
+      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-zinc-500/15 text-zinc-400 border-zinc-500/30';
+    case 'EXPIRED':
+      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-amber-500/15 text-amber-400 border-amber-500/30';
+    case 'REJECTED':
+      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-rose-500/15 text-rose-400 border-rose-500/30';
+    case 'PENDING':
+      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-sky-500/15 text-sky-400 border-sky-500/30';
+    case 'FILLED':
+    default:
+      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+  }
+}
 
 export type HistoryColumnVisibility = Record<HistoryColumnKey, boolean>;
 export type HistoryContextMenuState = { x: number; y: number; trade?: Trade };
@@ -32,6 +60,7 @@ export const HISTORY_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY = 'rtx5_history_show
 
 export const HISTORY_COLUMN_DEFS: Array<{ key: HistoryColumnKey; label: string }> = [
   { key: 'ticket', label: 'Ticket' },
+  { key: 'status', label: 'Status' },
   { key: 'marketValue', label: 'Market Value' },
   { key: 'commission', label: 'Commission' },
   { key: 'swap', label: 'Swap' },
@@ -43,6 +72,7 @@ export const HISTORY_COLUMN_DEFS: Array<{ key: HistoryColumnKey; label: string }
 
 export const DEFAULT_HISTORY_COLUMNS: HistoryColumnVisibility = {
   ticket: true,
+  status: true,
   marketValue: false,
   commission: false,
   swap: false,

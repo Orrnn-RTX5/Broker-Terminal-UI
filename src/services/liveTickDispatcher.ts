@@ -30,6 +30,7 @@ import {
   publishMarketWatchDisplayMetadata,
   resolveMarketWatchDisplayMetadata,
 } from '../store/useMarketWatchDisplayMetadataStore';
+import { clearQuoteFeedActivity, markQuoteFeedActivity } from '../store/quoteFeedActivity';
 
 // A logged-in account's quote is widened by its group spread markup here, once;
 // `rawBid`/`rawAsk` keep the feed sides for raw-bid consumers (chart candles).
@@ -48,6 +49,9 @@ if (typeof window !== 'undefined') {
 }
 
 const pendingTicks = new Map<string, LiveTick>();
+// Symbols whose queued quote came from a live push message that may prove the feed is alive.
+// The stamp is applied when the store commit succeeds (flushLiveTicks), never at ingest (HIGH-2).
+const feedActivityOnCommit = new Set<string>();
 const frozenMarketDataSources = new Map<string, Map<string, string>>();
 let rafId: number | null = null;
 let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -82,6 +86,7 @@ const appRetry = createTargetRetryState();
 
 const clearDispatcherRuntime = (): void => {
   pendingTicks.clear();
+  feedActivityOnCommit.clear();
   frozenMarketDataSources.clear();
   if (typeof window !== 'undefined' && rafId !== null && typeof window.cancelAnimationFrame === 'function') {
     window.cancelAnimationFrame(rafId);
@@ -277,7 +282,23 @@ const retainFailedBatch = (
   scheduleRetry(retry);
 };
 
-export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
+/** Real-time push frame (quote socket, trade-stream WebSocket): may prove the feed is alive. */
+export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => ingestLiveTick(symbol, tick, true);
+
+/**
+ * Snapshot delivery (REST seed, catalogue seed, guest poll): the quote may be old, so it
+ * never proves the feed is alive. Its price still reaches the store; SL/TP treats it as
+ * not validated locally (server-final) unless a push frame stamps it.
+ */
+export const enqueueSnapshotTick = (symbol: string, tick: LiveTick): void => ingestLiveTick(symbol, tick, false);
+
+/**
+ * `feedActivity` is false for re-deliveries of already stored quotes (markup
+ * re-apply). Only a live feed message may prove that the feed is alive for SL/TP
+ * validation (store/quoteFeedActivity.ts), and only when it carries a two-sided
+ * quote that was accepted, or is an identical replay of the stored quote.
+ */
+const ingestLiveTick = (symbol: string, tick: LiveTick, feedActivity: boolean): void => {
   if (!symbol) return;
   if (isLiveMarketDataFrozen(symbol)) return;
   // Every quote transport (quote socket, REST seed, catalogue seed, legacy WS,
@@ -351,16 +372,31 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
   const normalizedFullTick = retainSameQuoteDayDisplayFields(undefined, fullTick);
   let deliveryTick = normalizedFullTick;
   let shouldPersistQuote = true;
+  // Stamp only a two-sided feed message that the store accepts, or that replays the stored quote.
+  let stampsFeedActivity = feedActivity && hasTwoSidedQuote(fullTick);
   if (cachedTick) {
     const normalizedCachedTick = retainSameQuoteDayDisplayFields(undefined, cachedTick);
     const freshness = compareCanonicalTickFreshness(cachedTick, fullTick);
     if (freshness < 0) {
+      // Older out-of-order message: never proves the feed is alive for this quote.
+      stampsFeedActivity = false;
       deliveryTick = retainSameQuoteDayDisplayFields(normalizedFullTick, normalizedCachedTick);
       if (!didDisplayFieldCandidateWin(normalizedFullTick, normalizedCachedTick, deliveryTick)) return;
       shouldPersistQuote = false;
     } else {
       deliveryTick = retainSameQuoteDayDisplayFields(normalizedCachedTick, normalizedFullTick);
-      if (freshness === 0 && areCanonicalUpstreamTicksEqual(normalizedCachedTick, deliveryTick)) return;
+      if (freshness === 0 && areCanonicalUpstreamTicksEqual(normalizedCachedTick, deliveryTick)) {
+        // Identical replay: a live push frame delivering the current stored price counts as
+        // feed activity even when `sourceTimestamp` is unchanged or absent (broker clock time
+        // is not used for SL/TP freshness; only local push receipt/commit time is used).
+        // The store already holds this quote under `symbol` unless a write is still queued,
+        // in which case the stamp waits for that commit.
+        if (stampsFeedActivity) {
+          if (pendingTicks.has(symbol) || appRetry.ticks.has(symbol)) feedActivityOnCommit.add(symbol);
+          else markQuoteFeedActivity(symbol, Date.now());
+        }
+        return;
+      }
     }
   }
 
@@ -370,6 +406,8 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
     console.error(`[LiveTickDispatcher] Invalid tick for ${symbol}:`, error);
     return;
   }
+  if (stampsFeedActivity) feedActivityOnCommit.add(symbol);
+  else feedActivityOnCommit.delete(symbol);
 
   const sourceTimestamp = typeof fullTick.sourceTimestamp === 'number'
     && Number.isFinite(fullTick.sourceTimestamp)
@@ -433,6 +471,9 @@ export const flushLiveTicks = (): void => {
   const appStore = useAppStore.getState();
 
   const activeTicks = ticks.filter(([symbol]) => !isLiveMarketDataFrozen(symbol));
+  ticks.forEach(([symbol]) => {
+    if (isLiveMarketDataFrozen(symbol)) feedActivityOnCommit.delete(symbol);
+  });
   // Defensive filter: metadata-only events exit in enqueueLiveTick and can
   // never enter Market/App delivery or either retry owner.
   const marketBatch = takeDeliveryBatch(
@@ -458,6 +499,12 @@ export const flushLiveTicks = (): void => {
       appStore.setTicksBatch(
         appBatch.ticks.map(([symbol, tick]) => [symbol, tick as AppTick] as const),
       );
+      // The store now holds these quotes under their exact `symbol` store keys: stamp the ones
+      // a live feed message delivered using that exact written store key.
+      const committedAt = Date.now();
+      appBatch.ticks.forEach(([symbol]) => {
+        if (feedActivityOnCommit.delete(symbol)) markQuoteFeedActivity(symbol, committedAt);
+      });
       if (appBatch.isRetry) resetRetry(appRetry);
     } catch (error) {
       console.error('[LiveTickDispatcher] App store batch failed; retaining it for retry:', error);
@@ -491,6 +538,7 @@ export const resetLiveMarketDataSession = (): void => {
   if (typeof window !== 'undefined') window.rtxTickCache?.clear();
   useMarketDataStore.getState().clearAllData();
   useAppStore.getState().setTicks({});
+  clearQuoteFeedActivity();
 };
 
 /**
@@ -508,7 +556,7 @@ export const reapplyAccountSpreadMarkupToCachedTicks = (): void => {
     cached.push(tick);
   });
   cached.forEach((tick) => {
-    if (tick.symbol) enqueueLiveTick(tick.symbol, tick);
+    if (tick.symbol) ingestLiveTick(tick.symbol, tick, false);
   });
 };
 

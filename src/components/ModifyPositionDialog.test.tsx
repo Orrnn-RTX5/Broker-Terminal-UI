@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event';
 import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { markQuoteFeedActivity, clearQuoteFeedActivity } from '../store/quoteFeedActivity';
 
 import { ModifyPositionDialog } from './ModifyPositionDialog';
 import { commitBrokerAccountSessionScope } from '../services/brokerSession';
@@ -9,6 +10,13 @@ import {
     registerDailyChangePriceModes,
     resetDailyChangePriceModeRegistryForTests,
 } from '../services/dailyChangePriceModeRegistry';
+
+// Live feed quotes for these symbols are stamped as alive (the SL/TP local check needs a feed stamp).
+beforeEach(() => {
+    clearQuoteFeedActivity();
+    markQuoteFeedActivity('BTCUSD', Date.now()); markQuoteFeedActivity('GBPUSD', Date.now());
+});
+
 
 const mocks = vi.hoisted(() => ({
     closePosition: vi.fn(),
@@ -28,8 +36,13 @@ vi.mock('../store/useMarketDataStore', () => ({
 }));
 
 vi.mock('../store/useAppStore', () => ({
+    // Shared Market Watch tick source (useTick / resolveTickFromLookup).
+    useTick: () => mocks.tick,
+    resolveTickFromLookup: () => mocks.tick,
     useAppStore: {
         getState: () => ({
+      ticks: mocks.tick ? { [mocks.tick.symbol]: mocks.tick } : {},
+      tickLookup: {},
             positions: mocks.positions,
             setPositions: mocks.setPositions,
         }),

@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { api } from '../../services/api';
 import type { DepthOrderRequest } from '../../components/DepthOfMarket';
 import type { SymbolMarketStatusState } from '../../hooks/useSymbolMarketStatus';
@@ -25,6 +25,12 @@ import {
 } from './positionRuntime';
 import type { RefreshPositionsOptions } from './tradeRuntimeContracts';
 import { publishOrderFeedback } from './orderFeedback';
+import {
+  createHistoryFreshnessOwner,
+  disposeHistoryFreshnessOwner,
+  refreshHistoryAfterFill,
+  type HistoryFreshnessOwner,
+} from './tradeHistoryFreshness';
 
 export interface OrderPanelSubmission {
   type: 'buy' | 'sell';
@@ -88,6 +94,25 @@ export const useOrderExecution = ({
   refreshPositions,
   refreshOrdersAndHistory,
 }: UseOrderExecutionOptions): OrderExecutionController => {
+  // Owner of this hook's ACK history fallbacks. Created on mount, reads the latest
+  // props through a ref, and unmount clears any pending fallback.
+  const latestHistoryDepsRef = useRef({ refreshOrdersAndHistory, getLiveTradingLogin });
+  const historyOwnerRef = useRef<HistoryFreshnessOwner | null>(null);
+  useEffect(() => {
+    latestHistoryDepsRef.current = { refreshOrdersAndHistory, getLiveTradingLogin };
+  }, [refreshOrdersAndHistory, getLiveTradingLogin]);
+  useEffect(() => {
+    const owner = createHistoryFreshnessOwner(
+      (login) => latestHistoryDepsRef.current.refreshOrdersAndHistory(login),
+      (login) => latestHistoryDepsRef.current.getLiveTradingLogin() === login,
+    );
+    historyOwnerRef.current = owner;
+    return () => {
+      disposeHistoryFreshnessOwner(owner);
+      historyOwnerRef.current = null;
+    };
+  }, []);
+
   const ensureMarketOpenForOrder = useCallback((symbol: string): boolean => {
     const normalizedSymbol = normalizeSymbolName(symbol);
     const marketStatus = normalizeSymbolName(selectedMarketStatus.symbol) === normalizedSymbol
@@ -162,9 +187,7 @@ export const useOrderExecution = ({
       );
       if (!resultCommitted) return;
       void refreshPositions(loginId);
-      void refreshOrdersAndHistory(loginId).catch((error) => {
-        console.error('[Trade] Failed to refresh orders/history:', error);
-      });
+      refreshHistoryAfterFill(loginId, historyOwnerRef.current);
     } catch (error) {
       publishOrderFeedback(formatOrderError(error));
     }
@@ -173,7 +196,7 @@ export const useOrderExecution = ({
     ensureMarketOpenForOrder,
     getAllowedSymbol,
     getLiveTradingLogin,
-    refreshOrdersAndHistory,
+    historyOwnerRef,
     refreshPositions,
     selectedSymbol,
     volume,
@@ -257,9 +280,7 @@ export const useOrderExecution = ({
         feedbackValue(`: ${request.price} · `),
         feedbackLabel('request submitted successfully!'),
       ], 'success');
-      void refreshOrdersAndHistory(loginId).catch((error) => {
-        console.error('[DOM] Failed to refresh pending orders/history:', error);
-      });
+      refreshHistoryAfterFill(loginId, historyOwnerRef.current);
     } catch (error) {
       publishOrderFeedback(formatOrderError(error));
     }
@@ -269,9 +290,9 @@ export const useOrderExecution = ({
     ensureMarketOpenForOrder,
     getAllowedSymbol,
     getLiveTradingLogin,
+    historyOwnerRef,
     isTradeOperationContextCurrent,
     placeOrder,
-    refreshOrdersAndHistory,
     setVolume,
   ]);
 
@@ -385,9 +406,7 @@ export const useOrderExecution = ({
           feedbackValue(`: ${orderPrice} · `),
           feedbackLabel('request submitted successfully!'),
         ], 'success');
-        void refreshOrdersAndHistory(loginId).catch((error) => {
-          console.error('[Trade] Failed to refresh pending orders/history:', error);
-        });
+        refreshHistoryAfterFill(loginId, historyOwnerRef.current);
         return;
       }
 
@@ -414,9 +433,7 @@ export const useOrderExecution = ({
       );
       if (!resultCommitted) return;
       void refreshPositions(loginId);
-      void refreshOrdersAndHistory(loginId).catch((error) => {
-        console.error('[Trade] Failed to refresh orders/history:', error);
-      });
+      refreshHistoryAfterFill(loginId, historyOwnerRef.current);
     } catch (error) {
       const failureMessage = formatOrderError(error);
       publishOrderFeedback(failureMessage);
@@ -428,8 +445,8 @@ export const useOrderExecution = ({
     getAllowedSymbol,
     getLiveTradingLogin,
     isTradeOperationContextCurrent,
+    historyOwnerRef,
     orderPanelSymbol,
-    refreshOrdersAndHistory,
     refreshPositions,
   ]);
 

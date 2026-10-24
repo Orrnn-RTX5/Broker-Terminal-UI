@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "Preis- und Terminalalarme",
   "Price at which the position was opened": "Eröffnungspreis der Position",
   "Price label": "Preisschild",
+  "Price moved, drag again": "Kurs hat sich bewegt, erneut ziehen",
+  "Price updating, please retry": "Kurs wird aktualisiert, bitte erneut versuchen",
   "Price note": "Preishinweis",
   "Price precision": "Preispräzision",
   "Price range": "Preisspanne",

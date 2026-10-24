@@ -33,3 +33,39 @@ export const requestPositionSnapshotRevalidation = (): boolean => {
   }));
   return true;
 };
+
+/** Periodic complete positions read (safety net for a lost close frame on a live socket). */
+export const POSITIONS_SAFETY_READ_INTERVAL_MS = 30_000;
+/** A stream positions frame this recent means the stream is live: the periodic read waits. */
+export const POSITIONS_SAFETY_QUIET_MS = 5_000;
+
+let positionsReadsInFlight = 0;
+let lastPositionsStreamFrameAt = 0;
+
+/** Every complete positions read (refresh controller, account poll) brackets itself with these. */
+export const markPositionsReadStarted = (): void => {
+  positionsReadsInFlight += 1;
+};
+export const markPositionsReadSettled = (): void => {
+  positionsReadsInFlight = Math.max(0, positionsReadsInFlight - 1);
+};
+export const arePositionsReadsInFlight = (): boolean => positionsReadsInFlight > 0;
+
+/**
+ * Called once per stream positions frame. A pnl-only frame (every row carries update_kind
+ * 'pnl', the classification tradePositionStream.decodePositionStreamMessage and
+ * positionStream.reconcilePositionStreamBatch use) does not stamp: the stream is alive, but
+ * nothing structural changed. Open, modify, close and rows without update_kind do stamp.
+ * Cost: one pass over the frame's rows, once per frame; nothing per tick.
+ */
+export const markPositionsStreamFrameIfStructural = (
+  rows: readonly { update_kind?: unknown }[],
+  closedTickets: readonly unknown[],
+  now: number = Date.now(),
+): boolean => {
+  const structural = closedTickets.length > 0 || rows.some((row) => row.update_kind !== 'pnl');
+  if (!structural) return false;
+  lastPositionsStreamFrameAt = now;
+  return true;
+};
+export const getLastPositionsStreamFrameAt = (): number => lastPositionsStreamFrameAt;

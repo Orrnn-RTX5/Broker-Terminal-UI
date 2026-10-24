@@ -10,7 +10,7 @@ import {
   getCommittedBrokerAccountSessionScopeKey,
   getServerUrl,
 } from '../services/brokerSession';
-import { isConfirmedClosedPosition, useAppStore } from '../store/useAppStore';
+import { beginPositionsRead, isConfirmedClosedBySnapshot, isConfirmedClosedPosition, useAppStore } from '../store/useAppStore';
 import { TRADE_OVERLAY_CLOSE_STATE_EVENT } from '../services/tradeOverlayHistory';
 import {
   requestPositionSnapshotRevalidation,
@@ -697,7 +697,10 @@ export function useToolboxTradeData() {
     setState((prev) => ({ ...prev, account }));
   }, []);
 
-  const commitPositions = useCallback((positions: ToolboxTradePosition[]) => {
+  const commitPositions = useCallback((
+    positions: ToolboxTradePosition[],
+    read?: { readStartedAt: number; unlistedTickets: readonly number[] },
+  ) => {
     const previousSig = positionsSignature(positionsRef.current);
     positions = positions.filter((position) => !isConfirmedClosedPosition(position.id));
     let nextSig = positionsSignature(positions);
@@ -707,6 +710,8 @@ export function useToolboxTradeData() {
     if (positionsSignature(storePositions) !== nextSig) {
       useAppStore.getState().setPositions(positions as Position[], {
         removedTickets: [...optimisticallyClosedPositionsRef.current.keys()],
+        readStartedAt: read?.readStartedAt,
+        unlistedTickets: read?.unlistedTickets,
       });
       positions = useAppStore.getState().positions as ToolboxTradePosition[];
       nextSig = positionsSignature(positions);
@@ -726,6 +731,7 @@ export function useToolboxTradeData() {
     activeRefreshControllerRef.current?.abort();
     const controller = new AbortController();
     const metricsScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+    const positionsReadStartedAt = beginPositionsRead();
     const startedPositions = useAppStore.getState().positions;
     const startedAuthToken = useAppStore.getState().authToken;
     activeRefreshControllerRef.current = controller;
@@ -766,12 +772,15 @@ export function useToolboxTradeData() {
         throw positionsResult.reason;
       }
       const positionsBody = positionsResult.value;
-      let rawPositions = arrayFrom(positionsBody, 'positions');
+      // REST rows are the complete list. A live row the store replaced during this read is
+      // newer than the REST row for that ticket. A ticket the read omitted is never re-added here.
       const livePositions = useAppStore.getState().positions;
-      if (livePositions !== startedPositions) {
-        const currentTickets = new Set(livePositions.map((position) => position.id));
-        rawPositions = [...livePositions, ...rawPositions.filter((position) => !currentTickets.has(getPositionTicket(position)))];
-      }
+      const startedById = new Map(startedPositions.map((position) => [position.id, position]));
+      const liveById = new Map(livePositions.map((position) => [position.id, position]));
+      const rawPositions = arrayFrom(positionsBody, 'positions').map((raw) => {
+        const live = liveById.get(getPositionTicket(raw));
+        return live && live !== startedById.get(live.id) ? live : raw;
+      });
       const rawPositionTickets = new Set(rawPositions.map(getPositionTicket).filter(Boolean));
       const now = Date.now();
       const confirmedClientOrderIds = new Set(rawPositions
@@ -793,7 +802,7 @@ export function useToolboxTradeData() {
       const snapshot = replaceToolboxPositions(positionsRef.current, visibleRawPositions);
       const snapshotTickets = new Set(snapshot.map((position) => position.id));
       retainedImmediatePositionsRef.current.forEach(({ expiresAt }, ticket) => {
-        if (expiresAt <= now || snapshotTickets.has(ticket)) {
+        if (expiresAt <= now || snapshotTickets.has(ticket) || isConfirmedClosedBySnapshot(ticket)) {
           retainedImmediatePositionsRef.current.delete(ticket);
         }
       });
@@ -801,7 +810,11 @@ export function useToolboxTradeData() {
         snapshot,
         Array.from(retainedImmediatePositionsRef.current.values()),
         now,
-      ));
+      ), {
+        readStartedAt: positionsReadStartedAt,
+        // Retained fills the REST response did not list: admitted, never confirmed by this read.
+        unlistedTickets: Array.from(retainedImmediatePositionsRef.current.keys()),
+      });
       setState((prev) => ({
         ...prev,
         pendingPositions: Array.from(pendingMarketOrdersRef.current.values())
@@ -946,7 +959,7 @@ export function useToolboxTradeData() {
             Array.isArray(snapshot.positions) ? snapshot.positions : [],
           ),
           Array.from(retainedImmediatePositionsRef.current.values()),
-        ).filter((position) => !isConfirmedClosedPosition(position.id));
+        ).filter((position) => !isConfirmedClosedPosition(position.id) && !isConfirmedClosedBySnapshot(position.id));
         deferSnapshot = shouldDeferEmptyPositionSnapshot(
           positionsRef.current.filter((position) => !isConfirmedClosedPosition(position.id)),
           nextPositions,

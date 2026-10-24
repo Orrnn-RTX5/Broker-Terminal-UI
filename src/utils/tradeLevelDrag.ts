@@ -18,13 +18,16 @@ export interface TradeLevelDragUpdateInput {
   currentTp?: number;
   /** Broker precision; null = unknown: levels keep the raw dragged number. */
   digits: number | null;
+  /** Broker tick size; when finite and > 0, levels and snaps land on this grid. */
+  tickSize?: unknown;
   minEntryDistance?: number;
   snapEntryToMinDistance?: boolean;
   entryDragDirection?: 1 | -1;
   /**
-   * Live market price for the position. Brokers validate SL/TP against the
-   * current price (not the entry), so we clamp dragged levels to the valid side
-   * of this price to keep the modify request acceptable.
+   * Live close for the position (Bid for BUY, Ask for SELL), from the same fresh
+   * tick used for validation. Brokers validate SL/TP against the close (not the
+   * entry): the role of an ENTRY drop follows it, and dragged levels are clamped
+   * to the valid side of it. Null/absent falls back to the entry price for role.
    */
   currentPrice?: number;
   /** Minimum gap a level must keep from the current price (defaults to the symbol minimum). */
@@ -63,17 +66,39 @@ const normalizeExistingTradeLevel = (price: number | undefined): number =>
 const getSafeDigits = (digits: number): number =>
   Number.isFinite(digits) && digits >= 0 ? Math.floor(digits) : 0;
 
+const readPositiveTickSize = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+);
+
+const isValidSideTowardLower = (
+  side: TradeLevelDragSide,
+  role: TradeLevelDragResultRole,
+): boolean => (side === 'BUY' && role === 'SL') || (side === 'SELL' && role === 'TP');
+
+const RELATIVE_GRID_TOLERANCE = 1e-6;
+
+const isWithinGridStepTolerance = (scaled: number): boolean => {
+  if (!Number.isFinite(scaled)) return false;
+  const nearest = Math.round(scaled);
+  const tolerance = Math.max(RELATIVE_GRID_TOLERANCE, Math.abs(scaled) * Number.EPSILON * 16);
+  return Math.abs(scaled - nearest) <= tolerance;
+};
+
 export const normalizeTradeLevelDragPrice = (price: number, digits: number | null): number => {
   if (!Number.isFinite(price)) return Number.NaN;
   // Unknown broker precision: keep the raw number (never round by a guess).
   if (digits === null) return price;
   const safeDigits = getSafeDigits(digits);
   const scale = Math.pow(10, safeDigits);
-  return Math.round(price * scale) / scale;
+  return Number((Math.round(price * scale) / scale).toFixed(safeDigits));
 };
 
-export const getTradeLevelDragMinDistance = (digits: number | null): number =>
-  (digits === null ? 0 : 5 * Math.pow(10, -getSafeDigits(digits)));
+export const getTradeLevelDragMinDistance = (digits: number | null, tickSize?: unknown): number => {
+  if (digits === null) return 0;
+  const safeDigits = getSafeDigits(digits);
+  const step = readPositiveTickSize(tickSize) ?? Math.pow(10, -safeDigits);
+  return normalizeTradeLevelDragPrice(5 * step, safeDigits);
+};
 
 /** Identical fills can belong to different tickets; metadata is never mutation ownership. */
 export const getTradeLevelStateKeys = (trade: { key: string }): string[] => [trade.key];
@@ -105,15 +130,23 @@ export const createTradeLevelOverrideFingerprint = ({
   ].join(':');
 };
 
+/**
+ * Role of an ENTRY-line drop. Decided against the live close (BUY: Bid, SELL:
+ * Ask), because validity is checked against the close: on a position in profit
+ * a drop between entry and close is an SL for a BUY, not a TP. Falls back to the
+ * entry price only when no live close is available.
+ */
 export const resolveTradeLevelDragRole = (
   side: TradeLevelDragSide,
   grabbedType: TradeLevelDragTarget,
   entryPrice: number,
   price: number,
+  closePrice?: number | null,
 ): TradeLevelDragResultRole => {
   if (grabbedType !== 'ENTRY') return grabbedType;
-  if (side === 'BUY') return price > entryPrice ? 'TP' : 'SL';
-  return price < entryPrice ? 'TP' : 'SL';
+  const reference = Number.isFinite(closePrice) && (closePrice as number) > 0 ? (closePrice as number) : entryPrice;
+  if (side === 'BUY') return price > reference ? 'TP' : 'SL';
+  return price < reference ? 'TP' : 'SL';
 };
 
 /**
@@ -132,13 +165,15 @@ export const clampTradeLevelToCurrentPrice = (
   currentPrice: number,
   gap: number,
   digits: number | null,
+  tickSize?: unknown,
 ): number => {
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) return price;
   // Unknown precision has no tick to step past the close; the side check
   // (protectionLevelViolation) blocks wrong-side levels instead.
   if (digits === null) return price;
   const safeDigits = getSafeDigits(digits);
-  const safeGap = Math.max(Math.pow(10, -safeDigits), Number.isFinite(gap) && gap > 0 ? gap : 0);
+  const digitStep = Math.pow(10, -safeDigits);
+  const safeGap = Math.max(digitStep, Number.isFinite(gap) && gap > 0 ? gap : 0);
   const slBoundaryForBuy = currentPrice - safeGap;
   const tpBoundaryForBuy = currentPrice + safeGap;
 
@@ -148,7 +183,12 @@ export const clampTradeLevelToCurrentPrice = (
   } else {
     clamped = side === 'BUY' ? Math.max(price, tpBoundaryForBuy) : Math.min(price, slBoundaryForBuy);
   }
-  return normalizeTradeLevelDragPrice(clamped, safeDigits);
+  return roundLevelOutwardToTick(
+    clamped,
+    isValidSideTowardLower(side, role),
+    safeDigits,
+    tickSize,
+  );
 };
 
 export const applyTradeLevelDragUpdate = ({
@@ -159,6 +199,7 @@ export const applyTradeLevelDragUpdate = ({
   currentSl = 0,
   currentTp = 0,
   digits,
+  tickSize,
   minEntryDistance,
   snapEntryToMinDistance = false,
   entryDragDirection,
@@ -167,12 +208,20 @@ export const applyTradeLevelDragUpdate = ({
 }: TradeLevelDragUpdateInput): TradeLevelDragUpdate | null => {
   if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(finalPrice)) return null;
 
-  let price = normalizeTradeLevelDragPrice(finalPrice, digits);
+  const safeDigits = digits === null ? null : getSafeDigits(digits);
+  const step = safeDigits === null ? 0 : (readPositiveTickSize(tickSize) ?? Math.pow(10, -safeDigits));
+  let price = normalizeTradeLevelDragPrice(finalPrice, safeDigits);
   if (!Number.isFinite(price) || price <= 0) return null;
+
+  if (safeDigits !== null) {
+    const initialRole = resolveTradeLevelDragRole(side, grabbedType, entryPrice, price, currentPrice);
+    price = roundLevelOutwardToTick(price, isValidSideTowardLower(side, initialRole), safeDigits, tickSize);
+    if (!Number.isFinite(price) || price <= 0) return null;
+  }
+
   if (grabbedType === 'ENTRY') {
-    const safeDigits = digits === null ? null : getSafeDigits(digits);
     const entry = normalizeTradeLevelDragPrice(entryPrice, safeDigits);
-    const requiredDistance = Math.max(0, minEntryDistance ?? getTradeLevelDragMinDistance(safeDigits));
+    const requiredDistance = Math.max(0, minEntryDistance ?? getTradeLevelDragMinDistance(safeDigits, tickSize));
     const priceDirection = entryDragDirection === 1 || entryDragDirection === -1
       ? entryDragDirection
       : finalPrice > entryPrice
@@ -186,26 +235,33 @@ export const applyTradeLevelDragUpdate = ({
       if (!snapEntryToMinDistance) return null;
       if (!priceDirection) return null;
       if (requiredDistance <= 0 && safeDigits === null) return null;
-      const snapDistance = requiredDistance > 0 ? requiredDistance : Math.pow(10, -(safeDigits as number));
-      price = normalizeTradeLevelDragPrice(entry + priceDirection * snapDistance, safeDigits);
+      const snapDistance = requiredDistance > 0 ? requiredDistance : step;
+      const rawSnap = entry + priceDirection * snapDistance;
+      price = safeDigits === null
+        ? rawSnap
+        : roundLevelOutwardToTick(rawSnap, priceDirection < 0, safeDigits, tickSize);
       if (!Number.isFinite(price) || price <= 0) return null;
     }
 
     if (price === entry) {
       if (!priceDirection || safeDigits === null) return null;
-      const tickSize = Math.pow(10, -safeDigits);
-      price = normalizeTradeLevelDragPrice(entry + priceDirection * tickSize, safeDigits);
+      price = roundLevelOutwardToTick(entry + priceDirection * step, priceDirection < 0, safeDigits, tickSize);
       if (!Number.isFinite(price) || price <= 0) return null;
     }
   }
 
-  const role = resolveTradeLevelDragRole(side, grabbedType, entryPrice, price);
+  // currentPrice is the live close (Bid for BUY, Ask for SELL); role follows it.
+  const role = resolveTradeLevelDragRole(side, grabbedType, entryPrice, price, currentPrice);
+  if (safeDigits !== null) {
+    price = roundLevelOutwardToTick(price, isValidSideTowardLower(side, role), safeDigits, tickSize);
+    if (!Number.isFinite(price) || price <= 0) return null;
+  }
 
   // Keep the level on the broker-valid side of the live market price so the modify
   // request is accepted instead of being rejected and silently reverted.
   if (Number.isFinite(currentPrice) && (currentPrice as number) > 0) {
-    const gap = minStopDistance ?? getTradeLevelDragMinDistance(digits);
-    price = clampTradeLevelToCurrentPrice(side, role, price, currentPrice as number, gap, digits);
+    const gap = minStopDistance ?? getTradeLevelDragMinDistance(digits, tickSize);
+    price = clampTradeLevelToCurrentPrice(side, role, price, currentPrice as number, gap, digits, tickSize);
     if (!Number.isFinite(price) || price <= 0) return null;
   }
 
@@ -232,29 +288,47 @@ export const DEFAULT_PROTECTION_DISTANCE_POINTS = 5;
  * DEFAULT_PROTECTION_DISTANCE_POINTS when unset, blank, or non-positive.
  * White-label: generic points value, never a symbol-specific default.
  */
-export const readDefaultProtectionDistancePoints = (): number => {
-  if (typeof window !== 'undefined') {
-    const runtimeWindow = window as Window & {
-      __RTX_RUNTIME_CONFIG__?: Record<string, unknown>;
-      RUNTIME_CONFIG?: Record<string, unknown>;
-      __RUNTIME_CONFIG__?: Record<string, unknown>;
-    };
-    const configs = [
-      runtimeWindow.__RTX_RUNTIME_CONFIG__,
-      runtimeWindow.RUNTIME_CONFIG,
-      runtimeWindow.__RUNTIME_CONFIG__,
-    ];
-    for (const config of configs) {
-      if (!config || typeof config !== 'object') continue;
-      for (const key of ['SLTP_DEFAULT_DISTANCE_POINTS', 'VITE_SLTP_DEFAULT_DISTANCE_POINTS']) {
-        const raw = config[key];
-        const points = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim());
-        if (Number.isFinite(points) && points > 0) return points;
-      }
+/** First positive finite number among the runtime-config keys (all config sources). */
+const readPositiveRuntimeConfigNumber = (keys: readonly string[]): number | null => {
+  if (typeof window === 'undefined') return null;
+  const runtimeWindow = window as Window & {
+    __RTX_RUNTIME_CONFIG__?: Record<string, unknown>;
+    RUNTIME_CONFIG?: Record<string, unknown>;
+    __RUNTIME_CONFIG__?: Record<string, unknown>;
+  };
+  const configs = [
+    runtimeWindow.__RTX_RUNTIME_CONFIG__,
+    runtimeWindow.RUNTIME_CONFIG,
+    runtimeWindow.__RUNTIME_CONFIG__,
+  ];
+  for (const config of configs) {
+    if (!config || typeof config !== 'object') continue;
+    for (const key of keys) {
+      const raw = config[key];
+      const value = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim());
+      if (Number.isFinite(value) && value > 0) return value;
     }
   }
-  return DEFAULT_PROTECTION_DISTANCE_POINTS;
+  return null;
 };
+
+export const readDefaultProtectionDistancePoints = (): number => (
+  readPositiveRuntimeConfigNumber(['SLTP_DEFAULT_DISTANCE_POINTS', 'VITE_SLTP_DEFAULT_DISTANCE_POINTS'])
+    ?? DEFAULT_PROTECTION_DISTANCE_POINTS
+);
+
+/** Generic default; a feed silent for longer than this is not validated locally (the server decides). */
+export const DEFAULT_QUOTE_MAX_AGE_MS = 60_000;
+
+/**
+ * Maximum age (ms) of the tick used to validate or seed SL/TP
+ * (`QUOTE_MAX_AGE_MS`, `VITE_` alias accepted). Runtime config, never per symbol.
+ * Quiet instruments can show an old source time, so raise this knob rather
+ * than trade on a guess.
+ */
+export const readQuoteMaxAgeMs = (): number => (
+  readPositiveRuntimeConfigNumber(['QUOTE_MAX_AGE_MS', 'VITE_QUOTE_MAX_AGE_MS']) ?? DEFAULT_QUOTE_MAX_AGE_MS
+);
 
 /**
  * Resolve the SL/TP standoff distance in points: the broker's stops level
@@ -268,18 +342,86 @@ export const resolveStopsDistancePoints = (stopsLevel: unknown): number => {
   return readDefaultProtectionDistancePoints();
 };
 
+/**
+ * Seed distance in points for a new SL/TP: the largest of the broker stops
+ * level (only when the catalog provides one), the LIVE quote spread in points,
+ * and the configured buffer. The catalog spread field is static and must never
+ * be passed here; a stale spread would seed a level the live quote refuses.
+ */
+export const resolveSeedDistancePoints = (stopsLevel: unknown, liveSpreadPoints: number | null): number => {
+  const stops = typeof stopsLevel === 'number' ? stopsLevel : Number(stopsLevel);
+  const stopsPoints = Number.isFinite(stops) && stops > 0 ? stops : 0;
+  const spreadPoints = liveSpreadPoints !== null && Number.isFinite(liveSpreadPoints) && liveSpreadPoints > 0
+    ? liveSpreadPoints
+    : 0;
+  return Math.max(stopsPoints, spreadPoints, readDefaultProtectionDistancePoints());
+};
+
 export type ProtectionSide = 'BUY' | 'SELL';
 
-/** Broker precision as a known integer (0..12), else null — never guessed. */
+/** Broker precision as a known integer (0..12), else null â€” never guessed. */
 export const readKnownPriceDigits = (value: unknown): number | null => {
   if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isInteger(parsed) && parsed >= 0 && parsed <= 12 ? parsed : null;
 };
 
-const readPositiveTickSize = (value: unknown): number | null => (
-  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
-);
+/**
+ * Seed distance as a price: resolveSeedDistancePoints (catalog stops level when
+ * present, live spread, configured buffer) at the broker step. Null when the
+ * precision is unknown (no seed, never guessed).
+ */
+export const resolveSeedDistancePrice = ({
+  bid,
+  ask,
+  digits,
+  stopsLevel,
+}: {
+  bid: number;
+  ask: number;
+  digits: number | null;
+  stopsLevel?: unknown;
+}): number | null => {
+  const safeDigits = readKnownPriceDigits(digits);
+  if (safeDigits === null) return null;
+  const points = resolveSeedDistancePoints(stopsLevel, readLiveSpreadPoints(bid, ask, safeDigits));
+  return points * Math.pow(10, -safeDigits);
+};
+
+/** Live quote spread in broker points (ask - bid), or null when unknown or inverted. */
+export const readLiveSpreadPoints = (bid: number, ask: number, digits: number | null): number | null => {
+  const safeDigits = readKnownPriceDigits(digits);
+  if (safeDigits === null) return null;
+  if (!(bid > 0) || !(ask >= bid)) return null;
+  return (ask - bid) * Math.pow(10, safeDigits);
+};
+
+/**
+ * Bid/Ask to validate SL/TP against LOCALLY, or null. Null means "do not
+ * validate here": the tick is missing, one-sided, never stamped by a live feed
+ * message, or the feed has been silent for longer than maxAgeMs. Callers send
+ * the request unvalidated and the server decides (server-final). No local
+ * refusal is ever based on a null result.
+ *
+ * Freshness is ONLY the feed-activity stamp (store/quoteFeedActivity.ts, set by
+ * the dispatcher for accepted or identical two-sided feed quotes). Broker time
+ * is deliberately not used: a skewed or future broker clock would otherwise
+ * keep an old quote fresh, and a quote without a stamp is not fresh.
+ */
+export const resolveFreshValidationQuote = (
+  tick: { bid?: unknown; ask?: unknown } | null | undefined,
+  nowMs: number,
+  maxAgeMs: number,
+  feedActivityMs?: number | null,
+): { bid: number; ask: number } | null => {
+  if (!tick) return null;
+  const bid = Number(tick.bid);
+  const ask = Number(tick.ask);
+  if (!(bid > 0) || !(ask > 0)) return null;
+  const stamped = feedActivityMs === undefined || feedActivityMs === null ? Number.NaN : Number(feedActivityMs);
+  if (!(stamped > 0)) return null;
+  return nowMs - stamped > maxAgeMs ? null : { bid, ask };
+};
 
 /**
  * Round a typed/dragged SL/TP level to the broker price grid before sending:
@@ -332,6 +474,7 @@ export const defaultProtectionLevel = ({
   bid,
   ask,
   digits,
+  tickSize,
   distancePoints,
 }: {
   side: ProtectionSide;
@@ -339,6 +482,8 @@ export const defaultProtectionLevel = ({
   bid: number;
   ask: number;
   digits: number | null;
+  /** Broker tick size: when present the seed is rounded outward to it (grid check). */
+  tickSize?: unknown;
   distancePoints?: unknown;
 }): number | null => {
   const close = protectionClosePrice(side, bid, ask);
@@ -347,18 +492,42 @@ export const defaultProtectionLevel = ({
   const safeDigits = readKnownPriceDigits(digits);
   if (safeDigits === null) return null;
   const step = Math.pow(10, -safeDigits);
-  const distance = resolveStopsDistancePoints(distancePoints) * step;
+  // Seed beyond the live spread (and any catalog stops level), never inside it.
+  const distance = resolveSeedDistancePoints(distancePoints, readLiveSpreadPoints(bid, ask, safeDigits)) * step;
   const raw = role === 'SL'
     ? (side === 'BUY' ? close - distance : close + distance)
     : (side === 'BUY' ? close + distance : close - distance);
-  const rounded = Math.round(raw / step) * step;
+  // The seed moves outward onto the tick (or the digit step), never inside the distance.
+  const towardLower = isValidSideTowardLower(side, role);
+  const rounded = roundLevelOutwardToTick(raw, towardLower, safeDigits, tickSize);
   return Number.isFinite(rounded) && rounded > 0 ? rounded : null;
+};
+
+/**
+ * Whether a positive price sits on the broker tick grid (`tickSize` when finite
+ * and > 0, else `10^-digits`) AND on the `digits`-decimal grid within relative
+ * tick tolerance (handling IEEE-754 float ULP at large magnitudes).
+ * Unknown precision (`digits === null`) returns true (server decides).
+ */
+export const isOnTickGrid = (
+  price: number,
+  digits: number | null,
+  tickSize?: unknown,
+): boolean => {
+  if (!Number.isFinite(price) || price <= 0) return false;
+  const safeDigits = readKnownPriceDigits(digits);
+  if (safeDigits === null) return true;
+  const step = Math.pow(10, -safeDigits);
+  const tick = readPositiveTickSize(tickSize) ?? step;
+  const scaled = price / tick;
+  const scaleFit = price * Math.pow(10, safeDigits);
+  return isWithinGridStepTolerance(scaled) && isWithinGridStepTolerance(scaleFit);
 };
 
 /**
  * Plain-words reason when a protection level violates the rules the
  * gateway enforces (rules_modify.go: side strictly off the current close
- * — BUY vs Bid, SELL vs Ask, equality refused — plus the price grid), or
+ * â€” BUY vs Bid, SELL vs Ask, equality refused â€” plus the price grid), or
  * null when the level is acceptable. There is deliberately NO minimum
  * distance: the backend enforces none, so the client must not refuse
  * in-gap levels. Distance lives only in defaultProtectionLevel (seeding).
@@ -390,7 +559,6 @@ export const protectionLevelViolation = ({
   const digitsKnown = safeDigits !== null;
   const closeText = digitsKnown ? formatProtectionPrice(close, safeDigits) : String(close);
   const closeLabel = side === 'BUY' ? 'Bid' : 'Ask';
-  const levelLabel = role === 'SL' ? 'Stop loss' : 'Take profit';
   const wrongSide = role === 'SL'
     ? (side === 'BUY' ? price >= close : price <= close)
     : (side === 'BUY' ? price <= close : price >= close);
@@ -398,17 +566,122 @@ export const protectionLevelViolation = ({
     const direction = role === 'SL'
       ? (side === 'BUY' ? 'below' : 'above')
       : (side === 'BUY' ? 'above' : 'below');
-    return `${levelLabel} must be ${direction} the current ${closeLabel} ${closeText} for a ${side}`;
+    const priceText = digitsKnown ? formatProtectionPrice(price, safeDigits) : String(price);
+    // Names the attempted level and the bound it must pass, e.g.
+    // "TP 81,700.00 must be above Bid 81,736.54".
+    return `${role} ${priceText} must be ${direction} ${closeLabel} ${closeText}`;
   }
   if (!digitsKnown) return null;
-  const step = Math.pow(10, -safeDigits);
-  const tick = typeof tickSize === 'number' && Number.isFinite(tickSize) && tickSize > 0 ? tickSize : step;
-  const scaled = price / tick;
-  const scaleFit = price * Math.pow(10, safeDigits);
-  if (Math.abs(scaled - Math.round(scaled)) > 1e-6 || Math.abs(scaleFit - Math.round(scaleFit)) > 1e-6) {
-    return `${levelLabel} must be on the ${safeDigits}-digit price grid`;
+  if (!isOnTickGrid(price, safeDigits, tickSize)) {
+    return `${role} ${formatProtectionPrice(price, safeDigits)} must be on the ${safeDigits}-digit price grid`;
   }
   return null;
+};
+
+/**
+ * Round a level to the broker tick OUTWARD: down when the valid side is below
+ * the close (BUY SL, SELL TP), up when it is above (BUY TP, SELL SL). The result
+ * is never closer to the close than the input, so a seed or snap that passed the
+ * side and distance rules still does after rounding. Tick size when present,
+ * else one digit step. Levels already on the grid within relative tolerance
+ * stay exact.
+ */
+export const roundLevelOutwardToTick = (
+  price: number,
+  towardLower: boolean,
+  digits: number,
+  tickSize?: unknown,
+): number => {
+  if (!Number.isFinite(price)) return Number.NaN;
+  const safeDigits = getSafeDigits(digits);
+  const step = readPositiveTickSize(tickSize) ?? Math.pow(10, -safeDigits);
+  const scaled = price / step;
+  const ticks = isWithinGridStepTolerance(scaled)
+    ? Math.round(scaled)
+    : towardLower
+      ? Math.floor(scaled)
+      : Math.ceil(scaled);
+  return normalizeTradeLevelDragPrice(ticks * step, safeDigits);
+};
+
+/**
+ * Round a candidate protection level toward its valid side on the broker tick
+ * grid (BUY SL floors, BUY TP ceils, SELL SL ceils, SELL TP floors; exact when
+ * already on the grid within relative tolerance). Unknown precision returns the
+ * input unchanged.
+ */
+export const roundTradeLevelToSideGrid = (
+  price: number,
+  side: TradeLevelDragSide,
+  role: TradeLevelDragResultRole,
+  digits: number | null,
+  tickSize?: unknown,
+): number => {
+  if (!Number.isFinite(price) || price <= 0) return price;
+  if (digits === null) return price;
+  const safeDigits = getSafeDigits(digits);
+  return roundLevelOutwardToTick(
+    price,
+    isValidSideTowardLower(side, role),
+    safeDigits,
+    tickSize,
+  );
+};
+
+/**
+ * Price a SL/TP drop submits. Candidate levels are rounded toward the valid
+ * side on the broker tick grid so a valid drop near the close is never rounded
+ * across the close. A level not set yet (a chip) snaps to the valid side of the
+ * live close plus the seed distance (catalog stops level, live spread, buffer),
+ * rounded OUTWARD to the broker tick so the grid check passes. Without a fresh
+ * quote there is no close to snap to: the dropped price is returned rounded to
+ * the grid and the server decides.
+ */
+export const resolveDropPriceForRole = ({
+  side,
+  grabbedType,
+  price,
+  quote,
+  digits,
+  tickSize,
+  stopsLevel,
+  isNewLevel,
+  entryPrice,
+}: {
+  side: TradeLevelDragSide;
+  grabbedType: TradeLevelDragTarget;
+  price: number;
+  quote: { bid: number; ask: number } | null;
+  digits: number | null;
+  tickSize?: unknown;
+  stopsLevel?: unknown;
+  isNewLevel: boolean;
+  entryPrice?: number;
+}): number => {
+  if (!Number.isFinite(price) || price <= 0 || digits === null) {
+    return roundProtectionLevelToGrid(price, digits, tickSize);
+  }
+  const safeDigits = getSafeDigits(digits);
+  const close = quote ? protectionClosePrice(side, quote.bid, quote.ask) : null;
+  const hasRoleReference = grabbedType !== 'ENTRY'
+    || close !== null
+    || (typeof entryPrice === 'number' && Number.isFinite(entryPrice) && entryPrice > 0);
+  const resolvedRole: TradeLevelDragResultRole | null = hasRoleReference
+    ? (grabbedType === 'ENTRY'
+        ? resolveTradeLevelDragRole(side, 'ENTRY', entryPrice ?? 0, price, close)
+        : grabbedType)
+    : null;
+  const normalized = resolvedRole !== null
+    ? roundLevelOutwardToTick(price, isValidSideTowardLower(side, resolvedRole), safeDigits, tickSize)
+    : roundProtectionLevelToGrid(price, safeDigits, tickSize);
+  if (!isNewLevel || grabbedType === 'ENTRY' || !quote) return normalized;
+  const seed = resolveSeedDistancePrice({ bid: quote.bid, ask: quote.ask, digits: safeDigits, stopsLevel });
+  if (close === null || seed === null) return normalized;
+  const clamped = clampTradeLevelToCurrentPrice(side, grabbedType, normalized, close, seed, safeDigits, tickSize);
+  if (clamped === normalized) return normalized;
+  // The valid side of a SL/TP is below the close for a BUY SL and a SELL TP.
+  const towardLower = isValidSideTowardLower(side, grabbedType);
+  return roundLevelOutwardToTick(clamped, towardLower, safeDigits, tickSize);
 };
 
 export const selectNearestTradeLevel = (
@@ -427,4 +700,75 @@ export const selectNearestTradeLevel = (
   });
 
   return closest;
+};
+
+export const pendingOrderPriceViolation = ({
+  orderType,
+  side,
+  price,
+  limitPrice,
+  sl,
+  tp,
+  bid,
+  ask,
+  digits,
+  tickSize,
+  stopsLevelTicks = 0,
+}: {
+  orderType: string;
+  side: 'BUY' | 'SELL';
+  price: number;
+  limitPrice?: number;
+  sl?: number;
+  tp?: number;
+  bid: number;
+  ask: number;
+  digits: number | null;
+  tickSize?: number | null;
+  stopsLevelTicks?: number;
+}): string | null => {
+  if (!Number.isFinite(price) || price <= 0) {
+    return 'Order price must be greater than zero';
+  }
+  const safeDigits = readKnownPriceDigits(digits);
+  const step = (typeof tickSize === 'number' && Number.isFinite(tickSize) && tickSize > 0)
+    ? tickSize
+    : (safeDigits !== null ? Math.pow(10, -safeDigits) : 0);
+  const minDist = Math.max(0, Number(stopsLevelTicks) || 0) * step;
+  const normType = String(orderType || '').trim().toLowerCase();
+  const fmt = (v: number) => (safeDigits !== null ? formatProtectionPrice(v, safeDigits) : String(v));
+
+  if (ask > 0 && normType === 'buy_limit' && price >= ask - minDist + 1e-12) {
+    return `Buy Limit price must be below Ask ${fmt(ask)}`;
+  }
+  if (bid > 0 && normType === 'sell_limit' && price <= bid + minDist - 1e-12) {
+    return `Sell Limit price must be above Bid ${fmt(bid)}`;
+  }
+  if (ask > 0 && (normType === 'buy_stop' || normType === 'buy_stop_limit') && price <= ask + minDist - 1e-12) {
+    return `${normType === 'buy_stop_limit' ? 'Buy Stop Limit' : 'Buy Stop'} price must be above Ask ${fmt(ask)}`;
+  }
+  if (bid > 0 && (normType === 'sell_stop' || normType === 'sell_stop_limit') && price >= bid - minDist + 1e-12) {
+    return `${normType === 'sell_stop_limit' ? 'Sell Stop Limit' : 'Sell Stop'} price must be below Bid ${fmt(bid)}`;
+  }
+
+  const refPrice = (normType.endsWith('_stop_limit') && typeof limitPrice === 'number' && limitPrice > 0)
+    ? limitPrice
+    : price;
+  if (typeof sl === 'number' && sl > 0) {
+    if (side === 'BUY' && sl >= refPrice - minDist + 1e-12) {
+      return `Stop Loss must be below order price ${fmt(refPrice)}`;
+    }
+    if (side === 'SELL' && sl <= refPrice + minDist - 1e-12) {
+      return `Stop Loss must be above order price ${fmt(refPrice)}`;
+    }
+  }
+  if (typeof tp === 'number' && tp > 0) {
+    if (side === 'BUY' && tp <= refPrice + minDist - 1e-12) {
+      return `Take Profit must be above order price ${fmt(refPrice)}`;
+    }
+    if (side === 'SELL' && tp >= refPrice - minDist + 1e-12) {
+      return `Take Profit must be below order price ${fmt(refPrice)}`;
+    }
+  }
+  return null;
 };

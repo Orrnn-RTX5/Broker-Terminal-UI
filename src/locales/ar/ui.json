@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "تنبيهات الأسعار والمنصة",
   "Price at which the position was opened": "السعر الذي فُتح به المركز",
   "Price label": "ملصق السعر",
+  "Price moved, drag again": "تغيّر السعر، اسحب مرة أخرى",
+  "Price updating, please retry": "السعر يتم تحديثه، يرجى إعادة المحاولة",
   "Price note": "مذكرة السعر",
   "Price precision": "دقة السعر",
   "Price range": "النطاق السعري",

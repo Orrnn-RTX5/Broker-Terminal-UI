@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "価格とターミナルのアラート",
   "Price at which the position was opened": "ポジションの開始価格",
   "Price label": "価格ラベル",
+  "Price moved, drag again": "価格が変動しました。もう一度ドラッグしてください",
+  "Price updating, please retry": "価格を更新中です。もう一度お試しください",
   "Price note": "価格メモ",
   "Price precision": "価格の精度",
   "Price range": "価格帯",

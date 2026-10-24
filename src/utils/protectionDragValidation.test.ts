@@ -20,10 +20,7 @@ describe('protection drag validation', () => {
         digits: 5,
       });
 
-      expect(reason).not.toBeNull();
-      expect(reason!).toContain('Stop loss');
-      expect(reason!).toContain('Bid');
-      expect(reason!).toContain('BUY');
+      expect(reason).toBe('SL 1.20100 must be below Bid 1.20000');
     });
 
     it('BUY TP dropped below bid is refused as Take profit vs Bid for BUY', () => {
@@ -36,10 +33,7 @@ describe('protection drag validation', () => {
         digits: 5,
       });
 
-      expect(reason).not.toBeNull();
-      expect(reason!).toContain('Take profit');
-      expect(reason!).toContain('Bid');
-      expect(reason!).toContain('BUY');
+      expect(reason).toBe('TP 1.19900 must be above Bid 1.20000');
     });
 
     it('SELL SL dropped below ask is refused as Stop loss vs Ask for SELL', () => {
@@ -52,10 +46,7 @@ describe('protection drag validation', () => {
         digits: 5,
       });
 
-      expect(reason).not.toBeNull();
-      expect(reason!).toContain('Stop loss');
-      expect(reason!).toContain('Ask');
-      expect(reason!).toContain('SELL');
+      expect(reason).toBe('SL 1.19900 must be above Ask 1.20020');
     });
 
     it('SELL TP dropped above ask is refused as Take profit vs Ask for SELL', () => {
@@ -68,10 +59,7 @@ describe('protection drag validation', () => {
         digits: 5,
       });
 
-      expect(reason).not.toBeNull();
-      expect(reason!).toContain('Take profit');
-      expect(reason!).toContain('Ask');
-      expect(reason!).toContain('SELL');
+      expect(reason).toBe('TP 1.20100 must be below Ask 1.20020');
     });
   });
 
@@ -148,10 +136,7 @@ describe('protection drag validation', () => {
         digits: 5,
       });
 
-      expect(reason).not.toBeNull();
-      expect(reason!).toContain('Stop loss');
-      expect(reason!).toContain('Bid');
-      expect(reason!).toContain('BUY');
+      expect(reason).toBe('SL 1.20000 must be below Bid 1.20000');
     });
 
     it('SELL TP exactly at ask is refused', () => {
@@ -164,10 +149,7 @@ describe('protection drag validation', () => {
         digits: 5,
       });
 
-      expect(reason).not.toBeNull();
-      expect(reason!).toContain('Take profit');
-      expect(reason!).toContain('Ask');
-      expect(reason!).toContain('SELL');
+      expect(reason).toBe('TP 1.20020 must be below Ask 1.20020');
     });
   });
 

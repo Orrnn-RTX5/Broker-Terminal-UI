@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "가격 및 터미널 알림",
   "Price at which the position was opened": "포지션 진입 가격",
   "Price label": "가격 레이블",
+  "Price moved, drag again": "가격이 변경되었습니다. 다시 드래그하세요",
+  "Price updating, please retry": "가격 업데이트 중입니다. 다시 시도하세요",
   "Price note": "가격 메모",
   "Price precision": "가격 소수 자릿수",
   "Price range": "가격 범위",

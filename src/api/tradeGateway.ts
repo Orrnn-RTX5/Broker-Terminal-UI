@@ -562,6 +562,8 @@ export const normalizeOrder = (raw: GatewayOrder, index = 0): Trade => {
   const magicNumber = finiteValueOrUndefined(raw.magic);
   const contractSize = finiteNumberOrUndefined(raw.contract_size ?? raw.contractSize);
   const comment = String(raw.comment ?? '').trim();
+  const rawStatus = String(raw.status ?? '').trim().toLowerCase();
+  const unexecutedTerminal = rawStatus === 'cancelled' || rawStatus === 'canceled' || rawStatus === 'expired' || rawStatus === 'rejected';
   return {
     id: ticket,
     symbol: raw.symbol ?? '',
@@ -569,7 +571,7 @@ export const normalizeOrder = (raw: GatewayOrder, index = 0): Trade => {
     side: side.includes('sell') ? 'SELL' : side.includes('buy') ? 'BUY' : side.toUpperCase(),
     volume: Number(raw.volume ?? 0),
     openPrice: Number(raw.price_open ?? raw.open_price ?? raw.price ?? 0),
-    closePrice: Number(raw.price ?? raw.price_open ?? raw.open_price ?? 0),
+    closePrice: unexecutedTerminal ? 0 : Number(raw.price ?? raw.price_open ?? raw.open_price ?? 0),
     openTime: toIsoFromSeconds(setupTime),
     closeTime: toIsoFromSeconds(doneTime),
     profit: 0,
@@ -784,7 +786,7 @@ export const tradeGatewayApi = {
       endpoint,
       {
         baseUrl,
-        params: { limit: 50, offset: 0 },
+        params: { offset: 0 },
         headers: {
           accept: 'application/json',
         },

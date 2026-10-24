@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatOrderError } from './orderError';
 import { ApiError } from '../api/client';
+import { OrderCommandTerminalError } from '../services/orderCommandLifecycle';
 
 describe('formatOrderError', () => {
   it('preserves an async command backend code and message verbatim', () => {
@@ -11,11 +12,75 @@ describe('formatOrderError', () => {
     })).toBe('SOURCE_MISMATCH: Execution source does not match quote source.');
   });
 
-  it('preserves a structured POST rejection code and message', () => {
+  it('shows the busy message for a structured 429 POST rejection carrying TOO_MANY_ORDERS', () => {
     expect(formatOrderError(new ApiError(429, 'Too many orders are already in flight for this account', {
       error: 'TOO_MANY_ORDERS',
       message: 'Too many orders are already in flight for this account',
-    }))).toBe('TOO_MANY_ORDERS: Too many orders are already in flight for this account');
+    }))).toBe('Account busy — previous orders are still processing. Please retry.');
+  });
+
+  it('shows the busy message for the trade WebSocket rejection shape (no HTTP status)', () => {
+    const wsRejection = new OrderCommandTerminalError({
+      status: 'rejected',
+      terminal: true,
+      clientOrderId: 'cid-1',
+      error: { code: 'TOO_MANY_ORDERS', message: 'Too many orders are already in flight for this account' },
+      raw: {},
+    }, 'cid-1');
+    expect(formatOrderError(wsRejection)).toBe('Account busy — previous orders are still processing. Please retry.');
+  });
+
+  it('shows the busy message for an expired WebSocket command carrying TOO_MANY_ORDERS', () => {
+    const expired = new OrderCommandTerminalError({
+      status: 'expired',
+      terminal: true,
+      clientOrderId: 'cid-2',
+      error: { code: 'TOO_MANY_ORDERS', message: 'busy' },
+      raw: {},
+    }, 'cid-2');
+    expect(formatOrderError(expired)).toBe('Account busy — previous orders are still processing. Please retry.');
+  });
+
+  it('keeps other WebSocket rejection codes on their existing copy', () => {
+    const invalidVolume = new OrderCommandTerminalError({
+      status: 'rejected',
+      terminal: true,
+      clientOrderId: 'cid-3',
+      error: { code: 'INVALID_VOLUME', message: 'Volume below minimum' },
+      raw: {},
+    }, 'cid-3');
+    expect(formatOrderError(invalidVolume)).toBe('INVALID_VOLUME: Volume below minimum');
+  });
+
+  it('shows a plain busy message for a 429 TOO_MANY_ORDERS refusal (code under "error")', () => {
+    expect(formatOrderError(new ApiError(429, 'Too many orders are already in flight for this account', {
+      error: 'TOO_MANY_ORDERS',
+      message: 'Too many orders are already in flight for this account',
+    }))).toBe('Account busy — previous orders are still processing. Please retry.');
+  });
+
+  it('shows the same busy message when the code sits under "code"', () => {
+    expect(formatOrderError(new ApiError(429, 'busy', { code: 'TOO_MANY_ORDERS', message: 'busy' })))
+      .toBe('Account busy — previous orders are still processing. Please retry.');
+  });
+
+  it('shows the busy message for a 429 TOO_MANY_ORDERS carried on a plain error code', () => {
+    expect(formatOrderError(Object.assign(new Error('Too many orders'), { status: 429, code: 'TOO_MANY_ORDERS' })))
+      .toBe('Account busy — previous orders are still processing. Please retry.');
+  });
+
+  it('keeps other 429 codes on their existing copy', () => {
+    expect(formatOrderError(new ApiError(429, 'Slow down', { error: 'RATE_LIMITED' })))
+      .toBe('Order failed: too many requests. Please slow down and try again.');
+    expect(formatOrderError(new ApiError(429, 'Slow down')))
+      .toBe('Order failed: too many requests. Please slow down and try again.');
+  });
+
+  it('leaves TOO_MANY_ORDERS unchanged on statuses other than 429', () => {
+    expect(formatOrderError(new ApiError(400, 'limit', { error: 'TOO_MANY_ORDERS', message: 'limit' })))
+      .toBe('TOO_MANY_ORDERS: limit');
+    expect(formatOrderError(new ApiError(503, 'limit', { error: 'TOO_MANY_ORDERS' })))
+      .toBe('Order failed: the trading server reported an error. Please try again shortly.');
   });
 
   it('maps a network-level ApiError (status 0) to a connection message', () => {

@@ -35,7 +35,7 @@ import {
 
 const apiGet = vi.hoisted(() => vi.fn());
 const apiPut = vi.hoisted(() => vi.fn());
-const enqueueLiveTick = vi.hoisted(() => vi.fn());
+const enqueueSnapshotTick = vi.hoisted(() => vi.fn());
 const useQuoteSubscriptionMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../api/client', () => {
@@ -60,7 +60,7 @@ vi.mock('../api/client', () => {
 });
 
 vi.mock('../services/liveTickDispatcher', () => ({
-  enqueueLiveTick,
+  enqueueSnapshotTick,
 }));
 
 // Keep one ordered request fixture for the hook's two independent sources.
@@ -301,7 +301,7 @@ describe('useLiveQuotes REST fallback batching', () => {
     vi.useFakeTimers();
     apiGet.mockReset();
     apiPut.mockReset();
-    enqueueLiveTick.mockReset();
+    enqueueSnapshotTick.mockReset();
     useQuoteSubscriptionMock.mockReset();
     apiGet.mockResolvedValue({ quotes: [] });
     useQuoteSubscriptionMock.mockReturnValue({ isConnected: true });
@@ -355,7 +355,7 @@ describe('useLiveQuotes REST fallback batching', () => {
     const { unmount } = renderHook(() => useLiveQuotes(['XAUUSD']));
     await flushPromises();
 
-    expect(enqueueLiveTick).toHaveBeenCalledWith('XAUUSD', expect.objectContaining({
+    expect(enqueueSnapshotTick).toHaveBeenCalledWith('XAUUSD', expect.objectContaining({
       bid: 4604.44,
       ask: 4604.54,
       dailyChange: 0.45,
@@ -381,7 +381,7 @@ describe('useLiveQuotes REST fallback batching', () => {
     const { unmount } = renderHook(() => useLiveQuotes(['FUTURE.LAST']));
     await flushPromises();
 
-    expect(enqueueLiveTick).toHaveBeenCalledWith('FUTURE.LAST', expect.objectContaining({
+    expect(enqueueSnapshotTick).toHaveBeenCalledWith('FUTURE.LAST', expect.objectContaining({
       dailyChange: 50,
     }));
 
@@ -403,7 +403,7 @@ describe('useLiveQuotes REST fallback batching', () => {
     const { unmount } = renderHook(() => useLiveQuotes(['FUTURE.LAST-ONLY']));
     await flushPromises();
 
-    expect(enqueueLiveTick).toHaveBeenCalledWith('FUTURE.LAST-ONLY', expect.objectContaining({
+    expect(enqueueSnapshotTick).toHaveBeenCalledWith('FUTURE.LAST-ONLY', expect.objectContaining({
       bid: 0,
       ask: 0,
       last: 120,
@@ -479,7 +479,7 @@ describe('useLiveQuotes REST fallback batching', () => {
     ]));
     await flushPromises();
 
-    expect(enqueueLiveTick.mock.calls.map(([, tick]) => tick.dailyChange)).toEqual([10, 20, 20, 10]);
+    expect(enqueueSnapshotTick.mock.calls.map(([, tick]) => tick.dailyChange)).toEqual([10, 20, 20, 10]);
     unmount();
   });
 
@@ -540,7 +540,7 @@ describe('useLiveQuotes REST fallback batching', () => {
     ]));
     await flushPromises();
 
-    expect(enqueueLiveTick.mock.calls.map(([, tick]) => ({
+    expect(enqueueSnapshotTick.mock.calls.map(([, tick]) => ({
       dailyChange: tick.dailyChange,
       last: tick.last,
     }))).toEqual([
@@ -605,7 +605,7 @@ describe('useLiveQuotes REST fallback batching', () => {
     ]));
     await flushPromises();
 
-    expect(enqueueLiveTick.mock.calls.map(([symbol, tick]) => ({
+    expect(enqueueSnapshotTick.mock.calls.map(([symbol, tick]) => ({
       symbol,
       bid: tick.bid,
       dailyChange: tick.dailyChange,
@@ -649,8 +649,8 @@ describe('useLiveQuotes REST fallback batching', () => {
 
     const { unmount } = renderHook(() => useLiveQuotes(['AMBIGUOUS.LAST-ONLY']));
     await flushPromises();
-    expect(enqueueLiveTick).toHaveBeenCalledTimes(1);
-    expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({ bid: 0, ask: 0, dailyChange: undefined, dailyChangeInput: { mode: undefined, last: 120 } });
+    expect(enqueueSnapshotTick).toHaveBeenCalledTimes(1);
+    expect(enqueueSnapshotTick.mock.calls[0][1]).toMatchObject({ bid: 0, ask: 0, dailyChange: undefined, dailyChangeInput: { mode: undefined, last: 120 } });
 
     unmount();
   });
@@ -674,7 +674,7 @@ describe('useLiveQuotes REST fallback batching', () => {
     const { unmount } = renderHook(() => useLiveQuotes(['XAUUSD']));
     await flushPromises();
 
-    expect(enqueueLiveTick).toHaveBeenCalledWith('XAUUSD', expect.objectContaining({
+    expect(enqueueSnapshotTick).toHaveBeenCalledWith('XAUUSD', expect.objectContaining({
       last: 4411.15,
       lp: 'FXTrust',
       high24h: 4420.5,
@@ -746,7 +746,7 @@ describe('useLiveQuotes REST fallback batching', () => {
     await flushPromises();
 
     expect(apiGet).toHaveBeenCalledTimes(1);
-    expect(enqueueLiveTick).not.toHaveBeenCalled();
+    expect(enqueueSnapshotTick).not.toHaveBeenCalled();
     expect(useMarketDataStore.getState().symbolData.EURUSD?.currentTick).toEqual(websocketTick);
     expect(useAppStore.getState().ticks.EURUSD).toMatchObject(websocketTick);
 
@@ -805,7 +805,7 @@ describe('useLiveQuotes REST fallback batching', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(enqueueLiveTick).not.toHaveBeenCalled();
+    expect(enqueueSnapshotTick).not.toHaveBeenCalled();
     unmount();
   });
 
@@ -863,7 +863,7 @@ describe('useMarketInstruments normalization', () => {
   beforeEach(() => {
     apiGet.mockReset();
     apiPut.mockReset();
-    enqueueLiveTick.mockReset();
+    enqueueSnapshotTick.mockReset();
     useQuoteSubscriptionMock.mockReset();
     localStorage.setItem('auth_token', 'instrument-test-token');
     localStorage.setItem('refresh_token', 'instrument-test-refresh');
@@ -1205,8 +1205,8 @@ describe('useMarketInstruments normalization', () => {
     expect(result.current.authorizedSymbols).toEqual(['EURUSD', 'GBPUSD']);
     expect(result.current.disabledSymbols).toEqual(['XAUUSD']);
     expect(result.current.authorizationSettled).toBe(true);
-    expect(enqueueLiveTick).toHaveBeenCalledTimes(3);
-    expect(enqueueLiveTick).toHaveBeenCalledWith('EURUSD', expect.objectContaining({
+    expect(enqueueSnapshotTick).toHaveBeenCalledTimes(3);
+    expect(enqueueSnapshotTick).toHaveBeenCalledWith('EURUSD', expect.objectContaining({
       symbol: 'EURUSD',
       bid: 1.10101,
       ask: 1.10123,
@@ -1214,7 +1214,7 @@ describe('useMarketInstruments normalization', () => {
       digits: 5,
       timestamp: 1_700_000_000_000,
     }));
-    expect(enqueueLiveTick).toHaveBeenCalledWith('GBPUSD', expect.objectContaining({
+    expect(enqueueSnapshotTick).toHaveBeenCalledWith('GBPUSD', expect.objectContaining({
       symbol: 'GBPUSD',
       bid: 1.26789,
       ask: 1.26801,
@@ -1245,7 +1245,7 @@ describe('useMarketInstruments normalization', () => {
     expect(result.current.authorizedSymbols).toEqual([]);
     expect(result.current.authorizationSettled).toBe(false);
     expect(result.current.chartCatalogCurrent).toBe(false);
-    expect(enqueueLiveTick).not.toHaveBeenCalled();
+    expect(enqueueSnapshotTick).not.toHaveBeenCalled();
 
     await act(async () => {
       resolveAuthorization({
@@ -1263,8 +1263,8 @@ describe('useMarketInstruments normalization', () => {
     expect(result.current.authorizedSymbols).toEqual(['XAUUSD']);
     expect(result.current.authorizationSettled).toBe(true);
     expect(result.current.chartCatalogCurrent).toBe(true);
-    expect(enqueueLiveTick).toHaveBeenCalledTimes(1);
-    expect(enqueueLiveTick).toHaveBeenCalledWith('XAUUSD', expect.anything());
+    expect(enqueueSnapshotTick).toHaveBeenCalledTimes(1);
+    expect(enqueueSnapshotTick).toHaveBeenCalledWith('XAUUSD', expect.anything());
     unmount();
   });
 
@@ -1293,7 +1293,7 @@ describe('useMarketInstruments normalization', () => {
     expect(result.current.disabledSymbols).toEqual(['EURUSD']);
     expect(result.current.accountCatalogStatus).toBe('loaded');
     // Only account symbols are seeded into the quote store.
-    expect(enqueueLiveTick.mock.calls.map(([symbol]) => symbol).sort()).toEqual(['EURUSD', 'XAUUSD']);
+    expect(enqueueSnapshotTick.mock.calls.map(([symbol]) => symbol).sort()).toEqual(['EURUSD', 'XAUUSD']);
     unmount();
   });
 
@@ -1473,7 +1473,7 @@ describe('useMarketInstruments normalization', () => {
     expect(result.current.authorizedSymbols).toEqual([]);
     expect(result.current.disabledSymbols).toEqual([]);
     expect(result.current.authorizationSettled).toBe(true);
-    expect(enqueueLiveTick).toHaveBeenCalledTimes(2);
+    expect(enqueueSnapshotTick).toHaveBeenCalledTimes(2);
 
     unmount();
   });
@@ -1560,7 +1560,7 @@ describe('active market symbol status cache', () => {
     localStorage.clear();
     apiGet.mockReset();
     apiPut.mockReset();
-    enqueueLiveTick.mockReset();
+    enqueueSnapshotTick.mockReset();
     useQuoteSubscriptionMock.mockReset();
     useQuoteSubscriptionMock.mockReturnValue({ isConnected: true });
     useAppStore.setState({ isAuthenticated: true, ticks: {}, tickLookup: {} });
@@ -2141,10 +2141,10 @@ describe('active market symbol status cache', () => {
     rerender({ symbols: ['EURUSD', 'XAUUSD', 'BTCUSD'] });
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(4));
     expect(result.current.error).toBe('Quote is stale for EURUSD and XAUUSD');
-    expect(enqueueLiveTick).toHaveBeenNthCalledWith(5, 'EURUSD', expect.objectContaining({
+    expect(enqueueSnapshotTick).toHaveBeenNthCalledWith(5, 'EURUSD', expect.objectContaining({
       timestamp: failureTimestamp,
     }));
-    expect(enqueueLiveTick).toHaveBeenNthCalledWith(6, 'XAUUSD', expect.objectContaining({
+    expect(enqueueSnapshotTick).toHaveBeenNthCalledWith(6, 'XAUUSD', expect.objectContaining({
       timestamp: failureTimestamp,
     }));
 
@@ -2255,7 +2255,7 @@ describe('active market symbol status cache', () => {
 describe('account spread markup from the authenticated catalogue', () => {
   beforeEach(() => {
     apiGet.mockReset();
-    enqueueLiveTick.mockReset();
+    enqueueSnapshotTick.mockReset();
     useQuoteSubscriptionMock.mockReset();
     resetAccountSpreadMarkupForTests();
     localStorage.setItem('auth_token', 'markup-test-token');
@@ -2297,7 +2297,7 @@ describe('account spread markup from the authenticated catalogue', () => {
       ],
     });
     let markupAtSeed: unknown = 'not-seeded';
-    enqueueLiveTick.mockImplementation((symbol: string) => {
+    enqueueSnapshotTick.mockImplementation((symbol: string) => {
       if (symbol === 'XAUUSD') markupAtSeed = getAccountSpreadMarkup('XAUUSD');
     });
 

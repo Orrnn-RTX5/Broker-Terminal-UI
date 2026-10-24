@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "Alertes de cours et du terminal",
   "Price at which the position was opened": "Cours d’ouverture de la position",
   "Price label": "Étiquette de prix",
+  "Price moved, drag again": "Le cours a changé, faites-la glisser à nouveau",
+  "Price updating, please retry": "Cours en cours de mise à jour, veuillez réessayer",
   "Price note": "Note de prix",
   "Price precision": "Précision des prix",
   "Price range": "Fourchette de prix",

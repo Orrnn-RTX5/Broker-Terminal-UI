@@ -1135,6 +1135,8 @@
   "Price and terminal alerts": "การแจ้งเตือนราคาและเทอร์มินัล",
   "Price at which the position was opened": "ราคาที่เปิดสถานะ",
   "Price label": "ป้ายราคา",
+  "Price moved, drag again": "ราคาเปลี่ยนแล้ว โปรดลากอีกครั้ง",
+  "Price updating, please retry": "ราคากำลังอัปเดต โปรดลองอีกครั้ง",
   "Price note": "หมายเหตุราคา",
   "Price precision": "ความแม่นยำของราคา",
   "Price range": "ช่วงราคา",

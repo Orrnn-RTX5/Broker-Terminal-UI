@@ -75,7 +75,10 @@ import { api } from './services/api';
 import { tradingV2Api } from './api/trade';
 import { dispatchTradeOverlayCloseState, type TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
 import { formatOrderError } from './utils/orderError';
+import { refreshHistoryAfterFill } from './app/trading/tradeHistoryFreshness';
 import { describeProtectionRefusal } from './utils/orderError';
+import { handleStalePositionRefusal } from './utils/stalePositionRefusal';
+import { readTradeValidationQuote } from './services/tradeValidationQuote';
 import { readKnownPriceDigits } from './utils/tradeLevelDrag';
 import { readRegisteredSymbolPriceSpec } from './services/dailyChangePriceModeRegistry';
 import {
@@ -431,7 +434,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // Last Symbol Panel visibility (reactive)
   const lastSymbolPanelVisible = useLastSymbolStore((s) => s.panelVisible);
 
-  // On startup, always hide the LastSymbolPanel — panelVisible is no longer persisted.
+  // On startup, always hide the LastSymbolPanel â€” panelVisible is no longer persisted.
   // This clears any stale value left in localStorage from a previous session.
   useEffect(() => {
     useLastSymbolStore.getState().setPanelVisible(false);
@@ -741,7 +744,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     setRestoredLayoutAccountId(accountId);
   }, [isAuthenticated, accountId]);
 
-  // Broker config warmup — operating values come from the broker's own
+  // Broker config warmup â€” operating values come from the broker's own
   // /api/v2/broker/config document (white-label: no per-broker literals in
   // code). The shared warmup primes that document on startup through the
   // neutral-fallback normalization; each consumer holds its own normalized
@@ -776,7 +779,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!closeLogin) {
       if (showFailureFeedback) {
         publishOrderFeedback(
-          [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(' — '), feedbackLabel('No trading account is selected. Please sign in again.')],
+          [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(' â€” '), feedbackLabel('No trading account is selected. Please sign in again.')],
           'error',
         );
       }
@@ -803,7 +806,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const publishSingleCloseFailure = (failureReason: string) => {
       if (!showFailureFeedback) return;
       publishOrderFeedback(
-        [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(failureReason ? ` — ${failureReason}` : '')],
+        [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(failureReason ? ` â€” ${failureReason}` : '')],
         'error',
       );
     };
@@ -830,7 +833,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       import('./utils/audio').then(m => m.playSystemSound('close'));
       const loginId = closeLogin;
       refreshPositions(loginId, { allowWsCommit: true });
-      refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history after close:', err));
+      refreshHistoryAfterFill(loginId);
       return true;
     } catch (err: any) {
       console.error('Failed to close position:', err);
@@ -838,6 +841,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const sessionCurrent = isCurrentCloseSession();
       if (sessionCurrent) {
         dispatchTradeOverlayCloseState([id], 'failed');
+        // Already closed on the broker: keep the row removed (no restore) and show a plain message.
+        const staleMessage = handleStalePositionRefusal(err, id, {
+          refresh: () => refreshPositions(closeLogin, { allowWsCommit: true }),
+          tr: translateUi,
+        });
+        if (staleMessage) {
+          if (showFailureFeedback) publishOrderFeedback([feedbackValue(staleMessage)], 'error');
+          return false;
+        }
         const store = useAppStore.getState();
         const existingTickets = new Set(store.positions.map((position) => position.id));
         const restoredPositions = closingPositions.filter((position) => !existingTickets.has(position.id));
@@ -851,7 +863,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     }
   };
 
-  // ── cTrader-style chart position actions (reverse / double / close) ──
+  // â”€â”€ cTrader-style chart position actions (reverse / double / close) â”€â”€
   const chartPositionActionBusyRef = useRef<Set<string>>(new Set());
 
   const handleReversePosition = async (ticket: number) => {
@@ -875,7 +887,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     try {
       const closed = await handleClosePosition(ticket, { showFailureFeedback: false });
       if (!closed) {
-        publishOrderFeedback([feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Failed'), feedbackValue(' · '), feedbackLabel(reverseSide === 'buy' ? 'Buy Market' : 'Sell Market'), feedbackValue(': '), feedbackLabel('cancelled')]);
+        publishOrderFeedback([feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Failed'), feedbackValue(' Â· '), feedbackLabel(reverseSide === 'buy' ? 'Buy Market' : 'Sell Market'), feedbackValue(': '), feedbackLabel('cancelled')]);
         return;
       }
       await api.orders.placeMarketOrder({
@@ -884,6 +896,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         volume: positionVolume,
         login,
       }, { intentAtMs });
+      refreshHistoryAfterFill(login);
       if (!isTradeOperationContextCurrent(operationContext)) return;
       publishOrderFeedback(
         [feedbackLabel('Position closed'), feedbackValue(` #${ticket} → `), feedbackLabel(reverseSide.toUpperCase()), feedbackValue(` ${positionVolume} ${positionSymbol}`)],
@@ -925,6 +938,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         volume: position.volume,
         login,
       }, { intentAtMs });
+      refreshHistoryAfterFill(login);
       if (!isTradeOperationContextCurrent(operationContext)) return;
       publishOrderFeedback(
         [feedbackValue(`#${ticket} · `), feedbackLabel(position.side), feedbackValue(` +${position.volume} ${position.symbol}`)],
@@ -966,13 +980,14 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // once up front and then run this sequentially per ticket; each call sends
   // its own Idempotency-Key (see tradingApi.cancelOrder) and throws on
   // failure so the caller can surface the error instead of swallowing it.
-  // Rows are only replaced from the backend refresh below — never removed
-  // optimistically — so they stay until the backend confirms the cancel.
+  // Rows are only replaced from the backend refresh below â€” never removed
+  // optimistically â€” so they stay until the backend confirms the cancel.
   const cancelPendingOrderWithoutConfirm = async (orderId: string) => {
     const loginId = getLiveTradingLogin();
     if (!loginId) throw new Error('No trading account is selected. Please sign in again.');
 
     await api.orders.cancelOrder(orderId);
+    refreshHistoryAfterFill(loginId);
     const ordersPayload = await api.orders.getPendingOrders(loginId).catch(() => null);
     if (!isAuthenticatedRef.current || getLiveTradingLogin() !== loginId || ordersPayload === null) return;
 
@@ -988,7 +1003,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     } catch (err) {
       console.error('Failed to cancel order:', err);
       publishOrderFeedback(
-        [feedbackLabel('Cancel pending order'), feedbackValue(` #${orderId}: `), feedbackLabel('Failed'), feedbackValue(` — ${formatOrderError(err)}`)],
+        [feedbackLabel('Cancel pending order'), feedbackValue(` #${orderId}: `), feedbackLabel('Failed'), feedbackValue(` â€” ${formatOrderError(err)}`)],
         'error',
       );
       throw err;
@@ -999,7 +1014,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // sequentially WITHOUT per-item confirms. Failures are surfaced in the
   // feedback toast and rethrown (never swallowed); rows are refreshed from
   // the backend afterwards so they reflect backend truth. Partial failures
-  // continue through every ticket and report done X/Y · failed Z (SUI-T5).
+  // continue through every ticket and report done X/Y Â· failed Z (SUI-T5).
   const handleCancelPendingBulkOrders = async (orderIds: Array<string | number>) => {
     const tickets = orderIds.map((ticket) => String(ticket)).filter((ticket) => ticket.length > 0);
     if (tickets.length === 0) return;
@@ -1026,10 +1041,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       }
     }
     if (firstReason !== null) {
-      const summary = `done ${done}/${tickets.length} · failed ${tickets.length - done} — ${formatOrderError(firstReason)}`;
+      const summary = `done ${done}/${tickets.length} Â· failed ${tickets.length - done} â€” ${formatOrderError(firstReason)}`;
       console.error('Failed to cancel pending orders:', summary);
       publishOrderFeedback(
-        [feedbackLabel('Cancel pending orders'), feedbackValue(': '), feedbackLabel('Failed'), feedbackValue(` — ${summary}`)],
+        [feedbackLabel('Cancel pending orders'), feedbackValue(': '), feedbackLabel('Failed'), feedbackValue(` â€” ${summary}`)],
         'error',
       );
       throw new Error(summary);
@@ -1041,7 +1056,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       .find((candidate) => candidate.id === id)
       ?? positions.find((candidate) => candidate.id === id);
     // Intentional no-op (SUI-T6): an already-gone or ineligible row has
-    // nothing to send — no toast, since there was no failure to report.
+    // nothing to send â€” no toast, since there was no failure to report.
     if (!position || !getAllowedSymbol(position.symbol)) return;
 
     try {
@@ -1053,11 +1068,20 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       refreshPositions(getLiveTradingLogin() || undefined);
     } catch (err: any) {
       console.error('Failed to modify position:', err);
+      // Already closed on the broker (SL/TP/stop-out or a close elsewhere): one
+      // refresh and a plain message, never the raw refusal code.
+      const staleMessage = handleStalePositionRefusal(err, id, {
+        refresh: () => refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true }),
+        tr: translateUi,
+      });
+      if (staleMessage) {
+        publishOrderFeedback([feedbackValue(staleMessage)], 'error');
+        return;
+      }
       // Name the offending level against the live quote when the server
       // refused the geometry (never a bare "Failed").
-      const appTicks = (useAppStore.getState().ticks ?? {}) as Record<string, { bid?: unknown; ask?: unknown } | undefined>;
-      const tick = appTicks[position.symbol]
-        ?? appTicks[position.symbol?.toUpperCase?.() ?? ''];
+      // Only a fresh quote may name a local price; with none, the server text alone (MED-2).
+      const refusalQuote = readTradeValidationQuote(position.symbol);
       // Broker spec digits only (loaded catalog first, then the position
       // row); never guessed from the symbol name. Unknown precision falls
       // back to side-only naming.
@@ -1067,15 +1091,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         side: String(position.side).toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
         sl,
         tp,
-        bid: Number(tick?.bid) || 0,
-        ask: Number(tick?.ask) || 0,
+        bid: refusalQuote?.bid ?? 0,
+        ask: refusalQuote?.ask ?? 0,
         digits: refusalDigits,
       });
       publishOrderFeedback(
-        [feedbackLabel('Modify position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(` — ${refusal ?? formatOrderError(err)}`)],
+        [feedbackLabel('Modify position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(` â€” ${refusal ?? formatOrderError(err)}`)],
         'error',
       );
-      refreshPositions(getLiveTradingLogin() || undefined);
+      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
     }
   };
 
@@ -1108,7 +1132,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       // row menu, DOM) funnels through this handler, so the shared
       // BulkCloseConfirmDialog runs here before any order is sent.
       // Dismissal, dialog cancellation, or a broker/account session change
-      // aborts with zero side effects — no orders, no store mutations.
+      // aborts with zero side effects â€” no orders, no store mutations.
       const bulkPreviewPositions = localCandidates.map((position) => ({
         id: position.id,
         symbol: position.symbol,
@@ -1210,18 +1234,29 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const { confirmedTicketIds, failedTicketIds, failedReasons } = closeResult;
 
       if (failedTicketIds.length > 0) {
-        const failureMessage = formatOrderError(failedReasons[0]);
+        // A ticket the broker no longer holds open is gone, not failed: plain message, no restore.
+        // One refresh follows below.
+        const goneTicketIds = new Set<number>();
+        let goneMessage: string | null = null;
+        failedTicketIds.forEach((ticketId, index) => {
+          const message = handleStalePositionRefusal(failedReasons[index], ticketId, { refresh: () => undefined, tr: translateUi });
+          if (message === null) return;
+          goneTicketIds.add(ticketId);
+          if (goneMessage === null) goneMessage = message;
+        });
+        const failureMessage = goneMessage ?? formatOrderError(failedReasons[0]);
         clearOptimisticClosedTickets(failedTicketIds, closeMarkerScope);
         dispatchTradeOverlayCloseState(failedTicketIds, 'failed');
         const store = useAppStore.getState();
         const existingTickets = new Set(store.positions.map((position) => position.id));
         const restoredPositions = failedTicketIds
+          .filter((ticketId) => !goneTicketIds.has(ticketId))
           .map((ticketId) => closeCandidatesByTicket.get(ticketId))
           .filter((position): position is Position => position !== undefined && !existingTickets.has(position.id));
         if (restoredPositions.length > 0) store.setPositions([...store.positions, ...restoredPositions]);
         console.error(`Bulk close failed for ${failedTicketIds.length} position(s):`, failedReasons[0]);
         publishOrderFeedback(
-          [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length} · `), feedbackLabel('Failed'), feedbackValue(`: ${failedTicketIds.length} — ${failureMessage}`)],
+          [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length} Â· `), feedbackLabel('Failed'), feedbackValue(`: ${failedTicketIds.length} â€” ${failureMessage}`)],
           'error',
         );
       }
@@ -1229,7 +1264,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         console.warn('[Trade] Closed visible positions, but authoritative discovery failed:', closeResult.authoritativeSnapshotError);
       }
       refreshPositions(accId, { allowWsCommit: true });
-      refreshOrdersAndHistory(accId).catch(err => console.error('[Trade] Failed to refresh orders/history after bulk close:', err));
+      refreshHistoryAfterFill(accId);
     } catch (err) {
       console.error('Bulk close failed:', err);
       publishOrderFeedback(formatOrderError(err));
@@ -1289,7 +1324,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
 
   // NOTE: positions are now written directly to useAppStore in the polling above.
-  // No sync useEffect needed — removed to prevent double-write cascade.
+  // No sync useEffect needed â€” removed to prevent double-write cascade.
 
 
   // PERFORMANCE FIX: Removed tick buffer for immediate updates (MT5 parity - <5ms latency)
@@ -1718,7 +1753,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);
 
     if (!dialogSymbol) {
-      publishOrderFeedback([feedbackSymbol(targetSymbol), feedbackValue(' · '), feedbackLabel('New Order'), feedbackValue(': '), feedbackLabel('Unavailable')]);
+      publishOrderFeedback([feedbackSymbol(targetSymbol), feedbackValue(' Â· '), feedbackLabel('New Order'), feedbackValue(': '), feedbackLabel('Unavailable')]);
       return false;
     }
 
@@ -1807,7 +1842,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const handleConfirmSaveWorkspace = useCallback((workspaceName?: string) => {
     console.log('[App] Workspace saved:', workspaceName);
     setShowSaveWorkspaceDialog(false);
-    displayToast([feedbackLabel('Save Workspace'), feedbackValue(`: ${workspaceName ?? ''} · `), feedbackLabel('Completed')], 'success');
+    displayToast([feedbackLabel('Save Workspace'), feedbackValue(`: ${workspaceName ?? ''} Â· `), feedbackLabel('Completed')], 'success');
   }, [displayToast]);
 
   const handleOpenDataFolder = useCallback(async () => {

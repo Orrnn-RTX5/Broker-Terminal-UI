@@ -10,6 +10,7 @@ import { readRegisteredSymbolPriceSpec } from './dailyChangePriceModeRegistry';
 import { watchlistV2Api } from '../api/trade';
 import { useAppStore } from '../store/useAppStore';
 import { getAccessToken } from './brokerSession';
+import { refreshHistoryAfterFill } from '../app/trading/tradeHistoryFreshness';
 
 // ==========================================
 // TRADING ACTIONS
@@ -50,6 +51,7 @@ export async function executeQuickBuy(
     const { ordersApi } = await import('./api');
     if (token !== getAccessToken()) throw new Error('The trading account session changed. Please try again.');
     const result = await ordersApi.placeMarketOrder({ symbol, side: 'buy', volume, account_login: login });
+    refreshHistoryAfterFill(login);
     return { success: true, orderId: String(result.ticket ?? result.id) };
   } catch (error) {
     console.error('[Quick Buy] Error:', error);
@@ -72,6 +74,7 @@ export async function executeQuickSell(
     const { ordersApi } = await import('./api');
     if (token !== getAccessToken()) throw new Error('The trading account session changed. Please try again.');
     const result = await ordersApi.placeMarketOrder({ symbol, side: 'sell', volume, account_login: login });
+    refreshHistoryAfterFill(login);
     return { success: true, orderId: String(result.ticket ?? result.id) };
   } catch (error) {
     console.error('[Quick Sell] Error:', error);

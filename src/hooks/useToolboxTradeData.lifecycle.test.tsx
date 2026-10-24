@@ -49,7 +49,7 @@ vi.mock('../store/useAppStore', async () => {
       },
     },
   );
-  return { useAppStore, isConfirmedClosedPosition: () => false };
+  return { useAppStore, beginPositionsRead: () => 1, isConfirmedClosedPosition: () => false, isConfirmedClosedBySnapshot: () => false };
 });
 
 vi.mock('../api/tradeGateway', () => ({
