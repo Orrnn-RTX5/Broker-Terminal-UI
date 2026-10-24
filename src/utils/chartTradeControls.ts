@@ -272,18 +272,18 @@ const TRADE_CONTROL_SHARE_HOVER_COLOR = '#6f7a8a';
 // not show through the labels, and reserve color for trade meaning.
 export const DARK_CHART_TRADE_COLORS = {
   surface: '#191a1e',
-  border: '#707b8f',
+  border: '#94a3b8',
   divider: '#4b5563',
   action: '#e5e7eb',
-  text: '#f4f4f5',
+  text: '#ffffff',
   actionIcon: '#f4f4f6',
   actionHover: '#292a30',
-  buy: '#dbeafe',
-  sell: '#fee2e2',
-  buyBackground: '#233143',
-  sellBackground: '#38292e',
-  tp: '#9dd2c8',
-  sl: '#e9c18a',
+  buy: '#72b0ff',
+  sell: '#ff8589',
+  buyBackground: '#191a1e',
+  sellBackground: '#191a1e',
+  tp: '#4ade80',
+  sl: '#fbbf24',
   profit: '#72b0ff',
   loss: '#ff8589',
 } as const;
@@ -352,10 +352,10 @@ const closeSvg = '<svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="t
 
 // Use the terminal's 16-unit outline grid at a legible optical size inside
 // the compact buttons. Keep all four actions on the same stroke and baseline.
-const webActionSvg = (path: string): string => `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex:none"><path d="${path}"/></svg>`;
+const webActionSvg = (path: string): string => `<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex:none"><path d="${path}"/></svg>`;
 const webShareSvg = webActionSvg('M6 5.5H4.5a2.5 2.5 0 0 0 0 5H6M10 5.5h1.5a2.5 2.5 0 0 1 0 5H10M5.5 8h5');
 const webDoubleSvg = webActionSvg('M11 2H3a1 1 0 0 0-1 1v8M6 5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z');
-const webReverseSvg = webActionSvg('M3 5h10l-2.5-2.5M13 11H3l2.5 2.5');
+const webReverseSvg = webActionSvg('M3.5 13V7.6a3.6 3.6 0 0 1 7.2 0v3.6M8.5 9l2.2 2.4L12.9 9');
 const webCloseSvg = webActionSvg('M4 4l8 8M12 4l-8 8');
 
 // ---------------------------------------------------------------------------
@@ -477,7 +477,6 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     ? LIGHT_CHART_TRADE_COLORS.surface
     : DARK_CHART_TRADE_COLORS.surface;
   const plainBorderColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.border : DARK_CHART_TRADE_COLORS.border;
-  const plainDividerColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.divider : DARK_CHART_TRADE_COLORS.divider;
   const plainActionColor = isLightSurface ? LIGHT_CHART_TRADE_COLORS.action : DARK_CHART_TRADE_COLORS.action;
 
   const root = document.createElement('div');
@@ -500,6 +499,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     const sideText = document.createElement('span');
     sideText.className = 'rtx-trade-side-label';
     sideText.style.color = 'inherit';
+    sideText.style.fontWeight = '600';
+    sideText.style.letterSpacing = '0.02em';
+    sideText.style.setProperty('--rtx-type-weight', '600');
     bindChartUiTranslation(sideText, () => {
       sideText.textContent = `${tr(side)} `;
     });
@@ -528,17 +530,19 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
 
   if (options.plainLabel) {
     root.classList.add('rtx-trade-controls--plain');
-    root.style.setProperty('--rtx-type-size', 'max(12.5px, calc(var(--rtx-ui-font-size, 14px) - 1.5px))');
-    root.style.setProperty('--rtx-trade-entry-weight', '600');
+    root.style.setProperty('--rtx-type-size', 'max(12px, calc(var(--rtx-ui-font-size, 14px) - 2px))');
+    root.style.fontSize = 'var(--rtx-type-size, 12px)';
+    root.style.setProperty('--rtx-trade-entry-weight', '400');
     root.style.setProperty('--rtx-type-weight', 'var(--rtx-trade-entry-weight)');
-    root.style.fontWeight = '600';
+    root.style.fontWeight = '400';
     root.style.setProperty('--rtx-type-family', 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)');
-    root.style.lineHeight = '17px';
+    root.style.fontFamily = 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)';
+    root.style.lineHeight = '16px';
     root.style.filter = 'none';
     root.style.overflow = 'hidden';
     root.style.transform = 'translateY(-50%)';
     root.style.height = 'auto';
-    root.style.minHeight = '21px';
+    root.style.minHeight = '18px';
     root.style.flexWrap = 'wrap';
     root.style.gap = '0 3px';
     // Keep the active-position strip beside the chart's left edge. The chart
@@ -548,18 +552,21 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     // One opaque surface keeps chart lines out of the gaps between controls.
     // A flat one-pixel stroke supplies the border without changing drag geometry.
     root.style.backgroundColor = plainBackground;
-    root.style.borderRadius = '4px';
-    root.style.boxShadow = `0 0 0 1px ${plainBorderColor}`;
+    root.style.borderRadius = '3px';
+    root.style.boxShadow = isLightSurface
+      ? `0 0 0 1px ${plainBorderColor}, 0 2px 6px rgba(15, 23, 42, 0.16)`
+      : `0 0 0 1px ${plainBorderColor}, 0 2px 10px rgba(0, 0, 0, 0.65)`;
     root.style.textShadow = 'none';
     chipGroup.className = 'rtx-trade-primary';
+    chipGroup.style.alignItems = 'center';
     chipGroup.style.border = '1px solid transparent';
-    chipGroup.style.borderLeftColor = plainDividerColor;
     chipGroup.style.borderRadius = '0';
-    chipGroup.style.height = '21px';
+    chipGroup.style.height = '18px';
     chipGroup.style.boxSizing = 'border-box';
     chipGroup.style.overflow = 'hidden';
     chipGroup.style.minWidth = '0';
-    chipGroup.style.gap = '3px';
+    chipGroup.style.padding = '0 2px 0 7px';
+    chipGroup.style.gap = '7px';
     chipGroup.style.backgroundColor = plainBackground;
     for (const chip of [volumeChip, pips.chip, money.chip]) {
       chip.style.backgroundColor = 'transparent';
@@ -567,39 +574,43 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       chip.style.color = plainNeutralColor;
       chip.style.fontFamily = 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)';
       chip.style.fontSize = 'inherit';
-      chip.style.fontWeight = 'inherit';
-      chip.style.lineHeight = '17px';
+      chip.style.fontWeight = '400';
+      chip.style.setProperty('--rtx-type-weight', '400');
+      chip.style.lineHeight = '16px';
       chip.style.letterSpacing = 'normal';
       chip.style.fontVariantNumeric = 'tabular-nums';
-      chip.style.padding = '0 1px';
+      chip.style.padding = '0';
       chip.style.marginLeft = '0';
-      chip.style.height = '19px';
+      chip.style.height = '16px';
     }
     for (const metric of [pips.chip, money.chip]) {
       const label = metric.firstElementChild as HTMLElement;
-      label.style.fontWeight = 'inherit';
+      label.style.fontWeight = '400';
+      label.style.setProperty('--rtx-type-weight', '400');
       label.style.opacity = '1';
     }
     // Compact entry information, with the account currency after the P/L.
     pips.chip.style.display = 'none';
-    volumeChip.style.backgroundColor = isLightSurface
-      ? (side === 'BUY' ? '#edf3ff' : '#fff0f1')
-      : (side === 'BUY' ? DARK_CHART_TRADE_COLORS.buyBackground : DARK_CHART_TRADE_COLORS.sellBackground);
+    volumeChip.style.backgroundColor = plainBackground;
     volumeChip.style.color = plainSideColor;
-    volumeChip.style.fontWeight = 'inherit';
-    volumeChip.style.setProperty('--rtx-type-weight', 'inherit');
-    // Separate each reading unit without adding padding around the toolbar.
-    volumeChip.style.gap = '3px';
+    volumeChip.style.fontWeight = '400';
+    volumeChip.style.setProperty('--rtx-type-weight', '400');
+    // Explicit flex gap keeps side/volume and value/currency visually separated
+    // because CSS Flexbox collapses leading/trailing spaces inside flex items.
+    volumeChip.style.gap = '4px';
     volumeText.style.color = plainNeutralColor;
-    money.chip.style.gap = '3px';
-    money.valueEl.style.fontWeight = 'inherit';
-    money.valueEl.style.setProperty('--rtx-type-weight', 'inherit');
+    volumeText.style.fontWeight = '400';
+    volumeText.style.setProperty('--rtx-type-weight', '400');
+    money.chip.style.gap = '4px';
+    money.valueEl.style.fontWeight = '600';
+    money.valueEl.style.setProperty('--rtx-type-weight', '600');
     const currencySuffix = money.chip.firstElementChild as HTMLElement;
     currencySuffix.textContent = ` ${currencyLabel}`;
     currencySuffix.style.color = plainNeutralColor;
     currencySuffix.style.fontSize = 'inherit';
+    currencySuffix.style.fontWeight = '400';
     currencySuffix.style.setProperty('--rtx-type-size', 'inherit');
-    currencySuffix.style.setProperty('--rtx-type-weight', 'inherit');
+    currencySuffix.style.setProperty('--rtx-type-weight', '400');
     money.chip.appendChild(currencySuffix);
     volumeArrow.style.display = 'none';
   }
@@ -628,17 +639,13 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       const isClose = button.classList.contains('rtx-trade-control-btn--close');
       const restingBackground = 'transparent';
       const restingColor = isLightSurface || isClose ? plainActionColor : DARK_CHART_TRADE_COLORS.actionIcon;
-      button.style.width = '19px';
-      button.style.height = '19px';
+      button.style.width = '16px';
+      button.style.height = '16px';
       button.style.color = restingColor;
       button.style.border = '0';
       button.style.borderRadius = '0';
       button.style.backgroundColor = restingBackground;
-      button.querySelector('svg')?.setAttribute('stroke-width', '1.75');
-      if (isClose) {
-        button.style.borderLeft = `1px solid ${plainDividerColor}`;
-        button.style.borderRadius = '0';
-      }
+      button.querySelector('svg')?.setAttribute('stroke-width', '1.6');
       button.addEventListener('mouseenter', () => {
         button.style.backgroundColor = isLightSurface
           ? (isClose ? '#fff0f1' : LIGHT_CHART_TRADE_COLORS.actionHover)
@@ -656,7 +663,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     buttonGroup.insertBefore(doubleButton, reverseButton);
     const secondaryGroup = document.createElement('span');
     secondaryGroup.className = 'rtx-trade-secondary';
-    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;gap:3px;height:21px;box-sizing:border-box;border:1px solid transparent;background-color:${plainBackground};overflow:hidden;`;
+    secondaryGroup.style.cssText = `display:inline-flex;align-items:center;gap:2px;height:18px;padding:0 1px;box-sizing:border-box;border:1px solid transparent;background-color:${plainBackground};overflow:hidden;`;
     for (const button of Array.from(buttonGroup.querySelectorAll<HTMLButtonElement>('button'))) {
       if (button === closeButton) continue;
       secondaryGroup.appendChild(button);
@@ -664,7 +671,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     buttonGroup.prepend(secondaryGroup);
     const brackets = document.createElement('span');
     brackets.className = 'rtx-trade-brackets';
-    brackets.style.cssText = 'display:inline-flex;align-items:center;gap:3px;';
+    brackets.style.cssText = `display:inline-flex;align-items:center;gap:3px;height:18px;box-sizing:border-box;border:1px solid transparent;background-color:${plainBackground};padding:0 2px 0 1px;`;
     buttonGroup.appendChild(brackets);
     chipGroup.appendChild(closeButton);
     root.appendChild(buttonGroup);
@@ -799,25 +806,44 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
   root.appendChild(removeButton);
   if (options.hoverDetails) {
     root.dataset.align = 'right';
+    root.style.setProperty('--rtx-type-size', 'max(12px, calc(var(--rtx-ui-font-size, 14px) - 2px))');
+    root.style.setProperty('--rtx-type-weight', '500');
     root.style.filter = 'none';
+    root.style.minHeight = '18px';
     root.style.backgroundColor = isLightSurface
       ? (options.chartBackground ?? '#fafbfc')
       : DARK_CHART_TRADE_COLORS.surface;
     root.style.border = `1px dotted ${levelAccent}`;
     root.style.borderRadius = '3px';
+    root.style.boxShadow = isLightSurface
+      ? '0 1px 4px rgba(15, 23, 42, 0.14)'
+      : '0 2px 8px rgba(0, 0, 0, 0.58)';
+    removeButton.style.width = '16px';
+    removeButton.style.height = '16px';
+    removeButton.style.marginLeft = '2px';
     for (const chip of [roleChip, pipsChip.chip, moneyChip.chip]) {
       chip.style.backgroundColor = 'transparent';
       chip.style.border = '0';
       chip.style.color = levelAccent;
-      chip.style.fontFamily = 'Arial, sans-serif';
-      chip.style.fontWeight = '400';
-      chip.style.fontSize = '11px';
+      chip.style.fontFamily = 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)';
+      chip.style.fontWeight = '500';
+      chip.style.fontSize = '12px';
+      chip.style.setProperty('--rtx-type-size', '12px');
+      chip.style.setProperty('--rtx-type-weight', '500');
       chip.style.padding = '0 5px';
-      chip.style.lineHeight = '18px';
+      chip.style.lineHeight = '16px';
+      chip.style.height = '16px';
       const label = chip.firstElementChild as HTMLElement;
-      label.style.fontWeight = '400';
+      label.style.fontWeight = '500';
+      label.style.setProperty('--rtx-type-weight', '500');
       label.style.opacity = '1';
     }
+    roleChip.style.fontWeight = '600';
+    roleChip.style.setProperty('--rtx-type-weight', '600');
+    roleText.style.fontWeight = '600';
+    roleText.style.setProperty('--rtx-type-weight', '600');
+    moneyChip.valueEl.style.fontWeight = '600';
+    moneyChip.valueEl.style.setProperty('--rtx-type-weight', '600');
     const handle = document.createElement('span');
     handle.className = 'rtx-trade-level-hover-handle';
     handle.style.cssText = 'position:absolute;right:-12px;top:50%;width:6px;height:6px;transform:translateY(-50%);border:1px solid #5b9bff;border-radius:50%;background:#91baff;box-shadow:0 0 0 3px rgba(91,155,255,0.16);pointer-events:none;display:none;';

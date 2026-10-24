@@ -25,6 +25,7 @@ export interface TradingChartContextMenuState {
 }
 
 interface UseTradingChartContextMenuStateResult {
+  backgroundImageDialogOpen: boolean;
   ctxAutoScroll: boolean;
   ctxChartShift: boolean;
   ctxMenu: TradingChartContextMenuState;
@@ -32,6 +33,7 @@ interface UseTradingChartContextMenuStateResult {
   ctxShowTradeHistoryLine: boolean;
   ctxShowTradeLevels: boolean;
   localChartType: ChartType;
+  setBackgroundImageDialogOpen: Dispatch<SetStateAction<boolean>>;
   setCtxAutoScroll: Dispatch<SetStateAction<boolean>>;
   setCtxChartShift: Dispatch<SetStateAction<boolean>>;
   setCtxMenu: Dispatch<SetStateAction<TradingChartContextMenuState>>;
@@ -77,12 +79,14 @@ export function useTradingChartContextMenuState(
   const [localChartType, setLocalChartType] = useState<ChartType>(chartType);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateDialogMode, setTemplateDialogMode] = useState<'save' | 'load'>('save');
+  const [backgroundImageDialogOpen, setBackgroundImageDialogOpen] = useState(false);
 
   useEffect(() => {
     setLocalChartType(chartType);
   }, [chartType]);
 
   return {
+    backgroundImageDialogOpen,
     ctxAutoScroll,
     ctxChartShift,
     ctxMenu,
@@ -90,6 +94,7 @@ export function useTradingChartContextMenuState(
     ctxShowTradeHistoryLine,
     ctxShowTradeLevels,
     localChartType,
+    setBackgroundImageDialogOpen,
     setCtxAutoScroll,
     setCtxChartShift,
     setCtxMenu,
@@ -119,6 +124,7 @@ interface UseTradingChartContextMenuControllerOptions {
   persistCurrentIndicators: () => void;
   prevTimeframeRef: MutableRefObject<Timeframe>;
   refreshCurrentIndicators: () => void;
+  setBackgroundImageDialogOpen?: Dispatch<SetStateAction<boolean>>;
   setCtxAutoScroll: Dispatch<SetStateAction<boolean>>;
   setCtxChartShift: Dispatch<SetStateAction<boolean>>;
   setCtxMenu: Dispatch<SetStateAction<TradingChartContextMenuState>>;
@@ -147,6 +153,7 @@ export function useTradingChartContextMenuController({
   persistCurrentIndicators,
   prevTimeframeRef,
   refreshCurrentIndicators,
+  setBackgroundImageDialogOpen,
   setCtxAutoScroll,
   setCtxChartShift,
   setCtxMenu,
@@ -250,6 +257,18 @@ export function useTradingChartContextMenuController({
     const currentProperties = store.symbolProperties[symbol] || store.globalProperties;
     store.updateSymbolProperty(symbol, 'showOHLC', !currentProperties.showOHLC);
   }, [symbol]);
+
+  const handleCtxToggleBackgroundLogo = useCallback(() => {
+    const store = useChartSettingsStore.getState();
+    const currentProperties = store.symbolProperties[symbol] || store.globalProperties;
+    const next = !(currentProperties.showBackgroundLogo ?? true);
+    store.updateSymbolProperty(symbol, 'showBackgroundLogo', next);
+    store.updateSymbolProperty(symbol, 'backgroundLogoMode', next ? 'default' : 'none');
+  }, [symbol]);
+
+  const handleCtxOpenBackgroundImage = useCallback(() => {
+    setBackgroundImageDialogOpen?.(true);
+  }, [setBackgroundImageDialogOpen]);
 
   const handleCtxToggleAutoScroll = useCallback(() => {
     setCtxAutoScroll(previous => {
@@ -397,6 +416,7 @@ export function useTradingChartContextMenuController({
     handleCtxGridTypeChange,
     handleCtxGridLineStyleChange,
     handleCtxDeleteIndicators: clearLocalIndicators,
+    handleCtxOpenBackgroundImage,
     handleCtxOpenDOM,
     handleCtxOpenNewOrder,
     handleCtxOpenProperties,
@@ -404,6 +424,7 @@ export function useTradingChartContextMenuController({
     handleCtxSaveAsPicture,
     handleCtxTimeframeChange,
     handleCtxToggleAutoScroll,
+    handleCtxToggleBackgroundLogo,
     handleCtxToggleChartShift,
     handleCtxToggleGrid,
     handleCtxToggleOHLC,

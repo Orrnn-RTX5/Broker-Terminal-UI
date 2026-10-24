@@ -2200,5 +2200,19 @@
   "This Help resource is currently unavailable.": "This Help resource is currently unavailable.",
   "Updates are available in the installed desktop app": "Updates are available in the installed desktop app",
   "Appearance & Themes...": "Appearance & Themes...",
-  "Auto (fit window)": "Auto (fit window)"
+  "Auto (fit window)": "Auto (fit window)",
+  "Hide Background Logo": "Hide Background Logo",
+  "Show Background Logo": "Show Background Logo",
+  "Background image": "Background image",
+  "URL": "URL",
+  "Use default image URL": "Use default image URL",
+  "Local file": "Local file",
+  "Choose file": "Choose file",
+  "Opacity": "Opacity",
+  "Chart and axes": "Chart and axes",
+  "Apply changes to the default template": "Apply changes to the default template",
+  "Apply changes to all open charts": "Apply changes to all open charts",
+  "Share position": "Share position",
+  "Reverse position": "Reverse position",
+  "Double position": "Double position"
 }

@@ -8,6 +8,7 @@ import i18n from '../i18n';
  * - WebSocket live tick updates
  * - Single price line (MT5 style)
  * - Proper candle aggregation
+ * - Crisp on-chart trade controls
  */
 
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
@@ -496,6 +497,7 @@ export const TradingChart = React.memo(function TradingChart({
 
   const [currentIndicators, setCurrentIndicators] = useState<IndicatorConfig[]>([]);
   const {
+    backgroundImageDialogOpen,
     ctxAutoScroll,
     ctxChartShift,
     ctxMenu,
@@ -503,6 +505,7 @@ export const TradingChart = React.memo(function TradingChart({
     ctxShowTradeHistoryLine,
     ctxShowTradeLevels,
     localChartType,
+    setBackgroundImageDialogOpen,
     setCtxAutoScroll,
     setCtxChartShift,
     setCtxMenu,
@@ -2496,6 +2499,20 @@ useTradingChartInitialization({
       },
     });
 
+    if (
+      squareGridPrimitiveRef.current
+      && squareGridHostSeriesRef.current
+      && !(squareGridPrimitiveRef.current instanceof SquareChartGridPrimitive)
+    ) {
+      try {
+        squareGridHostSeriesRef.current.detachPrimitive(squareGridPrimitiveRef.current);
+        const nextPrimitive = new SquareChartGridPrimitive(gridRenderingOptions.fixedGrid);
+        squareGridHostSeriesRef.current.attachPrimitive(nextPrimitive);
+        squareGridPrimitiveRef.current = nextPrimitive;
+      } catch {
+        // Ignore if primitive detachment is unsupported in test mocks.
+      }
+    }
     squareGridPrimitiveRef.current?.applyOptions(gridRenderingOptions.fixedGrid);
 
     // Update Series colors for the series currently on the chart (a chart-type
@@ -3074,6 +3091,7 @@ useTradingChartTradeRuntime({
     handleCtxGridTypeChange,
     handleCtxGridLineStyleChange,
     handleCtxDeleteIndicators,
+    handleCtxOpenBackgroundImage,
     handleCtxOpenDOM,
     handleCtxOpenNewOrder,
     handleCtxOpenProperties,
@@ -3081,6 +3099,7 @@ useTradingChartTradeRuntime({
     handleCtxSaveAsPicture,
     handleCtxTimeframeChange,
     handleCtxToggleAutoScroll,
+    handleCtxToggleBackgroundLogo,
     handleCtxToggleChartShift,
     handleCtxToggleGrid,
     handleCtxToggleOHLC,
@@ -3107,6 +3126,7 @@ useTradingChartTradeRuntime({
     persistCurrentIndicators,
     prevTimeframeRef,
     refreshCurrentIndicators,
+    setBackgroundImageDialogOpen,
     setCtxAutoScroll,
     setCtxChartShift,
     setCtxMenu,
@@ -3126,6 +3146,7 @@ return (
       activeChartSourceId={activeChartSourceId}
       activeTimeframe={activeTimeframe}
       addLocalIndicator={addLocalIndicator}
+      backgroundImageDialogOpen={backgroundImageDialogOpen}
       bindDrawingManagerToChart={bindDrawingManagerToChart}
       centerRef={centerRef}
       chartSettings={chartSettings}
@@ -3145,6 +3166,7 @@ return (
       handleCtxGridTypeChange={handleCtxGridTypeChange}
       handleCtxGridLineStyleChange={handleCtxGridLineStyleChange}
       handleCtxDeleteIndicators={handleCtxDeleteIndicators}
+      handleCtxOpenBackgroundImage={handleCtxOpenBackgroundImage}
       handleCtxOpenDOM={handleCtxOpenDOM}
       handleCtxOpenNewOrder={handleCtxOpenNewOrder}
       handleCtxOpenProperties={handleCtxOpenProperties}
@@ -3152,6 +3174,7 @@ return (
       handleCtxSaveAsPicture={handleCtxSaveAsPicture}
       handleCtxTimeframeChange={handleCtxTimeframeChange}
       handleCtxToggleAutoScroll={handleCtxToggleAutoScroll}
+      handleCtxToggleBackgroundLogo={handleCtxToggleBackgroundLogo}
       handleCtxToggleChartShift={handleCtxToggleChartShift}
       handleCtxToggleGrid={handleCtxToggleGrid}
       handleCtxToggleOHLC={handleCtxToggleOHLC}
@@ -3185,6 +3208,7 @@ return (
       overlayRef={overlayRef}
       panelId={panelId}
       priceLabelRef={priceLabelRef}
+      setBackgroundImageDialogOpen={setBackgroundImageDialogOpen}
       setTemplateDialogOpen={setTemplateDialogOpen}
       setTextInputOverlay={setTextInputOverlay}
       setTextInputValue={setTextInputValue}

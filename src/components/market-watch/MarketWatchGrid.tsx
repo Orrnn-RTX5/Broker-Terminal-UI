@@ -68,7 +68,7 @@ export const MarketWatchGrid = ({
   translate,
 }: MarketWatchGridProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const [panelWidth, setPanelWidth] = useState(999);
+  const [panelWidth, setPanelWidth] = useState(0);
   const [isLightSkin, setIsLightSkin] = useState(false);
 
   const bindViewport = useCallback((node: HTMLDivElement | null) => {
@@ -115,16 +115,18 @@ export const MarketWatchGrid = ({
   }, []);
 
   const columnHeaders = MARKET_WATCH_COLUMN_HEADERS;
+  const hasSeparateDailyChangePrice = columns.includes('dailyChangePrice');
   const columnWidths = useMemo<Partial<Record<MarketWatchColumnId, number>>>(() => ({
-    bid: 74,
-    ask: 74,
+    symbol: 76,
+    bid: hasSeparateDailyChangePrice ? 74 : 55,
+    ask: hasSeparateDailyChangePrice ? 74 : 55,
     last: 80,
     high: 80,
     low: 80,
     volume: 76,
     spread: 64,
     time: marketWatchOptions.showMilliseconds ? 104 : 82,
-    dailyChange: 76,
+    dailyChange: hasSeparateDailyChangePrice ? 76 : 94,
     dailyChangePrice: 76,
     source: 110,
     accruedInterest: 102,
@@ -137,7 +139,11 @@ export const MarketWatchGrid = ({
     openInterest: 92,
     averageWeightedPrice: 138,
     theoreticalPrice: 106,
-  }), [marketWatchOptions.showMilliseconds]);
+  }), [hasSeparateDailyChangePrice, marketWatchOptions.showMilliseconds]);
+  const totalBaseColumnWidth = Math.max(
+    1,
+    columns.reduce((total, column) => total + (columnWidths[column] ?? 82), 0),
+  );
   const tableMinimumWidth = 118 + columns.reduce(
     (total, column) => total + (column === 'symbol' ? 0 : (columnWidths[column] ?? 82)),
     0,
@@ -196,17 +202,28 @@ export const MarketWatchGrid = ({
       ) : (
         <table
           className={`rtx-market-watch__grid${marketWatchOptions.showGrid ? ' rtx-market-watch__grid--lines' : ''}`}
+          data-wide={panelWidth >= 320 ? 'true' : undefined}
           style={{
-            width: marketWatchOptions.autoArrange ? '100%' : Math.max(panelWidth, tableMinimumWidth),
+            width: marketWatchOptions.autoArrange ? '100%' : Math.max(panelWidth || 999, tableMinimumWidth),
             minWidth: marketWatchOptions.autoArrange ? 0 : tableMinimumWidth,
             borderCollapse: 'collapse',
             tableLayout: 'fixed',
           }}
         >
           <colgroup>
-            {columns.map((column) => (
-              <col key={column} style={column === 'symbol' ? undefined : { width: columnWidths[column] ?? 82 }} />
-            ))}
+            {columns.map((column) => {
+              const baseWidth = columnWidths[column] ?? 82;
+              const style = marketWatchOptions.autoArrange
+                ? { width: `${((baseWidth / totalBaseColumnWidth) * 100).toFixed(2)}%` }
+                : column === 'symbol'
+                  ? undefined
+                  : {
+                    width: panelWidth > tableMinimumWidth
+                      ? Math.round(baseWidth * (panelWidth / tableMinimumWidth))
+                      : baseWidth,
+                  };
+              return <col key={column} style={style} />;
+            })}
           </colgroup>
           <thead>
             <tr style={{ borderBottom: 'none' }}>

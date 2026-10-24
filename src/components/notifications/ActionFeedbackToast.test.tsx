@@ -49,9 +49,38 @@ describe('ActionFeedbackToast', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('keeps compact results readable long enough to scan', () => {
-    expect(resolveActionFeedbackDurationMs('success')).toBe(6000);
-    expect(resolveActionFeedbackDurationMs('error')).toBe(9000);
+  it('limits compact action feedback and close receipts to one second total', () => {
+    expect(resolveActionFeedbackDurationMs('success')).toBe(1000);
+    expect(resolveActionFeedbackDurationMs('error')).toBe(1000);
+  });
+
+  it('dismisses a one-second compact reverse/trade toast within the strict one-second total even when hovered', () => {
+    const onDismiss = vi.fn();
+    render(
+      <ActionFeedbackToast
+        durationMs={resolveActionFeedbackDurationMs('success')}
+        message="Position closed #57019153 → SELL 1.5 GBPUSD"
+        onDismiss={onDismiss}
+        tone="success"
+      />,
+    );
+
+    const toast = screen.getByTestId('action-feedback-toast');
+    fireEvent.mouseEnter(toast);
+    expect(toast).not.toHaveClass('is-paused');
+
+    act(() => { vi.advanceTimersByTime(839); });
+    expect(toast).not.toHaveClass('is-exiting');
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(toast).toHaveClass('is-exiting');
+
+    act(() => { vi.advanceTimersByTime(159); });
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
   it('limits every close receipt scope and outcome to one second total', () => {

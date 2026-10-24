@@ -13,7 +13,10 @@ import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
 import { useSavedAccountServerMigration } from '../../services/savedAccountServerMigration';
 import { useKnownBrokerServerName } from '../../services/brokerServerIdentity';
+import * as tradeApiModule from '../../api/trade';
 import { brokerV2Api } from '../../api/trade';
+import { parseTokenExpiresAt, setRefreshToken, setToken } from '../../api/client';
+import { normalizeBrokerServerUrl, toLocalDevProxyUrl } from '../../config/api';
 import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
 import { buildBrokerDirectoryLogoUrl, getConfiguredBrokerLogoUrl, isPlaceholderBrokerLogoUrl } from '../BrokerLogoImage';
 import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
@@ -23,7 +26,9 @@ import type { Broker, BrokerServer } from '../../types/api';
 import type { BrokerDiscoveryItem } from '../../services/brokerDiscovery';
 import { getSavedAccountServerIdentities, isSavedAccountInBrokerSession, normalizeSavedAccountServer } from '../../services/savedAccountScope';
 import { getCommittedBrokerAccountSessionScope } from '../../services/brokerSession';
-import { resolveDisplayAccountType, type TradingAccountType } from '../../services/tradingAccountType';
+import { getCachedAccountSession, rememberAccountSession } from '../../services/accountSessionCache';
+import { loadSavedLogin, supportsSavedLogins } from '../../services/savedLogins';
+import { resolveDisplayAccountType, resolveTradingAccountType, type TradingAccountType } from '../../services/tradingAccountType';
 import './NavigatorPanel.css';
 
 const LoginDialog = lazy(() => import('../LoginDialog').then(module => ({ default: module.LoginDialog })));
@@ -186,7 +191,7 @@ export const NavigatorPanel: React.FC = () => {
     const [selectedAccountForLogin, setSelectedAccountForLogin] = useState<SavedAccount | null>(null);
     const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
     const [selectedAccountForPassword, setSelectedAccountForPassword] = useState<SavedAccount | null>(null);
-    const [switchingLogin] = useState<number | null>(null);
+    const [switchingLogin, setSwitchingLogin] = useState<number | null>(null);
     const [brokerLogoState, setBrokerLogoState] = useState<{ scope: string; logos: Record<string, BrokerLogoInfo> }>({ scope: '', logos: {} });
 
     useEffect(() => {
@@ -194,6 +199,21 @@ export const NavigatorPanel: React.FC = () => {
         localStorage.removeItem('mt5_credentials');
         localStorage.removeItem('mt5_auto_login');
     }, []);
+
+    useEffect(() => {
+        if (!isAuthenticated || !accountId || !brokerScope.authenticated) return;
+        const storeState = typeof useAppStore.getState === 'function' ? useAppStore.getState() : null;
+        const activeToken = storeState?.authToken || getStoredNavigatorValue('auth_token');
+        if (!activeToken) return;
+        rememberAccountSession({
+            brokerId: brokerScope.brokerId,
+            serverUrl: brokerScope.serverUrl,
+            login: accountId,
+            authToken: activeToken,
+            refreshToken: storeState?.refreshToken || getStoredNavigatorValue('refresh_token') || undefined,
+            expiresAt: storeState?.tokenExpiresAt ?? undefined,
+        });
+    }, [isAuthenticated, accountId, brokerScope]);
 
 
 
@@ -223,6 +243,45 @@ export const NavigatorPanel: React.FC = () => {
         const target = getLogoTarget(serverName, account);
         return brokerLogos[brokerLogoKey(target)] || buildBrokerLogoInfo(target, getCachedBrokerDirectory() || [], [], [], storedBrokerLogo);
     };
+    const serverGroups = (() => {
+        const groups = new Map<string, {
+            serverName: string;
+            displayLabel: string;
+            logoInfo: BrokerLogoInfo;
+            accounts: SavedAccount[];
+        }>();
+        for (const acc of visibleAccounts) {
+            const info = logoFor(acc.server, acc);
+            const displayLabel = brokerDisplayName(acc.server, info.brokerName);
+            const groupKey = (displayLabel || acc.server).trim().toLowerCase();
+            const existing = groups.get(groupKey);
+            if (!existing) {
+                groups.set(groupKey, {
+                    serverName: acc.server,
+                    displayLabel,
+                    logoInfo: info,
+                    accounts: [acc],
+                });
+            } else {
+                const existingLoginIdx = existing.accounts.findIndex(item => item.login === acc.login);
+                if (existingLoginIdx === -1) {
+                    existing.accounts.push(acc);
+                } else if (isAccountActive(acc) || (!existing.accounts[existingLoginIdx].name && acc.name)) {
+                    existing.accounts[existingLoginIdx] = {
+                        ...existing.accounts[existingLoginIdx],
+                        ...acc,
+                        name: acc.name || existing.accounts[existingLoginIdx].name,
+                    };
+                }
+                if (isAccountActive(acc)) {
+                    existing.serverName = acc.server;
+                    existing.displayLabel = displayLabel;
+                    existing.logoInfo = info;
+                }
+            }
+        }
+        return Array.from(groups.values());
+    })();
 
     useEffect(() => {
         let active = true;
@@ -280,16 +339,117 @@ export const NavigatorPanel: React.FC = () => {
         }
     };
 
-    // Switch account: require interactive login unless this account is already active.
+    // Switch account: seamlessly switch via cached session token or saved password when authenticated,
+    // falling back to interactive login only if no session or saved credential exists.
     const handleSwitchAccount = useCallback(async (acc: SavedAccount) => {
-        if (isAccountActive(acc)) return;
+        if (isAccountActive(acc) || switchingLogin === acc.login) return;
 
         localStorage.setItem('rtx_saved_username', String(acc.login));
         localStorage.setItem('rtx_last_login', String(acc.login));
         localStorage.removeItem('rtx_saved_password');
+
+        if (isAuthenticated && typeof useAppStore.getState === 'function') {
+            const targetBrokerId = acc.brokerId || brokerScope.brokerId || getStoredNavigatorValue('broker_id') || getStoredNavigatorValue('rtx_broker_id');
+            const targetServerUrl = acc.serverUrl || brokerScope.serverUrl || getStoredNavigatorValue('server_url') || getStoredNavigatorValue('backend_url');
+
+            const cachedSession = getCachedAccountSession({
+                brokerId: targetBrokerId,
+                serverUrl: targetServerUrl,
+                login: acc.login,
+            });
+            if (cachedSession?.authToken) {
+                setToken(cachedSession.authToken);
+                if (cachedSession.refreshToken) {
+                    setRefreshToken(cachedSession.refreshToken);
+                    sessionStorage.removeItem('refresh_token');
+                } else {
+                    localStorage.removeItem('refresh_token');
+                    sessionStorage.removeItem('refresh_token');
+                }
+                if (cachedSession.expiresAt) {
+                    localStorage.setItem('token_expires_at', String(cachedSession.expiresAt));
+                    sessionStorage.removeItem('token_expires_at');
+                } else {
+                    localStorage.removeItem('token_expires_at');
+                    sessionStorage.removeItem('token_expires_at');
+                }
+                const store = useAppStore.getState();
+                store.setAuthenticated?.(
+                    true,
+                    String(acc.login),
+                    cachedSession.authToken,
+                    cachedSession.refreshToken,
+                    cachedSession.expiresAt,
+                    { ...acc, lastUsed: Date.now() },
+                );
+                store.setAuthTokens?.(cachedSession.authToken, cachedSession.refreshToken, cachedSession.expiresAt);
+                store.setActiveAccount?.(acc.login);
+                return;
+            }
+
+            if (targetBrokerId && targetServerUrl && supportsSavedLogins() && tradeApiModule.authV2Api?.login) {
+                try {
+                    setSwitchingLogin(acc.login);
+                    const savedCred = await loadSavedLogin({ brokerId: targetBrokerId, serverUrl: targetServerUrl }, String(acc.login));
+                    if (savedCred?.password) {
+                        const cleanUrl = toLocalDevProxyUrl(normalizeBrokerServerUrl(targetServerUrl).replace(/\/$/, ''));
+                        const data = await tradeApiModule.authV2Api.login({
+                            username: String(acc.login),
+                            password: savedCred.password,
+                            broker_id: targetBrokerId,
+                        }, {
+                            baseUrl: `${cleanUrl}/api/v2`,
+                            skipDynamicUrl: true,
+                            persistSession: false,
+                        });
+                        const token = data.access_token || data.token;
+                        if (token) {
+                            const expiresAt = parseTokenExpiresAt(data.expires_at) ?? undefined;
+                            const tradingAccountType = resolveTradingAccountType(data) ?? acc.accountType;
+                            setToken(token);
+                            if (data.refresh_token) {
+                                setRefreshToken(data.refresh_token);
+                                sessionStorage.removeItem('refresh_token');
+                            } else {
+                                localStorage.removeItem('refresh_token');
+                                sessionStorage.removeItem('refresh_token');
+                            }
+                            if (expiresAt) {
+                                localStorage.setItem('token_expires_at', String(expiresAt));
+                                sessionStorage.removeItem('token_expires_at');
+                            } else {
+                                localStorage.removeItem('token_expires_at');
+                                sessionStorage.removeItem('token_expires_at');
+                            }
+                            const store = useAppStore.getState();
+                            store.setAuthenticated?.(
+                                true,
+                                String(acc.login),
+                                token,
+                                data.refresh_token,
+                                expiresAt,
+                                {
+                                    ...acc,
+                                    ...(tradingAccountType ? { accountType: tradingAccountType, isLive: tradingAccountType === 'real' } : {}),
+                                    lastUsed: Date.now(),
+                                },
+                            );
+                            store.setAuthTokens?.(token, data.refresh_token, expiresAt);
+                            store.setActiveAccount?.(acc.login);
+                            return;
+                        }
+                    }
+                } catch {
+                    // Fall through to interactive login dialog if silent login fails
+                } finally {
+                    setSwitchingLogin(null);
+                }
+            }
+        }
+
         addSavedAccount({ ...acc, lastUsed: Date.now() });
         handleLoginToAccount(acc);
-    }, [isAccountActive, addSavedAccount]);
+    }, [isAccountActive, switchingLogin, isAuthenticated, brokerScope, addSavedAccount]);
 
     const openAccountMenuItem: ContextMenuItemConfig = {
         label: 'Open an Account',
@@ -373,14 +533,12 @@ export const NavigatorPanel: React.FC = () => {
                 {/* Accounts */}
                 <ContextMenu key={`${sessionScope}:${isAuthenticated}:${accountId}`} items={getGeneralAccountContextMenuItems()} variant="theme">
                     <TreeItem label={tr("Accounts")} icon={<Icon name="user" size="sm" />} defaultOpen>
-                        {servers.map((serverName, sIdx) => {
-                            const accountsInServer = visibleAccounts.filter(a => a.server === serverName);
-                            const logoInfo = logoFor(serverName, accountsInServer[0]);
-                            const isLastServer = sIdx === servers.length - 1 && visibleAccounts.length > 0;
+                        {serverGroups.map(({ serverName, displayLabel, logoInfo, accounts: accountsInServer }, sIdx) => {
+                            const isLastServer = sIdx === serverGroups.length - 1 && visibleAccounts.length > 0;
                             return (
                                 <TreeItem
-                                    key={serverName}
-                                    label={brokerDisplayName(serverName, logoInfo.brokerName)}
+                                    key={displayLabel.toLowerCase() || serverName}
+                                    label={displayLabel}
                                     icon={<BrokerServerIcon serverName={serverName} logoInfo={logoInfo} />}
                                     defaultOpen
                                     isLast={isLastServer && visibleAccounts.length > 0}
@@ -400,8 +558,12 @@ export const NavigatorPanel: React.FC = () => {
                                                     icon={<AccountIcon isActive={isActive} accountType={resolveDisplayAccountType(acc)} />}
                                                     isLast={isLastAccount}
                                                     isFavorite={acc.isFavorite}
+                                                    accountActive={isActive}
                                                     onItemClick={() => {
-                                                        handleSwitchAccount(acc);
+                                                        void handleSwitchAccount(acc);
+                                                    }}
+                                                    onItemDoubleClick={() => {
+                                                        void handleSwitchAccount(acc);
                                                     }}
                                                 />
                                             </ContextMenu>
@@ -445,19 +607,38 @@ export const NavigatorPanel: React.FC = () => {
                     <TreeItem label={tr('Favorites')} icon={<Icon name="star" size="sm" className="text-amber-400" />} defaultOpen>
                         {favoriteAccounts.length === 0 ? (
                             <p className="px-5 py-2 text-[12px] text-[var(--text-secondary)]">{tr('No favorite accounts yet')}</p>
-                        ) : favoriteAccounts.map((acc, index) => (
-                            <ContextMenu key={`${sessionScope}:${accountKey(acc)}`} items={getAccountContextMenuItems(acc)} variant="theme">
-                                <TreeItem
-                                    label={`${acc.login}${acc.name && acc.name !== String(acc.login) ? `: ${acc.name}` : ''} · ${brokerDisplayName(acc.server, logoFor(acc.server, acc).brokerName)}`}
-                                    icon={<AccountIcon isActive={isAccountActive(acc)} accountType={resolveDisplayAccountType(acc)} />}
-                                    isFavorite
-                                    isLast={index === favoriteAccounts.length - 1}
-                                    onItemClick={() => {
-                                        if (!isAccountActive(acc)) handleLoginToAccount(acc);
-                                    }}
-                                />
-                            </ContextMenu>
-                        ))}
+                        ) : favoriteAccounts.map((acc, index) => {
+                            const isActive = isAccountActive(acc);
+                            return (
+                                <ContextMenu key={`${sessionScope}:${accountKey(acc)}`} items={getAccountContextMenuItems(acc)} variant="theme">
+                                    <TreeItem
+                                        label={`${acc.login}${acc.name && acc.name !== String(acc.login) ? `: ${acc.name}` : ''} · ${brokerDisplayName(acc.server, logoFor(acc.server, acc).brokerName)}`}
+                                        icon={<AccountIcon isActive={isActive} accountType={resolveDisplayAccountType(acc)} />}
+                                        isFavorite
+                                        accountActive={isActive}
+                                        isLast={index === favoriteAccounts.length - 1}
+                                        onItemClick={() => {
+                                            if (!isActive) {
+                                                if (isAuthenticated) {
+                                                    void handleSwitchAccount(acc);
+                                                } else {
+                                                    handleLoginToAccount(acc);
+                                                }
+                                            }
+                                        }}
+                                        onItemDoubleClick={() => {
+                                            if (!isActive) {
+                                                if (isAuthenticated) {
+                                                    void handleSwitchAccount(acc);
+                                                } else {
+                                                    handleLoginToAccount(acc);
+                                                }
+                                            }
+                                        }}
+                                    />
+                                </ContextMenu>
+                            );
+                        })}
                     </TreeItem>
                 </section>
 
@@ -580,8 +761,10 @@ function TreeItem({
     defaultOpen = false,
     isLast = false,
     onItemClick,
+    onItemDoubleClick,
     onContextMenu,
     isFavorite = false,
+    accountActive,
     disabled = false,
 }: {
     label: string;
@@ -590,14 +773,17 @@ function TreeItem({
     defaultOpen?: boolean;
     isLast?: boolean;
     onItemClick?: () => void;
+    onItemDoubleClick?: () => void;
     onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
     isFavorite?: boolean;
+    accountActive?: boolean;
     disabled?: boolean;
 }) {
     const tr = useUiTranslation();
     const [isOpen, setIsOpen] = useState(defaultOpen);
     const hasChildren = React.Children.count(children) > 0;
     const isExpandable = hasChildren && !disabled;
+    const isInactiveAccount = accountActive === false;
 
     return (
         <div className="navigator-tree-item relative" style={{ paddingLeft: 12 }}>
@@ -635,8 +821,11 @@ function TreeItem({
             <div
                 className={`navigator-tree-item__row flex min-h-[30px] items-center gap-1.5 px-1 rounded-sm select-none ${disabled
                     ? 'navigator-tree-item__row--disabled cursor-not-allowed text-zinc-600'
-                    : 'group cursor-pointer hover:bg-[#222226]'
+                    : isInactiveAccount
+                        ? 'navigator-tree-item__row--inactive group cursor-pointer hover:bg-[#222226]'
+                        : 'group cursor-pointer hover:bg-[#222226]'
                     }`}
+                data-account-active={accountActive === undefined ? undefined : String(accountActive)}
                 aria-disabled={disabled || undefined}
                 onContextMenu={disabled ? undefined : onContextMenu}
                 aria-label={disabled ? tr("{{value0}}, currently unavailable", { value0: label }) : undefined}
@@ -648,7 +837,15 @@ function TreeItem({
                         onItemClick();
                     }
                 }}
-                onDoubleClick={disabled || !hasChildren ? undefined : () => setIsOpen(!isOpen)}
+                onDoubleClick={disabled ? undefined : () => {
+                    if (hasChildren) {
+                        setIsOpen(!isOpen);
+                    } else if (onItemDoubleClick) {
+                        onItemDoubleClick();
+                    } else if (onItemClick) {
+                        onItemClick();
+                    }
+                }}
             >
                 {isExpandable && (
                     <span className="navigator-tree-item__chevron text-zinc-400 group-hover:text-zinc-100 flex-shrink-0" style={{ marginLeft: -2 }}>
@@ -656,8 +853,8 @@ function TreeItem({
                     </span>
                 )}
                 {!isExpandable && <span className="w-3 flex-shrink-0" />}
-                <span className={`navigator-tree-item__icon flex-shrink-0 ${disabled ? 'text-zinc-600' : 'text-zinc-300 group-hover:text-zinc-100'}`}>{icon}</span>
-                <span className={`navigator-tree-item__label truncate text-[14px] font-normal ${disabled ? 'text-zinc-500' : 'text-zinc-100 group-hover:text-white'}`}>{label}</span>
+                <span className={`navigator-tree-item__icon flex-shrink-0 ${disabled ? 'text-zinc-600' : isInactiveAccount ? 'text-zinc-500 group-hover:text-zinc-400' : 'text-zinc-300 group-hover:text-zinc-100'}`}>{icon}</span>
+                <span className={`navigator-tree-item__label truncate text-[14px] font-normal ${disabled ? 'text-zinc-500' : isInactiveAccount ? 'text-zinc-500 group-hover:text-zinc-400' : 'text-zinc-100 group-hover:text-white'}`}>{label}</span>
                 {isFavorite && (
                     <span className="ml-auto mr-1 flex-shrink-0" title={tr('Favorite account')} aria-label={tr('Favorite account')}>
                         <Icon name="star" size="xs" className="text-amber-400" />

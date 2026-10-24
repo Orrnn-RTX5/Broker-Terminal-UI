@@ -2194,5 +2194,19 @@
   "This Help resource is currently unavailable.": "This Help resource is currently unavailable.",
   "Updates are available in the installed desktop app": "Updates are available in the installed desktop app",
   "Appearance & Themes...": "Appearance & Themes...",
-  "Auto (fit window)": "Auto (fit window)"
+  "Auto (fit window)": "Auto (fit window)",
+  "Hide Background Logo": "背景ロゴを非表示",
+  "Show Background Logo": "背景ロゴを表示",
+  "Background image": "背景画像",
+  "URL": "URL",
+  "Use default image URL": "デフォルトの画像URLを使用",
+  "Local file": "ローカルファイル",
+  "Choose file": "ファイルを選択",
+  "Opacity": "不透明度",
+  "Chart and axes": "チャートと軸",
+  "Apply changes to the default template": "変更をデフォルトテンプレートに適用",
+  "Apply changes to all open charts": "変更をすべての開いているチャートに適用",
+  "Share position": "ポジションを共有",
+  "Reverse position": "ポジションを反転",
+  "Double position": "ポジションを倍増"
 }

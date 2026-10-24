@@ -1508,17 +1508,13 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-tra
   background: var(--rtx-light-selected) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-action-button,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button {
-  color: var(--rtx-light-text-muted) !important;
-  background: transparent !important;
+  color: #ffffff !important;
+  border-radius: 3px !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button:not(:disabled):hover {
-  color: var(--color-loss) !important;
-  background: var(--color-loss-dimmer) !important;
-  border-color: var(--color-loss) !important;
-}
-
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-action-button:focus-visible,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button:focus-visible {
   outline: 2px solid var(--rtx-light-accent) !important;
   outline-offset: 1px;

@@ -2194,5 +2194,19 @@
   "This Help resource is currently unavailable.": "This Help resource is currently unavailable.",
   "Updates are available in the installed desktop app": "Updates are available in the installed desktop app",
   "Appearance & Themes...": "Appearance & Themes...",
-  "Auto (fit window)": "Auto (fit window)"
+  "Auto (fit window)": "Auto (fit window)",
+  "Hide Background Logo": "Arka Plan Logosunu Gizle",
+  "Show Background Logo": "Arka Plan Logosunu Göster",
+  "Background image": "Arka plan resmi",
+  "URL": "URL",
+  "Use default image URL": "Varsayılan resim URL’sini kullan",
+  "Local file": "Yerel dosya",
+  "Choose file": "Dosya seç",
+  "Opacity": "Opaklık",
+  "Chart and axes": "Grafik ve eksenler",
+  "Apply changes to the default template": "Değişiklikleri varsayılan şablona uygula",
+  "Apply changes to all open charts": "Değişiklikleri tüm açık grafiklere uygula",
+  "Share position": "Pozisyonu paylaş",
+  "Reverse position": "Pozisyonu ters çevir",
+  "Double position": "Pozisyonu ikiye katla"
 }

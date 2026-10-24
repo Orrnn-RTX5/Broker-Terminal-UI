@@ -50,14 +50,11 @@ const TONE_ICON: Record<ActionFeedbackTone, IconName> = {
   error: 'error',
 };
 
-/** Close receipts have a strict one-second mount-to-dismiss lifetime. */
+/** Action feedback and close receipts share a strict one-second mount-to-dismiss lifetime. */
 export const resolveActionFeedbackDurationMs = (
-  type: ActionFeedbackType,
-  report?: PositionCloseReport,
-): number => {
-  if (report) return CLOSE_RECEIPT_TOTAL_LIFETIME_MS;
-  return type === 'success' ? 6000 : 9000;
-};
+  _type: ActionFeedbackType,
+  _report?: PositionCloseReport,
+): number => CLOSE_RECEIPT_TOTAL_LIFETIME_MS;
 
 export const resolveActionFeedbackTone = (
   type: ActionFeedbackType,
@@ -466,7 +463,11 @@ export function ActionFeedbackToast({
 function CompactToast({ durationMs, message, notice, onDismiss, tone }: Omit<ActionFeedbackToastProps, 'report'>) {
   const tr = useUiTranslation();
   const [shownAt] = useState(() => Date.now());
-  const { dismiss, exiting, paused, setHold } = useToastLifetime(durationMs, onDismiss);
+  const isStrictOneSecondBudget = durationMs <= CLOSE_RECEIPT_TOTAL_LIFETIME_MS;
+  const activeDurationMs = isStrictOneSecondBudget
+    ? Math.max(0, durationMs - EXIT_ANIMATION_MS)
+    : durationMs;
+  const { dismiss, exiting, paused, setHold } = useToastLifetime(activeDurationMs, onDismiss);
 
   const className = [
     'rtx-action-feedback',
@@ -483,14 +484,14 @@ function CompactToast({ durationMs, message, notice, onDismiss, tone }: Omit<Act
         className={className}
         data-testid="action-feedback-toast"
         data-tone={tone}
-        onBlur={(event) => {
+        onBlur={isStrictOneSecondBudget ? undefined : (event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHold('focus', false);
         }}
-        onFocus={() => setHold('focus', true)}
-        onMouseEnter={() => setHold('hover', true)}
-        onMouseLeave={() => setHold('hover', false)}
+        onFocus={isStrictOneSecondBudget ? undefined : () => setHold('focus', true)}
+        onMouseEnter={isStrictOneSecondBudget ? undefined : () => setHold('hover', true)}
+        onMouseLeave={isStrictOneSecondBudget ? undefined : () => setHold('hover', false)}
         role={tone === 'success' ? 'status' : 'alert'}
-        style={{ '--rtx-action-feedback-duration': `${durationMs}ms` } as React.CSSProperties}
+        style={{ '--rtx-action-feedback-duration': `${activeDurationMs}ms` } as React.CSSProperties}
       >
         <div className="rtx-action-feedback__icon" aria-hidden="true">
           <Icon name={TONE_ICON[tone]} size="md" />

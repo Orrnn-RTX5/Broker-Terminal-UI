@@ -7,6 +7,7 @@ import type {
 import { ChartContextMenu } from '../../../components/ChartContextMenu';
 import { ChartSymbolTrigger } from '../../../components/ChartSymbolDropdown';
 import { ChartTemplateDialog } from '../../../components/ChartTemplateDialog';
+import { ChartBackgroundImageDialog } from '../../../components/dialogs/ChartBackgroundImageDialog';
 import { DrawingContextMenu } from '../../../components/DrawingContextMenu';
 import { OneClickTrading } from '../../../components/OneClickTrading';
 import { commandBus } from '../../../services/commandBus';
@@ -46,6 +47,7 @@ interface TradingChartViewProps {
   activeChartSourceId: string;
   activeTimeframe: Timeframe;
   addLocalIndicator: (request: AddChartIndicatorRequest) => boolean;
+  backgroundImageDialogOpen?: boolean;
   bindDrawingManagerToChart: () => boolean;
   centerRef: RefObject<HTMLDivElement | null>;
   chartSettings: ChartProperties;
@@ -65,6 +67,7 @@ interface TradingChartViewProps {
   handleCtxGridTypeChange: (gridType: ChartProperties['gridType']) => void;
   handleCtxGridLineStyleChange: (gridLineStyle: ChartProperties['gridLineStyle']) => void;
   handleCtxDeleteIndicators: () => void;
+  handleCtxOpenBackgroundImage?: () => void;
   handleCtxOpenDOM: () => void;
   handleCtxOpenNewOrder: (draft?: { orderType?: string; side?: string; price?: number }) => void;
   handleCtxOpenProperties: () => void;
@@ -72,6 +75,7 @@ interface TradingChartViewProps {
   handleCtxSaveAsPicture: () => void;
   handleCtxTimeframeChange: (timeframe: Timeframe) => void;
   handleCtxToggleAutoScroll: () => void;
+  handleCtxToggleBackgroundLogo?: () => void;
   handleCtxToggleChartShift: () => void;
   handleCtxToggleGrid: () => void;
   handleCtxToggleOHLC: () => void;
@@ -105,6 +109,7 @@ interface TradingChartViewProps {
   overlayRef: RefObject<HTMLDivElement | null>;
   panelId?: string;
   priceLabelRef: RefObject<HTMLDivElement | null>;
+  setBackgroundImageDialogOpen?: Dispatch<SetStateAction<boolean>>;
   setTemplateDialogOpen: Dispatch<SetStateAction<boolean>>;
   setTextInputOverlay: Dispatch<SetStateAction<TextInputOverlay | null>>;
   setTextInputValue: Dispatch<SetStateAction<string>>;
@@ -126,21 +131,22 @@ interface TradingChartViewProps {
 
 export const TradingChartView = (props: TradingChartViewProps) => {
   const {
-    activeChartSourceId, activeTimeframe, addLocalIndicator, bindDrawingManagerToChart, centerRef,
+    activeChartSourceId, activeTimeframe, addLocalIndicator, backgroundImageDialogOpen = false,
+    bindDrawingManagerToChart, centerRef,
     chartSettings, chartTheme, closeCtxMenu, containerRef, ctxAutoScroll, ctxChartShift,
     ctxMenu, ctxShowTradeHistory, ctxShowTradeHistoryLine, ctxShowTradeLevels,
     currentIndicators, drawingRuntimeContextRef, handleContextMenu, handleCtxChartTypeChange,
     handleCtxGridTypeChange, handleCtxGridLineStyleChange,
-    handleCtxDeleteIndicators, handleCtxOpenDOM, handleCtxOpenNewOrder, handleCtxOpenProperties,
+    handleCtxDeleteIndicators, handleCtxOpenBackgroundImage, handleCtxOpenDOM, handleCtxOpenNewOrder, handleCtxOpenProperties,
     handleCtxRefresh, handleCtxSaveAsPicture, handleCtxTimeframeChange,
-    handleCtxToggleAutoScroll, handleCtxToggleChartShift, handleCtxToggleGrid,
+    handleCtxToggleAutoScroll, handleCtxToggleBackgroundLogo, handleCtxToggleChartShift, handleCtxToggleGrid,
     handleCtxToggleOHLC, handleCtxToggleTradeHistory, handleCtxToggleTradeHistoryLine,
     handleCtxToggleTradeLevels, handleCtxToggleVolumes, handleCtxZoomIn, handleCtxZoomOut,
     handleLoadTemplate, handleOpenTemplateDialog, horizLineRef, initialLivePriceOverlayColors,
     isAdvancedUntitledLight, livePriceBadgeRef, livePriceCountdownRef, livePriceLineRef,
     livePriceValueRef, loadingMessageIdx, loadingMessages, loadingPhase, retainedPublicChartSurface, localChartType,
     marketStatus, maxVolume, minVolume, ohlcCloseRef, ohlcHighRef, ohlcLowRef, ohlcOpenRef,
-    overlayRef, panelId, priceLabelRef, setTemplateDialogOpen,
+    overlayRef, panelId, priceLabelRef, setBackgroundImageDialogOpen, setTemplateDialogOpen,
     setTextInputOverlay, setTextInputValue, showOneClick, symbol, templateDialogMode,
     templateDialogOpen, textInputOverlay, textInputValue, timeframe, timeLabelRef,
     toggleOneClickTrading, tradeAllowed, tr, useEnterpriseLightChartPalette, vertLineRef,
@@ -151,6 +157,7 @@ return (
     <div
       className="rtx-chart-wrapper relative w-full h-full bg-[#0d0d0d]"
       data-chart-context-id={activeChartSourceId}
+      data-show-background-logo={chartSettings.showBackgroundLogo !== false ? 'true' : 'false'}
       dir="ltr"
       data-cursor="select"
       onContextMenu={handleContextMenu}
@@ -625,6 +632,7 @@ return (
         showTradeHistory={ctxShowTradeHistory}
         showTradeHistoryLine={ctxShowTradeHistoryLine}
         showOHLC={chartSettings.showOHLC}
+        showBackgroundLogo={chartSettings.showBackgroundLogo !== false}
         onChangeChartType={handleCtxChartTypeChange}
         onChangeTimeframe={handleCtxTimeframeChange}
         onToggleOneClickTrading={toggleOneClickTrading}
@@ -638,6 +646,8 @@ return (
         onToggleTradeHistory={handleCtxToggleTradeHistory}
         onToggleTradeHistoryLine={handleCtxToggleTradeHistoryLine}
         onToggleOHLC={handleCtxToggleOHLC}
+        onToggleBackgroundLogo={handleCtxToggleBackgroundLogo}
+        onOpenBackgroundImage={handleCtxOpenBackgroundImage}
         onOpenProperties={handleCtxOpenProperties}
         onSaveAsPicture={handleCtxSaveAsPicture}
         onPrintChart={() => {
@@ -674,6 +684,14 @@ return (
           colors: { background: '#0e0e12', grid: '#222226', candle: { up: '#00c896', down: '#ff4d4f', border: '#378658' }, volume: { up: '#00c896', down: '#ff4d4f' } }
         }}
         onLoadTemplate={handleLoadTemplate}
+      />
+
+      {/* cTrader-Style Chart Background Image Dialog */}
+      <ChartBackgroundImageDialog
+        isOpen={backgroundImageDialogOpen}
+        symbol={symbol}
+        timeframe={activeTimeframe}
+        onClose={() => setBackgroundImageDialogOpen?.(false)}
       />
     </div>
   );

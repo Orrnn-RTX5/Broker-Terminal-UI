@@ -10,6 +10,7 @@ import type { TradingAuthIntent } from '../services/tradingAuthGate';
 import { useBrokerLoginPolicy } from '../hooks/useBrokerLoginPolicy';
 import { getRuntimeBrokerConfiguration, isElectronRuntime } from '../config/backendTarget.js';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
+import { saveLogin, supportsSavedLogins } from '../services/savedLogins';
 
 interface TradeAuthDialogProps {
   isOpen: boolean;
@@ -147,7 +148,7 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
       hasValidLogin ? {
         login,
         name: response.name || response.username || name.trim(),
-        server: response.broker_name || response.server || response.broker_id || brokerId,
+        server: response.broker_name || brokerPolicy?.displayName || response.server || response.broker_id || brokerId,
         accountType: 'demo',
         isLive: false,
         lastUsed: Date.now(),
@@ -155,6 +156,10 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
     );
     if (hasValidLogin) {
       store.setActiveAccount(login);
+    }
+    const demoServerUrl = configuration.apiHostExt || configuration.apiHost || localStorage.getItem('server_url') || localStorage.getItem('backend_url') || '';
+    if (password && demoServerUrl && supportsSavedLogins()) {
+      void saveLogin({ brokerId, serverUrl: demoServerUrl }, accountId, password).catch(() => undefined);
     }
 
     onAuthenticated(accountId);

@@ -8,8 +8,8 @@ const root = process.cwd();
 const read = (file: string) => readFileSync(path.resolve(root, file));
 
 describe('neutral brand assets', () => {
-  it('ships only the generic terminal icon in public/brand', () => {
-    expect(readdirSync(path.resolve(root, 'public/brand'))).toEqual(['terminal-icon.png']);
+  it('ships only the generic terminal icon and chart watermark in public/brand', () => {
+    expect(readdirSync(path.resolve(root, 'public/brand'))).toEqual(['rtx5-chart-watermark.png', 'terminal-icon.png']);
   });
 
   it('uses the same generic icon for the app fallback, titlebar and desktop build', () => {

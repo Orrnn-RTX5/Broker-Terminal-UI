@@ -2194,5 +2194,19 @@
   "This Help resource is currently unavailable.": "This Help resource is currently unavailable.",
   "Updates are available in the installed desktop app": "Updates are available in the installed desktop app",
   "Appearance & Themes...": "Appearance & Themes...",
-  "Auto (fit window)": "Auto (fit window)"
+  "Auto (fit window)": "Auto (fit window)",
+  "Hide Background Logo": "Sembunyikan Logo Latar Belakang",
+  "Show Background Logo": "Tampilkan Logo Latar Belakang",
+  "Background image": "Gambar latar belakang",
+  "URL": "URL",
+  "Use default image URL": "Gunakan URL gambar default",
+  "Local file": "File lokal",
+  "Choose file": "Pilih file",
+  "Opacity": "Opasitas",
+  "Chart and axes": "Grafik dan sumbu",
+  "Apply changes to the default template": "Terapkan perubahan ke templat default",
+  "Apply changes to all open charts": "Terapkan perubahan ke semua grafik terbuka",
+  "Share position": "Bagikan posisi",
+  "Reverse position": "Balikkan posisi",
+  "Double position": "Gandakan posisi"
 }

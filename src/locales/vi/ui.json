@@ -2194,5 +2194,19 @@
   "This Help resource is currently unavailable.": "This Help resource is currently unavailable.",
   "Updates are available in the installed desktop app": "Updates are available in the installed desktop app",
   "Appearance & Themes...": "Appearance & Themes...",
-  "Auto (fit window)": "Auto (fit window)"
+  "Auto (fit window)": "Auto (fit window)",
+  "Hide Background Logo": "Ẩn logo nền",
+  "Show Background Logo": "Hiện logo nền",
+  "Background image": "Hình nền",
+  "URL": "URL",
+  "Use default image URL": "Sử dụng URL hình ảnh mặc định",
+  "Local file": "Tệp cục bộ",
+  "Choose file": "Chọn tệp",
+  "Opacity": "Độ mờ",
+  "Chart and axes": "Biểu đồ và trục",
+  "Apply changes to the default template": "Áp dụng thay đổi cho mẫu mặc định",
+  "Apply changes to all open charts": "Áp dụng thay đổi cho tất cả biểu đồ đang mở",
+  "Share position": "Chia sẻ vị thế",
+  "Reverse position": "Đảo ngược vị thế",
+  "Double position": "Nhân đôi vị thế"
 }

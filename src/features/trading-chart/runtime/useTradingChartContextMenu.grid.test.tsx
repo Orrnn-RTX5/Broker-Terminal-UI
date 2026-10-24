@@ -101,4 +101,16 @@ describe('chart context menu grid settings', () => {
     const saved = JSON.parse(localStorage.getItem('rtx-chart-settings')!);
     expect(saved.state.symbolProperties.XAUUSD.gridLineStyle).toBe('solid');
   });
+
+  it('toggles and persists showBackgroundLogo for the target symbol only', () => {
+    const { result } = renderController();
+    expect(useChartSettingsStore.getState().symbolProperties.EURUSD.showBackgroundLogo).toBe(true);
+
+    act(() => result.current.handleCtxToggleBackgroundLogo());
+    expect(useChartSettingsStore.getState().symbolProperties.EURUSD.showBackgroundLogo).toBe(false);
+    expect(useChartSettingsStore.getState().symbolProperties.XAUUSD.showBackgroundLogo).toBe(true);
+
+    act(() => result.current.handleCtxToggleBackgroundLogo());
+    expect(useChartSettingsStore.getState().symbolProperties.EURUSD.showBackgroundLogo).toBe(true);
+  });
 });

@@ -329,4 +329,61 @@ describe('Trade row updates', () => {
     expect(props.handleTradeContextMenu).not.toHaveBeenCalled();
     expect(props.setSelectedPositionKey).not.toHaveBeenCalled();
   });
+
+  it('renders Share, Reverse, Double, and Close position action buttons under the Actions column and dispatches their actions', async () => {
+    const position = confirmedPosition(100);
+    const props = createProps([position]);
+    const view = render(<TradeTable {...props} />);
+
+    // Rightmost header cell renders the Actions column title
+    const headerCells = view.container.querySelectorAll('thead th');
+    const actionHeader = headerCells[headerCells.length - 1];
+    expect(actionHeader).toHaveTextContent('Actions');
+
+    const shareBtn = screen.getByRole('button', { name: 'Share position' });
+    const reverseBtn = screen.getByRole('button', { name: 'Reverse position (Trade 0.01 Lots Sell)' });
+    const doubleBtn = screen.getByRole('button', { name: 'Double position (Trade 0.01 Lots Buy)' });
+    const closeBtn = screen.getByRole('button', { name: 'Close position 100' });
+
+    expect(shareBtn).toHaveClass('rtx-trade-share-button', 'bg-[#383d48]');
+    expect(reverseBtn).toHaveClass('rtx-trade-reverse-button', 'bg-[#383d48]');
+    expect(doubleBtn).toHaveClass('rtx-trade-double-button', 'bg-[#383d48]');
+    expect(closeBtn).toHaveClass('rtx-trade-close-button', 'bg-[#383d48]', 'hover:bg-[#dc2626]');
+
+    const actionEvents: Array<{ action: string; ticket: number; symbol: string }> = [];
+    const feedbackEvents: Event[] = [];
+    const onChartPositionAction = (event: Event) => {
+      actionEvents.push((event as CustomEvent).detail);
+    };
+    const onOrderFeedback = (event: Event) => {
+      feedbackEvents.push(event);
+    };
+    window.addEventListener('rtx:chart-position-action', onChartPositionAction);
+    window.addEventListener('rtx:order-feedback', onOrderFeedback);
+    try {
+      fireEvent.click(shareBtn);
+      fireEvent.click(reverseBtn);
+      fireEvent.click(doubleBtn);
+    } finally {
+      window.removeEventListener('rtx:chart-position-action', onChartPositionAction);
+      window.removeEventListener('rtx:order-feedback', onOrderFeedback);
+    }
+
+    expect(feedbackEvents).toEqual([]);
+    expect(actionEvents).toEqual([
+      { action: 'reverse', ticket: 100, symbol: 'BTCUSD' },
+      { action: 'double', ticket: 100, symbol: 'BTCUSD' },
+    ]);
+
+    // When side is SELL and volume changes, tooltips update accordingly while keeping the neutral slate theme
+    view.rerender(<TradeTable
+      {...props}
+      displayedLivePositions={[{ ...position, side: 'SELL', volume: 0.02, profit: -3.5 }]}
+    />);
+
+    const sellReverseBtn = screen.getByRole('button', { name: 'Reverse position (Trade 0.02 Lots Buy)' });
+    const sellDoubleBtn = screen.getByRole('button', { name: 'Double position (Trade 0.02 Lots Sell)' });
+    expect(sellReverseBtn).toHaveClass('bg-[#383d48]');
+    expect(sellDoubleBtn).toHaveClass('bg-[#383d48]');
+  });
 });

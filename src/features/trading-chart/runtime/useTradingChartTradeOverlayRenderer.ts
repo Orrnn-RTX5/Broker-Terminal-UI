@@ -49,7 +49,7 @@ import type {
   TradePositionRecord,
 } from './tradeRuntimeContracts';
 
-const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v14-shared-entry-prices';
+const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v19-crisp-typography';
 
 interface UseTradingChartTradeOverlayRendererOptions {
   activeOverlayNodeDataRef: RefObject<OverlayNodeData[]>;

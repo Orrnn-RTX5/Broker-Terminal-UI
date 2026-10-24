@@ -2194,5 +2194,19 @@
   "This Help resource is currently unavailable.": "This Help resource is currently unavailable.",
   "Updates are available in the installed desktop app": "Updates are available in the installed desktop app",
   "Appearance & Themes...": "Appearance & Themes...",
-  "Auto (fit window)": "Auto (fit window)"
+  "Auto (fit window)": "Auto (fit window)",
+  "Hide Background Logo": "隱藏背景標誌",
+  "Show Background Logo": "顯示背景標誌",
+  "Background image": "背景圖片",
+  "URL": "URL",
+  "Use default image URL": "使用預設圖片 URL",
+  "Local file": "本機檔案",
+  "Choose file": "選擇檔案",
+  "Opacity": "不透明度",
+  "Chart and axes": "圖表與座標軸",
+  "Apply changes to the default template": "將變更套用至預設範本",
+  "Apply changes to all open charts": "將變更套用至所有開啟的圖表",
+  "Share position": "分享部位",
+  "Reverse position": "反向部位",
+  "Double position": "加倍部位"
 }

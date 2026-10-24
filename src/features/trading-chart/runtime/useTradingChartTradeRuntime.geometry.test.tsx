@@ -73,9 +73,9 @@ describe('trade control geometry', () => {
     flushFrames();
     expect(left).toHaveBeenCalledExactlyOnceWith('544px');
     expect(right).toHaveBeenCalledExactlyOnceWith('auto');
-    expect(top).toHaveBeenCalledExactlyOnceWith('84px');
+    expect(top).toHaveBeenCalledExactlyOnceWith('100px');
     expect(bar.dataset.priceAnchorY).toBe('100');
-    expect(bar.dataset.priceAnchorOffsetY).toBe('-16');
+    expect(bar.dataset.priceAnchorOffsetY).toBe('0');
     act(() => repaint.current());
     expect(width).toHaveBeenCalledTimes(1);
     expect(height).toHaveBeenCalledTimes(1);
@@ -84,7 +84,7 @@ describe('trade control geometry', () => {
     resize(240, 24);
     flushFrames();
     expect(bar.style.left).toBe('484px');
-    expect(bar.style.top).toBe('84px');
+    expect(bar.style.top).toBe('100px');
     expect(width).toHaveBeenCalledTimes(1);
     expect(height).toHaveBeenCalledTimes(1);
   });
@@ -101,7 +101,7 @@ describe('trade control geometry', () => {
     act(() => repaint.current());
     expect(bar.style.display).toBe('inline-flex');
     expect(bar.style.left).toBe('524px');
-    expect(bar.style.top).toBe('84px');
+    expect(bar.style.top).toBe('100px');
     expect(width).toHaveBeenCalledTimes(2);
   });
 });

@@ -34,29 +34,52 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__header 
 }
 
 /* The shared typography stylesheet reads these tokens on each text element.
-   Scope the compact rhythm to this chrome/table, keeping Trading's quote sizes. */
+   Scope the institutional Market Watch hierarchy to this chrome/table. */
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__title-clock,
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__title-clock :is(span, time),
-html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid :is(th, td, span),
-html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__search-bar .mw-input,
-html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-count,
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button {
   --rtx-type-size: 12px;
   --rtx-type-weight: 400;
 }
 
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__search-bar .mw-input,
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-count {
+  --rtx-type-size: 12px;
+  --rtx-type-weight: 400;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid :is(th, td, span) {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 400;
+}
+
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid {
-  font-size: 12px;
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid th {
-  height: 24px;
-  padding: 0 5px;
-  font-weight: 400;
-  line-height: 23px !important;
+  --rtx-type-size: 11.5px;
+  --rtx-type-weight: 500;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  line-height: 21px !important;
+  letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid th {
+  color: var(--text-secondary, #a0a8b8) !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol,
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-explorer .rtx-market-watch__group-option {
+  color: #ffffff !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid th:first-child {
@@ -81,16 +104,16 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__sort-ar
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr {
-  height: 20px;
+  height: 22px;
   transition: none;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody td {
-  height: 20px;
-  padding: 0 5px !important;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 19px !important;
+  height: 22px;
+  padding: 0 6px !important;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  line-height: 21px !important;
   white-space: nowrap;
   background: var(--mw-desktop-row) !important;
 }
@@ -100,16 +123,72 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tb
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody td > span,
-html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__last-close > span,
-html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol {
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__last-close > span {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 400;
   padding: 0 !important;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  line-height: 21px !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 500;
+  padding: 0 !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  line-height: 21px !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody td > span.rtx-market-watch__daily {
+  --rtx-type-size: 12px;
+  --rtx-type-weight: 400;
   font-size: 12px !important;
   font-weight: 400 !important;
-  line-height: 19px !important;
+  letter-spacing: normal !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid[data-wide='true'] tbody td > span.rtx-market-watch__daily {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 400;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody td span {
-  line-height: 19px !important;
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 400;
+  line-height: 21px !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-explorer :is(.rtx-market-watch__group-option, .rtx-market-watch__group-option span) {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 500;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-explorer .rtx-market-watch__group-option span:last-child {
+  --rtx-type-size: 12px;
+  --rtx-type-weight: 400;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-explorer :is(.rtx-market-watch__symbol-option, .rtx-market-watch__symbol-option .rtx-market-watch__symbol) {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 500;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-explorer .rtx-market-watch__symbol-description {
+  --rtx-type-size: 11.5px;
+  --rtx-type-weight: 400;
+  font-size: 11.5px !important;
+  font-weight: 400 !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr:nth-child(even) td {

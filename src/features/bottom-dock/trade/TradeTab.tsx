@@ -540,13 +540,16 @@ export const TradeTab = memo(function TradeTab({
         [isColumnVisible]
     );
 
-    const visibleTradeTableWidth = useMemo(() => (
-        columnWidths.symbol
-        + visibleTradeColumns.reduce((total, column) => total + columnWidths[column.key], 0)
-        + columnWidths.close
-    ), [columnWidths, visibleTradeColumns]);
+    const visibleTradeTableWidth = useMemo(() => {
+        const effectiveCloseWidth = clampTradeColumnWidth('close', columnWidths.close);
+        return (
+            columnWidths.symbol
+            + visibleTradeColumns.reduce((total, column) => total + columnWidths[column.key], 0)
+            + effectiveCloseWidth
+        );
+    }, [columnWidths, visibleTradeColumns]);
     const footerProfitColumnWidth = `${(columnWidths.profit / visibleTradeTableWidth) * 100}%`;
-    const footerCloseColumnWidth = `${(columnWidths.close / visibleTradeTableWidth) * 100}%`;
+    const footerCloseColumnWidth = `${(clampTradeColumnWidth('close', columnWidths.close) / visibleTradeTableWidth) * 100}%`;
 
     const visibleOptionalColumnCount = useMemo(
         () => visibleTradeColumns.length,

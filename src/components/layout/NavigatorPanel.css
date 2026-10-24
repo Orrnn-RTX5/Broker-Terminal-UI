@@ -3,6 +3,9 @@
     --navigator-account-real: #facc15;
     --navigator-account-contest: #60a5fa;
     --navigator-account-unknown: #a1a1aa;
+    --navigator-account-inactive: #71717a;
+    --navigator-account-inactive-text: #71717a;
+    --navigator-account-inactive-hover-text: #a1a1aa;
 }
 
 html.rtx-skin-untitled-light .navigator-panel {
@@ -10,6 +13,9 @@ html.rtx-skin-untitled-light .navigator-panel {
     --navigator-account-real: #a16207;
     --navigator-account-contest: #2563eb;
     --navigator-account-unknown: #64748b;
+    --navigator-account-inactive: #94a3b8;
+    --navigator-account-inactive-text: #94a3b8;
+    --navigator-account-inactive-hover-text: #64748b;
 }
 
 .navigator-panel .navigator-account-icon {
@@ -21,3 +27,16 @@ html.rtx-skin-untitled-light .navigator-panel {
 .navigator-panel .navigator-account-icon[data-account-type="demo"] { color: var(--navigator-account-demo); }
 .navigator-panel .navigator-account-icon[data-account-type="real"] { color: var(--navigator-account-real); }
 .navigator-panel .navigator-account-icon[data-account-type="contest"] { color: var(--navigator-account-contest); }
+.navigator-panel .navigator-account-icon[data-active="false"],
+.navigator-panel .navigator-account-icon[data-active="false"][data-account-type] {
+    color: var(--navigator-account-inactive, #71717a);
+    opacity: 0.75;
+}
+
+.navigator-panel .navigator-tree-item__row[data-account-active="false"] .navigator-tree-item__label {
+    color: var(--navigator-account-inactive-text, #71717a);
+}
+
+.navigator-panel .navigator-tree-item__row[data-account-active="false"]:hover .navigator-tree-item__label {
+    color: var(--navigator-account-inactive-hover-text, #a1a1aa);
+}

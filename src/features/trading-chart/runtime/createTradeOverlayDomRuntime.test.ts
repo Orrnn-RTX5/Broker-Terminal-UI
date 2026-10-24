@@ -239,8 +239,8 @@ describe('SL/TP chart controls', () => {
     runtime.createEntryControlsForTrade(trade, { sl: 0, tp: 0 });
     for (const role of ['SL', 'TP'] as const) {
       const color = role === 'SL'
-        ? (lightSurface ? '#664300' : '#e9c18a')
-        : (lightSurface ? '#05564f' : '#9dd2c8');
+        ? (lightSurface ? '#664300' : '#fbbf24')
+        : (lightSurface ? '#05564f' : '#4ade80');
       runtime.createLevelControlsForTrade(trade, role, { sl: 87000, tp: 85118.19 });
       expect(host.querySelector(`.rtx-trade-dock-chip--${role.toLowerCase()}`)).toHaveStyle({ color });
       expect(host.querySelector(`.rtx-trade-controls--${role.toLowerCase()} .rtx-trade-chip--role`)).toHaveStyle({ color });

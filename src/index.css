@@ -351,12 +351,14 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row:not(.
   color: var(--text-primary) !important;
 }
 
+html:not(.rtx-skin-untitled-light) .rtx-trade-action-button,
 html:not(.rtx-skin-untitled-light) .rtx-trade-close-button {
   opacity: 1;
-  border-radius: 4px !important;
-  color: var(--text-primary) !important;
+  border-radius: 3px !important;
+  color: #ffffff !important;
 }
 
+html:not(.rtx-skin-untitled-light) .rtx-trade-row:hover .rtx-trade-action-button,
 html:not(.rtx-skin-untitled-light) .rtx-trade-row:hover .rtx-trade-close-button {
   opacity: 1;
 }

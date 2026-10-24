@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import { X, Search, ChevronRight, ArrowRight, Building2, Shield, Globe, CheckCircle2, Copy, Loader2, MousePointer2 } from 'lucide-react';
 import { tradeApi } from '../../api/trade';
 import { parseTokenExpiresAt } from '../../api/client';
-import { BROKER_DISCOVERY_URL, normalizeBrokerServerUrl, updateDynamicUrls } from '../../config/api';
+import { BROKER_DISCOVERY_URL, normalizeBrokerServerUrl, toLocalDevProxyUrl, updateDynamicUrls } from '../../config/api';
 import {
     isDesktopBackendTarget,
     getRuntimeBrokerConfiguration,
@@ -152,7 +152,7 @@ type CreatedAccountSummaryRow = {
 };
 
 const buildBrokerApiV2BaseUrl = (value: string): string =>
-    `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
+    `${toLocalDevProxyUrl(normalizeBrokerServerUrl(value).replace(/\/$/, ''))}/api/v2`;
 
 const getErrorMessage = (err: unknown, fallback: string): string =>
     err instanceof Error ? err.message : fallback;
