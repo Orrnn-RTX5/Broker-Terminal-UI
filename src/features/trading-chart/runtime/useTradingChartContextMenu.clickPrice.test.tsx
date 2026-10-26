@@ -28,7 +28,7 @@ const makeController = (overrides: {
     refreshCurrentIndicators: noop,
     setCtxAutoScroll: noop,
     setCtxChartShift: noop,
-    setCtxMenu,
+    setCtxMenu: setCtxMenu as never,
     setCtxShowTradeHistory: noop,
     setCtxShowTradeHistoryLine: noop,
     setCtxShowTradeLevels: noop,

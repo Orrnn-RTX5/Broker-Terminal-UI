@@ -81,9 +81,9 @@ describe('electron-builder config', () => {
   });
 
   it('uses a configured broker icon for the executable and keeps the neutral icon otherwise', () => {
-    const branded = brand.createBuilderConfig(pkg.build, { BRAND_ICON: 'C:/brand/fixture.ico' }, vi.fn()) as { win: { icon: string; target: string } };
+    const branded = brand.createBuilderConfig(pkg.build, { BRAND_ICON: 'C:/brand/fixture.ico' }, vi.fn()) as unknown as { win: { icon: string; target: string } };
     expect(branded.win).toEqual({ ...pkg.build.win, icon: 'C:/brand/fixture.ico' });
-    const neutral = brand.createBuilderConfig(pkg.build, {}, vi.fn()) as { win: { icon: string } };
+    const neutral = brand.createBuilderConfig(pkg.build, {}, vi.fn()) as unknown as { win: { icon: string } };
     expect(neutral.win.icon).toBe('build/icon.ico');
     expect(electronSource).toContain("icon: app.isPackaged ? undefined : path.join(__dirname, 'build', 'icon.ico'),");
   });

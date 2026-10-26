@@ -380,7 +380,8 @@ describe('live close drives role, drop and refusal (SL/TP x BUY/SELL x profit/lo
     });
 
     it('a two-sided quote with no feed stamp is not fresh, even with a broker timestamp (server-final)', () => {
-      expect(resolveFreshValidationQuote({ ...quoteSides, timestamp: now, sourceTimestamp: now }, now, 60_000, undefined)).toBeNull();
+      const stampedBroker = { ...quoteSides, timestamp: now, sourceTimestamp: now };
+      expect(resolveFreshValidationQuote(stampedBroker, now, 60_000, undefined)).toBeNull();
       expect(resolveFreshValidationQuote({ ...quoteSides }, now, 60_000, null)).toBeNull();
     });
 

@@ -25,7 +25,7 @@ vi.mock('./orderHistoryRefresh', () => ({
 const LOGIN = 200036;
 
 describe('positions safety net scheduling', () => {
-  let read: ReturnType<typeof vi.fn>;
+  let read: ReturnType<typeof vi.fn<() => void>>;
   let visible: boolean;
   let inFlight: boolean;
   let frameAt: number;
@@ -214,7 +214,7 @@ describe('positions safety net against the real refresh path', () => {
 
       for (let second = 1; second < POSITIONS_SAFETY_READ_INTERVAL_MS / 1_000; second += 1) {
         await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
-        markPositionsStreamFrameIfStructural([{ ticket: 12063, update_kind: 'pnl' }], []);
+        markPositionsStreamFrameIfStructural([{ ticket: 12063, update_kind: 'pnl' } as { update_kind?: unknown }], []);
       }
       await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
       stopNet();
@@ -232,7 +232,7 @@ describe('positions safety net against the real refresh path', () => {
       });
 
       await act(async () => { await vi.advanceTimersByTimeAsync(27_000); });
-      markPositionsStreamFrameIfStructural([{ ticket: 12065, update_kind: 'snapshot' }], []);
+      markPositionsStreamFrameIfStructural([{ ticket: 12065, update_kind: 'snapshot' } as { update_kind?: unknown }], []);
       await act(async () => { await vi.advanceTimersByTimeAsync(3_000); }); // 30 s: the structural frame is 3 s old
       expect(api.positions.getPositions).toHaveBeenCalledTimes(1);
 

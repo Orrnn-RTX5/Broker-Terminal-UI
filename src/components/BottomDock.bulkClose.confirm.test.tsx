@@ -53,10 +53,10 @@ const renderDock = (callbacks: {
 }) => render(
   <BottomDock
     height={300}
-    onClosePosition={callbacks.onClosePosition ?? vi.fn()}
-    onModifyPosition={callbacks.onModifyPosition ?? vi.fn()}
-    onCancelOrder={callbacks.onCancelOrder ?? vi.fn()}
-    onCloseBulk={callbacks.onCloseBulk}
+    onClosePosition={(callbacks.onClosePosition ?? vi.fn()) as never}
+    onModifyPosition={(callbacks.onModifyPosition ?? vi.fn()) as never}
+    onCancelOrder={(callbacks.onCancelOrder ?? vi.fn()) as never}
+    onCloseBulk={callbacks.onCloseBulk as never}
   />,
 );
 

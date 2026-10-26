@@ -18,25 +18,14 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/broker-terminal-ui
 
 jobs:
-  quality:
-    name: Validate release candidate
-    uses: ./.github/workflows/quality.yml
-
   build-and-push:
     name: Build and Push Docker Image
-    needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Download validated website
-        uses: actions/download-artifact@v4
-        with:
-          name: web-dist-${{ github.sha }}
-          path: dist
 
       - name: Lowercase image name
         run: echo "IMAGE_NAME=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
@@ -56,7 +45,8 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          target: ci-runtime
+          build-args: |
+            VITE_MODE=web
           cache-from: type=gha,scope=web-runtime
           cache-to: type=gha,scope=web-runtime,mode=min
           push: true

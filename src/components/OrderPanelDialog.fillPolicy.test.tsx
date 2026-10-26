@@ -89,7 +89,7 @@ describe('OrderPanelDialog fill policy honesty (T3)', () => {
     // and the tablist's own aria-label also matches a bare getByLabelText.
     // (ds-21: add `getByRole('tablist', { name: 'Fill policy' })` on your
     // tree to pin the a11y lock alongside these honesty checks.)
-    const select = screen.getByLabelText('Fill policy', { selector: 'select', hidden: true }) as HTMLSelectElement;
+    const select = screen.getByLabelText('Fill policy', { selector: 'select' }) as HTMLSelectElement;
     expect(select).toBeDisabled();
     expect(select).toHaveAttribute('title', UNSUPPORTED_REASON);
     expect(select.getAttribute('aria-describedby')).toContain(reasonId!);
@@ -115,10 +115,10 @@ describe('OrderPanelDialog fill policy honesty (T3)', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Fill policy', { selector: 'select', hidden: true })).not.toBeNull();
+    expect(screen.getByLabelText('Fill policy', { selector: 'select' })).not.toBeNull();
 
     fireEvent.click(screen.getByTestId('order-mode-limit'));
-    expect(screen.queryByLabelText('Fill policy', { selector: 'select', hidden: true })).toBeNull();
+    expect(screen.queryByLabelText('Fill policy', { selector: 'select' })).toBeNull();
     expect(screen.getByLabelText('Expiration')).not.toBeNull();
   });
 });

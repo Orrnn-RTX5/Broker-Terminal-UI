@@ -38,7 +38,7 @@ const closedBody = (extra: Record<string, unknown> = {}) => ({
 });
 
 describe('stale position refusals', () => {
-  let refresh: ReturnType<typeof vi.fn>;
+  let refresh: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
     localStorage.clear();

@@ -131,7 +131,7 @@ describe('useOrderExecution pending sweep (stop-limit / expiry / comment, never 
       comment: 'gtc-limit',
     }));
 
-    const payload = vi.mocked(api.orders.placePendingOrder).mock.calls[0][0] as Record<string, unknown>;
+    const payload = vi.mocked(api.orders.placePendingOrder).mock.calls[0][0] as unknown as Record<string, unknown>;
     expect(payload.type).toBe('sell_limit');
     expect(payload).not.toHaveProperty('expiration');
     expect(payload).not.toHaveProperty('expiry');

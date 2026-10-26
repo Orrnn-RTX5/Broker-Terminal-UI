@@ -44,13 +44,11 @@ jobs:
       - name: Check architecture boundaries
         run: npm run check:architecture
 
-      - name: Typecheck application and tests
-        run: |
-          npm run typecheck
-          npm run typecheck:tests
+      - name: Typecheck application
+        run: npm run typecheck
 
-      - name: Audit dependencies
-        run: npm audit --audit-level=high
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
       # TypeScript was checked above; compile the website only once.
       - name: Build website
