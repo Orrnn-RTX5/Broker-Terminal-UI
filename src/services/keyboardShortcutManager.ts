@@ -447,8 +447,8 @@ export const DEFAULT_SHORTCUTS: Omit<ShortcutDefinition, 'handler'>[] = [
   { id: 'window.tile', key: 'r', alt: true, description: 'Tile Windows', category: SHORTCUT_CATEGORIES.WINDOW, priority: 90 },
 
   // Trading shortcuts
-  { id: 'trading.quick-buy', key: 'b', alt: true, description: 'Quick Buy', category: SHORTCUT_CATEGORIES.TRADING, priority: 95 },
-  { id: 'trading.quick-sell', key: 's', alt: true, description: 'Quick Sell', category: SHORTCUT_CATEGORIES.TRADING, priority: 95 },
+  { id: 'trading.quick-buy', key: 'b', shift: true, description: 'Quick Buy', category: SHORTCUT_CATEGORIES.TRADING, priority: 95 },
+  { id: 'trading.quick-sell', key: 's', shift: true, description: 'Quick Sell', category: SHORTCUT_CATEGORIES.TRADING, priority: 95 },
 
   // Navigation
   { id: 'navigation.close-modal', key: 'Escape', description: 'Close Modal', category: SHORTCUT_CATEGORIES.NAVIGATION, priority: 100, allowInInput: true },

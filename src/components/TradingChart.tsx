@@ -137,7 +137,7 @@ export const TradingChart = React.memo(function TradingChart({
   const tr = useUiTranslation();
   const authToken = useAppStore((state) => state.authToken);
   const brokerAccountSessionScope = useBrokerAccountSessionScope();
-  const observedPriceDigitsScopeKey = `${brokerAccountSessionScope || 'default-account'}:${symbol.trim().toUpperCase()}`;
+  const observedPriceDigitsScopeKey = symbol.trim().toUpperCase();
   const [observedPriceDigitsState, setObservedPriceDigitsState] = useState<{
     scopeKey: string;
     digits: number | null;
@@ -145,11 +145,30 @@ export const TradingChart = React.memo(function TradingChart({
     scopeKey: observedPriceDigitsScopeKey,
     digits: null,
   });
+  const observedPriceDigitsScopeRef = useRef<string>(observedPriceDigitsScopeKey);
   const observedPriceDigitsRef = useRef<number | null>(null);
-  if (observedPriceDigitsState.scopeKey !== observedPriceDigitsScopeKey) {
+  if (observedPriceDigitsScopeRef.current !== observedPriceDigitsScopeKey) {
+    observedPriceDigitsScopeRef.current = observedPriceDigitsScopeKey;
     observedPriceDigitsRef.current = null;
-  } else {
+  }
+  if (
+    observedPriceDigitsState.scopeKey === observedPriceDigitsScopeKey
+    && observedPriceDigitsState.digits !== null
+    && (observedPriceDigitsRef.current === null || observedPriceDigitsState.digits > observedPriceDigitsRef.current)
+  ) {
     observedPriceDigitsRef.current = observedPriceDigitsState.digits;
+  }
+  const initialTickForDigits = useAppStore.getState().ticks[symbol]
+    ?? useAppStore.getState().ticks[observedPriceDigitsScopeKey];
+  if (initialTickForDigits) {
+    const tickDigits = inferObservedPriceDigits(null, [
+      initialTickForDigits.bid,
+      initialTickForDigits.ask,
+      initialTickForDigits.last,
+    ]);
+    if (tickDigits !== null && (observedPriceDigitsRef.current === null || tickDigits > observedPriceDigitsRef.current)) {
+      observedPriceDigitsRef.current = tickDigits;
+    }
   }
   const specPriceDigits = resolveSymbolPriceDigits(symbol, priceDigits);
   const resolvedPriceDigits = resolveEffectiveChartPriceDigits(
@@ -460,14 +479,24 @@ export const TradingChart = React.memo(function TradingChart({
   ): number | null => {
     const inferred = inferObservedPriceDigits(candlesSample, livePricesSample);
     const activeSymbol = symbol.trim().toUpperCase();
-    const activeScopeKey = `${brokerAccountSessionScope || 'default-account'}:${activeSymbol}`;
-    if (inferred !== null && (observedPriceDigitsRef.current === null || inferred > observedPriceDigitsRef.current)) {
-      observedPriceDigitsRef.current = inferred;
-      setObservedPriceDigitsState(prev => (
-        prev.scopeKey === activeScopeKey && prev.digits !== null && prev.digits >= inferred
-          ? prev
-          : { scopeKey: activeScopeKey, digits: inferred }
-      ));
+    const activeScopeKey = activeSymbol;
+    if (observedPriceDigitsScopeRef.current !== activeScopeKey) {
+      observedPriceDigitsScopeRef.current = activeScopeKey;
+      observedPriceDigitsRef.current = null;
+    }
+    if (inferred !== null) {
+      const hasCandleSample = Boolean(candlesSample && candlesSample.length > 0);
+      if (
+        observedPriceDigitsRef.current === null
+        || (hasCandleSample ? inferred !== observedPriceDigitsRef.current : inferred > observedPriceDigitsRef.current)
+      ) {
+        observedPriceDigitsRef.current = inferred;
+        setObservedPriceDigitsState(prev => (
+          prev.scopeKey === activeScopeKey && prev.digits === inferred
+            ? prev
+            : { scopeKey: activeScopeKey, digits: inferred }
+        ));
+      }
     }
     const nextDigits = resolveEffectiveChartPriceDigits(
       resolveSymbolPriceDigits(activeSymbol, priceDigits),
@@ -483,12 +512,20 @@ export const TradingChart = React.memo(function TradingChart({
       try {
         squareGridHostSeriesRef.current?.applyOptions({ priceFormat });
         seriesRef.current?.applyOptions({ priceFormat });
+        squareGridPrimitiveRef.current?.applyOptions({});
+        repaintTradeOverlayGeometryRef.current();
+        if (typeof window !== 'undefined') {
+          window.requestAnimationFrame(() => {
+            if (isDisposedRef.current || !isActiveRef.current) return;
+            repaintTradeOverlayGeometryRef.current();
+          });
+        }
       } catch {
         // Series can be disposed during fast symbol/tab switches.
       }
     }
     return nextDigits;
-  }, [brokerAccountSessionScope, priceDigits, symbol]);
+  }, [priceDigits, symbol]);
 
   const updateLegendDOM = useCallback((o: number, h: number, l: number, c: number, v: number) => {
     const digits = syncObservedChartPriceDigits(undefined, [o, h, l, c]);
@@ -2257,9 +2294,30 @@ useTradingChartInitialization({
           lastValueVisible: false,
         });
     }
+    let scaleWidthFrameA: number | null = null;
+    let scaleWidthFrameB: number | null = null;
     series.attachPrimitive(new ChartOverlayGeometryPrimitive(() => {
       if (isDisposedRef.current || !isActiveRef.current || seriesRef.current !== series) return;
+      const initialScaleWidth = series.priceScale().width();
       repaintTradeOverlayGeometryRef.current();
+      if (typeof window === 'undefined') return;
+      if (scaleWidthFrameA !== null) window.cancelAnimationFrame(scaleWidthFrameA);
+      if (scaleWidthFrameB !== null) window.cancelAnimationFrame(scaleWidthFrameB);
+      scaleWidthFrameA = window.requestAnimationFrame(() => {
+        scaleWidthFrameA = null;
+        if (isDisposedRef.current || !isActiveRef.current || seriesRef.current !== series) return;
+        const nextScaleWidth = series.priceScale().width();
+        if (nextScaleWidth !== initialScaleWidth) {
+          repaintTradeOverlayGeometryRef.current();
+        }
+        scaleWidthFrameB = window.requestAnimationFrame(() => {
+          scaleWidthFrameB = null;
+          if (isDisposedRef.current || !isActiveRef.current || seriesRef.current !== series) return;
+          if (series.priceScale().width() !== nextScaleWidth) {
+            repaintTradeOverlayGeometryRef.current();
+          }
+        });
+      });
     }));
     return series;
   }, [areaTrendDirectionRef]);
@@ -2376,6 +2434,7 @@ useTradingChartInitialization({
     resolvedPriceDigits,
     resolvedPricePoint,
     seriesRef,
+    squareGridHostSeriesRef,
     setTextInputOverlay,
     setTextInputValue,
     symbol,
@@ -2427,8 +2486,16 @@ useTradingChartInitialization({
   });
   useEffect(() => {
     if (isDisposedRef.current || !seriesRef.current) return;
+    let frameA: number | null = null;
+    let frameB: number | null = null;
     try {
       const currentCandle = currentCandleRef.current;
+      if (candlesRef.current.length > 0) {
+        syncObservedChartPriceDigits(
+          candlesRef.current,
+          currentCandle ? [currentCandle.open, currentCandle.high, currentCandle.low, currentCandle.close] : undefined,
+        );
+      }
       if (currentCandle) {
         updateLegendDOM(
           currentCandle.open,
@@ -2439,10 +2506,35 @@ useTradingChartInitialization({
         );
         repaintLivePriceOverlayFromCurrentPrice(currentCandle);
       }
+      refreshTradeOverlayGeometry();
+      if (typeof window !== 'undefined') {
+        frameA = window.requestAnimationFrame(() => {
+          frameA = null;
+          if (isDisposedRef.current || !seriesRef.current) return;
+          if (currentCandleRef.current) {
+            repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+          }
+          refreshTradeOverlayGeometry();
+          frameB = window.requestAnimationFrame(() => {
+            frameB = null;
+            if (isDisposedRef.current || !seriesRef.current) return;
+            if (currentCandleRef.current) {
+              repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+            }
+            refreshTradeOverlayGeometry();
+          });
+        });
+      }
     } catch {
       // The series can be disposed during fast chart/tab switches.
     }
-  }, [repaintLivePriceOverlayFromCurrentPrice, resolvedPriceDigits, resolvedPricePoint, updateLegendDOM]);
+    return () => {
+      if (typeof window !== 'undefined') {
+        if (frameA !== null) window.cancelAnimationFrame(frameA);
+        if (frameB !== null) window.cancelAnimationFrame(frameB);
+      }
+    };
+  }, [refreshTradeOverlayGeometry, repaintLivePriceOverlayFromCurrentPrice, resolvedPriceDigits, resolvedPricePoint, syncObservedChartPriceDigits, updateLegendDOM]);
 
 
 

@@ -104,4 +104,14 @@ describe('trade control geometry', () => {
     expect(bar.style.top).toBe('100px');
     expect(width).toHaveBeenCalledTimes(2);
   });
+
+  it('reprojects trade lines when the internal price-scale table cell resizes without cursor movement', () => {
+    const { runtime, flushFrames } = fixture();
+    const line = document.createElement('div');
+    line.className = 'rtx-trade-level-line';
+    runtime.activeOverlayNodesRef.current.push(line);
+    runtime.activeOverlayNodeDataRef.current.push({ kind: 'horizontal-line', price: 100 });
+    flushFrames();
+    expect(line.style.right).toBe('60px');
+  });
 });

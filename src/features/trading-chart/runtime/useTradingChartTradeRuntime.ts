@@ -792,11 +792,13 @@ export const useTradingChartTradeRuntime = ({
       resize?.disconnect();
       resize?.observe(wrapper);
       resize?.observe(container, { box: 'border-box' });
+      container.querySelectorAll('td, canvas').forEach(element => resize?.observe(element));
       wrapper.querySelectorAll('.rtx-trade-controls').forEach(element => resize?.observe(element));
       schedule();
     };
     const children = new MutationObserver(observeControlSizes);
     children.observe(wrapper, { childList: true });
+    children.observe(container, { childList: true, subtree: true });
     observeControlSizes();
     return () => {
       children.disconnect();

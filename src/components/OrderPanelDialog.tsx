@@ -50,7 +50,33 @@ export type OrderType =
   | 'Market Execution'
   | 'Limit Order'
   | 'Stop Order'
-  | 'Stop Limit Order';
+  | 'Stop Limit Order'
+  | 'Buy Limit'
+  | 'Sell Limit'
+  | 'Buy Stop'
+  | 'Sell Stop'
+  | 'Buy Stop Limit'
+  | 'Sell Stop Limit';
+
+const isLimitOrderType = (type: OrderType): boolean => (
+  type === 'Limit Order' || type === 'Buy Limit' || type === 'Sell Limit'
+);
+
+const isStopOrderType = (type: OrderType): boolean => (
+  type === 'Stop Order' || type === 'Buy Stop' || type === 'Sell Stop'
+);
+
+const isStopLimitOrderType = (type: OrderType): boolean => (
+  type === 'Stop Limit Order' || type === 'Buy Stop Limit' || type === 'Sell Stop Limit'
+);
+
+const alignOrderTypeToSide = (type: OrderType, submitSide: 'buy' | 'sell'): OrderType => {
+  const prefix = submitSide === 'buy' ? 'Buy' : 'Sell';
+  if (type === 'Buy Limit' || type === 'Sell Limit') return `${prefix} Limit`;
+  if (type === 'Buy Stop' || type === 'Sell Stop') return `${prefix} Stop`;
+  if (type === 'Buy Stop Limit' || type === 'Sell Stop Limit') return `${prefix} Stop Limit`;
+  return type;
+};
 
 export type FillPolicy = 'Fill or Kill' | 'Immediate or Cancel' | 'Return';
 export type ExpirationType = 'GTC' | 'Today' | 'Specified' | 'Specified day';
@@ -1179,6 +1205,13 @@ function OrderDialogDomPane({
 
 type DialogSubmitSide = 'buy' | 'sell';
 
+function resolveSideForOrderType(type: OrderType | undefined): DialogSubmitSide | null {
+  if (!type) return null;
+  if (type.startsWith('Buy ')) return 'buy';
+  if (type.startsWith('Sell ')) return 'sell';
+  return null;
+}
+
 // ITEM 2 (T10 side preselection): normalize the chart-provided side.
 // Fail-closed: anything other than BUY/SELL resolves to null (default flow).
 function normalizeInitialDialogSide(value: unknown): DialogSubmitSide | null {
@@ -1220,7 +1253,7 @@ export function OrderPanelDialog({
   // chart-implied side while both buttons stay functional (user can switch
   // by pressing the other button). Null = default flow (absent/invalid).
   const [selectedSide, setSelectedSide] = useState<DialogSubmitSide | null>(() =>
-    normalizeInitialDialogSide(initialSide),
+    normalizeInitialDialogSide(initialSide) ?? resolveSideForOrderType(initialOrderType),
   );
   // SUI-T2 keeps honoring explicit caller props; SUI-T8 seeds the rest from
   // the persisted Options trade defaults (no literals).
@@ -1374,9 +1407,21 @@ export function OrderPanelDialog({
   // made while open are left untouched until the next open/prop change.
   useEffect(() => {
     if (isOpen) {
-      setSelectedSide(normalizeInitialDialogSide(initialSide));
+      setSelectedSide(normalizeInitialDialogSide(initialSide) ?? resolveSideForOrderType(initialOrderType));
     }
-  }, [isOpen, initialSide]);
+  }, [isOpen, initialSide, initialOrderType]);
+
+  useEffect(() => {
+    if (isOpen && initialOrderType) {
+      setOrderType(initialOrderType);
+    }
+  }, [isOpen, initialOrderType]);
+
+  useEffect(() => {
+    if (isOpen && initialPrice !== undefined && Number.isFinite(initialPrice) && initialPrice > 0) {
+      setPriceStr(specDigits === null ? String(initialPrice) : initialPrice.toFixed(specDigits));
+    }
+  }, [isOpen, initialPrice, specDigits]);
 
   const spread = ask - bid;
   // Spread pips from the same catalog-first spec digits as the prices.
@@ -1472,16 +1517,36 @@ export function OrderPanelDialog({
 
   const isPendingPriceReady = orderType === 'Market Execution'
     ? true
-    : orderType === 'Stop Limit Order'
+    : isStopLimitOrderType(orderType)
       ? (Number.isFinite(parsedPrice) && parsedPrice > 0 && Number.isFinite(parsedStopLimitPrice) && parsedStopLimitPrice > 0)
       : (Number.isFinite(parsedPrice) && parsedPrice > 0);
+
+  const handleOrderTypeChange = useCallback((nextType: OrderType) => {
+    setOrderType(nextType);
+    const impliedSide = resolveSideForOrderType(nextType);
+    if (impliedSide) {
+      setSelectedSide(impliedSide);
+    }
+    if (nextType !== 'Market Execution') {
+      const refPrice = impliedSide === 'sell' ? (bid || ask) : (ask || bid);
+      if (refPrice > 0) {
+        const formattedRef = formatDialogPrice(refPrice, specDigits);
+        setPriceStr((prev) => (prev.trim() === '' ? formattedRef : prev));
+        if (isStopLimitOrderType(nextType)) {
+          setStopLimitPriceStr((prev) => (prev.trim() === '' ? formattedRef : prev));
+        }
+      }
+    }
+  }, [ask, bid, specDigits]);
 
   const handleSubmit = useCallback(async (
     side: 'buy' | 'sell',
     overrideProtection?: { priceSl?: number; priceTp?: number; forceMarket?: boolean },
   ) => {
     if (isPlacing) return;
-    const effectiveOrderType = overrideProtection?.forceMarket ? 'Market Execution' : orderType;
+    const effectiveOrderType = overrideProtection?.forceMarket
+      ? 'Market Execution'
+      : alignOrderTypeToSide(orderType, side);
     const blocked = effectiveOrderType === 'Market Execution'
       && shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
     if (blocked) {
@@ -1531,7 +1596,7 @@ export function OrderPanelDialog({
             }
           }
         } else if (Number.isFinite(parsedPrice) && parsedPrice > 0) {
-          const entryRef = effectiveOrderType === 'Stop Limit Order' && Number.isFinite(parsedStopLimitPrice) && parsedStopLimitPrice > 0
+          const entryRef = isStopLimitOrderType(effectiveOrderType) && Number.isFinite(parsedStopLimitPrice) && parsedStopLimitPrice > 0
             ? parsedStopLimitPrice
             : parsedPrice;
           if (slVal !== undefined) {
@@ -1578,7 +1643,7 @@ export function OrderPanelDialog({
         ...(effectiveOrderType !== 'Market Execution' ? {
           orderType: effectiveOrderType,
           price: Number.isFinite(parsedPrice) && parsedPrice > 0 ? parsedPrice : undefined,
-          stopLimitPrice: effectiveOrderType === 'Stop Limit Order' && Number.isFinite(parsedStopLimitPrice) && parsedStopLimitPrice > 0
+          stopLimitPrice: isStopLimitOrderType(effectiveOrderType) && Number.isFinite(parsedStopLimitPrice) && parsedStopLimitPrice > 0
             ? parsedStopLimitPrice
             : undefined,
           expiration,
@@ -1624,10 +1689,12 @@ export function OrderPanelDialog({
   const handleSelectDomPrice = useCallback((clickedPrice: number, side: 'buy' | 'sell') => {
     // New-order price display uses catalog digits only; unknown = raw value.
     setPriceStr(specDigits === null ? String(clickedPrice) : clickedPrice.toFixed(specDigits));
+    setSelectedSide(side);
     if (orderType === 'Market Execution') {
       setOrderType('Limit Order');
+    } else if (orderType === 'Buy Limit' || orderType === 'Sell Limit') {
+      setOrderType(side === 'buy' ? 'Buy Limit' : 'Sell Limit');
     }
-    void side;
   }, [specDigits, orderType]);
 
   const handleDomMarketAction = useCallback((side: 'buy' | 'sell', slPoints: number, tpPoints: number) => {
@@ -1656,6 +1723,7 @@ export function OrderPanelDialog({
     : `${tr("Order")}: ${symbol}`;
 
   const symbolFieldId = `new-order-${symbol}-symbol`;
+  const orderTypeFieldId = `new-order-${symbol}-type`;
   const volumeFieldId = `new-order-${symbol}-volume`;
   const deviationFieldId = `new-order-${symbol}-deviation`;
   const priceFieldId = `new-order-${symbol}-price`;
@@ -1731,7 +1799,7 @@ export function OrderPanelDialog({
               <button
                 type="button"
                 data-testid="order-mode-limit"
-                className={`rtx-order-dialog__mode-btn ${orderType === 'Limit Order' ? 'rtx-order-dialog__mode-btn--active' : ''}`}
+                className={`rtx-order-dialog__mode-btn ${isLimitOrderType(orderType) ? 'rtx-order-dialog__mode-btn--active' : ''}`}
                 title={tr("Limit Order")}
                 onClick={() => setOrderType('Limit Order')}
               >
@@ -1747,7 +1815,7 @@ export function OrderPanelDialog({
               <button
                 type="button"
                 data-testid="order-mode-stop"
-                className={`rtx-order-dialog__mode-btn ${orderType === 'Stop Order' ? 'rtx-order-dialog__mode-btn--active' : ''}`}
+                className={`rtx-order-dialog__mode-btn ${isStopOrderType(orderType) ? 'rtx-order-dialog__mode-btn--active' : ''}`}
                 title={tr("Stop Order")}
                 onClick={() => setOrderType('Stop Order')}
               >
@@ -1763,7 +1831,7 @@ export function OrderPanelDialog({
               <button
                 type="button"
                 data-testid="order-mode-stop-limit"
-                className={`rtx-order-dialog__mode-btn ${orderType === 'Stop Limit Order' ? 'rtx-order-dialog__mode-btn--active' : ''}`}
+                className={`rtx-order-dialog__mode-btn ${isStopLimitOrderType(orderType) ? 'rtx-order-dialog__mode-btn--active' : ''}`}
                 title={tr("Stop Limit Order")}
                 onClick={() => setOrderType('Stop Limit Order')}
               >
@@ -1877,6 +1945,36 @@ export function OrderPanelDialog({
                     </option>
                   );
                 })}
+              </select>
+            </div>
+
+            <div className="rtx-order-dialog__field">
+              <label className="rtx-order-dialog__label" htmlFor={orderTypeFieldId}>
+                {tr("Type")}
+              </label>
+              <select
+                id={orderTypeFieldId}
+                data-testid="order-type-select"
+                value={orderType}
+                onChange={(e) => handleOrderTypeChange(e.target.value as OrderType)}
+                className="rtx-order-dialog__control"
+              >
+                <option value="Market Execution">{tr("Market")}</option>
+                <option value="Buy Limit">{tr("Buy Limit")}</option>
+                <option value="Sell Limit">{tr("Sell Limit")}</option>
+                <option value="Buy Stop">{tr("Buy Stop")}</option>
+                <option value="Sell Stop">{tr("Sell Stop")}</option>
+                <option value="Buy Stop Limit">{tr("Buy Stop Limit")}</option>
+                <option value="Sell Stop Limit">{tr("Sell Stop Limit")}</option>
+                {orderType === 'Limit Order' && (
+                  <option value="Limit Order">{tr("Limit")}</option>
+                )}
+                {orderType === 'Stop Order' && (
+                  <option value="Stop Order">{tr("Stop")}</option>
+                )}
+                {orderType === 'Stop Limit Order' && (
+                  <option value="Stop Limit Order">{tr("Stop Limit")}</option>
+                )}
               </select>
             </div>
 
@@ -2003,13 +2101,13 @@ export function OrderPanelDialog({
                   <label className="rtx-order-dialog__label" htmlFor={stopLimitPriceFieldId}>{tr("Stop Limit price")}</label>
                   <div className="rtx-order-dialog__volume-row">
                     <div
-                      className={`rtx-order-dialog__volume-control ${orderType !== 'Stop Limit Order' ? 'rtx-order-dialog__volume-control--disabled' : ''}`}
+                      className={`rtx-order-dialog__volume-control ${!isStopLimitOrderType(orderType) ? 'rtx-order-dialog__volume-control--disabled' : ''}`}
                     >
                       <input
                         id={stopLimitPriceFieldId}
                         type="text"
                         inputMode="decimal"
-                        disabled={orderType !== 'Stop Limit Order'}
+                        disabled={!isStopLimitOrderType(orderType)}
                         value={stopLimitPriceStr}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -2024,14 +2122,14 @@ export function OrderPanelDialog({
                       <div className="rtx-order-dialog__spinner">
                         <button
                           type="button"
-                          disabled={orderType !== 'Stop Limit Order'}
+                          disabled={!isStopLimitOrderType(orderType)}
                           aria-label={tr("Increase stop limit price")}
                           onClick={() => stepPriceField(stopLimitPriceStr, setStopLimitPriceStr, 1, ask || bid)}
                           className="rtx-order-dialog__spinner-button"
                         >▲</button>
                         <button
                           type="button"
-                          disabled={orderType !== 'Stop Limit Order'}
+                          disabled={!isStopLimitOrderType(orderType)}
                           aria-label={tr("Decrease stop limit price")}
                           onClick={() => stepPriceField(stopLimitPriceStr, setStopLimitPriceStr, -1, bid || ask)}
                           className="rtx-order-dialog__spinner-button"

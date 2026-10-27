@@ -238,4 +238,41 @@ describe('OrderPanelDialog MT5 Desktop layout and behavior', () => {
 
     expect(screen.getByText('4 173.230 / 4 173.770')).not.toBeNull();
   });
+
+  it('switches from Market to Buy Limit and Sell Limit via the Type selector', () => {
+    const onSubmitOrder = vi.fn();
+    render(
+      <OrderPanelDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        currentPrice={{ bid: 4173.23, ask: 4173.77 }}
+        onSubmitOrder={onSubmitOrder}
+      />,
+    );
+
+    const typeSelect = screen.getByLabelText('Type') as HTMLSelectElement;
+    expect(typeSelect.value).toBe('Market Execution');
+    expect(typeSelect.selectedOptions[0]?.textContent).toBe('Market');
+
+    fireEvent.change(typeSelect, { target: { value: 'Buy Limit' } });
+    expect(typeSelect.value).toBe('Buy Limit');
+    expect(screen.getByRole('dialog').getAttribute('data-side')).toBe('buy');
+
+    const priceInput = screen.getByLabelText('Price') as HTMLInputElement;
+    expect(priceInput.value).toBe('4173.77');
+
+    fireEvent.change(priceInput, { target: { value: '4170.00' } });
+    fireEvent.click(screen.getAllByRole<HTMLButtonElement>('button', { name: 'Buy' })[0]);
+    expect(onSubmitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'buy',
+        symbol: 'XAUUSD',
+        volume: 0.01,
+        orderType: 'Buy Limit',
+        price: 4170,
+        expiration: 'GTC',
+      }),
+    );
+  });
 });

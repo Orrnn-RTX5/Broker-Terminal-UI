@@ -197,8 +197,16 @@ export const getShortcutHelpEntries = (registered: ShortcutDefinition[]): Shortc
     return { ...shortcut, description: metadata?.description || shortcut.description, category: metadata?.category || shortcut.category,
       ...(metadata?.scope ? { scope: metadata.scope } : {}) };
   });
+  const globalTradingCombos = new Set(
+    entries
+      .filter(entry => entry.category === 'Trading' && !entry.displayKeys?.length)
+      .map(entry => keyboardShortcutManager.formatShortcut(entry as ShortcutDefinition)),
+  );
+  const localEntries = LOCAL_SHORTCUTS.filter(
+    entry => entry.category !== 'Trading' || !globalTradingCombos.has(keyboardShortcutManager.formatShortcut(entry as ShortcutDefinition)),
+  );
   const seen = new Set<string>();
-  return [...entries, ...LOCAL_SHORTCUTS].filter(entry => {
+  return [...entries, ...localEntries].filter(entry => {
     const key = `${entry.id}:${keyboardShortcutManager.formatShortcut(entry as ShortcutDefinition)}:${entry.scope || ''}`;
     if (seen.has(key)) return false;
     seen.add(key);

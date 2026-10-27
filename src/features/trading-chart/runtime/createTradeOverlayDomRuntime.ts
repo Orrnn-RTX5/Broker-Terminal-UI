@@ -738,16 +738,18 @@ export const createTradeOverlayDomRuntime = ({
         const closePrice = getTradeClosePrice(trade);
         const pips = computeSignedPips(trade.side, trade.entryPrice, closePrice, digits);
         const position = findStorePosition(ticket);
+        const hasBackendProfit = (position as { hasBackendProfit?: boolean } | null)?.hasBackendProfit !== false;
         const backendPnl = Number(position?.unrealizedPnL ?? position?.profit ?? position?.unrealized_pl);
-        const money = position && Number.isFinite(backendPnl)
+        const estimatedMoney = estimateTradeMoneyAtPrice({
+          symbol: trade.symbol,
+          side: trade.side,
+          volume: trade.volume,
+          entryPrice: trade.entryPrice,
+          price: closePrice,
+        });
+        const money = position && hasBackendProfit && Number.isFinite(backendPnl)
           ? backendPnl
-          : estimateTradeMoneyAtPrice({
-            symbol: trade.symbol,
-            side: trade.side,
-            volume: trade.volume,
-            entryPrice: trade.entryPrice,
-            price: closePrice,
-          });
+          : estimatedMoney ?? (trade.kind !== 'pending' && pips === 0 ? 0 : null);
         controlBar.setLiveMetrics(pips, money);
       };
       tradeControlLiveUpdatersRef.current.push(refreshLiveMetrics);

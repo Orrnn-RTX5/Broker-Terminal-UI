@@ -97,6 +97,37 @@ describe('chart price-scale precision', () => {
       minMove: 0.01,
     });
   });
+
+  it('infers sufficient decimal precision from narrow price spans even when prices end in trailing zeros', () => {
+    const narrowTrailingZeroCandles = [
+      { open: 0.201, high: 0.202, low: 0.201, close: 0.202 },
+    ];
+    expect(inferObservedPriceDigits(narrowTrailingZeroCandles)).toBe(4);
+    expect(resolveEffectiveChartPriceDigits(2, inferObservedPriceDigits(narrowTrailingZeroCandles))).toBe(4);
+  });
+
+  it('does not inflate observed price digits on 1-point or 2-point live ticks and forming candles', () => {
+    // 2-decimal instrument with 1-point and 2-point spans (including IEEE-754 subtraction noise)
+    expect(inferObservedPriceDigits(
+      [{ open: 2750.10, high: 2750.11, low: 2750.10, close: 2750.11 }],
+    )).toBe(2);
+    expect(inferObservedPriceDigits(
+      [{ open: 2750.10, high: 2750.12, low: 2750.10, close: 2750.12 }],
+    )).toBe(2);
+    expect(inferObservedPriceDigits(undefined, [2750.10, 2750.11, 2750.10, 2750.11])).toBe(2);
+    expect(inferObservedPriceDigits(undefined, [2750.10, 2750.12, 2750.10, 2750.12])).toBe(2);
+
+    // 5-decimal FX pair with a 1-point spread
+    expect(inferObservedPriceDigits(
+      [{ open: 1.08500, high: 1.08501, low: 1.08500, close: 1.08501 }],
+    )).toBe(5);
+    expect(inferObservedPriceDigits(undefined, [1.08500, 1.08501, 1.08501])).toBe(5);
+
+    // 4-decimal sub-unit instrument with a 1-point spread stays at 4 digits
+    expect(inferObservedPriceDigits(
+      [{ open: 0.2058, high: 0.2059, low: 0.2058, close: 0.2059 }],
+    )).toBe(4);
+  });
 });
 
 describe('maximum price-scale zoom', () => {

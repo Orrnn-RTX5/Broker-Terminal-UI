@@ -104,6 +104,7 @@ interface UseTradingChartReconfigurationOptions {
   resolvedPriceDigits: number | null;
   resolvedPricePoint: number;
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
+  squareGridHostSeriesRef?: RefObject<ISeriesApi<'Line'> | null>;
   setTextInputOverlay: Dispatch<SetStateAction<TextInputOverlay | null>>;
   setTextInputValue: Dispatch<SetStateAction<string>>;
   symbol: string;
@@ -126,7 +127,7 @@ export const useTradingChartReconfiguration = (options: UseTradingChartReconfigu
     overlayRef, periodSeparatorsRef, postInteractionCoordinatorRef, prevChartTypeRef,
     prevPriceRef, prevSymbolRef, prevTimeframeRef, protectedDisplayedHistoryRef,
     renderedPriceReferenceRef, resetLiveQuotePriceGuard, resetVisibleRangeOnNextDataRef,
-    resolvedPriceDigits, resolvedPricePoint, seriesRef, setTextInputOverlay,
+    resolvedPriceDigits, resolvedPricePoint, seriesRef, squareGridHostSeriesRef, setTextInputOverlay,
     setTextInputValue, symbol, timeframe, updateChartData, volumeRef,
   } = options;
 
@@ -230,9 +231,9 @@ export const useTradingChartReconfiguration = (options: UseTradingChartReconfigu
         // Apply new precision
         const digits = resolvedPriceDigits;
         const minMove = resolvedPricePoint;
-        seriesRef.current.applyOptions({
-          priceFormat: buildChartSeriesPriceFormat(digits, minMove),
-        });
+        const priceFormat = buildChartSeriesPriceFormat(digits, minMove);
+        squareGridHostSeriesRef?.current?.applyOptions({ priceFormat });
+        seriesRef.current.applyOptions({ priceFormat });
 
         // Reuse the exact new symbol's session cache before the next paint.
         if (!hydrateHistoryFromCache(timeframe, 'cached-symbol-change')) {

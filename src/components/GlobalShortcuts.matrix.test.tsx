@@ -71,7 +71,7 @@ const propertyCases: Record<string, keyof typeof defaultChartProperties> = {
 };
 const callbackCases: Record<string, string> = {
   'file.save': 'onSaveWorkspace', 'file.print': 'onPrintChart', 'view.fullscreen': 'onToggleFullScreen',
-  'tools.new-order': 'onOpenOrderPanel', 'view.depth-of-market': 'onOpenDOM', 'trading.quick-sell': 'onQuickSell',
+  'tools.new-order': 'onOpenOrderPanel', 'view.depth-of-market': 'onOpenDOM', 'trading.quick-buy': 'onQuickBuy', 'trading.quick-sell': 'onQuickSell',
 };
 const layoutCases: Record<string, [string, string?]> = {
   'window.tile': ['tileWindows', 'grid'], 'window.cascade': ['arrangeCharts', 'cascade'],
@@ -207,7 +207,7 @@ describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
       } else if (callbackCases[id]) {
         const callback = callbacks[callbackCases[id] as keyof typeof callbacks];
         expect(callback, id).toHaveBeenCalledOnce();
-        if (id === 'trading.quick-sell' || id === 'view.depth-of-market') expect(callback).toHaveBeenCalledWith(broker.symbol);
+        if (id === 'trading.quick-buy' || id === 'trading.quick-sell' || id === 'view.depth-of-market') expect(callback).toHaveBeenCalledWith(broker.symbol);
         if (id === 'tools.new-order') expect(callback).toHaveBeenCalledWith(broker.symbol, { bid: 0, ask: 0 });
       } else if (layout) {
         expect(layout, id).toHaveBeenCalledOnce();
@@ -281,6 +281,8 @@ describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
         press(keyboardShortcutManager.findShortcut('tools.new-order')!);
         const prices = symbol === 'XAUUSD' ? { bid: 901, ask: 902 } : targetId === 'active' ? { bid: 101, ask: 102 } : { bid: 201, ask: 202 };
         expect(callbacks.onOpenOrderPanel).toHaveBeenLastCalledWith(symbol, prices);
+        press(keyboardShortcutManager.findShortcut('trading.quick-buy')!);
+        expect(callbacks.onQuickBuy).toHaveBeenLastCalledWith(symbol);
         press(keyboardShortcutManager.findShortcut('trading.quick-sell')!);
         expect(callbacks.onQuickSell).toHaveBeenLastCalledWith(symbol);
       }
@@ -349,9 +351,15 @@ describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
     });
     const overlay = document.createElement('div'); overlay.setAttribute('role', role);
     const button = document.createElement('button'); overlay.appendChild(button); document.body.appendChild(overlay);
-    button.focus(); press(keyboardShortcutManager.findShortcut('trading.quick-sell')!, button);
+    button.focus();
+    press(keyboardShortcutManager.findShortcut('trading.quick-buy')!, button);
+    press(keyboardShortcutManager.findShortcut('trading.quick-sell')!, button);
+    expect(callbacks.onQuickBuy).not.toHaveBeenCalled();
     expect(callbacks.onQuickSell).not.toHaveBeenCalled();
-    document.body.focus(); press(keyboardShortcutManager.findShortcut('trading.quick-sell')!);
+    document.body.focus();
+    press(keyboardShortcutManager.findShortcut('trading.quick-buy')!);
+    press(keyboardShortcutManager.findShortcut('trading.quick-sell')!);
+    expect(callbacks.onQuickBuy).toHaveBeenCalledExactlyOnceWith('STALE');
     expect(callbacks.onQuickSell).toHaveBeenCalledExactlyOnceWith('STALE');
   });
 

@@ -25,6 +25,10 @@ import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
 import { getAppVersion } from '../../config/appVersion';
+import { BrokerLogoImage } from '../BrokerLogoImage';
+import { BROKER_CHROME_EVENT, getBrokerChrome, type BrokerChromeState } from '../../services/brokerPresentation';
+import { brokerDisplayName, isBrokerName } from '../../services/brokerDisplayName';
+import { getLogoUrl, getWebTerminalTitle } from '../../hooks/useTerminalTitle';
 import { useThemeAppearanceStore } from '../../store/useThemeAppearanceStore';
 import { DARK_THEME_PRESETS, LIGHT_THEME_PRESETS } from '../../utils/themePresets';
 import { OPEN_THEME_SETTINGS_EVENT, ThemeSettingsDialog } from '../settings/ThemeAppearanceSettings';
@@ -125,6 +129,37 @@ export const MenuBar = ({
     const isElectronDesktop = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
+    const [brokerChrome, setBrokerChrome] = useState(getBrokerChrome);
+    useEffect(() => {
+        setBrokerChrome(getBrokerChrome());
+        const handleBrokerChrome = (event: Event) => {
+            const detail = (event as CustomEvent<BrokerChromeState>).detail;
+            setBrokerChrome(detail || getBrokerChrome());
+        };
+        window.addEventListener(BROKER_CHROME_EVENT, handleBrokerChrome);
+        return () => window.removeEventListener(BROKER_CHROME_EVENT, handleBrokerChrome);
+    }, []);
+    const storedBrokerServer = typeof window !== 'undefined'
+        ? (localStorage.getItem('rtx_broker_server') || localStorage.getItem('server_url') || '')
+        : '';
+    const storedBrokerId = typeof window !== 'undefined'
+        ? (localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '')
+        : '';
+    const storedLogoUrl = typeof window !== 'undefined'
+        ? (localStorage.getItem('logo_url') || '')
+        : '';
+    const applicationMenuBrokerName = isBrokerName(brokerChrome.brokerName)
+        ? brokerChrome.brokerName
+        : (() => {
+            const candidate = brokerDisplayName(storedBrokerServer || brokerChrome.brokerId || '');
+            return isBrokerName(candidate) ? candidate : getWebTerminalTitle();
+        })();
+    const applicationMenuBrandTitle = tr(applicationMenuBrokerName);
+    const applicationMenuBrokerLogo = {
+        broker_id: brokerChrome.brokerId || storedBrokerId,
+        broker_name: applicationMenuBrokerName,
+        logo_url: getLogoUrl(brokerChrome.logoUrl || storedLogoUrl),
+    };
     const [isOptionsOpen, setIsOptionsOpen] = useState(false);
     const [isThemeSettingsOpen, setIsThemeSettingsOpen] = useState(false);
     const [isSymbolsOpen, setIsSymbolsOpen] = useState(false);
@@ -1160,6 +1195,21 @@ export const MenuBar = ({
                         }
                     }}
                 >
+                    <div className="rtx-application-menu__brand" data-testid="application-menu-brand">
+                        <BrokerLogoImage
+                            broker={applicationMenuBrokerLogo}
+                            alt=""
+                            className="rtx-application-menu__brand-logo"
+                            appFallbackUrl="./favicon.png"
+                        />
+                        <span
+                            dir="auto"
+                            className="rtx-application-menu__brand-title min-w-0 flex-1 truncate"
+                            title={applicationMenuBrandTitle}
+                        >
+                            {applicationMenuBrandTitle}
+                        </span>
+                    </div>
                     <div className="rtx-application-menu__items">
                         {applicationLauncherItems.map((item, rootIndex) => {
                             const hasSubmenu = Boolean(item.opensFileMenu || item.children);

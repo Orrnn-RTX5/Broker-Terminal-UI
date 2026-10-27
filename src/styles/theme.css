@@ -824,6 +824,34 @@ textarea {
   transform-origin: top left;
 }
 
+.rtx-application-menu__brand {
+  align-items: center;
+  border-bottom: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  display: flex;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  user-select: none;
+}
+
+.rtx-application-menu__brand-logo {
+  border-radius: 3px;
+  flex: 0 0 auto;
+  height: 20px;
+  object-fit: contain;
+  width: 20px;
+}
+
+.rtx-application-menu__brand-title {
+  color: var(--text-primary);
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 20px;
+}
+
 .rtx-application-menu__items {
   padding: 4px 0;
 }

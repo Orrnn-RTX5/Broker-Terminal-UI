@@ -37,8 +37,19 @@ export const inferObservedPriceDigits = (
   livePrices?: readonly unknown[],
 ): number | null => {
   let maxDigits: number | null = null;
-  const consider = (value: unknown) => {
-    const digits = inferPriceDigitsFromValue(value);
+  let minCandlePrice = Number.POSITIVE_INFINITY;
+  let maxCandlePrice = Number.NEGATIVE_INFINITY;
+  const consider = (value: unknown, isCandleValue = false) => {
+    const num = typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== ''
+        ? Number(value)
+        : Number.NaN;
+    if (isCandleValue && Number.isFinite(num) && num > 0) {
+      if (num < minCandlePrice) minCandlePrice = num;
+      if (num > maxCandlePrice) maxCandlePrice = num;
+    }
+    const digits = inferPriceDigitsFromValue(num);
     if (digits !== null && (maxDigits === null || digits > maxDigits)) {
       maxDigits = digits;
     }
@@ -49,16 +60,27 @@ export const inferObservedPriceDigits = (
     for (let index = startIndex; index < candles.length; index += 1) {
       const candle = candles[index];
       if (!candle) continue;
-      consider(candle.open);
-      consider(candle.high);
-      consider(candle.low);
-      consider(candle.close);
+      consider(candle.open, true);
+      consider(candle.high, true);
+      consider(candle.low, true);
+      consider(candle.close, true);
     }
   }
 
   if (Array.isArray(livePrices)) {
     for (let index = 0; index < livePrices.length; index += 1) {
-      consider(livePrices[index]);
+      consider(livePrices[index], false);
+    }
+  }
+
+  const priceSpan = Number((maxCandlePrice - minCandlePrice).toFixed(MAX_OBSERVED_PRICE_DIGITS));
+  if (Number.isFinite(priceSpan) && priceSpan > 0 && maxCandlePrice < 1) {
+    const spanDigits = Math.min(
+      4,
+      Math.max(0, Math.ceil(-Math.log10(priceSpan / 2))),
+    );
+    if (maxDigits === null || spanDigits > maxDigits) {
+      maxDigits = spanDigits;
     }
   }
 

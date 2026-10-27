@@ -28,7 +28,7 @@ import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME } from './constants/chart
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OrderPanelDialog } from './components/OrderPanelDialog';
 // Separate import: loginRuntime.contract pins the component import line above.
-import { resolveOrderPanelSide } from './components/OrderPanelDialog';
+import { resolveOrderPanelSide, type OrderType } from './components/OrderPanelDialog';
 import { AlertsContainer } from './components/AlertsContainer';
 import { getPositionCloseScope, markPositionsClosed, unmarkPositionsClosed, useAppStore, type Account, type Position } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
@@ -1725,7 +1725,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // Opening the ticket is a navigation action, so it follows the active chart
   // and chart/catalog eligibility. The stricter live-trading gate remains in
   // handleOrderPanelSubmit, where an order can actually be sent.
-  const [orderPanelDraft, setOrderPanelDraft] = useState<{ orderType?: 'Limit Order' | 'Stop Order' | 'Stop Limit Order'; price?: number; side?: 'BUY' | 'SELL' } | null>(null);
+  const [orderPanelDraft, setOrderPanelDraft] = useState<{ orderType?: OrderType; price?: number; side?: 'BUY' | 'SELL' } | null>(null);
 
   const openOrderPanelForSymbol = useCallback((
     requestedSymbol?: unknown,
@@ -1766,16 +1766,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const draftPrice = Number(requestedDraft?.price);
     // SUI-T10: carry a validated chart/event side into the dialog preselect;
     // absent/invalid sides leave the dialog on its default flow.
-    const draftSide = resolveOrderPanelSide(requestedDraft?.side);
+    const draftSide = resolveOrderPanelSide(requestedDraft?.side)
+      ?? (draftType.startsWith('buy') ? 'BUY' : draftType.startsWith('sell') ? 'SELL' : undefined);
+    const sidePrefix = draftSide === 'BUY' ? 'Buy' : draftSide === 'SELL' ? 'Sell' : null;
     const draftPriceField = (Number.isFinite(draftPrice) && draftPrice > 0 ? { price: draftPrice } : {});
     const draftSideField = (draftSide ? { side: draftSide } : {});
     setOrderPanelDraft(
       draftType.includes('stop') && draftType.includes('limit')
-        ? { orderType: 'Stop Limit Order', ...draftPriceField, ...draftSideField }
+        ? { orderType: sidePrefix ? `${sidePrefix} Stop Limit` : 'Stop Limit Order', ...draftPriceField, ...draftSideField }
         : draftType.includes('stop')
-          ? { orderType: 'Stop Order', ...draftSideField, ...draftPriceField }
+          ? { orderType: sidePrefix ? `${sidePrefix} Stop` : 'Stop Order', ...draftSideField, ...draftPriceField }
           : draftType.includes('limit')
-            ? { orderType: 'Limit Order', ...draftSideField, ...draftPriceField }
+            ? { orderType: sidePrefix ? `${sidePrefix} Limit` : 'Limit Order', ...draftSideField, ...draftPriceField }
             : (draftSide ? { ...draftSideField } : null),
     );
     setOrderPanelOpen(true);
@@ -1787,33 +1789,16 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     openOrderPanelForSymbol(symbol, price);
   }, [openOrderPanelForSymbol]);
 
-  // SUI-T9: one-click OFF opens the order dialog (never an instant order);
-  // ON places immediately. Fail-closed (unreadable setting = dialog).
-  const isOneClickTrade = (): boolean => {
-    try {
-      return useSettingsStore.getState()?.trade?.oneClickTrading === true;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleQuickBuy = useCallback(() => {
-    if (!selectedSymbol) return;
-    if (!isOneClickTrade()) {
-      openOrderPanelForSymbol(selectedSymbol);
-      return;
-    }
-    placeOrder('BUY');
+  const handleQuickBuy = useCallback((requestedSymbol?: string) => {
+    const targetSymbol = requestedSymbol || getActiveChartCommandTarget().symbol || selectedSymbol;
+    if (!targetSymbol) return;
+    void placeOrder('BUY', targetSymbol);
   }, [selectedSymbol, placeOrder]);
 
   const handleQuickSell = useCallback((requestedSymbol?: string) => {
     const targetSymbol = requestedSymbol || getActiveChartCommandTarget().symbol || selectedSymbol;
     if (!targetSymbol) return;
-    if (!isOneClickTrade()) {
-      openOrderPanelForSymbol(targetSymbol);
-      return;
-    }
-    placeOrder('SELL', targetSymbol);
+    void placeOrder('SELL', targetSymbol);
   }, [selectedSymbol, placeOrder]);
 
   const handleOpenDOM = useCallback((symbolOrEvent: string | CustomEvent) => {

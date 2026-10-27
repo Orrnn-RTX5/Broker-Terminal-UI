@@ -14,12 +14,11 @@ import { getActiveChartSource } from '../services/activeChartSource';
 import { getPanelIdFromChartContextId } from '../services/chartCommandTarget';
 import { useAppStore } from '../store/useAppStore';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
-import { useSettingsStore } from '../store/useSettingsStore';
 import { resolveExactBrokerSymbolValue } from '../utils/exactBrokerSymbol';
 
 interface GlobalShortcutsProps {
   onOpenOrderPanel: (symbol: string, price: { bid: number; ask: number }) => void;
-  onQuickBuy: () => void;
+  onQuickBuy: (symbol?: string) => void;
   onQuickSell: (symbol?: string) => void;
   onSaveWorkspace: () => void;
   onOpenDataFolder: () => void;
@@ -63,16 +62,6 @@ const resolveActiveChartTarget = (fallbackSymbol: string) => {
     timeframe: sourceTimeframe || undefined,
     targetContextId: source?.id,
   };
-};
-
-// Fail-closed: any unreadable setting disables instant send and forces confirm.
-const isOneClickTradingEnabledFailClosed = (): boolean => {
-  try {
-    const trade = useSettingsStore.getState()?.trade as { oneClickTrading?: unknown } | undefined;
-    return trade?.oneClickTrading === true;
-  } catch {
-    return false;
-  }
 };
 
 export function GlobalShortcuts({
@@ -232,23 +221,31 @@ export function GlobalShortcuts({
       }
     },
     {
+      id: 'trading.quick-buy',
+      key: 'b',
+      shift: true,
+      description: 'Quick Buy',
+      category: SHORTCUT_CATEGORIES.TRADING,
+      priority: 95,
+      handler: (event) => {
+        if (isShortcutOverlay(event)) return;
+        const target = resolveActiveChartTarget(selectedSymbol);
+        showFeedback(`Quick Buy - ${target.symbol} (Shift+B)`);
+        onQuickBuy(target.symbol);
+      }
+    },
+    {
       id: 'trading.quick-sell',
       key: 's',
-      alt: true,
+      shift: true,
       description: 'Quick Sell',
       category: SHORTCUT_CATEGORIES.TRADING,
       priority: 95,
       handler: (event) => {
         if (isShortcutOverlay(event)) return;
         const target = resolveActiveChartTarget(selectedSymbol);
-        if (isOneClickTradingEnabledFailClosed()) {
-          showFeedback(`Quick Sell - ${target.symbol} (Alt+S)`);
-          onQuickSell(target.symbol);
-          return;
-        }
-        // SUI-T9: one-click OFF opens the order dialog, never an instant order.
-        showFeedback(`New Order - ${target.symbol} (Alt+S)`);
-        window.dispatchEvent(new CustomEvent('openNewOrder', { detail: { symbol: target.symbol, side: 'SELL' } }));
+        showFeedback(`Quick Sell - ${target.symbol} (Shift+S)`);
+        onQuickSell(target.symbol);
       }
     },
     {

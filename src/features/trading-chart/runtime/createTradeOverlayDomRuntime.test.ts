@@ -301,8 +301,8 @@ describe('SL/TP chart controls', () => {
 
   it.each([
     { side: 'BUY' as const, lineColor: '#ea580c', orderType: 'buy_limit' },
-    { side: 'SELL' as const, lineColor: '#ec4899', orderType: 'sell_limit' },
-  ])('renders a deep orange line for pending BUY and a magenta line for pending SELL (%s)', ({ side, lineColor, orderType }) => {
+    { side: 'SELL' as const, lineColor: '#a855f7', orderType: 'sell_limit' },
+  ])('renders a deep orange line for pending BUY and a purple line for pending SELL (%s)', ({ side, lineColor, orderType }) => {
     const { host, options, runtime } = createRuntime(false);
     options.seriesRef.current = {
       priceFormatter: () => ({ format: (price: number) => price.toFixed(2) }),

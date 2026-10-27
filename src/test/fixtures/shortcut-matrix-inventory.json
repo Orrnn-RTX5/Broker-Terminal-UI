@@ -71,9 +71,19 @@
     "verification": "Mounted key to callback adapter; no live transaction"
   },
   {
+    "id": "trading.quick-buy",
+    "key": "b",
+    "shift": true,
+    "description": "Quick Buy",
+    "category": "Trading",
+    "priority": 95,
+    "enabled": true,
+    "verification": "Mounted key to callback adapter; no live transaction"
+  },
+  {
     "id": "trading.quick-sell",
     "key": "s",
-    "alt": true,
+    "shift": true,
     "description": "Quick Sell",
     "category": "Trading",
     "priority": 95,
@@ -860,24 +870,6 @@
     "description": "Save and move to previous cell",
     "category": "Drawing tools",
     "scope": "While editing a table cell",
-    "verification": "Local handler suite (separate)"
-  },
-  {
-    "id": "local.quick-buy",
-    "key": "b",
-    "shift": true,
-    "description": "Buy",
-    "category": "Trading",
-    "scope": "While Last Symbol is open",
-    "verification": "Local handler suite (separate)"
-  },
-  {
-    "id": "local.quick-sell",
-    "key": "s",
-    "shift": true,
-    "description": "Sell",
-    "category": "Trading",
-    "scope": "While Last Symbol is open",
     "verification": "Local handler suite (separate)"
   },
   {

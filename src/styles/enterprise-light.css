@@ -477,6 +477,15 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__divide
   background: var(--rtx-light-border) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu__brand {
+  border-bottom-color: var(--rtx-light-border) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu__brand-title {
+  color: var(--rtx-light-text) !important;
+}
+
 /* Market Watch, Navigator, tables, and Toolbox share one scan-friendly rhythm. */
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch,
   .rtx-market-watch__search,

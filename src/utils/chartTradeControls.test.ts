@@ -293,14 +293,21 @@ describe('createEntryTradeControlBar', () => {
     expect(capsule.querySelector('.rtx-trade-chip--volume')).not.toBeNull();
     expect(capsule.querySelector('.rtx-trade-chip--money')).not.toBeNull();
     expect(capsule.lastElementChild).toBe(root.querySelector('.rtx-trade-control-btn--close'));
-    expect(capsule).toHaveStyle({ height: '18px' });
+    expect(capsule).toHaveStyle({ height: '18px', flexShrink: '0' });
+    expect(root.querySelector<HTMLElement>('.rtx-trade-secondary')).toHaveStyle({ flexShrink: '0' });
+    expect(root.querySelector<HTMLElement>('.rtx-trade-brackets')).toHaveStyle({ flexShrink: '0' });
+    expect(root.querySelector<HTMLElement>('.rtx-trade-chip--money .rtx-trade-chip-value')).toHaveStyle({
+      display: 'inline-block',
+      minWidth: '6ch',
+      textAlign: 'right',
+    });
     expect(root).toHaveStyle({ minHeight: '18px', flexWrap: 'wrap' });
     expect(root.querySelector('.rtx-trade-brackets')).not.toBeNull();
     expect(onShare).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls.map(([action]) => action)).toEqual(['reverse', 'double', 'close']);
   });
 
-  it.each(['BUY', 'SELL'] as const)('formats compact %s labels with volume and signed account-currency profit', (side) => {
+  it.each(['BUY', 'SELL'] as const)('formats compact %s labels with volume and signed profit without the currency word', (side) => {
     const { root, setLiveMetrics } = createEntryTradeControlBar({
       tradeKey: 'trade:compact', ticket: 987, symbol: 'XAUUSD', side,
       volume: 0.01, isLightSurface: false, leftInset: 10, plainLabel: true, currencyLabel: 'EUR',
@@ -315,11 +322,11 @@ describe('createEntryTradeControlBar', () => {
     expect(root.querySelector<HTMLElement>('.rtx-trade-primary')?.style.gap).toBe('7px');
     expect(root.querySelector<HTMLElement>('.rtx-trade-chip--pips')?.style.display).toBe('none');
     setLiveMetrics(10, 1.75);
-    expect(root.querySelector('.rtx-trade-chip--money')?.textContent).toBe('+1.75 EUR');
+    expect(root.querySelector('.rtx-trade-chip--money')?.textContent).toBe('+1.75');
     setLiveMetrics(-10, -3.79);
-    expect(root.querySelector('.rtx-trade-chip--money')?.textContent).toBe('-3.79 EUR');
+    expect(root.querySelector('.rtx-trade-chip--money')?.textContent).toBe('-3.79');
     setLiveMetrics(0, 0);
-    expect(root.querySelector('.rtx-trade-chip--money')?.textContent).toBe('0.00 EUR');
+    expect(root.querySelector('.rtx-trade-chip--money')?.textContent).toBe('0.00');
   });
 
   it.each([false, true])('updates plain metric colors as profit changes, light=%s', (isLightSurface) => {

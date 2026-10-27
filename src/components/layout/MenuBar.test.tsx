@@ -419,6 +419,10 @@ describe('MenuBar hamburger launcher', () => {
         fireEvent.click(launcher);
 
         expect(launcher).toHaveAttribute('aria-expanded', 'true');
+        const brandHeader = screen.getByTestId('application-menu-brand');
+        expect(brandHeader).toBeInTheDocument();
+        expect(brandHeader.querySelector('img.rtx-application-menu__brand-logo')).not.toBeNull();
+        expect(brandHeader.querySelector('.rtx-application-menu__brand-title')).not.toBeNull();
         for (const label of [
             'Trading accounts',
             'Chart settings',
