@@ -324,6 +324,7 @@ type TickChartColors = {
   barDown?: string;
   bullCandle?: string;
   bearCandle?: string;
+  lineChart?: string;
   bidPriceLine?: string;
   askPriceLine?: string;
   stopLevels?: string;
@@ -959,7 +960,7 @@ function MiniTickChart({
               y: Math.max(top + 2, Math.min(plotBottom - 2, yOf(tick.bid > 0 ? tick.bid : tick.ask))),
             }));
 
-        const lineStroke = chartColors.lineGraph || '#3b82f6';
+        const lineStroke = chartColors.lineChart || '#3b82f6';
         if (points.length > 0) {
           if (miniChartType === 'area' && points.length >= 2) {
             ctx.save();
@@ -1669,12 +1670,33 @@ export function OrderPanelDialog({
   const [brokerChrome, setBrokerChrome] = useState(() => getBrokerChrome());
 
   useEffect(() => {
-    const syncChrome = () => setBrokerChrome(getBrokerChrome());
+    const syncChrome = (event?: Event) => {
+      const detail = (event as CustomEvent<BrokerChromeState> | undefined)?.detail;
+      setBrokerChrome(detail || getBrokerChrome());
+    };
     window.addEventListener(BROKER_CHROME_EVENT, syncChrome);
     return () => window.removeEventListener(BROKER_CHROME_EVENT, syncChrome);
   }, []);
-  const dialogLogoUrl = getLogoUrl(brokerChrome);
-  const dialogBrandName = brokerDisplayName(brokerChrome) || getWebTerminalTitle(brokerChrome);
+  const storedBrokerServer = typeof window !== 'undefined'
+    ? (localStorage.getItem('rtx_broker_server') || localStorage.getItem('server_url') || '')
+    : '';
+  const storedBrokerId = typeof window !== 'undefined'
+    ? (localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '')
+    : '';
+  const storedLogoUrl = typeof window !== 'undefined'
+    ? (localStorage.getItem('logo_url') || '')
+    : '';
+  const dialogBrandName = isBrokerName(brokerChrome.brokerName)
+    ? brokerChrome.brokerName
+    : (() => {
+        const candidate = brokerDisplayName(storedBrokerServer || brokerChrome.brokerId || '');
+        return isBrokerName(candidate) ? candidate : getWebTerminalTitle();
+      })();
+  const dialogBrokerLogo = {
+    broker_id: brokerChrome.brokerId || storedBrokerId,
+    broker_name: dialogBrandName,
+    logo_url: getLogoUrl(brokerChrome.logoUrl || storedLogoUrl),
+  };
 
   const liveMarketStatus = useSymbolMarketStatus(symbol, {
     enabled: isOpen && Boolean(symbol),
@@ -2317,12 +2339,14 @@ export function OrderPanelDialog({
               <div className="rtx-order-dialog__sidebar-brand" aria-hidden="true">
                 <div className="rtx-order-dialog__sidebar-emblem">
                   <BrokerLogoImage
-                    src={dialogLogoUrl}
+                    broker={dialogBrokerLogo}
                     alt=""
-                    fallbackText={dialogBrandName}
-                    size={38}
                     className="rtx-order-dialog__sidebar-logo-img"
-                    fallbackClassName="rtx-order-dialog__sidebar-logo-fallback"
+                    fallback={(
+                      <span className="rtx-order-dialog__sidebar-logo-fallback">
+                        {dialogBrandName.slice(0, 2).toUpperCase()}
+                      </span>
+                    )}
                   />
                 </div>
               </div>
