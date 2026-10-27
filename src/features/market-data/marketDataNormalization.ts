@@ -384,8 +384,12 @@ const withTotals = (levels: unknown[]): OrderBookLevel[] => {
   return levels
     .map((level) => {
       const record = asQuoteRecord(level);
-      const price = toNumber(Array.isArray(level) ? level[0] : record?.price);
-      const volume = toNumber(Array.isArray(level) ? level[1] : record?.volume);
+      const price = toNumber(Array.isArray(level) ? level[0] : (record?.price ?? record?.rate));
+      const volume = toNumber(
+        Array.isArray(level)
+          ? level[1]
+          : (record?.volume ?? record?.size ?? record?.qty ?? record?.quantity ?? record?.amount ?? record?.lots),
+      );
       runningTotal += volume;
       return { price, volume, total: toNumber(record?.total, runningTotal) };
     })

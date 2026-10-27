@@ -119,6 +119,7 @@ export const buildChartTheme = (
   const barUp = colors.barUp || candleUp;
   const barDown = colors.barDown || candleDown;
   const areaUp = colorScheme === 'Green and White' ? barUp : candleUp;
+  const areaDown = useReferenceLightSurface && colorScheme === 'Blue and White' ? barDown : candleDown;
   const line = colors.lineChart || '#2962ff';
   const rawGrid = colors.grid || 'rgba(120, 144, 156, 0.28)';
   const backgroundLuminance = getColorLuminance(colors.background) ?? 0;
@@ -162,9 +163,9 @@ export const buildChartTheme = (
     areaUpLine: areaUp,
     areaUpTop: colorWithAlpha(areaUp, areaFillOpacity, `rgba(8, 153, 129, ${areaFillOpacity})`),
     areaUpBottom: colorWithAlpha(areaUp, 0, 'rgba(8, 153, 129, 0)'),
-    areaDownLine: candleDown,
-    areaDownTop: colorWithAlpha(candleDown, areaFillOpacity, `rgba(242, 54, 69, ${areaFillOpacity})`),
-    areaDownBottom: colorWithAlpha(candleDown, 0, 'rgba(242, 54, 69, 0)'),
+    areaDownLine: areaDown,
+    areaDownTop: colorWithAlpha(areaDown, areaFillOpacity, `rgba(242, 54, 69, ${areaFillOpacity})`),
+    areaDownBottom: colorWithAlpha(areaDown, 0, 'rgba(242, 54, 69, 0)'),
     volumeUp: colorScheme === 'Green and White' || colorScheme === 'Green and Blue' ? colors.volumes : useReferenceLightSurface
       ? barUp
       : colorWithAlpha(barUp, 0.28, 'rgba(8, 153, 129, 0.28)'),

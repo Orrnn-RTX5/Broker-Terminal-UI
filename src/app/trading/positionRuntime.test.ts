@@ -54,4 +54,23 @@ describe('normalizePositions', () => {
     expect(position.hasBackendCurrentPrice).toBe(false);
     expect(position.pnl_available).toBe(false);
   });
+
+  it('falls back to chartEntryPrice when price_open and open_price are zero on an immediate fill', () => {
+    const [position] = normalizePositions([{
+      ticket: 88,
+      symbol: 'XAUUSD',
+      side: 'buy',
+      volume: 0.01,
+      price_open: 0,
+      open_price: 0,
+      chartEntryPrice: 2650.45,
+      chartEntryTime: '2026-10-27T07:30:00.000Z',
+    }]);
+
+    expect(position.openPrice).toBe(2650.45);
+    expect(position.open_price).toBe(2650.45);
+    expect(position.price_open).toBe(2650.45);
+    expect(position.chartEntryPrice).toBe(2650.45);
+    expect(position.chartEntryTime).toBe('2026-10-27T07:30:00.000Z');
+  });
 });

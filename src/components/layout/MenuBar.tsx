@@ -739,7 +739,7 @@ export const MenuBar = ({
     };
 
     const colorTemplateItems: MenuItem[] = (
-        ['Green on Black', 'Green and White', 'Green and Blue', 'Blue on Black', 'Black on White', 'Yellow on Black'] as const
+        ['Green on Black', 'Green and White', 'Green and Blue', 'Blue and White', 'Blue on Black', 'Black on White', 'Yellow on Black'] as const
     ).map((scheme) => ({
         label: scheme,
         checked: menuChartProperties.colorScheme === scheme,

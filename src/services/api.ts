@@ -228,6 +228,14 @@ const isRetryableTradeSocketFailure = (error: unknown): boolean => {
     && candidate.orderWasSent === false;
 };
 
+const pickPositiveFiniteNumber = (...values: unknown[]): number => {
+  for (const value of values) {
+    const parsed = toFiniteNumber(value, 0);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+};
+
 const mapFilledOrderToPosition = (
   response: TradeSocketOrderFilled,
   fallback: {
@@ -245,9 +253,13 @@ const mapFilledOrderToPosition = (
     0,
   );
   const volume = toFiniteNumber(fill.volume ?? fill.quantity, fallback.volume);
-  const openPrice = toFiniteNumber(
-    fill.price_open ?? fill.open_price ?? fill.price,
-    0,
+  const openPrice = pickPositiveFiniteNumber(
+    fill.price_open,
+    fill.open_price,
+    fill.openPrice,
+    fill.fill_price,
+    fill.price,
+    fill.chartEntryPrice,
   );
   const backendCurrentPrice = readBackendNumber(fill.price_current ?? fill.current_price ?? fill.currentPrice);
   const backendProfit = readBackendNumber(fill.profit ?? fill.unrealized_pl ?? fill.unrealized_pnl ?? fill.unrealizedPnL);

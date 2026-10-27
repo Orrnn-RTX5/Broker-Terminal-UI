@@ -14,6 +14,14 @@ const asStringOrNumber = (value: unknown): string | number | undefined => (
   typeof value === 'string' || typeof value === 'number' ? value : undefined
 );
 
+const pickPositivePrice = (...values: unknown[]): number => {
+  for (const value of values) {
+    const parsed = toNumber(value, 0);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+};
+
 export const normalizePositions = (payload: unknown): Position[] => {
   const source: unknown[] = Array.isArray(payload)
     ? payload
@@ -27,7 +35,15 @@ export const normalizePositions = (payload: unknown): Position[] => {
     ), 10);
     if (!Number.isFinite(parsedId) || parsedId <= 0) return [];
 
-    const openPrice = toNumber(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.entryPrice ?? raw.chartEntryPrice ?? raw.price, 0);
+    const openPrice = pickPositivePrice(
+      raw.price_open,
+      raw.open_price,
+      raw.openPrice,
+      raw.entryPrice,
+      raw.fill_price,
+      raw.price,
+      raw.chartEntryPrice,
+    );
     const backendCurrentPrice = readBackendNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice ?? raw.livePrice);
     const currentPrice = backendCurrentPrice ?? 0;
     const rawSide = String(raw.side ?? '').toLowerCase();

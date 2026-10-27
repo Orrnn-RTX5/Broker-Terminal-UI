@@ -156,11 +156,13 @@ class KeyboardShortcutManager {
         // A print preview owns Ctrl+P, zoom and close while it has focus.
         if (isShortcutLocalScope(event)) return;
         const target = getShortcutEventTarget(event);
-        const inControls = isShortcutOverlay(event) || Boolean(target?.closest(NAVIGATION_WIDGET_SELECTOR));
+        const overlay = isShortcutOverlay(event);
+        const inControls = overlay || Boolean(target?.closest(NAVIGATION_WIDGET_SELECTOR));
         const navigationKey = NAVIGATION_KEYS.has(event.key.toLowerCase());
-        const typeaheadKey = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
-        // Local widgets own focus movement, typeahead and Escape. Modified
-        // application commands and documented function keys remain available.
+        const typeaheadKey = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && (!event.shiftKey || overlay);
+        // Local widgets own focus movement, unmodified typeahead and Escape. Modified
+        // application commands (including Shift+letter quick-trade shortcuts outside overlays)
+        // and documented function keys remain available.
         if (inControls && (navigationKey || typeaheadKey)) return;
 
         const key = this.generateKeyFromEvent(event);

@@ -67,6 +67,43 @@ describe('chart settings trade history overlay defaults', () => {
       useChartSettingsStore.setState(initial);
     }
   });
+  it('keeps the blue bulls and white bears on black in dark mode and adapts to light mode for Blue and White', () => {
+    const initial = useChartSettingsStore.getState();
+    const colors = getPresetSchemeColors('Blue and White');
+    try {
+      useChartSettingsStore.setState({ globalProperties: { ...defaultChartProperties }, symbolProperties: {} });
+      useChartSettingsStore.getState().applySymbolPresetScheme('XAUUSD', 'Blue and White');
+      const saved = JSON.parse(JSON.stringify(useChartSettingsStore.getState()));
+      const restored = useChartSettingsStore.persist.getOptions().merge!(saved, initial);
+      const properties = restored.symbolProperties.XAUUSD;
+      expect(properties.colorScheme).toBe('Blue and White');
+      expect(properties.colors).toEqual(colors);
+      expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: false })).toMatchObject({
+        background: '#000000', foreground: '#ffffff', bullCandle: '#2557ff', bearCandle: '#ffffff',
+        barUp: '#2557ff', barDown: '#ffffff', lineChart: '#2557ff', lastPriceLine: '#2557ff',
+        volumes: 'rgba(37, 87, 255, 0.32)', bidPriceLine: '#778899',
+      });
+      expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
+        background: '#fafbfc', foreground: '#334155', grid: 'rgba(71, 85, 105, 0.07)',
+        bullCandle: '#2557ff', bearCandle: '#ffffff', barUp: '#1746bc', barDown: '#334155',
+        lineChart: '#1746bc', lastPriceLine: '#1746bc', volumes: 'rgba(37, 87, 255, 0.32)',
+      });
+      const legacyBlueAndWhite = normalizeChartProperties({
+        colorScheme: 'Blue and White',
+        colors: { ...colors, background: '#14171f', grid: 'rgba(255,255,255,0.06)' },
+      });
+      expect(legacyBlueAndWhite.colors.background).toBe('#000000');
+      expect(legacyBlueAndWhite.colors.grid).toBe('rgba(255,255,255,0.12)');
+      expect(
+        getEffectiveChartColors(
+          { colorScheme: 'Blue and White', colors: { ...colors, background: '#14171f', grid: 'rgba(255,255,255,0.06)' } },
+          { isAdvancedUntitledLight: false },
+        ).background,
+      ).toBe('#000000');
+    } finally {
+      useChartSettingsStore.setState(initial);
+    }
+  });
   it('corrects the mistaken saved white-background preset while retaining explicit color edits', () => {
     const oldPreset = {
       background: '#ffffff', foreground: '#000000', grid: '#f1ecf2',

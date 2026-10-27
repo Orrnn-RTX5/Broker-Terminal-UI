@@ -83,6 +83,24 @@ describe('trading chart extracted modules', () => {
       gridVertical: 'rgba(71, 85, 105, 0.45)', gridHorizontal: 'rgba(71, 85, 105, 0.45)',
       volumeUp: 'rgba(21, 128, 61, 0.4)', volumeDown: 'rgba(21, 128, 61, 0.4)',
     });
+
+    const blueWhiteProps = normalizeChartProperties({ colorScheme: 'Blue and White', gridType: 'mt5' });
+    const blueWhiteDarkColors = getEffectiveChartColors(blueWhiteProps, { isAdvancedUntitledLight: false });
+    const blueWhiteDarkTheme = buildChartTheme(blueWhiteDarkColors, true, false, 'dashed', 'mt5', blueWhiteProps.colorScheme);
+    expect(blueWhiteDarkTheme).toMatchObject({
+      background: '#000000',
+      candleUp: '#2557ff', candleDown: '#ffffff',
+      barUp: '#2557ff', barDown: '#ffffff', wickUp: '#2557ff', wickDown: '#ffffff',
+      areaUpLine: '#2557ff', areaDownLine: '#ffffff',
+    });
+    const blueWhiteLightColors = getEffectiveChartColors(blueWhiteProps, { isAdvancedUntitledLight: true });
+    const blueWhiteLightTheme = buildChartTheme(blueWhiteLightColors, true, true, 'dashed', 'mt5', blueWhiteProps.colorScheme);
+    expect(blueWhiteLightTheme).toMatchObject({
+      background: '#fafbfc',
+      candleUp: '#2557ff', candleDown: '#ffffff',
+      barUp: '#1746bc', barDown: '#334155', wickUp: '#1746bc', wickDown: '#334155',
+      areaUpLine: '#2557ff', areaDownLine: '#334155',
+    });
   });
   it('resolves indicator requests and fixed ranges without component state', () => {
     expect(resolveChartIndicatorType({ name: 'Exponential Moving Average' })).toBe('ema');

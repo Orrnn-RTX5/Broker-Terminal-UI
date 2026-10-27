@@ -910,6 +910,21 @@ export class EnhancedWebSocketService {
     if (data.symbol) {
       this.subscribers.get(`ticks.${data.symbol}`)?.forEach((callback) => matchingCallbacks.add(callback));
     }
+    const payloadRecord = asUnknownRecord(data.data);
+    const rawSymbol = typeof data.symbol === 'string' && data.symbol.trim()
+      ? data.symbol.trim().toUpperCase()
+      : typeof payloadRecord?.symbol === 'string' && payloadRecord.symbol.trim()
+        ? payloadRecord.symbol.trim().toUpperCase()
+        : '';
+    const normalizedType = String(data.type || data.action || '').toLowerCase();
+    if (rawSymbol && (
+      normalizedType.includes('depth')
+      || normalizedType.includes('orderbook')
+      || normalizedType.includes('order_book')
+      || (typeof data.channel === 'string' && data.channel.toLowerCase().startsWith('depth.'))
+    )) {
+      this.subscribers.get(`depth.${rawSymbol}`)?.forEach((callback) => matchingCallbacks.add(callback));
+    }
 
     if (matchingCallbacks.size > 0) {
       matchingCallbacks.forEach((callback) => {

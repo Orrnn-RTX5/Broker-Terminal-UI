@@ -42,7 +42,7 @@ describe('Chart Properties keyboard ownership', () => {
 });
 
 describe('Chart Properties grid settings', () => {
-  it.each(['Green and White', 'Green and Blue'] as const)('previews %s on the active symbol and restores the original scheme on Cancel', (preset) => {
+  it.each(['Green and White', 'Green and Blue', 'Blue and White'] as const)('previews %s on the active symbol and restores the original scheme on Cancel', (preset) => {
     const initial = useChartSettingsStore.getState();
     useChartSettingsStore.setState({ globalProperties: { ...defaultChartProperties }, symbolProperties: {} });
     const { unmount } = render(<ChartPropertiesDialog isOpen symbol="EURUSD" timeframe="M1" onClose={vi.fn()} />);
@@ -54,7 +54,9 @@ describe('Chart Properties grid settings', () => {
       expect(useChartSettingsStore.getState().symbolProperties.EURUSD.colors).toEqual(getPresetSchemeColors(preset));
       const preview = screen.getByRole('dialog').querySelector<HTMLElement>('.rtx-cp-preview-inner')!;
       expect(preview.style.backgroundColor).toBe('rgb(0, 0, 0)');
-      expect(decodeURIComponent(preview.style.backgroundImage)).toContain('#778899');
+      if (preset !== 'Blue and White') {
+        expect(decodeURIComponent(preview.style.backgroundImage)).toContain('#778899');
+      }
       expect(useChartSettingsStore.getState().globalProperties.colorScheme).toBe('Blue on Black');
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
       expect(useChartSettingsStore.getState().symbolProperties.EURUSD.colorScheme).toBe('Blue on Black');

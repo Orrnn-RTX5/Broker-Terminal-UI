@@ -56,6 +56,14 @@ const toNumber = (value: unknown, fallback = 0): number => {
     return Number.isFinite(numeric) ? numeric : fallback;
 };
 
+const pickPositiveOpenPrice = (...values: unknown[]): number => {
+    for (const value of values) {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric) && numeric > 0) return numeric;
+    }
+    return 0;
+};
+
 const normalizeImmediatePosition = (
     raw: unknown,
     fallback: {
@@ -70,7 +78,14 @@ const normalizeImmediatePosition = (
     const id = Number.parseInt(String(record.ticket ?? record.id ?? ''), 10);
     if (!Number.isFinite(id) || id <= 0) return null;
 
-    const openPrice = toNumber(record.price_open ?? record.open_price ?? record.openPrice ?? record.price, fallback.chartEntryPrice ?? 0);
+    const openPrice = pickPositiveOpenPrice(
+        record.price_open,
+        record.open_price,
+        record.openPrice,
+        record.fill_price,
+        record.price,
+        fallback.chartEntryPrice,
+    );
     const currentPrice = toNumber(record.price_current ?? record.current_price ?? record.currentPrice, openPrice);
     const rawSide = String(record.side ?? fallback.side).toLowerCase();
 

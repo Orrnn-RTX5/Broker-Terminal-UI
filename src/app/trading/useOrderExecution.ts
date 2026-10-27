@@ -181,7 +181,14 @@ export const useOrderExecution = ({
         () => captureTradeOperationContext(),
         () => {
           console.log('[Trade] Order executed via trading API:', result);
-          const [immediatePosition] = normalizePositions([{ ...result, chartEntryPrice, chartEntryTime }]);
+          const [immediatePosition] = normalizePositions([{
+            symbol: submitSymbol,
+            side,
+            volume: requestedVolume ?? volume,
+            ...result,
+            chartEntryPrice,
+            chartEntryTime,
+          }]);
           if (immediatePosition) upsertImmediatePosition(immediatePosition);
         },
       );
@@ -427,7 +434,14 @@ export const useOrderExecution = ({
         () => captureTradeOperationContext(),
         () => {
           console.log('[Trade] Order executed from dialog via trading API:', result);
-          const [immediatePosition] = normalizePositions([{ ...result, chartEntryPrice, chartEntryTime }]);
+          const [immediatePosition] = normalizePositions([{
+            symbol: submitSymbol,
+            side,
+            volume: order.volume,
+            ...result,
+            chartEntryPrice,
+            chartEntryTime,
+          }]);
           if (immediatePosition) upsertImmediatePosition(immediatePosition);
         },
       );

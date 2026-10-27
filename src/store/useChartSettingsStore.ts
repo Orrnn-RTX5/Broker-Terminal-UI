@@ -11,6 +11,7 @@ export type ColorScheme =
   | "Green on Black"
   | "Green and White"
   | "Green and Blue"
+  | "Blue and White"
   | "Blue on Black"
   | "Black on White"
   | "Yellow on Black"
@@ -157,6 +158,18 @@ const greenAndBlueSchemeColors: ChartProperties["colors"] = {
   bearCandle: "#0000ff",
 };
 
+// Reference preset with blue bulls and white bears on black.
+const blueAndWhiteSchemeColors: ChartProperties["colors"] = {
+  ...blueSchemeColors,
+  barUp: "#2557ff",
+  barDown: "#ffffff",
+  bullCandle: "#2557ff",
+  bearCandle: "#ffffff",
+  lineChart: "#2557ff",
+  volumes: "rgba(37, 87, 255, 0.32)",
+  lastPriceLine: "#2557ff",
+};
+
 export const defaultChartProperties: ChartProperties = {
   chartType: "Candlesticks",
   chartOnForeground: false,
@@ -219,6 +232,16 @@ const normalizeSchemeColors = (
   colorScheme: ColorScheme,
   colors: ChartProperties["colors"],
 ): ChartProperties["colors"] => {
+  if (colorScheme === "Blue and White") {
+    return {
+      ...colors,
+      background: "#000000",
+      grid: colors.grid === "rgba(255,255,255,0.06)"
+        ? blueAndWhiteSchemeColors.grid
+        : colors.grid,
+    };
+  }
+
   if (colorScheme === "Blue on Black") {
     const migrateBlue = (value: string) => ["#2962ff", "#5b8fd9"].includes(value.toLowerCase()) ? CHART_BLUE_COLOR : value;
     const migrateRed = (value: string) => value.toUpperCase() === CHART_LOSS_COLOR ? BLUE_TEMPLATE_RED_COLOR : value;
@@ -279,11 +302,18 @@ export const normalizeChartProperties = (properties?: PersistedChartProperties |
   const legacyWhitePreset = properties?.colorScheme === "Green on White";
   const colorScheme: ColorScheme = properties?.colorScheme === "Green on White"
     ? "Green and White" : properties?.colorScheme ?? defaultChartProperties.colorScheme;
-  const savedColors = legacyWhitePreset
+  const rawSavedColors = legacyWhitePreset
     ? Object.fromEntries(Object.entries(properties?.colors ?? {}).filter(([key, value]) => (
       value?.toLowerCase() !== legacyGreenOnWhiteSchemeColors[key as keyof ChartProperties["colors"]]?.toLowerCase()
     )))
     : properties?.colors;
+  const savedColors = rawSavedColors
+    ? {
+        ...rawSavedColors,
+        ...(rawSavedColors.background?.toLowerCase() === "#14171f" ? { background: "#000000" } : {}),
+        ...(rawSavedColors.grid === "rgba(255,255,255,0.06)" ? { grid: defaultChartProperties.colors.grid } : {}),
+      }
+    : rawSavedColors;
   const normalized: ChartProperties = {
     ...defaultChartProperties,
     ...(properties ?? {}),
@@ -490,6 +520,10 @@ export const getPresetSchemeColors = (
     return { ...greenAndBlueSchemeColors };
   }
 
+  if (scheme === "Blue and White") {
+    return { ...blueAndWhiteSchemeColors };
+  }
+
   if (scheme === "Blue on Black") {
     return { ...blueSchemeColors };
   }
@@ -558,12 +592,19 @@ export const getEffectiveChartColors = (
   options: { isAdvancedUntitledLight?: boolean } = {},
 ): ChartProperties["colors"] => {
   if (!options.isAdvancedUntitledLight) {
+    const baseColors = properties.colorScheme === "Blue and White" || properties.colors.background?.toLowerCase() === "#14171f"
+      ? {
+          ...properties.colors,
+          background: "#000000",
+          ...(properties.colors.grid === "rgba(255,255,255,0.06)" ? { grid: blueAndWhiteSchemeColors.grid } : {}),
+        }
+      : properties.colors;
     const darkThemeSurface = properties.colorScheme !== "Custom"
       ? readConfiguredThemeChartSurface("dark")
       : null;
     return darkThemeSurface
-      ? { ...properties.colors, ...darkThemeSurface }
-      : properties.colors;
+      ? { ...baseColors, ...darkThemeSurface }
+      : baseColors;
   }
 
   // Apply the shared light palette at render time so switching back to dark
@@ -647,6 +688,20 @@ export const getEffectiveChartColors = (
       lineChart: "#15803d",
       volumes: "rgba(21, 128, 61, 0.4)",
       lastPriceLine: "#15803d",
+    };
+  }
+
+  if (properties.colorScheme === "Blue and White") {
+    return {
+      ...properties.colors,
+      ...lightSurface,
+      barUp: "#1746bc",
+      barDown: "#334155",
+      bullCandle: "#2557ff",
+      bearCandle: "#ffffff",
+      lineChart: "#1746bc",
+      volumes: "rgba(37, 87, 255, 0.32)",
+      lastPriceLine: "#1746bc",
     };
   }
 

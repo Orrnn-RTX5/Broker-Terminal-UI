@@ -85,6 +85,29 @@ describe('focused control keyboard ownership', () => {
     expect(close.handler).not.toHaveBeenCalled();
   });
 
+  it.each(['tablist', 'radiogroup', 'grid', 'tree'])('allows Shift+B and Shift+S quick-trade shortcuts from focused %s controls while blocking overlays', (role) => {
+    const quickBuy = register('b', { shift: true });
+    const quickSell = register('s', { shift: true });
+    const surface = document.createElement('div');
+    surface.setAttribute('role', role);
+    const button = document.createElement('button');
+    surface.append(button);
+    document.body.append(surface);
+
+    keyDown('B', { shiftKey: true }, button);
+    keyDown('S', { shiftKey: true }, button);
+    expect(quickBuy.handler).toHaveBeenCalledOnce();
+    expect(quickSell.handler).toHaveBeenCalledOnce();
+
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    const dialogButton = document.createElement('button');
+    dialog.append(dialogButton);
+    document.body.append(dialog);
+    keyDown('B', { shiftKey: true }, dialogButton);
+    expect(quickBuy.handler).toHaveBeenCalledOnce();
+  });
+
   it('keeps F1, F9 and explicit allowed shortcuts available while typing', () => {
     const help = register('F1');
     const order = register('F9');

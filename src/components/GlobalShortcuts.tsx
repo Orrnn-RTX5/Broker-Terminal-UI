@@ -230,8 +230,8 @@ export function GlobalShortcuts({
       handler: (event) => {
         if (isShortcutOverlay(event)) return;
         const target = resolveActiveChartTarget(selectedSymbol);
-        showFeedback(`Quick Buy - ${target.symbol} (Shift+B)`);
         onQuickBuy(target.symbol);
+        showFeedback(`Quick Buy - ${target.symbol} (Shift+B)`);
       }
     },
     {
@@ -244,8 +244,8 @@ export function GlobalShortcuts({
       handler: (event) => {
         if (isShortcutOverlay(event)) return;
         const target = resolveActiveChartTarget(selectedSymbol);
-        showFeedback(`Quick Sell - ${target.symbol} (Shift+S)`);
         onQuickSell(target.symbol);
+        showFeedback(`Quick Sell - ${target.symbol} (Shift+S)`);
       }
     },
     {

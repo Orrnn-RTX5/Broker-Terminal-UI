@@ -119,12 +119,26 @@ const getPositionTicket = (position: any): number => (
   toNumber(position?.ticket ?? position?.position_id ?? position?.position_ticket ?? position?.id, 0)
 );
 
+const pickPositiveToolboxPrice = (...values: unknown[]): number => {
+  for (const value of values) {
+    const parsed = toNumber(value, 0);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+};
+
 export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
   const normalized = normalizePosition(raw) as ToolboxTradePosition;
   const ticket = getPositionTicket(raw) || normalized.id;
-  const openPrice = toNumber(
-    raw?.price_open ?? raw?.open_price ?? raw?.openPrice ?? raw?.entryPrice ?? raw?.chartEntryPrice ?? raw?.price ?? normalized.openPrice,
-    normalized.openPrice || 0,
+  const openPrice = pickPositiveToolboxPrice(
+    raw?.price_open,
+    raw?.open_price,
+    raw?.openPrice,
+    raw?.entryPrice,
+    raw?.fill_price,
+    raw?.price,
+    raw?.chartEntryPrice,
+    normalized.openPrice,
   );
   const rawCurrentPrice = readBackendNumber(
     raw?.price_current ?? raw?.current_price ?? raw?.currentPrice,
@@ -135,7 +149,16 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
   const backendProfit = readBackendNumber(rawProfit);
   const hasBackendProfit = raw?.pnl_available !== false && raw?.hasBackendProfit !== false && backendProfit !== undefined;
   const profit = hasBackendProfit ? backendProfit! : 0;
-  const openTime = resolvePositionOpenTime(raw, normalized.openTime || (typeof normalized.time_create === 'string' ? normalized.time_create : undefined));
+  const chartEntryTime = typeof raw?.chartEntryTime === 'string' && raw.chartEntryTime.trim()
+    ? raw.chartEntryTime.trim()
+    : (typeof normalized.chartEntryTime === 'string' && normalized.chartEntryTime.trim()
+      ? normalized.chartEntryTime.trim()
+      : undefined);
+  const chartEntryPrice = pickPositiveToolboxPrice(raw?.chartEntryPrice, normalized.chartEntryPrice) || undefined;
+  const openTime = resolvePositionOpenTime(
+    raw,
+    chartEntryTime || normalized.openTime || (typeof normalized.time_create === 'string' ? normalized.time_create : undefined),
+  );
 
   return {
     ...normalized,
@@ -152,6 +175,8 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     price_current: priceCurrent,
     current_price: priceCurrent,
     openTime,
+    ...(chartEntryPrice !== undefined ? { chartEntryPrice } : {}),
+    ...(chartEntryTime !== undefined ? { chartEntryTime } : {}),
     time_create: raw?.time_create ?? normalized.time_create ?? openTime,
     open_time: raw?.open_time ?? openTime,
     time: raw?.time ?? openTime,
@@ -189,6 +214,8 @@ const positionSignature = (position: ToolboxTradePosition): string => [
   position.profit ?? position.unrealizedPnL,
   position.time_create ?? '',
   position.time_update ?? '',
+  position.chartEntryPrice ?? '',
+  position.chartEntryTime ?? '',
   position.clientOrderId ?? '',
   position.placementState ?? '',
   position.placementErrorCode ?? '',
@@ -699,7 +726,7 @@ export function useToolboxTradeData() {
 
   const commitPositions = useCallback((
     positions: ToolboxTradePosition[],
-    read?: { readStartedAt: number; unlistedTickets: readonly number[] },
+    read?: { readStartedAt?: number; unlistedTickets?: readonly number[]; touchedTickets?: readonly number[] },
   ) => {
     const previousSig = positionsSignature(positionsRef.current);
     positions = positions.filter((position) => !isConfirmedClosedPosition(position.id));
@@ -707,11 +734,12 @@ export function useToolboxTradeData() {
     const storePositions = Array.isArray(useAppStore.getState().positions)
       ? useAppStore.getState().positions as ToolboxTradePosition[]
       : [];
-    if (positionsSignature(storePositions) !== nextSig) {
+    if (positionsSignature(storePositions) !== nextSig || (read?.touchedTickets?.length ?? 0) > 0) {
       useAppStore.getState().setPositions(positions as Position[], {
         removedTickets: [...optimisticallyClosedPositionsRef.current.keys()],
         readStartedAt: read?.readStartedAt,
         unlistedTickets: read?.unlistedTickets,
+        touchedTickets: read?.touchedTickets,
       });
       positions = useAppStore.getState().positions as ToolboxTradePosition[];
       nextSig = positionsSignature(positions);
@@ -1067,7 +1095,7 @@ export function useToolboxTradeData() {
           expiresAt: Date.now() + IMMEDIATE_POSITION_RETENTION_MS,
         });
       }
-      commitPositions(next);
+      commitPositions(next, ticket ? { touchedTickets: [ticket] } : undefined);
     };
 
     window.addEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, handleMarketOrderPlacement);

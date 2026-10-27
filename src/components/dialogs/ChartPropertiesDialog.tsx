@@ -65,6 +65,7 @@ const colorSchemeOptions = [
   'Green on Black',
   'Green and White',
   'Green and Blue',
+  'Blue and White',
   'Blue on Black',
   'Black on White',
   'Yellow on Black',

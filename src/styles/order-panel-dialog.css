@@ -1,7 +1,7 @@
 .rtx-order-dialog-backdrop {
   align-items: center;
-  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
-  backdrop-filter: blur(1px);
+  background: color-mix(in srgb, var(--bg-primary) 74%, transparent);
+  backdrop-filter: blur(2px);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -14,21 +14,26 @@
   --order-ask: var(--color-info);
   --order-bid: var(--color-loss);
   --order-buy-action: #3687ff;
+  --order-sell-action: #e14b4b;
+  --order-buy-card-bg: linear-gradient(180deg, #1b7f48 0%, #15683b 100%);
+  --order-buy-card-border: #25a55f;
+  --order-sell-card-bg: linear-gradient(180deg, #c24b16 0%, #9f3b0e 100%);
+  --order-sell-card-border: #e05c22;
   --order-chart-axis-surface: var(--bg-secondary);
   --order-control-bg: var(--bg-primary);
-  --order-sell-action: #e14b4b;
   --order-supporting-text: color-mix(in srgb, var(--text-primary) 68%, var(--bg-secondary));
   --order-tag-text: #fff;
-  --order-sidebar-bg: #38383d;
+  --order-sidebar-bg: var(--bg-tertiary);
+  --order-card-surface: color-mix(in srgb, var(--bg-primary) 68%, var(--bg-secondary));
 
   background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
-  border-radius: 2px;
-  box-shadow: 0 20px 64px rgb(0 0 0 / 68%), 0 0 0 1px rgb(255 255 255 / 4%);
+  border-radius: 4px;
+  box-shadow: 0 24px 72px rgb(0 0 0 / 72%), 0 0 0 1px rgb(255 255 255 / 5%);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  font-family: Tahoma, "Segoe UI", var(--font-sans);
+  font-family: "Segoe UI", Tahoma, var(--font-sans);
   max-height: calc(100vh - 24px);
   max-width: calc(100vw - 24px);
   overflow: hidden;
@@ -36,15 +41,28 @@
   width: auto;
 }
 
+.rtx-order-dialog__sr-only {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* ─── Window Title Bar ───────────────────────────────────────── */
 .rtx-order-dialog__header {
   align-items: center;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-primary);
   cursor: move;
   display: flex;
-  flex: 0 0 30px;
+  flex: 0 0 28px;
   justify-content: space-between;
-  padding: 0 6px 0 10px;
+  padding: 0 6px 0 12px;
 }
 
 .rtx-order-dialog__header:active {
@@ -52,10 +70,10 @@
 }
 
 .rtx-order-dialog__title {
-  color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 400;
-  letter-spacing: 0;
+  color: var(--order-supporting-text);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -65,16 +83,16 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 2px;
+  border-radius: 3px;
   color: var(--order-supporting-text);
   cursor: pointer;
   display: inline-flex;
-  font-size: 18px;
-  height: 24px;
+  font-size: 17px;
+  height: 22px;
   justify-content: center;
   line-height: 1;
   transition: background var(--transition-fast), color var(--transition-fast);
-  width: 28px;
+  width: 26px;
 }
 
 .rtx-order-dialog__close:hover {
@@ -85,184 +103,691 @@
 .rtx-order-dialog__content {
   align-items: stretch;
   display: flex;
-  min-height: 426px;
+  min-height: 510px;
+  position: relative;
 }
 
-/* ─── Left Mode & View Sidebar ───────────────────────────────── */
+/* ─── Column 1: Left Mode & View Sidebar (cTrader style) ─────── */
 .rtx-order-dialog__sidebar {
   background: var(--order-sidebar-bg);
   border-right: 1px solid var(--border-primary);
   display: flex;
-  flex: 0 0 46px;
+  flex: 0 0 132px;
   flex-direction: column;
   justify-content: space-between;
   padding: 0;
 }
 
 .rtx-order-dialog[data-sidebar-expanded='true'] .rtx-order-dialog__sidebar {
-  flex-basis: 188px;
+  flex-basis: 174px;
 }
 
-.rtx-order-dialog__sidebar-top,
-.rtx-order-dialog__sidebar-bottom {
+.rtx-order-dialog__sidebar-top {
   display: flex;
   flex-direction: column;
 }
 
-.rtx-order-dialog__sidebar-bottom {
-  gap: 5px;
-  padding: 8px 6px 10px;
+.rtx-order-dialog__sidebar-brand {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  padding: 20px 12px 18px;
+}
+
+.rtx-order-dialog__sidebar-emblem {
+  align-items: center;
+  background: radial-gradient(circle at 32% 28%, #2a3346 0%, #131823 68%, #0c0f17 100%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 9999px;
+  box-shadow:
+    0 10px 24px rgb(0 0 0 / 55%),
+    inset 0 1px 1px rgb(255 255 255 / 18%),
+    inset 0 -3px 8px rgb(0 0 0 / 65%);
+  display: flex;
+  height: 62px;
+  justify-content: center;
+  overflow: hidden;
+  width: 62px;
+}
+
+.rtx-order-dialog__sidebar-logo-img {
+  border-radius: 9999px;
+  object-fit: contain;
+}
+
+.rtx-order-dialog__sidebar-logo-fallback {
+  background: linear-gradient(135deg, #3687ff 0%, #1d4ed8 100%);
+  border-radius: 9999px;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .rtx-order-dialog__mode-btn {
-  align-items: center;
+  align-items: flex-start;
   background: transparent;
   border: 0;
-  color: var(--text-primary);
+  border-left: 3px solid transparent;
+  color: var(--order-supporting-text);
   cursor: pointer;
   display: flex;
-  gap: 10px;
-  height: 36px;
+  flex-direction: column;
+  gap: 2px;
   justify-content: center;
-  padding: 0 10px;
+  min-height: 36px;
+  padding: 7px 14px;
   text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
   width: 100%;
 }
 
-.rtx-order-dialog[data-sidebar-expanded='true'] .rtx-order-dialog__mode-btn {
-  justify-content: flex-start;
-  padding: 0 12px;
-}
-
 .rtx-order-dialog__mode-btn:hover {
-  background: rgb(255 255 255 / 5%);
+  background: rgb(255 255 255 / 4%);
+  color: var(--text-primary);
 }
 
 .rtx-order-dialog__mode-btn--active {
   background: var(--bg-secondary);
-  margin-right: -1px;
-  position: relative;
-  z-index: 1;
+  border-left-color: var(--order-buy-action);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
-.rtx-order-dialog__mode-icon {
-  flex: 0 0 20px;
+.rtx-order-dialog__mode-text {
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 
 .rtx-order-dialog__mode-label {
-  font-size: 12px;
+  color: var(--order-supporting-text);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.rtx-order-dialog__sidebar-bottom {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  pointer-events: none;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .rtx-order-dialog__view-btn {
   align-items: center;
   background: transparent;
   border: 0;
+  border-radius: 3px;
   color: var(--text-primary);
   cursor: pointer;
-  display: flex;
-  gap: 10px;
-  height: 31px;
+  display: inline-flex;
+  gap: 8px;
+  height: 26px;
   justify-content: center;
   padding: 0;
   text-align: left;
-  width: 100%;
+  width: 26px;
 }
 
 .rtx-order-dialog[data-sidebar-expanded='true'] .rtx-order-dialog__view-btn {
   justify-content: flex-start;
-  padding: 0 6px;
+  padding: 0 4px;
+  width: 100%;
 }
 
 .rtx-order-dialog__view-icon-box {
   align-items: center;
   border: 1px solid transparent;
+  border-radius: 3px;
   display: inline-flex;
-  flex: 0 0 31px;
-  height: 31px;
+  flex: 0 0 24px;
+  height: 24px;
   justify-content: center;
-  width: 31px;
+  width: 24px;
 }
 
 .rtx-order-dialog__view-btn--active .rtx-order-dialog__view-icon-box,
 .rtx-order-dialog__view-btn--minimize:hover .rtx-order-dialog__view-icon-box {
-  border-color: #9ca3af;
+  background: rgb(255 255 255 / 5%);
+  border-color: var(--border-secondary);
 }
 
-/* ─── Main Order Form Pane ───────────────────────────────────── */
+/* ─── Column 2: Main Order Form (cTrader center column) ──────── */
 .rtx-order-dialog__form {
   background: var(--bg-secondary);
   display: flex;
-  flex: 0 0 426px;
+  flex: 0 0 392px;
   flex-direction: column;
+  gap: 8px;
   min-width: 0;
-  padding: 12px 16px 12px 14px;
+  padding: 12px 14px 12px;
+}
+
+.rtx-order-dialog__hero-bar {
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 6px;
+}
+
+.rtx-order-dialog__hero-title {
+  --rtx-type-size: 13.5px;
+  --rtx-type-weight: 600;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.rtx-order-dialog__hero-actions {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.rtx-order-dialog__hero-icon-btn {
+  align-items: center;
+  background: color-mix(in srgb, var(--bg-primary) 72%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--border-secondary) 85%, transparent);
+  border-radius: 4px;
+  color: var(--order-supporting-text);
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  width: 26px;
+}
+
+.rtx-order-dialog__hero-icon-btn:hover {
+  background: rgb(255 255 255 / 6%);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
+}
+
+.rtx-order-dialog__hero-icon-btn--active {
+  background: color-mix(in srgb, var(--order-buy-action) 16%, var(--bg-primary));
+  border-color: color-mix(in srgb, var(--order-buy-action) 55%, var(--border-secondary));
+  color: var(--text-primary);
+}
+
+.rtx-order-dialog__instrument-meta {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 22px;
+}
+
+.rtx-order-dialog__instrument-desc {
+  --rtx-type-size: 11.5px;
+  --rtx-type-weight: 500;
+  align-items: center;
+  color: var(--order-supporting-text);
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rtx-order-dialog__instrument-name {
+  --rtx-type-size: 11.5px;
+  --rtx-type-weight: 500;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__instrument-status-dot {
+  align-items: center;
+  background: rgb(16 185 129 / 16%);
+  border: 1px solid rgb(16 185 129 / 45%);
+  border-radius: 9999px;
+  color: #10b981;
+  display: inline-flex;
+  flex: 0 0 15px;
+  height: 15px;
+  justify-content: center;
+  width: 15px;
+}
+
+.rtx-order-dialog__instrument-status-dot--closed {
+  background: rgb(245 158 11 / 16%);
+  border-color: rgb(245 158 11 / 45%);
+  color: #f59e0b;
+}
+
+.rtx-order-dialog__instrument-change {
+  --rtx-type-family: var(--font-mono);
+  --rtx-type-size: 10.5px;
+  --rtx-type-weight: 600;
+  align-items: center;
+  background: color-mix(in srgb, var(--bg-primary) 68%, var(--bg-secondary));
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  display: inline-flex;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__spread-pill-label {
+  --rtx-type-family: var(--rtx-ui-font-family);
+  --rtx-type-size: 9.5px;
+  --rtx-type-weight: 600;
+  color: var(--order-supporting-text);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.rtx-order-dialog__spread-pill-val {
+  --rtx-type-family: var(--font-mono);
+  --rtx-type-size: 10.5px;
+  --rtx-type-weight: 600;
+  color: #10b981;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Symbol Selector & Order Type Bar ───────────────────────── */
+.rtx-order-dialog__symbol-bar {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 128px;
 }
 
 .rtx-order-dialog__field {
   align-items: center;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: 92px minmax(0, 1fr);
-  margin-bottom: 6px;
-  min-height: 22px;
+  display: flex;
+  gap: 6px;
+  min-height: 26px;
+  min-width: 0;
 }
 
 .rtx-order-dialog__field--symbol {
-  margin-bottom: 16px;
+  flex: 1;
 }
 
-.rtx-order-dialog__field--spaced-top {
-  margin-top: 24px;
+.rtx-order-dialog__field--type-compact {
+  position: relative;
+}
+
+.rtx-order-dialog__field--type-compact .rtx-order-dialog__label {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.rtx-order-dialog__symbol-select-wrap {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rtx-order-dialog__symbol-select {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 600;
+  font-size: 12.5px !important;
+  font-weight: 600;
+  height: 32px;
+}
+
+.rtx-order-dialog__type-select {
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 500;
+  font-size: 12.5px !important;
+  font-weight: 500;
+  height: 32px;
+}
+
+.rtx-order-dialog__info-badge {
+  align-items: center;
+  color: var(--order-supporting-text);
+  cursor: help;
+  display: inline-flex;
+  flex: 0 0 14px;
+  height: 14px;
+  justify-content: center;
+  opacity: 0.72;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+  width: 14px;
+}
+
+.rtx-order-dialog__info-badge:hover {
+  color: var(--text-primary);
+  opacity: 1;
 }
 
 .rtx-order-dialog__label {
-  color: var(--text-primary);
+  color: var(--order-supporting-text);
   font-size: 13px;
   font-weight: var(--font-weight-normal);
-  text-align: right;
   white-space: nowrap;
 }
 
-.rtx-order-dialog__margin {
-  color: var(--order-supporting-text);
-  font-size: 11px;
-}
-
-.rtx-order-dialog__label::after {
-  content: ":";
-}
-
 .rtx-order-dialog__label--compact-symbol {
-  opacity: 0;
-  pointer-events: none;
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .rtx-order-dialog__control {
   background: var(--order-control-bg);
-  border: 1px solid #7a7a85;
-  border-radius: 0;
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
   color: var(--text-primary);
-  font-family: Tahoma, "Segoe UI", var(--font-sans);
+  font-family: "Segoe UI", Tahoma, var(--font-sans);
   font-size: 12px;
-  height: 22px;
+  height: 28px;
   min-width: 0;
   outline: none;
-  padding: 0 6px;
-  transition: border-color var(--transition-fast);
+  padding: 0 8px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   width: 100%;
 }
 
+.rtx-order-dialog__control:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--text-primary) 28%, var(--border-secondary));
+}
+
 .rtx-order-dialog__control:focus {
-  border-color: #c4c4cc;
+  border-color: var(--order-buy-action);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--order-buy-action) 32%, transparent);
 }
 
 .rtx-order-dialog__control:disabled {
   color: #6b7280;
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+/* ─── Dual Large Sell / Buy Action Cards ─────────────────────── */
+.rtx-order-dialog__bottom-actions {
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.rtx-order-dialog__actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.rtx-order-dialog__action {
+  align-items: stretch;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 5px 10px 6px;
+  position: relative;
+  text-align: left;
+  transition: filter var(--transition-fast), transform 0.06s ease, box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.rtx-order-dialog__action--sell:not(:disabled) {
+  background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
+  border-color: rgb(248 113 113 / 42%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 20%), 0 1px 4px rgb(0 0 0 / 24%);
+}
+
+.rtx-order-dialog__action--buy:not(:disabled) {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  border-color: rgb(96 165 250 / 45%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 22%), 0 1px 4px rgb(0 0 0 / 24%);
+}
+
+.rtx-order-dialog__action[aria-pressed='true']:not(:disabled) {
+  box-shadow: 0 0 0 1.5px #ffffff, inset 0 1px 0 rgb(255 255 255 / 28%), 0 3px 8px rgb(0 0 0 / 32%);
+}
+
+.rtx-order-dialog__action:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+
+.rtx-order-dialog__action:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.rtx-order-dialog__action:disabled {
+  background: var(--order-control-bg);
+  border-color: var(--border-primary);
+  box-shadow: none;
+  color: #71717a;
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.rtx-order-dialog__action-card-top {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.rtx-order-dialog__action-card-label {
+  --rtx-type-size: 10px;
+  --rtx-type-weight: 700;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  opacity: 0.96;
+  text-transform: uppercase;
+}
+
+.rtx-order-dialog__action-card-side-tag {
+  --rtx-type-family: var(--font-mono);
+  --rtx-type-size: 8.5px;
+  --rtx-type-weight: 600;
+  background: rgb(0 0 0 / 22%);
+  border-radius: 2.5px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  opacity: 0.86;
+  padding: 1.5px 3.5px;
+}
+
+.rtx-order-dialog__action-card-price {
+  --rtx-type-family: "Segoe UI", Tahoma, var(--font-mono);
+  --rtx-type-size: 13.5px;
+  --rtx-type-weight: 600;
+  align-items: baseline;
+  display: inline-flex;
+  font-family: "Segoe UI", Tahoma, var(--font-mono);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  margin-left: auto;
+}
+
+.rtx-order-dialog__action-card-prefix {
+  --rtx-type-family: "Segoe UI", Tahoma, var(--font-mono);
+  --rtx-type-size: 13.5px;
+  --rtx-type-weight: 600;
+  opacity: 0.94;
+}
+
+.rtx-order-dialog__action-card-pips {
+  --rtx-type-family: "Segoe UI", Tahoma, var(--font-mono);
+  --rtx-type-size: 17px;
+  --rtx-type-weight: 700;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* ─── Sentiment Strip & Spread Summary ───────────────────────── */
+.rtx-order-dialog__sentiment-strip {
+  --rtx-type-family: var(--font-mono);
+  --rtx-type-size: 10px;
+  --rtx-type-weight: 700;
+  background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
+  border-radius: 3px;
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  gap: 2px;
+  height: 16px;
+  line-height: 1;
+  overflow: hidden;
+  width: 100%;
+}
+
+.rtx-order-dialog__sentiment-sell {
+  --rtx-type-family: var(--font-mono);
+  --rtx-type-size: 10px;
+  --rtx-type-weight: 700;
+  align-items: center;
+  background: linear-gradient(90deg, #991b1b 0%, #dc2626 100%);
+  border-radius: 2px 0 0 2px;
+  color: #ffffff;
+  display: flex;
+  justify-content: flex-start;
+  padding-left: 6px;
+  transition: width 0.2s ease;
+}
+
+.rtx-order-dialog__sentiment-buy {
+  --rtx-type-family: var(--font-mono);
+  --rtx-type-size: 10px;
+  --rtx-type-weight: 700;
+  align-items: center;
+  background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%);
+  border-radius: 0 2px 2px 0;
+  color: #ffffff;
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 6px;
+  transition: width 0.2s ease;
+}
+
+.rtx-order-dialog__price-summary {
+  --rtx-type-size: 11px;
+  --rtx-type-weight: 500;
+  align-items: center;
+  background: color-mix(in srgb, var(--bg-primary) 55%, var(--bg-secondary));
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: space-between;
+  padding: 5px 8px;
+}
+
+.rtx-order-dialog__spread-meta {
+  --rtx-type-size: 11px;
+  --rtx-type-weight: 500;
+  color: var(--order-supporting-text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.rtx-order-dialog__mt5-quote {
+  --rtx-type-family: var(--font-mono);
+  --rtx-type-size: 11px;
+  --rtx-type-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__spread-sr {
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+}
+
+/* ─── MT5 Order Fields Section ───────────────────────────────── */
+.rtx-order-dialog__mt5-fields {
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
+.rtx-order-dialog__mt5-fields .rtx-order-dialog__field {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  min-height: 24px;
+}
+
+.rtx-order-dialog__mt5-fields .rtx-order-dialog__field--spaced-top {
+  margin-top: 6px;
+}
+
+.rtx-order-dialog__mt5-fields .rtx-order-dialog__label {
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: var(--font-weight-normal);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__mt5-fields .rtx-order-dialog__label::after {
+  content: ":";
 }
 
 .rtx-order-dialog__volume-row {
@@ -278,6 +803,7 @@
   border: 1px solid #8a8a94;
   border-radius: 0;
   display: flex;
+  flex: 0 0 98px;
   height: 22px;
   overflow: hidden;
   width: 98px;
@@ -360,7 +886,7 @@
   white-space: nowrap;
 }
 
-/* ─── Fill Policy Tabs & Expiration Row ──────────────────────── */
+/* ─── Fill Policy Tabs, Expiration & Comment Row ─────────────── */
 .rtx-order-dialog__fill-policy-wrap {
   align-items: center;
   display: flex;
@@ -391,9 +917,11 @@
   border-bottom-color: #3687ff;
 }
 
-.rtx-order-dialog__fill-select-sr {
+.rtx-order-dialog__fill-select-sr,
+.rtx-order-dialog__fill-policy-wrap [role='note'] {
   height: 1px;
   opacity: 0;
+  overflow: hidden;
   pointer-events: none;
   position: absolute;
   width: 1px;
@@ -408,6 +936,7 @@
 
 .rtx-order-dialog__expiration-select {
   flex: 0 0 98px;
+  height: 22px;
   width: 98px;
 }
 
@@ -420,6 +949,7 @@
 .rtx-order-dialog__expiration-date-input {
   flex: 1;
   font-variant-numeric: tabular-nums;
+  height: 22px;
   min-width: 92px;
 }
 
@@ -431,6 +961,7 @@
 }
 
 .rtx-order-dialog__comment-input {
+  height: 22px;
   padding-right: 22px;
 }
 
@@ -443,13 +974,12 @@
   top: 2px;
 }
 
-/* ─── Messages, Live Quote, Actions & Status Box ─────────────── */
+/* ─── Messages & Progress Status Box ─────────────────────────── */
 .rtx-order-dialog__message {
   border: 1px solid;
-  border-radius: 2px;
+  border-radius: 3px;
   font-size: 11px;
   line-height: 1.35;
-  margin-top: 4px;
   padding: 4px 8px;
 }
 
@@ -465,83 +995,10 @@
   color: var(--color-warning);
 }
 
-.rtx-order-dialog__price-summary {
-  align-items: center;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  margin-top: auto;
-  padding: 18px 0 14px;
-}
-
-.rtx-order-dialog__mt5-quote {
-  color: var(--text-primary);
-  font-family: Tahoma, "Segoe UI", var(--font-sans);
-  font-size: 24px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 400;
-  letter-spacing: 0.01em;
-  line-height: 1.15;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.rtx-order-dialog__spread-sr {
-  height: 1px;
-  opacity: 0;
-  overflow: hidden;
-  pointer-events: none;
-  position: absolute;
-  width: 1px;
-}
-
-.rtx-order-dialog__actions {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.rtx-order-dialog__action {
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: 0;
-  color: #ffffff;
-  cursor: pointer;
-  display: inline-flex;
-  font-family: Tahoma, "Segoe UI", var(--font-sans);
-  font-size: 12px;
-  font-weight: 400;
-  height: 24px;
-  justify-content: center;
-  transition: filter var(--transition-fast), opacity var(--transition-fast);
-}
-
-.rtx-order-dialog__action--sell {
-  background: var(--order-sell-action);
-  border-color: var(--order-sell-action);
-}
-
-.rtx-order-dialog__action--buy {
-  background: var(--order-buy-action);
-  border-color: var(--order-buy-action);
-}
-
-.rtx-order-dialog__action:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.rtx-order-dialog__action:disabled {
-  background: transparent;
-  border-color: #52525b;
-  color: #71717a;
-  cursor: not-allowed;
-  opacity: 1;
-}
-
 .rtx-order-dialog__status-box {
-  border: 1px solid #45454d;
-  height: 23px;
-  margin-top: 8px;
+  border: 1px solid transparent;
+  height: 4px;
+  margin-top: auto;
   overflow: hidden;
   position: relative;
   width: 100%;
@@ -554,12 +1011,12 @@
   width: 100%;
 }
 
-/* ─── Middle Tick Chart Pane ─────────────────────────────────── */
+/* ─── Column 3: Right Candlestick + Tick Chart Pane ──────────── */
 .rtx-order-dialog__chart {
   background: var(--bg-secondary);
   border-left: 1px solid var(--border-primary);
   display: flex;
-  flex: 0 0 326px;
+  flex: 0 0 364px;
   min-width: 0;
 }
 
@@ -569,44 +1026,170 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  padding: 4px 6px 8px;
+  padding: 6px 6px 8px;
+  position: relative;
 }
 
 .rtx-order-dialog__chart-toolbar,
 .rtx-order-dialog__dom-toolbar {
   align-items: center;
   display: flex;
-  flex: 0 0 28px;
+  flex: 0 0 26px;
   gap: 4px;
   margin-bottom: 4px;
+  z-index: 2;
 }
 
 .rtx-order-dialog__toolbar-btn {
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
+  border-radius: 3px;
   color: var(--order-supporting-text);
   cursor: pointer;
   display: inline-flex;
-  height: 24px;
+  height: 22px;
   justify-content: center;
   padding: 0;
-  width: 24px;
+  width: 22px;
 }
 
 .rtx-order-dialog__toolbar-btn:hover {
   background: rgb(255 255 255 / 6%);
+  color: var(--text-primary);
 }
 
 .rtx-order-dialog__toolbar-btn--boxed {
-  border-color: #9ca3af;
+  border-color: var(--border-secondary);
 }
 
 .rtx-order-dialog__toolbar-sep {
-  background: #45454d;
-  height: 18px;
+  background: var(--border-primary);
+  height: 16px;
   margin: 0 2px;
   width: 1px;
+}
+
+.rtx-order-dialog__chart-type-wrap {
+  display: inline-flex;
+  position: relative;
+}
+
+.rtx-order-dialog__chart-type-btn {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-primary, #e4e4e7);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 3px;
+  height: 22px;
+  justify-content: center;
+  padding: 0 5px;
+}
+
+.rtx-order-dialog__chart-type-btn:hover,
+.rtx-order-dialog__chart-type-btn--open {
+  background: rgb(255 255 255 / 8%);
+  border-color: var(--border-secondary);
+  color: #ffffff;
+}
+
+.rtx-order-dialog__chart-type-caret {
+  color: currentColor;
+  flex-shrink: 0;
+  opacity: 0.78;
+}
+
+.rtx-order-dialog .rtx-order-dialog__chart-type-menu {
+  background-color: #181a20 !important;
+  border: 1px solid #323642 !important;
+  border-radius: 6px;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 68%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  left: 0;
+  min-width: 154px;
+  padding: 4px;
+  position: absolute;
+  top: calc(100% + 3px);
+  z-index: 40;
+}
+
+.rtx-order-dialog .rtx-order-dialog__chart-type-item {
+  align-items: center;
+  background: transparent !important;
+  border: 0;
+  border-radius: 4px;
+  color: #e4e4e7 !important;
+  cursor: pointer;
+  display: flex;
+  font-family: "Segoe UI", Tahoma, var(--font-sans);
+  font-size: 12.5px;
+  gap: 9px;
+  height: 28px;
+  padding: 0 10px;
+  text-align: left;
+  transition: background-color 120ms ease, color 120ms ease;
+  width: 100%;
+}
+
+.rtx-order-dialog .rtx-order-dialog__chart-type-item:hover {
+  background: rgb(255 255 255 / 8%) !important;
+  color: #ffffff !important;
+}
+
+.rtx-order-dialog .rtx-order-dialog__chart-type-item--active {
+  background: rgb(54 135 255 / 22%) !important;
+  color: #60a5fa !important;
+  font-weight: 500;
+}
+
+.rtx-order-dialog .rtx-order-dialog__chart-type-item--active:hover {
+  background: rgb(54 135 255 / 30%) !important;
+  color: #93c5fd !important;
+}
+
+.rtx-order-dialog__chart-type-item-icon {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+  flex: 0 0 16px;
+  height: 16px;
+  justify-content: center;
+  width: 16px;
+}
+
+.rtx-order-dialog__chart-type-item-label {
+  color: inherit;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__chart-type-menu,
+html.theme-light .rtx-order-dialog .rtx-order-dialog__chart-type-menu {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 10px 24px rgb(15 23 42 / 14%);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__chart-type-item,
+html.theme-light .rtx-order-dialog .rtx-order-dialog__chart-type-item {
+  color: #334155 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__chart-type-item:hover,
+html.theme-light .rtx-order-dialog .rtx-order-dialog__chart-type-item:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__chart-type-item--active,
+html.theme-light .rtx-order-dialog .rtx-order-dialog__chart-type-item--active {
+  background: #eff6ff !important;
+  color: #2563eb !important;
 }
 
 .rtx-order-dialog__chart-quotes-sr {
@@ -618,24 +1201,59 @@
   width: 1px;
 }
 
+.rtx-order-dialog__chart-watermark {
+  align-items: center;
+  display: flex;
+  inset: 32px 54px 24px 0;
+  justify-content: center;
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+}
+
+.rtx-order-dialog__chart-watermark-ring {
+  align-items: center;
+  border: 2px solid rgb(255 255 255 / 5%);
+  border-radius: 9999px;
+  display: flex;
+  height: 108px;
+  justify-content: center;
+  opacity: 0.14;
+  width: 108px;
+}
+
+.rtx-order-dialog__chart-watermark-img {
+  filter: grayscale(1);
+  object-fit: contain;
+}
+
+.rtx-order-dialog__chart-watermark-fallback {
+  background: transparent;
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 800;
+}
+
 .rtx-order-dialog__chart-canvas {
   color: var(--order-supporting-text);
   display: block;
   flex: 1;
-  height: 371px;
-  min-height: 260px;
+  height: 454px;
+  min-height: 320px;
+  position: relative;
   width: 100%;
+  z-index: 1;
 }
 
-/* ─── Right Depth of Market + One Click Trading Pane ─────────── */
+/* ─── Column 4: Depth of Market + One Click Trading Pane ─────── */
 .rtx-order-dialog__dom {
   background: var(--bg-secondary);
   border-left: 1px solid var(--border-primary);
   display: flex;
-  flex: 0 0 332px;
+  flex: 0 0 318px;
   flex-direction: column;
   min-width: 0;
-  padding: 4px 8px 12px;
+  padding: 6px 8px 12px;
 }
 
 .rtx-order-dialog__dom-table-wrap {
@@ -743,7 +1361,7 @@
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
-   font-weight: 700;
+  font-weight: 700;
   height: 21px;
   justify-content: center;
   padding: 0;
@@ -951,18 +1569,18 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action:not(:disabled) {
   color: #ffffff;
   filter: none;
   box-shadow: none;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--buy {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--buy:not(:disabled) {
   background: var(--order-buy-action);
   border-color: var(--order-buy-action);
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--sell {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--sell:not(:disabled) {
   background: var(--order-sell-action);
   border-color: var(--order-sell-action);
 }
