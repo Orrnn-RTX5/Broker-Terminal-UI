@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
 } from 'react';
@@ -17,6 +18,11 @@ import { formatDailyChange } from '../../utils/dailyChange';
 import { dailyChangeDescription } from '../../utils/dailyChangeSession';
 import { readCurrentMarketWatchDailyChangePrice, describeCurrentMarketWatchDailyChange } from '../../services/marketWatchDailyChangeCache';
 import { useTick } from '../../store/useAppStore';
+import {
+  getChartDirectionalQuoteColors,
+  selectChartPropertiesForQuote,
+  useChartSettingsStore,
+} from '../../store/useChartSettingsStore';
 import {
   resolveMarketWatchDisplayMetadata,
   mayUseClosedDailyChange,
@@ -183,6 +189,8 @@ function PopupPriceCard({
 }) {
   const tr = useUiTranslation();
   const tick = useTick(symbol);
+  const chartQuoteProperties = useChartSettingsStore((state) => selectChartPropertiesForQuote(state, symbol));
+  const { upColor, downColor, isDefaultPalette } = getChartDirectionalQuoteColors(chartQuoteProperties);
   const displayMetadata = useMarketWatchDisplayMetadata(symbol);
   const resolvedDisplayMetadata = resolveMarketWatchDisplayMetadata(tick, displayMetadata);
   // Broker data only (catalog row, registered spec, live tick); unknown renders raw.
@@ -216,7 +224,15 @@ function PopupPriceCard({
     : dailyChange > 0 ? 'positive' : 'negative';
 
   return (
-    <article className="rtx-popup-prices__card" role="listitem" aria-label={tr('{{value0}} quote', { value0: symbol })}>
+    <article
+      className="rtx-popup-prices__card"
+      role="listitem"
+      aria-label={tr('{{value0}} quote', { value0: symbol })}
+      style={!isDefaultPalette ? {
+        '--rtx-popup-bid': downColor,
+        '--rtx-popup-ask': upColor,
+      } as CSSProperties : undefined}
+    >
       <header className="rtx-popup-prices__card-header">
         <strong title={description || undefined}>{symbol}</strong>
         <span className="rtx-popup-prices__quote-status" data-available={hasDisplayedPrice ? 'true' : 'false'}>
@@ -299,13 +315,26 @@ function PopupPriceCard({
           {columns.includes('dailyChange') && (
             <div className="rtx-popup-prices__metric">
               <span>{tr('Change %')}</span>
-              <strong title={dailyTitle} data-tone={dailyTone} aria-label={`${tr('Change %')} ${dailyChangeText}`}>{dailyChangeText}</strong>
+              <strong
+                title={dailyTitle}
+                data-tone={dailyTone}
+                aria-label={`${tr('Change %')} ${dailyChangeText}`}
+                style={!isDefaultPalette && dailyTone !== 'neutral' ? { color: dailyTone === 'positive' ? upColor : downColor } : undefined}
+              >
+                {dailyChangeText}
+              </strong>
             </div>
           )}
           {columns.includes('dailyChangePrice') && (
             <div className="rtx-popup-prices__metric">
               <span>{tr('Change')}</span>
-              <strong title={dailyTitle} data-tone={!dailyAmount ? 'neutral' : dailyAmount > 0 ? 'positive' : 'negative'}>{formatDailyChange(dailyAmount, resolveDailyChangeDisplayDigits(symbol, tick?.digits))}</strong>
+              <strong
+                title={dailyTitle}
+                data-tone={!dailyAmount ? 'neutral' : dailyAmount > 0 ? 'positive' : 'negative'}
+                style={!isDefaultPalette && dailyAmount ? { color: dailyAmount > 0 ? upColor : downColor } : undefined}
+              >
+                {formatDailyChange(dailyAmount, resolveDailyChangeDisplayDigits(symbol, tick?.digits))}
+              </strong>
             </div>
           )}
           {columns.includes('source') && (

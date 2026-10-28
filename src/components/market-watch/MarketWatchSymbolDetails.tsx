@@ -1,8 +1,13 @@
 import { resolveDailyChangeDisplayDigits } from '../../services/dailyChangePriceModeRegistry';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useTick } from '../../store/useAppStore';
+import {
+  getChartDirectionalQuoteColors,
+  selectChartPropertiesForQuote,
+  useChartSettingsStore,
+} from '../../store/useChartSettingsStore';
 import {
   resolveMarketWatchDisplayMetadata,
   mayUseClosedDailyChange,
@@ -149,6 +154,10 @@ export function MarketWatchSymbolDetails({
   const [isLightSkin, setIsLightSkin] = useState(false);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const tick = useTick(symbol);
+  const chartQuoteProperties = useChartSettingsStore((state) => selectChartPropertiesForQuote(state, symbol));
+  const { upColor, downColor, isDefaultPalette } = getChartDirectionalQuoteColors(chartQuoteProperties, {
+    isAdvancedUntitledLight: isLightSkin,
+  });
   const displayMetadata = useMarketWatchDisplayMetadata(symbol);
   const dailyDisplay = resolveMarketWatchDisplayMetadata(tick, displayMetadata);
   const dailyTitle = (closedDailyChange != null && mayUseClosedDailyChange(dailyDisplay) ? describeCurrentMarketWatchDailyChange(symbol) : dailyChangeDescription(dailyDisplay.daily));
@@ -289,7 +298,17 @@ export function MarketWatchSymbolDetails({
               </dt>
               <dd
                 className="rtx-market-watch-details__value"
-                data-tone={row.value === null || row.direction === 'static' ? undefined : row.direction}
+                data-tone={
+                  row.value === null || row.direction === 'static'
+                    ? undefined
+                    : !isDefaultPalette && row.direction === 'none'
+                      ? (row.field === 'bid'
+                        ? 'down'
+                        : row.field === 'ask'
+                          ? 'up'
+                          : row.direction)
+                      : row.direction
+                }
                 title={row.value === null ? undefined : row.title}
               >
                 {row.value ?? '—'}
@@ -307,6 +326,12 @@ export function MarketWatchSymbolDetails({
       aria-label={`${displaySymbol} ${tr('Details')}`}
       data-live={isLive}
       data-grid={showGrid}
+      style={!isDefaultPalette ? {
+        '--rtx-market-details-up': upColor,
+        '--rtx-market-details-down': downColor,
+        '--rtx-market-details-rise': upColor,
+        '--rtx-market-details-fall': downColor,
+      } as CSSProperties : undefined}
     >
       <div className="rtx-market-watch-details__header">
         <button

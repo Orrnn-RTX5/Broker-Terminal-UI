@@ -6,16 +6,20 @@ html:root .rtx-market-watch.rtx-market-watch--desktop {
   --mw-desktop-row: var(--bg-secondary);
   --mw-desktop-row-alt: var(--bg-tertiary, var(--bg-quaternary));
   --mw-desktop-row-hover: var(--bg-quaternary);
+  --mw-desktop-row-selected: #222934;
+  --mw-desktop-row-selected-focus: #252d3a;
   --mw-desktop-grid: var(--border-primary);
-  --mw-desktop-selection: var(--color-primary, #0078d7);
+  --mw-desktop-selection: var(--color-primary, #3b82f6);
 }
 
 html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop {
   --mw-desktop-row: var(--rtx-dark-bg-secondary, #1f1f1f);
   --mw-desktop-row-alt: var(--rtx-dark-bg-tertiary, #262626);
   --mw-desktop-row-hover: var(--rtx-dark-bg-quaternary, #2a2a2a);
+  --mw-desktop-row-selected: #222934;
+  --mw-desktop-row-selected-focus: #252d3a;
   --mw-desktop-grid: var(--rtx-dark-border-primary, #404040);
-  --mw-desktop-selection: var(--rtx-dark-accent, #0078d7);
+  --mw-desktop-selection: var(--rtx-dark-accent, #3b82f6);
 }
 
 /* The focused light row must retain contrast for both blue and red quotes. */
@@ -23,6 +27,8 @@ html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-marke
   --mw-desktop-row: var(--rtx-light-panel, #f8fafc);
   --mw-desktop-row-alt: var(--rtx-light-panel-subtle, #f1f4f8);
   --mw-desktop-row-hover: var(--rtx-light-hover, #e8eef6);
+  --mw-desktop-row-selected: var(--rtx-light-selected, #d1dced);
+  --mw-desktop-row-selected-focus: var(--rtx-light-selected, #d1dced);
   --mw-desktop-grid: var(--rtx-light-border, #c5ced9);
   --mw-desktop-selection: var(--rtx-light-selected, #d1dced);
 }
@@ -201,7 +207,7 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tb
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true'],
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true'] td {
-  background: var(--mw-desktop-row-hover, var(--mw-desktop-row-alt)) !important;
+  background: var(--mw-desktop-row-selected, var(--mw-desktop-row-hover, var(--mw-desktop-row-alt))) !important;
   box-shadow: none !important;
 }
 
@@ -218,10 +224,10 @@ html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-marke
   box-shadow: inset 2px 0 0 var(--rtx-light-accent, #355786) !important;
 }
 
-/* Keep the chosen symbol; the stronger selection belongs to its focused row. */
+/* Keep the chosen symbol; the stronger selection belongs to its focused row without flooding quote text. */
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true']:focus-within,
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr[aria-selected='true']:focus-within td {
-  background: var(--mw-desktop-selection) !important;
+  background: var(--mw-desktop-row-selected-focus, var(--mw-desktop-row-selected, var(--mw-desktop-row-hover))) !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid--lines tbody td {
@@ -304,7 +310,8 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch-details_
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch-details__row[aria-selected='true'] {
-  background: var(--mw-desktop-selection);
+  background: var(--mw-desktop-row-selected-focus, var(--mw-desktop-row-selected, #252d3a));
+  box-shadow: inset 2px 0 0 var(--mw-desktop-selection);
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop :is(.rtx-market-watch-details__label, .rtx-market-watch-details__value) {

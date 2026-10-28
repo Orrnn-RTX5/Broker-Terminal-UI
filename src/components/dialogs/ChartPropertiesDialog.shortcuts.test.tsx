@@ -48,7 +48,7 @@ describe('Chart Properties grid settings', () => {
     const { unmount } = render(<ChartPropertiesDialog isOpen symbol="EURUSD" timeframe="M1" onClose={vi.fn()} />);
     try {
       fireEvent.click(screen.getByRole('tab', { name: 'Colors' }));
-      const scheme = screen.getByDisplayValue('Blue on Black');
+      const scheme = screen.getByDisplayValue('Blue and Red');
       fireEvent.change(scheme, { target: { value: preset } });
       expect(scheme).toHaveValue(preset);
       expect(useChartSettingsStore.getState().symbolProperties.EURUSD.colors).toEqual(getPresetSchemeColors(preset));
@@ -57,9 +57,9 @@ describe('Chart Properties grid settings', () => {
       if (preset !== 'Blue and White') {
         expect(decodeURIComponent(preview.style.backgroundImage)).toContain('#778899');
       }
-      expect(useChartSettingsStore.getState().globalProperties.colorScheme).toBe('Blue on Black');
+      expect(useChartSettingsStore.getState().globalProperties.colorScheme).toBe('Blue and Red');
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-      expect(useChartSettingsStore.getState().symbolProperties.EURUSD.colorScheme).toBe('Blue on Black');
+      expect(useChartSettingsStore.getState().symbolProperties.EURUSD.colorScheme).toBe('Blue and Red');
     } finally {
       unmount();
       useChartSettingsStore.setState(initial);

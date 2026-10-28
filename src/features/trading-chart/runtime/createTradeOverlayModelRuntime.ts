@@ -29,7 +29,7 @@ interface CreateTradeOverlayModelRuntimeOptions {
   chartRef: RefObject<IChartApi | null>;
   chartThemeRef: RefObject<TradingViewChartTheme>;
   currentCandleRef: RefObject<Candle | null>;
-  digits: number;
+  digits: number | null;
   getNearestCandleByTime: (time: number, maxDistanceSeconds?: number) => Candle | null;
   isChartInteractionActiveRef: RefObject<boolean>;
   isLivePriceSafeForCandles: (price: number) => boolean;
@@ -114,11 +114,18 @@ export const createTradeOverlayModelRuntime = ({
       return ticket ? `#${ticket}` : '';
     };
 
-    const formatTradeLevelBadgePrice = (price: number): string => price.toFixed(digits);
+    const formatTradeLevelBadgePrice = (price: number): string => (
+      digits === null ? String(price) : price.toFixed(digits)
+    );
 
-    const formatSignaturePrice = (value?: number): string => (Number(value) || 0).toFixed(digits);
+    const formatSignaturePrice = (value?: number): string => {
+      const numeric = Number(value) || 0;
+      return digits === null ? String(numeric) : numeric.toFixed(digits);
+    };
 
-    const priceTolerance = Math.max(Math.pow(10, -digits), Number.EPSILON);
+    const priceTolerance = digits === null
+      ? Number.EPSILON
+      : Math.max(Math.pow(10, -digits), Number.EPSILON);
 
     const resolveSymbolTick = (ticks: Record<string, Tick>) => {
       if (ticks[symbol]) return ticks[symbol];

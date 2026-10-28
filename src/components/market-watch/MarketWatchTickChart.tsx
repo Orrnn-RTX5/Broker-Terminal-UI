@@ -1,4 +1,4 @@
-import { type MouseEvent, type WheelEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type MouseEvent, type WheelEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { formatBrokerServerDate, formatBrokerServerTime } from '../../services/brokerServerClock';
 import {
@@ -8,6 +8,11 @@ import {
   isShortcutOverlay,
   shouldIgnoreShortcutEvent,
 } from '../../services/keyboardShortcutManager';
+import {
+  getChartDirectionalQuoteColors,
+  selectChartPropertiesForQuote,
+  useChartSettingsStore,
+} from '../../store/useChartSettingsStore';
 import { type Tick, useMarketDataStore } from '../../store/useMarketDataStore';
 import { getCanonicalTickTimestamp } from '../../utils/liveTickSemantics';
 import {
@@ -124,6 +129,10 @@ export function MarketWatchTickChart({
   const normalizedSymbol = normalizeSymbol(symbol);
   const [setCanvas, size] = useChartSize();
   const [isLightSkin, setIsLightSkin] = useState(false);
+  const chartQuoteProperties = useChartSettingsStore((state) => selectChartPropertiesForQuote(state, normalizedSymbol));
+  const { upColor, downColor, isDefaultPalette } = getChartDirectionalQuoteColors(chartQuoteProperties, {
+    isAdvancedUntitledLight: isLightSkin,
+  });
   const [options, setOptions] = useState<MarketWatchTickChartOptions>(() => loadMarketWatchTickChartOptions());
   const [scrollPause, setScrollPause] = useState<{
     symbol: string;
@@ -431,6 +440,10 @@ export function MarketWatchTickChart({
       data-auto-scroll={options.autoScroll}
       data-crosshair={options.crosshair}
       data-grid={options.grid}
+      style={!isDefaultPalette ? {
+        '--rtx-tick-chart-bid': upColor,
+        '--rtx-tick-chart-ask': downColor,
+      } as CSSProperties : undefined}
     >
       <ContextMenu
         items={contextMenuItems}

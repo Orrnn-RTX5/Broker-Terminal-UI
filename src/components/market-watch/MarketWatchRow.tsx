@@ -4,6 +4,11 @@ import { useUiTranslation } from '../../hooks/useUiTranslation';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import { useTick } from '../../store/useAppStore';
 import {
+  getChartDirectionalQuoteColors,
+  selectChartPropertiesForQuote,
+  useChartSettingsStore,
+} from '../../store/useChartSettingsStore';
+import {
   resolveMarketWatchDisplayMetadata,
   mayUseClosedDailyChange,
   useMarketWatchDisplayMetadata,
@@ -113,6 +118,13 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   const tr = useUiTranslation();
   const displaySymbol = getMarketWatchSymbolLabel(symbol, symbolUniverse);
   const tick = useTick(symbol);
+  const chartQuoteProperties = useChartSettingsStore((state) => selectChartPropertiesForQuote(state, symbol));
+  const { upColor, downColor, isDefaultPalette } = getChartDirectionalQuoteColors(chartQuoteProperties, {
+    isAdvancedUntitledLight: isLightSkin,
+  });
+  const quoteUpColor = isDefaultPalette ? MARKET_WATCH_QUOTE_UP_COLOR : upColor;
+  const quoteDownColor = isDefaultPalette ? MARKET_WATCH_QUOTE_DOWN_COLOR : downColor;
+  const directionDownColor = isDefaultPalette ? 'var(--color-loss)' : downColor;
   const displayMetadata = useMarketWatchDisplayMetadata(symbol);
   const resolvedDisplayMetadata = resolveMarketWatchDisplayMetadata(tick, displayMetadata);
   const hasTickQuote = hasMarketWatchQuote(tick);
@@ -153,6 +165,10 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   const askPriceDirection = hasTickQuote ? askFlash ?? (askDirection !== 'none' ? askDirection : null) : null;
   const dailyPositive = hasDailyData && dailyPct > 0;
   const dailyNegative = hasDailyData && dailyPct < 0;
+  const resolvedBidDirection = bidPriceDirection;
+  const resolvedAskDirection = askPriceDirection;
+  const bidToneClass = resolvedBidDirection;
+  const askToneClass = resolvedAskDirection;
   const quoteDataOpacity = isLive ? 1 : hasData ? 0.72 : 0.45;
   const dailyDataOpacity = isLive ? 1 : hasDailyData ? 0.72 : 0.45;
   const showAsk = columns.includes('ask');
@@ -202,7 +218,15 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
           borderBottom: 'none',
           background: isSelected ? 'var(--bg-quaternary)' : 'var(--bg-secondary)',
           boxShadow: 'none',
-        }}
+          ...(!isDefaultPalette ? {
+            '--rtx-quote-up': quoteUpColor,
+            '--rtx-quote-down': quoteDownColor,
+            '--rtx-light-quote-up': quoteUpColor,
+            '--rtx-light-quote-down': quoteDownColor,
+            '--color-profit': quoteUpColor,
+            '--color-loss': quoteDownColor,
+          } : {}),
+        } as CSSProperties}
         className={`${!isSelected ? 'mw-row ' : ''}rtx-market-watch__row${isSelected ? ' rtx-market-watch__row--selected' : ''}${!isLive ? ' rtx-market-watch__row--stale' : ''}`}
         aria-selected={isSelected}
         aria-disabled={!isChartOpenable}
@@ -211,12 +235,12 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
         <td style={{ padding: '3px 6px', whiteSpace: 'nowrap', maxWidth: 0 }}>
           <div className="rtx-market-watch__symbol-content" style={{ display: 'flex', alignItems: 'center', columnGap: 3, minWidth: 0 }}>
             {hasData && bidDirection === 'up' && (
-              <svg className="rtx-market-watch__direction rtx-market-watch__direction--up" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: MARKET_WATCH_QUOTE_UP_COLOR, opacity: quoteDataOpacity }}>
+              <svg className="rtx-market-watch__direction rtx-market-watch__direction--up" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: quoteUpColor, opacity: quoteDataOpacity }}>
                 <path d="M2 8L8 2M3.5 2H8V6.5" stroke="currentColor" strokeWidth="1" />
               </svg>
             )}
             {hasData && bidDirection === 'down' && (
-              <svg className="rtx-market-watch__direction rtx-market-watch__direction--down" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: 'var(--color-loss)', opacity: quoteDataOpacity }}>
+              <svg className="rtx-market-watch__direction rtx-market-watch__direction--down" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: directionDownColor, opacity: quoteDataOpacity }}>
                 <path d="M2 2L8 8M3.5 8H8V3.5" stroke="currentColor" strokeWidth="1" />
               </svg>
             )}
@@ -254,12 +278,12 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
           )}
         </> : <>
           <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
-            <span className={`rtx-market-watch__price rtx-market-watch__price--bid${bidPriceDirection ? ` rtx-market-watch__price--${bidPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
+            <span className={`rtx-market-watch__price rtx-market-watch__price--bid${bidToneClass ? ` rtx-market-watch__price--${bidToneClass}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
               display: 'inline-block',
               fontSize: 13,
               fontWeight: 500,
               color: hasData
-                ? bidPriceDirection === 'up' ? MARKET_WATCH_QUOTE_UP_COLOR : MARKET_WATCH_QUOTE_DOWN_COLOR
+                ? (resolvedBidDirection ?? 'down') === 'up' ? quoteUpColor : quoteDownColor
                 : '#36363e',
               padding: '1px 4px',
               borderRadius: 3,
@@ -275,12 +299,12 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
 
           {showAsk && (
             <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
-              <span className={`rtx-market-watch__price rtx-market-watch__price--ask${askPriceDirection ? ` rtx-market-watch__price--${askPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
+              <span className={`rtx-market-watch__price rtx-market-watch__price--ask${askToneClass ? ` rtx-market-watch__price--${askToneClass}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
                 display: 'inline-block',
                 fontSize: 13,
                 fontWeight: 500,
                 color: hasData
-                  ? askPriceDirection === 'down' ? MARKET_WATCH_QUOTE_DOWN_COLOR : MARKET_WATCH_QUOTE_UP_COLOR
+                  ? (resolvedAskDirection ?? 'up') === 'down' ? quoteDownColor : quoteUpColor
                   : '#36363e',
                 padding: '1px 4px',
                 borderRadius: 3,
@@ -338,7 +362,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
           </td>
         )}
         {columns.includes('dailyChangePrice') && (
-          <td title={dailyTitle} data-status={resolvedDisplayMetadata.daily?.status} data-field="daily-change-price" style={{ padding: '3px 4px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', color: dailyAmount === null || dailyAmount === 0 ? 'var(--text-primary)' : dailyAmount > 0 ? MARKET_WATCH_QUOTE_UP_COLOR : MARKET_WATCH_QUOTE_DOWN_COLOR, opacity: isLive && resolvedDisplayMetadata.daily?.status !== 'stale' ? 1 : 0.72 }}>
+          <td title={dailyTitle} data-status={resolvedDisplayMetadata.daily?.status} data-field="daily-change-price" style={{ padding: '3px 4px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', color: dailyAmount === null || dailyAmount === 0 ? 'var(--text-primary)' : dailyAmount > 0 ? quoteUpColor : quoteDownColor, opacity: isLive && resolvedDisplayMetadata.daily?.status !== 'stale' ? 1 : 0.72 }}>
             {formatDailyChange(dailyAmount, resolveDailyChangeDisplayDigits(symbol, tick?.digits))}
           </td>
         )}
@@ -350,9 +374,9 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
               color: !hasDailyData
                 ? '#50505a'
                 : dailyPositive
-                  ? MARKET_WATCH_QUOTE_UP_COLOR
+                  ? quoteUpColor
                   : dailyNegative
-                    ? MARKET_WATCH_QUOTE_DOWN_COLOR
+                    ? quoteDownColor
                     : 'var(--text-primary)',
               letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',

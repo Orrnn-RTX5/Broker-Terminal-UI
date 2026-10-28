@@ -765,24 +765,24 @@ html:not(.rtx-skin-untitled-light) .rtx-market-watch__close:hover {
 
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--bid:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty),
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--bid:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) :is(.price-display, .price-big, .price-small) {
-  color: #ff5858 !important;
+  color: var(--rtx-quote-down, #ff5858) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--ask:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty),
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--ask:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) :is(.price-display, .price-big, .price-small) {
-  color: #4597ff !important;
+  color: var(--rtx-quote-up, #4597ff) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--up,
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--up :is(.price-display, .price-big, .price-small),
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__daily--up {
-  color: #4597ff !important;
+  color: var(--rtx-quote-up, #4597ff) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--down,
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--down :is(.price-display, .price-big, .price-small),
 html:not(.rtx-skin-untitled-light) .rtx-market-watch__daily--down {
-  color: #ff5858 !important;
+  color: var(--rtx-quote-down, #ff5858) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .bg-\[\#131316\]:has(.navigator-panel),

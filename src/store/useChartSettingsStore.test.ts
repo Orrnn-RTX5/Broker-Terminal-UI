@@ -10,9 +10,11 @@ import {
   CHART_PROFIT_COLOR,
   clampChartOpacityPercent,
   defaultChartProperties,
+  getChartDirectionalQuoteColors,
   getEffectiveChartColors,
   getPresetSchemeColors,
   normalizeChartProperties,
+  resolveChartQuoteColors,
   useChartSettingsStore,
 } from './useChartSettingsStore';
 
@@ -200,8 +202,8 @@ describe('chart settings trade history overlay defaults', () => {
   it('opens and resets charts with the blue/red Bid/Ask palette', () => {
     const initial = useChartSettingsStore.getState();
     const hydrated = useChartSettingsStore.persist.getOptions().merge!({}, initial);
-    expect(hydrated.globalProperties.colorScheme).toBe('Blue on Black');
-    expect(defaultChartProperties.colorScheme).toBe('Blue on Black');
+    expect(hydrated.globalProperties.colorScheme).toBe('Blue and Red');
+    expect(defaultChartProperties.colorScheme).toBe('Blue and Red');
     expect(defaultChartProperties.colors).toMatchObject({
       barUp: '#4597ff',
       bullCandle: '#4597ff',
@@ -216,7 +218,7 @@ describe('chart settings trade history overlay defaults', () => {
     expect(defaultChartProperties.showAskPriceLine).toBe(false);
     expect(defaultChartProperties.showLastPriceLine).toBe(false);
     try {
-      initial.applyPresetScheme('Green on Black');
+      initial.applyPresetScheme('Green and Red');
       initial.resetToDefaults();
       expect(useChartSettingsStore.getState().globalProperties).toEqual(defaultChartProperties);
     } finally {
@@ -314,18 +316,18 @@ describe('chart settings trade history overlay defaults', () => {
       chartShiftDefaultMigrationVersion: 1,
     }, useChartSettingsStore.getState());
 
-    expect(hydrated.globalProperties).toMatchObject({ colorScheme: 'Blue on Black', chartShift: true });
-    expect(hydrated.symbolProperties.BTCUSD.colors).toEqual(getPresetSchemeColors('Blue on Black'));
+    expect(hydrated.globalProperties).toMatchObject({ colorScheme: 'Blue and Red', chartShift: true });
+    expect(hydrated.symbolProperties.BTCUSD.colors).toEqual(getPresetSchemeColors('Blue and Red'));
     expect(hydrated.symbolProperties.EURUSD.colors).toEqual(custom.colors);
     expect(hydrated.symbolProperties.XAUUSD.colors).toEqual(customizedGreen.colors);
     expect(hydrated.symbolProperties.GBPUSD.colors).toEqual(yellow.colors);
-    expect(green.colorScheme).toBe('Green on Black');
+    expect(green.colorScheme).toBe('Green and Red');
     expect(hydrated.blueRedDefaultMigrationVersion).toBe(1);
 
     // A later explicit Green choice must survive subsequent reloads.
     const reloaded = merge({ ...hydrated, globalProperties: green, symbolProperties: { BTCUSD: green } }, hydrated);
     expect(reloaded.globalProperties.colors).toEqual(green.colors);
-    expect(reloaded.symbolProperties.BTCUSD.colorScheme).toBe('Green on Black');
+    expect(reloaded.symbolProperties.BTCUSD.colorScheme).toBe('Green and Red');
   });
 
   it('hydrates old persisted chart settings with the new trade history overlay fields', () => {
@@ -620,5 +622,134 @@ describe('chart settings trade history overlay defaults', () => {
     expect(migrated.globalProperties.showOHLC).toBe(false);
     expect(migrated.symbolProperties.XAUUSD.showOHLC).toBe(false);
     expect(migrated.ohlcDefaultMigrationVersion).toBe(1);
+  });
+
+  it('defaults Bid, Ask, and changing value quote colors to Blue and Red for all chart schemes unless chart sync is enabled', () => {
+    const initial = useChartSettingsStore.getState();
+    try {
+      useChartSettingsStore.setState({
+        globalProperties: { ...defaultChartProperties },
+        symbolProperties: {},
+        activeColorSymbol: null,
+        syncQuoteColorsWithChart: false,
+      });
+
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'EURUSD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ff5858',
+        isDefaultPalette: true,
+      });
+
+      useChartSettingsStore.getState().updateSymbolProperty('EURUSD', 'showQuickTradingButtons', true);
+      useChartSettingsStore.getState().applySymbolPresetScheme('XAUUSD', 'Blue and White');
+      // By default (syncQuoteColorsWithChart: false), Bid/Ask/Change stay Blue and Red across all schemes.
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'XAUUSD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ff5858',
+        isDefaultPalette: true,
+      });
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'EURUSD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ff5858',
+        isDefaultPalette: true,
+      });
+
+      // Enabling the option synchronizes Bid, Ask, and changing price with the chart color scheme.
+      useChartSettingsStore.getState().setSyncQuoteColorsWithChart(true);
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'XAUUSD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ffffff',
+        isDefaultPalette: false,
+      });
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'EURUSD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ffffff',
+        isDefaultPalette: false,
+      });
+
+      // Even if activeColorSymbol is cleared (e.g. pre-existing persisted symbolProperties),
+      // customized symbol palettes still apply to other watched symbols when sync is enabled.
+      useChartSettingsStore.setState({ activeColorSymbol: null });
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'EURUSD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ffffff',
+        isDefaultPalette: false,
+      });
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'GBPUSD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ffffff',
+        isDefaultPalette: false,
+      });
+
+      useChartSettingsStore.getState().applySymbolPresetScheme('XAUUSD', 'Green and Blue');
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'EURUSD')).toEqual({
+        upColor: CHART_CANDLE_UP_COLOR,
+        downColor: '#4597ff',
+        isDefaultPalette: false,
+      });
+
+      useChartSettingsStore.getState().applySymbolPresetScheme('XAUUSD', 'Green and Red');
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'EURUSD')).toEqual({
+        upColor: CHART_CANDLE_UP_COLOR,
+        downColor: CHART_CANDLE_DOWN_COLOR,
+        isDefaultPalette: false,
+      });
+
+      useChartSettingsStore.getState().applySymbolPresetScheme('XAUUSD', 'Green and White');
+      expect(getChartDirectionalQuoteColors(useChartSettingsStore.getState().symbolProperties.XAUUSD)).toEqual({
+        upColor: CHART_CANDLE_UP_COLOR,
+        downColor: '#ffffff',
+        isDefaultPalette: false,
+      });
+
+      useChartSettingsStore.getState().updateSymbolColor('XAUUSD', 'bullCandle', '#12ab34');
+      useChartSettingsStore.getState().updateSymbolColor('XAUUSD', 'bearCandle', '#de5678');
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'EURUSD')).toEqual({
+        upColor: '#12ab34',
+        downColor: '#de5678',
+        isDefaultPalette: false,
+      });
+
+      // When a persisted state has an older symbol with Green and Red and the active chart
+      // is AUDCAD with Blue and White, setActiveColorSymbol('AUDCAD') makes all Market Watch
+      // symbols match AUDCAD's Blue and White palette while syncQuoteColorsWithChart is enabled.
+      useChartSettingsStore.setState({
+        symbolProperties: {
+          XAUUSD: {
+            ...defaultChartProperties,
+            colorScheme: 'Green and Red',
+            colors: getPresetSchemeColors('Green and Red'),
+          },
+          AUDCAD: {
+            ...defaultChartProperties,
+            colorScheme: 'Blue and White',
+            colors: getPresetSchemeColors('Blue and White'),
+          },
+        },
+        activeColorSymbol: 'XAUUSD',
+        syncQuoteColorsWithChart: true,
+      });
+      useChartSettingsStore.getState().setActiveColorSymbol('AUDCAD');
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'AUDCAD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ffffff',
+        isDefaultPalette: false,
+      });
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'XAUUSD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ffffff',
+        isDefaultPalette: false,
+      });
+
+      // Turning the option back off returns all symbols to Blue and Red.
+      useChartSettingsStore.getState().setSyncQuoteColorsWithChart(false);
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'AUDCAD')).toEqual({
+        upColor: '#4597ff',
+        downColor: '#ff5858',
+        isDefaultPalette: true,
+      });
+    } finally {
+      useChartSettingsStore.setState(initial);
+    }
   });
 });

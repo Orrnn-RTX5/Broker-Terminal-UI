@@ -74,7 +74,7 @@ type CreateTradeOverlayDomRuntimeOptions = {
   activeTradeSnapshotsRef: RefObject<Map<string, ActiveTradeSnapshot>>;
   brokerAccountSessionScope: string;
   chartThemeRef: RefObject<TradingViewChartTheme>;
-  digits: number;
+  digits: number | null;
   historyOverlayNodeDataRef: RefObject<OverlayNodeData[]>;
   historyOverlayNodesRef: RefObject<HTMLElement[]>;
   isChartSurfaceLight: () => boolean;
@@ -134,7 +134,7 @@ export const createTradeOverlayDomRuntime = ({
       return (_role: TradeLevelRole, price: number) => {
         const y = seriesRef.current?.priceToCoordinate(price);
         const bucket = y == null || !Number.isFinite(y)
-          ? price.toFixed(digits)
+          ? (digits === null ? String(price) : price.toFixed(digits))
           : String(Math.round(y / 18));
         const key = bucket;
         const offsetIndex = offsets.get(key) ?? 0;

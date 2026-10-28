@@ -15,7 +15,7 @@ import { drawingManager } from '../../../services/drawingManager';
 import type { IndicatorConfig } from '../../../services/indicatorManager';
 import { activateActiveChartSource } from '../../../services/activeChartSource';
 import type { SymbolMarketStatusState } from '../../../hooks/useSymbolMarketStatus';
-import type { ChartProperties } from '../../../store/useChartSettingsStore';
+import { getChartDirectionalQuoteColors, type ChartProperties } from '../../../store/useChartSettingsStore';
 import type { ChartTemplate } from '../../../store/useTemplateStore';
 import type {
   ChartType,
@@ -394,6 +394,8 @@ return (
           </div>
         ) : null;
 
+        const hudQuoteColors = getChartDirectionalQuoteColors(chartSettings, { isAdvancedUntitledLight });
+
         return isAdvancedUntitledLight ? (
           <div className="rtx-chart-hud" style={{
             position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
@@ -418,13 +420,13 @@ return (
                 </span>
                 <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                   H: <span ref={ohlcHighRef} style={{
-                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-chart-high)',
+                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: hudQuoteColors.upColor,
                     background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
                   }}>0.00000</span>
                 </span>
                 <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                   L: <span ref={ohlcLowRef} style={{
-                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-quote-down)',
+                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: hudQuoteColors.downColor,
                     background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
                   }}>0.00000</span>
                 </span>
@@ -450,8 +452,8 @@ return (
             {chartSettings.showOHLC && (
               <>
                 <span>O: <span ref={ohlcOpenRef} style={{ color: chartTheme.text }}>0.00000</span></span>
-                <span>H: <span ref={ohlcHighRef} style={{ color: '#22c55e' }}>0.00000</span></span>
-                <span>L: <span ref={ohlcLowRef} style={{ color: '#ef4444' }}>0.00000</span></span>
+                <span>H: <span ref={ohlcHighRef} style={{ color: hudQuoteColors.upColor }}>0.00000</span></span>
+                <span>L: <span ref={ohlcLowRef} style={{ color: hudQuoteColors.downColor }}>0.00000</span></span>
                 <span>C: <span ref={ohlcCloseRef} style={{ color: chartTheme.text }}>0.00000</span></span>
               </>
             )}

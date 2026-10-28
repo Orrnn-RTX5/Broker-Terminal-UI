@@ -1632,6 +1632,14 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-wat
   color: var(--rtx-light-price) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__price--bid:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) {
+  color: var(--rtx-light-quote-down) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__price--ask:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) {
+  color: var(--rtx-light-quote-up) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__price--up {
   color: var(--rtx-light-quote-up) !important;
 }

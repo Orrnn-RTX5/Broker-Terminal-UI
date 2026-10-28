@@ -307,7 +307,8 @@ html.theme-light .rtx-market-watch-details {
 }
 
 .rtx-market-watch-details__row[aria-selected='true'] {
-  background: var(--mw-desktop-selection, #0078d7);
+  background: var(--mw-desktop-row-selected-focus, #252d3a);
+  box-shadow: inset 2px 0 0 var(--mw-desktop-selection, #3b82f6);
 }
 
 :is(html.rtx-skin-untitled-light, html.theme-light) .rtx-market-watch-details__row[aria-selected='true'] {
@@ -352,7 +353,7 @@ html.theme-light .rtx-market-watch-details {
 }
 
 .rtx-market-watch-details__row[aria-selected='true'] .rtx-market-watch-details__label,
-.rtx-market-watch-details__row[aria-selected='true'] .rtx-market-watch-details__value {
+.rtx-market-watch-details__row[aria-selected='true'] .rtx-market-watch-details__value:not([data-tone='up']):not([data-tone='down']) {
   color: #ffffff;
   opacity: 1;
 }

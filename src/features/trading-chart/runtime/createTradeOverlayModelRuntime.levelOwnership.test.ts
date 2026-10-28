@@ -75,4 +75,19 @@ describe('chart trade level ticket ownership', () => {
     }
     expect(h.overrides.has(first.key)).toBe(false);
   });
+
+  it('guards null digits without rounding to 0 decimals or widening priceTolerance to 1.0', () => {
+    const runtime = createTradeOverlayModelRuntime({
+      digits: null,
+      tradeLevelOverridesRef: { current: new Map() },
+      tradeLevelLastKnownLevelsRef: { current: new Map() },
+      pendingTradeLevelModifyRequestsRef: { current: new Map() },
+      tradeLevelOptimisticGraceUntilRef: { current: new Map() },
+      persistTradeLevelOverrides: vi.fn(),
+    } as unknown as Parameters<typeof createTradeOverlayModelRuntime>[0]);
+
+    expect(runtime.formatTradeLevelBadgePrice(1.08453)).toBe('1.08453');
+    expect(runtime.formatSignaturePrice(1.08453)).toBe('1.08453');
+    expect(runtime.priceTolerance).toBe(Number.EPSILON);
+  });
 });

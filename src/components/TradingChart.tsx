@@ -67,7 +67,7 @@ import { getTradingChartDefaultVisibleBars, getTradingChartShiftRightOffset, for
 import { getSynchronizedMarketNowMs, synchronizeMarketClock, type SynchronizedMarketClockAnchor } from '../utils/synchronizedMarketClock';
 import { bindChartKeyboardScroll } from '../utils/chartKeyboardScroll';
 import { isChartLegendPainted, paintChartLegend } from '../utils/chartLegend';
-import { activateActiveChartSource, bindActiveChartSourceInteractions, findLargestChartCanvas, getActiveChartSource, registerActiveChartSource } from '../services/activeChartSource';
+import { activateActiveChartSource, bindActiveChartSourceInteractions, findLargestChartCanvas, getActiveChartSource, getActiveChartSourceId, registerActiveChartSource, subscribeActiveChartSource } from '../services/activeChartSource';
 import { formatHistoryForOhlcv, getVisibleLogicalRangeForDataRender, upsertCandleIntoHistory, type LogicalRangeLike } from '../utils/candleHistory';
 import { formatChartSeriesData, getAreaTrendDirection, getAreaTrendSeriesOptions, getDisplayVolume, getLeftVisibleTimeFromLogicalRange, getLivePriceOverlayColors, getLivePriceSeriesColor, getRenderedPrependedBarCount, getSeparatorPriority, getVisibleLogicalRangeAnchoredToTime, isDenseMinuteSeparatorTimeframe, isPotentialMarketClosedPlaceholderCandle, shouldRestoreProtectedHistoryForFullRender, shouldApplyVisibleRangeResetForRender, TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS } from './TradingChart.helpers';
 import type { Candle, ChartType, Timeframe } from '../types/chart';
@@ -451,7 +451,15 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     if (!isActive) return;
     activateActiveChartSource(activeChartSourceId);
-  }, [activeChartSourceId, isActive]);
+    if (symbol) {
+      useChartSettingsStore.getState().setActiveColorSymbol(symbol);
+    }
+    return subscribeActiveChartSource(() => {
+      if (symbol && getActiveChartSourceId() === activeChartSourceId) {
+        useChartSettingsStore.getState().setActiveColorSymbol(symbol);
+      }
+    });
+  }, [activeChartSourceId, isActive, symbol]);
 
   const ohlcOpenRef = useRef<HTMLSpanElement>(null);
   const ohlcHighRef = useRef<HTMLSpanElement>(null);
@@ -484,19 +492,19 @@ export const TradingChart = React.memo(function TradingChart({
       observedPriceDigitsScopeRef.current = activeScopeKey;
       observedPriceDigitsRef.current = null;
     }
-    if (inferred !== null) {
-      const hasCandleSample = Boolean(candlesSample && candlesSample.length > 0);
-      if (
-        observedPriceDigitsRef.current === null
-        || (hasCandleSample ? inferred !== observedPriceDigitsRef.current : inferred > observedPriceDigitsRef.current)
-      ) {
-        observedPriceDigitsRef.current = inferred;
-        setObservedPriceDigitsState(prev => (
-          prev.scopeKey === activeScopeKey && prev.digits === inferred
-            ? prev
-            : { scopeKey: activeScopeKey, digits: inferred }
-        ));
-      }
+    if (
+      inferred !== null
+      && (observedPriceDigitsRef.current === null || inferred > observedPriceDigitsRef.current)
+    ) {
+      observedPriceDigitsRef.current = inferred;
+    }
+    const nextObservedDigits = observedPriceDigitsRef.current;
+    if (nextObservedDigits !== null) {
+      setObservedPriceDigitsState(prev => (
+        prev.scopeKey === activeScopeKey && prev.digits !== null && prev.digits >= nextObservedDigits
+          ? prev
+          : { scopeKey: activeScopeKey, digits: nextObservedDigits }
+      ));
     }
     const nextDigits = resolveEffectiveChartPriceDigits(
       resolveSymbolPriceDigits(activeSymbol, priceDigits),
@@ -2497,13 +2505,15 @@ useTradingChartInitialization({
         );
       }
       if (currentCandle) {
-        updateLegendDOM(
-          currentCandle.open,
-          currentCandle.high,
-          currentCandle.low,
-          currentCandle.close,
-          getDisplayVolume(currentCandle, chartSettingsRef.current),
-        );
+        if (dataWindowHoverTimeRef.current === null) {
+          updateLegendDOM(
+            currentCandle.open,
+            currentCandle.high,
+            currentCandle.low,
+            currentCandle.close,
+            getDisplayVolume(currentCandle, chartSettingsRef.current),
+          );
+        }
         repaintLivePriceOverlayFromCurrentPrice(currentCandle);
       }
       refreshTradeOverlayGeometry();

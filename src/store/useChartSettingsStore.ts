@@ -7,15 +7,50 @@ export type ChartGridLineStyle = "dashed" | "solid";
 export type ChartGridType = "square" | "scale" | "mt5";
 export type ChartBackgroundLogoMode = "none" | "default" | "url" | "file";
 export type ChartBackgroundLogoArea = "chart" | "chart_and_axes";
-export type ColorScheme =
+export type LegacyColorScheme =
   | "Green on Black"
-  | "Green and White"
-  | "Green and Blue"
-  | "Blue and White"
   | "Blue on Black"
   | "Black on White"
   | "Yellow on Black"
+  | "Green on White";
+
+export type ColorScheme =
+  | "Green and Red"
+  | "Green and White"
+  | "Green and Blue"
+  | "Blue and White"
+  | "Blue and Red"
+  | "Gray and White"
+  | "Yellow and White"
   | "Custom";
+
+export const normalizeColorSchemeName = (
+  scheme?: ColorScheme | LegacyColorScheme | null,
+): ColorScheme => {
+  switch (scheme) {
+    case "Green on Black":
+      return "Green and Red";
+    case "Blue on Black":
+      return "Blue and Red";
+    case "Black on White":
+      return "Gray and White";
+    case "Yellow on Black":
+      return "Yellow and White";
+    case "Green on White":
+      return "Green and White";
+    case "Green and Red":
+    case "Green and White":
+    case "Green and Blue":
+    case "Blue and White":
+    case "Blue and Red":
+    case "Gray and White":
+    case "Yellow and White":
+    case "Custom":
+      return scheme;
+    default:
+      return "Blue and Red";
+  }
+};
 
 export const CHART_PROFIT_COLOR = "#00C896";
 export const CHART_LOSS_COLOR = "#FF4D4F";
@@ -207,7 +242,7 @@ export const defaultChartProperties: ChartProperties = {
   tradeHistoryLineOpacity: 70,
   tradeHistoryBoxOpacity: 40,
 
-  colorScheme: "Blue on Black",
+  colorScheme: "Blue and Red",
   colors: { ...blueSchemeColors },
 };
 
@@ -224,14 +259,15 @@ export const clampChartOpacityPercent = (value: unknown, fallback: number): numb
 };
 
 type PersistedChartProperties = Partial<Omit<ChartProperties, "colors" | "colorScheme">> & {
-  colorScheme?: ColorScheme | "Green on White";
+  colorScheme?: ColorScheme | LegacyColorScheme;
   colors?: Partial<ChartProperties["colors"]>;
 };
 
 const normalizeSchemeColors = (
-  colorScheme: ColorScheme,
+  rawColorScheme: ColorScheme | LegacyColorScheme,
   colors: ChartProperties["colors"],
 ): ChartProperties["colors"] => {
+  const colorScheme = normalizeColorSchemeName(rawColorScheme);
   if (colorScheme === "Blue and White") {
     return {
       ...colors,
@@ -242,7 +278,7 @@ const normalizeSchemeColors = (
     };
   }
 
-  if (colorScheme === "Blue on Black") {
+  if (colorScheme === "Blue and Red") {
     const migrateBlue = (value: string) => ["#2962ff", "#5b8fd9"].includes(value.toLowerCase()) ? CHART_BLUE_COLOR : value;
     const migrateRed = (value: string) => value.toUpperCase() === CHART_LOSS_COLOR ? BLUE_TEMPLATE_RED_COLOR : value;
     return {
@@ -261,7 +297,7 @@ const normalizeSchemeColors = (
     };
   }
 
-  if (colorScheme === "Green on Black") {
+  if (colorScheme === "Green and Red") {
     const migrateLegacyColor = (value: string, legacy: string, replacement: string) => (
       value.toUpperCase() === legacy ? replacement : value
     );
@@ -300,8 +336,9 @@ const normalizeSchemeColors = (
 
 export const normalizeChartProperties = (properties?: PersistedChartProperties | null): ChartProperties => {
   const legacyWhitePreset = properties?.colorScheme === "Green on White";
-  const colorScheme: ColorScheme = properties?.colorScheme === "Green on White"
-    ? "Green and White" : properties?.colorScheme ?? defaultChartProperties.colorScheme;
+  const colorScheme: ColorScheme = normalizeColorSchemeName(
+    properties?.colorScheme ?? defaultChartProperties.colorScheme,
+  );
   const rawSavedColors = legacyWhitePreset
     ? Object.fromEntries(Object.entries(properties?.colors ?? {}).filter(([key, value]) => (
       value?.toLowerCase() !== legacyGreenOnWhiteSchemeColors[key as keyof ChartProperties["colors"]]?.toLowerCase()
@@ -359,12 +396,13 @@ const normalizeSymbolProperties = (
 const migrateDefaultPalette = (properties: ChartProperties): ChartProperties => {
   // Upgrade only the untouched former default. Customized palettes and other
   // templates keep their saved colors; users can select Green again afterward.
-  const isPreviousDefault = properties.colorScheme === "Green on Black"
+  const normalizedScheme = normalizeColorSchemeName(properties.colorScheme);
+  const isPreviousDefault = normalizedScheme === "Green and Red"
     && (Object.keys(greenSchemeColors) as (keyof ChartProperties["colors"])[])
       .every((key) => properties.colors[key].toLowerCase() === greenSchemeColors[key].toLowerCase());
   return isPreviousDefault
-    ? { ...properties, colorScheme: "Blue on Black", colors: { ...blueSchemeColors } }
-    : properties;
+    ? { ...properties, colorScheme: "Blue and Red", colors: { ...blueSchemeColors } }
+    : { ...properties, colorScheme: normalizedScheme };
 };
 
 const hideVolumeBars = (properties: ChartProperties): ChartProperties => ({
@@ -505,10 +543,11 @@ export const applyOhlcDefaultMigration = (
 };
 
 export const getPresetSchemeColors = (
-  scheme: ColorScheme,
+  rawScheme: ColorScheme | LegacyColorScheme,
   fallbackColors: ChartProperties["colors"] = defaultChartProperties.colors,
 ): ChartProperties["colors"] => {
-  if (scheme === "Green on Black") {
+  const scheme = normalizeColorSchemeName(rawScheme);
+  if (scheme === "Green and Red") {
     return { ...greenSchemeColors };
   }
 
@@ -524,11 +563,11 @@ export const getPresetSchemeColors = (
     return { ...blueAndWhiteSchemeColors };
   }
 
-  if (scheme === "Blue on Black") {
+  if (scheme === "Blue and Red") {
     return { ...blueSchemeColors };
   }
 
-  if (scheme === "Black on White") {
+  if (scheme === "Gray and White") {
     return {
       background: "#000000",
       foreground: "#ffffff",
@@ -546,7 +585,7 @@ export const getPresetSchemeColors = (
     };
   }
 
-  if (scheme === "Yellow on Black") {
+  if (scheme === "Yellow and White") {
     return {
       background: "#000000",
       foreground: "#f8fafc",
@@ -588,18 +627,19 @@ const readConfiguredThemeChartSurface = (
 };
 
 export const getEffectiveChartColors = (
-  properties: Pick<ChartProperties, "colorScheme" | "colors">,
+  properties: { colorScheme: ColorScheme | LegacyColorScheme; colors: ChartProperties["colors"] },
   options: { isAdvancedUntitledLight?: boolean } = {},
 ): ChartProperties["colors"] => {
+  const colorScheme = normalizeColorSchemeName(properties.colorScheme);
   if (!options.isAdvancedUntitledLight) {
-    const baseColors = properties.colorScheme === "Blue and White" || properties.colors.background?.toLowerCase() === "#14171f"
+    const baseColors = colorScheme === "Blue and White" || properties.colors.background?.toLowerCase() === "#14171f"
       ? {
           ...properties.colors,
           background: "#000000",
           ...(properties.colors.grid === "rgba(255,255,255,0.06)" ? { grid: blueAndWhiteSchemeColors.grid } : {}),
         }
       : properties.colors;
-    const darkThemeSurface = properties.colorScheme !== "Custom"
+    const darkThemeSurface = colorScheme !== "Custom"
       ? readConfiguredThemeChartSurface("dark")
       : null;
     return darkThemeSurface
@@ -616,12 +656,12 @@ export const getEffectiveChartColors = (
     ...(readConfiguredThemeChartSurface("light") ?? {}),
   };
 
-  if (properties.colorScheme === "Green on Black" || properties.colorScheme === "Blue on Black") {
+  if (colorScheme === "Green and Red" || colorScheme === "Blue and Red") {
     const colors = {
       ...properties.colors,
       ...lightSurface,
     };
-    if (properties.colorScheme === "Green on Black") {
+    if (colorScheme === "Green and Red") {
       const referenceColor = (color: string): string => {
         if (color.toUpperCase() === CHART_PROFIT_COLOR) return "#06634e";
         if (color.toUpperCase() === CHART_LOSS_COLOR) return "#a51f26";
@@ -649,7 +689,7 @@ export const getEffectiveChartColors = (
     return colors;
   }
 
-  if (properties.colorScheme === "Black on White") {
+  if (colorScheme === "Gray and White") {
     return {
       ...properties.colors,
       ...lightSurface,
@@ -663,7 +703,7 @@ export const getEffectiveChartColors = (
     };
   }
 
-  if (properties.colorScheme === "Green and White") {
+  if (colorScheme === "Green and White") {
     return {
       ...properties.colors,
       ...lightSurface,
@@ -677,7 +717,7 @@ export const getEffectiveChartColors = (
     };
   }
 
-  if (properties.colorScheme === "Green and Blue") {
+  if (colorScheme === "Green and Blue") {
     return {
       ...properties.colors,
       ...lightSurface,
@@ -691,7 +731,7 @@ export const getEffectiveChartColors = (
     };
   }
 
-  if (properties.colorScheme === "Blue and White") {
+  if (colorScheme === "Blue and White") {
     return {
       ...properties.colors,
       ...lightSurface,
@@ -705,7 +745,7 @@ export const getEffectiveChartColors = (
     };
   }
 
-  if (properties.colorScheme === "Yellow on Black") {
+  if (colorScheme === "Yellow and White") {
     return {
       ...properties.colors,
       ...lightSurface,
@@ -722,9 +762,135 @@ export const getEffectiveChartColors = (
   return properties.colors;
 };
 
+export interface ChartDirectionalQuoteColors {
+  upColor: string;
+  downColor: string;
+  isDefaultPalette: boolean;
+}
+
+const normalizeReadableQuoteColor = (color: string, isDarkSurface: boolean): string => {
+  const norm = color.trim().toLowerCase();
+  if (isDarkSurface) {
+    if (norm === "#7cfc00" || norm === "#00ff00" || norm === "#0f0" || norm === "#32cd32") {
+      return CHART_CANDLE_UP_COLOR;
+    }
+    if (norm === "#0000ff" || norm === "#00f" || norm === "#2557ff") {
+      return CHART_BLUE_COLOR;
+    }
+    if (norm === "#ff0000" || norm === "#f00") {
+      return CHART_CANDLE_DOWN_COLOR;
+    }
+    return color;
+  }
+  if (
+    norm === "#7cfc00"
+    || norm === "#00ff00"
+    || norm === "#0f0"
+    || norm === "#32cd32"
+    || norm === "#16a34a"
+    || norm === "#15803d"
+    || norm === CHART_CANDLE_UP_COLOR.toLowerCase()
+  ) {
+    return "#087f6c";
+  }
+  if (norm === "#0000ff" || norm === "#00f" || norm === "#2557ff" || norm === CHART_BLUE_COLOR.toLowerCase()) {
+    return "#1746bc";
+  }
+  if (
+    norm === "#ff0000"
+    || norm === "#f00"
+    || norm === CHART_CANDLE_DOWN_COLOR.toLowerCase()
+    || norm === BLUE_TEMPLATE_RED_COLOR.toLowerCase()
+  ) {
+    return "#a51f26";
+  }
+  return color;
+};
+
+export const getChartDirectionalQuoteColors = (
+  properties: { colorScheme: ColorScheme | LegacyColorScheme; colors: ChartProperties["colors"] } & Partial<Pick<ChartProperties, "chartType">>,
+  options: { isAdvancedUntitledLight?: boolean } = {},
+): ChartDirectionalQuoteColors => {
+  const normalizedColorScheme = normalizeColorSchemeName(properties.colorScheme);
+  const effective = getEffectiveChartColors({ ...properties, colorScheme: normalizedColorScheme }, options);
+  const isDarkSurface = !options.isAdvancedUntitledLight;
+  const bgNorm = (effective.background || "#000000").trim().toLowerCase();
+  const isInvisibleOnSurface = (color: string | undefined): boolean => {
+    if (!color) return true;
+    const norm = color.trim().toLowerCase();
+    if (isDarkSurface) {
+      return norm === "#000000" || norm === "#000" || norm === bgNorm;
+    }
+    return norm === "#ffffff" || norm === "#fff" || norm === "#f8fafc" || norm === bgNorm;
+  };
+
+  const preferBar = properties.chartType === "Bar";
+  const isCustomScheme = normalizedColorScheme === "Custom";
+  const primaryUp = preferBar
+    ? effective.barUp
+    : isCustomScheme
+      && effective.bullCandle?.trim().toLowerCase() === CHART_BLUE_COLOR.toLowerCase()
+      && effective.barUp?.trim().toLowerCase() !== CHART_BLUE_COLOR.toLowerCase()
+      && !isInvisibleOnSurface(effective.barUp)
+      ? effective.barUp
+      : effective.bullCandle;
+  const secondaryUp = preferBar ? effective.bullCandle : effective.barUp;
+  const rawUpColor = (!isInvisibleOnSurface(primaryUp) ? primaryUp : secondaryUp) || CHART_BLUE_COLOR;
+
+  const primaryDown = preferBar
+    ? effective.barDown
+    : isCustomScheme
+      && effective.bearCandle?.trim().toLowerCase() === BLUE_TEMPLATE_RED_COLOR.toLowerCase()
+      && effective.barDown?.trim().toLowerCase() !== BLUE_TEMPLATE_RED_COLOR.toLowerCase()
+      && !isInvisibleOnSurface(effective.barDown)
+      ? effective.barDown
+      : effective.bearCandle;
+  const secondaryDown = preferBar ? effective.bearCandle : effective.barDown;
+  let rawDownColor = (!isInvisibleOnSurface(primaryDown) ? primaryDown : secondaryDown) || BLUE_TEMPLATE_RED_COLOR;
+  if (
+    rawDownColor.trim().toLowerCase() === rawUpColor.trim().toLowerCase()
+    && !isInvisibleOnSurface(effective.barUp)
+    && effective.barUp.trim().toLowerCase() !== rawUpColor.trim().toLowerCase()
+  ) {
+    rawDownColor = effective.barUp;
+  } else if (rawDownColor.trim().toLowerCase() === rawUpColor.trim().toLowerCase()) {
+    rawDownColor = isDarkSurface ? "#adadad" : "#334155";
+  }
+
+  const upColor = normalizeReadableQuoteColor(rawUpColor, isDarkSurface);
+  let downColor = normalizeReadableQuoteColor(rawDownColor, isDarkSurface);
+  if (downColor.trim().toLowerCase() === upColor.trim().toLowerCase()) {
+    downColor = isDarkSurface ? "#adadad" : "#334155";
+  }
+
+  const isDefaultPalette = normalizedColorScheme === defaultChartProperties.colorScheme
+    && (options.isAdvancedUntitledLight
+      ? upColor.trim().toLowerCase() === "#1746bc"
+        && downColor.trim().toLowerCase() === "#a51f26"
+      : upColor.trim().toLowerCase() === CHART_BLUE_COLOR.toLowerCase()
+        && downColor.trim().toLowerCase() === BLUE_TEMPLATE_RED_COLOR.toLowerCase());
+
+  return {
+    upColor,
+    downColor,
+    isDefaultPalette,
+  };
+};
+
+const hasCustomQuotePalette = (
+  properties: { colorScheme: ColorScheme | LegacyColorScheme; colors: ChartProperties["colors"] } & Partial<Pick<ChartProperties, "chartType">>,
+): boolean => {
+  if (normalizeColorSchemeName(properties.colorScheme) !== defaultChartProperties.colorScheme) {
+    return true;
+  }
+  return !getChartDirectionalQuoteColors(properties).isDefaultPalette;
+};
+
 interface ChartSettingsState {
   globalProperties: ChartProperties;
   symbolProperties: Record<string, ChartProperties>; // Allow specific overrides per chart symbol
+  activeColorSymbol?: string | null;
+  syncQuoteColorsWithChart: boolean;
   volumeBarsDefaultMigrationVersion: number;
   periodSeparatorsDefaultMigrationVersion: number;
   chartShiftDefaultMigrationVersion: number;
@@ -749,18 +915,64 @@ interface ChartSettingsState {
     key: K,
     value: ChartProperties[K],
   ) => void;
-  applyPresetScheme: (scheme: ColorScheme) => void;
-  applySymbolPresetScheme: (symbol: string, scheme: ColorScheme) => void;
+  applyPresetScheme: (scheme: ColorScheme | LegacyColorScheme) => void;
+  applySymbolPresetScheme: (symbol: string, scheme: ColorScheme | LegacyColorScheme) => void;
+  setActiveColorSymbol: (symbol: string | null) => void;
+  setSyncQuoteColorsWithChart: (enabled: boolean) => void;
   inheritSymbolProperties: (from: string, to: string) => void;
   resetSymbolToDefaults: (symbol: string) => void;
   resetToDefaults: () => void;
 }
+
+export const selectChartPropertiesForQuote = (
+  state: Pick<ChartSettingsState, "globalProperties" | "symbolProperties" | "activeColorSymbol"> & {
+    syncQuoteColorsWithChart?: boolean;
+  },
+  symbol?: string | null,
+): ChartProperties => {
+  if (!state.syncQuoteColorsWithChart) {
+    return defaultChartProperties;
+  }
+  const normalizedSymbol = symbol?.trim();
+  const activeSymbol = state.activeColorSymbol?.trim();
+  if (activeSymbol) {
+    return state.symbolProperties[activeSymbol] || state.globalProperties;
+  }
+  if (
+    normalizedSymbol
+    && state.symbolProperties[normalizedSymbol]
+    && hasCustomQuotePalette(state.symbolProperties[normalizedSymbol])
+  ) {
+    return state.symbolProperties[normalizedSymbol];
+  }
+  if (hasCustomQuotePalette(state.globalProperties)) {
+    return state.globalProperties;
+  }
+  const customizedSymbolProperties = Object.values(state.symbolProperties).find(hasCustomQuotePalette);
+  if (customizedSymbolProperties) {
+    return customizedSymbolProperties;
+  }
+  return (normalizedSymbol ? state.symbolProperties[normalizedSymbol] : undefined)
+    || state.globalProperties;
+};
+
+export const resolveChartQuoteColors = (
+  state: Pick<ChartSettingsState, "globalProperties" | "symbolProperties" | "activeColorSymbol"> & {
+    syncQuoteColorsWithChart?: boolean;
+  },
+  symbol?: string | null,
+  options: { isAdvancedUntitledLight?: boolean } = {},
+): ChartDirectionalQuoteColors => {
+  return getChartDirectionalQuoteColors(selectChartPropertiesForQuote(state, symbol), options);
+};
 
 export const useChartSettingsStore = create<ChartSettingsState>()(
   persist(
     (set) => ({
       globalProperties: { ...defaultChartProperties },
       symbolProperties: {},
+      activeColorSymbol: null,
+      syncQuoteColorsWithChart: false,
       volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
       periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
       chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
@@ -769,12 +981,14 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
 
       updateGlobalProperty: (key, value) => {
         set((state) => ({
+          ...(key === "colorScheme" || key === "colors" ? { activeColorSymbol: null } : {}),
           globalProperties: { ...state.globalProperties, [key]: value },
         }));
       },
 
       updateGlobalColor: (key, value) => {
         set((state) => ({
+          activeColorSymbol: null,
           globalProperties: {
             ...state.globalProperties,
             colorScheme: "Custom",
@@ -789,17 +1003,29 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       updateSymbolColor: (symbol, key, value) => {
         set((state) => {
           const currentProperties = state.symbolProperties[symbol] || state.globalProperties;
+          const nextColors = {
+            ...currentProperties.colors,
+            [key]: value,
+          };
+          const syncedSymbols = Object.fromEntries(
+            Object.entries(state.symbolProperties).map(([sym, props]) => [
+              sym,
+              {
+                ...props,
+                colorScheme: "Custom" as const,
+                colors: { ...nextColors },
+              },
+            ]),
+          );
 
           return {
+            activeColorSymbol: symbol,
             symbolProperties: {
-              ...state.symbolProperties,
+              ...syncedSymbols,
               [symbol]: {
                 ...currentProperties,
                 colorScheme: "Custom",
-                colors: {
-                  ...currentProperties.colors,
-                  [key]: value,
-                },
+                colors: nextColors,
               },
             },
           };
@@ -807,22 +1033,39 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       },
 
       updateSymbolProperty: (symbol, key, value) => {
-        set((state) => ({
-          symbolProperties: {
-            ...state.symbolProperties,
-            [symbol]: {
-              ...(state.symbolProperties[symbol] || state.globalProperties),
-              [key]: value,
+        set((state) => {
+          const activeProps = state.activeColorSymbol
+            ? state.symbolProperties[state.activeColorSymbol]
+            : undefined;
+          const baseProperties = state.symbolProperties[symbol] || (
+            activeProps
+              ? {
+                  ...state.globalProperties,
+                  colorScheme: activeProps.colorScheme,
+                  colors: { ...activeProps.colors },
+                }
+              : state.globalProperties
+          );
+          return {
+            ...(key === "colorScheme" || key === "colors" ? { activeColorSymbol: symbol } : {}),
+            symbolProperties: {
+              ...state.symbolProperties,
+              [symbol]: {
+                ...baseProperties,
+                [key]: value,
+              },
             },
-          },
-        }));
+          };
+        });
       },
 
-      applyPresetScheme: (scheme) => {
+      applyPresetScheme: (rawScheme) => {
         set((state) => {
+          const scheme = normalizeColorSchemeName(rawScheme);
           const newColors = getPresetSchemeColors(scheme, state.globalProperties.colors);
 
           return {
+            activeColorSymbol: null,
             globalProperties: {
               ...state.globalProperties,
               colorScheme: scheme,
@@ -832,20 +1075,47 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
         });
       },
 
-      applySymbolPresetScheme: (symbol, scheme) => {
+      applySymbolPresetScheme: (symbol, rawScheme) => {
         set((state) => {
+          const scheme = normalizeColorSchemeName(rawScheme);
           const currentProperties = state.symbolProperties[symbol] || state.globalProperties;
+          const nextColors = getPresetSchemeColors(scheme, currentProperties.colors);
+          const syncedSymbols = Object.fromEntries(
+            Object.entries(state.symbolProperties).map(([sym, props]) => [
+              sym,
+              {
+                ...props,
+                colorScheme: scheme,
+                colors: { ...nextColors },
+              },
+            ]),
+          );
 
           return {
+            activeColorSymbol: symbol,
             symbolProperties: {
-              ...state.symbolProperties,
+              ...syncedSymbols,
               [symbol]: {
                 ...currentProperties,
                 colorScheme: scheme,
-                colors: getPresetSchemeColors(scheme, currentProperties.colors),
+                colors: nextColors,
               },
             },
           };
+        });
+      },
+
+      setActiveColorSymbol: (symbol) => {
+        set((state) => {
+          const normalized = symbol?.trim() || null;
+          return state.activeColorSymbol === normalized ? state : { activeColorSymbol: normalized };
+        });
+      },
+
+      setSyncQuoteColorsWithChart: (enabled) => {
+        set((state) => {
+          const next = Boolean(enabled);
+          return state.syncQuoteColorsWithChart === next ? state : { syncQuoteColorsWithChart: next };
         });
       },
 
@@ -855,7 +1125,10 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           // The chart window keeps its Show-section choices when its rendered
           // symbol settles from a fallback to the saved broker contract.
           if (!source || from === to || state.symbolProperties[to]) return state;
-          return { symbolProperties: { ...state.symbolProperties, [to]: source } };
+          return {
+            activeColorSymbol: state.activeColorSymbol === from ? to : state.activeColorSymbol,
+            symbolProperties: { ...state.symbolProperties, [to]: source },
+          };
         });
       },
 
@@ -863,13 +1136,19 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
         set((state) => {
           const remainingSymbolProperties = { ...state.symbolProperties };
           delete remainingSymbolProperties[symbol];
-          return { symbolProperties: remainingSymbolProperties };
+          return {
+            activeColorSymbol: state.activeColorSymbol === symbol ? null : state.activeColorSymbol,
+            syncQuoteColorsWithChart: false,
+            symbolProperties: remainingSymbolProperties,
+          };
         });
       },
 
       resetToDefaults: () => {
         set({
           globalProperties: { ...defaultChartProperties },
+          activeColorSymbol: null,
+          syncQuoteColorsWithChart: false,
           volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
           periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
           chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
@@ -904,22 +1183,30 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           persistedState?.ohlcDefaultMigrationVersion,
         );
         const needsPaletteMigration = (persistedState?.blueRedDefaultMigrationVersion ?? 0) < BLUE_RED_DEFAULT_MIGRATION_VERSION;
+        const resolvedGlobalProperties = needsPaletteMigration
+          ? migrateDefaultPalette(ohlcMigrated.globalProperties)
+          : ohlcMigrated.globalProperties;
+        const resolvedSymbolProperties = needsPaletteMigration
+          ? Object.fromEntries(Object.entries(ohlcMigrated.symbolProperties).map(([symbol, properties]) => [symbol, migrateDefaultPalette(properties)]))
+          : ohlcMigrated.symbolProperties;
+        const persistedActiveSymbol = persistedState?.activeColorSymbol?.trim();
+        const resolvedActiveColorSymbol = (persistedActiveSymbol && resolvedSymbolProperties[persistedActiveSymbol])
+          ? persistedActiveSymbol
+          : Object.entries(resolvedSymbolProperties).find(([, properties]) => hasCustomQuotePalette(properties))?.[0] ?? null;
 
         return {
           ...current,
           ...persistedState,
+          activeColorSymbol: resolvedActiveColorSymbol,
+          syncQuoteColorsWithChart: Boolean(persistedState?.syncQuoteColorsWithChart),
           volumeBarsDefaultMigrationVersion: volumeMigrated.volumeBarsDefaultMigrationVersion,
           chartShiftDefaultMigrationVersion: chartShiftMigrated.chartShiftDefaultMigrationVersion,
           periodSeparatorsDefaultMigrationVersion: periodMigrated.periodSeparatorsDefaultMigrationVersion,
           ohlcDefaultMigrationVersion: ohlcMigrated.ohlcDefaultMigrationVersion,
           ...ohlcMigrated,
           blueRedDefaultMigrationVersion: BLUE_RED_DEFAULT_MIGRATION_VERSION,
-          globalProperties: needsPaletteMigration
-            ? migrateDefaultPalette(ohlcMigrated.globalProperties)
-            : ohlcMigrated.globalProperties,
-          symbolProperties: needsPaletteMigration
-            ? Object.fromEntries(Object.entries(ohlcMigrated.symbolProperties).map(([symbol, properties]) => [symbol, migrateDefaultPalette(properties)]))
-            : ohlcMigrated.symbolProperties,
+          globalProperties: resolvedGlobalProperties,
+          symbolProperties: resolvedSymbolProperties,
         };
       },
     },

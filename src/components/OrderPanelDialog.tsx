@@ -8,7 +8,12 @@ import {
   useSettingsStore,
   useTradeDefaults,
 } from '../store/useSettingsStore';
-import { getEffectiveChartColors, useChartSettingsStore } from '../store/useChartSettingsStore';
+import {
+  getChartDirectionalQuoteColors,
+  getEffectiveChartColors,
+  selectChartPropertiesForQuote,
+  useChartSettingsStore,
+} from '../store/useChartSettingsStore';
 import { candleAggregationService } from '../services/candleAggregationService';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import { useLiveOrderBook } from '../hooks/useLiveMarketData';
@@ -1004,6 +1009,13 @@ function MiniTickChart({
 
       // When in tick-only mode (no historical M1 bars) on candlestick/bar/hlc, also overlay live tick lines
       if (liveM1Candles.length < 2 && (miniChartType === 'candlestick' || miniChartType === 'bar' || miniChartType === 'hlc')) {
+        const bgNormForTrace = palette.background.trim().toLowerCase();
+        const isInvisibleForTrace = (c: string) => {
+          const n = c.trim().toLowerCase();
+          return n === '#000000' || n === '#000' || n === bgNormForTrace;
+        };
+        const traceUpColor = !isInvisibleForTrace(candleUpBody) ? candleUpBody : candleUpBorder;
+        const traceDownColor = !isInvisibleForTrace(candleDownBody) ? candleDownBody : candleDownBorder;
         const traceLine = (key: 'bid' | 'ask', color: string) => {
           ctx.beginPath();
           plotHistory.forEach((tick, index) => {
@@ -1018,8 +1030,8 @@ function MiniTickChart({
           ctx.lineWidth = 1.15;
           ctx.stroke();
         };
-        traceLine('bid', palette.bid);
-        traceLine('ask', palette.ask);
+        traceLine('bid', traceUpColor);
+        traceLine('ask', traceDownColor);
       }
 
       // Helper to draw a high-contrast right-side price scale tag
@@ -1149,10 +1161,25 @@ function MiniTickChart({
 
       // Draw live Bid & Ask price lines and right-side price scale tags last so they stay on top
       if (showPriceLines && lastTick) {
-        const bidLineColor = palette.bid && palette.bid.toLowerCase() !== '#778899' ? palette.bid : '#3b82f6';
-        const bidTagBg = '#1d4ed8';
-        const askLineColor = palette.ask || '#ef4444';
-        const askTagBg = '#dc2626';
+        const bgNorm = palette.background.trim().toLowerCase();
+        const isInvisibleOnPlot = (c: string) => {
+          const n = c.trim().toLowerCase();
+          return n === '#000000' || n === '#000' || n === bgNorm;
+        };
+        const visibleUpColor = !isInvisibleOnPlot(candleUpBody) ? candleUpBody : candleUpBorder;
+        const visibleDownColor = !isInvisibleOnPlot(candleDownBody) ? candleDownBody : candleDownBorder;
+        const getReadableTagText = (bgHex: string): string => {
+          const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(bgHex.trim());
+          if (!m) return '#ffffff';
+          const lum = (0.2126 * parseInt(m[1], 16) + 0.7152 * parseInt(m[2], 16) + 0.0722 * parseInt(m[3], 16)) / 255;
+          return lum > 0.6 ? '#000000' : '#ffffff';
+        };
+        const bidLineColor = visibleUpColor;
+        const bidTagBg = visibleUpColor;
+        const bidTagText = getReadableTagText(bidTagBg);
+        const askLineColor = visibleDownColor;
+        const askTagBg = visibleDownColor;
+        const askTagText = getReadableTagText(askTagBg);
 
         ctx.lineWidth = 1;
         if (lastTick.bid > 0) {
@@ -1162,7 +1189,7 @@ function MiniTickChart({
           ctx.lineTo(plotRight, y);
           ctx.strokeStyle = bidLineColor;
           ctx.stroke();
-          drawPriceAxisTag(lastTick.bid, bidTagBg, '#ffffff', resolvedBidTagY);
+          drawPriceAxisTag(lastTick.bid, bidTagBg, bidTagText, resolvedBidTagY);
         }
         if (lastTick.ask > 0) {
           const y = Math.round(Math.max(top, Math.min(plotBottom, yOf(lastTick.ask)))) + 0.5;
@@ -1171,7 +1198,7 @@ function MiniTickChart({
           ctx.lineTo(plotRight, y);
           ctx.strokeStyle = askLineColor;
           ctx.stroke();
-          drawPriceAxisTag(lastTick.ask, askTagBg, '#ffffff', resolvedAskTagY);
+          drawPriceAxisTag(lastTick.ask, askTagBg, askTagText, resolvedAskTagY);
         }
       }
     };
@@ -1706,13 +1733,16 @@ export function OrderPanelDialog({
   const account = useAppStore((s) => s.account);
   const tickSymbolsKey = useAppStore((s) => (accountSymbols ? '' : Object.keys(s.ticks).join('|')));
   const chartSettings = useChartSettingsStore((state) => (
-    state.symbolProperties[symbol] || state.globalProperties
+    selectChartPropertiesForQuote(state, symbol)
   ));
   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
     if (typeof document === 'undefined') return false;
     const root = document.documentElement;
     return root.classList.contains('rtx-advanced-view')
       && root.classList.contains('rtx-skin-untitled-light');
+  });
+  const dialogQuoteColors = getChartDirectionalQuoteColors(chartSettings, {
+    isAdvancedUntitledLight,
   });
 
   useLayoutEffect(() => {
@@ -3077,7 +3107,15 @@ export function OrderPanelDialog({
                   {tr("Spread: ")}{spreadDisplay} · H: {sessionHighDisplay} · L: {sessionLowDisplay}
                 </span>
                 <span className="rtx-order-dialog__mt5-quote">
-                  {formatMt5QuotePrice(bid, specDigits)} / {formatMt5QuotePrice(ask, specDigits)}
+                  {dialogQuoteColors.isDefaultPalette ? (
+                    `${formatMt5QuotePrice(bid, specDigits)} / ${formatMt5QuotePrice(ask, specDigits)}`
+                  ) : (
+                    <>
+                      <span style={{ color: dialogQuoteColors.downColor }}>{formatMt5QuotePrice(bid, specDigits)}</span>
+                      {' / '}
+                      <span style={{ color: dialogQuoteColors.upColor }}>{formatMt5QuotePrice(ask, specDigits)}</span>
+                    </>
+                  )}
                 </span>
                 <span className="rtx-order-dialog__spread-sr">{tr("Spread: ")}{spreadDisplay}</span>
                 {specStopsLevel !== null && specStopsLevel > 0 && (

@@ -8,7 +8,7 @@ import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { FileMenu } from './FileMenu';
 import { useTranslation } from 'react-i18next';
 import { commandBus } from '../../services/commandBus';
-import { useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
+import { normalizeColorSchemeName, useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { useAppStore } from '../../store/useAppStore';
@@ -738,14 +738,24 @@ export const MenuBar = ({
         store.applyPresetScheme(scheme);
     };
 
-    const colorTemplateItems: MenuItem[] = (
-        ['Green on Black', 'Green and White', 'Green and Blue', 'Blue and White', 'Blue on Black', 'Black on White', 'Yellow on Black'] as const
-    ).map((scheme) => ({
-        label: scheme,
-        checked: menuChartProperties.colorScheme === scheme,
-        checkRole: 'radio',
-        action: () => applyActiveColorTemplate(scheme),
-    }));
+    const syncQuoteColorsWithChart = useChartSettingsStore((state) => state.syncQuoteColorsWithChart);
+    const colorTemplateItems: MenuItem[] = [
+        ...(['Green and Red', 'Green and White', 'Green and Blue', 'Blue and White', 'Blue and Red', 'Gray and White', 'Yellow and White'] as const).map((scheme) => ({
+            label: scheme,
+            checked: normalizeColorSchemeName(menuChartProperties.colorScheme) === scheme,
+            checkRole: 'radio' as const,
+            action: () => applyActiveColorTemplate(scheme),
+        })),
+        { divider: true, label: '' },
+        {
+            label: 'Change Bid/Ask price color with chart',
+            checked: syncQuoteColorsWithChart,
+            checkRole: 'checkbox' as const,
+            action: () => {
+                useChartSettingsStore.getState().setSyncQuoteColorsWithChart(!syncQuoteColorsWithChart);
+            },
+        },
+    ];
 
     const toggleDrawingTools = () => {
         useDrawingSidebarStore.getState().toggle();

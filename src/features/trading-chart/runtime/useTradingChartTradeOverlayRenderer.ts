@@ -89,7 +89,7 @@ interface UseTradingChartTradeOverlayRendererOptions {
   persistTradeLevelOverrides: () => void;
   postInteractionCoordinatorRef: RefObject<ChartPostInteractionCoordinator | null>;
   prevTimeframeRef: RefObject<Timeframe>;
-  resolvedPriceDigits: number;
+  resolvedPriceDigits: number | null;
   seriesRef: RefObject<ISeriesApi<SeriesType> | null>;
   stableActiveMarkerTimesRef: RefObject<Map<number | string, number>>;
   symbol: string;
@@ -497,9 +497,18 @@ export const useTradingChartTradeOverlayRenderer = ({
         if (!(orderPrice > 0)) continue;
         const rawOrderType = String(rawOrder?.type ?? rawOrder?.orderType ?? '').trim().toLowerCase();
         const orderSide: TradeSide = String(rawOrder?.side ?? rawOrderType).toUpperCase().includes('SELL') ? 'SELL' : 'BUY';
-        const rawOrderTime = normalizeUnixSeconds(rawOrder?.time_setup ?? rawOrder?.time_create ?? rawOrder?.created_at) ?? normalizeUnixSeconds(Date.now());
+        const key = `order:${orderId}`;
+        const activeTf = prevTimeframeRef.current || timeframe;
+        const scopedEntryTimeKey = getFrozenEntryTimeKey(key, activeTf);
+        const storedEntryTime = frozenEntryTimesRef.current.get(scopedEntryTimeKey);
+        const validStoredEntryTime = storedEntryTime != null && canResolveOverlayTime(storedEntryTime)
+          ? storedEntryTime
+          : null;
+        const rawOrderTime = normalizeUnixSeconds(rawOrder?.time_setup ?? rawOrder?.time_create ?? rawOrder?.created_at)
+          ?? validStoredEntryTime
+          ?? normalizeUnixSeconds(Date.now());
         const mappedOrderTime = resolveStableTradeEntryTime(
-          null,
+          validStoredEntryTime,
           rawOrderTime,
           mapTradeTimestampToChartTime,
           liveTrailTime,
@@ -507,7 +516,9 @@ export const useTradingChartTradeOverlayRenderer = ({
         const entryTime = canResolveOverlayTime(mappedOrderTime)
           ? mappedOrderTime
           : (liveTrailTime ?? mappedOrderTime);
-        const key = `order:${orderId}`;
+        if (validStoredEntryTime == null && entryTime > 0 && canResolveOverlayTime(entryTime)) {
+          frozenEntryTimesRef.current.set(scopedEntryTimeKey, entryTime);
+        }
         nextActiveSnapshots.set(key, {
           key,
           kind: 'pending',
@@ -896,16 +907,13 @@ export const useTradingChartTradeOverlayRenderer = ({
         }
       }
 
-      // Rebuilt nodes are created hidden; place them in this same frame when
-      // the chart is idle so a rebuild never paints an empty overlay. Always
-      // queue a follow-up layout too: the first pass can run before the series
-      // has coordinates after a fill, which would otherwise leave open trades hidden.
-      if (isChartInteractionActiveRef.current) {
-        queueTradeOverlayRelayout();
-      } else {
-        updateLabelPositions();
-        queueTradeOverlayRelayout();
-      }
+      // Rebuilt nodes are created hidden; place them in this same frame so a
+      // rebuild never paints an empty overlay (including during active chart
+      // pan/zoom/cursor gestures). Always queue a follow-up layout too: the
+      // first pass can run before the series has coordinates after a fill,
+      // which would otherwise leave open trades hidden.
+      updateLabelPositions();
+      queueTradeOverlayRelayout();
     };
 
     return bindTradeOverlayRuntimeSubscriptions({

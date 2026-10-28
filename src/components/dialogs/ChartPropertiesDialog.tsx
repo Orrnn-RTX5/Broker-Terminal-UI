@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import {
   getEffectiveChartColors,
   getPresetSchemeColors,
+  normalizeColorSchemeName,
   useChartSettingsStore,
   type ChartProperties,
   type ColorScheme,
@@ -62,13 +63,13 @@ const showOptions = [
 }>;
 
 const colorSchemeOptions = [
-  'Green on Black',
+  'Green and Red',
   'Green and White',
   'Green and Blue',
   'Blue and White',
-  'Blue on Black',
-  'Black on White',
-  'Yellow on Black',
+  'Blue and Red',
+  'Gray and White',
+  'Yellow and White',
   'Custom',
 ] as const satisfies ReadonlyArray<ColorScheme>;
 
@@ -122,9 +123,11 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
   const {
     globalProperties,
     symbolProperties,
+    syncQuoteColorsWithChart,
     updateSymbolColor,
     updateSymbolProperty,
     applySymbolPresetScheme,
+    setSyncQuoteColorsWithChart,
     resetSymbolToDefaults,
   } = useChartSettingsStore();
   const state = symbolProperties[symbol] || globalProperties;
@@ -168,6 +171,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
   const colorSchemeOptionStyle = isAdvancedUntitledLight ? undefined : darkColorSchemeOptionStyle;
   const initialPropertiesRef = useRef<ChartProperties | null>(null);
   const initialChartTypeRef = useRef<ChartType | null>(null);
+  const initialSyncQuoteColorsRef = useRef<boolean>(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -180,6 +184,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
       ...source,
       colors: { ...source.colors },
     };
+    initialSyncQuoteColorsRef.current = Boolean(current.syncQuoteColorsWithChart);
     initialChartTypeRef.current = currentChartType ?? (
       source.chartType === 'Bar'
         ? 'bar'
@@ -271,6 +276,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
 
     useChartSettingsStore.setState((current) => symbol
       ? {
+          syncQuoteColorsWithChart: initialSyncQuoteColorsRef.current,
           symbolProperties: {
             ...current.symbolProperties,
             [symbol]: {
@@ -280,6 +286,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
           },
         }
       : {
+          syncQuoteColorsWithChart: initialSyncQuoteColorsRef.current,
           globalProperties: {
             ...initialProperties,
             colors: { ...initialProperties.colors },
@@ -467,16 +474,28 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
                 <div className="rtx-cp-colors-grid grid grid-cols-[100px_1fr] items-center gap-y-[5px] gap-x-2 py-2">
                   <span className="rtx-cp-label text-[12px] text-[#ccc] text-right">{tr("Scheme:")}</span>
                   <select 
-                    value={state.colorScheme}
+                    value={normalizeColorSchemeName(state.colorScheme)}
                     onChange={(e) => applyActivePresetScheme(e.target.value as ColorScheme)}
                     className="rtx-cp-select bg-[#2b2b2b] border border-[#444] text-[12px] px-2 py-0.5 rounded w-full text-[#ccc] outline-none focus:border-blue-500 transition-colors col-span-1"
                   >
                     {colorSchemeOptions.map((scheme) => (
-                      <option key={tr(scheme)} value={tr(scheme)} style={colorSchemeOptionStyle}>
+                      <option key={scheme} value={scheme} style={colorSchemeOptionStyle}>
                         {tr(scheme)}
                       </option>
                     ))}
                   </select>
+
+                  <label className="rtx-cp-checkbox-row col-span-2 flex items-center gap-2 cursor-pointer pl-[108px] py-0.5">
+                    <input
+                      type="checkbox"
+                      className="rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]"
+                      checked={syncQuoteColorsWithChart}
+                      onChange={(e) => setSyncQuoteColorsWithChart(e.target.checked)}
+                    />
+                    <span className="rtx-cp-checkbox-label text-[12px] text-[#ccc]">
+                      {tr("Change Bid/Ask price color with chart")}
+                    </span>
+                  </label>
 
                   <div className="rtx-cp-divider col-span-2 h-[1px] bg-[#333] my-1"></div>
 

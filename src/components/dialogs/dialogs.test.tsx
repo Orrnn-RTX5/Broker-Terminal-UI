@@ -288,9 +288,9 @@ describe('dialog components', () => {
       symbolProperties: {
         XAUUSD: {
           ...defaultChartProperties,
-          colorScheme: 'Green on Black',
+          colorScheme: 'Green and Red',
           colors: {
-            ...getPresetSchemeColors('Green on Black'),
+            ...getPresetSchemeColors('Green and Red'),
             barUp: '#10B981',
             barDown: '#EF4444',
             bullCandle: '#10B981',
@@ -310,13 +310,13 @@ describe('dialog components', () => {
     );
 
     await user.click(screen.getByText('Colors'));
-    await user.selectOptions(screen.getByDisplayValue('Green on Black'), 'Yellow on Black');
+    await user.selectOptions(screen.getByDisplayValue('Green and Red'), 'Yellow and White');
 
     const { globalProperties, symbolProperties } = useChartSettingsStore.getState();
 
-    expect(globalProperties.colorScheme).toBe('Blue on Black');
-    expect(globalProperties.colors).toEqual(getPresetSchemeColors('Blue on Black'));
-    expect(symbolProperties.XAUUSD.colorScheme).toBe('Yellow on Black');
+    expect(globalProperties.colorScheme).toBe('Blue and Red');
+    expect(globalProperties.colors).toEqual(getPresetSchemeColors('Blue and Red'));
+    expect(symbolProperties.XAUUSD.colorScheme).toBe('Yellow and White');
     expect(symbolProperties.XAUUSD.colors.barUp).toBe('#facc15');
     expect(symbolProperties.XAUUSD.colors.barDown).toBe('#facc15');
     expect(symbolProperties.XAUUSD.colors.bullCandle).toBe('#000000');
@@ -394,7 +394,7 @@ describe('dialog components', () => {
 
     await user.click(screen.getByText('Colors'));
 
-    expect(screen.getByRole('option', { name: 'Green on Black' })).toHaveStyle({
+    expect(screen.getByRole('option', { name: 'Green and Red' })).toHaveStyle({
       backgroundColor: '#2b2b2b',
       color: '#cccccc',
     });
@@ -424,7 +424,7 @@ describe('dialog components', () => {
 
       await user.click(screen.getByText('Colors'));
 
-      const option = screen.getByRole('option', { name: 'Green on Black' });
+      const option = screen.getByRole('option', { name: 'Green and Red' });
       expect(option).not.toHaveStyle({
         backgroundColor: '#2b2b2b',
         color: '#cccccc',

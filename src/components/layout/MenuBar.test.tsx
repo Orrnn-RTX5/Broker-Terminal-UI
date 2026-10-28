@@ -580,7 +580,7 @@ describe('MenuBar hamburger launcher', () => {
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
 
-    it.each(['Yellow on Black', 'Green and White', 'Green and Blue', 'Blue and White'] as const)('shows genuine chart color templates and applies %s only to the active chart', (scheme) => {
+    it.each(['Yellow and White', 'Green and White', 'Green and Blue', 'Blue and White'] as const)('shows genuine chart color templates and applies %s only to the active chart', (scheme) => {
         useChartSettingsStore.setState({
             globalProperties: {
                 ...defaultChartProperties,
@@ -596,15 +596,15 @@ describe('MenuBar hamburger launcher', () => {
 
         const colorTemplatesMenu = screen.getByRole('menu', { name: 'Color Templates menu' });
         expect(within(colorTemplatesMenu).getAllByRole('menuitemradio').map(item => item.textContent)).toEqual([
-            'Green on Black',
+            'Green and Red',
             'Green and White',
             'Green and Blue',
             'Blue and White',
-            'Blue on Black',
-            'Black on White',
-            'Yellow on Black',
+            'Blue and Red',
+            'Gray and White',
+            'Yellow and White',
         ]);
-        expect(within(colorTemplatesMenu).getByRole('menuitemradio', { name: 'Blue on Black' }))
+        expect(within(colorTemplatesMenu).getByRole('menuitemradio', { name: 'Blue and Red' }))
             .toHaveAttribute('aria-checked', 'true');
         for (const unrelatedItem of [
             'Font Size',
@@ -986,11 +986,11 @@ describe('MenuBar Electron desktop menubar', () => {
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'Charts' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Color Templates' }));
-        fireEvent.click(screen.getByRole('menuitemradio', { name: 'Yellow on Black' }));
+        fireEvent.click(screen.getByRole('menuitemradio', { name: 'Yellow and White' }));
         const settings = useChartSettingsStore.getState();
         expect(settings.globalProperties).toBe(originalGlobal);
         expect(settings.symbolProperties.XAUUSD).toMatchObject({
-            colorScheme: 'Yellow on Black', colors: getPresetSchemeColors('Yellow on Black'),
+            colorScheme: 'Yellow and White', colors: getPresetSchemeColors('Yellow and White'),
         });
         expect(screen.queryByRole('menu', { name: 'Charts menu' })).not.toBeInTheDocument();
     });
