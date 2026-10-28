@@ -553,6 +553,8 @@ describe('chart settings trade history overlay defaults', () => {
       grid: 'rgba(71, 85, 105, 0.07)',
       barUp: '#795000',
       barDown: '#795000',
+      bullCandle: '#000000',
+      bearCandle: '#f8fafc',
       lineChart: '#795000',
       lastPriceLine: '#795000',
     });
@@ -749,6 +751,63 @@ describe('chart settings trade history overlay defaults', () => {
         isDefaultPalette: true,
       });
     } finally {
+      useChartSettingsStore.setState(initial);
+    }
+  });
+
+  it('preserves the light chart surface and readable candle/quote colors when customizing candle colors in light mode', () => {
+    const initial = useChartSettingsStore.getState();
+    const root = typeof document !== 'undefined' ? document.documentElement : null;
+    try {
+      root?.classList.add('rtx-advanced-view', 'rtx-skin-untitled-light');
+      useChartSettingsStore.setState({
+        globalProperties: { ...defaultChartProperties },
+        symbolProperties: {},
+        activeColorSymbol: null,
+        syncQuoteColorsWithChart: true,
+      });
+
+      // Customize bullCandle on default Blue and Red while in light mode
+      useChartSettingsStore.getState().updateSymbolColor('XAUUSD', 'bullCandle', '#12ab34');
+      const customBlueRed = useChartSettingsStore.getState().symbolProperties.XAUUSD;
+      expect(customBlueRed.colorScheme).toBe('Custom');
+      expect(getEffectiveChartColors(customBlueRed, { isAdvancedUntitledLight: true })).toMatchObject({
+        background: '#fafbfc',
+        foreground: '#334155',
+        grid: 'rgba(71, 85, 105, 0.07)',
+        bullCandle: '#12ab34',
+        barUp: '#12ab34',
+        bearCandle: '#a51f26',
+        barDown: '#a51f26',
+      });
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'XAUUSD', { isAdvancedUntitledLight: true })).toEqual({
+        upColor: '#12ab34',
+        downColor: '#a51f26',
+        isDefaultPalette: false,
+      });
+
+      // Customize bullCandle while starting from Green and White in light mode
+      useChartSettingsStore.getState().applySymbolPresetScheme('XAUUSD', 'Green and White');
+      useChartSettingsStore.getState().updateSymbolColor('XAUUSD', 'bullCandle', '#7c3aed');
+      const customGreenWhite = useChartSettingsStore.getState().symbolProperties.XAUUSD;
+      expect(getEffectiveChartColors(customGreenWhite, { isAdvancedUntitledLight: true })).toMatchObject({
+        background: '#fafbfc',
+        foreground: '#334155',
+        bullCandle: '#7c3aed',
+        barUp: '#7c3aed',
+        bearCandle: '#15803d',
+        barDown: '#15803d',
+      });
+
+      // Bright yellow custom candle color is darkened to a readable quote tone on light surfaces
+      useChartSettingsStore.getState().updateSymbolColor('XAUUSD', 'bullCandle', '#facc15');
+      expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'XAUUSD', { isAdvancedUntitledLight: true })).toEqual({
+        upColor: '#795000',
+        downColor: '#087f6c',
+        isDefaultPalette: false,
+      });
+    } finally {
+      root?.classList.remove('rtx-advanced-view', 'rtx-skin-untitled-light');
       useChartSettingsStore.setState(initial);
     }
   });

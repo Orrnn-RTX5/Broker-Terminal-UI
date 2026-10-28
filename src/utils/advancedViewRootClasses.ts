@@ -138,7 +138,19 @@ export const initRootTheme = (root: HTMLElement = document.documentElement) => {
 
   try {
     if (localStorage.getItem(RTX_THEME_APPEARANCE_STORAGE_KEY)) {
-      const appearance = loadStoredThemeAppearance();
+      let appearance = loadStoredThemeAppearance();
+      if (localStorage.getItem('rtx5-main-light-restored-v3') !== '1') {
+        appearance = {
+          ...appearance,
+          contrastLevel: 'default',
+          light: {
+            preset: 'default-light',
+            customOverrides: {},
+          },
+        };
+        localStorage.setItem(RTX_THEME_APPEARANCE_STORAGE_KEY, JSON.stringify(appearance));
+        localStorage.setItem('rtx5-main-light-restored-v3', '1');
+      }
       applyThemeAppearanceToRoot(root, {
         ...appearance,
         themeMode: isLight ? 'light' : 'dark',

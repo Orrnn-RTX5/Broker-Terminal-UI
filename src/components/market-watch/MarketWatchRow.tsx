@@ -228,6 +228,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
           } : {}),
         } as CSSProperties}
         className={`${!isSelected ? 'mw-row ' : ''}rtx-market-watch__row${isSelected ? ' rtx-market-watch__row--selected' : ''}${!isLive ? ' rtx-market-watch__row--stale' : ''}`}
+        data-custom-quote-palette={!isDefaultPalette ? 'true' : undefined}
         aria-selected={isSelected}
         aria-disabled={!isChartOpenable}
         title={!isChartOpenable ? tr('{{value0}} chart is currently unavailable', { value0: displaySymbol }) : undefined}

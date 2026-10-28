@@ -363,7 +363,7 @@ html.theme-light .rtx-market-watch-details {
 }
 
 :is(html.rtx-skin-untitled-light, html.theme-light) .rtx-market-watch-details__row[aria-selected='true'] .rtx-market-watch-details__label,
-:is(html.rtx-skin-untitled-light, html.theme-light) .rtx-market-watch-details__row[aria-selected='true'] .rtx-market-watch-details__value {
+:is(html.rtx-skin-untitled-light, html.theme-light) .rtx-market-watch-details__row[aria-selected='true'] .rtx-market-watch-details__value:not([data-tone='up']):not([data-tone='down']) {
   color: var(--rtx-light-text, #101828);
 }
 

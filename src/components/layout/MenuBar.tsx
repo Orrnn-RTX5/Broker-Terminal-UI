@@ -412,7 +412,7 @@ export const MenuBar = ({
                         checked: !advancedViewEnabled,
                         checkRole: 'radio',
                         action: () => {
-                            useThemeAppearanceStore.getState().setThemeMode('dark');
+                            useThemeAppearanceStore.getState().setDarkPreset('default-dark', true);
                             onSetAdvancedViewEnabled?.(false);
                         },
                     },
@@ -421,7 +421,7 @@ export const MenuBar = ({
                         checked: advancedViewEnabled,
                         checkRole: 'radio',
                         action: () => {
-                            useThemeAppearanceStore.getState().setThemeMode('light');
+                            useThemeAppearanceStore.getState().setLightPreset('default-light', true);
                             onSetAdvancedViewEnabled?.(true);
                         },
                     },
@@ -942,7 +942,13 @@ export const MenuBar = ({
             icon: 'eye',
             dividerBefore: true,
             action: () => {
-                onSetAdvancedViewEnabled?.(!advancedViewEnabled);
+                const nextLight = !advancedViewEnabled;
+                if (nextLight) {
+                    useThemeAppearanceStore.getState().setLightPreset('default-light', true);
+                } else {
+                    useThemeAppearanceStore.getState().setDarkPreset('default-dark', true);
+                }
+                onSetAdvancedViewEnabled?.(nextLight);
                 closeMenu();
             },
         },

@@ -626,6 +626,40 @@ const readConfiguredThemeChartSurface = (
   };
 };
 
+const isDefaultDarkSurfaceBackground = (background: string | undefined): boolean => {
+  if (!background) return true;
+  const norm = background.trim().toLowerCase();
+  return norm === "#000000" || norm === "#000" || norm === "#0e0e12" || norm === "#14171f";
+};
+
+const isDefaultDarkSurfaceForeground = (foreground: string | undefined): boolean => {
+  if (!foreground) return true;
+  const norm = foreground.trim().toLowerCase();
+  return norm === "#ffffff" || norm === "#fff" || norm === "#f8fafc";
+};
+
+const isDefaultDarkPresetGrid = (grid: string | undefined): boolean => {
+  if (!grid) return true;
+  const norm = grid.trim().toLowerCase().replace(/\s+/g, "");
+  return (
+    norm === "rgba(255,255,255,0.12)"
+    || norm === "rgba(255,255,255,0.06)"
+    || norm === "#778899"
+    || norm === "#c9c9c9"
+    || norm === "#e0ded7"
+  );
+};
+
+const mapDefaultDarkColorToLight = (color: string): string => {
+  const norm = color.trim().toLowerCase();
+  if (norm === CHART_BLUE_COLOR.toLowerCase()) return "#1746bc";
+  if (norm === BLUE_TEMPLATE_RED_COLOR.toLowerCase() || norm === CHART_LOSS_COLOR.toLowerCase()) return "#a51f26";
+  if (norm === CHART_CANDLE_UP_COLOR.toLowerCase()) return "#087f6c";
+  if (norm === CHART_CANDLE_DOWN_COLOR.toLowerCase()) return "#ce2938";
+  if (norm === CHART_PROFIT_COLOR.toLowerCase()) return "#06634e";
+  return color;
+};
+
 export const getEffectiveChartColors = (
   properties: { colorScheme: ColorScheme | LegacyColorScheme; colors: ChartProperties["colors"] },
   options: { isAdvancedUntitledLight?: boolean } = {},
@@ -759,7 +793,24 @@ export const getEffectiveChartColors = (
     };
   }
 
-  return properties.colors;
+  if (!isDefaultDarkSurfaceBackground(properties.colors.background)) {
+    return properties.colors;
+  }
+
+  const customLightColors: ChartProperties["colors"] = {
+    ...properties.colors,
+    background: lightSurface.background,
+    foreground: isDefaultDarkSurfaceForeground(properties.colors.foreground)
+      ? lightSurface.foreground
+      : properties.colors.foreground,
+    grid: isDefaultDarkPresetGrid(properties.colors.grid)
+      ? lightSurface.grid
+      : properties.colors.grid,
+  };
+  for (const key of ["barUp", "barDown", "bullCandle", "bearCandle", "lineChart", "askPriceLine", "lastPriceLine", "stopLevels"] as const) {
+    customLightColors[key] = mapDefaultDarkColorToLight(customLightColors[key]);
+  }
+  return customLightColors;
 };
 
 export interface ChartDirectionalQuoteColors {
@@ -767,6 +818,35 @@ export interface ChartDirectionalQuoteColors {
   downColor: string;
   isDefaultPalette: boolean;
 }
+
+const parseHexRgbChannels = (color: string): [number, number, number] | null => {
+  const trimmed = color.trim();
+  const shortHex = /^#([a-f\d])([a-f\d])([a-f\d])$/i.exec(trimmed);
+  if (shortHex) {
+    return [
+      parseInt(shortHex[1] + shortHex[1], 16),
+      parseInt(shortHex[2] + shortHex[2], 16),
+      parseInt(shortHex[3] + shortHex[3], 16),
+    ];
+  }
+  const longHex = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(trimmed);
+  if (longHex) {
+    return [
+      parseInt(longHex[1], 16),
+      parseInt(longHex[2], 16),
+      parseInt(longHex[3], 16),
+    ];
+  }
+  return null;
+};
+
+const getRelativeLuminanceFromRgb = ([r, g, b]: [number, number, number]): number => {
+  const toLinear = (channel: number): number => {
+    const v = channel / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+};
 
 const normalizeReadableQuoteColor = (color: string, isDarkSurface: boolean): string => {
   const norm = color.trim().toLowerCase();
@@ -804,16 +884,122 @@ const normalizeReadableQuoteColor = (color: string, isDarkSurface: boolean): str
   ) {
     return "#a51f26";
   }
+  if (norm === "#facc15") {
+    return "#795000";
+  }
+  const channels = parseHexRgbChannels(color);
+  if (channels) {
+    const lum = getRelativeLuminanceFromRgb(channels);
+    if (lum > 0.52) {
+      for (let step = 1; step <= 32; step += 1) {
+        const factor = 1 - step / 36;
+        const scaled: [number, number, number] = [
+          Math.round(channels[0] * factor),
+          Math.round(channels[1] * factor),
+          Math.round(channels[2] * factor),
+        ];
+        if (getRelativeLuminanceFromRgb(scaled) <= 0.35) {
+          return `#${scaled.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+        }
+      }
+    }
+  }
   return color;
+};
+
+const isDefaultBullCandleColor = (color: string | undefined): boolean => {
+  if (!color) return false;
+  const norm = color.trim().toLowerCase();
+  return (
+    norm === CHART_BLUE_COLOR.toLowerCase()
+    || norm === CHART_CANDLE_UP_COLOR.toLowerCase()
+    || norm === "#1746bc"
+    || norm === "#087f6c"
+  );
+};
+
+const isDefaultBearCandleColor = (color: string | undefined): boolean => {
+  if (!color) return false;
+  const norm = color.trim().toLowerCase();
+  return (
+    norm === BLUE_TEMPLATE_RED_COLOR.toLowerCase()
+    || norm === CHART_CANDLE_DOWN_COLOR.toLowerCase()
+    || norm === "#a51f26"
+    || norm === "#ce2938"
+  );
+};
+
+const isHollowOrSurfaceCandleFill = (color: string | undefined): boolean => {
+  if (!color) return true;
+  const norm = color.trim().toLowerCase();
+  return (
+    norm === "#000000"
+    || norm === "#000"
+    || norm === "#ffffff"
+    || norm === "#fff"
+    || norm === "#f8fafc"
+    || norm === "#fafbfc"
+  );
+};
+
+const isDocumentInAdvancedLightSkin = (): boolean => (
+  typeof document !== "undefined"
+  && document.documentElement.classList.contains("rtx-advanced-view")
+  && document.documentElement.classList.contains("rtx-skin-untitled-light")
+);
+
+const buildNextCustomChartColors = (
+  currentProperties: ChartProperties,
+  key: keyof ChartProperties["colors"],
+  value: string,
+): ChartProperties["colors"] => {
+  const isLightMode = isDocumentInAdvancedLightSkin();
+  const normalizedScheme = normalizeColorSchemeName(currentProperties.colorScheme);
+  let baseColors = { ...currentProperties.colors };
+
+  if (isLightMode && normalizedScheme !== "Custom") {
+    const effectiveLight = getEffectiveChartColors(currentProperties, { isAdvancedUntitledLight: true });
+    baseColors = {
+      ...effectiveLight,
+      background: currentProperties.colors.background,
+      foreground: currentProperties.colors.foreground,
+      grid: currentProperties.colors.grid,
+    };
+  }
+
+  const nextColors: ChartProperties["colors"] = {
+    ...baseColors,
+    [key]: value,
+  };
+
+  if (key === "bullCandle" && !isHollowOrSurfaceCandleFill(value)) {
+    const prevBull = baseColors.bullCandle?.trim().toLowerCase();
+    const prevBarUp = baseColors.barUp?.trim().toLowerCase();
+    const prevBarDown = baseColors.barDown?.trim().toLowerCase();
+    if (prevBarUp === prevBull || isHollowOrSurfaceCandleFill(baseColors.bullCandle) || prevBarUp === prevBarDown) {
+      nextColors.barUp = value;
+    }
+  } else if (key === "bearCandle" && !isHollowOrSurfaceCandleFill(value)) {
+    const prevBear = baseColors.bearCandle?.trim().toLowerCase();
+    const prevBarDown = baseColors.barDown?.trim().toLowerCase();
+    const prevBarUp = baseColors.barUp?.trim().toLowerCase();
+    if (prevBarDown === prevBear || isHollowOrSurfaceCandleFill(baseColors.bearCandle) || prevBarDown === prevBarUp) {
+      nextColors.barDown = value;
+    }
+  }
+
+  return nextColors;
 };
 
 export const getChartDirectionalQuoteColors = (
   properties: { colorScheme: ColorScheme | LegacyColorScheme; colors: ChartProperties["colors"] } & Partial<Pick<ChartProperties, "chartType">>,
   options: { isAdvancedUntitledLight?: boolean } = {},
 ): ChartDirectionalQuoteColors => {
+  const isAdvancedUntitledLight = options.isAdvancedUntitledLight ?? isDocumentInAdvancedLightSkin();
+  const resolvedOptions = { ...options, isAdvancedUntitledLight };
   const normalizedColorScheme = normalizeColorSchemeName(properties.colorScheme);
-  const effective = getEffectiveChartColors({ ...properties, colorScheme: normalizedColorScheme }, options);
-  const isDarkSurface = !options.isAdvancedUntitledLight;
+  const effective = getEffectiveChartColors({ ...properties, colorScheme: normalizedColorScheme }, resolvedOptions);
+  const isDarkSurface = !isAdvancedUntitledLight;
   const bgNorm = (effective.background || "#000000").trim().toLowerCase();
   const isInvisibleOnSurface = (color: string | undefined): boolean => {
     if (!color) return true;
@@ -821,7 +1007,11 @@ export const getChartDirectionalQuoteColors = (
     if (isDarkSurface) {
       return norm === "#000000" || norm === "#000" || norm === bgNorm;
     }
-    return norm === "#ffffff" || norm === "#fff" || norm === "#f8fafc" || norm === bgNorm;
+    if (norm === "#ffffff" || norm === "#fff" || norm === "#f8fafc" || norm === "#fafbfc" || norm === bgNorm) {
+      return true;
+    }
+    const channels = parseHexRgbChannels(norm);
+    return channels !== null && getRelativeLuminanceFromRgb(channels) > 0.88;
   };
 
   const preferBar = properties.chartType === "Bar";
@@ -829,8 +1019,8 @@ export const getChartDirectionalQuoteColors = (
   const primaryUp = preferBar
     ? effective.barUp
     : isCustomScheme
-      && effective.bullCandle?.trim().toLowerCase() === CHART_BLUE_COLOR.toLowerCase()
-      && effective.barUp?.trim().toLowerCase() !== CHART_BLUE_COLOR.toLowerCase()
+      && isDefaultBullCandleColor(effective.bullCandle)
+      && !isDefaultBullCandleColor(effective.barUp)
       && !isInvisibleOnSurface(effective.barUp)
       ? effective.barUp
       : effective.bullCandle;
@@ -840,8 +1030,8 @@ export const getChartDirectionalQuoteColors = (
   const primaryDown = preferBar
     ? effective.barDown
     : isCustomScheme
-      && effective.bearCandle?.trim().toLowerCase() === BLUE_TEMPLATE_RED_COLOR.toLowerCase()
-      && effective.barDown?.trim().toLowerCase() !== BLUE_TEMPLATE_RED_COLOR.toLowerCase()
+      && isDefaultBearCandleColor(effective.bearCandle)
+      && !isDefaultBearCandleColor(effective.barDown)
       && !isInvisibleOnSurface(effective.barDown)
       ? effective.barDown
       : effective.bearCandle;
@@ -864,7 +1054,7 @@ export const getChartDirectionalQuoteColors = (
   }
 
   const isDefaultPalette = normalizedColorScheme === defaultChartProperties.colorScheme
-    && (options.isAdvancedUntitledLight
+    && (isAdvancedUntitledLight
       ? upColor.trim().toLowerCase() === "#1746bc"
         && downColor.trim().toLowerCase() === "#a51f26"
       : upColor.trim().toLowerCase() === CHART_BLUE_COLOR.toLowerCase()
@@ -883,7 +1073,7 @@ const hasCustomQuotePalette = (
   if (normalizeColorSchemeName(properties.colorScheme) !== defaultChartProperties.colorScheme) {
     return true;
   }
-  return !getChartDirectionalQuoteColors(properties).isDefaultPalette;
+  return !getChartDirectionalQuoteColors(properties, { isAdvancedUntitledLight: false }).isDefaultPalette;
 };
 
 interface ChartSettingsState {
@@ -992,10 +1182,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           globalProperties: {
             ...state.globalProperties,
             colorScheme: "Custom",
-            colors: {
-              ...state.globalProperties.colors,
-              [key]: value,
-            },
+            colors: buildNextCustomChartColors(state.globalProperties, key, value),
           },
         }));
       },
@@ -1003,10 +1190,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       updateSymbolColor: (symbol, key, value) => {
         set((state) => {
           const currentProperties = state.symbolProperties[symbol] || state.globalProperties;
-          const nextColors = {
-            ...currentProperties.colors,
-            [key]: value,
-          };
+          const nextColors = buildNextCustomChartColors(currentProperties, key, value);
           const syncedSymbols = Object.fromEntries(
             Object.entries(state.symbolProperties).map(([sym, props]) => [
               sym,

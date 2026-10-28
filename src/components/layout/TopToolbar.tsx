@@ -518,7 +518,20 @@ const MainToolbar = ({
         document.documentElement.classList.toggle('theme-dark', !advancedViewEnabled);
         document.documentElement.setAttribute('data-theme', advancedViewEnabled ? 'light' : 'dark');
         try {
-            if (localStorage.getItem(RTX_THEME_APPEARANCE_STORAGE_KEY)) {
+            const store = useThemeAppearanceStore.getState();
+            const hasStoredAppearance = Boolean(localStorage.getItem(RTX_THEME_APPEARANCE_STORAGE_KEY));
+            const needsLightMigration = hasStoredAppearance && localStorage.getItem('rtx5-main-light-restored-v3') !== '1';
+            const hasNonDefaultWebLight = !isDesktopShell && advancedViewEnabled && (
+                store.light.preset !== 'default-light'
+                || Object.keys(store.light.customOverrides).length > 0
+                || store.contrastLevel !== 'default'
+            );
+            if (needsLightMigration || hasNonDefaultWebLight) {
+                localStorage.setItem('rtx5-main-light-restored-v3', '1');
+                store.setContrastLevel('default', true);
+                store.setLightPreset('default-light', true);
+            }
+            if (hasStoredAppearance || needsLightMigration || hasNonDefaultWebLight || document.documentElement.hasAttribute('data-theme-preset')) {
                 const snapshot = useThemeAppearanceStore.getState().getSnapshot();
                 const effectiveMode = resolveEffectiveThemeMode(snapshot.themeMode);
                 applyThemeAppearanceToRoot(document.documentElement, {

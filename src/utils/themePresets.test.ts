@@ -272,6 +272,18 @@ describe('themePresets', () => {
     expect(root.style.getPropertyValue('--rtx-light-panel')).toBe('#F0EAD6');
     expect(root.style.getPropertyValue('--rtx-light-chart')).toBe('#F0EAD6');
     expect(root.style.getPropertyValue('--rtx-theme-chart-bg')).toBe('#F0EAD6');
+
+    applyThemeAppearanceToRoot(
+      root,
+      {
+        ...DEFAULT_THEME_APPEARANCE_STATE,
+        themeMode: 'light',
+      },
+      'light',
+    );
+    expect(root.getAttribute('data-rtx-theme-preset')).toBe('default-light');
+    expect(root.style.getPropertyValue('--rtx-light-panel')).toBe('');
+    expect(root.style.getPropertyValue('--rtx-light-accent')).toBe('');
   });
 });
 

@@ -1069,7 +1069,7 @@ export const TradingChart = React.memo(function TradingChart({
   const isLimeOutlineBlackPreset = chartSettings.colorScheme === 'Green and White'
     || chartSettings.colorScheme === 'Green and Blue';
   const useEnterpriseLightChartPalette = isAdvancedUntitledLight
-    && chartSettings.colorScheme !== 'Custom';
+    && (chartSettings.colorScheme !== 'Custom' || isLightChartBackground(chartColors.background));
   useEnterpriseLightPricePaletteRef.current = useEnterpriseLightChartPalette;
   const initialLivePriceOverlayColors = useMemo(
     () => getLivePriceOverlayColors(

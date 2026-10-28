@@ -150,7 +150,8 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
     lineStyle: showState.gridLineStyle,
     gridType: showState.gridType,
     colorScheme: state.colorScheme,
-    preserveConfiguredColor: isAdvancedUntitledLight && state.colorScheme !== 'Custom',
+    preserveConfiguredColor: isAdvancedUntitledLight
+      && (state.colorScheme !== 'Custom' || previewBackground.toLowerCase() !== '#000000'),
   });
   const previewLabelBackground = previewBackground.toLowerCase() === '#ffffff'
     ? 'rgba(255, 255, 255, 0.82)'

@@ -103,7 +103,13 @@ export const getLivePriceSeriesColor = (
 ): string => {
   if (chartType === 'line') return colors.lineChart;
   if (chartType === 'bar') return direction === 'up' ? colors.barUp : colors.barDown;
-  return direction === 'up' ? colors.bullCandle : colors.bearCandle;
+  const candleColor = direction === 'up' ? colors.bullCandle : colors.bearCandle;
+  const barColor = direction === 'up' ? colors.barUp : colors.barDown;
+  const background = normalizeColorCandidate(colors.background) ?? LIVE_PRICE_FALLBACK_DARK;
+  if (!hasReadableColorSeparation(candleColor, background) && hasReadableColorSeparation(barColor, background)) {
+    return barColor;
+  }
+  return candleColor;
 };
 
 export type AreaTrendDirection = 'up' | 'down';

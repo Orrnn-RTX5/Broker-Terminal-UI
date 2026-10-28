@@ -13,9 +13,9 @@ html.rtx-skin-untitled-light .navigator-panel {
     --navigator-account-real: #a16207;
     --navigator-account-contest: #2563eb;
     --navigator-account-unknown: #64748b;
-    --navigator-account-inactive: #94a3b8;
-    --navigator-account-inactive-text: #94a3b8;
-    --navigator-account-inactive-hover-text: #64748b;
+    --navigator-account-inactive: #64748b;
+    --navigator-account-inactive-text: #64748b;
+    --navigator-account-inactive-hover-text: #334155;
 }
 
 .navigator-panel .navigator-account-icon {

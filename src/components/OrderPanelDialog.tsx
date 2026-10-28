@@ -1012,6 +1012,9 @@ function MiniTickChart({
         const bgNormForTrace = palette.background.trim().toLowerCase();
         const isInvisibleForTrace = (c: string) => {
           const n = c.trim().toLowerCase();
+          if (isLightSkin) {
+            return n === '#ffffff' || n === '#fff' || n === '#f8fafc' || n === '#fafbfc' || n === bgNormForTrace;
+          }
           return n === '#000000' || n === '#000' || n === bgNormForTrace;
         };
         const traceUpColor = !isInvisibleForTrace(candleUpBody) ? candleUpBody : candleUpBorder;
@@ -1164,6 +1167,9 @@ function MiniTickChart({
         const bgNorm = palette.background.trim().toLowerCase();
         const isInvisibleOnPlot = (c: string) => {
           const n = c.trim().toLowerCase();
+          if (isLightSkin) {
+            return n === '#ffffff' || n === '#fff' || n === '#f8fafc' || n === '#fafbfc' || n === bgNorm;
+          }
           return n === '#000000' || n === '#000' || n === bgNorm;
         };
         const visibleUpColor = !isInvisibleOnPlot(candleUpBody) ? candleUpBody : candleUpBorder;
@@ -1733,6 +1739,9 @@ export function OrderPanelDialog({
   const account = useAppStore((s) => s.account);
   const tickSymbolsKey = useAppStore((s) => (accountSymbols ? '' : Object.keys(s.ticks).join('|')));
   const chartSettings = useChartSettingsStore((state) => (
+    state.symbolProperties[symbol] || state.globalProperties
+  ));
+  const quoteChartSettings = useChartSettingsStore((state) => (
     selectChartPropertiesForQuote(state, symbol)
   ));
   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
@@ -1741,7 +1750,7 @@ export function OrderPanelDialog({
     return root.classList.contains('rtx-advanced-view')
       && root.classList.contains('rtx-skin-untitled-light');
   });
-  const dialogQuoteColors = getChartDirectionalQuoteColors(chartSettings, {
+  const dialogQuoteColors = getChartDirectionalQuoteColors(quoteChartSettings, {
     isAdvancedUntitledLight,
   });
 

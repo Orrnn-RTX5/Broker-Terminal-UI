@@ -1239,13 +1239,19 @@ export function applyThemeAppearanceToRoot(
     ? findMatchingLightPreset(variant)
     : findMatchingDarkPreset(variant);
   const effectivePresetAttr = matchedPreset === 'Custom' ? 'custom' : matchedPreset;
-  const variables = deriveThemeCssVariables(effectiveMode, variant, state.contrast);
+  const isDefaultMainTheme =
+    state.contrast === 'default' &&
+    ((effectiveMode === 'light' && effectivePresetAttr === 'default-light') ||
+      (effectiveMode === 'dark' && effectivePresetAttr === 'default-dark'));
 
   for (const prop of MANAGED_CSS_VARIABLES) {
     root.style.removeProperty(prop);
   }
-  for (const [prop, value] of Object.entries(variables)) {
-    root.style.setProperty(prop, value);
+  if (!isDefaultMainTheme) {
+    const variables = deriveThemeCssVariables(effectiveMode, variant, state.contrast);
+    for (const [prop, value] of Object.entries(variables)) {
+      root.style.setProperty(prop, value);
+    }
   }
   root.setAttribute('data-rtx-theme-preset', effectivePresetAttr);
   root.setAttribute('data-rtx-theme-contrast', state.contrast);

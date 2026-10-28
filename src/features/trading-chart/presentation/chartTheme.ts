@@ -118,12 +118,20 @@ export const buildChartTheme = (
   const candleDown = colors.bearCandle || colors.barDown || '#f23645';
   const barUp = colors.barUp || candleUp;
   const barDown = colors.barDown || candleDown;
-  const areaUp = colorScheme === 'Green and White' ? barUp : candleUp;
-  const areaDown = useReferenceLightSurface && colorScheme === 'Blue and White' ? barDown : candleDown;
-  const line = colors.lineChart || '#2962ff';
-  const rawGrid = colors.grid || 'rgba(120, 144, 156, 0.28)';
   const backgroundLuminance = getColorLuminance(colors.background) ?? 0;
   const backgroundIsDark = backgroundLuminance < 0.45;
+  const isHollowLightFill = (c: string): boolean => {
+    const n = c.trim().toLowerCase();
+    return n === '#ffffff' || n === '#fff' || n === '#f8fafc' || n === '#fafbfc';
+  };
+  const areaUp = colorScheme === 'Green and White' || (!backgroundIsDark && isHollowLightFill(candleUp))
+    ? barUp
+    : candleUp;
+  const areaDown = (useReferenceLightSurface && colorScheme === 'Blue and White') || (!backgroundIsDark && isHollowLightFill(candleDown))
+    ? barDown
+    : candleDown;
+  const line = colors.lineChart || '#2962ff';
+  const rawGrid = colors.grid || 'rgba(120, 144, 156, 0.28)';
   // A pale canvas needs less tint; dark canvases need enough fill to separate
   // the area from the grid. Follow the configured chart surface, not app chrome.
   const areaFillOpacity = backgroundIsDark ? 0.32 : 0.16;
