@@ -264,9 +264,7 @@ export const useTradingChartReconfiguration = (options: UseTradingChartReconfigu
     resetVisibleRangeOnNextDataRef.current = true;
     lastVisibleLogicalRangeRef.current = null;
 
-    const hasCachedData = candlesRef.current.length > 0;
-
-    if (symbolChanged && !seriesRef.current) {
+    if (symbolChanged) {
       cancelQueuedChartRender();
       candlesRef.current = [];
       currentCandleRef.current = null;
@@ -282,6 +280,8 @@ export const useTradingChartReconfiguration = (options: UseTradingChartReconfigu
       lastVisibleLogicalRangeRef.current = null;
       resetLiveQuotePriceGuard();
     }
+
+    const hasCachedData = candlesRef.current.length > 0;
 
     // Only block ticks during rebuild when we DON'T have cached data
     // (With cached data, setData happens synchronously — no tick window)

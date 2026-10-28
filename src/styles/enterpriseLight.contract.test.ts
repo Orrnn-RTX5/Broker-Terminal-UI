@@ -291,4 +291,13 @@ describe('enterprise light visual-system contract', () => {
     expect(marketWatchSource).toContain('symbolDescriptionByName');
     expect(marketWatchSource).toContain('getFallbackSymbolDescription(symbol)');
   });
+
+  it('keeps dark selected and focused Market Watch rows on a muted slate surface so blue and red quotes stay readable', () => {
+    const marketWatchDesktopCss = readSource('src/components/market-watch/market-watch-desktop.css');
+    expect(marketWatchDesktopCss).toContain('--mw-desktop-row-selected: #222934;');
+    expect(marketWatchDesktopCss).toContain('--mw-desktop-row-selected-focus: #252d3a;');
+    expect(marketWatchDesktopCss).toContain('background: var(--mw-desktop-row-selected-focus, var(--mw-desktop-row-selected, var(--mw-desktop-row-hover))) !important;');
+    expect(contrastRatio('#4597ff', '#252d3a')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio('#ff5858', '#252d3a')).toBeGreaterThanOrEqual(4.2);
+  });
 });

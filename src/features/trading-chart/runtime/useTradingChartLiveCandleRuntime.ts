@@ -1,4 +1,4 @@
-import type { Dispatch, RefObject, SetStateAction } from 'react';
+import { useRef, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import { updateDrawingCandle } from '../../../drawing-tools/drawingCandleUpdates';
 import { useActiveChartRuntimeEffect } from '../../../hooks/useActiveChartRuntimeEffect';
@@ -180,6 +180,9 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     validateRenderedCandlesAgainstLivePrice, visibleRuntime, volumeRef,
   } = options;
 
+  const updateLegendDOMRef = useRef(updateLegendDOM);
+  updateLegendDOMRef.current = updateLegendDOM;
+
   useActiveChartRuntimeEffect(visibleRuntime.candle, () => {
     if (!isActive || !symbol) return;
 
@@ -325,7 +328,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
         if (drawingRenderFrameRef.current === null && drawingRenderSettledFrameRef.current === null) {
           scheduleDrawingRenderAfterChartData(drawingContext.symbol, drawingContext.timeframe as Timeframe);
         }
-        updateLegendDOM(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
+        updateLegendDOMRef.current(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
         if (isNewCandle) {
           refreshMarketGapSeriesForCandle(c);
         }

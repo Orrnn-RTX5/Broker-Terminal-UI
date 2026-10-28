@@ -244,9 +244,33 @@ describe('useTradingChartTradeOverlayRenderer mounted', () => {
 
     expect(syncStart).toBeGreaterThan(-1);
     expect(syncEnd).toBeGreaterThan(syncStart);
+    expect(syncDigits).toContain('const currentSymbol = activeSymbolRef.current;');
+    expect(syncDigits).toContain('const currentPriceDigits = priceDigitsPropRef.current;');
+    expect(syncDigits).toContain('prevSymbolRef.current.trim().toUpperCase() !== activeSymbol');
     expect(syncDigits).toContain('observedPriceDigitsRef.current === null || inferred > observedPriceDigitsRef.current');
     expect(syncDigits).not.toContain('inferred !== observedPriceDigitsRef.current');
     expect(syncDigits).toContain('prev.scopeKey === activeScopeKey && prev.digits !== null && prev.digits >= nextObservedDigits');
     expect(formatEffect).toContain('if (dataWindowHoverTimeRef.current === null) {');
+  });
+
+  it('calls the latest updateLegendDOM ref from crosshair moves and renders active trade overlays synchronously on effect setup', () => {
+    const initSource = readFileSync(
+      resolve(process.cwd(), 'src/features/trading-chart/runtime/useTradingChartInitialization.ts'),
+      'utf8',
+    ).replace(/\r\n/g, '\n');
+    const crosshairStart = initSource.indexOf('const crosshairHandler = (param: MouseEventParams<Time>) => {');
+    const crosshairEnd = initSource.indexOf('chart.subscribeCrosshairMove(crosshairHandler);', crosshairStart);
+    const crosshairBlock = initSource.slice(crosshairStart, crosshairEnd);
+
+    expect(crosshairStart).toBeGreaterThan(-1);
+    expect(crosshairEnd).toBeGreaterThan(crosshairStart);
+    expect(crosshairBlock).toContain('runtimeCallbacksRef.current.updateLegendDOM(');
+    expect(crosshairBlock).not.toMatch(/(?<!\.)\bupdateLegendDOM\(/);
+
+    const subscriptionsSource = readFileSync(
+      resolve(process.cwd(), 'src/features/trading-chart/runtime/bindTradeOverlayRuntimeSubscriptions.ts'),
+      'utf8',
+    ).replace(/\r\n/g, '\n');
+    expect(subscriptionsSource).toContain('if (isActiveRef.current) {\n      renderTradeOverlayNow();\n    }');
   });
 });

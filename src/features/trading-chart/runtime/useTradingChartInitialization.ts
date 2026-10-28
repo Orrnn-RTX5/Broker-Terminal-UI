@@ -1,4 +1,4 @@
-import { type RefObject } from 'react';
+import { useRef, type RefObject } from 'react';
 import {
   ColorType,
   CrosshairMode,
@@ -155,6 +155,31 @@ export const useTradingChartInitialization = (options: UseTradingChartInitializa
     settleAutoScrollPolicyRef, squareGridHostSeriesRef, squareGridPrimitiveRef, symbol, timeframe,
     timeScaleTimeframeRef, updateLegendDOM, visibleRangeHistoryUserInitiatedRef, volumeRef,
   } = options;
+
+  const runtimeCallbacksRef = useRef({
+    applyLivePriceHorizontalGeometry,
+    cancelQueuedChartRender,
+    clearPeriodSeparators,
+    flushPostInteractionWork,
+    forceSettleInteraction,
+    getDrawingSeriesData,
+    isVisibleRangeHistoryLoadSuppressed,
+    scheduleDrawingRenderAfterChartData,
+    scheduleQueuedChartRenderFlush,
+    updateLegendDOM,
+  });
+  runtimeCallbacksRef.current = {
+    applyLivePriceHorizontalGeometry,
+    cancelQueuedChartRender,
+    clearPeriodSeparators,
+    flushPostInteractionWork,
+    forceSettleInteraction,
+    getDrawingSeriesData,
+    isVisibleRangeHistoryLoadSuppressed,
+    scheduleDrawingRenderAfterChartData,
+    scheduleQueuedChartRenderFlush,
+    updateLegendDOM,
+  };
 
 useChartInitializationLifetime(() => {
     console.log(`[TradingChart] Chart init effect running`);
@@ -320,11 +345,11 @@ useChartInitializationLifetime(() => {
         if (!isDisposedRef.current && isActiveRef.current) {
           // Keep interaction ownership marked active while settling so any
           // synchronous range callbacks join this same ordered pass.
-          flushPostInteractionWork();
+          runtimeCallbacksRef.current.flushPostInteractionWork();
         }
         isChartInteractionActiveRef.current = false;
         if (isActiveRef.current) {
-          scheduleQueuedChartRenderFlush();
+          runtimeCallbacksRef.current.scheduleQueuedChartRenderFlush();
         }
       },
     });
@@ -346,6 +371,7 @@ useChartInitializationLifetime(() => {
       ) return;
 
       autoScrollTimer = setTimeout(() => {
+        const activeTimeframe = timeScaleTimeframeRef.current || timeframe;
         if (
           !isDisposedRef.current &&
           chartRef.current &&
@@ -354,11 +380,11 @@ useChartInitializationLifetime(() => {
             chartRef.current,
             autoScrollEnabledRef.current,
             chartSettingsRef.current.chartAutoScroll,
-            getTradingChartShiftRightOffset(timeframe, chartSettingsRef.current.chartShift),
+            getTradingChartShiftRightOffset(activeTimeframe, chartSettingsRef.current.chartShift),
           )
         ) {
           chartRef.current.timeScale().scrollToPosition(
-            getTradingChartShiftRightOffset(timeframe, chartSettingsRef.current.chartShift),
+            getTradingChartShiftRightOffset(activeTimeframe, chartSettingsRef.current.chartShift),
             false,
           );
         }
@@ -460,7 +486,7 @@ useChartInitializationLifetime(() => {
         if (y === null || !Number.isFinite(y)) return;
 
         const scaleWidth = chart.priceScale('right').width();
-        applyLivePriceHorizontalGeometry(scaleWidth);
+        runtimeCallbacksRef.current.applyLivePriceHorizontalGeometry(scaleWidth);
         line.style.top = `${y}px`;
         badge.style.top = `${y}px`;
       } catch {
@@ -482,7 +508,7 @@ useChartInitializationLifetime(() => {
         if (drawingManager.hasRenderableContent(drawingManagerOverlayContainer)
           && drawingRenderFrameRef.current === null && drawingRenderSettledFrameRef.current === null) {
           const drawingContext = drawingRuntimeContextRef.current;
-          scheduleDrawingRenderAfterChartData(drawingContext.symbol, drawingContext.timeframe as Timeframe);
+          runtimeCallbacksRef.current.scheduleDrawingRenderAfterChartData(drawingContext.symbol, drawingContext.timeframe as Timeframe);
         }
       });
     };
@@ -642,7 +668,7 @@ useChartInitializationLifetime(() => {
 
     const forceSettleLocalPointerInteraction = () => {
       clearLocalChartPointerState();
-      forceSettleInteraction();
+      runtimeCallbacksRef.current.forceSettleInteraction();
     };
 
     const handleDocumentVisibilityChange = () => {
@@ -679,7 +705,7 @@ useChartInitializationLifetime(() => {
           ? param.seriesData.get(volumeRef.current) as ChartLegendSeriesValue | undefined
           : null;
         if (data) {
-          updateLegendDOM(
+          runtimeCallbacksRef.current.updateLegendDOM(
             data.open || 0,
             data.high || 0,
             data.low || 0,
@@ -693,7 +719,7 @@ useChartInitializationLifetime(() => {
       // candle just as for a pointer outside the chart, rather than stale hover OHLC.
       const c = currentCandleRef.current;
       if (c) {
-        updateLegendDOM(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
+        runtimeCallbacksRef.current.updateLegendDOM(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
       }
     };
     chart.subscribeCrosshairMove(crosshairHandler);
@@ -713,7 +739,7 @@ useChartInitializationLifetime(() => {
       interactionOwnership.noteRangeActivity();
       const historyAction = resolveVisibleRangeHistoryAction({
         logicalFrom: logicalRange?.from,
-        suppressed: isVisibleRangeHistoryLoadSuppressed(),
+        suppressed: runtimeCallbacksRef.current.isVisibleRangeHistoryLoadSuppressed(),
         interactionActive: isChartInteractionActiveRef.current,
         userInitiated: visibleRangeHistoryUserInitiatedRef.current,
       });
@@ -775,11 +801,11 @@ useChartInitializationLifetime(() => {
       window.removeEventListener('blur', forceSettleLocalPointerInteraction);
       document.removeEventListener('visibilitychange', handleDocumentVisibilityChange);
       historyRequestCoordinatorRef.current.abort();
-      cancelQueuedChartRender();
+      runtimeCallbacksRef.current.cancelQueuedChartRender();
       chart.unsubscribeCrosshairMove(crosshairHandler);
       chart.timeScale().unsubscribeSizeChange(handleTimeScaleSizeChange);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeHandler);
-      clearPeriodSeparators();
+      runtimeCallbacksRef.current.clearPeriodSeparators();
 
       // Detach this panel from the singleton before lightweight-charts is
       // disposed, so commands and drag callbacks cannot target stale refs.
@@ -787,13 +813,13 @@ useChartInitializationLifetime(() => {
         drawingManager.setChart(
           null,
           null,
-          symbol,
+          drawingRuntimeContextRef.current.symbol || symbol,
           1,
           drawingManagerOverlayContainer,
-          timeframe,
+          timeScaleTimeframeRef.current || timeframe,
           activeChartSourceId,
           drawingRuntimeContextRef.current.accountScope,
-          getDrawingSeriesData,
+          runtimeCallbacksRef.current.getDrawingSeriesData,
         );
       }
 

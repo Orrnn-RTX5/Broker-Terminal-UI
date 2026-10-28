@@ -138,6 +138,14 @@ export const TradingChart = React.memo(function TradingChart({
   const authToken = useAppStore((state) => state.authToken);
   const brokerAccountSessionScope = useBrokerAccountSessionScope();
   const observedPriceDigitsScopeKey = symbol.trim().toUpperCase();
+  const activeSymbolRef = useRef(symbol);
+  activeSymbolRef.current = symbol;
+  const priceDigitsPropRef = useRef(priceDigits);
+  priceDigitsPropRef.current = priceDigits;
+  // Previous selection refs are shared by history, reconfiguration, and live-candle runtimes.
+  const prevChartTypeRef = useRef<ChartType>(chartType);
+  const prevSymbolRef = useRef<string>(symbol);
+  const prevTimeframeRef = useRef<Timeframe>(timeframe);
   const [observedPriceDigitsState, setObservedPriceDigitsState] = useState<{
     scopeKey: string;
     digits: number | null;
@@ -485,8 +493,13 @@ export const TradingChart = React.memo(function TradingChart({
     candlesSample?: ReadonlyArray<Candle> | null,
     livePricesSample?: readonly unknown[],
   ): number | null => {
-    const inferred = inferObservedPriceDigits(candlesSample, livePricesSample);
-    const activeSymbol = symbol.trim().toUpperCase();
+    const currentSymbol = activeSymbolRef.current;
+    const currentPriceDigits = priceDigitsPropRef.current;
+    const activeSymbol = currentSymbol.trim().toUpperCase();
+    const symbolSwitchInFlight = prevSymbolRef.current.trim().toUpperCase() !== activeSymbol;
+    const inferred = symbolSwitchInFlight
+      ? null
+      : inferObservedPriceDigits(candlesSample, livePricesSample);
     const activeScopeKey = activeSymbol;
     if (observedPriceDigitsScopeRef.current !== activeScopeKey) {
       observedPriceDigitsScopeRef.current = activeScopeKey;
@@ -507,7 +520,7 @@ export const TradingChart = React.memo(function TradingChart({
       ));
     }
     const nextDigits = resolveEffectiveChartPriceDigits(
-      resolveSymbolPriceDigits(activeSymbol, priceDigits),
+      resolveSymbolPriceDigits(activeSymbol, currentPriceDigits),
       observedPriceDigitsRef.current,
     );
     const nextPoint = getPricePointFromDigits(nextDigits);
@@ -1037,6 +1050,7 @@ export const TradingChart = React.memo(function TradingChart({
   }, []);
 
   useEffect(() => {
+    if (prevSymbolRef.current !== symbol) return;
     if (!chartSettings.showOHLC || !currentCandleRef.current) return;
     const candle = currentCandleRef.current;
     updateLegendDOM(
@@ -1046,7 +1060,7 @@ export const TradingChart = React.memo(function TradingChart({
       candle.close,
       getDisplayVolume(candle, chartSettings),
     );
-  }, [chartSettings, updateLegendDOM, isAdvancedUntitledLight]);
+  }, [chartSettings, symbol, updateLegendDOM, isAdvancedUntitledLight]);
 
   const chartColors = useMemo(
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
@@ -2081,7 +2095,7 @@ useTradingChartInitialization({
   }, [symbol]);
 
   useEffect(() => {
-    if (!marketClosedForPresentation) return;
+    if (!marketClosedForPresentation || prevSymbolRef.current !== symbol) return;
 
     const activeTf = prevTimeframeRef.current || timeframe;
     let nextCandles = candlesRef.current;
@@ -2131,14 +2145,10 @@ useTradingChartInitialization({
     marketStatus.sessionCloseTimeMs,
     reloadAggregationCandles,
     requestChartDataRender,
+    symbol,
     timeframe,
     updateLegendDOM,
   ]);
-
-  // Previous selection refs are shared by history, reconfiguration, and live-candle runtimes.
-  const prevChartTypeRef = useRef<ChartType>(chartType);
-  const prevSymbolRef = useRef<string>(symbol);
-  const prevTimeframeRef = useRef<Timeframe>(timeframe);
 
   const {
     buildHistoryCacheTarget,

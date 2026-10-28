@@ -106,7 +106,11 @@ export const bindTradeOverlayRuntimeSubscriptions = ({
     };
     const timeScaleHandler = () => queueTradeOverlayRender();
     chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(timeScaleHandler);
-    timeScaleHandler();
+    if (isActiveRef.current) {
+      renderTradeOverlayNow();
+    } else {
+      timeScaleHandler();
+    }
 
     const unsubscribeAppStore = useAppStore.subscribe((state, previousState) => {
       const currentTick = resolveSymbolTick(state.ticks);
