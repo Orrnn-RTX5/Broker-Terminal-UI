@@ -68,6 +68,7 @@ import {
 } from '../../utils/advancedViewRootClasses';
 import {
     applyThemeAppearanceToRoot,
+    DEFAULT_LIGHT_THEME_SETTINGS,
     resolveEffectiveThemeMode,
     RTX_THEME_APPEARANCE_CHANGE_EVENT,
     RTX_THEME_APPEARANCE_STORAGE_KEY,
@@ -523,12 +524,14 @@ const MainToolbar = ({
             const needsLightMigration = hasStoredAppearance && localStorage.getItem('rtx5-main-light-restored-v3') !== '1';
             const hasNonDefaultWebLight = !isDesktopShell && advancedViewEnabled && (
                 store.light.preset !== 'default-light'
-                || Object.keys(store.light.customOverrides).length > 0
-                || store.contrastLevel !== 'default'
+                || store.light.background !== DEFAULT_LIGHT_THEME_SETTINGS.background
+                || store.light.foreground !== DEFAULT_LIGHT_THEME_SETTINGS.foreground
+                || store.light.accent !== DEFAULT_LIGHT_THEME_SETTINGS.accent
+                || store.contrast !== 'default'
             );
             if (needsLightMigration || hasNonDefaultWebLight) {
                 localStorage.setItem('rtx5-main-light-restored-v3', '1');
-                store.setContrastLevel('default', true);
+                store.setContrast('default');
                 store.setLightPreset('default-light', true);
             }
             if (hasStoredAppearance || needsLightMigration || hasNonDefaultWebLight || document.documentElement.hasAttribute('data-theme-preset')) {

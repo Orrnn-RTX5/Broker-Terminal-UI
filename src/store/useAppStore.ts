@@ -31,6 +31,7 @@ import {
 import { resolveTickStoreKey } from './tickStoreKey';
 import { QUOTE_SESSION_RANGE_FIELDS, type QuoteSessionRange } from '../utils/quoteSessionRange';
 import type { QuoteTradingStatusFields } from '../utils/quoteTradingStatus';
+import type { SpreadMarkupQuoteTag } from '../utils/spreadMarkup';
 import {
   getDailyChangeAuthorityTimestamp,
   getLastAuthorityTimestamp,
@@ -45,7 +46,7 @@ export {
   retainSameQuoteDayDisplayFields,
   retainSameQuoteDayLast,
 };
-export interface Tick extends QuoteSessionRange, QuoteTradingStatusFields {
+export interface Tick extends QuoteSessionRange, QuoteTradingStatusFields, SpreadMarkupQuoteTag {
   dailyChangeInput?: import('../utils/dailyChange').DailyChangeInput;
   symbol: string;
   bid: number;

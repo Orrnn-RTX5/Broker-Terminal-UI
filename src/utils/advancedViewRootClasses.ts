@@ -1,6 +1,7 @@
 import {
   applyThemeAppearanceToRoot,
   clearThemeAppearanceFromRoot,
+  DEFAULT_LIGHT_THEME_SETTINGS,
   loadStoredThemeAppearance,
   RTX_THEME_APPEARANCE_STORAGE_KEY,
 } from './themePresets';
@@ -142,10 +143,9 @@ export const initRootTheme = (root: HTMLElement = document.documentElement) => {
       if (localStorage.getItem('rtx5-main-light-restored-v3') !== '1') {
         appearance = {
           ...appearance,
-          contrastLevel: 'default',
+          contrast: 'default',
           light: {
-            preset: 'default-light',
-            customOverrides: {},
+            ...DEFAULT_LIGHT_THEME_SETTINGS,
           },
         };
         localStorage.setItem(RTX_THEME_APPEARANCE_STORAGE_KEY, JSON.stringify(appearance));
