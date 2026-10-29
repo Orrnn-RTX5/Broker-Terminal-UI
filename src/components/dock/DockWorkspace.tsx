@@ -142,9 +142,10 @@ export const DockWorkspace = React.memo(function DockWorkspace({
             if (instrumentSymbol && digits !== undefined) digitsBySymbol.set(instrumentSymbol, digits);
         });
         mergeDigits(allSymbols);
+        mergeDigits(marketInstrumentsSnapshot.symbols);
         mergeDigits(marketInstrumentsSnapshot.authorizedInstruments);
         return digitsBySymbol;
-    }, [allSymbols, marketInstrumentsSnapshot.authorizedInstruments]);
+    }, [allSymbols, marketInstrumentsSnapshot.authorizedInstruments, marketInstrumentsSnapshot.symbols]);
     const volumeMetadataBySymbol = useMemo(() => {
         const metadataBySymbol = new Map<string, TradeVolumeMetadata>();
         const mergeCatalog = (catalog: unknown[]) => catalog.forEach((instrument) => {
@@ -160,14 +161,15 @@ export const DockWorkspace = React.memo(function DockWorkspace({
         });
 
         mergeCatalog(allSymbols);
+        mergeCatalog(marketInstrumentsSnapshot.symbols);
         // FIX: Authenticated broker specifications override public fallbacks for
         // the exact execution symbol, matching MT-style per-instrument lot grids.
         mergeCatalog(marketInstrumentsSnapshot.authorizedInstruments);
         return metadataBySymbol;
-    }, [allSymbols, marketInstrumentsSnapshot.authorizedInstruments]);
+    }, [allSymbols, marketInstrumentsSnapshot.authorizedInstruments, marketInstrumentsSnapshot.symbols]);
     const historyInstrumentCatalog = useMemo(
-        () => [...allSymbols, ...marketInstrumentsSnapshot.authorizedInstruments],
-        [allSymbols, marketInstrumentsSnapshot.authorizedInstruments],
+        () => [...allSymbols, ...marketInstrumentsSnapshot.symbols, ...marketInstrumentsSnapshot.authorizedInstruments],
+        [allSymbols, marketInstrumentsSnapshot.authorizedInstruments, marketInstrumentsSnapshot.symbols],
     );
 
     const resolveChartSymbol = useCallback((value: unknown): string => {

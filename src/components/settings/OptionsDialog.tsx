@@ -103,7 +103,7 @@ function OpenOptionsDialog({ onClose, activeTab, setActiveTab }: {
                         <div role="tablist" aria-label={tr('Options categories')} aria-orientation="vertical" className="options-navigation">
                             {TABS.map((tab, index) => <div key={tab.id} role="presentation">
                                 {tab.group && <div className="options-nav-group" role="presentation">{tr(tab.group)}</div>}
-                                <button id={`options-tab-${tab.id}`} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`options-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} className="options-nav-item" onClick={() => setActiveTab(tab.id)} onKeyDown={(event) => handleTabKeyDown(event, index)}>
+                                <button id={`options-tab-${tab.id}`} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`options-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} className="options-nav-item" onClick={(event) => { setActiveTab(tab.id); event.currentTarget.focus(); }} onKeyDown={(event) => handleTabKeyDown(event, index)}>
                                     <Icon name={tab.icon} size={17} /><span>{tr(tab.label)}</span>{tab.unavailable && <Icon name="lock" size={12} className="options-nav-lock" />}
                                 </button>
                             </div>)}

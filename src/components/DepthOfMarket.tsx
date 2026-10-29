@@ -2,8 +2,10 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useLiveOrderBook } from '../hooks/useLiveMarketData';
-import { formatPrice, resolveSpecDigits } from '../utils/symbolUtils';
+import { formatPrice } from '../utils/symbolUtils';
+import { inferObservedPriceDigits } from '../utils/chartPriceScale';
 import { readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
+import { resolveMarketWatchPriceDigits } from './market-watch/marketWatchPanelModel';
 import {
   buildDepthOrderRequest,
   depthExecutionForLevel,
@@ -233,16 +235,22 @@ function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair,
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, chartH); ctx.stroke();
       }
 
-      // Price scale on right
+      // Price scale on right (skip labels that would collide with the live price badge)
+      const lastLabelCenterY = history.length > 0
+        ? Math.max(labelHeight / 2, Math.min(chartH - labelHeight / 2, chartH - ((history[history.length - 1].bid - minP) / totalRange) * chartH))
+        : null;
       ctx.fillStyle = isLight ? lightColor('--rtx-light-text-muted', '#455365') : C.textTertiary;
       ctx.font = bodyFont;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
+      const scaleDigits = digits ?? inferObservedPriceDigits(null, [minP, maxP, currentTick?.bid, currentTick?.ask]) ?? 5;
       const priceIntervals = Math.max(1, Math.min(4, Math.floor(chartH / (labelHeight + 4))));
       for (let i = 0; i <= priceIntervals; i++) {
         const y = (chartH / priceIntervals) * i;
+        const clampedY = Math.max(labelHeight / 2, Math.min(chartH - labelHeight / 2, y));
+        if (lastLabelCenterY !== null && Math.abs(clampedY - lastLabelCenterY) < labelHeight * 0.9) continue;
         const price = maxP - (i / priceIntervals) * totalRange;
-        ctx.fillText(formatPrice(price, digits ?? undefined), width - 3, Math.max(labelHeight / 2, Math.min(chartH - labelHeight / 2, y)));
+        ctx.fillText(formatPrice(price, scaleDigits), width - 3, clampedY);
       }
 
       // === CHART MODE RENDERING ===
@@ -698,7 +706,8 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   const ladderColumns = 'minmax(64px, 0.8fr) minmax(96px, 1.2fr) 52px';
   const availableForRows = Math.max(ROW_H * 6 * 2, mainContentHeight - COLUMN_HEADER_HEIGHT);
   const dynamicLevels = Math.max(6, Math.floor(availableForRows / ROW_H / 2));
-  const { orderBook, loading: depthLoading, error: depthError } = useLiveOrderBook(symbol, dynamicLevels);
+  const requestLevels = Math.max(10, dynamicLevels);
+  const { orderBook, loading: depthLoading, error: depthError } = useLiveOrderBook(symbol, requestLevels);
   const bestBid = currentTick?.bid ?? orderBook?.bids[0]?.price ?? 0;
   const bestAsk = currentTick?.ask ?? orderBook?.asks[0]?.price ?? 0;
   const hasDepthSurface = Boolean(currentTick || orderBook);
@@ -725,7 +734,13 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   // catalog registry is not reactive, so a memo could pin a stale null.
   // (MarketData Tick carries no typed digits field; read defensively.)
   const currentTickDigits = (currentTick as { digits?: unknown } | null | undefined)?.digits;
-  const digits = resolveSpecDigits(readRegisteredSymbolPriceSpec(symbol).digits, currentTickDigits);
+  const digits = resolveMarketWatchPriceDigits(
+    symbol,
+    readRegisteredSymbolPriceSpec(symbol).digits,
+    currentTickDigits,
+    bestBid,
+    bestAsk,
+  );
 
   type DepthLevel = { price: number; volume: number };
   const depthLevels = useMemo(() => {
@@ -956,7 +971,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   {tr("Spread")}</span>
                 <span style={{ fontFamily: MONO, color: '#7aacca' }}>
                   {digits === null
-                    ? String(bestAsk - bestBid)
+                    ? String(Number((bestAsk - bestBid).toFixed(8)))
                     : ((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)}</span>
                 {digits !== null && (
                 <span className="uppercase" style={{ color: C.textTertiary, fontSize: 11, letterSpacing: '0.08em' }}>

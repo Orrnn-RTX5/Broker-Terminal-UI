@@ -288,4 +288,37 @@ describe('ChartContextMenu grid choices', () => {
     fireEvent.click(bgImageItem);
     await waitFor(() => expect(onOpenBackgroundImage).toHaveBeenCalledOnce());
   });
+
+  it('constrains the right-click context menu inside the active chart bounds and enables internal scrolling', () => {
+    const chartContainer = document.createElement('div');
+    chartContainer.setAttribute('data-chart-context-id', 'chart-bounded');
+    document.body.appendChild(chartContainer);
+
+    const rect = (left: number, top: number, width: number, height: number) => ({
+      left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
+    });
+
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.getAttribute('data-chart-context-id') === 'chart-bounded') {
+        return rect(280, 64, 900, 380);
+      }
+      if (this.getAttribute('role') === 'menu' && this.getAttribute('aria-label') === 'Chart context menu') {
+        return rect(0, 0, 250, 620);
+      }
+      return rect(0, 0, 0, 0);
+    });
+
+    try {
+      renderMenu('line', { targetContextId: 'chart-bounded', x: 350, y: 300 });
+      const menu = screen.getByRole('menu', { name: 'Chart context menu' });
+      expect(menu).toHaveStyle({
+        top: '72px',
+        left: '350px',
+        maxHeight: '364px',
+        overflowY: 'auto',
+      });
+    } finally {
+      chartContainer.remove();
+    }
+  });
 });

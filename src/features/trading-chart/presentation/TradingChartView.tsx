@@ -108,6 +108,7 @@ interface TradingChartViewProps {
   ohlcOpenRef: RefObject<HTMLSpanElement | null>;
   overlayRef: RefObject<HTMLDivElement | null>;
   panelId?: string;
+  priceDigits?: number;
   priceLabelRef: RefObject<HTMLDivElement | null>;
   setBackgroundImageDialogOpen?: Dispatch<SetStateAction<boolean>>;
   setTemplateDialogOpen: Dispatch<SetStateAction<boolean>>;
@@ -146,7 +147,7 @@ export const TradingChartView = (props: TradingChartViewProps) => {
     isAdvancedUntitledLight, livePriceBadgeRef, livePriceCountdownRef, livePriceLineRef,
     livePriceValueRef, loadingMessageIdx, loadingMessages, loadingPhase, retainedPublicChartSurface, localChartType,
     marketStatus, maxVolume, minVolume, ohlcCloseRef, ohlcHighRef, ohlcLowRef, ohlcOpenRef,
-    overlayRef, panelId, priceLabelRef, setBackgroundImageDialogOpen, setTemplateDialogOpen,
+    overlayRef, panelId, priceDigits, priceLabelRef, setBackgroundImageDialogOpen, setTemplateDialogOpen,
     setTextInputOverlay, setTextInputValue, showOneClick, symbol, templateDialogMode,
     templateDialogOpen, textInputOverlay, textInputValue, timeframe, timeLabelRef,
     toggleOneClickTrading, tradeAllowed, tr, useEnterpriseLightChartPalette, vertLineRef,
@@ -562,7 +563,7 @@ return (
           fontFamily: CHART_AXIS_FONT_FAMILY,
           whiteSpace: 'nowrap',
           pointerEvents: 'none',
-          zIndex: 9,
+          zIndex: 13,
           borderRadius: 0,
           transform: 'translateY(-50%)',
           letterSpacing: 0,
@@ -606,6 +607,7 @@ return (
         visible={chartSettings.showQuickTradingButtons && showOneClick}
         tradeAllowed={tradeAllowed}
         marketStatus={marketStatus}
+        priceDigits={priceDigits}
         minVolume={minVolume}
         maxVolume={maxVolume}
         volumeStep={volumeStep}

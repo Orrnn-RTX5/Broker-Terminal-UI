@@ -58,4 +58,63 @@ describe('useTerminalCommandEvents', () => {
       window.dispatchEvent(new Event('toggleAccountPanel'));
     }).not.toThrow();
   });
+
+  it('persists the active symbol in localStorage on chart symbol change events so hard refresh and reopen restore it', () => {
+    localStorage.clear();
+    const setSelectedSymbol = vi.fn();
+    const symbols = ['BTCUSD', 'XAUUSD', 'EURUSD'];
+
+    const useHarness = () => {
+      useTerminalCommandEvents({
+        selectedSymbol: 'BTCUSD',
+        setSelectedSymbol,
+        timeframe: 'M1' as Timeframe,
+        setTimeframe: setter<Timeframe>(),
+        chartType: 'candlestick' as ChartType,
+        setChartType: setter<ChartType>(),
+        chartEligibleSymbolNames: symbols,
+        displayToast: vi.fn(),
+        placeOrder: vi.fn(),
+        handleOpenDOM: vi.fn(),
+        handleSaveWorkspace: vi.fn(),
+        handleOpenDataFolder: vi.fn(),
+        handlePrintChart: vi.fn(),
+        getAllowedSymbol: (symbol) => String(symbol || '').trim().toUpperCase(),
+        getChartEligibleSymbol: (symbol) => {
+          const normalized = String(symbol || '').trim().toUpperCase();
+          return symbols.includes(normalized) ? normalized : '';
+        },
+        openOrderPanelForSymbol: vi.fn(),
+        setShowDataWindow: setter<boolean>(),
+        setShowAccountPanel: setter<boolean>(),
+        setDockHeight: setter<number>(),
+        setChartSymbolPicker: setter<ChartSymbolPickerState | null>(),
+        setShowChartProperties: setter<boolean>(),
+        setChartPropsSymbol: setter<string>(),
+        setChartPropsTimeframe: setter<string>(),
+        setChartPropsContextId: setter<string | undefined>(),
+        setChartObjectsTarget: setter<ChartObjectsTarget | null>(),
+      });
+    };
+
+    const { unmount } = renderHook(useHarness);
+    act(() => {
+      window.dispatchEvent(new CustomEvent('chartSymbolChanged', {
+        detail: { symbol: 'xauusd', timeframe: 'M15' },
+      }));
+    });
+
+    expect(setSelectedSymbol).toHaveBeenCalledWith('XAUUSD');
+    expect(localStorage.getItem('rtx5_selected_symbol')).toBe('XAUUSD');
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('openChart', {
+        detail: { symbol: 'eurusd' },
+      }));
+    });
+
+    expect(setSelectedSymbol).toHaveBeenLastCalledWith('EURUSD');
+    expect(localStorage.getItem('rtx5_selected_symbol')).toBe('EURUSD');
+    unmount();
+  });
 });

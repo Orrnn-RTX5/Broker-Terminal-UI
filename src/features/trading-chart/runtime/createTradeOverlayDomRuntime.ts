@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
 import api from '../../../services/api';
 import { useAppStore } from '../../../store/useAppStore';
-import { getPricePointFromDigits } from '../../../utils/chartPriceScale';
+import { formatChartAxisPrice, getPricePointFromDigits } from '../../../utils/chartPriceScale';
 import { rememberTradeHistoryPositionLevels } from '../../../utils/tradeHistoryLevelCache';
 import {
   bindChartUiTranslation,
@@ -436,6 +436,9 @@ export const createTradeOverlayDomRuntime = ({
       badge.className = 'rtx-trade-axis-price-badge';
       badge.dataset.tradeAxisKey = key;
       badge.textContent = seriesRef.current.priceFormatter().format(price);
+      if (digits !== null && Math.abs(price) >= 1000) {
+        badge.textContent = formatChartAxisPrice(price, digits);
+      }
       const lightSurface = isChartSurfaceLight();
       const lightEntryColors: Record<string, string> = {
         [TRADE_ENTRY_LINE_BUY_COLOR]: LIGHT_CHART_TRADE_COLORS.buy,
@@ -446,7 +449,7 @@ export const createTradeOverlayDomRuntime = ({
       const axisColor = lightSurface ? (lightEntryColors[color] ?? color) : color;
       const borderColor = colorWithAlpha(axisColor, lightSurface ? 0.38 : 0.48, axisColor);
       const background = chartThemeRef.current.background ?? (lightSurface ? '#fafbfc' : '#000000');
-      badge.style.cssText = `position:absolute;display:none;right:0;height:18px;align-items:center;justify-content:flex-end;padding:0 6px;box-sizing:border-box;border:1px solid ${borderColor};border-radius:3px;background-color:${background};background-image:none;color:${axisColor};font-family:${CHART_AXIS_FONT_FAMILY};font-size:12px;font-weight:600;line-height:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;transform:translateY(-50%);pointer-events:none;z-index:8;`;
+      badge.style.cssText = `position:absolute;display:none;right:0;height:18px;align-items:center;justify-content:center;padding:0 6px;box-sizing:border-box;border:1px solid ${borderColor};border-radius:3px;background-color:${background};background-image:none;color:${axisColor};font-family:${CHART_AXIS_FONT_FAMILY};font-size:12px;font-weight:600;line-height:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;transform:translateY(-50%);pointer-events:none;z-index:8;`;
       badge.style.setProperty('--rtx-type-size', '12px');
       badge.style.setProperty('--rtx-type-weight', '600');
       badge.style.setProperty('--rtx-type-family', CHART_AXIS_FONT_FAMILY);

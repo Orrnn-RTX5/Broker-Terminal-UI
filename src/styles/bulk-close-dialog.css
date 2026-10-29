@@ -439,8 +439,25 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-backdrop .rt
   background: var(--rtx-light-elevated) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-dialog__btn-confirm:hover {
-  background: linear-gradient(180deg, var(--rtx-light-sell-hover), var(--rtx-light-sell-pressed));
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-dialog__btn-confirm,
+html.rtx-skin-untitled-light .rtx-bulk-close-dialog__btn-confirm,
+.rtx-bulk-close-dialog__btn-confirm {
+  background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%) !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-dialog__btn-confirm :is(span, svg, .rtx-bulk-close-dialog__btn-icon),
+html.rtx-skin-untitled-light .rtx-bulk-close-dialog__btn-confirm :is(span, svg, .rtx-bulk-close-dialog__btn-icon),
+.rtx-bulk-close-dialog__btn-confirm :is(span, svg, .rtx-bulk-close-dialog__btn-icon) {
+  color: #ffffff !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-dialog__btn-confirm:hover,
+html.rtx-skin-untitled-light .rtx-bulk-close-dialog__btn-confirm:hover {
+  background: linear-gradient(180deg, var(--rtx-light-sell-hover, #b91c1c), var(--rtx-light-sell-pressed, #991b1b)) !important;
+  border-color: var(--rtx-light-sell-pressed, #991b1b) !important;
+  color: #ffffff !important;
 }
 
 .rtx-bulk-close-dialog button:focus-visible {

@@ -191,6 +191,25 @@ const toSettingsChartType = (chartType: ChartType) => {
 
 const SELECTED_SYMBOL_STORAGE_KEY = 'rtx5_selected_symbol';
 
+const readPersistedSelectedSymbol = (): string => {
+  try {
+    return normalizeSymbolName(localStorage.getItem(SELECTED_SYMBOL_STORAGE_KEY));
+  } catch {
+    return '';
+  }
+};
+
+const writePersistedSelectedSymbol = (symbol: unknown): string => {
+  const normalized = normalizeSymbolName(symbol);
+  if (!normalized) return '';
+  try {
+    localStorage.setItem(SELECTED_SYMBOL_STORAGE_KEY, normalized);
+  } catch {
+    // Ignore storage write errors
+  }
+  return normalized;
+};
+
 interface AppProps {
   initialSessionHandoff?: AuthenticatedSessionHandoff | null;
   onSessionEnded?: () => void;
@@ -237,7 +256,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [initialTradeSnapshotSettledFor, setInitialTradeSnapshotSettledFor] = useState('');
   useGuestMarketData(guestMarketAccess && !isAuthenticated && !isAutoAuthenticating);
   const hasInitialAccountSnapshot = useAppStore(state => state.account !== null);
-  const [selectedSymbol, setSelectedSymbol] = useState<string>(DEFAULT_CHART_SYMBOL);
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(() => (
+    readPersistedSelectedSymbol() || DEFAULT_CHART_SYMBOL
+  ));
   const [positions, setPositions] = useState<Position[]>([]);
   const [, setAccount] = useState<Account | null>(null);
   const [, setLedger] = useState<any[]>([]);
@@ -536,6 +557,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const handleSymbolSelect = useCallback((symbol: string) => {
     const chartSymbol = getChartEligibleSymbol(symbol);
     if (!chartSymbol) return;
+    writePersistedSelectedSymbol(chartSymbol);
     setSelectedSymbol(chartSymbol);
     requestActiveChartSymbolChange(chartSymbol);
   }, [getChartEligibleSymbol]);
@@ -557,17 +579,40 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     handleSymbolSelect(sharedTrade.symbol);
   }, [accountId, handleSymbolSelect, hasLoadedChartSymbols, isAuthenticated, restoredLayoutAccountId]);
 
+  const isChartCatalogAuthoritative = isAuthenticated
+    ? marketInstrumentsSnapshot.chartCatalogCurrent === true
+      && Boolean(accountId)
+      && restoredLayoutAccountId === accountId
+    : !isAutoAuthenticating
+      && !marketInstrumentsSnapshot.loading
+      && marketInstrumentsSnapshot.chartCatalogCurrent !== false;
+
   // Multi-Chart State (Now managed by DockManager)
   useEffect(() => {
     // Sync selected symbol to persistence
     if (!hasLoadedChartSymbols) return;
     const normalizedSelectedSymbol = normalizeSymbolName(selectedSymbol);
+    const persistedSymbol = readPersistedSelectedSymbol();
     if (normalizedSelectedSymbol && chartEligibleSymbolSet.has(normalizedSelectedSymbol)) {
-      localStorage.setItem(SELECTED_SYMBOL_STORAGE_KEY, normalizedSelectedSymbol);
-    } else {
+      if (isChartCatalogAuthoritative || !persistedSymbol || persistedSymbol === normalizedSelectedSymbol) {
+        writePersistedSelectedSymbol(normalizedSelectedSymbol);
+      }
+      return;
+    }
+    if (
+      isChartCatalogAuthoritative
+      && chartEligibleSymbolNames.length > 0
+      && (!persistedSymbol || !chartEligibleSymbolSet.has(persistedSymbol))
+    ) {
       localStorage.removeItem(SELECTED_SYMBOL_STORAGE_KEY);
     }
-  }, [chartEligibleSymbolSet, hasLoadedChartSymbols, selectedSymbol]);
+  }, [
+    chartEligibleSymbolNames.length,
+    chartEligibleSymbolSet,
+    hasLoadedChartSymbols,
+    isChartCatalogAuthoritative,
+    selectedSymbol,
+  ]);
 
   useEffect(() => {
     localStorage.setItem('rtx5_timeframe', timeframe);
@@ -730,8 +775,17 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     // A same-source guest login keeps its existing chart hosts and selection.
     // A new launch, account switch or changed broker still opens the defaults.
     if (!guestChartLoginContinuity.preserveGuestLayout) {
+      const persistedSymbol = readPersistedSelectedSymbol();
       useDockLayoutStore.getState().resetToDefaultLayout();
-      setSelectedSymbol(DEFAULT_CHART_SYMBOL);
+      if (persistedSymbol) {
+        useDockLayoutStore.getState().updatePanelProps('chart-default-container', {
+          title: `${persistedSymbol},${DEFAULT_CHART_TIMEFRAME}`,
+          props: { symbol: persistedSymbol, timeframe: DEFAULT_CHART_TIMEFRAME },
+        });
+        setSelectedSymbol(persistedSymbol);
+      } else {
+        setSelectedSymbol(DEFAULT_CHART_SYMBOL);
+      }
       setTimeframe(DEFAULT_CHART_TIMEFRAME);
     }
 
@@ -1459,13 +1513,26 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!marketInstrumentsSnapshot.authorizationSettled || allowedSymbolNames.length === 0) return;
 
     setSelectedSymbol((previous) => {
-      const current = normalizeSymbolName(previous);
-      const saved = normalizeSymbolName(localStorage.getItem(SELECTED_SYMBOL_STORAGE_KEY));
-      return current || saved || resolveAuthorizedChartSymbol(DEFAULT_CHART_SYMBOL, allowedSymbolNames) || allowedSymbolNames[0] || '';
+      const savedRaw = readPersistedSelectedSymbol();
+      const saved = resolveAuthorizedChartSymbol(savedRaw, chartEligibleSymbolNames)
+        || resolveAuthorizedChartSymbol(savedRaw, allowedSymbolNames);
+      const current = resolveAuthorizedChartSymbol(previous, chartEligibleSymbolNames)
+        || resolveAuthorizedChartSymbol(previous, allowedSymbolNames);
+      if (saved && (!current || current === normalizeSymbolName(DEFAULT_CHART_SYMBOL))) {
+        return saved;
+      }
+      return current
+        || saved
+        || resolveAuthorizedChartSymbol(DEFAULT_CHART_SYMBOL, chartEligibleSymbolNames)
+        || resolveAuthorizedChartSymbol(DEFAULT_CHART_SYMBOL, allowedSymbolNames)
+        || chartEligibleSymbolNames[0]
+        || allowedSymbolNames[0]
+        || '';
     });
   }, [
     accountId,
     allowedSymbolNames,
+    chartEligibleSymbolNames,
     isAuthenticated,
     marketInstrumentsSnapshot.authorizationSettled,
   ]);
@@ -1500,7 +1567,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       setHasAppliedLiveChartPreference(true);
     }
 
-    if (fallbackSymbol && fallbackSymbol !== normalizeSymbolName(selectedSymbol)) {
+    const normalizedCurrentSymbol = normalizeSymbolName(selectedSymbol);
+    const canApplyFallbackSelection = !normalizedCurrentSymbol
+      || isChartCatalogAuthoritative
+      || chartEligibleSymbolSet.has(normalizedCurrentSymbol);
+    if (fallbackSymbol && fallbackSymbol !== normalizedCurrentSymbol && canApplyFallbackSelection) {
       setSelectedSymbol(fallbackSymbol);
     }
     if (!fallbackSymbol) return;
@@ -1509,9 +1580,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const layout = store.layout;
     // Feed status may arrive with only one live instrument before the broker
     // catalog. It can render a preview, but cannot invalidate saved symbols.
-    const updates = getChartPanelSymbolUpdates(layout, getChartEligibleSymbol, fallbackSymbol, timeframe,
-      marketInstrumentsSnapshot.chartCatalogCurrent === true && isAuthenticated
-      && Boolean(accountId) && restoredLayoutAccountId === accountId);
+    const updates = getChartPanelSymbolUpdates(
+      layout,
+      getChartEligibleSymbol,
+      fallbackSymbol,
+      timeframe,
+      isChartCatalogAuthoritative,
+    );
 
     updates.forEach(update => {
       store.updatePanelProps(update.id, {
@@ -1549,10 +1624,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     hasLoadedChartSymbols,
     hasLoadedSymbols,
     isAuthenticated,
+    isChartCatalogAuthoritative,
     restoredLayoutAccountId,
     selectedSymbol,
     timeframe,
-    marketInstrumentsSnapshot.chartCatalogCurrent,
   ]);
 
   const chartSelectionReadiness = useMemo(() => getChartSelectionReadinessSnapshot({
@@ -1583,10 +1658,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // FIX: A restored dock tab is the authoritative active-chart selection. Keep
   // global chart-bound commands and persistence aligned with what is visible.
   useEffect(() => {
+    if (useDockLayoutStore.getState().layout !== dockLayout) return;
     const renderedChartSymbol = normalizeSymbolName(chartSelectionReadiness.renderedChartSymbol);
     if (!renderedChartSymbol || renderedChartSymbol === normalizeSymbolName(selectedSymbol)) return;
     setSelectedSymbol(renderedChartSymbol);
-  }, [chartSelectionReadiness.renderedChartSymbol, selectedSymbol]);
+  }, [chartSelectionReadiness.renderedChartSymbol, dockLayout, selectedSymbol]);
   // FIX: During the one reconciliation render, never pair the visible chart
   // symbol with another symbol's cached market-status metadata.
   const desktopToolbarMarketStatus = normalizeSymbolName(selectedMarketStatus.symbol) === normalizeSymbolName(desktopToolbarSymbol)
@@ -2100,7 +2176,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                 const sessionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
                 if (sessionScope !== chartSymbolPicker.sessionScope) return;
                 if (changeChartPanelSymbol(chartSymbolPicker.panelId, symbol, chartEligibleSymbolNames, timeframe)) {
-                  setSelectedSymbol(normalizeSymbolName(symbol));
+                  const normalized = writePersistedSelectedSymbol(symbol);
+                  setSelectedSymbol(normalized);
                 }
               }}
             />
@@ -2117,7 +2194,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                 const sessionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
                 if (sessionScope !== chartSymbolPicker.sessionScope) return;
                 if (changeChartPanelSymbol(chartSymbolPicker.panelId, symbol, chartEligibleSymbolNames, timeframe)) {
-                  setSelectedSymbol(normalizeSymbolName(symbol));
+                  const normalized = writePersistedSelectedSymbol(symbol);
+                  setSelectedSymbol(normalized);
                 }
               }}
             />

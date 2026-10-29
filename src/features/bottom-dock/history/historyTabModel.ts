@@ -32,16 +32,16 @@ export function resolveHistoryRowStatus(trade: Trade): CanonicalHistoryOrderStat
 export function getHistoryStatusBadgeClass(status: CanonicalHistoryOrderStatus): string {
   switch (status) {
     case 'CANCELLED':
-      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-zinc-500/15 text-zinc-400 border-zinc-500/30';
+      return 'rtx-history-status-label inline-flex items-center text-[11px] font-normal text-zinc-400';
     case 'EXPIRED':
-      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-amber-500/15 text-amber-400 border-amber-500/30';
+      return 'rtx-history-status-label inline-flex items-center text-[11px] font-normal text-amber-400';
     case 'REJECTED':
-      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-rose-500/15 text-rose-400 border-rose-500/30';
+      return 'rtx-history-status-label inline-flex items-center text-[11px] font-normal text-rose-400';
     case 'PENDING':
-      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-sky-500/15 text-sky-400 border-sky-500/30';
+      return 'rtx-history-status-label inline-flex items-center text-[11px] font-normal text-sky-400';
     case 'FILLED':
     default:
-      return 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+      return 'rtx-history-status-label inline-flex items-center text-[11px] font-normal text-emerald-400';
   }
 }
 

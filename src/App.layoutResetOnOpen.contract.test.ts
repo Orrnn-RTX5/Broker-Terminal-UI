@@ -25,4 +25,13 @@ describe('layout reset on open', () => {
     expect(bootEffect).not.toContain('saveLayout(');
     expect(bootEffect).not.toContain('useDockLayoutStore.subscribe');
   });
+
+  it('restores the last selected symbol onto the default chart container across reload and reopen while falling back to DEFAULT_CHART_SYMBOL', () => {
+    expect(bootEffect).toContain('const persistedSymbol = readPersistedSelectedSymbol();');
+    expect(bootEffect).toContain("useDockLayoutStore.getState().updatePanelProps('chart-default-container'");
+    expect(bootEffect).toContain('setSelectedSymbol(persistedSymbol);');
+    expect(bootEffect).toContain('setSelectedSymbol(DEFAULT_CHART_SYMBOL);');
+    expect(source).toContain('readPersistedSelectedSymbol() || DEFAULT_CHART_SYMBOL');
+    expect(source).toContain('if (useDockLayoutStore.getState().layout !== dockLayout) return;');
+  });
 });

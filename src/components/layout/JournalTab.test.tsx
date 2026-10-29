@@ -752,13 +752,14 @@ describe('JournalTab', () => {
         render(<JournalTab />);
         expect(await screen.findByText('Journal row 30 minutes old')).toBeInTheDocument();
 
+        expect(screen.queryByRole('button', { name: '3h' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: '6h' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Month' })).not.toBeInTheDocument();
+
         const cases = [
             { range: '2h', included: logs.slice(0, 2), excluded: logs.slice(2) },
-            { range: '3h', included: logs.slice(0, 3), excluded: logs.slice(3) },
-            { range: '6h', included: logs.slice(0, 4), excluded: logs.slice(4) },
             { range: 'Today', included: logs.slice(0, 6), excluded: logs.slice(6) },
             { range: 'Week', included: logs.slice(0, 7), excluded: logs.slice(7) },
-            { range: 'Month', included: logs.slice(0, 8), excluded: logs.slice(8) },
             { range: 'All', included: logs, excluded: [] },
         ];
 

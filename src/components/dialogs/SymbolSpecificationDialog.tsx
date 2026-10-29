@@ -1839,9 +1839,25 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
         }
         .theme-light .rtx-symbol-specification-dialog,
         .rtx-skin-untitled-light .rtx-symbol-specification-dialog {
-          --mw-spec-grid: #d4dbe3;
+          --mw-spec-grid: #d8e0ea;
           --mw-spec-row-even: #ffffff;
           --mw-spec-row-odd: #f6f8fb;
+          border-radius: 6px;
+          box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.08);
+        }
+        .theme-light .rtx-symbol-specification-dialog .rtx-spec-close-btn,
+        .rtx-skin-untitled-light .rtx-symbol-specification-dialog .rtx-spec-close-btn {
+          border-color: var(--rtx-light-control-border, #c5d0dc);
+          border-radius: 5px;
+          background: var(--rtx-light-button-secondary, #f8fafc);
+          color: var(--rtx-light-text, #0f172a);
+          font-weight: 500;
+          height: 26px;
+        }
+        .theme-light .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover,
+        .rtx-skin-untitled-light .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover {
+          border-color: var(--rtx-light-control-border-hover, #94a3b8);
+          background: var(--rtx-light-hover, #eef2f6);
         }
         .rtx-symbol-specification-dialog .rtx-spec-row[data-stripe="even"]:not([data-selected="true"]) {
           background-color: var(--mw-spec-row-even);
@@ -1982,7 +1998,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
           <button
             type="button"
             onClick={onClose}
-            className="h-[23px] w-[90px] border border-[#8a8a8a] bg-[var(--bg-tertiary)] px-3 text-[12px] font-normal text-[var(--text-primary)] hover:border-[var(--color-info)] hover:bg-[var(--bg-quaternary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="rtx-spec-close-btn h-[23px] w-[90px] border border-[#8a8a8a] bg-[var(--bg-tertiary)] px-3 text-[12px] font-normal text-[var(--text-primary)] hover:border-[var(--color-info)] hover:bg-[var(--bg-quaternary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
             {tr('Close')}
           </button>

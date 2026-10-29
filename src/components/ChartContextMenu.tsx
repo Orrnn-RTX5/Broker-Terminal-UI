@@ -125,6 +125,37 @@ const MENU_MIN_WIDTH = 250;
 const MENU_ESTIMATED_HEIGHT = 460;
 const MENU_MIN_MAX_HEIGHT = 180;
 
+interface MenuBounds {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+}
+
+const resolveChartMenuBounds = (targetContextId?: string): MenuBounds => {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 768;
+    if (typeof document !== 'undefined' && targetContextId) {
+        const chartEl = Array.from(document.querySelectorAll<HTMLElement>('[data-chart-context-id]'))
+            .find((el) => el.getAttribute('data-chart-context-id') === targetContextId);
+        const rect = chartEl?.getBoundingClientRect();
+        if (rect && rect.width > 0 && rect.height > 0) {
+            return {
+                left: Math.max(0, rect.left),
+                top: Math.max(0, rect.top),
+                right: Math.min(vw, rect.right),
+                bottom: Math.min(vh, rect.bottom),
+            };
+        }
+    }
+    return {
+        left: 0,
+        top: 0,
+        right: vw,
+        bottom: vh,
+    };
+};
+
 interface MenuLayout {
     left: number;
     top: number;
@@ -139,18 +170,23 @@ const clampChartContextMenuLayout = (
     anchorY: number,
     menuWidth: number,
     menuHeight: number,
+    targetContextId?: string,
 ): MenuLayout => {
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const maxHeight = Math.max(MENU_MIN_MAX_HEIGHT, viewportHeight - MENU_VIEWPORT_MARGIN * 2);
+    const bounds = resolveChartMenuBounds(targetContextId);
+    const boundsHeight = Math.max(0, bounds.bottom - bounds.top);
+    const maxHeight = Math.max(
+        Math.min(MENU_MIN_MAX_HEIGHT, Math.max(96, boundsHeight - MENU_VIEWPORT_MARGIN * 2)),
+        boundsHeight - MENU_VIEWPORT_MARGIN * 2,
+    );
     const visibleHeight = Math.min(Math.max(menuHeight, 0), maxHeight);
+    const effectiveWidth = Math.max(menuWidth, MENU_MIN_WIDTH);
     const left = Math.max(
-        MENU_VIEWPORT_MARGIN,
-        Math.min(anchorX, viewportWidth - Math.max(menuWidth, MENU_MIN_WIDTH) - MENU_VIEWPORT_MARGIN),
+        bounds.left + MENU_VIEWPORT_MARGIN,
+        Math.min(anchorX, bounds.right - effectiveWidth - MENU_VIEWPORT_MARGIN),
     );
     const top = Math.max(
-        MENU_VIEWPORT_MARGIN,
-        Math.min(anchorY, viewportHeight - visibleHeight - MENU_VIEWPORT_MARGIN),
+        bounds.top + MENU_VIEWPORT_MARGIN,
+        Math.min(anchorY, bounds.bottom - visibleHeight - MENU_VIEWPORT_MARGIN),
     );
 
     return {
@@ -218,19 +254,19 @@ const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                padding: '3px 14px 3px 12px',
-                minHeight: 30,
-                fontSize: 14,
-                lineHeight: '20px',
+                padding: '2px 12px 2px 10px',
+                minHeight: 26,
+                fontSize: 12.5,
+                lineHeight: '18px',
                 fontFamily: MENU_FONT,
                 fontWeight: 400,
-                letterSpacing: '0.015em',
+                letterSpacing: '0.01em',
                 color: fg,
                 background: bg,
                 cursor: disabled ? 'default' : 'pointer',
                 userSelect: 'none',
                 pointerEvents: disabled ? 'none' : undefined,
-                transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
+                transition: 'all 0.12s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
             onMouseEnter={e => { if (!active) (e.currentTarget as HTMLDivElement).style.background = C_HOVER; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = active ? C_ITEM_ACTIVE_BG : 'transparent'; }}
@@ -266,6 +302,8 @@ MenuItem.displayName = 'MenuItem';
 
 const SubmenuAncestry = React.createContext<readonly string[]>([]);
 
+const ChartMenuTargetContext = React.createContext<string | undefined>(undefined);
+
 const Submenu = ({ children, label, icon, disabled }: {
     children: React.ReactNode;
     label: string;
@@ -274,6 +312,7 @@ const Submenu = ({ children, label, icon, disabled }: {
 }) => {
     const tr = useUiTranslation();
     const ancestorIds = React.useContext(SubmenuAncestry);
+    const targetContextId = React.useContext(ChartMenuTargetContext);
     const submenuId = React.useId();
     const branchIds = [...ancestorIds, submenuId];
     const [open, setOpen] = useState(false);
@@ -285,20 +324,19 @@ const Submenu = ({ children, label, icon, disabled }: {
     const calcPosition = useCallback(() => {
         if (!ref.current) return;
         const rect = ref.current.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
+        const bounds = resolveChartMenuBounds(targetContextId);
         const submenuRect = submenuRef.current?.getBoundingClientRect();
         const submenuWidth = Math.max(200, submenuRect?.width || 0);
-        const maxHeight = Math.max(0, vh - MENU_VIEWPORT_MARGIN * 2);
+        const maxHeight = Math.max(0, (bounds.bottom - bounds.top) - MENU_VIEWPORT_MARGIN * 2);
         const submenuHeight = Math.min(submenuRef.current?.scrollHeight || submenuRect?.height || 320, maxHeight);
-        const left = Math.max(MENU_VIEWPORT_MARGIN, Math.min(
-            rect.right + submenuWidth > vw - MENU_VIEWPORT_MARGIN ? rect.left - submenuWidth : rect.right,
-            vw - submenuWidth - MENU_VIEWPORT_MARGIN,
+        const left = Math.max(bounds.left + MENU_VIEWPORT_MARGIN, Math.min(
+            rect.right + submenuWidth > bounds.right - MENU_VIEWPORT_MARGIN ? rect.left - submenuWidth : rect.right,
+            bounds.right - submenuWidth - MENU_VIEWPORT_MARGIN,
         ));
-        const top = Math.max(MENU_VIEWPORT_MARGIN, Math.min(rect.top, vh - submenuHeight - MENU_VIEWPORT_MARGIN));
+        const top = Math.max(bounds.top + MENU_VIEWPORT_MARGIN, Math.min(rect.top, bounds.bottom - submenuHeight - MENU_VIEWPORT_MARGIN));
 
         setSubmenuStyle({ left, top, maxHeight });
-    }, []);
+    }, [targetContextId]);
 
     useLayoutEffect(() => {
         if (!open) return;
@@ -358,15 +396,15 @@ const Submenu = ({ children, label, icon, disabled }: {
                 }}
                 style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '3px 14px 3px 12px', minHeight: 30,
-                    fontSize: 14, lineHeight: '20px',
-                    fontFamily: MENU_FONT, fontWeight: 400, letterSpacing: '0.015em',
+                    padding: '2px 12px 2px 10px', minHeight: 26,
+                    fontSize: 12.5, lineHeight: '18px',
+                    fontFamily: MENU_FONT, fontWeight: 400, letterSpacing: '0.01em',
                     color: disabled ? C_DISABLED : open ? C_ACTIVE_FG : C_TEXT,
                     background: open ? C_ACTIVE_BG : 'transparent',
                     cursor: disabled ? 'default' : 'pointer',
                     userSelect: 'none',
                     pointerEvents: disabled ? 'none' : undefined,
-                    transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
+                    transition: 'all 0.12s cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
             >
                 <span style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -465,7 +503,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     const templates = useTemplates();
     const menuRef = useRef<HTMLDivElement>(null);
     const [menuLayout, setMenuLayout] = useState<MenuLayout | null>(null);
-    const fallbackLayout = clampChartContextMenuLayout(x, y, MENU_MIN_WIDTH, MENU_ESTIMATED_HEIGHT);
+    const fallbackLayout = clampChartContextMenuLayout(x, y, MENU_MIN_WIDTH, MENU_ESTIMATED_HEIGHT, targetContextId);
     const activeLayout = menuLayout?.anchorX === x && menuLayout?.anchorY === y
         ? menuLayout
         : fallbackLayout;
@@ -480,6 +518,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             y,
             rect.width || MENU_MIN_WIDTH,
             menuRef.current.scrollHeight || rect.height || MENU_ESTIMATED_HEIGHT,
+            targetContextId,
         );
 
         setMenuLayout(prev => (
@@ -599,11 +638,11 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 background: C_BG,
                 backdropFilter: 'blur(16px) saturate(180%)',
                 border: `1px solid ${C_BORDER}`,
-                borderRadius: 10,
-                boxShadow: 'var(--ctx-shadow, 0 16px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08))',
+                borderRadius: 6,
+                boxShadow: 'var(--ctx-shadow, 0 12px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.08))',
                 fontFamily: MENU_FONT,
                 boxSizing: 'border-box',
-                overflowX: 'visible',
+                overflowX: 'hidden',
                 overflowY: activeLayout.scrollable ? 'auto' : 'visible',
                 overscrollBehavior: 'contain',
             }}
@@ -614,11 +653,11 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                padding: '5px 14px 5px 12px',
-                minHeight: 30,
-                fontSize: 12,
-                fontWeight: 500,
-                letterSpacing: '0.12em',
+                padding: '4px 12px 4px 10px',
+                minHeight: 26,
+                fontSize: 11.5,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
                 textTransform: 'uppercase',
                 color: C_HEADER,
                 borderBottom: `1px solid ${C_BORDER}`,
@@ -1038,7 +1077,11 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                         }}
                         onContextMenu={(e) => e.preventDefault()}
                     />
-                    {menuContent}
+                    { (
+                        <ChartMenuTargetContext.Provider value={targetContextId}>
+                            {menuContent}
+                        </ChartMenuTargetContext.Provider>
+                    ) }
                 </>,
                 document.body
             )}

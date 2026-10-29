@@ -396,8 +396,9 @@ export interface SquareGridTimeAxis {
   };
 }
 
-const MT5_TIME_AXIS_MAX_FONT_SIZE_PX = 10;
+const MT5_TIME_AXIS_MAX_FONT_SIZE_PX = 12;
 const MT5_TIME_AXIS_TICK_LENGTH_PX = 4;
+const MT5_TIME_AXIS_LIGHT_LABEL_GAP_PX = 16;
 
 class FineGridPriceAxisRenderer implements IPrimitivePaneRenderer {
   constructor(
@@ -443,8 +444,9 @@ class SquareGridTimeAxisRenderer implements IPrimitivePaneRenderer {
       );
       if (positions.length === 0) return;
 
+      const isLightAxis = options.isLightBackground === true;
       const fontSize = Math.max(
-        8,
+        isLightAxis ? 11 : 8,
         Math.min(
           Number.isFinite(appearance.fontSize) && appearance.fontSize > 0
             ? appearance.fontSize
@@ -452,9 +454,11 @@ class SquareGridTimeAxisRenderer implements IPrimitivePaneRenderer {
           MT5_TIME_AXIS_MAX_FONT_SIZE_PX,
         ),
       );
+      const textColor = isLightAxis ? '#0f172a' : appearance.color;
       const borderColor = appearance.borderColor && appearance.borderColor !== 'transparent'
         ? appearance.borderColor
-        : appearance.color;
+        : textColor;
+      const minLabelGap = isLightAxis ? MT5_TIME_AXIS_LIGHT_LABEL_GAP_PX : 0;
 
       context.save();
       if (appearance.backgroundColor && typeof context.fillRect === 'function') {
@@ -484,25 +488,26 @@ class SquareGridTimeAxisRenderer implements IPrimitivePaneRenderer {
         const text = this.timeAxis.labelAt(x, !hasDrawnFirstTick);
         if (text === null || text === '') continue;
 
-        const textX = x === 0 ? 2 : x + 1;
+        const textX = x === 0 ? 4 : x + 3;
+        const compatTextX = isLightAxis ? textX : (x === 0 ? 2 : x + 1);
         const measuredWidth = typeof context.measureText === 'function'
           ? context.measureText(text).width
           : 0;
-        if (x > 0 && measuredWidth > 0 && textX + measuredWidth > mediaSize.width - 2) {
+        if (x > 0 && measuredWidth > 0 && compatTextX + measuredWidth > mediaSize.width - 2) {
           continue;
         }
 
         if (typeof context.fillRect === 'function') {
-          context.fillStyle = appearance.color;
+          context.fillStyle = isLightAxis ? borderColor : appearance.color;
           context.fillRect(x === 0 ? 0 : Math.round(x), 1, 1, MT5_TIME_AXIS_TICK_LENGTH_PX);
         }
 
-        context.fillStyle = appearance.color;
-        context.fillText(text, textX, textY);
+        context.fillStyle = textColor;
+        context.fillText(text, compatTextX, textY);
 
         hasDrawnFirstTick = true;
         if (timeKey !== null) lastTimeKey = timeKey;
-        minNextX = measuredWidth > 0 ? textX + measuredWidth : x + 1;
+        minNextX = measuredWidth > 0 ? compatTextX + measuredWidth + minLabelGap : x + 1;
       }
       context.restore();
     });

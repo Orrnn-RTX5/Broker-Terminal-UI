@@ -577,6 +577,7 @@ export function WelcomeTerminal({
     const presentationAbortRef = useRef<AbortController | null>(null);
     const verifiedBrokerTargetRef = useRef('');
     const submittingRef = useRef(false);
+    const passwordInputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -760,7 +761,11 @@ export function WelcomeTerminal({
 
         // Sign-in always verifies the current directory; account tools can then
         // reuse this successful response instead of repeating the network wait.
-        loadAppBrokerDirectory({ forceRefresh: true, desktop: isDesktopBrokerSelection })
+        const discoveryBaseUrl = getRuntimeBrokerConfiguration().discoveryBaseUrl;
+        const directoryRequest = !isDesktopBrokerSelection && !discoveryBaseUrl
+            ? Promise.resolve(configuredRuntimeBroker ? [configuredRuntimeBroker] : [])
+            : loadAppBrokerDirectory({ forceRefresh: true, desktop: isDesktopBrokerSelection });
+        directoryRequest
             .then(rows => rows as BrokerServerItem[])
             .then((data) => {
                 if (!isMounted) return;
@@ -776,6 +781,8 @@ export function WelcomeTerminal({
 
                 if (selectedDiscoveryBroker) {
                     applySelectedBroker(selectedDiscoveryBroker);
+                } else if (!isDesktopBrokerSelection && configuredRuntimeBroker) {
+                    applySelectedBroker(configuredRuntimeBroker);
                 } else if (isDesktopBrokerSelection) {
                     selectedBrokerRef.current = null;
                     setSelectedBroker(null);
@@ -786,6 +793,12 @@ export function WelcomeTerminal({
             })
             .catch(err => {
                 if (!isMounted) return;
+                if (!isDesktopBrokerSelection && configuredRuntimeBroker) {
+                    setBrokerList([configuredRuntimeBroker]);
+                    setBrokerListStatus('ready');
+                    applySelectedBroker(configuredRuntimeBroker);
+                    return;
+                }
                 console.error('[WelcomeTerminal] Failed to fetch broker servers:', err);
                 setBrokerListStatus('error');
                 setHealthStatus('offline');
@@ -1194,9 +1207,16 @@ export function WelcomeTerminal({
                                             required
                                             autoFocus
                                             autoComplete="username"
+                                            enterKeyHint="next"
                                             value={username}
                                             disabled={loading || (isDesktopBrokerSelection && !desktopLoginReady)}
                                             onChange={e => setUsername(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                                                    e.preventDefault();
+                                                    passwordInputRef.current?.focus();
+                                                }
+                                            }}
                                             style={inputStyle}
                                             onFocus={e => {
                                                 const shell = e.currentTarget.parentElement;
@@ -1219,6 +1239,7 @@ export function WelcomeTerminal({
                                     <div className="rtx-input-shell">
                                         <LoginIcon name="lock" />
                                         <input
+                                            ref={passwordInputRef}
                                             id="rtxPassword"
                                             name="account-key"
                                             type="text"
@@ -1229,9 +1250,20 @@ export function WelcomeTerminal({
                                             spellCheck={false}
                                             autoCorrect="off"
                                             autoCapitalize="none"
+                                            enterKeyHint="go"
                                             value={password}
                                             disabled={loading || (isDesktopBrokerSelection && !desktopLoginReady)}
                                             onChange={e => setPassword(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                                                    e.preventDefault();
+                                                    if (!username.trim() || !password.trim()) {
+                                                        e.currentTarget.form?.reportValidity?.();
+                                                        return;
+                                                    }
+                                                    void handleSubmit(e);
+                                                }
+                                            }}
                                             style={inputStyle}
                                             onFocus={e => {
                                                 const shell = e.currentTarget.parentElement;

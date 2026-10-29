@@ -35,7 +35,7 @@ export const useFloatingTerminalPanels = (initialSymbol: string): FloatingTermin
   const [domSize, setDomSize] = useState<Size>({ w: 520, h: 540 });
   const [showDataWindow, setShowDataWindow] = useState(false);
   const [dataWindowPos, setDataWindowPos] = useState<Point>({ x: 620, y: 56 });
-  const [dataWindowSize, setDataWindowSize] = useState<Size>({ w: 240, h: 290 });
+  const [dataWindowSize, setDataWindowSize] = useState<Size>({ w: 248, h: 306 });
 
   const domDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const domResizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number; mode: string } | null>(null);

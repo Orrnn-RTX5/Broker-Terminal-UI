@@ -18,25 +18,61 @@ html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-
   --mw-desktop-row-hover: var(--rtx-dark-bg-quaternary, #2a2a2a);
   --mw-desktop-row-selected: #222934;
   --mw-desktop-row-selected-focus: #252d3a;
-  --mw-desktop-grid: var(--rtx-dark-border-primary, #404040);
+  --mw-desktop-grid: var(--rtx-dark-border-tertiary, #404040);
+  --mw-desktop-grid-vertical: var(--rtx-dark-border-tertiary, #404040);
+  --mw-desktop-border-strong: var(--rtx-dark-border-tertiary, #404040);
   --mw-desktop-selection: var(--rtx-dark-accent, #3b82f6);
 }
 
 /* The focused light row must retain contrast for both blue and red quotes. */
 html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop {
-  --mw-desktop-row: var(--rtx-light-panel, #f8fafc);
-  --mw-desktop-row-alt: var(--rtx-light-panel-subtle, #f1f4f8);
-  --mw-desktop-row-hover: var(--rtx-light-hover, #e8eef6);
-  --mw-desktop-row-selected: var(--rtx-light-selected, #d1dced);
-  --mw-desktop-row-selected-focus: var(--rtx-light-selected, #d1dced);
-  --mw-desktop-grid: var(--rtx-light-border, #c5ced9);
-  --mw-desktop-selection: var(--rtx-light-selected, #d1dced);
+  --mw-desktop-row: #ffffff;
+  --mw-desktop-row-alt: #f8fafc;
+  --mw-desktop-row-hover: #edf2f8;
+  --mw-desktop-row-selected: var(--rtx-light-selected, #dce9fa);
+  --mw-desktop-row-selected-focus: var(--rtx-light-selected, #dce9fa);
+  --mw-desktop-grid: var(--rtx-light-line-border, #64748b);
+  --mw-desktop-grid-vertical: var(--rtx-light-line-border, #64748b);
+  --mw-desktop-border-strong: var(--rtx-light-line-border, #64748b);
+  --mw-desktop-selection: var(--rtx-light-selected, #dce9fa);
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__header {
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 8px !important;
   background: var(--mw-desktop-row-alt);
-  border-bottom-color: var(--mw-desktop-grid) !important;
+  border-bottom-color: var(--mw-desktop-border-strong, var(--mw-desktop-grid)) !important;
   color: var(--text-primary);
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .mw-scrollbar {
+  scrollbar-width: thin;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  html:root .rtx-market-watch.rtx-market-watch--desktop .mw-scrollbar {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  html:root .rtx-market-watch.rtx-market-watch--desktop .mw-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  html:root .rtx-market-watch.rtx-market-watch--desktop .mw-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop .mw-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.35);
+    border-radius: 999px;
+  }
+
+  html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop .mw-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(71, 85, 105, 0.55);
+  }
 }
 
 /* The shared typography stylesheet reads these tokens on each text element.
@@ -69,18 +105,25 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid {
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid th {
   --rtx-type-size: 11.5px;
   --rtx-type-weight: 500;
-  height: 22px;
-  padding: 0 6px;
+  height: 24px;
+  padding: 0 4px !important;
   font-size: 11.5px !important;
   font-weight: 500 !important;
-  line-height: 21px !important;
+  line-height: 22px !important;
   letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
+  border-bottom: 1px solid var(--mw-desktop-border-strong, var(--mw-desktop-grid)) !important;
 }
 
 html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid th {
   color: var(--text-secondary, #a0a8b8) !important;
+}
+
+html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid thead th {
+  background: var(--rtx-light-panel-subtle, #f1f4f8) !important;
+  color: var(--rtx-light-text-secondary, #334155) !important;
+  border-bottom: 1px solid var(--mw-desktop-border-strong, #404040) !important;
 }
 
 html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol,
@@ -116,7 +159,7 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tb
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody td {
   height: 22px;
-  padding: 0 6px !important;
+  padding: 0 4px !important;
   font-size: 12.5px !important;
   font-weight: 400 !important;
   line-height: 21px !important;
@@ -139,20 +182,20 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__last-cl
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol {
-  --rtx-type-size: 12.5px;
-  --rtx-type-weight: 500;
+  --rtx-type-size: 13px;
+  --rtx-type-weight: 400;
   padding: 0 !important;
-  font-size: 12.5px !important;
-  font-weight: 500 !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
   line-height: 21px !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody td > span.rtx-market-watch__daily {
-  --rtx-type-size: 12px;
+  --rtx-type-size: 11px;
   --rtx-type-weight: 400;
-  font-size: 12px !important;
+  font-size: 11px !important;
   font-weight: 400 !important;
-  letter-spacing: normal !important;
+  letter-spacing: -0.015em !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid[data-wide='true'] tbody td > span.rtx-market-watch__daily {
@@ -184,10 +227,10 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-explorer :is(.rtx-market-watch__symbol-option, .rtx-market-watch__symbol-option .rtx-market-watch__symbol) {
-  --rtx-type-size: 12.5px;
-  --rtx-type-weight: 500;
-  font-size: 12.5px !important;
-  font-weight: 500 !important;
+  --rtx-type-size: 13px;
+  --rtx-type-weight: 400;
+  font-size: 13px !important;
+  font-weight: 400 !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-explorer .rtx-market-watch__symbol-description {
@@ -199,6 +242,12 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__symbol-
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr:nth-child(even) td {
   background: var(--mw-desktop-row-alt) !important;
+}
+
+/* When explicit grid lines are active, keep a uniform row surface in both
+   themes so zebra stripes do not fight with horizontal and vertical borders. */
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid--lines tbody tr:nth-child(even) td {
+  background: var(--mw-desktop-row) !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody tr:hover td {
@@ -230,44 +279,69 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tb
   background: var(--mw-desktop-row-selected-focus, var(--mw-desktop-row-selected, var(--mw-desktop-row-hover))) !important;
 }
 
-html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid--lines tbody td {
-  border-bottom: 1px solid var(--mw-desktop-grid) !important;
+html:root .rtx-market-watch.rtx-market-watch--desktop.rtx-market-watch--desktop .rtx-market-watch__grid.rtx-market-watch__grid--lines.rtx-market-watch__grid--lines thead th {
+  border-top: 0 !important;
+  border-bottom: 1px solid var(--mw-desktop-border-strong, var(--mw-desktop-grid)) !important;
+  border-left: 1px solid var(--mw-desktop-grid-vertical, var(--mw-desktop-grid)) !important;
+  border-right: 1px solid var(--mw-desktop-grid-vertical, var(--mw-desktop-grid)) !important;
 }
 
-html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid--lines tbody td:not(:first-child),
-html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid--lines thead th:not(:first-child) {
-  border-left: 1px solid var(--mw-desktop-grid) !important;
+html:root .rtx-market-watch.rtx-market-watch--desktop.rtx-market-watch--desktop .rtx-market-watch__grid.rtx-market-watch__grid--lines.rtx-market-watch__grid--lines tbody td {
+  border-top: 1px solid var(--mw-desktop-grid) !important;
+  border-bottom: 1px solid var(--mw-desktop-grid) !important;
+  border-left: 1px solid var(--mw-desktop-grid-vertical, var(--mw-desktop-grid)) !important;
+  border-right: 1px solid var(--mw-desktop-grid-vertical, var(--mw-desktop-grid)) !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop.rtx-market-watch--desktop .rtx-market-watch__grid.rtx-market-watch__grid--lines.rtx-market-watch__grid--lines :is(thead th, tbody td):first-child {
+  border-left: 0 !important;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop.rtx-market-watch--desktop .rtx-market-watch__grid.rtx-market-watch__grid--lines.rtx-market-watch__grid--lines :is(thead th, tbody td):last-child {
+  border-right: 0 !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs {
-  height: 22px;
-  min-height: 22px;
+  height: 24px;
+  min-height: 24px;
   flex-shrink: 0;
   align-items: stretch;
-  padding-left: 1px;
-  border-top: 1px solid var(--mw-desktop-grid);
+  padding-left: 0;
+  border-top: 1px solid var(--mw-desktop-border-strong, var(--mw-desktop-grid));
   background: var(--mw-desktop-row-alt) !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button {
   position: relative;
   min-width: 0;
-  height: 21px;
-  padding: 0 10px;
+  height: 23px;
+  padding: 0 11px;
   font-size: 12px;
   font-weight: 400;
-  line-height: 19px;
-  color: var(--text-primary) !important;
+  line-height: 21px;
+  color: var(--text-secondary) !important;
   border-radius: 0;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button:hover:not([aria-selected='true']) {
+  background: var(--mw-desktop-row-hover) !important;
+  color: var(--text-primary) !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button[aria-selected='true'] {
   margin-top: -1px;
-  height: 22px;
-  border-color: var(--text-secondary);
+  height: 24px;
+  border-color: var(--mw-desktop-border-strong, var(--mw-desktop-grid));
   border-top-color: var(--mw-desktop-row);
-  border-bottom-color: var(--mw-desktop-selection);
+  border-bottom-color: transparent;
   background: var(--mw-desktop-row) !important;
+  color: var(--text-primary) !important;
+  box-shadow: inset 0 -2px 0 var(--rtx-light-accent, var(--mw-desktop-selection));
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button:first-child[aria-selected='true'] {
+  border-left-color: transparent;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button + button:not([aria-selected='true'])::before {
@@ -279,8 +353,20 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-ta
   border-left: 1px solid var(--mw-desktop-grid);
 }
 
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__search--inline {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  border-top: 1px solid var(--mw-desktop-grid, var(--border-primary));
+  background: var(--mw-desktop-row-alt, var(--bg-secondary)) !important;
+}
+
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__search--inline .mw-input::placeholder {
   color: var(--text-secondary);
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch-details {
+  padding-bottom: 4px;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch-details__header {

@@ -121,11 +121,11 @@ html.rtx-desktop-shell-active {
    Opaque surfaces keep text contrast independent of the
    moving chart underneath menus and dialogs. No filters on fixed ancestors. */
 html:root.rtx-advanced-view.rtx-skin-untitled-light {
-  --rtx-glass-chrome: var(--rtx-light-panel-header);
+  --rtx-glass-chrome: var(--rtx-light-panel-subtle);
   --rtx-glass-floating: var(--rtx-light-elevated);
   --rtx-glass-sheen: none;
   --rtx-glass-floating-sheen: none;
-  --rtx-glass-border: var(--rtx-light-border-strong);
+  --rtx-glass-border: var(--rtx-light-line-border, #64748b);
   --rtx-glass-edge: transparent;
   --rtx-glass-chrome-shadow: none;
   --rtx-glass-floating-shadow: 0 8px 28px rgb(30 41 59 / 14%), 0 2px 6px rgb(30 41 59 / 6%);
@@ -154,7 +154,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
     box-shadow: var(--rtx-glass-chrome-shadow) !important;
   }
 
-  :is(.rtx-top-chrome, .rtx-main-toolbar, .dock-panel__header--inactive) {
+  :is(.rtx-top-chrome, .rtx-main-toolbar, .rtx-bottom-dock__tabs, .rtx-status-bar, .rtx-journal-toolbar, .dock-panel__header--inactive) {
     background-color: var(--rtx-light-panel-subtle) !important;
   }
 
@@ -235,11 +235,11 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active), print {
   html:root.rtx-advanced-view.rtx-skin-untitled-light {
-    --rtx-glass-chrome: var(--rtx-light-panel-header);
+    --rtx-glass-chrome: var(--rtx-light-panel-subtle);
     --rtx-glass-floating: var(--rtx-light-elevated);
     --rtx-glass-sheen: none;
     --rtx-glass-floating-sheen: none;
-    --rtx-glass-border: var(--rtx-light-border-strong);
+    --rtx-glass-border: var(--rtx-light-line-border, #64748b);
     --rtx-glass-edge: transparent;
     --rtx-glass-chrome-shadow: none;
     --rtx-glass-floating-shadow: none;

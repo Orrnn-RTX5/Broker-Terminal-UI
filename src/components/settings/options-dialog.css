@@ -160,6 +160,7 @@ html:root .rtx-options-dialog .options-nav-item { --rtx-type-size: var(--options
 .options-nav-item > span { flex: 1; }
 html:root .rtx-options-dialog .options-nav-item:hover { background: var(--options-hover); color: var(--options-text); }
 html:root .rtx-options-dialog .options-nav-item[aria-selected="true"] { --rtx-type-weight: var(--options-weight-selected); background: var(--options-active) !important; color: var(--options-accent) !important; border-color: color-mix(in srgb, var(--options-accent) 24%, transparent); }
+html:root .rtx-options-dialog .options-nav-item:focus-visible { outline: none !important; box-shadow: inset 0 0 0 1.5px var(--options-accent); }
 .options-nav-lock { opacity: .65; }
 html:root .rtx-options-dialog .options-sidebar-note { --rtx-type-size: var(--options-type-fine); display: flex; align-items: center; gap: 8px; padding: 16px 22px; color: var(--options-muted); border-top: 1px solid var(--options-divider); }
 .options-content { flex: 1; min-width: 0; overflow: auto; padding: 22px 26px; scrollbar-width: thin; scrollbar-color: var(--options-border) transparent; }

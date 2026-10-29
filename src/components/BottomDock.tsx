@@ -19,6 +19,7 @@ import type {
 } from '../contracts/tradeActions';
 import { ExposureTab } from '../features/bottom-dock/exposure/ExposureTab';
 import { createPreloadableFeature } from '../startup/createPreloadableFeature';
+import { runAfterTerminalReady } from '../startup/runAfterTerminalReady';
 import { getCurrentBrokerAccountSessionScopeKey } from '../features/bottom-dock/sessionScope';
 import { ToolboxTab } from '../features/bottom-dock/toolbox/ToolboxTab';
 import { TradeTab } from '../features/bottom-dock/trade/TradeTab';
@@ -50,16 +51,18 @@ export const toggleFloatToolboxDockPanel = (): void => {
   if (dockedId) floatPanel(dockedId);
 };
 
-const LazyHistoryDownloader = lazy(async () => {
+const historyDownloaderFeature = createPreloadableFeature(async () => {
   const module = await import('./HistoryDownloader');
   return { default: module.HistoryDownloader };
 });
+const LazyHistoryDownloader = historyDownloaderFeature.Component;
 
 const CalendarTab = lazy(() => import('./layout/CalendarTab').then(module => ({ default: module.CalendarTab })));
 const CodeBaseTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.CodeBaseTab })));
 const ArticlesTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.ArticlesTab })));
 const ExpertsTab = lazy(() => import('./layout/ResearchTabs').then(module => ({ default: module.ExpertsTab })));
-const JournalTab = lazy(() => import('./layout/JournalTab').then(module => ({ default: module.JournalTab })));
+const journalTabFeature = createPreloadableFeature(() => import('./layout/JournalTab').then(module => ({ default: module.JournalTab })));
+const JournalTab = journalTabFeature.Component;
 const historyFeature = createPreloadableFeature(() => import('../features/bottom-dock/history/HistoryTab').then(module => ({ default: module.HistoryTab })));
 
 const MemoToolboxTab = memo(ToolboxTab);
@@ -189,20 +192,45 @@ export function BottomDock({
         }
     }, [activeTab]);
 
+    useEffect(() => {
+        return runAfterTerminalReady(() => {
+            void historyFeature.preload().catch(() => undefined);
+            void historyDownloaderFeature.preload().catch(() => undefined);
+            void journalTabFeature.preload().catch(() => undefined);
+        });
+    }, []);
+
     // Read history with the account session so the History click paints from
     // memory instead of waiting to start three requests.
     useEffect(() => {
-        const prefetch = () => {
-            const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
-            if (!Number.isFinite(login) || login <= 0) return;
-            void loadTerminalHistory(login, getCurrentBrokerAccountSessionScopeKey()).catch(() => undefined);
+        let prefetchTimer: ReturnType<typeof setTimeout> | null = null;
+        const schedulePrefetch = (immediate: boolean) => {
+            if (prefetchTimer !== null) {
+                clearTimeout(prefetchTimer);
+                prefetchTimer = null;
+            }
+            const run = () => {
+                prefetchTimer = null;
+                const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+                if (!Number.isFinite(login) || login <= 0) return;
+                void loadTerminalHistory(login, getCurrentBrokerAccountSessionScopeKey()).catch(() => undefined);
+            };
+            if (immediate) {
+                run();
+            } else {
+                prefetchTimer = setTimeout(run, 0);
+            }
         };
-        prefetch();
-        return onCommittedBrokerAccountSessionScopeChange(() => {
+        schedulePrefetch(activeTab === 'History');
+        const unsubscribe = onCommittedBrokerAccountSessionScopeChange(() => {
             resetTerminalHistorySession();
-            prefetch();
+            schedulePrefetch(activeTab === 'History');
         });
-    }, [historyAccountId]);
+        return () => {
+            if (prefetchTimer !== null) clearTimeout(prefetchTimer);
+            unsubscribe();
+        };
+    }, [historyAccountId, activeTab]);
 
     useEffect(() => {
         const pendingTab = getRequestedBottomDockTab();
@@ -278,8 +306,7 @@ export function BottomDock({
 
             {onClose && (
                 <div
-                    className="rtx-bottom-dock__header dock-panel__header flex h-6 shrink-0 items-center px-1.5 border-b"
-                    style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-primary)' }}
+                    className="rtx-bottom-dock__header dock-panel__header absolute top-0 right-0 z-40 flex h-7 shrink-0 items-center px-1.5"
                     onDoubleClick={(e) => {
                         if ((e.target as HTMLElement).closest('button')) return;
                         e.preventDefault();
@@ -288,7 +315,6 @@ export function BottomDock({
                         else toggleFloatToolboxDockPanel();
                     }}
                 >
-                    <span className="dock-panel__title flex-1 min-w-0 truncate text-xs" style={{ color: 'var(--text-secondary)' }}>{tr("Toolbox")}</span>
                     <button
                         type="button"
                         title={tr("Close")}
@@ -302,7 +328,18 @@ export function BottomDock({
             )}
 
             {/* Content Area */}
-            <div className="rtx-bottom-dock__content flex-1 overflow-hidden relative bg-[#131316] tabular-nums flex flex-col">
+            <div
+                className="rtx-bottom-dock__content flex-1 overflow-hidden relative bg-[#131316] tabular-nums flex flex-col"
+                onDoubleClick={(e) => {
+                    const target = e.target as HTMLElement | null;
+                    if (!target || target.closest('button, input, select, textarea, a, [role="button"], tbody')) return;
+                    if (!target.closest('.rtx-trade-tab > div:first-child, .rtx-history-toolbar, .rtx-journal-toolbar, .history-downloader__header, thead')) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onFloat) onFloat();
+                    else toggleFloatToolboxDockPanel();
+                }}
+            >
                 <div
                     className="h-full min-h-0"
                     hidden={activeTab !== 'Toolbox'}
@@ -424,8 +461,16 @@ export function BottomDock({
                                 title={tr(unavailableReason || TAB_HOVER_COMMENTS[tab.id])}
                                 aria-label={unavailableReason ? tr(tab.id) : `${tr(tab.id)} — ${tr(TAB_HOVER_COMMENTS[tab.id])}`}
                                 aria-description={tr(unavailableReason || TAB_HOVER_COMMENTS[tab.id])}
-                                onMouseEnter={() => { if (tab.id === 'History') void historyFeature.preload().catch(() => undefined); }}
-                                onFocus={() => { if (tab.id === 'History') void historyFeature.preload().catch(() => undefined); }}
+                                onMouseEnter={() => {
+                                    if (tab.id === 'History') void historyFeature.preload().catch(() => undefined);
+                                    else if (tab.id === 'Historical Data') void historyDownloaderFeature.preload().catch(() => undefined);
+                                    else if (tab.id === 'Journal') void journalTabFeature.preload().catch(() => undefined);
+                                }}
+                                onFocus={() => {
+                                    if (tab.id === 'History') void historyFeature.preload().catch(() => undefined);
+                                    else if (tab.id === 'Historical Data') void historyDownloaderFeature.preload().catch(() => undefined);
+                                    else if (tab.id === 'Journal') void journalTabFeature.preload().catch(() => undefined);
+                                }}
                                 onClick={() => {
                                     if (unavailableReason) return;
                                     setActiveTab(tab.id);

@@ -118,13 +118,18 @@ export function LoginDialog({
     const [showPassword, setShowPassword] = useState(false);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(null);
+    const healthStatusRef = useRef<'checking' | 'online' | 'offline' | null>(null);
+    const healthCheckUrlRef = useRef<string | null>(null);
     const healthAbortRef = useRef<AbortController | null>(null);
     const presentationAbortRef = useRef<AbortController | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const loginInputRef = useRef<HTMLInputElement>(null);
+    const passwordInputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
+
+    healthStatusRef.current = healthStatus;
 
     useEffect(() => {
         if (!isOpen) return;
@@ -134,9 +139,11 @@ export function LoginDialog({
     const loginRequestGenerationRef = useRef(0);
     const isMountedRef = useRef(true);
     const isOpenRef = useRef(isOpen);
+    const lockedBrokerDisplayNameRef = useRef(lockedBrokerDisplayName);
     const lockedBrokerKey = normalizeBrokerId(lockedBrokerId);
 
     isOpenRef.current = isOpen;
+    lockedBrokerDisplayNameRef.current = lockedBrokerDisplayName;
 
     const invalidatePendingLogin = useCallback(() => {
         loginRequestGenerationRef.current += 1;
@@ -151,7 +158,12 @@ export function LoginDialog({
 
     // Pre-fill with current account or provided initial login
     useEffect(() => {
-        if (!isOpen) invalidatePendingLogin();
+        if (!isOpen) {
+            healthCheckUrlRef.current = null;
+            healthStatusRef.current = null;
+            setHealthStatus(null);
+            invalidatePendingLogin();
+        }
         if (isOpen) {
             setError(null);
             setShowPassword(false);
@@ -169,21 +181,38 @@ export function LoginDialog({
     }, [invalidatePendingLogin]);
 
     const runHealthCheck = async (serverUrl: string) => {
+        const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
+        const healthUrl = `${cleanUrl}${isDesktop ? '/health' : '/api/v2/time'}`;
+        if (
+            healthCheckUrlRef.current === healthUrl
+            && (
+                healthStatusRef.current === 'online'
+                || (
+                    healthStatusRef.current === 'checking'
+                    && healthAbortRef.current !== null
+                    && !healthAbortRef.current.signal.aborted
+                )
+            )
+        ) {
+            return;
+        }
         if (healthAbortRef.current) {
             healthAbortRef.current.abort();
         }
         const controller = new AbortController();
         healthAbortRef.current = controller;
+        healthCheckUrlRef.current = healthUrl;
 
+        healthStatusRef.current = 'checking';
         setHealthStatus('checking');
 
+        let timedOut = false;
         const timeoutId = setTimeout(() => {
+            timedOut = true;
             controller.abort();
-        }, 3000);
+        }, 8000);
 
         try {
-            const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
-            const healthUrl = `${cleanUrl}${isDesktop ? '/health' : '/api/v2/time'}`;
             if (!isConfiguredBrokerEndpoint(healthUrl)) throw new Error('Broker health URL does not match this deployment.');
             const response = await fetch(toLocalDevProxyUrl(healthUrl), {
                 signal: controller.signal, redirect: 'error', credentials: 'omit',
@@ -191,13 +220,16 @@ export function LoginDialog({
             clearTimeout(timeoutId);
             if (healthAbortRef.current !== controller || controller.signal.aborted) return;
             if (response.ok) {
+                healthStatusRef.current = 'online';
                 setHealthStatus('online');
             } else {
+                healthStatusRef.current = 'offline';
                 setHealthStatus('offline');
             }
         } catch (err: unknown) {
             clearTimeout(timeoutId);
-            if (healthAbortRef.current === controller && (!isAbortError(err) || controller.signal.aborted)) {
+            if (healthAbortRef.current === controller && (timedOut || !isAbortError(err))) {
+                healthStatusRef.current = 'offline';
                 setHealthStatus('offline');
             }
         }
@@ -249,6 +281,21 @@ export function LoginDialog({
         }).catch(() => undefined);
     };
 
+    useEffect(() => {
+        if (!isOpen || !lockedBrokerKey || !lockedBrokerDisplayName) return;
+        setBrokerList(current => current.map(item => (
+            normalizeBrokerId(item.broker_id) === lockedBrokerKey
+                ? { ...item, broker_name: lockedBrokerDisplayName }
+                : item
+        )));
+        setSelectedBroker(current => (
+            current && normalizeBrokerId(current.broker_id) === lockedBrokerKey
+                ? { ...current, broker_name: lockedBrokerDisplayName }
+                : current
+        ));
+        setSearchQuery(lockedBrokerDisplayName);
+    }, [isOpen, lockedBrokerDisplayName, lockedBrokerKey]);
+
     // Fetch broker servers from API
     useEffect(() => {
         if (!isOpen) return;
@@ -260,16 +307,17 @@ export function LoginDialog({
             return;
         }
         let isMounted = true;
+        const displayName = lockedBrokerDisplayNameRef.current;
         setDirectoryLoading(true);
         const lockedFallback = lockedBrokerKey
-            ? buildLockedRuntimeBroker(String(lockedBrokerId), lockedBrokerDisplayName)
+            ? buildLockedRuntimeBroker(String(lockedBrokerId), displayName)
             : null;
         if (lockedFallback) {
             setBrokerList([lockedFallback]);
             setSelectedBroker(lockedFallback);
             setSearchQuery(lockedFallback.broker_name);
             setDropdownOpen(false);
-            runHealthCheck(resolveBrokerExtApiUrl(lockedFallback));
+            void runHealthCheck(resolveBrokerExtApiUrl(lockedFallback));
         }
         const directoryRequest = !isDesktop && !configuration.discoveryBaseUrl
             ? Promise.resolve(lockedFallback ? [lockedFallback] : [])
@@ -277,12 +325,13 @@ export function LoginDialog({
         directoryRequest
             .then((payload: unknown) => {
                 if (!isMounted) return;
+                const currentDisplayName = lockedBrokerDisplayNameRef.current;
                 const discovered = extractBrokerDiscoveryList(payload) as BrokerServerItem[];
                 const data = lockedBrokerKey
                     ? discovered.filter(item => normalizeBrokerId(item.broker_id) === lockedBrokerKey)
                     : discovered;
-                if (lockedBrokerKey && lockedBrokerDisplayName) {
-                    data.forEach((item) => { item.broker_name = lockedBrokerDisplayName; });
+                if (lockedBrokerKey && currentDisplayName) {
+                    data.forEach((item) => { item.broker_name = currentDisplayName; });
                 }
                 if (lockedBrokerKey && data.length === 0 && lockedFallback) data.push(lockedFallback);
                 setBrokerList(data);
@@ -297,11 +346,30 @@ export function LoginDialog({
                 }
             })
             .catch(() => {
-                if (isMounted) setError('Broker servers are unavailable. Please reopen this dialog to retry.');
+                if (!isMounted) return;
+                if (!isDesktop && lockedFallback) {
+                    setBrokerList([lockedFallback]);
+                    setSelectedBroker(current => current || lockedFallback);
+                    setSearchQuery(current => current || lockedFallback.broker_name);
+                    void runHealthCheck(resolveBrokerExtApiUrl(lockedFallback));
+                    return;
+                }
+                setError('Broker servers are unavailable. Please reopen this dialog to retry.');
             })
             .finally(() => { if (isMounted) setDirectoryLoading(false); });
-        return () => { isMounted = false; healthAbortRef.current?.abort(); presentationAbortRef.current?.abort(); };
-    }, [isOpen, initialServer, lockedBrokerDisplayName, lockedBrokerId, lockedBrokerKey, deploymentError, configuration.discoveryBaseUrl, isDesktop]);
+        return () => {
+            isMounted = false;
+            if (healthAbortRef.current) {
+                healthAbortRef.current.abort();
+                healthAbortRef.current = null;
+            }
+            if (healthStatusRef.current === 'checking') {
+                healthStatusRef.current = null;
+                healthCheckUrlRef.current = null;
+            }
+            presentationAbortRef.current?.abort();
+        };
+    }, [isOpen, initialServer, lockedBrokerId, lockedBrokerKey, deploymentError, configuration.discoveryBaseUrl, isDesktop]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -630,11 +698,18 @@ export function LoginDialog({
                                 autoComplete="username"
                                 autoCapitalize="none"
                                 spellCheck={false}
+                                enterKeyHint="next"
                                 disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
                                 ref={loginInputRef}
                                 type="text"
                                 value={login}
                                 onChange={(e) => setLogin(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                                        e.preventDefault();
+                                        passwordInputRef.current?.focus();
+                                    }
+                                }}
                                 className="rtx-login-input"
                                 placeholder={tr("Account ID")}
                                 autoFocus
@@ -654,10 +729,18 @@ export function LoginDialog({
                                 spellCheck={false}
                                 autoCorrect="off"
                                 autoCapitalize="none"
+                                enterKeyHint="go"
                                 disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
+                                ref={passwordInputRef}
                                 type="text"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                                        e.preventDefault();
+                                        void handleSubmit(e);
+                                    }
+                                }}
                                 className={`rtx-login-input rtx-login-password-input${showPassword ? '' : ' rtx-secret-input'}`}
                                 placeholder={tr("Password")}
                             />

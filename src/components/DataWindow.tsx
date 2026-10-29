@@ -11,7 +11,7 @@ import { X } from 'lucide-react';
 
 import { getActiveChartSource, subscribeActiveChartSource } from '../services/activeChartSource';
 import type { ChartDataSnapshot } from '../services/chartDataSnapshot';
-import { resolveSpecDigits } from '../utils/symbolUtils';
+import { resolveMarketWatchPriceDigits } from './market-watch/marketWatchPanelModel';
 
 export type CrosshairData = ChartDataSnapshot;
 
@@ -37,7 +37,7 @@ const DataRow = ({ label, value }: { label: string; value: string }) => {
         gridTemplateColumns: '1fr auto',
         alignItems: 'center',
         minHeight: 24,
-        padding: '2px 10px',
+        padding: '2px 14px 2px 10px',
         borderBottom: '1px solid var(--border-primary, rgba(255,255,255,0.06))',
       }}
     >
@@ -87,7 +87,15 @@ export const DataWindow: React.FC<DataWindowProps> = ({
     return () => { unsubscribe(); window.clearInterval(timer); };
   }, []);
 
-  const digits = resolveSpecDigits(data?.digits);
+  const digits = resolveMarketWatchPriceDigits(
+    data?.symbol ?? '',
+    data?.digits,
+    undefined,
+    data?.open,
+    data?.close,
+    data?.high,
+    data?.low,
+  );
 
   const header = data ? `${data.symbol},${data.timeframe}` : '—';
 
@@ -184,7 +192,7 @@ export const DataWindow: React.FC<DataWindowProps> = ({
         className="rtx-data-window__body custom-scrollbar"
         style={{
           background: 'var(--bg-secondary, #131316)',
-          paddingBottom: 2,
+          paddingBottom: 14,
           overflowY: 'auto',
           flex: 1,
         }}

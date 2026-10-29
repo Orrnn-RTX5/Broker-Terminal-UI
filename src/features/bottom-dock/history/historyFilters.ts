@@ -4,20 +4,22 @@ import type { TradeHistoryDataSet } from '../../../api/tradeGateway';
 export const HISTORY_PERIOD_PRESETS = [
   ['today', 'Today'],
   ['last-hour', 'Last Hour'],
-  ['last-three-hours', 'Last 3 Hours'],
-  ['last-six-hours', 'Last 6 Hours'],
   ['last-twelve-hours', 'Last 12 Hours'],
   ['last-24-hours', 'Last 24 Hours'],
   ['last-three-days', 'Last 3 Days'],
   ['last-seven-days', 'Last 7 Days'],
   ['last-fourteen-days', 'Last 14 Days'],
   ['last-thirty-days', 'Last 30 Days'],
-  ['last-month', 'Last Month'],
   ['last-three-months', 'Last 3 Months'],
   ['last-six-months', 'Last 6 Months'],
   ['all', 'All History'],
 ] as const;
-export type HistoryPeriodFilter = typeof HISTORY_PERIOD_PRESETS[number][0] | 'custom';
+export type HistoryPeriodFilter =
+  | typeof HISTORY_PERIOD_PRESETS[number][0]
+  | 'last-three-hours'
+  | 'last-six-hours'
+  | 'last-month'
+  | 'custom';
 export type HistoryCustomPeriod = { from: string; to: string };
 
 export const toLocalDateInputValue = (date: Date): string => {

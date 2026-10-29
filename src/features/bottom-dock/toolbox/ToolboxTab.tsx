@@ -91,7 +91,7 @@ export function ToolboxTab() {
                                     disabled={item.disabled}
                                     aria-disabled={item.disabled || undefined}
                                     aria-description={tr(item.unavailableReason)}
-                                    className={`w-full flex items-center justify-between px-2 py-1.5 text-[14px] font-normal rounded transition-colors text-left min-w-0 ${item.disabled ? 'text-zinc-400 cursor-not-allowed' : 'text-zinc-300 hover:bg-zinc-700/50 group'}`}
+                                    className={`rtx-toolbox-row w-full flex items-center justify-between px-2 py-1.5 text-[14px] font-normal border-b border-zinc-800/90 rounded-none transition-colors text-left min-w-0 ${item.disabled ? 'text-zinc-400 cursor-not-allowed' : 'text-zinc-300 hover:bg-zinc-700/50 group'}`}
                                     onClick={() => {
                                         if (!item.disabled && item.shortcutId) runTerminalShortcutAction(item.shortcutId);
                                     }}

@@ -7,6 +7,7 @@ import { useDialogFocusScope } from '../../../hooks/useDialogFocusScope';
 import { useChartSettingsStore } from '../../../store/useChartSettingsStore';
 import { useAppStore, type Trade } from '../../../store/useAppStore';
 import { formatPrice, resolveSpecDigits } from '../../../utils/symbolUtils';
+import { resolveMarketWatchPriceDigits } from '../../../components/market-watch/marketWatchPanelModel';
 import { safeReadBoolean, safeReadJson, safeReadString } from '../preferences';
 import { escapeHtml } from '../reporting';
 import { getCurrentBrokerAccountSessionScopeKey, normalizeTradeSymbol } from '../sessionScope';
@@ -181,8 +182,9 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [], accountBalance
             .map(([normalized, display]) => ({ normalized, display }));
     }, [historyData]);
 
-    const contractSizeBySymbol = useMemo(() => {
+    const { contractSizeBySymbol, digitsBySymbol } = useMemo(() => {
         const sizes = new Map<string, number>();
+        const digitsMap = new Map<string, number>();
         instrumentCatalog.forEach((instrument) => {
             if (!instrument || typeof instrument !== 'object') return;
             const record = instrument as Record<string, unknown>;
@@ -192,8 +194,12 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [], accountBalance
             const symbol = normalizeTradeSymbol(record.symbol ?? record.name ?? specification.symbol);
             const size = Number(record.contractSize ?? record.contract_size ?? specification.contract_size ?? specification.contractSize);
             if (symbol && Number.isFinite(size) && size > 0) sizes.set(symbol, size);
+            const resolvedDigits = resolveSpecDigits(record.digits, specification.digits);
+            if (symbol && resolvedDigits !== null && !digitsMap.has(symbol)) {
+                digitsMap.set(symbol, resolvedDigits);
+            }
         });
-        return sizes;
+        return { contractSizeBySymbol: sizes, digitsBySymbol: digitsMap };
     }, [instrumentCatalog]);
 
     const currentSymbol = normalizeTradeSymbol(activeChartSymbol);
@@ -287,21 +293,35 @@ export function HistoryTab({ formatMoney, instrumentCatalog = [], accountBalance
         return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${milliseconds}`;
     };
 
-    // Spec digits only (live tick); unknown renders raw (never guessed).
-    const lookupHistoryTickDigits = (symbol: string): number | null => {
+    // Spec digits only (broker catalog, registered spec, then live tick); unknown renders raw (never guessed).
+    const lookupHistoryTickDigits = (symbol: string, observedPrice?: number): number | null => {
+        const normalized = normalizeTradeSymbol(symbol);
         const ticks = (useAppStore.getState().ticks ?? {}) as Record<string, { digits?: unknown } | undefined>;
-        const tick = ticks[symbol] ?? ticks[symbol.toUpperCase()];
-        return resolveSpecDigits(tick?.digits);
+        const tick = ticks[symbol] ?? ticks[normalized];
+        return resolveMarketWatchPriceDigits(
+            normalized || symbol,
+            digitsBySymbol.get(normalized),
+            tick?.digits,
+            observedPrice,
+        );
     };
 
     const formatPriceCell = (value: number | undefined, symbol: string) => {
         const price = Number(value);
-        return Number.isFinite(price) && price > 0 ? formatPrice(price, lookupHistoryTickDigits(symbol) ?? undefined) : '-';
+        if (!Number.isFinite(price) || price <= 0) return '-';
+        const digits = lookupHistoryTickDigits(symbol, price);
+        return digits !== null
+            ? formatPrice(price, digits)
+            : formatPrice(Number(price.toFixed(8)), undefined);
     };
 
     const formatLevelCell = (value: number | undefined, symbol: string) => {
         const price = Number(value);
-        return Number.isFinite(price) && price > 0 ? formatPrice(price, lookupHistoryTickDigits(symbol) ?? undefined) : '0.00';
+        if (!Number.isFinite(price) || price <= 0) return '0.00';
+        const digits = lookupHistoryTickDigits(symbol, price);
+        return digits !== null
+            ? formatPrice(price, digits)
+            : formatPrice(Number(price.toFixed(8)), undefined);
     };
 
     const moneyColor = (value: number | undefined | null) => {
@@ -697,21 +717,21 @@ ${rows}
         loading || (ordersPending && (historyView === 'orders' || historyView === 'orders-and-deals'))
     );
 
-    const headerDividerClass = showGrid ? 'border-r border-zinc-700/70' : '';
-    const cellDividerClass = showGrid ? 'border-r border-zinc-800' : '';
-    const rowDividerClass = showGrid ? 'divide-y divide-zinc-800/90' : '';
+    const headerDividerClass = '';
+    const cellDividerClass = '';
+    const rowDividerClass = 'divide-y divide-zinc-800/90';
 
     return (
         <div className="rtx-history-tab h-full flex flex-col relative bg-[#131316] overflow-hidden">
-            <div className="rtx-history-toolbar flex items-center gap-2 px-1.5 py-1 border-b border-zinc-700 bg-[#191a1e] shrink-0 text-[12px] font-normal text-zinc-300 tabular-nums">
-                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap" role="group" aria-label={tr('History time filters')}>
+            <div className="rtx-history-toolbar flex h-7 min-h-[28px] flex-nowrap items-center justify-between gap-1.5 px-1.5 py-0 border-b border-zinc-700 bg-[#191a1e] shrink-0 text-[11.5px] font-normal text-zinc-300 tabular-nums">
+                <div className="rtx-history-toolbar__periods flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap" role="group" aria-label={tr('History time filters')}>
                     {HISTORY_PERIOD_PRESETS.map(([period, label]) => (
                         <button
                             key={period}
                             type="button"
                             aria-pressed={periodFilter === period}
                             onClick={() => selectPeriod(period)}
-                            className={`rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm transition-colors ${periodFilter === period ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                            className={`rtx-history-time-btn shrink-0 px-1.5 py-0.5 text-[11.5px] leading-[16px] font-normal rounded-sm transition-colors ${periodFilter === period ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                         >
                             {tr(label)}
                         </button>
@@ -720,22 +740,24 @@ ${rows}
                         type="button"
                         aria-pressed={periodFilter === 'custom'}
                         onClick={openCustomPeriodDialog}
-                        className={`rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm transition-colors ${periodFilter === 'custom' ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                        className={`rtx-history-time-btn shrink-0 px-1.5 py-0.5 text-[11.5px] leading-[16px] font-normal rounded-sm transition-colors ${periodFilter === 'custom' ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                     >
                         {tr('Custom Period')}
                     </button>
                 </div>
-                <span className="hidden shrink-0 text-[12px] font-normal text-zinc-500 xl:inline">{tr(historyViewLabel)} · {tr(symbolFilterLabel)} · {tr(periodFilterLabel)}</span>
-                <span className="shrink-0 whitespace-nowrap text-[12px] font-normal text-zinc-500">{filteredOrders.length} {tr(" records")}</span>
-                <button
-                    type="button"
-                    onClick={() => fetchHistory({ force: true })}
-                    disabled={loading}
-                    className="rtx-history-refresh-btn shrink-0 text-[12px] font-normal px-2 py-0.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 disabled:cursor-wait disabled:opacity-50"
-                >
-                    <Icon name="refresh" size="xs" className={loading ? 'animate-spin' : ''} />
-                    {loading ? tr("Loading…") : tr("Refresh")}
-                </button>
+                <div className="rtx-history-toolbar__meta flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+                    <span className="hidden shrink-0 text-[11.5px] font-normal text-zinc-500 lg:inline">{tr(historyViewLabel)} · {tr(symbolFilterLabel)} · {tr(periodFilterLabel)}</span>
+                    <span className="shrink-0 whitespace-nowrap text-[11.5px] font-normal text-zinc-500">{filteredOrders.length} {tr(" records")}</span>
+                    <button
+                        type="button"
+                        onClick={() => fetchHistory({ force: true })}
+                        disabled={loading}
+                        className="rtx-history-refresh-btn shrink-0 text-[11.5px] leading-[16px] font-normal px-1.5 py-0.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 disabled:cursor-wait disabled:opacity-50"
+                    >
+                        <Icon name="refresh" size="xs" className={loading ? 'animate-spin' : ''} />
+                        {loading ? tr("Loading…") : tr("Refresh")}
+                    </button>
+                </div>
             </div>
 
             {displayError && filteredOrders.length > 0 && (

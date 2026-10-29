@@ -8,7 +8,7 @@ import './journal-toolbar.css';
  * Filters:
  *   - Type  : All / Config / System / Network / History / User / Trade / API / Notify
  *   - Mode  : Full / Standard / Errors only
- *   - Time  : 2h / 3h / 6h / Today / Week / Month / All
+ *   - Time  : 2h / Today / Week / All
  *   - Search: Free text filter (matches against log messages)
  *
  * Loads on activation or filter changes and refreshes on explicit user demand.
@@ -57,11 +57,8 @@ const LOG_MODES = [
 
 const TIME_RANGES: { label: string; hours: number }[] = [
     { label: '2h', hours: 2 },
-    { label: '3h', hours: 3 },
-    { label: '6h', hours: 6 },
     { label: 'Today', hours: 24 },
     { label: 'Week', hours: 24 * 7 },
-    { label: 'Month', hours: 24 * 30 },
     { label: 'All', hours: 0 },
 ];
 

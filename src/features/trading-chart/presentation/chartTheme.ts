@@ -131,7 +131,14 @@ export const buildChartTheme = (
     ? barDown
     : candleDown;
   const line = colors.lineChart || '#2962ff';
-  const rawGrid = colors.grid || 'rgba(120, 144, 156, 0.28)';
+  const configuredGrid = colors.grid || 'rgba(120, 144, 156, 0.28)';
+  const isDefaultReferenceLightGrid = useReferenceLightSurface
+    && configuredGrid.replace(/\s+/g, '').toLowerCase() === 'rgba(71,85,105,0.07)';
+  const rawGrid = isDefaultReferenceLightGrid
+    ? (gridLineStyle === 'solid'
+      ? 'rgba(100, 116, 139, 0.14)'
+      : 'rgba(100, 116, 139, 0.05)')
+    : configuredGrid;
   // A pale canvas needs less tint; dark canvases need enough fill to separate
   // the area from the grid. Follow the configured chart surface, not app chrome.
   const areaFillOpacity = backgroundIsDark ? 0.32 : 0.16;
@@ -154,7 +161,7 @@ export const buildChartTheme = (
     gridVertical: gridLines.vertical,
     gridHorizontal: gridLines.horizontal,
     scaleBorder: useReferenceLightSurface
-      ? 'transparent'
+      ? '#64748b'
       : colorWithAlpha(colors.foreground, 0.24, 'rgba(255, 255, 255, 0.24)'),
     crosshair: useReferenceLightSurface
       ? '#64748b'

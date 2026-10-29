@@ -638,6 +638,8 @@ export const TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS = {
   uniformDistribution: true,
   // Match chart-wheel zoom: keep the visible right edge, even in history.
   rightBarStaysOnScroll: true,
+  // Keep all bottom time-axis labels at uniform regular weight (never bold on hour/day boundaries).
+  allowBoldLabels: false,
 } as const;
 
 export const shouldRestoreProtectedHistoryForFullRender = ({

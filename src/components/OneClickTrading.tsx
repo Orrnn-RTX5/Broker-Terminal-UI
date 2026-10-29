@@ -20,6 +20,7 @@ import {
     type NormalizedMarketStatus,
 } from '../utils/marketStatus';
 import { resolveSpecDigits } from '../utils/symbolUtils';
+import { resolveMarketWatchPriceDigits } from './market-watch/marketWatchPanelModel';
 import { formatOrderError, isStaleOrderError } from '../utils/orderError';
 import { refreshHistoryAfterFill } from '../app/trading/tradeHistoryFreshness';
 import { TradeUnavailableDialog } from './TradeUnavailableDialog';
@@ -44,6 +45,7 @@ interface OneClickTradingProps {
     timeframe: string;
     tradeAllowed?: boolean;
     marketStatus?: NormalizedMarketStatus;
+    priceDigits?: number;
     minVolume?: number;
     maxVolume?: number;
     volumeStep?: number;
@@ -122,6 +124,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     visible,
     tradeAllowed = false,
     marketStatus,
+    priceDigits,
     minVolume,
     maxVolume,
     volumeStep,
@@ -251,8 +254,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         return () => obs.disconnect();
     }, []);
 
-    // Spec digits only (live tick); unknown precision renders raw downstream.
-    const digits = resolveSpecDigits(tick?.digits);
+    // Spec digits from chart/catalog/tick; unknown precision renders raw downstream.
+    const digits = resolveMarketWatchPriceDigits(symbol, resolveSpecDigits(priceDigits), tick?.digits, bid, ask);
 
     const formatPrice = useCallback((price: number, d: number | null) => {
         const parts = formatPriceParts(price, symbol, d ?? undefined);

@@ -241,6 +241,7 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [validationError, setValidationError] = useState('');
     const dialogRef = useRef<HTMLDivElement>(null);
     const searchRef = useRef<HTMLInputElement>(null);
+    const existingPasswordInputRef = useRef<HTMLInputElement>(null);
     const closeDialog = () => {
         setExistingPassword('');
         setCreateError('');
@@ -781,9 +782,16 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                         aria-label={tr("Existing account ID")}
                                         inputMode="numeric"
                                         autoComplete="username"
+                                        enterKeyHint="next"
                                         type="text"
                                         value={existingLogin}
                                         onChange={e => setExistingLogin(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                                                e.preventDefault();
+                                                existingPasswordInputRef.current?.focus();
+                                            }
+                                        }}
                                         className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1 text-[14px] font-normal text-white outline-none focus:border-indigo-500"
                                         placeholder={tr("Account ID")}
                                     />
@@ -791,14 +799,22 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 <div className="flex items-center gap-3">
                                     <span className="w-16 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Password:")}</span>
                                     <input
+                                        ref={existingPasswordInputRef}
                                         aria-label={tr("Existing account password")}
                                         autoComplete="off"
                                         spellCheck={false}
                                         autoCorrect="off"
                                         autoCapitalize="none"
+                                        enterKeyHint="go"
                                         type="text"
                                         value={existingPassword}
                                         onChange={e => setExistingPassword(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && !e.nativeEvent.isComposing && !isCreating) {
+                                                e.preventDefault();
+                                                void handleNext();
+                                            }
+                                        }}
                                         className="rtx-secret-input flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1 text-[14px] font-normal text-white outline-none focus:border-indigo-500"
                                         placeholder={tr("Password")}
                                     />

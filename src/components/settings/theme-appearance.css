@@ -154,9 +154,16 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-segmented__btn,
 }
 
 html:root body .rtx-theme-segmented__btn--icon,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-theme-segmented__btn--icon,
 .rtx-theme-segmented__btn--icon {
-  width: 30px;
-  padding: 0;
+  width: 32px !important;
+  padding: 0 !important;
+}
+
+.rtx-theme-segmented__btn--icon svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 
 html:root body .rtx-theme-segmented__btn:hover:not(.is-active),

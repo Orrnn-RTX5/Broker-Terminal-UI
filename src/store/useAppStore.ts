@@ -749,12 +749,22 @@ const applyAppTickBatch = (
     // Its direction remains anchored to the last strictly older event.
     const previousBid = freshness === 0 ? prevTick?.prevBid : prevTick?.bid;
     const previousAsk = freshness === 0 ? prevTick?.prevAsk : prevTick?.ask;
-    const bidDirection: 'up' | 'down' | 'none' = previousBid === undefined
-      ? 'none'
-      : candidate.bid > previousBid ? 'up' : candidate.bid < previousBid ? 'down' : 'none';
-    const askDirection: 'up' | 'down' | 'none' = previousAsk === undefined
-      ? 'none'
-      : candidate.ask > previousAsk ? 'up' : candidate.ask < previousAsk ? 'down' : 'none';
+    const rawBidDirection: 'up' | 'down' | 'none' = previousBid === undefined
+      ? (prevTick?.bidDirection ?? 'none')
+      : candidate.bid > previousBid
+        ? 'up'
+        : candidate.bid < previousBid
+          ? 'down'
+          : (prevTick?.bidDirection ?? 'none');
+    const rawAskDirection: 'up' | 'down' | 'none' = previousAsk === undefined
+      ? (prevTick?.askDirection ?? 'none')
+      : candidate.ask > previousAsk
+        ? 'up'
+        : candidate.ask < previousAsk
+          ? 'down'
+          : (prevTick?.askDirection ?? 'none');
+    const bidDirection: 'up' | 'down' | 'none' = rawBidDirection !== 'none' ? rawBidDirection : rawAskDirection;
+    const askDirection: 'up' | 'down' | 'none' = rawAskDirection !== 'none' ? rawAskDirection : rawBidDirection;
 
     const nextTick: Tick = {
       ...candidate,

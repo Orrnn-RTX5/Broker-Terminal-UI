@@ -55,13 +55,13 @@ export function ExposureTab({ positions, formatMoney, account }: ExposureTabProp
     <div className="rtx-exposure-tab flex h-full bg-[#0a0b0e] text-[13px] font-normal">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full min-w-[720px] table-fixed border-collapse text-left">
+          <table className="rtx-exposure-table w-full min-w-[720px] table-fixed border-collapse text-left">
             <thead className="sticky top-0 z-10 border-b border-[#20222a] bg-[#0d0f14] text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
               <tr className="h-[32px]">
-                <th className="w-[140px] border-r border-zinc-800/80 p-1.5 pl-3">{tr('Assets')}</th>
-                <th className="w-[130px] border-r border-zinc-800/80 p-1.5 text-right">{tr('Volume')}</th>
-                <th className="w-[130px] border-r border-zinc-800/80 p-1.5 text-right">{tr('Rate')}</th>
-                <th className="w-[140px] border-r border-zinc-800/80 p-1.5 text-right">{exposure.accountCurrency}</th>
+                <th className="w-[140px] p-1.5 pl-3">{tr('Assets')}</th>
+                <th className="w-[130px] p-1.5 text-right">{tr('Volume')}</th>
+                <th className="w-[130px] p-1.5 text-right">{tr('Rate')}</th>
+                <th className="w-[140px] p-1.5 text-right">{exposure.accountCurrency}</th>
                 <th className="p-1.5 text-center">{tr('Graph')}</th>
               </tr>
             </thead>
@@ -78,9 +78,9 @@ export function ExposureTab({ positions, formatMoney, account }: ExposureTabProp
                 return (
                   <tr
                     key={row.asset}
-                    className={`rtx-exposure-row h-[34px] border-b border-white/[0.02] transition-colors hover:bg-white/[0.03] ${index % 2 === 0 ? 'bg-[#111318]' : 'bg-[#0e0f14]'}`}
+                    className={`rtx-exposure-row h-[34px] border-b border-zinc-800/90 transition-colors hover:bg-white/[0.03] ${index % 2 === 0 ? 'bg-[#111318]' : 'bg-[#0e0f14]'}`}
                   >
-                    <td className="border-r border-zinc-800/80 p-1.5 pl-3 font-sans font-semibold">
+                    <td className="p-1.5 pl-3 font-sans font-semibold">
                       <div className="inline-flex items-center gap-1.5">
                         <span aria-hidden="true" className={`rtx-exposure-asset-badge inline-flex h-[17px] w-[17px] items-center justify-center rounded-[3px] border text-[9.5px] font-bold ${badge.badgeClass}`}>
                           {badge.icon}
@@ -88,13 +88,13 @@ export function ExposureTab({ positions, formatMoney, account }: ExposureTabProp
                         <span className={`rtx-exposure-asset-name ${badge.textClass}`}>{row.asset}</span>
                       </div>
                     </td>
-                    <td className="border-r border-zinc-800/80 p-1.5 text-right font-medium text-zinc-300">
+                    <td className="p-1.5 text-right font-medium text-zinc-300">
                       {formatExposureVolume(row.asset, row.volume)}
                     </td>
-                    <td className="border-r border-zinc-800/80 p-1.5 text-right text-zinc-400">
+                    <td className="p-1.5 text-right text-zinc-400">
                       {row.rate.toFixed(5)}
                     </td>
-                    <td className={`border-r border-zinc-800/80 p-1.5 text-right font-semibold ${isLong ? 'text-white' : 'text-rose-400'}`}>
+                    <td className={`p-1.5 text-right font-semibold ${isLong ? 'text-white' : 'text-rose-400'}`}>
                       {formatMoney(row.value)}
                     </td>
                     <td className="p-1.5 px-4 align-middle">

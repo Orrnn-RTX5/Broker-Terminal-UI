@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatMarketWatchExportPrice } from './marketWatchPanelModel';
+import {
+  buildMarketWatchCatalogPriceDigits,
+  formatMarketWatchExportPrice,
+  resolveMarketWatchPriceDigits,
+} from './marketWatchPanelModel';
 
 /**
  * Null/unknown-digits rendering contract for formatMarketWatchExportPrice
@@ -46,5 +50,18 @@ describe('formatMarketWatchExportPrice with null/unknown digits', () => {
     expect(formatMarketWatchExportPrice(UNKNOWN_DIGITS_TOKEN, Number.NaN)).toBe('-');
     expect(formatMarketWatchExportPrice(UNKNOWN_DIGITS_TOKEN, null)).toBe('-');
     expect(formatMarketWatchExportPrice(UNKNOWN_DIGITS_TOKEN, undefined)).toBe('-');
+  });
+
+  it('reads nested specification.digits and expands coarse digits on sub-unit observed prices', () => {
+    const catalogMap = buildMarketWatchCatalogPriceDigits([
+      { symbol: UNKNOWN_DIGITS_TOKEN, specification: { digits: 5 } },
+    ]);
+    expect(catalogMap.get(UNKNOWN_DIGITS_TOKEN)).toBe(5);
+    expect(
+      resolveMarketWatchPriceDigits(UNKNOWN_DIGITS_TOKEN, 2, undefined, 0.2894, 0.2915),
+    ).toBe(4);
+    expect(
+      resolveMarketWatchPriceDigits(UNKNOWN_DIGITS_TOKEN, null, undefined, 0.2894, 0.2915),
+    ).toBeNull();
   });
 });

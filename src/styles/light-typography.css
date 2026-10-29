@@ -113,7 +113,33 @@ html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop :i
   .rtx-market-watch__grid th, .rtx-market-watch__grid th span,
   .rtx-market-watch__view-tabs button[aria-selected='true']
 ) {
-  --rtx-type-weight: var(--rtx-light-weight-control);
+  --rtx-type-size: var(--rtx-light-type-caption);
+  --rtx-type-weight: var(--rtx-light-weight-heading);
+}
+
+html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid :is(
+  .rtx-market-watch__symbol,
+  .rtx-market-watch__price .price-big
+) {
+  --rtx-type-size: max(13px, calc(var(--rtx-ui-font-size) - 1px));
+  --rtx-type-weight: var(--rtx-light-weight-body);
+}
+
+html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid :is(
+  .rtx-market-watch__price,
+  .rtx-market-watch__price .price-display,
+  .rtx-market-watch__price .price-small,
+  .rtx-market-watch__price .price-pip,
+  .rtx-market-watch__last-close span
+) {
+  --rtx-type-size: max(13px, calc(var(--rtx-ui-font-size) - 1px));
+  --rtx-type-weight: var(--rtx-light-weight-body);
+}
+
+html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody td > span.rtx-market-watch__daily,
+html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid tbody td > span.rtx-market-watch__daily span {
+  --rtx-type-size: max(11px, calc(var(--rtx-ui-font-size) - 3px));
+  --rtx-type-weight: var(--rtx-light-weight-body);
 }
 
 html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop :is(
@@ -258,8 +284,8 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar {
   max-height: var(--rtx-status-strip-height) !important;
   flex-shrink: 0;
   padding: 0 var(--rtx-status-horizontal-padding, 12px) !important;
-  border-top: 1px solid var(--rtx-light-border-strong) !important;
-  border-bottom: 1px solid var(--rtx-light-border) !important;
+  border-top: 1px solid var(--rtx-light-line-border, #404040) !important;
+  border-bottom: 1px solid var(--rtx-light-line-border, #404040) !important;
   background: var(--rtx-light-panel-header) !important;
   box-shadow: none !important;
 }
@@ -344,7 +370,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs::befo
   left: 0;
   right: 0;
   height: 1px;
-  background: var(--rtx-light-control-border);
+  background: var(--rtx-light-line-border, #64748b);
   pointer-events: none;
 }
 
@@ -389,7 +415,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
   right: 0;
   bottom: 4px;
   width: 1px;
-  background: var(--rtx-light-control-border);
+  background: var(--rtx-light-line-border, #64748b);
   pointer-events: none;
 }
 
@@ -443,7 +469,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-trade-butt
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-price-badge span {
-  line-height: 20px !important;
+  line-height: 15px !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-crosshair-label {

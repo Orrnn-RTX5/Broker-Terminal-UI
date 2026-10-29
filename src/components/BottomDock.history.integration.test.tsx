@@ -274,7 +274,7 @@ describe('BottomDock History live-deal integration', () => {
         fireEvent.click(screen.getByRole('button', { name: 'History — Closed orders and account history' }));
         const summary = await screen.findByRole('group', { name: 'History financial summary' });
         await waitFor(() => expect(summary).toHaveTextContent('Profit: 104.00 Credit: 0.00 Deposit: 1 000.00 Withdrawal: -20.00 Balance: —'));
-        fireEvent.click(screen.getByRole('button', { name: 'Last Month' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Last 30 Days' }));
         expect(summary).toHaveTextContent('Profit: 4.00 Credit: 0.00 Deposit: 0.00 Withdrawal: -20.00 Balance: —');
     });
 
@@ -439,7 +439,7 @@ describe('BottomDock History live-deal integration', () => {
         expect(container.querySelector('[title="Ticket: 630001"]')).not.toBeNull();
         expect(container.querySelector('[title="Ticket: 630002"]')).toBeNull();
         expect(screen.getByRole('group', { name: 'History financial summary' })).toHaveTextContent('Profit: 10.00');
-        fireEvent.click(screen.getByRole('button', { name: 'Last 3 Hours' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Last 12 Hours' }));
         expect(screen.getByText('2 records')).toBeInTheDocument();
         expect(screen.getByRole('group', { name: 'History financial summary' })).toHaveTextContent('Profit: 30.00');
         fireEvent.click(screen.getByRole('button', { name: 'Last 24 Hours' }));
@@ -533,15 +533,12 @@ describe('BottomDock History live-deal integration', () => {
             'Volumes',
             'Today',
             'Last Hour',
-            'Last 3 Hours',
-            'Last 6 Hours',
             'Last 12 Hours',
             'Last 24 Hours',
             'Last 3 Days',
             'Last 7 Days',
             'Last 14 Days',
             'Last 30 Days',
-            'Last Month',
             'Last 3 Months',
             'Last 6 Months',
             'All History',

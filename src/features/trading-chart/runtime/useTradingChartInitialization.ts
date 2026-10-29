@@ -22,7 +22,7 @@ import type { ChartInteractionOwnership } from '../../../utils/chartInteractionO
 import { createChartInteractionOwnership } from '../../../utils/chartInteractionOwnership';
 import type { ChartPostInteractionCoordinator } from '../../../utils/chartPostInteractionCoordinator';
 import { resolveVisibleRangeHistoryAction } from '../../../services/chartHistoryLoader';
-import { buildChartSeriesPriceFormat, computeMinimumVisiblePriceSpan } from '../../../utils/chartPriceScale';
+import { buildChartSeriesPriceFormat, computeMinimumVisiblePriceSpan, formatChartAxisPrice } from '../../../utils/chartPriceScale';
 import { computePriceAxisDragRange } from '../../../utils/priceAxisDragZoom';
 import { createChartWheelSmoothing } from '../../../utils/chartWheelSmoothing';
 import {
@@ -230,6 +230,9 @@ useChartInitializationLifetime(() => {
         mouse: true,
       },
       rightPriceScale: {
+        borderVisible: true,
+        ticksVisible: !gridRenderingOptions.squareVisible,
+        minimumWidth: 72,
         borderColor: chartTheme.scaleBorder,
         textColor: chartSettings.showGrid && chartSettings.gridType === 'mt5' ? 'transparent' : chartTheme.axisText,
         scaleMargins: { top: 0.05, bottom: 0.28 },
@@ -240,7 +243,7 @@ useChartInitializationLifetime(() => {
       },
       timeScale: {
         ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
-        ticksVisible: true,
+        ticksVisible: !gridRenderingOptions.squareVisible,
         borderColor: chartTheme.scaleBorder,
         timeVisible: true,
         secondsVisible: false,
@@ -288,7 +291,9 @@ useChartInitializationLifetime(() => {
         const series = seriesRef.current;
         if (!series) return null;
         const price = series.coordinateToPrice(coordinate);
-        return price === null || !Number.isFinite(price) ? null : series.priceFormatter().format(price);
+        return price === null || !Number.isFinite(price)
+          ? null
+          : formatChartAxisPrice(price, resolvedPriceDigitsRef.current);
       },
       appearance: () => {
         const layout = chart.options().layout;

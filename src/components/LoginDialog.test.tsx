@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { StrictMode } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -306,5 +307,88 @@ describe('LoginDialog', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled());
     expect(screen.getByLabelText('Password', { exact: true })).toHaveClass('rtx-secret-input');
     expect(screen.getByRole('button', { name: 'Show password' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('moves focus from Account ID to Password on Enter without submitting, then submits on Enter in Password', async () => {
+    vi.mocked(authV2Api.login).mockResolvedValue({
+      access_token: 'enter-token',
+      account_login: 200003,
+      broker_id: 'runtime-broker',
+    });
+
+    render(<LoginDialog isOpen onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled());
+
+    const accountInput = screen.getByPlaceholderText('Account ID');
+    const passwordInput = screen.getByPlaceholderText('Password');
+
+    accountInput.focus();
+    fireEvent.change(accountInput, { target: { value: '200003' } });
+    fireEvent.keyDown(accountInput, { key: 'Enter', code: 'Enter' });
+
+    expect(passwordInput).toHaveFocus();
+    expect(authV2Api.login).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fireEvent.change(passwordInput, { target: { value: 'test-password' } });
+    fireEvent.keyDown(passwordInput, { key: 'Enter', code: 'Enter' });
+
+    await waitFor(() => expect(authV2Api.login).toHaveBeenCalledOnce());
+    expect(authV2Api.login).toHaveBeenCalledWith(
+      expect.objectContaining({ username: '200003', password: 'test-password', broker_id: 'runtime-broker' }),
+      expect.anything(),
+    );
+  });
+
+  it('shows Server online instead of Server unavailable when mounted in StrictMode or when display name updates', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, options?: RequestInit) => {
+      if (options?.signal?.aborted) {
+        throw new DOMException('The operation was aborted.', 'AbortError');
+      }
+      return new Promise((resolve, reject) => {
+        options?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'));
+        });
+        queueMicrotask(() => {
+          if (options?.signal?.aborted) return;
+          resolve({
+            ok: true,
+            json: async () => ([{
+              broker_id: 'runtime-broker',
+              broker_name: 'Runtime Broker',
+              backend_url: 'https://broker.example',
+              market_api_url: 'https://broker.example',
+              logo_url: '',
+            }]),
+          } as Response);
+        });
+      });
+    }));
+
+    const view = render(
+      <StrictMode>
+        <LoginDialog
+          isOpen
+          onClose={vi.fn()}
+          lockedBrokerId="runtime-broker"
+        />
+      </StrictMode>,
+    );
+
+    view.rerender(
+      <StrictMode>
+        <LoginDialog
+          isOpen
+          onClose={vi.fn()}
+          lockedBrokerId="runtime-broker"
+          lockedBrokerDisplayName="Updated Broker Display Name"
+        />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText('Server online')).toBeInTheDocument();
+    expect(screen.queryByText('Server unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByText('Broker temporarily unavailable')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/search broker/i)).toHaveValue('Updated Broker Display Name');
   });
 });

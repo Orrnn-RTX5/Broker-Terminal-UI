@@ -283,6 +283,10 @@ export const NavigatorPanel: React.FC = () => {
         return Array.from(groups.values());
     })();
 
+    const storedBrokerLogoKey = storedBrokerLogo
+        ? `${storedBrokerLogo.brokerId}|${storedBrokerLogo.serverUrl}|${storedBrokerLogo.logoUrl}`
+        : '';
+
     useEffect(() => {
         let active = true;
         const targets = JSON.parse(serverLogoKey) as BrokerLogoTarget[];
@@ -325,7 +329,8 @@ export const NavigatorPanel: React.FC = () => {
             active = false;
             cancelScheduledLogos();
         };
-    }, [serverLogoKey, logoScopeKey, storedBrokerLogo]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [serverLogoKey, logoScopeKey, storedBrokerLogoKey]);
 
     const { hasDemoAndRealAccounts } = useMemo(
         () => getBrokerSavedAccountTypes(visibleAccounts),

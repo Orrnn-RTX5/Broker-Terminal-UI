@@ -29,6 +29,7 @@ import { getStoredAccountLogin } from '../api/tradeGateway';
 import { buildOrderTicketSymbolOptions } from '../utils/accountSymbolUniverse';
 import { resolveSymbolDescription } from '../utils/symbolDescription';
 import { resolveSpecDigits } from '../utils/symbolUtils';
+import { inferObservedPriceDigits } from '../utils/chartPriceScale';
 import { readRegisteredSymbolPriceSpec, readRegisteredSymbolStopsLevel } from '../services/dailyChangePriceModeRegistry';
 import { BrokerLogoImage } from './BrokerLogoImage';
 import { BROKER_CHROME_EVENT, getBrokerChrome, type BrokerChromeState } from '../services/brokerPresentation';
@@ -168,11 +169,28 @@ export function getInstrumentConfig(
   sym: string,
   liveDigits?: unknown,
   instrument?: Partial<OrderPanelInstrumentRow> | null,
+  livePrices?: readonly unknown[],
 ): OrderPanelInstrumentConfig {
   const catalog = readRegisteredSymbolPriceSpec(sym);
-  const digits = resolveSpecDigits(catalog.digits, instrument?.digits, liveDigits);
+  const baseDigits = resolveSpecDigits(catalog.digits, instrument?.digits, liveDigits);
+  let digits = baseDigits;
+  if (baseDigits !== null && baseDigits <= 2 && Array.isArray(livePrices) && livePrices.length > 0) {
+    const hasSubUnitPrice = livePrices.some((value) => {
+      const num = typeof value === 'number' ? value : Number(value);
+      return Number.isFinite(num) && num > 0 && num < 1;
+    });
+    if (hasSubUnitPrice) {
+      const observed = inferObservedPriceDigits(null, livePrices);
+      if (observed !== null && observed > baseDigits) {
+        digits = Math.min(6, observed);
+      }
+    }
+  }
   const tickSize = readPositiveFinite(catalog.tickSize) ?? readPositiveFinite(instrument?.tickSize);
-  const priceStep = tickSize ?? (digits === null ? null : Math.pow(10, -digits));
+  const digitStep = digits === null ? null : Math.pow(10, -digits);
+  const priceStep = tickSize !== null && digitStep !== null
+    ? Math.min(tickSize, digitStep)
+    : (tickSize ?? digitStep);
   return {
     digits,
     priceStep,
@@ -861,7 +879,8 @@ function MiniTickChart({
 
         ctx.fillStyle = scaleLabelColor;
         ctx.globalAlpha = 0.96;
-        const labelText = digits !== null ? price.toFixed(digits) : formatDialogPrice(price, digits);
+        const scaleDigits = digits ?? inferObservedPriceDigits(null, [minPrice, maxPrice, bid, ask]);
+        const labelText = scaleDigits !== null ? price.toFixed(scaleDigits) : formatDialogPrice(Number(price.toPrecision(6)), digits);
         ctx.fillText(labelText, plotRight + 7, y);
       }
       ctx.globalAlpha = 1;
@@ -1795,11 +1814,13 @@ export function OrderPanelDialog({
     const target = symbol.trim().toUpperCase();
     return instruments?.find((row) => String(row?.symbol ?? '').trim().toUpperCase() === target) ?? null;
   }, [instruments, symbol]);
+  const bid = tick?.bid || currentPrice.bid || 0;
+  const ask = tick?.ask || currentPrice.ask || 0;
   const {
     digits: specDigits,
     priceStep,
     contractSize,
-  } = getInstrumentConfig(symbol, tick?.digits, catalogInstrument);
+  } = getInstrumentConfig(symbol, tick?.digits, catalogInstrument, [bid, ask, tick?.rawBid, tick?.rawAsk]);
   const specStopsLevel = useMemo(
     () => resolveInstrumentStopsLevel(symbol, catalogInstrument, tick as { stops_level?: unknown; stopsLevel?: unknown } | undefined),
     [catalogInstrument, symbol, tick],
@@ -1808,9 +1829,6 @@ export function OrderPanelDialog({
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
     [chartSettings, isAdvancedUntitledLight],
   );
-
-  const bid = tick?.bid || currentPrice.bid || 0;
-  const ask = tick?.ask || currentPrice.ask || 0;
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 

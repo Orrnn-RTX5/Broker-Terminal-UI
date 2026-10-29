@@ -25,6 +25,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
   --rtx-light-control-border: #697b91;
   --rtx-light-control-border-hover: #52667f;
   --rtx-light-row-border: #dde4ed;
+  --rtx-light-line-border: #64748b;
   --rtx-light-text: #182230;
   --rtx-light-text-secondary: #334155;
   --rtx-light-text-muted: #475569;
@@ -170,6 +171,19 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-dock-workspace,
   background: var(--rtx-light-canvas) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light :is(
+  .rtx-dock-workspace,
+  .rtx-market-watch,
+  .navigator-panel,
+  .rtx-bottom-dock,
+  .rtx-chart-panel,
+  .rtx-status-bar,
+  [data-dock-panel]
+) {
+  --rtx-light-panel: #ffffff;
+  --rtx-light-panel-header: #f1f4f8;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-panel-shell,
   .dock-container--tabs,
   .dock-panel,
@@ -177,16 +191,40 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-panel-shell,
   .rtx-chart-panel__canvas,
   .rtx-chart-wrapper) {
   background: var(--rtx-light-panel) !important;
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: none !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light :is(
+  .rtx-panel-shell,
+  .rtx-chart-panel,
+  [data-dock-container-kind='tabs'],
+  [data-dock-panel]:not([data-dock-floating-panel='true']) :is(.rtx-market-watch, .navigator-panel, .rtx-bottom-dock)
+) {
+  border: 0 !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel] > div:first-child {
   background: var(--rtx-light-panel) !important;
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:not([data-dock-floating-panel='true']) > div:first-child {
+  border-top: 0 !important;
+  border-left: 0 !important;
+  border-right: 1px solid var(--rtx-light-line-border, #64748b) !important;
+  border-bottom: 1px solid var(--rtx-light-line-border, #64748b) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-container-direction='horizontal'] > [data-dock-child]:last-child [data-dock-panel]:not([data-dock-floating-panel='true']) > div:first-child {
+  border-right: 0 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-container-direction='vertical'] > [data-dock-child]:last-child > [data-dock-panel]:not([data-dock-floating-panel='true']) > div:first-child {
+  border-bottom: 0 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel {
@@ -194,17 +232,18 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel--active {
-  border-color: var(--rtx-light-border-strong) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   box-shadow: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.dock-panel__header,
   .dock-panel__header--active,
   .dock-panel__header--inactive,
-  .dock-tabs) {
+  .dock-tabs,
+  [data-dock-tab-bar]) {
   background: var(--rtx-light-panel-header) !important;
   background-image: none !important;
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text-secondary) !important;
   box-shadow: none !important;
 }
@@ -221,7 +260,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__header--inactive {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-resize-handle {
-  background: var(--rtx-light-border) !important;
+  background: var(--rtx-light-line-border, #64748b) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-resize-handle:is(:hover, .dock-resize-handle--dragging) {
@@ -229,17 +268,19 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-resize-handle:is(:hover, .d
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-top-chrome, .rtx-main-toolbar) {
-  background: var(--rtx-light-panel-subtle) !important;
-  border-color: var(--rtx-light-border) !important;
+  background: #f8fafc !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   box-shadow: none !important;
   color: var(--rtx-light-text) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-top-chrome {
-  border-bottom: 1px solid var(--rtx-light-border) !important;
+  border-bottom: 1px solid var(--rtx-light-line-border, #64748b) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-main-toolbar {
+  border-top: 0 !important;
+  border-bottom: 0 !important;
   background-image: var(--rtx-chrome-sheen) !important;
   box-shadow: inset 0 1px 0 var(--rtx-chrome-edge) !important;
 }
@@ -492,10 +533,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch,
   .rtx-market-watch__table,
   .rtx-market-watch__footer,
   .navigator-panel,
+  .navigator-panel__body,
   .rtx-bottom-dock,
   .rtx-bottom-dock__content) {
   background: var(--rtx-light-panel) !important;
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: none !important;
 }
@@ -505,9 +547,14 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch__header,
   .navigator-panel__header,
   .rtx-bottom-dock__tabs) {
   background: var(--rtx-light-panel-header) !important;
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text-secondary) !important;
   box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs {
+  background: #f8fafc !important;
+  border-top: 1px solid var(--rtx-light-line-border, #64748b) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel {
@@ -557,31 +604,60 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch :is(.mw-row, tr
 
 html.rtx-advanced-view.rtx-skin-untitled-light table:not(.tv-lightweight-charts *) {
   background: var(--rtx-light-panel) !important;
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :where(thead, th):not(.tv-lightweight-charts *) {
   background: var(--rtx-light-panel-header) !important;
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text-secondary) !important;
   text-transform: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :where(td, tr):not(.tv-lightweight-charts *) {
-  border-color: var(--rtx-light-row-border) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text) !important;
 }
 
-/* Trade and History tables use clear horizontal separators without vertical cell edges. */
+/* Bottom-dock tables from Trade to Historical Data use clear horizontal separators without vertical cell edges. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-trade-table, .rtx-history-table, .rtx-exposure-tab table, .rtx-pending-orders-table, .rtx-journal-table) :is(thead th, tbody td:not(.rtx-journal-spacer-cell)),
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-trade-table :is(thead th, tbody td),
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table :is(thead th, tbody td),
 html.rtx-skin-untitled-light .rtx-trade-table :is(thead th, tbody td),
 html.rtx-desktop-shell-active .rtx-trade-table :is(thead th, tbody td) {
   border-left: none !important;
   border-right: none !important;
-  border-bottom: 1px solid var(--rtx-light-border-strong, #d1d5db) !important;
+  border-bottom: 1px solid var(--rtx-light-line-border, #64748b) !important;
   box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-trade-table, .rtx-history-table, .rtx-exposure-tab table, .rtx-pending-orders-table, .rtx-journal-table) :is(thead, thead tr, thead th) {
+  border-top: 0 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-bottom-dock__header {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-trade-tab > div:first-child {
+  background: #f8fafc !important;
+  border-bottom: 1px solid var(--rtx-light-line-border, #64748b) !important;
+  min-height: 28px !important;
+  padding-top: 3px !important;
+  padding-bottom: 3px !important;
+  padding-right: 28px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-history-toolbar, .rtx-journal-toolbar, .history-downloader__header) {
+  padding-right: 28px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table thead th,
+html.rtx-skin-untitled-light .rtx-trade-table thead th {
+  white-space: nowrap !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr,
@@ -594,11 +670,14 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr:hover>*
   background: var(--rtx-light-hover) !important;
 }
 
-/* History filters share the neutral chrome instead of inheriting legacy white
+/* History and Journal filters share the neutral chrome instead of inheriting legacy white
    utility surfaces or dark active-button fills. */
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-history-toolbar {
-  background: var(--rtx-light-panel-header) !important;
-  border-color: var(--rtx-light-border-strong) !important;
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-history-toolbar, .rtx-journal-toolbar) {
+  background: #f8fafc !important;
+  border-top: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 1px solid var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text-secondary) !important;
   box-shadow: none !important;
 }
@@ -617,7 +696,14 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar :is(.rt
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar .rtx-history-time-btn[aria-pressed="true"] {
   background: var(--rtx-light-selected) !important;
   color: var(--rtx-light-accent-strong) !important;
-  box-shadow: inset 0 -2px 0 var(--rtx-light-accent) !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-status-label {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar :is(.rtx-history-time-btn, .rtx-history-refresh-btn):not(:disabled):active {
@@ -634,17 +720,23 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:not(:disabled):not(.active-tab):hover {
-  background: var(--rtx-light-pressed) !important;
+  background: var(--rtx-light-hover) !important;
   color: var(--rtx-light-text) !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
-  background: var(--rtx-light-dock-selected) !important;
+  background: var(--rtx-light-elevated) !important;
   color: var(--rtx-light-accent-pressed) !important;
   box-shadow: inset 0 -2px 0 var(--rtx-light-accent) !important;
 }
 
 /* Keep locked tabs readable while distinguishing them from available actions. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab-actions {
+  border-left: 1px solid var(--rtx-light-line-border, #64748b) !important;
+  background: var(--rtx-light-panel-subtle) !important;
+  padding-left: 4px !important;
+}
+
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs :is(.rtx-dock-tab-scroller, .rtx-dock-tab-actions) .rtx-dock-tab:disabled {
   color: var(--rtx-light-text-muted) !important;
   opacity: 1 !important;
@@ -670,7 +762,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-empty-state {
 /* The account summary is one quiet strip, not a row of floating cards. */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer {
   background: var(--rtx-light-panel-header) !important;
-  border-top-color: var(--rtx-light-border) !important;
+  border-top-color: var(--rtx-light-line-border, #64748b) !important;
   box-shadow: none !important;
 }
 
@@ -683,12 +775,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-trade-footer-status,
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer-actions {
-  border-left-color: var(--rtx-light-border) !important;
+  border-left-color: var(--rtx-light-line-border, #64748b) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer button {
   background: var(--rtx-light-panel) !important;
-  border-color: var(--rtx-light-border-strong) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text-secondary) !important;
   box-shadow: none !important;
 }
@@ -710,7 +802,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-account-bar {
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-tab .bg-\[\#2a2d34\],
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-tab .bg-\[\#0d0e12\] {
   background: var(--rtx-light-panel-header) !important;
-  border-color: var(--rtx-light-border) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text-secondary) !important;
 }
 
@@ -719,8 +811,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-tab .text-\[\#f6f7f
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar {
-  background: var(--rtx-light-panel-header) !important;
-  border-color: var(--rtx-light-border) !important;
+  background: #f8fafc !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text-muted) !important;
   box-shadow: none !important;
 }
@@ -734,22 +826,22 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-marke
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar {
-  margin: 6px 8px;
+  margin: 4px 6px;
   background: var(--rtx-light-elevated) !important;
   border: 1px solid var(--rtx-light-border) !important;
-  border-radius: 999px !important;
-  box-shadow: 0 1px 2px rgb(17 24 39 / 4%) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 1px 1px rgb(17 24 39 / 3%) !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar:hover {
   border-color: var(--rtx-light-border-strong) !important;
-  box-shadow: 0 2px 8px rgb(17 24 39 / 10%) !important;
+  box-shadow: 0 1px 3px rgb(17 24 39 / 6%) !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar .mw-input {
   background: transparent !important;
   border: 0 !important;
-  border-radius: 999px !important;
+  border-radius: 4px !important;
   box-shadow: none !important;
   outline: none !important;
 }
@@ -889,14 +981,22 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog__confirm {
   box-shadow: none !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog__confirm:hover {
+  background: var(--rtx-light-accent-strong) !important;
+  border-color: var(--rtx-light-accent-strong) !important;
+  color: #ffffff !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog__confirm--danger {
   background: var(--rtx-light-sell) !important;
   border-color: var(--rtx-light-sell) !important;
+  color: #ffffff !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog__confirm--danger:hover {
   background: var(--rtx-light-sell-hover) !important;
   border-color: var(--rtx-light-sell-hover) !important;
+  color: #ffffff !important;
 }
 
 /* Large settings and symbol surfaces use stable hooks instead of dark-class guesses. */
@@ -1632,11 +1732,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-wat
   color: var(--rtx-light-price) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__row[data-custom-quote-palette="true"] .rtx-market-watch__price--bid:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__price--bid:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) {
   color: var(--rtx-light-quote-down) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__row[data-custom-quote-palette="true"] .rtx-market-watch__price--ask:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__price--ask:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) {
   color: var(--rtx-light-quote-up) !important;
 }
 
@@ -2001,27 +2101,10 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog button
   box-shadow: 0 0 0 2px var(--rtx-light-elevated) !important;
 }
 
-/* Let complete prices determine column width at every reading size. A narrow
-   dock scrolls the table instead of hiding the final digits of a quote. */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__table {
-  overflow-x: auto !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__grid {
-  table-layout: auto !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__grid col {
-  width: auto !important;
-}
-
+/* Keep proportional fixed column layout in Light mode so Symbol, Bid, Ask, and
+   Daily Change remain balanced without crushing numeric columns. */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__grid :is(th, td) {
   white-space: nowrap;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__grid tbody td:first-child {
-  min-width: calc(9ch + 27px);
-  max-width: none !important;
 }
 
 /* Keep the light execution controls' spacing; the component owns their type. */
@@ -2218,6 +2301,80 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-alerts-badge > div {
   border-color: var(--rtx-light-border-strong) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: var(--shadow-lg) !important;
+}
+
+/* History toolbar single-line alignment (Today ... Custom Period + summary + refresh on one row) */
+.rtx-history-toolbar {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+}
+
+.rtx-history-toolbar__periods {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.rtx-history-toolbar__periods::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.rtx-history-toolbar .rtx-history-time-btn {
+  padding: 2px 5px !important;
+  font-size: 11.5px !important;
+  line-height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+.rtx-history-toolbar__meta {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* Professional chart right-click context menu scrollbar & surface */
+.rtx-chart-context-menu {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.42) transparent;
+  scroll-behavior: smooth;
+}
+
+.rtx-chart-context-menu::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.rtx-chart-context-menu::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.rtx-chart-context-menu::-webkit-scrollbar-track {
+  background: transparent !important;
+  margin: 4px 0;
+}
+
+.rtx-chart-context-menu::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.38) !important;
+  border-radius: 999px !important;
+}
+
+.rtx-chart-context-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.65) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-context-menu {
+  border-radius: 6px !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

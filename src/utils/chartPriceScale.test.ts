@@ -34,6 +34,8 @@ describe('chart price-scale precision', () => {
   it.each(digitCases)('preserves broker-provided $digits digits for $label', ({ symbol, digits }) => {
     expect(normalizePriceDigits(digits)).toBe(digits);
     expect(getInstrumentPriceDigits({ digits })).toBe(digits);
+    expect(getInstrumentPriceDigits({ brokerSpecification: { digits } })).toBe(digits);
+    expect(getInstrumentPriceDigits({ specification: { digits } })).toBe(digits);
     expect(resolveSymbolPriceDigits(symbol, digits)).toBe(digits);
   });
 
@@ -104,6 +106,14 @@ describe('chart price-scale precision', () => {
     ];
     expect(inferObservedPriceDigits(narrowTrailingZeroCandles)).toBe(4);
     expect(resolveEffectiveChartPriceDigits(2, inferObservedPriceDigits(narrowTrailingZeroCandles))).toBe(4);
+
+    // Sub-unit candles with 4th-decimal .xxx5 values or sub-cent spans keep 4 digits
+    const subCentFiveCandles = [
+      { open: 0.1970, high: 0.1985, low: 0.1970, close: 0.1980 },
+      { open: 0.1980, high: 0.1995, low: 0.1975, close: 0.1970 },
+    ];
+    expect(inferObservedPriceDigits(subCentFiveCandles)).toBe(4);
+    expect(resolveEffectiveChartPriceDigits(2, inferObservedPriceDigits(subCentFiveCandles))).toBe(4);
   });
 
   it('does not inflate observed price digits on 1-point or 2-point live ticks and forming candles', () => {
@@ -127,6 +137,24 @@ describe('chart price-scale precision', () => {
     expect(inferObservedPriceDigits(
       [{ open: 0.2058, high: 0.2059, low: 0.2058, close: 0.2059 }],
     )).toBe(4);
+  });
+
+  it('ignores half-point (.5) midpoint synthesis artifacts so right price scale digits do not inflate by +1', () => {
+    // 5-digit FX pair with a 6th-decimal .5 midpoint artifact
+    expect(inferObservedPriceDigits(null, [0.98779, 0.98780, 0.987795])).toBe(5);
+    expect(resolveEffectiveChartPriceDigits(5, 6)).toBe(5);
+
+    // 2-digit metal/index with a 3rd-decimal .5 midpoint artifact
+    expect(inferObservedPriceDigits(
+      [{ open: 4050.10, high: 4054.25, low: 4049.80, close: 4052.125 }],
+    )).toBe(2);
+    expect(resolveEffectiveChartPriceDigits(2, 3)).toBe(2);
+
+    // 4-digit crypto/sub-unit pair with a 5th-decimal .5 midpoint artifact
+    expect(inferObservedPriceDigits(
+      [{ open: 0.2068, high: 0.2072, low: 0.2065, close: 0.20695 }],
+    )).toBe(4);
+    expect(resolveEffectiveChartPriceDigits(4, 5)).toBe(4);
   });
 });
 

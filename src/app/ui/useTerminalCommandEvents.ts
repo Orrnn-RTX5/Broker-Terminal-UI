@@ -122,6 +122,16 @@ export const useTerminalCommandEvents = ({
   setChartObjectsTarget,
 }: UseTerminalCommandEventsOptions): void => {
   useEffect(() => {
+    const commitSelectedChartSymbol = (symbol: string) => {
+      const normalized = normalizeSymbolName(symbol);
+      if (!normalized) return;
+      try {
+        localStorage.setItem('rtx5_selected_symbol', normalized);
+      } catch {
+        // Ignore storage write failures
+      }
+      setSelectedSymbol(normalized);
+    };
     const handlePrintChartEvent = (event: Event) => {
       const request = (event as CustomEvent<PrintChartRequest>).detail;
       void handlePrintChart(request || {});
@@ -141,7 +151,7 @@ export const useTerminalCommandEvents = ({
         displayToast(translateUi('Maximum {{limit}} charts are open', { limit: result.limit }), 'error');
         return;
       }
-      setSelectedSymbol(symbol);
+      commitSelectedChartSymbol(symbol);
     };
     const handleRequestChartSymbolChange = (event: CustomEvent<{ panelId?: unknown; anchor?: ChartSymbolAnchor }>) => {
       if (!hasArrangedChartWindows(useDockLayoutStore.getState().layout)) return;
@@ -160,7 +170,7 @@ export const useTerminalCommandEvents = ({
       const store = useDockLayoutStore.getState();
       const requestedPanelId = typeof event.detail?.panelId === 'string' ? event.detail.panelId : undefined;
       if (requestedPanelId) {
-        if (changeChartPanelSymbol(requestedPanelId, symbol, chartEligibleSymbolNames, timeframe)) setSelectedSymbol(symbol);
+        if (changeChartPanelSymbol(requestedPanelId, symbol, chartEligibleSymbolNames, timeframe)) commitSelectedChartSymbol(symbol);
         return;
       }
       if (event.detail?.newWindow === true) {
@@ -171,13 +181,13 @@ export const useTerminalCommandEvents = ({
         const existing = getChartPanels(store.layout).find((panel) => normalizeSymbolName(panel.props?.symbol) === symbol);
         if (existing) {
           activateChartPanel(existing.id);
-          setSelectedSymbol(symbol);
+          commitSelectedChartSymbol(symbol);
           return;
         }
       } else {
         const activePanel = getActiveDockChartPanel();
         if (activePanel && changeChartPanelSymbol(activePanel.id, symbol, chartEligibleSymbolNames, timeframe)) {
-          setSelectedSymbol(symbol);
+          commitSelectedChartSymbol(symbol);
           return;
         }
       }
@@ -185,7 +195,7 @@ export const useTerminalCommandEvents = ({
     };
     const handleChartSymbolChanged = (event: CustomEvent<{ symbol?: unknown; timeframe?: Timeframe }>) => {
       const chartSymbol = getChartEligibleSymbol(event.detail?.symbol);
-      if (chartSymbol) setSelectedSymbol(chartSymbol);
+      if (chartSymbol) commitSelectedChartSymbol(chartSymbol);
       if (event.detail?.timeframe) setTimeframe(event.detail.timeframe);
     };
     const handleWorkspaceProfileRestored = (event: CustomEvent<{ state?: { chartView?: { dockHeight?: unknown } } }>) => {

@@ -204,9 +204,9 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
         </div>
       )}
       <div className="overflow-auto min-h-0">
-        <table className="w-full text-xs">
+        <table className="rtx-pending-orders-table w-full text-xs border-collapse">
           <thead className="sticky top-0 bg-zinc-900">
-            <tr className="text-zinc-500 text-left">
+            <tr className="text-zinc-500 text-left border-b border-zinc-700">
               <th className="px-2 py-1 font-normal">{tr('Ticket')}</th>
               <th className="px-2 py-1 font-normal">{tr('Symbol')}</th>
               <th className="px-2 py-1 font-normal">{tr('Type')}</th>
@@ -226,7 +226,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
                 ?? (storeTicks ?? {})[order.symbol.toUpperCase()];
               const digits = resolveSpecDigits(orderTick?.digits);
               return (
-                <tr key={order.ticket} className="border-t border-zinc-800 hover:bg-zinc-800/40" data-ticket={order.ticket}>
+                <tr key={order.ticket} className="rtx-pending-order-row border-b border-zinc-800 hover:bg-zinc-800/40" data-ticket={order.ticket}>
                   <td className="px-2 py-1 text-zinc-300">{order.ticket}</td>
                   <td className="px-2 py-1 text-zinc-300">{order.symbol}</td>
                   <td className="px-2 py-1 text-zinc-400">{order.orderType}</td>

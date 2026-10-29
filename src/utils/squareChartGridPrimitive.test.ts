@@ -242,6 +242,57 @@ describe('SquareChartGridPrimitive', () => {
     expect(context.fillText).not.toHaveBeenCalled();
   });
 
+  it('uses high-contrast 12px medium typography and clean label spacing on light chart surfaces', () => {
+    const labelAt = vi.fn((x: number, isFirstTick: boolean) =>
+      isFirstTick ? '29 Oct 2026' : `29 Oct 11:${String(14 + x / 64).padStart(2, '0')}`,
+    );
+    const primitive = new SquareChartGridPrimitive(
+      {
+        visible: true,
+        isLightBackground: true,
+        profile: 'square',
+        cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,
+        verticalColor: '#cbd5e1',
+        horizontalColor: '#cbd5e1',
+      },
+      undefined,
+      {
+        labelAt,
+        timeKeyAt: (x: number) => `t-${x}`,
+        appearance: () => ({
+          color: '#334155',
+          fontSize: 12,
+          fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif',
+          backgroundColor: '#ffffff',
+          borderColor: '#64748b',
+        }),
+      },
+    );
+    const context = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+      measureText: vi.fn((text: string) => ({ width: text.length * 6 })),
+      font: '',
+      fillStyle: '',
+      textBaseline: '',
+      textAlign: '',
+    };
+    const target = {
+      useMediaCoordinateSpace: (draw: (scope: unknown) => void) =>
+        draw({ context, mediaSize: { width: 320, height: 28 } }),
+    };
+
+    primitive.timeAxisPaneViews()[0]!.renderer()!.draw(target as never);
+    expect(context.font).toBe('12px "Segoe UI", Tahoma, Arial, sans-serif');
+    expect(context.fillStyle).toBe('#0f172a');
+    expect(context.fillText.mock.calls).toEqual([
+      ['29 Oct 2026', 4, 14.5],
+      ['29 Oct 11:16', 131, 14.5],
+    ]);
+  });
+
   it('draws the centered RTX5 background watermark logo in the bottom layer even when grid is hidden, and hides it when showBackgroundLogo is false', () => {
     const fillStyles: string[] = [];
     const context = {

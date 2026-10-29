@@ -161,7 +161,7 @@ describe('trading chart extracted modules', () => {
 
     expect(theme.background).toBe('#ffffff');
     expect(theme.axisText).toBe('#111827');
-    expect(theme.scaleBorder).toBe('transparent');
+    expect(theme.scaleBorder).toBe('#64748b');
     expect(theme.candleUp).toBe(defaultChartProperties.colors.bullCandle);
   });
 

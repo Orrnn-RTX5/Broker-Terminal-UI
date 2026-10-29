@@ -456,7 +456,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog {
 
 .rtx-symbols-dialog .rtx-symbols-dialog__history-controls {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) 92px minmax(164px, 1.15fr) minmax(164px, 1.15fr) auto;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(134px, 0.85fr) minmax(156px, 1.1fr) minmax(156px, 1.1fr) auto;
   flex: 0 0 auto;
   align-items: end;
   padding: 12px 16px 14px;
@@ -559,22 +559,24 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog {
 /* Keep timestamps and prices in separate columns at narrow dialog widths. */
 .rtx-symbols-dialog .rtx-symbols-dialog__history-table {
   table-layout: auto;
+  width: 100%;
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__history-table--bars {
-  min-width: 1000px;
+  min-width: 680px;
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__history-table--ticks {
-  min-width: 800px;
+  min-width: 640px;
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__history-table :is(th, td) {
+  padding-inline: 10px;
   white-space: nowrap;
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__history-table :is(th, td):first-child {
-  min-width: 210px;
+  min-width: 165px;
 }
 
 /* Footer */

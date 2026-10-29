@@ -133,11 +133,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):n
   outline: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(button):not(:where(.rtx-desktop-shell .rtx-login-overlay *, .rtx-trade-control-btn)) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(button):not(:where(.rtx-desktop-shell .rtx-login-overlay *, .rtx-trade-control-btn, .rtx-bulk-close-dialog__btn-confirm, .rtx-confirm-dialog__confirm)) {
   color: #475467;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(button:not(:disabled):hover):not(:where(.rtx-desktop-shell .rtx-login-overlay *, .rtx-trade-control-btn)) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(button:not(:disabled):hover):not(:where(.rtx-desktop-shell .rtx-login-overlay *, .rtx-trade-control-btn, .rtx-bulk-close-dialog__btn-confirm, .rtx-confirm-dialog__confirm)) {
   background-color: #f9fafb !important;
   border-color: #d0d5dd !important;
   color: #101828 !important;

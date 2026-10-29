@@ -300,4 +300,45 @@ describe('enterprise light visual-system contract', () => {
     expect(contrastRatio('#4597ff', '#252d3a')).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio('#ff5858', '#252d3a')).toBeGreaterThanOrEqual(4.2);
   });
+
+  it('draws horizontal and vertical cell borders for every Market Watch symbol row and header while keeping single-stroke dock seams', () => {
+    const marketWatchDesktopCss = readSource('src/components/market-watch/market-watch-desktop.css');
+    const lightTypographyCss = readSource('src/styles/light-typography.css');
+    const chartThemeSource = readSource('src/features/trading-chart/presentation/chartTheme.ts');
+    expect(readHexToken('--rtx-light-line-border')).toBe('#64748b');
+    expect(marketWatchDesktopCss).toMatch(
+      /\.rtx-market-watch__grid\.rtx-market-watch__grid--lines\.rtx-market-watch__grid--lines tbody td\s*\{[\s\S]*?border-top: 1px solid var\(--mw-desktop-grid\) !important;[\s\S]*?border-bottom: 1px solid var\(--mw-desktop-grid\) !important;[\s\S]*?border-left: 1px solid var\(--mw-desktop-grid-vertical, var\(--mw-desktop-grid\)\) !important;[\s\S]*?border-right: 1px solid var\(--mw-desktop-grid-vertical, var\(--mw-desktop-grid\)\) !important;/,
+    );
+    expect(marketWatchDesktopCss).toMatch(
+      /\.rtx-market-watch__grid\.rtx-market-watch__grid--lines\.rtx-market-watch__grid--lines thead th\s*\{[\s\S]*?border-top: 0 !important;[\s\S]*?border-bottom: 1px solid var\(--mw-desktop-border-strong, var\(--mw-desktop-grid\)\) !important;[\s\S]*?border-left: 1px solid var\(--mw-desktop-grid-vertical, var\(--mw-desktop-grid\)\) !important;[\s\S]*?border-right: 1px solid var\(--mw-desktop-grid-vertical, var\(--mw-desktop-grid\)\) !important;/,
+    );
+    expect(marketWatchDesktopCss).toMatch(
+      /\.rtx-market-watch__grid\.rtx-market-watch__grid--lines\.rtx-market-watch__grid--lines :is\(thead th, tbody td\):last-child\s*\{[\s\S]*?border-right: 0 !important;/,
+    );
+    expect(lightCss).toMatch(
+      /\[data-dock-panel\]:not\(\[data-dock-floating-panel='true'\]\) > div:first-child\s*\{[\s\S]*?border-top: 0 !important;[\s\S]*?border-left: 0 !important;[\s\S]*?border-right: 1px solid var\(--rtx-light-line-border, #64748b\) !important;[\s\S]*?border-bottom: 1px solid var\(--rtx-light-line-border, #64748b\) !important;/,
+    );
+    expect(marketWatchDesktopCss).toMatch(
+      /\.rtx-market-watch\.rtx-market-watch--desktop\s+\.rtx-market-watch__symbol\s*\{[\s\S]*?font-size: 13px !important;[\s\S]*?font-weight: 400 !important;/,
+    );
+    expect(lightTypographyCss).toMatch(
+      /\.rtx-market-watch__symbol,\s*\.rtx-market-watch__price \.price-big\s*\)\s*\{[\s\S]*?--rtx-type-size: max\(13px, calc\(var\(--rtx-ui-font-size\) - 1px\)\);[\s\S]*?--rtx-type-weight: var\(--rtx-light-weight-body\);/,
+    );
+    expect(chartThemeSource).toContain("scaleBorder: useReferenceLightSurface\n      ? '#64748b'");
+  });
+
+  it('keeps bulk-close confirm buttons white in light mode, removes history status pill borders and active time-filter bottom bar, and uses regular weight on chart time axis labels', () => {
+    const bulkCloseCss = readSource('src/styles/bulk-close-dialog.css');
+    const historyModelSource = readSource('src/features/bottom-dock/history/historyTabModel.ts');
+    const chartHelpersSource = readSource('src/components/TradingChart.helpers.ts');
+    expect(bulkCloseCss).toMatch(/\.rtx-bulk-close-dialog__btn-confirm\s*\{[\s\S]*?color: #ffffff !important;/);
+    expect(legacyLightCss).toContain('.rtx-bulk-close-dialog__btn-confirm');
+    expect(lightCss).toMatch(
+      /\.rtx-history-toolbar \.rtx-history-time-btn\[aria-pressed="true"\]\s*\{[\s\S]*?background: var\(--rtx-light-selected\) !important;[\s\S]*?color: var\(--rtx-light-accent-strong\) !important;[\s\S]*?box-shadow: none !important;/,
+    );
+    expect(historyModelSource).toContain('rtx-history-status-label inline-flex items-center text-[11px] font-normal');
+    expect(historyModelSource).not.toContain('bg-emerald-500/15');
+    expect(historyModelSource).not.toContain('border-emerald-500/30');
+    expect(chartHelpersSource).toContain('allowBoldLabels: false');
+  });
 });

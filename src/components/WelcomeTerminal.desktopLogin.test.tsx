@@ -451,4 +451,26 @@ describe('desktop broker directory login', () => {
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(`${achiever.server_url}/api/v2/time`, expect.anything());
   });
+
+  it('moves focus from Account ID to Password on Enter without logging in, then logs in on Enter in Password', async () => {
+    const onLogin = vi.fn();
+    render(<WelcomeTerminal onLogin={onLogin} />);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+
+    const accountInput = screen.getByLabelText('Account ID');
+    const passwordInput = screen.getByLabelText('Password', { selector: 'input' });
+
+    accountInput.focus();
+    fireEvent.change(accountInput, { target: { value: '12345' } });
+    fireEvent.keyDown(accountInput, { key: 'Enter', code: 'Enter' });
+
+    expect(passwordInput).toHaveFocus();
+    expect(runtime.login).not.toHaveBeenCalled();
+
+    fireEvent.change(passwordInput, { target: { value: 'test-password' } });
+    fireEvent.keyDown(passwordInput, { key: 'Enter', code: 'Enter' });
+
+    await waitFor(() => expect(runtime.login).toHaveBeenCalledOnce());
+    await waitFor(() => expect(onLogin).toHaveBeenCalledOnce());
+  });
 });

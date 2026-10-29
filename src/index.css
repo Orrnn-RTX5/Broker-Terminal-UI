@@ -257,6 +257,7 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-table__head th {
   background: var(--bg-tertiary) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  border-left: none !important;
   border-right: none !important;
   border-bottom: 1px solid var(--border-secondary) !important;
   color: var(--text-primary) !important;
@@ -299,33 +300,45 @@ html .rtx-trade-table tbody tr.rtx-trade-row td{
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row td {
+  border-left: none !important;
   border-right: none !important;
   border-bottom: 1px solid var(--border-secondary) !important;
   line-height: 19.5px;
   text-shadow: none;
 }
 
-/* History's context-menu Grid command is table-local. These scoped rules must
-   outrank the shared Trade/History skin, which otherwise removes vertical
-   borders and forces horizontal separators in both themes. */
-html .rtx-history-table[data-grid='true'] :is(thead th, tbody td) {
-  border-right: 1px solid var(--border-secondary) !important;
+/* Bottom-dock tables and rows from Trade to Historical Data use horizontal
+   row dividers without vertical column borders in both themes. */
+html .rtx-bottom-dock :is(.rtx-trade-table, .rtx-history-table, .rtx-exposure-tab table, .rtx-pending-orders-table, .rtx-journal-table) :is(thead th, tbody td:not(.rtx-journal-spacer-cell)),
+html .rtx-history-table[data-grid='true'] :is(thead th, tbody td),
+html .rtx-history-table[data-grid='false'] :is(thead th, tbody td) {
+  border-left: none !important;
+  border-right: none !important;
   border-bottom: 1px solid var(--border-secondary) !important;
 }
 
-html.rtx-skin-untitled-light .rtx-history-table[data-grid='true'] :is(thead th, tbody td) {
-  border-right-color: var(--rtx-light-border-strong, #d1d5db) !important;
-  border-bottom-color: var(--rtx-light-border-strong, #d1d5db) !important;
-}
-
-html .rtx-history-table[data-grid='true'] :is(thead th, tbody td):last-child {
-  border-right: none !important;
-}
-
-html .rtx-history-table[data-grid='false'] tbody td {
+html.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-trade-table, .rtx-history-table, .rtx-exposure-tab table, .rtx-pending-orders-table, .rtx-journal-table) :is(thead th, tbody td:not(.rtx-journal-spacer-cell)),
+html.rtx-skin-untitled-light .rtx-history-table[data-grid='true'] :is(thead th, tbody td),
+html.rtx-skin-untitled-light .rtx-history-table[data-grid='false'] :is(thead th, tbody td) {
   border-left: none !important;
   border-right: none !important;
-  border-bottom: none !important;
+  border-bottom: 1px solid var(--rtx-light-line-border, #404040) !important;
+}
+
+html .rtx-bottom-dock :is(.rtx-history-spacer-row td, .rtx-journal-spacer-row td) {
+  border: 0 !important;
+}
+
+html .rtx-toolbox-tab .rtx-toolbox-row {
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--border-secondary) !important;
+  border-radius: 0 !important;
+}
+
+html.rtx-skin-untitled-light .rtx-toolbox-tab .rtx-toolbox-row {
+  border-bottom-color: var(--rtx-light-line-border, #404040) !important;
 }
 
 html.rtx-skin-untitled-light .rtx-history-period-dialog {
@@ -664,7 +677,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
   right: 0;
   bottom: 4px;
   width: 1px;
-  background: var(--rtx-light-control-border);
+  background: var(--rtx-light-line-border, #404040);
   pointer-events: none;
 }
 
@@ -686,13 +699,9 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
 }
 
 /* Market Watch "Grid" toggles visible table grid lines. */
+.rtx-market-watch__grid--lines thead th,
 .rtx-market-watch__grid--lines tbody td {
-  border-bottom: 1px solid var(--border-tertiary);
-}
-
-.rtx-market-watch__grid--lines tbody td:not(:first-child),
-.rtx-market-watch__grid--lines thead th:not(:first-child) {
-  border-left: 1px solid var(--border-tertiary);
+  border: 1px solid var(--border-tertiary);
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-market-watch,
@@ -733,6 +742,11 @@ html:not(.rtx-skin-untitled-light) .rtx-market-watch .rtx-market-watch__row {
   background: var(--bg-secondary) !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch .rtx-market-watch__grid--lines thead th,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch .rtx-market-watch__grid--lines tbody td {
+  border: 1px solid var(--mw-desktop-grid, var(--border-tertiary)) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-market-watch tbody tr:hover,

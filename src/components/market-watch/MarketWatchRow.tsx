@@ -1,5 +1,5 @@
 import { resolveDailyChangeDisplayDigits } from '../../services/dailyChangePriceModeRegistry';
-import { useEffect, useState, type CSSProperties, type FC, type ReactNode } from 'react';
+import { useState, type CSSProperties, type FC, type ReactNode } from 'react';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import type { MarketWatchLastPrice } from '../../hooks/useLastMarketWatchQuotes';
 import { useTick } from '../../store/useAppStore';
@@ -47,32 +47,31 @@ const CORE_MARKET_WATCH_COLUMN_SET = new Set<MarketWatchColumnId>([
   'source',
 ]);
 
-function usePriceFlash(value: number): 'up' | 'down' | null {
-  const [flashState, setFlashState] = useState<{
+function useLastQuoteDirection(symbol: string, value: number): 'up' | 'down' | null {
+  const [directionState, setDirectionState] = useState<{
+    symbol: string;
     value: number;
     direction: 'up' | 'down' | null;
-  }>(() => ({ value, direction: null }));
+  }>(() => ({ symbol, value, direction: null }));
 
-  if (value !== flashState.value) {
-    setFlashState({
-      value,
-      direction: value > flashState.value ? 'up' : 'down',
-    });
+  if (directionState.symbol !== symbol) {
+    setDirectionState({ symbol, value, direction: null });
+    return null;
   }
 
-  useEffect(() => {
-    if (!flashState.direction) return undefined;
-    const timer = window.setTimeout(() => {
-      setFlashState((current) => (
-        current.value === flashState.value
-          ? { ...current, direction: null }
-          : current
-      ));
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [flashState.direction, flashState.value]);
+  if (value !== directionState.value) {
+    const nextDirection = value > 0 && directionState.value > 0
+      ? (value > directionState.value ? 'up' : 'down')
+      : directionState.direction;
+    setDirectionState({
+      symbol,
+      value,
+      direction: nextDirection,
+    });
+    return nextDirection;
+  }
 
-  return flashState.direction;
+  return directionState.direction;
 }
 
 interface MarketWatchRowProps {
@@ -134,12 +133,21 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
   const lastPriceTitle = fallbackPrice
     ? `${tr(fallbackPrice.kind === 'close' ? 'Last close' : 'Last quote')} · ${formatLastPriceTime(fallbackPrice.asOf)}`
     : undefined;
-  // Broker data only (catalog row, registered spec, live tick); unknown renders raw.
-  const priceDigits = resolveMarketWatchPriceDigits(symbol, catalogPriceDigits, tick?.digits) ?? undefined;
   const bidDirection = hasTickQuote ? tick?.bidDirection ?? 'none' : 'none';
   const askDirection = hasTickQuote ? tick?.askDirection ?? 'none' : 'none';
   const bid = quote?.bid ?? 0;
   const ask = quote?.ask ?? 0;
+  const rawQuoteSides = quote as { rawBid?: unknown; rawAsk?: unknown } | undefined;
+  // Broker data only (catalog row, registered spec, live tick); unknown renders raw.
+  const priceDigits = resolveMarketWatchPriceDigits(
+    symbol,
+    catalogPriceDigits,
+    tick?.digits,
+    bid,
+    ask,
+    rawQuoteSides?.rawBid,
+    rawQuoteSides?.rawAsk,
+  ) ?? undefined;
   const dailyPct = readFiniteDailyChange(resolvedDisplayMetadata.dailyChange)
     ?? (mayUseClosedDailyChange(resolvedDisplayMetadata) ? readFiniteDailyChange(closedDailyChange) : null);
 
@@ -158,15 +166,37 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
           ? referenceCurrentPrice - referenceCurrentPrice / (1 + dailyPct / 100)
           : null)))
     : null;
+  const baseDailyDigits = resolveDailyChangeDisplayDigits(symbol, tick?.digits ?? priceDigits);
+  const effectiveDailyDigits = (() => {
+    const candidateAmount = inlineDailyAmount ?? dailyAmount;
+    if (
+      baseDailyDigits !== null
+      && candidateAmount !== null
+      && Number.isFinite(candidateAmount)
+      && Math.abs(candidateAmount) > 0
+      && Number(Math.abs(candidateAmount).toFixed(baseDailyDigits)) === 0
+    ) {
+      return Math.min(6, Math.max(baseDailyDigits, Math.ceil(-Math.log10(Math.abs(candidateAmount))) + 1));
+    }
+    return baseDailyDigits;
+  })();
   const dailyTitle = (closedDailyChange != null && mayUseClosedDailyChange(resolvedDisplayMetadata) ? describeCurrentMarketWatchDailyChange(symbol) : dailyChangeDescription(resolvedDisplayMetadata.daily));
-  const bidFlash = usePriceFlash(bid);
-  const askFlash = usePriceFlash(ask);
-  const bidPriceDirection = hasTickQuote ? bidFlash ?? (bidDirection !== 'none' ? bidDirection : null) : null;
-  const askPriceDirection = hasTickQuote ? askFlash ?? (askDirection !== 'none' ? askDirection : null) : null;
+  const bidLastDirection = useLastQuoteDirection(symbol, bid);
+  const askLastDirection = useLastQuoteDirection(symbol, ask);
+  const rawBidDirection = hasTickQuote ? (bidDirection !== 'none' ? bidDirection : bidLastDirection) : null;
+  const rawAskDirection = hasTickQuote ? (askDirection !== 'none' ? askDirection : askLastDirection) : null;
   const dailyPositive = hasDailyData && dailyPct > 0;
   const dailyNegative = hasDailyData && dailyPct < 0;
-  const resolvedBidDirection = bidPriceDirection;
-  const resolvedAskDirection = askPriceDirection;
+  const fallbackRowDirection: 'up' | 'down' | null = hasTickQuote
+    ? (dailyNegative
+      ? 'down'
+      : dailyPositive
+        ? 'up'
+        : (tickPreviousClose !== null && tickPreviousClose > 0 && bid > 0 && bid < tickPreviousClose ? 'down' : 'up'))
+    : null;
+  const resolvedBidDirection = rawBidDirection ?? rawAskDirection;
+  const resolvedAskDirection = rawAskDirection ?? rawBidDirection;
+  const resolvedRowDirection = resolvedBidDirection ?? fallbackRowDirection;
   const bidToneClass = resolvedBidDirection;
   const askToneClass = resolvedAskDirection;
   const quoteDataOpacity = isLive ? 1 : hasData ? 0.72 : 0.45;
@@ -235,22 +265,22 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
       >
         <td style={{ padding: '3px 6px', whiteSpace: 'nowrap', maxWidth: 0 }}>
           <div className="rtx-market-watch__symbol-content" style={{ display: 'flex', alignItems: 'center', columnGap: 3, minWidth: 0 }}>
-            {hasData && bidDirection === 'up' && (
+            {hasData && resolvedRowDirection === 'up' && (
               <svg className="rtx-market-watch__direction rtx-market-watch__direction--up" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: quoteUpColor, opacity: quoteDataOpacity }}>
-                <path d="M2 8L8 2M3.5 2H8V6.5" stroke="currentColor" strokeWidth="1" />
+                <path d="M2 8L8 2M3.5 2H8V6.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             )}
-            {hasData && bidDirection === 'down' && (
+            {hasData && resolvedRowDirection === 'down' && (
               <svg className="rtx-market-watch__direction rtx-market-watch__direction--down" width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0, color: directionDownColor, opacity: quoteDataOpacity }}>
-                <path d="M2 2L8 8M3.5 8H8V3.5" stroke="currentColor" strokeWidth="1" />
+                <path d="M2 2L8 8M3.5 8H8V3.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             )}
-            {(!hasData || bidDirection === 'none') && (
+            {(!hasData || !resolvedRowDirection) && (
               <span style={{ width: 10, flexShrink: 0, display: 'inline-block' }} />
             )}
             <span aria-label={displaySymbol} className="rtx-market-watch__symbol" style={{
-              flexShrink: 0,
-              maxWidth: 'calc(100% - 13px)',
+              flex: '1 1 auto',
+              minWidth: 0,
               fontSize: 13,
               fontWeight: 500,
               color: 'var(--text-primary)',
@@ -265,7 +295,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
         </td>
 
         {lastClose ? <>
-          <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center' }}>
+          <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center', opacity: 1 }}>
             <span className="rtx-market-watch__last-close" style={{ display: 'inline-flex', justifyContent: 'center', alignItems: 'baseline', flexWrap: 'wrap', gap: '0 6px', color: 'var(--text-primary)' }}>
               <span style={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
                 <PriceDisplay price={lastClose.close} symbol={symbol} digits={priceDigits} />
@@ -273,12 +303,12 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
             </span>
           </td>
           {showAsk && (
-            <td style={{ padding: '3px 4px', textAlign: 'center', opacity: 0.45 }}>
-              <span className="rtx-market-watch__price rtx-market-watch__price--ask rtx-market-watch__price--empty" style={{ fontSize: 13, color: '#36363e' }}>—</span>
+            <td style={{ padding: '3px 4px', textAlign: 'center', opacity: 1 }}>
+              <span className="rtx-market-watch__price rtx-market-watch__price--ask rtx-market-watch__price--empty" style={{ fontSize: 13, color: '#36363e', opacity: 0.45 }}>—</span>
             </td>
           )}
         </> : <>
-          <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
+          <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center', opacity: 1 }}>
             <span className={`rtx-market-watch__price rtx-market-watch__price--bid${bidToneClass ? ` rtx-market-watch__price--${bidToneClass}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
               display: 'inline-block',
               fontSize: 13,
@@ -286,6 +316,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
               color: hasData
                 ? (resolvedBidDirection ?? 'down') === 'up' ? quoteUpColor : quoteDownColor
                 : '#36363e',
+              opacity: hasData ? 1 : quoteDataOpacity,
               padding: '1px 4px',
               borderRadius: 3,
               background: 'transparent',
@@ -299,7 +330,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
           </td>
 
           {showAsk && (
-            <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
+            <td title={lastPriceTitle} style={{ padding: '3px 4px', textAlign: 'center', opacity: 1 }}>
               <span className={`rtx-market-watch__price rtx-market-watch__price--ask${askToneClass ? ` rtx-market-watch__price--${askToneClass}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
                 display: 'inline-block',
                 fontSize: 13,
@@ -307,6 +338,7 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
                 color: hasData
                   ? (resolvedAskDirection ?? 'up') === 'down' ? quoteDownColor : quoteUpColor
                   : '#36363e',
+                opacity: hasData ? 1 : quoteDataOpacity,
                 padding: '1px 4px',
                 borderRadius: 3,
                 background: 'transparent',
@@ -321,54 +353,56 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
         </>}
 
         {showLast && (
-          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: isLive ? 1 : 0.72 }}>
-            <span className="rtx-market-watch__last" style={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: 1 }}>
+            <span className="rtx-market-watch__last" style={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: 'tabular-nums', opacity: isLive ? 1 : 0.72 }}>
               {renderNumber(resolvedDisplayMetadata.last)}
             </span>
           </td>
         )}
         {showHigh && (
-          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: isLive ? 1 : 0.72 }}>
-            <span className="rtx-market-watch__high" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: 1 }}>
+            <span className="rtx-market-watch__high" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', opacity: isLive ? 1 : 0.72 }}>
               {renderNumber(tick?.high ?? tick?.high24h)}
             </span>
           </td>
         )}
         {showLow && (
-          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: isLive ? 1 : 0.72 }}>
-            <span className="rtx-market-watch__low" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: 1 }}>
+            <span className="rtx-market-watch__low" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', opacity: isLive ? 1 : 0.72 }}>
               {renderNumber(tick?.low ?? tick?.low24h)}
             </span>
           </td>
         )}
         {showVolume && (
-          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: isLive ? 1 : 0.72 }}>
-            <span className="rtx-market-watch__volume" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: 1 }}>
+            <span className="rtx-market-watch__volume" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', opacity: isLive ? 1 : 0.72 }}>
               {Number.isFinite(Number(tick?.volume)) ? Number(tick?.volume).toLocaleString() : '—'}
             </span>
           </td>
         )}
         {showSpread && (
-          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: isLive ? 1 : 0.72 }}>
-            <span className="rtx-market-watch__spread" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: 1 }}>
+            <span className="rtx-market-watch__spread" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', opacity: isLive ? 1 : 0.72 }}>
               {hasData ? formatSpreadDisplay(symbol, tick?.spread, bid, ask, tick?.digits) : '—'}
             </span>
           </td>
         )}
         {showTime && (
-          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: isLive ? 1 : 0.72 }}>
-            <span className="rtx-market-watch__time" style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          <td style={{ padding: '3px 5px', textAlign: 'right', opacity: 1 }}>
+            <span className="rtx-market-watch__time" style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', opacity: isLive ? 1 : 0.72 }}>
               {formatMarketWatchTime(quoteTimestamp, showMilliseconds)}
             </span>
           </td>
         )}
         {columns.includes('dailyChangePrice') && (
-          <td title={dailyTitle} data-status={resolvedDisplayMetadata.daily?.status} data-field="daily-change-price" style={{ padding: '3px 4px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', color: dailyAmount === null || dailyAmount === 0 ? 'var(--text-primary)' : dailyAmount > 0 ? quoteUpColor : quoteDownColor, opacity: isLive && resolvedDisplayMetadata.daily?.status !== 'stale' ? 1 : 0.72 }}>
-            {formatDailyChange(dailyAmount, resolveDailyChangeDisplayDigits(symbol, tick?.digits))}
+          <td title={dailyTitle} data-status={resolvedDisplayMetadata.daily?.status} data-field="daily-change-price" style={{ padding: '3px 4px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', color: dailyAmount === null || dailyAmount === 0 ? 'var(--text-primary)' : dailyAmount > 0 ? quoteUpColor : quoteDownColor, opacity: 1 }}>
+            <span style={{ opacity: isLive && resolvedDisplayMetadata.daily?.status !== 'stale' ? 1 : 0.72 }}>
+              {formatDailyChange(dailyAmount, effectiveDailyDigits)}
+            </span>
           </td>
         )}
         {showDailyChange && (
-          <td title={dailyTitle} data-status={resolvedDisplayMetadata.daily?.status} data-field="daily-change-percent" style={{ padding: '3px 4px', textAlign: 'center', opacity: resolvedDisplayMetadata.daily?.status === 'stale' ? 0.72 : hasDailyData ? 1 : dailyDataOpacity }}>
+          <td title={dailyTitle} data-status={resolvedDisplayMetadata.daily?.status} data-field="daily-change-percent" style={{ padding: '3px 4px', textAlign: 'center', opacity: 1 }}>
             <span className={`rtx-market-watch__daily${!hasDailyData ? ' rtx-market-watch__daily--empty' : ''}${dailyPositive ? ' rtx-market-watch__daily--up' : ''}${dailyNegative ? ' rtx-market-watch__daily--down' : ''}`} style={{
               fontSize: 13,
               fontWeight: 500,
@@ -379,20 +413,21 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
                   : dailyNegative
                     ? quoteDownColor
                     : 'var(--text-primary)',
+              opacity: resolvedDisplayMetadata.daily?.status === 'stale' ? 0.72 : hasDailyData ? 1 : dailyDataOpacity,
               letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',
             }}>
               {hasDailyData
                 ? (inlineDailyAmount !== null
-                  ? `${formatDailyChange(inlineDailyAmount, resolveDailyChangeDisplayDigits(symbol, tick?.digits ?? priceDigits))} (${formatDailyChange(dailyPct, 2, true)})`
+                  ? `${formatDailyChange(inlineDailyAmount, effectiveDailyDigits)} (${formatDailyChange(dailyPct, 2, true)})`
                   : formatDailyChange(dailyPct, 2, true))
                 : <span style={{ color: '#50505a' }}>{!tick && !displayMetadata ? '…' : '—'}</span>}
             </span>
           </td>
         )}
         {showSource && (
-          <td className="rtx-market-watch__source-cell" title={tick?.lp || ''} style={{ padding: '3px 5px', textAlign: 'left', opacity: isLive ? 1 : 0.72 }}>
-            <span className="rtx-market-watch__source" style={{ display: 'block', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+          <td className="rtx-market-watch__source-cell" title={tick?.lp || ''} style={{ padding: '3px 5px', textAlign: 'left', opacity: 1 }}>
+            <span className="rtx-market-watch__source" style={{ display: 'block', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, opacity: isLive ? 1 : 0.72 }}>
               {tick?.lp || '—'}
             </span>
           </td>
@@ -410,9 +445,9 @@ export const MarketWatchRow: FC<MarketWatchRowProps> = ({
             <td
               key={column}
               data-field={column}
-              style={{ padding: '3px 5px', textAlign: 'right', opacity: isLive ? 1 : 0.72 }}
+              style={{ padding: '3px 5px', textAlign: 'right', opacity: 1 }}
             >
-              <span className={`rtx-market-watch__${column}`} style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+              <span className={`rtx-market-watch__${column}`} style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', opacity: isLive ? 1 : 0.72 }}>
                 {resolved.kind === 'price' && resolved.numericValue !== null && resolved.numericValue !== 0 ? (
                   <PriceDisplay price={resolved.numericValue} symbol={symbol} digits={priceDigits} />
                 ) : resolved.formatted !== null ? (

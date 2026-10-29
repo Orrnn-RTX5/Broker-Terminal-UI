@@ -6,7 +6,7 @@
   --history-panel: var(--bg-secondary);
   --history-panel-subtle: var(--bg-tertiary);
   --history-raised: var(--bg-quaternary);
-  --history-border: var(--border-primary);
+  --history-border: var(--border-secondary);
   --history-border-strong: color-mix(in srgb, var(--text-primary) 38%, var(--history-panel));
   --history-text: var(--text-primary);
   --history-text-secondary: color-mix(in srgb, var(--text-primary) 80%, var(--history-panel));
@@ -98,7 +98,7 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-downloader__metrics > div {
-  border-left: 1px solid var(--history-border);
+  border-left: none;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -349,6 +349,8 @@ html.theme-light .rtx-history-downloader {
 }
 
 .rtx-history-symbol-row {
+  border-left: none;
+  border-right: none;
   border-bottom: 1px solid var(--history-border);
   display: grid;
   grid-template-columns: minmax(0, 1fr) 32px;
@@ -1057,6 +1059,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-downloader {
   --history-bg: var(--rtx-light-panel);
   --history-panel-subtle: var(--rtx-light-hover);
   --history-raised: var(--rtx-light-hover);
+  --history-border: var(--rtx-light-line-border, #64748b);
 
   & :is(.rtx-history-downloader__header, .rtx-history-symbols__toolbar, .rtx-history-tasks__header) {
     background: var(--rtx-light-panel);

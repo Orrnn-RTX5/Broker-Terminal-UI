@@ -4,6 +4,7 @@ import { resolveTickFromLookup, useAppStore } from '../../store/useAppStore';
 import { normalizeSymbolDescriptionText } from '../../utils/symbolDescription';
 import { getInstrumentSymbolName } from '../../utils/symbolEligibility';
 import { formatPrice, resolveSpecDigits } from '../../utils/symbolUtils';
+import { inferObservedPriceDigits } from '../../utils/chartPriceScale';
 
 /** Bottom tabs of the Market Watch window, in MT5 order. */
 export const MARKET_WATCH_VIEWS = ['symbols', 'details', 'trading', 'ticks'] as const;
@@ -51,7 +52,11 @@ const readCatalogRowPriceDigits = (row: unknown): number | null => {
   const specDigits = brokerSpecification && typeof brokerSpecification === 'object' && !Array.isArray(brokerSpecification)
     ? (brokerSpecification as Record<string, unknown>).digits
     : undefined;
-  return resolveSpecDigits(record.digits, specDigits);
+  const nestedSpecification = record.specification;
+  const nestedDigits = nestedSpecification && typeof nestedSpecification === 'object' && !Array.isArray(nestedSpecification)
+    ? (nestedSpecification as Record<string, unknown>).digits
+    : undefined;
+  return resolveSpecDigits(record.digits, specDigits, nestedDigits);
 };
 
 /**
@@ -81,11 +86,28 @@ export const resolveMarketWatchPriceDigits = (
   symbol: string,
   catalogDigits?: unknown,
   tickDigits?: unknown,
-): number | null => resolveSpecDigits(
-  catalogDigits,
-  readRegisteredSymbolPriceSpec(symbol).digits,
-  tickDigits,
-);
+  ...observedPrices: readonly unknown[]
+): number | null => {
+  const specDigits = resolveSpecDigits(
+    catalogDigits,
+    readRegisteredSymbolPriceSpec(symbol).digits,
+    tickDigits,
+  );
+  if (specDigits === null) return null;
+  if (specDigits <= 2 && observedPrices.length > 0) {
+    const hasSubUnitPrice = observedPrices.some((value) => {
+      const num = typeof value === 'number' ? value : Number(value);
+      return Number.isFinite(num) && num > 0 && num < 1;
+    });
+    if (hasSubUnitPrice) {
+      const observed = inferObservedPriceDigits(null, observedPrices);
+      if (observed !== null && observed > specDigits) {
+        return observed;
+      }
+    }
+  }
+  return specDigits;
+};
 
 export const formatMarketWatchExportPrice = (
   symbol: string,

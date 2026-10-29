@@ -440,4 +440,32 @@ describe('OpenAccountDialog account flows', () => {
         expect(screen.getByLabelText('Existing account ID')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
     });
+
+    it('moves focus from Existing account ID to password on Enter without connecting, then connects on Enter in password', async () => {
+        const onClose = vi.fn();
+        mocks.login.mockResolvedValue({
+            access_token: 'account-token',
+            account_login: 200009,
+            broker_id: 'broker-two',
+        });
+        await renderDialog(onClose);
+        await selectSecondBrokerAndContinue();
+
+        fireEvent.click(screen.getByRole('radio', { name: 'Existing account' }));
+        const loginInput = screen.getByLabelText('Existing account ID');
+        const passwordInput = screen.getByLabelText('Existing account password');
+
+        loginInput.focus();
+        fireEvent.change(loginInput, { target: { value: '200009' } });
+        fireEvent.keyDown(loginInput, { key: 'Enter', code: 'Enter' });
+
+        expect(passwordInput).toHaveFocus();
+        expect(mocks.login).not.toHaveBeenCalled();
+
+        fireEvent.change(passwordInput, { target: { value: 'runtime-secret' } });
+        fireEvent.keyDown(passwordInput, { key: 'Enter', code: 'Enter' });
+
+        await waitFor(() => expect(mocks.login).toHaveBeenCalledTimes(1));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
 });

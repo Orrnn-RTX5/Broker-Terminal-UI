@@ -54,6 +54,29 @@ try {
   }
 } catch { /* ignore parse errors */ }
 
+// ── One-time migration: clear stale pre-fix fallback symbol selection ──
+// Earlier builds without a configured default symbol wrote the first alphabetical
+// catalog symbol into `rtx5_selected_symbol` during startup reconciliation. Clear
+// that stale automatic fallback once so the configured default symbol opens first,
+// while preserving all subsequent user symbol changes across reloads and restarts.
+try {
+  if (!localStorage.getItem('rtx5_selected_symbol_v2_migrated')) {
+    localStorage.removeItem('rtx5_selected_symbol');
+    localStorage.setItem('rtx5_selected_symbol_v2_migrated', '1');
+  }
+  if (!localStorage.getItem('rtx5_mw_grid_v2_migrated')) {
+    const rawMwOptions = localStorage.getItem('rtx5_marketwatch_options');
+    if (rawMwOptions) {
+      const parsedMwOptions = JSON.parse(rawMwOptions);
+      if (parsedMwOptions && typeof parsedMwOptions === 'object') {
+        parsedMwOptions.showGrid = true;
+        localStorage.setItem('rtx5_marketwatch_options', JSON.stringify(parsedMwOptions));
+      }
+    }
+    localStorage.setItem('rtx5_mw_grid_v2_migrated', '1');
+  }
+} catch { /* ignore storage errors */ }
+
 // Keep bootstrap statically discoverable from the first entry request.
 // Desktop builds include login here; web builds defer its code and styles
 // while their public terminal runtime loads through AppShell.

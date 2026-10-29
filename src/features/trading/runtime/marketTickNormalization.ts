@@ -10,6 +10,8 @@ import { readRegisteredSymbolPriceSpec, resolveDailyChangePriceMode } from '../.
 import { asUnknownRecord, readBrokerTimestampMs } from '../../../utils/brokerStreamSemantics';
 import { readQuoteSessionRange, type QuoteSessionRange } from '../../../utils/quoteSessionRange';
 import { resolveSpecDigits } from '../../../utils/symbolUtils';
+import { inferObservedPriceDigits } from '../../../utils/chartPriceScale';
+import { roundPriceToDigits } from '../../../utils/spreadMarkup';
 import { readFirstFiniteNumber } from '../../../utils/recordFields';
 import { readQuoteTradingStatus, type QuoteTradingStatusFields } from '../../../utils/quoteTradingStatus';
 
@@ -107,8 +109,19 @@ export const normalizeRealtimeTick = (
         : (Number.isFinite(previousSpread) && previousSpread! >= 0
           ? previousSpread!
           : 0);
-      bid = parsedMid - spreadForSynthesis / 2;
-      ask = parsedMid + spreadForSynthesis / 2;
+      const synthesisDigits = resolveSpecDigits(
+        readRegisteredSymbolPriceSpec(symbol).digits,
+        record.digits,
+        previous?.digits,
+      ) ?? inferObservedPriceDigits(null, [parsedMid, spreadForSynthesis]);
+      if (synthesisDigits !== null && spreadForSynthesis > 0) {
+        const halfSpread = roundPriceToDigits(spreadForSynthesis / 2, synthesisDigits);
+        bid = roundPriceToDigits(parsedMid - halfSpread, synthesisDigits);
+        ask = roundPriceToDigits(bid + spreadForSynthesis, synthesisDigits);
+      } else {
+        bid = parsedMid - spreadForSynthesis / 2;
+        ask = parsedMid + spreadForSynthesis / 2;
+      }
     }
   }
 

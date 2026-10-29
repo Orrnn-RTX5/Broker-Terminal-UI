@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { formatTradingChartCrosshairLabel } from '../utils/chartTimeFormat';
+import { formatChartAxisPrice } from '../utils/chartPriceScale';
 
 interface CursorState {
   x: number;
@@ -223,7 +224,7 @@ export function useCrosshair({
         if (price === null) {
           priceLabel.style.opacity = '0';
         } else {
-          const text = latestDigits == null ? String(price) : price.toFixed(latestDigits);
+          const text = formatChartAxisPrice(price, latestDigits);
           if (priceLabel.textContent !== text) priceLabel.textContent = text;
           priceLabel.style.opacity = '1';
           const labelWidth = priceScaleWidth;

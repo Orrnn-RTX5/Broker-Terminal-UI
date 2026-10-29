@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useWatchlistStore } from '../../store/useWatchlistStore';
 import { createPreloadableFeature } from '../../startup/createPreloadableFeature';
+import { runAfterTerminalReady } from '../../startup/runAfterTerminalReady';
 import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { MarketWatchTickChart, PopupPricesDialog } from './index';
 import { MarketWatchSaveSetDialog } from './MarketWatchSaveSetDialog';
@@ -180,6 +181,12 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     const [showSymbolsPanel, setShowSymbolsPanel] = useState(false);
     const [hiddenSymbols, setHiddenSymbols] = useState<string[]>(() => getHiddenSymbols());
     const [specificationSymbol, setSpecificationSymbol] = useState<string | null>(null);
+
+    useEffect(() => {
+      return runAfterTerminalReady(() => {
+        void symbolSpecificationDialogFeature.preload().catch(() => undefined);
+      });
+    }, []);
     const [refreshedSpecification, setRefreshedSpecification] = useState<{
       scopeKey: string;
       symbol: string;

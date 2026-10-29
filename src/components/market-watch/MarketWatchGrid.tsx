@@ -117,16 +117,16 @@ export const MarketWatchGrid = ({
   const columnHeaders = MARKET_WATCH_COLUMN_HEADERS;
   const hasSeparateDailyChangePrice = columns.includes('dailyChangePrice');
   const columnWidths = useMemo<Partial<Record<MarketWatchColumnId, number>>>(() => ({
-    symbol: 76,
-    bid: hasSeparateDailyChangePrice ? 74 : 55,
-    ask: hasSeparateDailyChangePrice ? 74 : 55,
+    symbol: 78,
+    bid: hasSeparateDailyChangePrice ? 74 : 58,
+    ask: hasSeparateDailyChangePrice ? 74 : 58,
     last: 80,
     high: 80,
     low: 80,
     volume: 76,
     spread: 64,
     time: marketWatchOptions.showMilliseconds ? 104 : 82,
-    dailyChange: hasSeparateDailyChangePrice ? 76 : 94,
+    dailyChange: hasSeparateDailyChangePrice ? 76 : 96,
     dailyChangePrice: 76,
     source: 110,
     accruedInterest: 102,

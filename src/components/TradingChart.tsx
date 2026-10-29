@@ -50,6 +50,8 @@ import {
   resolveEffectiveChartPriceDigits,
   resolveSymbolPriceDigits,
 } from '../utils/chartPriceScale';
+import { resolveSpecDigits } from '../utils/symbolUtils';
+import { readRegisteredSymbolPriceSpec } from '../services/dailyChangePriceModeRegistry';
 import { SquareChartGridPrimitive } from '../utils/squareChartGridPrimitive';
 import { getChartGridRenderingOptions } from '../utils/chartGridOptions';
 import { createChartGridTimeProjection, type ChartGridTimeProjection } from '../utils/chartGridTimeProjection';
@@ -66,6 +68,7 @@ import { defaultChartObjectState, getChartObjectState, useChartObjectStateStore 
 import { getTradingChartDefaultVisibleBars, getTradingChartShiftRightOffset, formatTradingChartCrosshairLabel, formatTradingChartTickLabel, getTradingChartTickMarkCharacterLength, shouldTradingChartFooterPromoteLeftEdgeDateLabel } from '../utils/chartTimeFormat';
 import { getSynchronizedMarketNowMs, synchronizeMarketClock, type SynchronizedMarketClockAnchor } from '../utils/synchronizedMarketClock';
 import { bindChartKeyboardScroll } from '../utils/chartKeyboardScroll';
+import { isShortcutInput, isShortcutLocalScope, isShortcutOverlay, shouldIgnoreShortcutEvent } from '../services/keyboardShortcutManager';
 import { isChartLegendPainted, paintChartLegend } from '../utils/chartLegend';
 import { activateActiveChartSource, bindActiveChartSourceInteractions, findLargestChartCanvas, getActiveChartSource, getActiveChartSourceId, registerActiveChartSource, subscribeActiveChartSource } from '../services/activeChartSource';
 import { formatHistoryForOhlcv, getVisibleLogicalRangeForDataRender, upsertCandleIntoHistory, type LogicalRangeLike } from '../utils/candleHistory';
@@ -172,13 +175,15 @@ export const TradingChart = React.memo(function TradingChart({
     const tickDigits = inferObservedPriceDigits(null, [
       initialTickForDigits.bid,
       initialTickForDigits.ask,
-      initialTickForDigits.last,
     ]);
     if (tickDigits !== null && (observedPriceDigitsRef.current === null || tickDigits > observedPriceDigitsRef.current)) {
       observedPriceDigitsRef.current = tickDigits;
     }
   }
-  const specPriceDigits = resolveSymbolPriceDigits(symbol, priceDigits);
+  const specPriceDigits = resolveSymbolPriceDigits(
+    symbol,
+    resolveSpecDigits(priceDigits, readRegisteredSymbolPriceSpec(symbol).digits, initialTickForDigits?.digits),
+  );
   const resolvedPriceDigits = resolveEffectiveChartPriceDigits(
     specPriceDigits,
     observedPriceDigitsRef.current,
@@ -514,13 +519,18 @@ export const TradingChart = React.memo(function TradingChart({
     const nextObservedDigits = observedPriceDigitsRef.current;
     if (nextObservedDigits !== null) {
       setObservedPriceDigitsState(prev => (
-        prev.scopeKey === activeScopeKey && prev.digits !== null && prev.digits >= nextObservedDigits
+        prev.scopeKey === activeScopeKey
+        && prev.digits !== null
+        && prev.digits >= nextObservedDigits
           ? prev
           : { scopeKey: activeScopeKey, digits: nextObservedDigits }
       ));
     }
     const nextDigits = resolveEffectiveChartPriceDigits(
-      resolveSymbolPriceDigits(activeSymbol, currentPriceDigits),
+      resolveSymbolPriceDigits(
+        activeSymbol,
+        resolveSpecDigits(currentPriceDigits, readRegisteredSymbolPriceSpec(activeSymbol).digits),
+      ),
       observedPriceDigitsRef.current,
     );
     const nextPoint = getPricePointFromDigits(nextDigits);
@@ -549,7 +559,10 @@ export const TradingChart = React.memo(function TradingChart({
   }, [priceDigits, symbol]);
 
   const updateLegendDOM = useCallback((o: number, h: number, l: number, c: number, v: number) => {
-    const digits = syncObservedChartPriceDigits(undefined, [o, h, l, c]);
+    const digits = syncObservedChartPriceDigits(
+      candlesRef.current.length > 0 ? candlesRef.current : undefined,
+      [o, h, l, c],
+    );
     const formatPrice = (val: number) => (digits === null ? String(val) : val.toFixed(digits));
     const pending = {
       open: formatPrice(o),
@@ -1682,12 +1695,23 @@ export const TradingChart = React.memo(function TradingChart({
     periodSeparatorsRef.current = periodSeparators;
 
     try {
-      syncObservedChartPriceDigits(candlesForRender);
+      const activeLiveTick = useAppStore.getState().ticks[activeSymbol] ?? useAppStore.getState().ticks[symbol];
+      syncObservedChartPriceDigits(
+        candlesForRender,
+        activeLiveTick ? [activeLiveTick.bid, activeLiveTick.ask] : undefined,
+      );
+      const activePriceFormat = buildChartSeriesPriceFormat(
+        resolvedPriceDigitsRef.current,
+        resolvedPricePointRef.current,
+      );
+      squareGridHostSeriesRef.current?.applyOptions({ priceFormat: activePriceFormat });
+      series.applyOptions({ priceFormat: activePriceFormat });
       if (seriesData.length > 0) {
         suppressVisibleRangeHistoryLoad();
       }
 
       series.setData(seriesData);
+      squareGridPrimitiveRef.current?.applyOptions({});
       if (volumeRef.current) {
         if (includeVolumeData) {
           volumeRef.current.setData(volumeData);
@@ -2317,6 +2341,7 @@ useTradingChartInitialization({
     series.attachPrimitive(new ChartOverlayGeometryPrimitive(() => {
       if (isDisposedRef.current || !isActiveRef.current || seriesRef.current !== series) return;
       const initialScaleWidth = series.priceScale().width();
+      applyLivePriceHorizontalGeometry(initialScaleWidth);
       repaintTradeOverlayGeometryRef.current();
       if (typeof window === 'undefined') return;
       if (scaleWidthFrameA !== null) window.cancelAnimationFrame(scaleWidthFrameA);
@@ -2326,12 +2351,15 @@ useTradingChartInitialization({
         if (isDisposedRef.current || !isActiveRef.current || seriesRef.current !== series) return;
         const nextScaleWidth = series.priceScale().width();
         if (nextScaleWidth !== initialScaleWidth) {
+          applyLivePriceHorizontalGeometry(nextScaleWidth);
           repaintTradeOverlayGeometryRef.current();
         }
         scaleWidthFrameB = window.requestAnimationFrame(() => {
           scaleWidthFrameB = null;
           if (isDisposedRef.current || !isActiveRef.current || seriesRef.current !== series) return;
-          if (series.priceScale().width() !== nextScaleWidth) {
+          const finalScaleWidth = series.priceScale().width();
+          if (finalScaleWidth !== nextScaleWidth) {
+            applyLivePriceHorizontalGeometry(finalScaleWidth);
             repaintTradeOverlayGeometryRef.current();
           }
         });
@@ -2662,13 +2690,16 @@ useTradingChartInitialization({
       handleScroll: TRADING_VIEW_HANDLE_SCROLL,
       handleScale: TRADING_VIEW_HANDLE_SCALE,
       rightPriceScale: {
+        borderVisible: true,
+        ticksVisible: !gridRenderingOptions.squareVisible,
+        minimumWidth: 72,
         borderColor: chartTheme.scaleBorder,
         textColor: chartSettings.showGrid && chartSettings.gridType === 'mt5' ? 'transparent' : chartTheme.axisText,
         alignLabels: false,
       },
       timeScale: {
         ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
-        ticksVisible: true,
+        ticksVisible: !gridRenderingOptions.squareVisible,
         borderColor: chartTheme.scaleBorder,
       },
     });
@@ -3199,15 +3230,49 @@ useTradingChartDrawingCommands({
     // Listen for toggle-one-click-trading event from dashboard toolbar
     const handleToggleOneClick = (event: Event) => {
       if (!isActiveRef.current) return;
-      if (!isChartCommandTarget((event as CustomEvent).detail)) return;
+      const detail = (event as CustomEvent).detail;
+      if ((detail?.targetContextId || detail?.panelId || getActiveChartSource()?.id) && !isChartCommandTarget(detail)) {
+        return;
+      }
+      toggleOneClickTrading();
+    };
+    const handleOneClickShortcutKeyDown = (event: KeyboardEvent) => {
+      if (!isActiveRef.current) return;
+      if (
+        !event.altKey
+        || event.ctrlKey
+        || event.shiftKey
+        || event.metaKey
+        || (event.key.toLowerCase() !== 't' && event.code !== 'KeyT')
+      ) {
+        return;
+      }
+      const inChartContextMenu = event.target instanceof Element && Boolean(event.target.closest('.rtx-chart-context-menu'));
+      if (
+        shouldIgnoreShortcutEvent(event)
+        || isShortcutInput(event)
+        || isShortcutLocalScope(event)
+        || (isShortcutOverlay(event) && !inChartContextMenu)
+      ) {
+        return;
+      }
+      const activeSourceId = getActiveChartSource()?.id;
+      if (activeSourceId && activeSourceId !== drawingRuntimeContextRef.current.contextId) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setCtxMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
       toggleOneClickTrading();
     };
     window.addEventListener('toggle-one-click-trading', handleToggleOneClick);
+    document.addEventListener('keydown', handleOneClickShortcutKeyDown, true);
 
     return () => {
       window.removeEventListener('toggle-one-click-trading', handleToggleOneClick);
+      document.removeEventListener('keydown', handleOneClickShortcutKeyDown, true);
     };
-  }, [isActive, isChartCommandTarget, toggleOneClickTrading]);
+  }, [isActive, isChartCommandTarget, setCtxMenu, toggleOneClickTrading]);
 
   // ─── Trade Annotations on Chart (MT5-style entry/exit markers + live trails) ───
 useTradingChartTradeRuntime({
@@ -3382,6 +3447,7 @@ return (
       ohlcOpenRef={ohlcOpenRef}
       overlayRef={overlayRef}
       panelId={panelId}
+      priceDigits={resolvedPriceDigits ?? undefined}
       priceLabelRef={priceLabelRef}
       setBackgroundImageDialogOpen={setBackgroundImageDialogOpen}
       setTemplateDialogOpen={setTemplateDialogOpen}

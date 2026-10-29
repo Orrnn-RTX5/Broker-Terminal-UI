@@ -207,8 +207,8 @@ export const applySpreadMarkupToQuote = <T extends QuoteLike>(
 ): T & SpreadMarkupQuoteTag => {
   if (!quote || typeof quote !== 'object') return quote;
   const tagged = quote.rawBid !== undefined || quote.rawAsk !== undefined || quote.spreadMarkup !== undefined;
-  const offset = getSpreadMarkupOffset(entry);
-  if (!entry || offset <= 0) return tagged ? stripSpreadMarkupTag(quote) : quote;
+  const baseOffset = getSpreadMarkupOffset(entry);
+  if (!entry || baseOffset <= 0) return tagged ? stripSpreadMarkupTag(quote) : quote;
 
   const rawBid = tagged && quote.rawBid !== undefined ? quote.rawBid : Number(quote.bid);
   const rawAsk = tagged && quote.rawAsk !== undefined ? quote.rawAsk : Number(quote.ask);
@@ -216,8 +216,25 @@ export const applySpreadMarkupToQuote = <T extends QuoteLike>(
   const hasAsk = isPositiveFinite(rawAsk);
   if (!hasBid && !hasAsk) return tagged ? stripSpreadMarkupTag(quote) : quote;
 
-  const bid = hasBid ? Math.max(0, roundPriceToDigits(rawBid - offset, entry.digits)) : quote.bid;
-  const ask = hasAsk ? roundPriceToDigits(rawAsk + offset, entry.digits) : quote.ask;
+  let effectiveDigits = entry.digits;
+  let offset = baseOffset;
+  if (entry.digits <= 2 && ((hasBid && rawBid < 1) || (hasAsk && rawAsk < 1))) {
+    const observedDigits = Math.min(
+      6,
+      Math.max(
+        hasBid ? countDecimals(rawBid) : 0,
+        hasAsk ? countDecimals(rawAsk) : 0,
+      ),
+    );
+    if (observedDigits > entry.digits) {
+      effectiveDigits = observedDigits;
+      const effectiveTickSize = 10 ** -effectiveDigits;
+      offset = roundPriceToDigits(entry.points * effectiveTickSize, effectiveDigits);
+    }
+  }
+
+  const bid = hasBid ? Math.max(0, roundPriceToDigits(rawBid - offset, effectiveDigits)) : quote.bid;
+  const ask = hasAsk ? roundPriceToDigits(rawAsk + offset, effectiveDigits) : quote.ask;
   const next = {
     ...quote,
     bid,
@@ -227,7 +244,7 @@ export const applySpreadMarkupToQuote = <T extends QuoteLike>(
     spreadMarkup: entry.points,
   } as T & SpreadMarkupQuoteTag;
   if (isPositiveFinite(bid) && isPositiveFinite(ask)) {
-    (next as QuoteLike).spread = roundPriceToDigits(Math.max(0, (ask as number) - (bid as number)), entry.digits);
+    (next as QuoteLike).spread = roundPriceToDigits(Math.max(0, (ask as number) - (bid as number)), effectiveDigits);
   }
   return next;
 };
