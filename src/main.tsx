@@ -64,7 +64,7 @@ try {
     localStorage.removeItem('rtx5_selected_symbol');
     localStorage.setItem('rtx5_selected_symbol_v2_migrated', '1');
   }
-  if (!localStorage.getItem('rtx5_mw_grid_v2_migrated')) {
+  if (!localStorage.getItem('rtx5_mw_grid_v3_migrated')) {
     const rawMwOptions = localStorage.getItem('rtx5_marketwatch_options');
     if (rawMwOptions) {
       const parsedMwOptions = JSON.parse(rawMwOptions);
@@ -73,7 +73,24 @@ try {
         localStorage.setItem('rtx5_marketwatch_options', JSON.stringify(parsedMwOptions));
       }
     }
-    localStorage.setItem('rtx5_mw_grid_v2_migrated', '1');
+    localStorage.setItem('rtx5_mw_grid_v3_migrated', '1');
+  }
+  if (!localStorage.getItem('rtx5-main-light-restored-v4')) {
+    const rawThemeAppearance = localStorage.getItem('rtx5-theme-appearance');
+    if (rawThemeAppearance) {
+      const parsedTheme = JSON.parse(rawThemeAppearance);
+      if (parsedTheme && typeof parsedTheme === 'object') {
+        parsedTheme.contrast = 'default';
+        parsedTheme.light = {
+          preset: 'default-light',
+          background: '#F9F9F9',
+          foreground: '#101010',
+          accent: '#007ACC',
+        };
+        localStorage.setItem('rtx5-theme-appearance', JSON.stringify(parsedTheme));
+      }
+    }
+    localStorage.setItem('rtx5-main-light-restored-v4', '1');
   }
 } catch { /* ignore storage errors */ }
 

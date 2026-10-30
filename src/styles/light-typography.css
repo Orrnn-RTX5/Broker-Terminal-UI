@@ -284,9 +284,9 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar {
   max-height: var(--rtx-status-strip-height) !important;
   flex-shrink: 0;
   padding: 0 var(--rtx-status-horizontal-padding, 12px) !important;
-  border-top: 1px solid var(--rtx-light-line-border, #404040) !important;
-  border-bottom: 1px solid var(--rtx-light-line-border, #404040) !important;
-  background: var(--rtx-light-panel-header) !important;
+  border-top: 1px solid var(--rtx-light-line-border, #64748b) !important;
+  border-bottom: 1px solid var(--rtx-light-line-border, #64748b) !important;
+  background: #f8fafc !important;
   box-shadow: none !important;
 }
 
@@ -359,7 +359,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs {
   gap: 0;
   padding: 0 0 5px !important;
   border: 0 !important;
-  background: var(--rtx-light-panel-header) !important;
+  background: #f8fafc !important;
   box-shadow: none !important;
 }
 

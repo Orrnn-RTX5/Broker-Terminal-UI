@@ -209,5 +209,93 @@ jobs:
               exit 1
             fi
             docker inspect --format='Container {{.Name}}: {{.State.Status}}, image {{.Image}}' broker-terminal-ui
+
+            echo "=== 5. Updating additional provisioned WebTerminal containers (if any) ==="
+            EXTRA_CONTAINERS=$(
+              {
+                docker ps --filter "label=rtx5.broker_id" --format '{{.Names}}' 2>/dev/null || true
+                docker ps --filter "label=rtx5.component=webterminal" --format '{{.Names}}' 2>/dev/null || true
+                docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^rtx5-webterminal-' || true
+              } | sort -u | grep -v '^broker-terminal-ui$' || true
+            )
+
+            for EXTRA_NAME in $EXTRA_CONTAINERS; do
+              [ -n "$EXTRA_NAME" ] || continue
+              PREV_EXTRA_IMAGE_ID=$(docker inspect --format='{{.Image}}' "$EXTRA_NAME" 2>/dev/null || echo "")
+              HOST_IP=$(docker inspect --format='{{ with index .HostConfig.PortBindings "80/tcp" }}{{ (index . 0).HostIp }}{{ end }}' "$EXTRA_NAME" 2>/dev/null || echo "")
+              HOST_PORT=$(docker inspect --format='{{ with index .HostConfig.PortBindings "80/tcp" }}{{ (index . 0).HostPort }}{{ end }}' "$EXTRA_NAME" 2>/dev/null || echo "")
+              if [ -z "$HOST_PORT" ]; then
+                echo "Skipping $EXTRA_NAME (no 80/tcp host port binding found)."
+                continue
+              fi
+              [ -n "$HOST_IP" ] || HOST_IP="127.0.0.1"
+
+              BROKER_LABEL=$(docker inspect --format='{{ index .Config.Labels "rtx5.broker_id" }}' "$EXTRA_NAME" 2>/dev/null || echo "")
+              DOMAIN_LABEL=$(docker inspect --format='{{ index .Config.Labels "rtx5.domain" }}' "$EXTRA_NAME" 2>/dev/null || echo "")
+              COMPONENT_LABEL=$(docker inspect --format='{{ index .Config.Labels "rtx5.component" }}' "$EXTRA_NAME" 2>/dev/null || echo "")
+
+              EXTRA_ENV_TMP=$(mktemp)
+              chmod 600 "$EXTRA_ENV_TMP"
+              if [ -n "$BROKER_LABEL" ] && sudo test -r "/etc/rtx5/env/${BROKER_LABEL}.env" 2>/dev/null; then
+                sudo cat "/etc/rtx5/env/${BROKER_LABEL}.env" > "$EXTRA_ENV_TMP"
+              else
+                docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' "$EXTRA_NAME" \
+                  | grep -Ev '^(PATH|NGINX_VERSION|NJS_VERSION|NJS_RELEASE|PKG_RELEASE|DYNPKG_RELEASE)=' > "$EXTRA_ENV_TMP" || true
+              fi
+
+              EXTRA_LABELS=(--label "rtx5.component=${COMPONENT_LABEL:-webterminal}")
+              if [ -n "$BROKER_LABEL" ] && [ "$BROKER_LABEL" != "<no value>" ]; then
+                EXTRA_LABELS+=(--label "rtx5.broker_id=${BROKER_LABEL}")
+              fi
+              if [ -n "$DOMAIN_LABEL" ] && [ "$DOMAIN_LABEL" != "<no value>" ]; then
+                EXTRA_LABELS+=(--label "rtx5.domain=${DOMAIN_LABEL}")
+              fi
+
+              run_extra_terminal() {
+                docker run -d \
+                  --name "$EXTRA_NAME" \
+                  --restart unless-stopped \
+                  -p "${HOST_IP}:${HOST_PORT}:80" \
+                  --env-file "$EXTRA_ENV_TMP" \
+                  "${EXTRA_LABELS[@]}" \
+                  "$1"
+              }
+
+              echo "Updating container $EXTRA_NAME on ${HOST_IP}:${HOST_PORT}..."
+              docker rm -f "$EXTRA_NAME" 2>/dev/null || true
+              if ! run_extra_terminal "$IMAGE_TAG"; then
+                echo "WARNING: Failed to start updated $EXTRA_NAME; restoring $PREV_EXTRA_IMAGE_ID" >&2
+                if [ -n "$PREV_EXTRA_IMAGE_ID" ]; then
+                  run_extra_terminal "$PREV_EXTRA_IMAGE_ID" || true
+                fi
+                rm -f "$EXTRA_ENV_TMP"
+                exit 1
+              fi
+
+              EXTRA_OK=0
+              for attempt in $(seq 1 10); do
+                sleep 1
+                EXTRA_HTTP=$(curl --silent --show-error --connect-timeout 2 --max-time 5 --output /dev/null --write-out "%{http_code}" "http://127.0.0.1:${HOST_PORT}/" || true)
+                if [ "$EXTRA_HTTP" = "200" ]; then
+                  echo "Container $EXTRA_NAME healthy (HTTP 200) on attempt $attempt."
+                  EXTRA_OK=1
+                  break
+                fi
+              done
+
+              if [ "$EXTRA_OK" -ne 1 ]; then
+                echo "CRITICAL: Health check failed for $EXTRA_NAME; restoring $PREV_EXTRA_IMAGE_ID" >&2
+                docker logs --tail 50 "$EXTRA_NAME" || true
+                docker rm -f "$EXTRA_NAME" 2>/dev/null || true
+                if [ -n "$PREV_EXTRA_IMAGE_ID" ]; then
+                  run_extra_terminal "$PREV_EXTRA_IMAGE_ID" || true
+                fi
+                rm -f "$EXTRA_ENV_TMP"
+                exit 1
+              fi
+              rm -f "$EXTRA_ENV_TMP"
+              docker inspect --format='Container {{.Name}}: {{.State.Status}}, image {{.Image}}' "$EXTRA_NAME"
+            done
+
             echo "Deployment successful and verified."
           EOF

@@ -140,7 +140,7 @@ export const initRootTheme = (root: HTMLElement = document.documentElement) => {
   try {
     if (localStorage.getItem(RTX_THEME_APPEARANCE_STORAGE_KEY)) {
       let appearance = loadStoredThemeAppearance();
-      if (localStorage.getItem('rtx5-main-light-restored-v3') !== '1') {
+      if (localStorage.getItem('rtx5-main-light-restored-v4') !== '1') {
         appearance = {
           ...appearance,
           contrast: 'default',
@@ -149,7 +149,7 @@ export const initRootTheme = (root: HTMLElement = document.documentElement) => {
           },
         };
         localStorage.setItem(RTX_THEME_APPEARANCE_STORAGE_KEY, JSON.stringify(appearance));
-        localStorage.setItem('rtx5-main-light-restored-v3', '1');
+        localStorage.setItem('rtx5-main-light-restored-v4', '1');
       }
       applyThemeAppearanceToRoot(root, {
         ...appearance,

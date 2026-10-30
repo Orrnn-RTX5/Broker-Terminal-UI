@@ -59,11 +59,11 @@ export const preloadAuthenticatedTerminal = (): Promise<AppModule> => {
     // the shell, but do not make authentication handoff wait for it.
     void preloadTradingChartRuntime().catch(() => undefined);
     appModulePromise = Promise.all([
+      preloadAuthenticatedPresentation(),
       importAppModule(),
       import('./i18n').then((module) => module.i18nReady),
-      preloadAuthenticatedPresentation(),
     ])
-      .then(([appModule]) => {
+      .then(([, appModule]) => {
         preloadFailureCount = 0;
         resolvedAppModule = appModule;
         return appModule;

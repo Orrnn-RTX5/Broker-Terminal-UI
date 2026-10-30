@@ -636,7 +636,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-trade-t
   border-top: 0 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-bottom-dock__header {
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-bottom-dock__header {
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;

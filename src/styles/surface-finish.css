@@ -135,9 +135,8 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
   :is(
     .rtx-top-chrome,
     .rtx-main-toolbar,
-    .dock-panel__header,
+    .dock-panel__header:not(.rtx-bottom-dock__header),
     .dock-tabs,
-    .rtx-market-watch__search,
     .rtx-market-watch__column-heading,
     .rtx-bottom-dock__tabs,
     .rtx-trade-footer,
@@ -154,7 +153,11 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
     box-shadow: var(--rtx-glass-chrome-shadow) !important;
   }
 
-  :is(.rtx-top-chrome, .rtx-main-toolbar, .rtx-bottom-dock__tabs, .rtx-status-bar, .rtx-journal-toolbar, .dock-panel__header--inactive) {
+  :is(.rtx-top-chrome, .rtx-main-toolbar, .rtx-bottom-dock__tabs, .rtx-status-bar, .rtx-journal-toolbar) {
+    background-color: #f8fafc !important;
+  }
+
+  :is(.dock-panel__header--inactive:not(.rtx-bottom-dock__header)) {
     background-color: var(--rtx-light-panel-subtle) !important;
   }
 

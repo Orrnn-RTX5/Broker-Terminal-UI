@@ -521,7 +521,7 @@ const MainToolbar = ({
         try {
             const store = useThemeAppearanceStore.getState();
             const hasStoredAppearance = Boolean(localStorage.getItem(RTX_THEME_APPEARANCE_STORAGE_KEY));
-            const needsLightMigration = hasStoredAppearance && localStorage.getItem('rtx5-main-light-restored-v3') !== '1';
+            const needsLightMigration = hasStoredAppearance && localStorage.getItem('rtx5-main-light-restored-v4') !== '1';
             const hasNonDefaultWebLight = !isDesktopShell && advancedViewEnabled && (
                 store.light.preset !== 'default-light'
                 || store.light.background !== DEFAULT_LIGHT_THEME_SETTINGS.background
@@ -530,7 +530,7 @@ const MainToolbar = ({
                 || store.contrast !== 'default'
             );
             if (needsLightMigration || hasNonDefaultWebLight) {
-                localStorage.setItem('rtx5-main-light-restored-v3', '1');
+                localStorage.setItem('rtx5-main-light-restored-v4', '1');
                 store.setContrast('default');
                 store.setLightPreset('default-light', true);
             }
