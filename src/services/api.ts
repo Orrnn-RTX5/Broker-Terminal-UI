@@ -1555,7 +1555,7 @@ const normalizeTradeJournalTiming = (
   // terminal trade formats so unrelated durations (for example quote age in a
   // QUOTE_STALE rejection) can never be mislabeled as order latency.
   const timedTerminal = message.match(
-    /^(Order\s+(?:(?:buy|sell)\s+\S+\s+\S+\s+filled|close\s+\S+\s+\S+\s+\S+\s+(?:filled|succeeded))|Close\s+(?:buy|sell)\s+\S+\s+ticket\s+\S+\s+profit\s+\S+|Modify\s+\S+\s+ticket\s+\S+)\s+in\s+(\d+(?:\.\d+)?)(ns|[µμu]s|ms|s)$/i,
+    /^(Order\s+(?:(?:buy|sell)\s+\S+\s+\S+\s+(?:filled|executed|completed|succeeded)|close\s+\S+\s+\S+\s+\S+\s+(?:filled|executed|completed|succeeded))|Position\s+(?:.*?\s+)?opened|Close\s+(?:buy|sell)\s+\S+\s+ticket\s+\S+\s+profit\s+\S+|Modify\s+\S+\s+ticket\s+\S+)\s+in\s+(\d+(?:\.\d+)?)(ns|[µμu]s|ms|s)$/i,
   );
   if (timedTerminal) {
     return {

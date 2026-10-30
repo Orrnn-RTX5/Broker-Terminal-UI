@@ -834,7 +834,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (!closeLogin) {
       if (showFailureFeedback) {
         publishOrderFeedback(
-          [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(' â€” '), feedbackLabel('No trading account is selected. Please sign in again.')],
+          [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(' — '), feedbackLabel('No trading account is selected. Please sign in again.')],
           'error',
         );
       }
@@ -861,7 +861,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const publishSingleCloseFailure = (failureReason: string) => {
       if (!showFailureFeedback) return;
       publishOrderFeedback(
-        [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(failureReason ? ` â€” ${failureReason}` : '')],
+        [feedbackLabel('Close position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(failureReason ? ` — ${failureReason}` : '')],
         'error',
       );
     };
@@ -942,7 +942,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     try {
       const closed = await handleClosePosition(ticket, { showFailureFeedback: false });
       if (!closed) {
-        publishOrderFeedback([feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Failed'), feedbackValue(' Â· '), feedbackLabel(reverseSide === 'buy' ? 'Buy Market' : 'Sell Market'), feedbackValue(': '), feedbackLabel('cancelled')]);
+        publishOrderFeedback([feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Failed'), feedbackValue(' · '), feedbackLabel(reverseSide === 'buy' ? 'Buy Market' : 'Sell Market'), feedbackValue(': '), feedbackLabel('cancelled')]);
         return;
       }
       await api.orders.placeMarketOrder({
@@ -1058,7 +1058,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     } catch (err) {
       console.error('Failed to cancel order:', err);
       publishOrderFeedback(
-        [feedbackLabel('Cancel pending order'), feedbackValue(` #${orderId}: `), feedbackLabel('Failed'), feedbackValue(` â€” ${formatOrderError(err)}`)],
+        [feedbackLabel('Cancel pending order'), feedbackValue(` #${orderId}: `), feedbackLabel('Failed'), feedbackValue(` — ${formatOrderError(err)}`)],
         'error',
       );
       throw err;
@@ -1096,10 +1096,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       }
     }
     if (firstReason !== null) {
-      const summary = `done ${done}/${tickets.length} Â· failed ${tickets.length - done} â€” ${formatOrderError(firstReason)}`;
+      const summary = `done ${done}/${tickets.length} · failed ${tickets.length - done} — ${formatOrderError(firstReason)}`;
       console.error('Failed to cancel pending orders:', summary);
       publishOrderFeedback(
-        [feedbackLabel('Cancel pending orders'), feedbackValue(': '), feedbackLabel('Failed'), feedbackValue(` â€” ${summary}`)],
+        [feedbackLabel('Cancel pending orders'), feedbackValue(': '), feedbackLabel('Failed'), feedbackValue(` — ${summary}`)],
         'error',
       );
       throw new Error(summary);
@@ -1151,7 +1151,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         digits: refusalDigits,
       });
       publishOrderFeedback(
-        [feedbackLabel('Modify position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(` â€” ${refusal ?? formatOrderError(err)}`)],
+        [feedbackLabel('Modify position'), feedbackValue(` #${id}: `), feedbackLabel('Failed'), feedbackValue(` — ${refusal ?? formatOrderError(err)}`)],
         'error',
       );
       refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
@@ -1311,7 +1311,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         if (restoredPositions.length > 0) store.setPositions([...store.positions, ...restoredPositions]);
         console.error(`Bulk close failed for ${failedTicketIds.length} position(s):`, failedReasons[0]);
         publishOrderFeedback(
-          [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length} Â· `), feedbackLabel('Failed'), feedbackValue(`: ${failedTicketIds.length} â€” ${failureMessage}`)],
+          [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length} · `), feedbackLabel('Failed'), feedbackValue(`: ${failedTicketIds.length} — ${failureMessage}`)],
           'error',
         );
       }
@@ -1833,7 +1833,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);
 
     if (!dialogSymbol) {
-      publishOrderFeedback([feedbackSymbol(targetSymbol), feedbackValue(' Â· '), feedbackLabel('New Order'), feedbackValue(': '), feedbackLabel('Unavailable')]);
+      publishOrderFeedback([feedbackSymbol(targetSymbol), feedbackValue(' · '), feedbackLabel('New Order'), feedbackValue(': '), feedbackLabel('Unavailable')]);
       return false;
     }
 
@@ -1907,7 +1907,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const handleConfirmSaveWorkspace = useCallback((workspaceName?: string) => {
     console.log('[App] Workspace saved:', workspaceName);
     setShowSaveWorkspaceDialog(false);
-    displayToast([feedbackLabel('Save Workspace'), feedbackValue(`: ${workspaceName ?? ''} Â· `), feedbackLabel('Completed')], 'success');
+    displayToast([feedbackLabel('Save Workspace'), feedbackValue(`: ${workspaceName ?? ''} · `), feedbackLabel('Completed')], 'success');
   }, [displayToast]);
 
   const handleOpenDataFolder = useCallback(async () => {

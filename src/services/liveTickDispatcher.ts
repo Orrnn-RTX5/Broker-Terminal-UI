@@ -209,7 +209,10 @@ const didDisplayFieldCandidateWin = (
       merged.lastSourceTimestamp !== selected.lastSourceTimestamp
       || merged.last !== selected.last
     );
-  return dailyChangeWon || lastWon;
+  const tradingStatusWon = candidate.tradingStatus !== undefined
+    && selected.tradingStatus === undefined
+    && merged.tradingStatus === candidate.tradingStatus;
+  return dailyChangeWon || lastWon || tradingStatusWon;
 };
 
 const upsertFreshestLiveTick = (

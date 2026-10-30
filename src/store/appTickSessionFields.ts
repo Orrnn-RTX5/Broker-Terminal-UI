@@ -1,4 +1,5 @@
 import { getCanonicalTickTimestamp } from '../utils/liveTickSemantics';
+import type { QuoteTradingStatus } from '../utils/quoteTradingStatus';
 
 type DailyChangeTimedTick = {
   timestamp: number;
@@ -12,6 +13,12 @@ type LastTimedTick = {
   sourceTimestamp?: number;
   last?: number;
   lastSourceTimestamp?: number;
+};
+
+type TradingStatusTimedTick = {
+  timestamp: number;
+  sourceTimestamp?: number;
+  tradingStatus?: QuoteTradingStatus;
 };
 
 const UTC_QUOTE_DAY_MS = 24 * 60 * 60 * 1_000;
@@ -128,7 +135,32 @@ export const retainSameQuoteDayLast = <T extends LastTimedTick>(
   return withoutLast;
 };
 
-export const retainSameQuoteDayDisplayFields = <T extends DailyChangeTimedTick & LastTimedTick>(
-  candidate: (DailyChangeTimedTick & LastTimedTick) | undefined,
+export const retainSameQuoteDayTradingStatus = <T extends TradingStatusTimedTick>(
+  candidate: TradingStatusTimedTick | undefined,
   selected: T,
-): T => retainSameQuoteDayLast(candidate, retainSameQuoteDayDailyChange(candidate, selected));
+): T => {
+  if (selected.tradingStatus !== undefined || candidate?.tradingStatus === undefined) {
+    return selected;
+  }
+  const candidateAuthority = getCanonicalTickTimestamp(candidate);
+  if (!belongsToSelectedQuoteDay(candidateAuthority, selected)) {
+    return selected;
+  }
+  return {
+    ...selected,
+    tradingStatus: candidate.tradingStatus,
+    ...(selected.sourceTimestamp === undefined && candidate.sourceTimestamp !== undefined
+      ? { sourceTimestamp: candidate.sourceTimestamp }
+      : {}),
+  };
+};
+
+export const retainSameQuoteDayDisplayFields = <
+  T extends DailyChangeTimedTick & LastTimedTick & TradingStatusTimedTick,
+>(
+  candidate: (DailyChangeTimedTick & LastTimedTick & TradingStatusTimedTick) | undefined,
+  selected: T,
+): T => retainSameQuoteDayTradingStatus(
+  candidate,
+  retainSameQuoteDayLast(candidate, retainSameQuoteDayDailyChange(candidate, selected)),
+);

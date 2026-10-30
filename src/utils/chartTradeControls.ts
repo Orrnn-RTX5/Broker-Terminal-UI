@@ -453,6 +453,8 @@ export interface EntryTradeControlBarOptions {
   chartBackground?: string;
   currencyLabel?: string;
   title?: string;
+  hoverDetails?: { ticketLabel: string; entryPriceLabel: string };
+  onHoverChange?: (active: boolean) => void;
   onAction?: (action: ChartPositionActionType) => void;
   /** Renders the gray share button (copies a share URL) when provided. */
   onShare?: () => void;
@@ -462,6 +464,20 @@ export interface EntryTradeControlBarHandles {
   root: HTMLDivElement;
   setLiveMetrics: (pips: number | null, money: number | null) => void;
 }
+
+let tradeLevelTooltipId = 0;
+const tradeLevelHoverBindings = new WeakMap<HTMLElement, { show: (event?: Event) => void; hide: () => void }>();
+
+/** Share the label's feedback with its full-width, draggable price line. */
+export const bindTradeLevelHoverTarget = (label: HTMLElement, target: HTMLElement): void => {
+  const binding = tradeLevelHoverBindings.get(label);
+  if (!binding) return;
+  target.removeAttribute('title');
+  target.addEventListener('mouseenter', binding.show);
+  target.addEventListener('mousemove', binding.show);
+  target.addEventListener('mouseleave', binding.hide);
+  target.addEventListener('pointerdown', binding.hide);
+};
 
 /**
  * `[volume ⬍][Pips: x][USD: y]  [reverse][double][close]` bar anchored on the
@@ -709,12 +725,188 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     double: () => `${tr('New Order')}: ${tr(side)} ${tr('{{value0}} lots', { value0: formatVolumeLots(volume) })}`,
     close: () => tr('Close position'),
   };
+  const useCustomEntryTooltip = Boolean(options.plainLabel && options.hoverDetails);
   for (const [action, getTitle] of Object.entries(actionTitles)) {
     const button = root.querySelector<HTMLButtonElement>(`.rtx-trade-control-btn--${action}`);
     if (button) bindChartUiTranslation(button, () => {
-      button.title = getTitle();
-      button.setAttribute('aria-label', button.title);
+      const labelText = getTitle();
+      if (useCustomEntryTooltip) {
+        button.removeAttribute('title');
+      } else {
+        button.title = labelText;
+      }
+      button.setAttribute('aria-label', labelText);
+      button.dataset.hoverHint = labelText;
     });
+  }
+
+  if (options.plainLabel && options.hoverDetails) {
+    const { ticketLabel, entryPriceLabel } = options.hoverDetails;
+    const normalizedTicket = String(ticketLabel || ticket).replace(/^#/, '');
+    const tooltipBg = isLightSurface ? '#ffffff' : '#111622';
+    const tooltipFooterBg = isLightSurface ? '#f8fafc' : '#161c2a';
+    const tooltipBorder = isLightSurface ? 'rgba(15, 23, 42, 0.14)' : 'rgba(148, 163, 184, 0.24)';
+    const tooltipDivider = isLightSurface ? 'rgba(15, 23, 42, 0.08)' : 'rgba(148, 163, 184, 0.14)';
+    const tooltipPrimaryColor = isLightSurface ? '#0f172a' : '#f8fafc';
+    const tooltipSecondaryColor = isLightSurface ? '#475569' : '#94a3b8';
+    const tooltipShadow = isLightSurface
+      ? '0 12px 28px -4px rgba(15, 23, 42, 0.15), 0 4px 10px -2px rgba(15, 23, 42, 0.08)'
+      : '0 12px 28px -4px rgba(0, 0, 0, 0.72), 0 4px 10px -2px rgba(0, 0, 0, 0.45)';
+    const sideBadgeBg = side === 'BUY'
+      ? (isLightSurface ? '#eff6ff' : 'rgba(41, 98, 255, 0.18)')
+      : (isLightSurface ? '#fef2f2' : 'rgba(239, 68, 68, 0.18)');
+    const sideBadgeBorder = side === 'BUY'
+      ? (isLightSurface ? 'rgba(21, 62, 170, 0.28)' : 'rgba(114, 176, 255, 0.35)')
+      : (isLightSurface ? 'rgba(152, 27, 36, 0.28)' : 'rgba(255, 133, 137, 0.35)');
+    const ticketChipBg = isLightSurface ? '#f1f5f9' : 'rgba(148, 163, 184, 0.12)';
+
+    const tooltip = document.createElement('span');
+    tooltip.className = 'rtx-trade-level-tooltip';
+    tooltip.id = `rtx-level-tooltip-${++tradeLevelTooltipId}`;
+    tooltip.setAttribute('role', 'tooltip');
+    Object.assign(tooltip.style, {
+      position: 'absolute', bottom: 'calc(100% + 9px)', left: '0', display: 'none',
+      width: 'max-content', minWidth: '224px', maxWidth: '320px', padding: '0', borderRadius: '6px',
+      backgroundColor: tooltipBg, color: tooltipPrimaryColor,
+      border: `1px solid ${tooltipBorder}`, borderTop: `2px solid ${plainSideColor}`,
+      fontFamily: 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)',
+      fontSize: '11.5px', fontWeight: '500', lineHeight: '16px', fontVariantNumeric: 'tabular-nums',
+      whiteSpace: 'normal', pointerEvents: 'none', textAlign: 'left', boxShadow: tooltipShadow,
+      zIndex: '120',
+    });
+
+    const summary = document.createElement('span');
+    summary.style.cssText = 'display:block;';
+    const headerRow = document.createElement('span');
+    headerRow.style.cssText = `display:flex;align-items:center;gap:6px;padding:6px 10px 5px;border-bottom:1px solid ${tooltipDivider};`;
+    const sidePill = document.createElement('span');
+    sidePill.style.cssText = `display:inline-flex;align-items:center;padding:1px 6px;border-radius:3px;font-size:10.5px;font-weight:700;line-height:14px;letter-spacing:0.03em;color:${plainSideColor};background:${sideBadgeBg};border:1px solid ${sideBadgeBorder};`;
+    const spaceAfterSide = document.createTextNode(' ');
+    const lotsSpan = document.createElement('span');
+    lotsSpan.style.cssText = `font-size:11.5px;font-weight:600;color:${tooltipPrimaryColor};`;
+    const sep1 = document.createElement('span');
+    sep1.textContent = ' · ';
+    sep1.style.cssText = 'opacity:0;width:0;overflow:hidden;display:inline-block;';
+    const ticketPill = document.createElement('span');
+    ticketPill.style.cssText = `margin-left:auto;padding:1px 5px;border-radius:3px;font-size:10.5px;font-weight:600;line-height:14px;color:${tooltipSecondaryColor};background:${ticketChipBg};font-family:Consolas,'Courier New',monospace;`;
+    const sep2 = document.createElement('span');
+    sep2.textContent = ' · ';
+    sep2.style.cssText = 'opacity:0;width:0;overflow:hidden;display:inline-block;';
+    headerRow.append(sidePill, spaceAfterSide, lotsSpan, sep1, ticketPill, sep2);
+
+    const priceRow = document.createElement('span');
+    priceRow.style.cssText = `display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 10px;font-size:11.5px;color:${tooltipSecondaryColor};`;
+    const openPriceText = document.createElement('span');
+    openPriceText.style.cssText = `display:flex;align-items:center;justify-content:space-between;width:100%;font-weight:600;color:${tooltipPrimaryColor};`;
+    priceRow.appendChild(openPriceText);
+    summary.append(headerRow, priceRow);
+
+    const hint = document.createElement('span');
+    hint.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:11px;font-weight:500;color:${tooltipSecondaryColor};background:${tooltipFooterBg};border-top:1px solid ${tooltipDivider};border-bottom-left-radius:5px;border-bottom-right-radius:5px;`;
+    const hintIcon = document.createElement('span');
+    hintIcon.setAttribute('aria-hidden', 'true');
+    hintIcon.style.cssText = `display:inline-flex;align-items:center;color:${plainSideColor};flex-shrink:0;`;
+    hintIcon.innerHTML = '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1.5V10.5M6 1.5L3.5 4M6 1.5L8.5 4M6 10.5L3.5 8M6 10.5L8.5 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const hintText = document.createElement('span');
+    hint.append(hintIcon, hintText);
+
+    const arrow = document.createElement('span');
+    arrow.style.cssText = `position:absolute;top:100%;left:18px;border:5px solid transparent;border-top-color:${tooltipFooterBg};`;
+    tooltip.append(summary, hint, arrow);
+    root.appendChild(tooltip);
+    root.style.overflow = 'visible';
+    root.removeAttribute('title');
+    root.setAttribute('aria-describedby', tooltip.id);
+
+    const defaultHintText = () => tr(isPending ? 'Modify Position' : 'Add stop loss and take profit');
+    let activeCustomHint: string | null = null;
+    bindChartUiTranslation(tooltip, () => {
+      sidePill.textContent = tr(options.orderTypeLabel || side);
+      lotsSpan.textContent = tr('{{value0}} lots', { value0: formatVolumeLots(volume) });
+      ticketPill.textContent = `#${normalizedTicket}`;
+      openPriceText.textContent = tr('Open price: {{value0}}', { value0: entryPriceLabel });
+      hintText.textContent = activeCustomHint ?? defaultHintText();
+    });
+
+    const hideTooltip = () => {
+      activeCustomHint = null;
+      hintText.textContent = defaultHintText();
+      tooltip.style.display = 'none';
+      root.style.zIndex = '22';
+      options.onHoverChange?.(false);
+    };
+    const positionTooltip = (event?: Event) => {
+      tooltip.style.left = '0';
+      tooltip.style.bottom = 'calc(100% + 9px)';
+      tooltip.style.top = 'auto';
+      arrow.style.left = '18px';
+      arrow.style.top = '100%';
+      arrow.style.bottom = 'auto';
+      arrow.style.borderColor = 'transparent';
+      arrow.style.borderTopColor = tooltipFooterBg;
+
+      const bounds = root.parentElement?.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+      const rect = tooltip.getBoundingClientRect();
+      if (event instanceof MouseEvent && Number.isFinite(event.clientX) && event.clientX > 0 && bounds && rect.width > 0) {
+        const desiredLeftInHost = Math.min(
+          Math.max(8, event.clientX - bounds.left - rect.width / 2),
+          Math.max(8, bounds.width - rect.width - 8),
+        );
+        const relativeLeft = desiredLeftInHost - (rootRect.left - bounds.left);
+        tooltip.style.left = `${Math.round(relativeLeft)}px`;
+        const arrowLeft = Math.min(
+          Math.max(12, event.clientX - (rootRect.left + relativeLeft) - 5),
+          Math.max(12, rect.width - 18),
+        );
+        arrow.style.left = `${Math.round(arrowLeft)}px`;
+      } else if (bounds && rect.right > bounds.right - 8) {
+        tooltip.style.left = `${Math.min(0, bounds.right - 8 - rect.right)}px`;
+      }
+      const nearTopHud = bounds && rootRect.height > 0 && (rootRect.top - bounds.top) < 88;
+      if ((bounds && rect.top < bounds.top + 4) || nearTopHud) {
+        tooltip.style.bottom = 'auto';
+        tooltip.style.top = 'calc(100% + 9px)';
+        arrow.style.top = 'auto';
+        arrow.style.bottom = '100%';
+        arrow.style.borderTopColor = 'transparent';
+        arrow.style.borderBottomColor = plainSideColor;
+      }
+    };
+    const showTooltip = (event?: Event, customHint?: string) => {
+      activeCustomHint = customHint ?? null;
+      hintText.textContent = activeCustomHint ?? defaultHintText();
+      tooltip.style.display = 'block';
+      root.style.zIndex = '100';
+      options.onHoverChange?.(true);
+      positionTooltip(event);
+    };
+
+    for (const primaryChip of [volumeChip, money.chip]) {
+      primaryChip.addEventListener('mouseenter', (e) => showTooltip(e));
+      primaryChip.addEventListener('mousemove', (e) => showTooltip(e));
+      primaryChip.addEventListener('mouseleave', hideTooltip);
+    }
+    for (const btn of Array.from(root.querySelectorAll<HTMLElement>('.rtx-trade-control-btn'))) {
+      btn.addEventListener('mouseenter', (e) => showTooltip(e, btn.dataset.hoverHint || btn.getAttribute('aria-label') || undefined));
+      btn.addEventListener('mouseleave', hideTooltip);
+    }
+    root.addEventListener('mouseover', (e) => {
+      const dockChip = (e.target as Element | null)?.closest?.('.rtx-trade-dock-chip') as HTMLElement | null;
+      if (dockChip) {
+        dockChip.removeAttribute('title');
+        const role = dockChip.dataset.role === 'SL' ? tr('Stop Loss') : tr('Take Profit');
+        showTooltip(e, `${tr('Add')} · ${role}`);
+      }
+    });
+    root.addEventListener('mouseleave', hideTooltip);
+    root.addEventListener('focusin', (event) => {
+      if (event.target === root) showTooltip(event);
+    });
+    root.addEventListener('focusout', hideTooltip);
+    root.addEventListener('pointerdown', hideTooltip);
+    root.addEventListener('keydown', event => { if (event.key === 'Escape') hideTooltip(); });
+    tradeLevelHoverBindings.set(root, { show: (event) => showTooltip(event), hide: hideTooltip });
   }
 
   let lastPipsText = '';
@@ -763,19 +955,6 @@ export interface TradeLevelControlBarOptions {
   chartBackground?: string;
   onHoverChange?: (active: boolean) => void;
 }
-
-let tradeLevelTooltipId = 0;
-const tradeLevelHoverBindings = new WeakMap<HTMLElement, { show: () => void; hide: () => void }>();
-
-/** Share the label's feedback with its full-width, draggable price line. */
-export const bindTradeLevelHoverTarget = (label: HTMLElement, target: HTMLElement): void => {
-  const binding = tradeLevelHoverBindings.get(label);
-  if (!binding) return;
-  target.removeAttribute('title');
-  target.addEventListener('mouseenter', binding.show);
-  target.addEventListener('mouseleave', binding.hide);
-  target.addEventListener('pointerdown', binding.hide);
-};
 
 /**
  * `[SL][Pips: x][USD: y][✕]` bar anchored on an existing SL/TP line. The
@@ -879,23 +1058,35 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
       const rounded = Number(value.toFixed(decimals));
       return `${rounded > 0 ? '+' : ''}${rounded.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
     };
+    const tooltipBg = isLightSurface ? '#ffffff' : '#111622';
+    const tooltipFooterBg = isLightSurface ? '#f8fafc' : '#161c2a';
+    const tooltipBorder = isLightSurface ? 'rgba(15, 23, 42, 0.14)' : 'rgba(148, 163, 184, 0.24)';
+    const tooltipDivider = isLightSurface ? 'rgba(15, 23, 42, 0.08)' : 'rgba(148, 163, 184, 0.14)';
+    const tooltipPrimaryColor = isLightSurface ? '#0f172a' : '#f8fafc';
+    const tooltipSecondaryColor = isLightSurface ? '#475569' : '#94a3b8';
+    const tooltipShadow = isLightSurface
+      ? '0 12px 28px -4px rgba(15, 23, 42, 0.15), 0 4px 10px -2px rgba(15, 23, 42, 0.08)'
+      : '0 12px 28px -4px rgba(0, 0, 0, 0.72), 0 4px 10px -2px rgba(0, 0, 0, 0.45)';
     const tooltip = document.createElement('span');
     tooltip.className = 'rtx-trade-level-tooltip';
     tooltip.id = `rtx-level-tooltip-${++tradeLevelTooltipId}`;
     tooltip.setAttribute('role', 'tooltip');
     Object.assign(tooltip.style, {
-      position: 'absolute', bottom: 'calc(100% + 8px)', left: '0', display: 'none',
-      width: 'max-content', maxWidth: '280px', padding: '5px 8px', borderRadius: '2px',
-      backgroundColor: '#2a2a2a', color: '#ffffff', fontFamily: 'Arial, sans-serif',
-      fontSize: '12px', fontWeight: '400', lineHeight: '17px', whiteSpace: 'normal',
-      pointerEvents: 'none', textAlign: 'left', boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+      position: 'absolute', bottom: 'calc(100% + 9px)', left: '0', display: 'none',
+      width: 'max-content', minWidth: '188px', maxWidth: '280px', padding: '0', borderRadius: '6px',
+      backgroundColor: tooltipBg, color: tooltipPrimaryColor,
+      border: `1px solid ${tooltipBorder}`, borderTop: `2px solid ${levelAccent}`,
+      fontFamily: 'var(--rtx-ui-font-family, "Segoe UI", Tahoma, Arial, sans-serif)',
+      fontSize: '11.5px', fontWeight: '500', lineHeight: '16px', fontVariantNumeric: 'tabular-nums',
+      whiteSpace: 'normal', pointerEvents: 'none', textAlign: 'left', boxShadow: tooltipShadow,
+      zIndex: '120',
     });
     const summary = document.createElement('span');
     const price = document.createElement('span');
-    summary.style.display = 'block';
-    price.style.display = 'block';
+    summary.style.cssText = `display:block;padding:6px 10px 5px;font-weight:600;color:${tooltipPrimaryColor};letter-spacing:0.01em;border-bottom:1px solid ${tooltipDivider};`;
+    price.style.cssText = `display:block;padding:5px 10px;font-size:11px;font-weight:500;color:${tooltipSecondaryColor};background:${tooltipFooterBg};border-bottom-left-radius:5px;border-bottom-right-radius:5px;`;
     const arrow = document.createElement('span');
-    arrow.style.cssText = 'position:absolute;top:100%;left:18px;border:5px solid transparent;border-top-color:#2a2a2a;';
+    arrow.style.cssText = `position:absolute;top:100%;left:18px;border:5px solid transparent;border-top-color:${tooltipFooterBg};`;
     tooltip.append(summary, price, arrow);
     root.appendChild(tooltip);
     root.style.overflow = 'visible';
@@ -913,29 +1104,45 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
       root.style.zIndex = '21';
       options.onHoverChange?.(false);
     };
-    const showTooltip = () => {
+    const showTooltip = (event?: Event) => {
       tooltip.style.display = 'block';
       handle.style.display = 'block';
       root.style.borderStyle = 'solid';
       root.style.zIndex = '100';
       options.onHoverChange?.(true);
       tooltip.style.left = '0';
-      tooltip.style.bottom = 'calc(100% + 8px)';
+      tooltip.style.bottom = 'calc(100% + 9px)';
       tooltip.style.top = 'auto';
+      arrow.style.left = '18px';
       arrow.style.top = '100%';
       arrow.style.bottom = 'auto';
       arrow.style.borderColor = 'transparent';
-      arrow.style.borderTopColor = '#2a2a2a';
+      arrow.style.borderTopColor = tooltipFooterBg;
       const bounds = root.parentElement?.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
       const rect = tooltip.getBoundingClientRect();
-      if (bounds && rect.right > bounds.right - 8) tooltip.style.left = `${Math.min(0, bounds.right - 8 - rect.right)}px`;
+      if (event instanceof MouseEvent && Number.isFinite(event.clientX) && event.clientX > 0 && bounds && rect.width > 0 && rootRect.width > 0) {
+        const desiredLeftInHost = Math.min(
+          Math.max(8, event.clientX - bounds.left - rect.width / 2),
+          Math.max(8, bounds.width - rect.width - 8),
+        );
+        const relativeLeft = desiredLeftInHost - (rootRect.left - bounds.left);
+        tooltip.style.left = `${Math.round(relativeLeft)}px`;
+        const arrowLeft = Math.min(
+          Math.max(12, event.clientX - (rootRect.left + relativeLeft) - 5),
+          Math.max(12, rect.width - 18),
+        );
+        arrow.style.left = `${Math.round(arrowLeft)}px`;
+      } else if (bounds && rect.right > bounds.right - 8) {
+        tooltip.style.left = `${Math.min(0, bounds.right - 8 - rect.right)}px`;
+      }
       if (bounds && rect.top < bounds.top + 4) {
         tooltip.style.bottom = 'auto';
-        tooltip.style.top = 'calc(100% + 8px)';
+        tooltip.style.top = 'calc(100% + 9px)';
         arrow.style.top = 'auto';
         arrow.style.bottom = '100%';
         arrow.style.borderTopColor = 'transparent';
-        arrow.style.borderBottomColor = '#2a2a2a';
+        arrow.style.borderBottomColor = levelAccent;
       }
     };
     root.addEventListener('mouseenter', showTooltip);

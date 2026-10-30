@@ -38,6 +38,7 @@ import {
   retainSameQuoteDayDailyChange,
   retainSameQuoteDayDisplayFields,
   retainSameQuoteDayLast,
+  retainSameQuoteDayTradingStatus,
 } from './appTickSessionFields';
 
 export {
@@ -641,6 +642,7 @@ const coalesceAppTickEntries = (
   const latestTicks = coalesceFreshestTickEntries(entries, reportInvalidTick);
   const latestDailyChangeTicks = new Map<string, Tick>();
   const latestLastTicks = new Map<string, Tick>();
+  const latestTradingStatusTicks = new Map<string, Tick>();
 
   // The generic freshness coalescer correctly chooses the newest price, but a
   // later sparse frame can otherwise erase optional metadata before merge with
@@ -666,6 +668,12 @@ const coalesceAppTickEntries = (
       ) {
         latestLastTicks.set(symbol, normalized);
       }
+      if (normalized.tradingStatus !== undefined) {
+        const existingTradingStatus = latestTradingStatusTicks.get(symbol);
+        if (!existingTradingStatus || compareCanonicalTickFreshness(existingTradingStatus, normalized) >= 0) {
+          latestTradingStatusTicks.set(symbol, normalized);
+        }
+      }
     } catch (error) {
       reportInvalidTick(symbol, error);
     }
@@ -674,8 +682,10 @@ const coalesceAppTickEntries = (
   return latestTicks.map(([symbol, tick]) => {
     const dailyChangeTick = latestDailyChangeTicks.get(symbol);
     const lastTick = latestLastTicks.get(symbol);
+    const tradingStatusTick = latestTradingStatusTicks.get(symbol);
     const withDailyChange = retainSameQuoteDayDailyChange(dailyChangeTick, tick);
-    return [symbol, retainSameQuoteDayLast(lastTick, withDailyChange)] as const;
+    const withLast = retainSameQuoteDayLast(lastTick, withDailyChange);
+    return [symbol, retainSameQuoteDayTradingStatus(tradingStatusTick, withLast)] as const;
   });
 };
 
@@ -742,6 +752,9 @@ const applyAppTickBatch = (
     }
     if (candidate.digits === undefined && prevTick?.digits !== undefined) {
       candidate.digits = prevTick.digits;
+    }
+    if (candidate.tradingStatus === undefined && prevTick?.tradingStatus !== undefined) {
+      candidate.tradingStatus = prevTick.tradingStatus;
     }
 
     if (freshness === 0 && areCanonicalUpstreamTicksEqual(prevTick, candidate)) return;

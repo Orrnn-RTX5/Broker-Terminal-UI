@@ -430,7 +430,7 @@ export function BottomDock({
                     hidden={activeTab !== 'Journal'}
                     aria-hidden={activeTab !== 'Journal'}
                 >
-                    {activeTab === 'Journal' && <Suspense fallback={null}><MemoJournalTab /></Suspense>}
+                    <RetainedLazyFeature active={activeTab === 'Journal'}><MemoJournalTab /></RetainedLazyFeature>
                 </div>
                 {activeTab === 'Historical Data' && (
                     <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-zinc-500">{tr("Opening historical data…")}</div>}>

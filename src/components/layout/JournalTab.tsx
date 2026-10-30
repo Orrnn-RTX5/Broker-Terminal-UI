@@ -249,7 +249,8 @@ const getServerTerminalStatus = (
 ): TradeOrderTerminalStatus | null => {
     if (log.type !== 6 && log.type_text.trim().toLowerCase() !== 'trade') return null;
     const terminalText = `${log.code_text} ${log.message}`.toLowerCase();
-    if (/\b(filled|executed|completed|succeeded)\b/.test(terminalText)) return 'filled';
+    if (/\b(filled|executed|completed|succeeded|opened)\b/.test(terminalText)) return 'filled';
+    if (log.code === 0 && /^(?:timing|close|modify)\b/i.test(log.message.trim())) return 'filled';
     if (/\b(rejected|denied)\b/.test(terminalText)) return 'rejected';
     if (/\b(expired|timed out|timeout)\b/.test(terminalText)) return 'expired';
     if (/\b(failed|error)\b/.test(terminalText)) return 'failed';
@@ -300,6 +301,58 @@ const mergeTerminalTradeJournalLogs = (
                 ...mergedServerLogs[matchingIndex],
                 latency_ms: sample.totalMs,
             };
+        }
+    }
+
+    for (const sample of terminalSamples) {
+        if (sample.clientOrderId && mergedServerLogs.some(log => isMatchingServerTerminalRow(log, sample))) {
+            continue;
+        }
+        const heuristicIndex = mergedServerLogs.findIndex((log, index) => {
+            if (claimedServerRows.has(index)) return false;
+            if (log.client_order_id !== undefined && String(log.client_order_id).trim() !== '') return false;
+            if (log.latency_ms !== undefined) return false;
+            if (getServerTerminalStatus(log) !== sample.terminalStatus) return false;
+            if (!sample.symbol && !sample.side && !sample.clientOrderId) return false;
+
+            const sampleSec = Math.floor(sample.recordedAtEpochMs / 1000);
+            if (!Number.isFinite(log.datetime) || Math.abs(log.datetime - sampleSec) > 15) return false;
+
+            const messageLower = log.message.trim().toLowerCase();
+            if (sample.symbol && messageLower.includes(sample.symbol.toLowerCase())) {
+                if (sample.side && /\b(buy|sell)\b/.test(messageLower) && !messageLower.includes(sample.side.toLowerCase())) {
+                    return false;
+                }
+                if (typeof sample.volume === 'number' && Number.isFinite(sample.volume)) {
+                    const normalizedVol = formatLocalOrderVolume(sample.volume);
+                    const fixedVol = sample.volume.toFixed(2);
+                    if (
+                        normalizedVol
+                        && /\b\d+(?:\.\d+)?\b/.test(messageLower)
+                        && !messageLower.includes(normalizedVol)
+                        && !messageLower.includes(fixedVol)
+                    ) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            return Math.abs(log.datetime - sampleSec) <= 5
+                && /^(?:position\s+opened|order\s+(?:filled|executed|completed|succeeded|rejected|expired|failed))\b/i.test(log.message.trim());
+        });
+        if (heuristicIndex < 0) continue;
+
+        claimedServerRows.add(heuristicIndex);
+        mergedServerLogs[heuristicIndex] = {
+            ...mergedServerLogs[heuristicIndex],
+            latency_ms: sample.totalMs,
+        };
+        const localRowIndex = localRows.findIndex(
+            row => row.id === `local-order-${sample.clientOrderId || sample.traceId}-${sample.sequence}`,
+        );
+        if (localRowIndex >= 0) {
+            localRows.splice(localRowIndex, 1);
         }
     }
 

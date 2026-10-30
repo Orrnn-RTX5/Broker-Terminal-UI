@@ -539,4 +539,32 @@ describe('SL/TP chart controls', () => {
       }),
     ]);
   });
+
+  it('shows a styled English tooltip card when hovering the entry trade line without mojibake or native title attributes', () => {
+    const { host, runtime } = createRuntime();
+    runtime.createEntryPriceLevels([trade], new Set([trade.key]));
+    runtime.createEntryControlsForTrade(trade, { sl: 0, tp: 0 }, { showAxisPriceLine: false });
+
+    expect(runtime.getLocalizedTradeTitle(trade)).toBe(
+      'SELL · 0.01 lots · Ticket: 9302300 · Open price: 85939.87 · Add stop loss and take profit',
+    );
+    expect(runtime.getLocalizedTradeTitle(trade, 'SL')).toBe(
+      'SELL · 0.01 lots · Ticket: 9302300 · Stop Loss: — · Modify Position',
+    );
+
+    const hitArea = host.querySelector<HTMLElement>('.rtx-trade-level-hit-area[data-role="ENTRY"]')!;
+    const entryBar = host.querySelector<HTMLElement>('.rtx-trade-controls--entry')!;
+    const tooltip = entryBar.querySelector<HTMLElement>('[role="tooltip"]')!;
+    expect(hitArea.hasAttribute('title')).toBe(false);
+    expect(entryBar.hasAttribute('title')).toBe(false);
+    expect(tooltip.style.display).toBe('none');
+
+    hitArea.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(tooltip.style.display).toBe('block');
+    expect(tooltip.children[0].textContent).toBe('SELL 0.01 lots · #9302300 · Open price: 85939.87');
+    expect(tooltip.children[1].textContent).toBe('Add stop loss and take profit');
+
+    hitArea.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(tooltip.style.display).toBe('none');
+  });
 });

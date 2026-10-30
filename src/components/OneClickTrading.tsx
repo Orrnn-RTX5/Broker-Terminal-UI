@@ -44,7 +44,7 @@ interface OneClickTradingProps {
     visible: boolean;
     timeframe: string;
     tradeAllowed?: boolean;
-    marketStatus?: NormalizedMarketStatus;
+    marketStatus?: NormalizedMarketStatus & { loading?: boolean };
     priceDigits?: number;
     minVolume?: number;
     maxVolume?: number;
@@ -302,8 +302,9 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     };
     const hasExecutablePrice = bid > 0 && ask > 0;
     const effectiveMarketStatus = marketStatus ?? createUnavailableMarketStatus(symbol);
+    const isMarketStatusLoading = Boolean(marketStatus?.loading) && effectiveMarketStatus.status === 'unknown';
     const marketBlockedMessage = effectiveMarketStatus.label;
-    const marketOpenForTrading = !shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
+    const marketOpenForTrading = isMarketStatusLoading || !shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
     const staleQuoteMessage = tr('Cannot place this trade because the quote for {{symbol}} is stale. Please wait for a fresh quote and try again.', { symbol });
     const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice;
     const tradeControlDisabled = hasTradingSession && !canSubmitOrder;
@@ -666,7 +667,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 }}>
                     {tr("Waiting for a valid bid/ask price")}</div>
             )}
-            {tradeAllowed && !marketOpenForTrading && !error && (
+            {tradeAllowed && !marketOpenForTrading && !isMarketStatusLoading && !error && (
                 <div style={{
                     fontSize: 10,
                     color: '#fbbf24',

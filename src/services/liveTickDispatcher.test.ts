@@ -127,6 +127,42 @@ describe('liveTickDispatcher market data freeze', () => {
     expect(getMarketWatchDisplayMetadata('FX.r')?.daily).toMatchObject({ price: 115, change: 5, percent: expect.closeTo(5 / 110 * 100, 12) });
   });
 
+  it('retains explicit hub tradingStatus across same-day sparse or REST snapshot quotes', () => {
+    const at = Date.UTC(2026, 8, 28, 10, 0, 0);
+    const [feedTick] = processIncomingQuotePayload({
+      symbol: 'XAUUSD',
+      bid: 3955.63,
+      ask: 3955.72,
+      timestamp_ms: at,
+      tradable: true,
+      stale: false,
+      authority: 'rtx5_hub',
+      broker_id: 'test-broker',
+      source_mismatch: false,
+    });
+    enqueueLiveTick(feedTick.symbol, feedTick);
+    flushLiveTicks();
+
+    enqueueLiveTick('XAUUSD', tick('XAUUSD', 3955.65, at + 500));
+    flushLiveTicks();
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 3955.65,
+      sourceTimestamp: at + 500,
+      tradingStatus: expect.objectContaining({
+        tradable: true,
+        authority: 'rtx5_hub',
+        brokerId: 'test-broker',
+        stale: false,
+      }),
+    });
+    expect(window.rtxTickCache.get('XAUUSD')?.tradingStatus).toMatchObject({
+      tradable: true,
+      authority: 'rtx5_hub',
+      brokerId: 'test-broker',
+    });
+  });
+
   it('keeps the last cached tick while a symbol is frozen', () => {
     window.rtxTickCache.set('GBPUSD', tick('GBPUSD', 1.3349));
 

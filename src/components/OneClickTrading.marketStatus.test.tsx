@@ -493,4 +493,34 @@ describe('OneClickTrading market status', () => {
     fireEvent.click(getTradeButton('BUY'));
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });
+
+  it('suppresses the Status unavailable banner while the initial market status check is still loading', () => {
+    const { rerender } = render(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={{ ...normalizeMarketStatus(null, { symbol: 'EURUSD' }), loading: true }}
+      />,
+    );
+
+    expect(screen.queryByText('Status unavailable')).toBeNull();
+    expect(getTradeButton('BUY').disabled).toBe(false);
+    expect(getTradeButton('SELL').disabled).toBe(false);
+
+    rerender(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={{ ...normalizeMarketStatus(null, { symbol: 'EURUSD' }), loading: false }}
+      />,
+    );
+
+    expect(screen.getByText('Status unavailable')).not.toBeNull();
+    expect(getTradeButton('BUY').disabled).toBe(true);
+    expect(getTradeButton('SELL').disabled).toBe(true);
+  });
 });

@@ -932,6 +932,40 @@ describe('JournalTab', () => {
         expect(screen.getByText('\u2014')).toBeInTheDocument();
     });
 
+    it('correlates local trade latency into a server trade row lacking client_order_id when Journal opens after trading in another section', async () => {
+        const now = nowSeconds();
+        journalHarness.getLogs.mockResolvedValue({
+            count: 1,
+            logs: [makeLog({
+                id: 'server-fill-no-client-id',
+                datetime: now,
+                type: 6,
+                type_text: 'Trade',
+                source: 'Gateway',
+                message: 'Order buy XAUUSD 0.01 filled',
+            })],
+        });
+        recordTradeOrderLatency({
+            phase: 'placement_terminal',
+            transport: 'websocket',
+            traceId: '174099',
+            clientOrderId: '123e4567-e89b-42d3-a456-426614174099',
+            sessionScope: journalHarness.sessionScope,
+            symbol: 'XAUUSD',
+            side: 'buy',
+            volume: 0.01,
+            terminalStatus: 'filled',
+            totalMs: 19.75,
+        });
+
+        render(<JournalTab />);
+
+        expect(await screen.findByText('Order buy XAUUSD 0.01 filled')).toBeInTheDocument();
+        expect(screen.getAllByTestId('journal-rendered-row')).toHaveLength(1);
+        expect(screen.getByText('19.75 ms')).toBeInTheDocument();
+        expect(screen.getByTestId('last-trade-latency')).toHaveTextContent('Last trade latency: 19.75 ms');
+    });
+
     it('copies only the newly loaded server-mode response', async () => {
         journalHarness.getLogs
             .mockResolvedValueOnce({ count: 1, logs: [makeLog({ id: 'full', message: 'Full mode journal row' })] })

@@ -13,6 +13,7 @@ import {
 } from '../../services/dailyChangePriceModeRegistry';
 import { isStaleQuoteErrorMessage } from '../../utils/marketWatchSource';
 import { readQuoteSessionRange } from '../../utils/quoteSessionRange';
+import { readQuoteTradingStatus } from '../../utils/quoteTradingStatus';
 import { getPipSizeFromDigits, resolveSpecDigits } from '../../utils/symbolUtils';
 import {
   buildSpreadMarkupMap,
@@ -350,6 +351,7 @@ export const normalizeTick = (raw: unknown, fallbackSymbol?: string): (Tick & Pa
   ].filter((value) => value > 0);
   const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
   const sourceTimestamp = getSourceTickTimestamp(raw);
+  const tradingStatus = readQuoteTradingStatus(payload);
 
   return {
     symbol,
@@ -358,6 +360,7 @@ export const normalizeTick = (raw: unknown, fallbackSymbol?: string): (Tick & Pa
     spread,
     timestamp: sourceTimestamp ?? timestampToMs(undefined),
     sourceTimestamp,
+    ...(tradingStatus ? { tradingStatus } : {}),
     lp,
     volume,
     last,
@@ -436,7 +439,11 @@ const upsertInstrumentTickSnapshot = (instrument: MarketInstrument): void => {
   if (!hasUsablePrice(instrument.bid) && !hasUsablePrice(instrument.ask)) return;
 
   const appState = useAppStore.getState();
-  const existingTick = resolveTickFromLookup(appState.ticks, appState.tickLookup, instrument.symbol);
+  const normalizedSymbol = normalizeSymbol(instrument.symbol);
+  const cachedTick = typeof window !== 'undefined' && window.rtxTickCache
+    ? window.rtxTickCache.get(instrument.symbol) ?? (normalizedSymbol ? window.rtxTickCache.get(normalizedSymbol) : undefined)
+    : undefined;
+  const existingTick = resolveTickFromLookup(appState.ticks, appState.tickLookup, instrument.symbol) ?? cachedTick;
   if (existingTick && (existingTick.bid > 0 || existingTick.ask > 0)) return;
 
   const bid = hasUsablePrice(instrument.bid) ? instrument.bid : instrument.ask!;

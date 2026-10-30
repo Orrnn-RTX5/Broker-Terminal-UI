@@ -471,9 +471,17 @@ describe('QuoteSocketManager public v2 per-symbol protocol', () => {
       manager.setDemand('chart', ['BTCUSD']);
       const socket = FakeWebSocket.instances[0];
       socket.open();
+      socket.sent.length = 0;
       brokerSessionMock.sessionListener?.(reason);
       expect(FakeWebSocket.instances).toHaveLength(1);
       expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+      if (reason === 'token_rotation') {
+        expect(socket.sent).toHaveLength(0);
+      } else {
+        expect(socket.sent.map((payload) => JSON.parse(payload))).toEqual([
+          { type: 'subscribe', symbols: ['BTCUSD'] },
+        ]);
+      }
       socket.onmessage?.({ data: JSON.stringify({
         type: 'tick', symbol: 'BTCUSD', bid: 76000, ask: 76001, time: 1_788_250_045,
       }) });

@@ -314,7 +314,7 @@ export const createTradeOverlayDomRuntime = ({
         hitArea.dataset.role = options.role;
         bindChartUiTranslation(hitArea, () => {
           const title = options.getTitle?.() ?? options.title ?? '';
-          if (options.role === 'SL' || options.role === 'TP') {
+          if (options.role === 'ENTRY' || options.role === 'SL' || options.role === 'TP') {
             hitArea.setAttribute('aria-label', title);
           } else hitArea.title = title;
         });
@@ -382,10 +382,10 @@ export const createTradeOverlayDomRuntime = ({
       tr('{{value0}} lots', { value0: trade.volume }),
       tr('Ticket: {{value0}}', { value0: getTradeTicketLabel(trade.key) || trade.key }),
       role
-        ? tr(role === 'SL' ? 'Stop Loss: {{value0}}' : 'Take Profit: {{value0}}', { value0: price ? formatTradeLevelBadgePrice(price) : 'â€”' })
+        ? tr(role === 'SL' ? 'Stop Loss: {{value0}}' : 'Take Profit: {{value0}}', { value0: price ? formatTradeLevelBadgePrice(price) : '—' })
         : tr('Open price: {{value0}}', { value0: formatTradeLevelBadgePrice(trade.entryPrice) }),
       tr(role ? 'Modify Position' : 'Add stop loss and take profit'),
-    ].join(' Â· ');
+    ].join(' · ');
 
     const getTradeTicket = (tradeKey: string): number => {
       const raw = tradeKey.replace(/^(trade|order):/, '');
@@ -678,6 +678,10 @@ export const createTradeOverlayDomRuntime = ({
       const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
       const currencyLabel = getAccountCurrencyLabel();
 
+      const entryNodes = activeOverlayNodesRef.current.filter(node => (
+        node.dataset.tradeKey === trade.key && node.dataset.role === 'ENTRY'
+      ));
+
       const controlBar = createEntryTradeControlBar({
         tradeKey: trade.key,
         ticket,
@@ -691,6 +695,15 @@ export const createTradeOverlayDomRuntime = ({
         chartBackground: chartThemeRef.current.background,
         leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
         currencyLabel,
+        hoverDetails: {
+          ticketLabel: ticketLabel || `#${ticket}`,
+          entryPriceLabel,
+        },
+        onHoverChange: active => {
+          for (const node of entryNodes) {
+            if (node.classList.contains('rtx-trade-level-line')) node.style.opacity = active ? '1' : '0.9';
+          }
+        },
         title: `${trade.side} ${trade.volume} ${ticketLabel} @ ${entryPriceLabel}. Drag above/below to create TP or SL.`,
         onAction: (action) => {
           if (trade.kind === 'pending' && action === 'close') {
@@ -726,16 +739,21 @@ export const createTradeOverlayDomRuntime = ({
           void copyTextToClipboard(shareUrl).then((copied) => {
             window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
               detail: copied
-                ? { message: `${tr('Copied')} Â· ${tr('Trade')} URL: ${ticketLabel || trade.symbol}`, type: 'success' }
-                : { message: `${tr('Copy')} Â· ${tr('Failed')}`, type: 'error' },
+                ? { message: `${tr('Copied')} · ${tr('Trade')} URL: ${ticketLabel || trade.symbol}`, type: 'success' }
+                : { message: `${tr('Copy')} · ${tr('Failed')}`, type: 'error' },
             }));
           });
         },
       });
       controlBar.root.dataset.entryPrice = String(trade.entryPrice);
-      bindChartUiTranslation(controlBar.root, () => { controlBar.root.title = getLocalizedTradeTitle(trade); });
+      bindChartUiTranslation(controlBar.root, () => {
+        controlBar.root.setAttribute('aria-label', getLocalizedTradeTitle(trade));
+      });
       // Entry controls retain their actual price for placement centered on the line.
       appendTradeControls(controlBar.root, trade.entryPrice);
+      for (const node of entryNodes) {
+        if (node.classList.contains('rtx-trade-level-hit-area')) bindTradeLevelHoverTarget(controlBar.root, node);
+      }
 
       const refreshLiveMetrics = () => {
         const closePrice = getTradeClosePrice(trade);
@@ -811,7 +829,10 @@ export const createTradeOverlayDomRuntime = ({
           leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
           title: `Drag to set Stop Loss for ${ticketLabel || trade.key}`,
         });
-        bindChartUiTranslation(slChip, () => { slChip.title = getLocalizedTradeTitle(trade, 'SL'); });
+        bindChartUiTranslation(slChip, () => {
+          slChip.removeAttribute('title');
+          slChip.setAttribute('aria-label', getLocalizedTradeTitle(trade, 'SL'));
+        });
         appendDockChip(slChip, 'SL');
       }
       if (!(levels.tp > 0)) {
@@ -823,7 +844,10 @@ export const createTradeOverlayDomRuntime = ({
           leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
           title: `Drag to set Take Profit for ${ticketLabel || trade.key}`,
         });
-        bindChartUiTranslation(tpChip, () => { tpChip.title = getLocalizedTradeTitle(trade, 'TP'); });
+        bindChartUiTranslation(tpChip, () => {
+          tpChip.removeAttribute('title');
+          tpChip.setAttribute('aria-label', getLocalizedTradeTitle(trade, 'TP'));
+        });
         appendDockChip(tpChip, 'TP');
       }
       const brackets = controlBar.root.querySelector<HTMLElement>('.rtx-trade-brackets');
