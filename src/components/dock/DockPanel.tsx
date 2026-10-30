@@ -72,7 +72,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
       className={cn(
         'flex flex-col overflow-hidden relative',
         panel.component === 'EmptyChartArea' ? 'bg-[#0d0d11]' : 'bg-[#131316]',
-        minimized ? 'h-[30px]' : 'h-full',
+        minimized ? 'h-[26px]' : 'h-full',
         isFloating && 'shadow-2xl border border-zinc-600/40',
         !isFloating && panel.component !== 'EmptyChartArea' && 'border border-[#28282e]/60',
         isDropTarget && 'ring-2 ring-[#8a8a8f]/40 ring-inset',
@@ -111,7 +111,8 @@ export const DockPanel: React.FC<DockPanelProps> = ({
       {showHeader && (
         <div
           className={cn(
-            'dock-panel__header flex items-center h-[30px] px-1.5 select-none flex-shrink-0',
+            'dock-panel__header flex items-center h-[26px] select-none flex-shrink-0',
+            isChart && chartsBarVisible ? 'pl-0 pr-1.5' : 'px-1.5',
             // Make cursor a pointer when minimized (click to restore)
             minimized ? 'cursor-pointer' : 'cursor-default',
             isActive
@@ -139,7 +140,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
           title={minimized ? tr("Click to restore {{value0}}", { value0: panel.title }) : undefined}
         >
           {/* Title */}
-          <span className="dock-panel__title flex-1 min-w-0 flex items-center gap-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]">
+          <span className="dock-panel__title flex-1 min-w-0 h-full overflow-hidden flex items-center gap-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]">
             {isChart && chartsBarVisible ? (
               <ChartSymbolTabs panel={panel} />
             ) : panel.component === 'MarketWatch' ? (

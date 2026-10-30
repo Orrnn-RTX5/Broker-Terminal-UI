@@ -166,7 +166,7 @@ html:root body .rtx-history-downloader :is(
 html:root :is(
   .rtx-order-dialog__label,
   .rtx-trade-metric-value, .rtx-menu-row, .rtx-application-menu__root-item,
-  .rtx-toolbar-action, .rtx-timeframe-option, [role='tab']
+  .rtx-toolbar-action, [role='tab']
 ) {
   --rtx-type-weight: var(--rtx-font-weight-control);
 }
@@ -184,8 +184,7 @@ html:root .rtx-menu-row__shortcut {
 html:root :is(
   .dock-panel__title, .navigator-panel__header, .rtx-market-watch__title,
   .rtx-depth-of-market__heading, .rtx-data-window__title,
-  .rtx-dock-tab.active-tab, [role='tab'][aria-selected='true'],
-  .rtx-timeframe-option[aria-checked='true']
+  .rtx-dock-tab.active-tab, [role='tab'][aria-selected='true']
 ) {
   --rtx-type-size: var(--rtx-ui-font-size);
   --rtx-type-weight: var(--rtx-font-weight-heading);
@@ -222,13 +221,20 @@ html:root body .rtx-trade-table :is(th, td) {
   --rtx-type-size: calc(var(--rtx-ui-font-size) - 2px);
 }
 
-/* Commands and timeframes share one medium weight, including selected states. */
+/* Commands use medium weight; timeframe strip stays regular across all states. */
 html:root .rtx-main-toolbar :is(
   .rtx-toolbar-action, .rtx-toolbar-icon-button,
-  .rtx-timeframe-option, .rtx-toolbar-symbol-badge
+  .rtx-toolbar-symbol-badge
 ) {
   --rtx-type-size: var(--rtx-ui-font-size);
   --rtx-type-weight: 500;
+}
+
+html:root .rtx-main-toolbar .rtx-timeframe-option,
+html:root .rtx-timeframe-option,
+html:root .rtx-timeframe-option[aria-checked='true'] {
+  --rtx-type-size: var(--rtx-ui-font-size);
+  --rtx-type-weight: var(--rtx-font-weight-body);
 }
 
 /* Text fits the chrome at every supported font preference. */

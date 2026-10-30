@@ -168,3 +168,109 @@ export const getTradeOverlayCardPalette = (
       shadow: 'box-shadow:0 2px 8px rgba(0,0,0,0.28);',
     };
 };
+
+
+export interface TradeHistoryCandleSubRect {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+const formatMaskPx = (value: number): string => `${Number(value.toFixed(2))}px`;
+
+/**
+ * Computes a CSS linear-gradient mask along a trade-history connector segment
+ * `(x1, y1) -> (x2, y2)` so the dotted line is hidden across every candlestick
+ * body it intersects (including hollow/white candle bodies).
+ */
+export const buildTradeHistoryLineCandleMask = (
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  rects: readonly TradeHistoryCandleSubRect[],
+): string => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.hypot(dx, dy);
+  if (!(length > 0.5) || rects.length === 0) return '';
+
+  const segMinX = Math.min(x1, x2);
+  const segMaxX = Math.max(x1, x2);
+  const segMinY = Math.min(y1, y2) - 1;
+  const segMaxY = Math.max(y1, y2) + 1;
+  const rawIntervals: Array<[number, number]> = [];
+
+  for (let i = 0; i < rects.length; i++) {
+    const rect = rects[i];
+    if (
+      rect.right < segMinX
+      || rect.left > segMaxX
+      || rect.bottom < segMinY
+      || rect.top > segMaxY
+    ) {
+      continue;
+    }
+
+    let uMin = 0;
+    let uMax = 1;
+    if (Math.abs(dx) < 1e-6) {
+      if (x1 < rect.left || x1 > rect.right) continue;
+    } else {
+      const tx1 = (rect.left - x1) / dx;
+      const tx2 = (rect.right - x1) / dx;
+      uMin = Math.max(uMin, Math.min(tx1, tx2));
+      uMax = Math.min(uMax, Math.max(tx1, tx2));
+    }
+    if (uMin >= uMax) continue;
+
+    if (Math.abs(dy) < 1e-6) {
+      if (y1 < rect.top || y1 > rect.bottom) continue;
+    } else {
+      const ty1 = (rect.top - y1) / dy;
+      const ty2 = (rect.bottom - y1) / dy;
+      uMin = Math.max(uMin, Math.min(ty1, ty2));
+      uMax = Math.min(uMax, Math.max(ty1, ty2));
+    }
+    if (uMin >= uMax) continue;
+
+    const startPx = Math.max(0, uMin * length);
+    const endPx = Math.min(length, uMax * length);
+    if (endPx - startPx > 0.25) {
+      rawIntervals.push([startPx, endPx]);
+    }
+  }
+
+  if (rawIntervals.length === 0) return '';
+
+  rawIntervals.sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [rawIntervals[0]];
+  for (let i = 1; i < rawIntervals.length; i++) {
+    const [start, end] = rawIntervals[i];
+    const last = merged[merged.length - 1];
+    if (start <= last[1] + 0.5) {
+      last[1] = Math.max(last[1], end);
+    } else {
+      merged.push([start, end]);
+    }
+  }
+
+  const stops: string[] = [];
+  if (merged[0][0] > 0.01) {
+    stops.push('#000 0px', `#000 ${formatMaskPx(merged[0][0])}`);
+  }
+  for (let i = 0; i < merged.length; i++) {
+    const [start, end] = merged[i];
+    stops.push(`transparent ${formatMaskPx(start)}`, `transparent ${formatMaskPx(end)}`);
+    if (i + 1 < merged.length) {
+      stops.push(`#000 ${formatMaskPx(end)}`, `#000 ${formatMaskPx(merged[i + 1][0])}`);
+    }
+  }
+  const lastEnd = merged[merged.length - 1][1];
+  if (lastEnd < length - 0.01) {
+    stops.push(`#000 ${formatMaskPx(lastEnd)}`, '#000 100%');
+  }
+
+  return `linear-gradient(to right, ${stops.join(', ')})`;
+};

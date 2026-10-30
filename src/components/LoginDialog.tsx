@@ -108,7 +108,7 @@ export function LoginDialog({
     const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(null);
     const { login, password, setLogin, setPassword, savePassword, setSavePassword, available: passwordSavingAvailable, restoring, storageError, persistPassword } = useSavedLogin(
         isOpen,
-        initialLogin || useAppStore.getState().accountId || '',
+        initialLogin || useAppStore.getState().accountId || localStorage.getItem('rtx_saved_username') || '',
         selectedBroker ? {
             brokerId: selectedBroker.broker_id,
             serverUrl: isDesktop ? getDirectoryBrokerServerUrl(selectedBroker) : resolveBrokerExtApiUrl(selectedBroker),
@@ -241,7 +241,7 @@ export function LoginDialog({
         if (lockedBrokerKey && normalizeBrokerId(item.broker_id) !== lockedBrokerKey) return;
         const normalizedBroker = normalizeBrokerInfoForTarget(item) as BrokerServerItem;
         const normalizedServerUrl = isDesktop ? getDirectoryBrokerServerUrl(item) : resolveBrokerBackendUrl(normalizedBroker);
-        if (isDesktop && (selectedBroker?.broker_id !== item.broker_id || getDirectoryBrokerServerUrl(selectedBroker) !== normalizedServerUrl)) setPassword('');
+        if (isDesktop && selectedBroker && (selectedBroker.broker_id !== item.broker_id || getDirectoryBrokerServerUrl(selectedBroker) !== normalizedServerUrl)) setPassword('');
         const nextBroker = {
             ...normalizedBroker,
             server_url: normalizedServerUrl,
@@ -567,15 +567,28 @@ export function LoginDialog({
             markPostAuthenticationPhase('auth-session-persist');
             const loginNum = parseInt(String(accountId), 10);
             const tradingAccountType = resolveTradingAccountType(data);
+            const resolvedSessionBrokerId = data.broker_id || submitBroker.broker_id;
+            const resolvedSessionServerUrl = data.server_url || data.broker_server || brokerServerUrl || brokerExtApiUrl;
             rememberAccountSession({
-                brokerId: data.broker_id || submitBroker.broker_id,
-                serverUrl: data.server_url || data.broker_server || brokerServerUrl || brokerExtApiUrl,
+                brokerId: resolvedSessionBrokerId,
+                serverUrl: resolvedSessionServerUrl,
                 login: String(accountId),
                 authToken: token,
                 refreshToken: data.refresh_token,
                 expiresAt,
                 password,
             });
+            if (submitBroker.broker_id !== resolvedSessionBrokerId || brokerExtApiUrl !== resolvedSessionServerUrl) {
+                rememberAccountSession({
+                    brokerId: submitBroker.broker_id,
+                    serverUrl: brokerExtApiUrl,
+                    login: String(accountId),
+                    authToken: token,
+                    refreshToken: data.refresh_token,
+                    expiresAt,
+                    password,
+                });
+            }
             useAppStore.getState().setAuthenticated(
                 true,
                 String(accountId),

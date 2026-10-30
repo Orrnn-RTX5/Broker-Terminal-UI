@@ -506,9 +506,10 @@ export const iconRegistry = {
     ),
 
     'eye-off': () => h(React.Fragment, null,
-        h('path', { d: 'M2 2l12 12' }),
-        h('path', { d: 'M5.5 5.5A5.5 5.5 0 001 8s3 5 7 5a5.5 5.5 0 002.5-.6M9.9 6.1A2 2 0 0110 8a2 2 0 01-2 2' }),
-        h('path', { d: 'M12.5 5.5A9 9 0 0115 8s-3 5-7 5' })
+        h('path', { d: 'M2.5 2.5l11 11' }),
+        h('path', { d: 'M6.8 6.8a2 2 0 002.4 2.4' }),
+        h('path', { d: 'M4.2 4.3C2.6 5.4 1.5 8 1.5 8s2.5 4.5 6.5 4.5c1.4 0 2.7-.5 3.8-1.3' }),
+        h('path', { d: 'M6.5 3.7A6.2 6.2 0 018 3.5c4 0 6.5 4.5 6.5 4.5a11 11 0 01-2.2 2.8' })
     ),
 
     'pencil-lock': () => h(React.Fragment, null,
@@ -593,9 +594,9 @@ export const iconRegistry = {
     ),
 
     'file-text': () => h(React.Fragment, null,
-        h('path', { d: 'M4 2h6l4 4v8a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z' }),
-        h('path', { d: 'M10 2v4h4' }),
-        h('path', { d: 'M6 9h4M6 11h4' })
+        h('path', { d: 'M4 2h5.5L13 5.5V13a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z' }),
+        h('path', { d: 'M9.5 2v3.5H13' }),
+        h('path', { d: 'M5.5 8.5h5M5.5 11.25h3.5' })
     ),
 
     'folder': () => h('path', { d: 'M2 5V4a1 1 0 011-1h4l2 2h4a1 1 0 011 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1V5z' }),
@@ -886,8 +887,8 @@ export const iconRegistry = {
         h('circle', { cx: 12.5, cy: 4, r: 1.3, fill: 'currentColor', stroke: 'none' })
     ),
     'symbol-box': () => h(React.Fragment, null,
-        h('rect', { x: 3, y: 3, width: 10, height: 10, rx: 1, fill: '#eab308', stroke: '#ca8a04' }),
-        h('text', { x: '50%', y: '50%', fontSize: 8, fontWeight: 'bold', fill: 'white', stroke: 'none', textAnchor: 'middle', dominantBaseline: 'central', fontFamily: 'sans-serif' }, '$')
+        h('rect', { x: 2, y: 2, width: 12, height: 12, rx: 2, fill: 'none' }),
+        h('path', { d: 'M8 4.75v6.5M9.75 6.25c0-.7-.78-1.15-1.75-1.15s-1.75.45-1.75 1.15c0 1.35 3.5.75 3.5 2.15 0 .7-.78 1.15-1.75 1.15s-1.75-.45-1.75-1.15', fill: 'none' })
     ),
 
 } as const satisfies Record<string, (state?: IconState) => React.ReactElement>;

@@ -24,8 +24,8 @@ import type { BrokerServer } from '../../types/api';
 import { CountryCombobox } from './CountryCombobox';
 import './open-account-dialog.css';
 import { TradeAuthDialog } from '../TradeAuthDialog';
-import { rememberAccountSession } from '../../services/accountSessionCache';
-import { saveLogin, supportsSavedLogins } from '../../services/savedLogins';
+import { getCachedAccountSession, rememberAccountSession } from '../../services/accountSessionCache';
+import { loadSavedLogin, saveLogin, supportsSavedLogins } from '../../services/savedLogins';
 
 // Palette cycling for broker avatar gradients
 const GRADIENTS = [
@@ -290,6 +290,34 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         };
     }, [isOpen, directoryAttempt]);
 
+    useEffect(() => {
+        if (!isOpen) return;
+        const trimmedLogin = existingLogin.trim();
+        const targetBroker = existingBroker || brokers.find(b => String(b.id) === selected);
+        if (!trimmedLogin || !targetBroker) return;
+        let cancelled = false;
+        const normalizedBroker = normalizeBrokerInfoForTarget(targetBroker);
+        const brokerId = String(normalizedBroker.broker_id || targetBroker.broker_id || '').trim();
+        const serverUrl = resolveBrokerExtApiUrl({ ...targetBroker, ...normalizedBroker });
+        const cached = getCachedAccountSession({ brokerId, serverUrl, login: trimmedLogin });
+        if (cached?.password) {
+            setExistingPassword(current => current || cached.password!);
+            return;
+        }
+        if (brokerId && serverUrl && supportsSavedLogins()) {
+            void loadSavedLogin({ brokerId, serverUrl }, trimmedLogin)
+                .then(saved => {
+                    if (!cancelled && saved?.password) {
+                        setExistingPassword(current => current || saved.password);
+                    }
+                })
+                .catch(() => undefined);
+        }
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, existingLogin, existingBroker, brokers, selected]);
+
     if (!isOpen) return null;
 
     const filteredBrokers = searchQuery.trim()
@@ -406,19 +434,35 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         const tradingAccountType = resolveTradingAccountType(data);
         const resolvedBrokerId = String(data.broker_id || submitBroker.broker_id || '').trim();
         const resolvedServerUrl = String(data.server_url || data.broker_server || brokerServerUrl || brokerExtApiUrl || '').trim();
-        rememberAccountSession({
-            brokerId: resolvedBrokerId,
-            serverUrl: resolvedServerUrl,
-            login: accountId,
-            authToken: token,
-            refreshToken: data.refresh_token,
-            expiresAt,
-            password: existingPassword,
-        });
-        if (existingPassword && resolvedBrokerId && supportsSavedLogins()) {
+        const candidateBrokerIds = Array.from(new Set([resolvedBrokerId, submitBroker.broker_id].filter(Boolean)));
+        for (const brokerId of candidateBrokerIds) {
+            rememberAccountSession({
+                brokerId,
+                serverUrl: resolvedServerUrl,
+                login: accountId,
+                authToken: token,
+                refreshToken: data.refresh_token,
+                expiresAt,
+                password: existingPassword,
+            });
+            if (brokerExtApiUrl && brokerExtApiUrl !== resolvedServerUrl) {
+                rememberAccountSession({
+                    brokerId,
+                    serverUrl: brokerExtApiUrl,
+                    login: accountId,
+                    authToken: token,
+                    refreshToken: data.refresh_token,
+                    expiresAt,
+                    password: existingPassword,
+                });
+            }
+        }
+        if (existingPassword && candidateBrokerIds.length > 0 && supportsSavedLogins()) {
             const candidateUrls = Array.from(new Set([resolvedServerUrl, brokerExtApiUrl].filter(Boolean)));
-            for (const url of candidateUrls) {
-                void saveLogin({ brokerId: resolvedBrokerId, serverUrl: url }, accountId, existingPassword).catch(() => undefined);
+            for (const brokerId of candidateBrokerIds) {
+                for (const url of candidateUrls) {
+                    void saveLogin({ brokerId, serverUrl: url }, accountId, existingPassword).catch(() => undefined);
+                }
             }
         }
         const store = useAppStore.getState();
@@ -504,17 +548,31 @@ const DesktopOpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 || '',
             ).trim();
             const createdPassword = String(accountRecord.master_password || '').trim();
-            rememberAccountSession({
-                brokerId: createdBrokerId,
-                serverUrl: createdServerUrl,
-                login: createdLogin,
-                authToken: createdToken || undefined,
-                password: createdPassword || undefined,
-            });
-            if (createdPassword && createdBrokerId && supportsSavedLogins()) {
+            const candidateBrokerIds = Array.from(new Set([createdBrokerId, submitBroker.broker_id].filter(Boolean)));
+            for (const brokerId of candidateBrokerIds) {
+                rememberAccountSession({
+                    brokerId,
+                    serverUrl: createdServerUrl,
+                    login: createdLogin,
+                    authToken: createdToken || undefined,
+                    password: createdPassword || undefined,
+                });
+                if (brokerExtApiUrl && brokerExtApiUrl !== createdServerUrl) {
+                    rememberAccountSession({
+                        brokerId,
+                        serverUrl: brokerExtApiUrl,
+                        login: createdLogin,
+                        authToken: createdToken || undefined,
+                        password: createdPassword || undefined,
+                    });
+                }
+            }
+            if (createdPassword && candidateBrokerIds.length > 0 && supportsSavedLogins()) {
                 const candidateUrls = Array.from(new Set([createdServerUrl, brokerExtApiUrl].filter(Boolean)));
-                for (const url of candidateUrls) {
-                    void saveLogin({ brokerId: createdBrokerId, serverUrl: url }, String(createdLogin), createdPassword).catch(() => undefined);
+                for (const brokerId of candidateBrokerIds) {
+                    for (const url of candidateUrls) {
+                        void saveLogin({ brokerId, serverUrl: url }, String(createdLogin), createdPassword).catch(() => undefined);
+                    }
                 }
             }
             useAppStore.getState().addSavedAccount?.({

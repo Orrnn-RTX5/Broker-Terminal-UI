@@ -34,9 +34,9 @@ export const MarketWatchViewTabs: React.FC<MarketWatchViewTabsProps> = ({
         style={{
           minWidth: 0,
           padding: '0 10px',
-          border: '1px solid transparent',
-          borderTopColor: activeView === view ? 'var(--bg-secondary)' : 'transparent',
-          borderInlineColor: activeView === view ? 'var(--border-primary)' : 'transparent',
+          borderTop: `1px solid ${activeView === view ? 'var(--bg-secondary)' : 'transparent'}`,
+          borderInline: `1px solid ${activeView === view ? 'var(--border-primary)' : 'transparent'}`,
+          borderBottom: 0,
           background: activeView === view ? 'var(--bg-secondary)' : 'transparent',
           color: activeView === view ? 'var(--text-primary)' : 'var(--text-secondary)',
           fontFamily: 'inherit',

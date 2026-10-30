@@ -190,13 +190,31 @@ export const createTradeOverlayModelRuntime = ({
     };
 
     const getEntryColor = (side: TradeSide) => side === 'BUY' ? TRADE_BUY_COLOR : TRADE_SELL_COLOR;
+    const isHollowOrSurfaceCandleColor = (color: string, background: string): boolean => {
+      const norm = color.trim().toLowerCase();
+      const bgNorm = background.trim().toLowerCase();
+      if (norm === bgNorm) return true;
+      const isLightSurface = bgNorm === '#ffffff' || bgNorm === '#fff' || bgNorm === '#f8fafc' || bgNorm === '#fafbfc';
+      return isLightSurface
+        ? (norm === '#ffffff' || norm === '#fff' || norm === '#f8fafc' || norm === '#fafbfc')
+        : (norm === '#000000' || norm === '#000' || norm === '#0e0e12' || norm === '#14171f');
+    };
     const getClosedTradeLineColor = (trade: ClosedTradeSnapshot) => {
       const profit = trade.profit ?? (
         trade.side === 'BUY'
           ? trade.exitPrice - trade.entryPrice
           : trade.entryPrice - trade.exitPrice
       );
-      return profit >= 0 ? chartThemeRef.current.candleUp : chartThemeRef.current.candleDown;
+      const theme = chartThemeRef.current;
+      const primary = profit >= 0 ? theme.candleUp : theme.candleDown;
+      if (!isHollowOrSurfaceCandleColor(primary, theme.background)) {
+        return primary;
+      }
+      const secondary = profit >= 0 ? theme.candleDown : theme.candleUp;
+      if (!isHollowOrSurfaceCandleColor(secondary, theme.background)) {
+        return secondary;
+      }
+      return getEntryColor(trade.side);
     };
     const getLiveTrailTime = () =>
       currentCandleRef.current?.time

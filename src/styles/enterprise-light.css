@@ -12,6 +12,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
   --rtx-light-canvas: #e8edf3;
   --rtx-light-panel: #f8fafc;
   --rtx-light-panel-subtle: #f1f4f8;
+  --rtx-light-panel-muted: #f1f4f8;
   --rtx-light-panel-header: #e2e8f0;
   --rtx-light-elevated: #ffffff;
   --rtx-light-chart: #fafbfc;
@@ -19,6 +20,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
   --rtx-light-hover: #e8eef6;
   --rtx-light-pressed: #d6e3f3;
   --rtx-light-selected: #dce9fa;
+  --rtx-light-selected-strong: #dce9fa;
   --rtx-light-dock-selected: #c9ddf7;
   --rtx-light-border: #c5ced9;
   --rtx-light-border-strong: #9eacbd;
@@ -248,6 +250,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.dock-panel__header,
   box-shadow: none !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__header:not(.rtx-bottom-dock__header) {
+  height: 26px !important;
+  min-height: 26px !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title,
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .dock-panel__title {
   color: var(--rtx-light-text) !important;
@@ -326,16 +333,21 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-tab:hover {
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-tab--active {
   background: var(--rtx-light-panel) !important;
   color: var(--rtx-light-text) !important;
-  box-shadow: inset 0 -2px 0 var(--rtx-light-accent) !important;
+  box-shadow: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role="tab"] {
   color: var(--rtx-light-text-secondary) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role="tab"][aria-selected="true"] {
+html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role="tab"][aria-selected="true"],
+html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [data-chart-tab-active="true"]:not(:hover) {
   background: var(--rtx-light-selected) !important;
   color: var(--rtx-light-text) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title .rtx-chart-symbol-tab__close {
+  border-right-color: var(--rtx-light-line-border, #64748b) !important;
 }
 
 /* Neutral hover distinguishes pointer feedback from blue selection. */
@@ -480,6 +492,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-i
   .rtx-menu-row:not(.is-disabled):focus-visible,
   .rtx-menu-row.is-open,
   [role="menuitem"]:not(:disabled):not([aria-disabled="true"]):hover,
+  [role="menuitem"]:not(:disabled):not([aria-disabled="true"]).is-active,
+  [role="menuitem"]:not(:disabled):not([aria-disabled="true"])[aria-expanded="true"],
   [role="option"]:not(:disabled):not([aria-disabled="true"]):hover):not(:where(.rtx-desktop-shell .rtx-login-overlay *)) {
   background: var(--rtx-light-accent-soft) !important;
   border-color: transparent !important;
@@ -491,6 +505,19 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-i
   color: var(--rtx-light-text-disabled) !important;
   background: transparent !important;
   opacity: 1 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-context-menu :is(
+  .rtx-context-menu__item[aria-disabled="true"],
+  .rtx-context-menu__item[aria-disabled="true"] .rtx-context-menu__glyph,
+  .rtx-context-menu__item[aria-disabled="true"] .rtx-context-menu__shortcut,
+  .rtx-context-menu__item[aria-disabled="true"] .rtx-context-menu__chevron
+) {
+  color: #94a3b8 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-context-menu .rtx-context-menu__divider {
+  background: #e2e8f0 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-file-menu button.rtx-file-menu__logout[role="menuitem"],
@@ -612,6 +639,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(thead, th):not(.tv-lightwe
   background: var(--rtx-light-panel-header) !important;
   border-color: var(--rtx-light-line-border, #64748b) !important;
   color: var(--rtx-light-text-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   text-transform: none !important;
 }
 
@@ -637,6 +666,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-trade-t
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-bottom-dock__header {
+  height: 28px !important;
+  min-height: 28px !important;
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
@@ -682,7 +713,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-hi
   box-shadow: none !important;
 }
 
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar :is(.rtx-history-time-btn, .rtx-history-refresh-btn) {
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-toolbar :is(.rtx-history-time-btn, .rtx-history-refresh-btn, .rtx-history-toolbar__meta, .rtx-history-toolbar__meta > span) {
   background: transparent !important;
   color: var(--rtx-light-text-secondary) !important;
   box-shadow: none !important;
@@ -726,15 +757,15 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
   background: var(--rtx-light-elevated) !important;
-  color: var(--rtx-light-accent-pressed) !important;
-  box-shadow: inset 0 -2px 0 var(--rtx-light-accent) !important;
+  color: var(--rtx-light-text) !important;
+  box-shadow: none !important;
 }
 
 /* Keep locked tabs readable while distinguishing them from available actions. */
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab-actions {
-  border-left: 1px solid var(--rtx-light-line-border, #64748b) !important;
-  background: var(--rtx-light-panel-subtle) !important;
-  padding-left: 4px !important;
+  border-left: 0 !important;
+  background: transparent !important;
+  padding-left: 0 !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs :is(.rtx-dock-tab-scroller, .rtx-dock-tab-actions) .rtx-dock-tab:disabled {
@@ -764,6 +795,9 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer {
   background: var(--rtx-light-panel-header) !important;
   border-top-color: var(--rtx-light-line-border, #64748b) !important;
   box-shadow: none !important;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-trade-footer-status,
@@ -1577,6 +1611,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch__price,
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud {
+  background: var(--rtx-light-panel, #ffffff) !important;
   line-height: var(--rtx-light-control-line-height) !important;
 }
 
@@ -1633,6 +1668,13 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button {
   color: var(--rtx-light-text-secondary) !important;
   border-radius: 3px !important;
   box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-action-button svg {
+  width: 16px !important;
+  height: 16px !important;
+  stroke-width: 1.15 !important;
+  shape-rendering: geometricPrecision;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row:hover .rtx-trade-action-button,
@@ -2044,6 +2086,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch .price-disp
 /* Every small toolbar has the same control role as the main command bar. */
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-journal-toolbar .rtx-journal-control,
   .rtx-history-toolbar .rtx-history-time-btn,
+  .rtx-history-toolbar .rtx-history-refresh-btn,
+  .rtx-history-toolbar .rtx-history-toolbar__meta > span,
   .rtx-history-time-btn,
   .rtx-cp-shell .rtx-cp-tab,
   .rtx-cp-shell .rtx-cp-btn,
@@ -2314,6 +2358,9 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-alerts-badge > div {
 }
 
 .rtx-history-toolbar__periods {
+  display: flex !important;
+  align-items: center !important;
+  height: 100% !important;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -2324,54 +2371,72 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-alerts-badge > div {
   height: 0 !important;
 }
 
-.rtx-history-toolbar .rtx-history-time-btn {
-  padding: 2px 5px !important;
-  font-size: 11.5px !important;
-  line-height: 16px !important;
+.rtx-history-toolbar :is(.rtx-history-time-btn, .rtx-history-refresh-btn) {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  padding: 0 5px !important;
+  line-height: 20px !important;
+  flex-shrink: 0 !important;
+}
+
+.rtx-history-toolbar .rtx-history-refresh-btn svg {
+  display: block !important;
   flex-shrink: 0 !important;
 }
 
 .rtx-history-toolbar__meta {
   display: flex !important;
   align-items: center !important;
+  height: 100% !important;
   gap: 6px !important;
   flex-shrink: 0 !important;
   white-space: nowrap !important;
 }
 
-/* Professional chart right-click context menu scrollbar & surface */
-.rtx-chart-context-menu {
+.rtx-history-toolbar__meta > span {
+  align-items: center !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  padding: 0 2px !important;
+  line-height: 20px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Professional right-click context menu scrollbar & surface */
+:is(.rtx-chart-context-menu, .rtx-context-menu) {
   scrollbar-width: thin;
   scrollbar-color: rgba(100, 116, 139, 0.42) transparent;
   scroll-behavior: smooth;
 }
 
-.rtx-chart-context-menu::-webkit-scrollbar {
+:is(.rtx-chart-context-menu, .rtx-context-menu)::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 
-.rtx-chart-context-menu::-webkit-scrollbar-button {
+:is(.rtx-chart-context-menu, .rtx-context-menu)::-webkit-scrollbar-button {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
 }
 
-.rtx-chart-context-menu::-webkit-scrollbar-track {
+:is(.rtx-chart-context-menu, .rtx-context-menu)::-webkit-scrollbar-track {
   background: transparent !important;
   margin: 4px 0;
 }
 
-.rtx-chart-context-menu::-webkit-scrollbar-thumb {
+:is(.rtx-chart-context-menu, .rtx-context-menu)::-webkit-scrollbar-thumb {
   background: rgba(100, 116, 139, 0.38) !important;
   border-radius: 999px !important;
 }
 
-.rtx-chart-context-menu::-webkit-scrollbar-thumb:hover {
+:is(.rtx-chart-context-menu, .rtx-context-menu)::-webkit-scrollbar-thumb:hover {
   background: rgba(71, 85, 105, 0.65) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-context-menu {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-chart-context-menu, .rtx-context-menu) {
   border-radius: 6px !important;
   border: 1px solid #cbd5e1 !important;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08) !important;

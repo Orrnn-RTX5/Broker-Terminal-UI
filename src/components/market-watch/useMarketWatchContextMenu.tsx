@@ -265,7 +265,7 @@ export const useMarketWatchContextMenu = ({
       shortcut: 'Ctrl+U',
       action: () => window.dispatchEvent(new CustomEvent('openSymbolsDialog')),
     },
-    { label: 'Sets', submenu: setsSubmenu },
+    { label: 'Sets', icon: <Icon name="folder" size="xs" />, submenu: setsSubmenu },
     {
       label: 'Sort',
       icon: <Icon name="sort" size="xs" />,
@@ -298,14 +298,13 @@ export const useMarketWatchContextMenu = ({
     },
     {
       label: 'Grid',
-      icon: <Icon name="grid-3x3" size="xs" />,
       shortcut: 'G',
       checked: marketWatchOptions.showGrid,
       action: () => setMarketWatchOptions((current) => ({ ...current, showGrid: !current.showGrid })),
       autoClose: false,
     },
     { divider: true },
-    { label: 'Columns', submenu: columnItems },
+    { label: 'Columns', icon: <Icon name="layout" size="xs" />, submenu: columnItems },
   ];
 }, [
   actionableSymbolSet,

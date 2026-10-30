@@ -113,6 +113,8 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid th
   letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-bottom: 1px solid var(--mw-desktop-border-strong, var(--mw-desktop-grid)) !important;
 }
 
@@ -137,6 +139,10 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid th
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid th:not(:first-child) {
   text-align: right;
+}
+
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid th:is(.rtx-market-watch__column-heading--bid, .rtx-market-watch__column-heading--ask) {
+  text-align: center !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__sort-arrow {
@@ -331,25 +337,28 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-ta
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button[aria-selected='true'] {
   margin-top: -1px;
-  height: 24px;
-  border-color: var(--mw-desktop-border-strong, var(--mw-desktop-grid));
-  border-top-color: var(--mw-desktop-row);
-  border-bottom-color: transparent;
+  height: calc(100% + 1px) !important;
+  min-height: calc(100% + 1px) !important;
+  border-top: 1px solid var(--mw-desktop-row) !important;
+  border-left: 1px solid var(--mw-desktop-border-strong, var(--mw-desktop-grid)) !important;
+  border-right: 1px solid var(--mw-desktop-border-strong, var(--mw-desktop-grid)) !important;
+  border-bottom: 0 !important;
   background: var(--mw-desktop-row) !important;
   color: var(--text-primary) !important;
-  box-shadow: inset 0 -2px 0 var(--rtx-light-accent, var(--mw-desktop-selection));
+  box-shadow: none !important;
 }
 
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button:first-child[aria-selected='true'] {
-  border-left-color: transparent;
+  border-left: 0 !important;
 }
 
-html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button + button:not([aria-selected='true'])::before {
+html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button:not([aria-selected='true']) + button:not([aria-selected='true'])::before {
   content: '';
   position: absolute;
   left: -1px;
-  top: 5px;
+  top: 50%;
   height: 11px;
+  transform: translateY(-50%);
   border-left: 1px solid var(--mw-desktop-grid);
 }
 

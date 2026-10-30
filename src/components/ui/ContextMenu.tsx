@@ -38,20 +38,21 @@ const resolveMenuSkin = (variant: ContextMenuVariant): MenuSkin => (
 const menuPanelStyle = (skin: MenuSkin): React.CSSProperties => skin === 'theme' ? ({
   background: 'var(--bg-secondary)',
   borderColor: 'var(--border-secondary)',
-  borderRadius: 4,
+  borderRadius: 6,
   color: 'var(--text-primary)',
   boxShadow: 'var(--shadow-xl)',
 }) : ({
   background: skin === 'light'
-    ? 'rgba(255, 255, 255, 0.98)'
+    ? '#ffffff'
     : 'rgba(20, 21, 26, 0.96)',
-  borderColor: skin === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.10)',
+  borderColor: skin === 'light' ? '#cbd5e1' : 'rgba(255, 255, 255, 0.10)',
+  borderRadius: 6,
   color: 'var(--text-primary)',
   boxShadow: skin === 'light'
-    ? '0 16px 36px -4px rgba(15, 23, 42, 0.14), 0 6px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.85)'
+    ? '0 10px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08)'
     : '0 20px 48px -6px rgba(0, 0, 0, 0.75), 0 8px 20px -3px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
-  backdropFilter: 'blur(16px)',
-  WebkitBackdropFilter: 'blur(16px)',
+  backdropFilter: skin === 'light' ? 'none' : 'blur(16px)',
+  WebkitBackdropFilter: skin === 'light' ? 'none' : 'blur(16px)',
 });
 
 // ============================================================================
@@ -321,11 +322,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
     return (
       <div
         role="separator"
-        className="mx-1.5 my-1 h-px"
+        className="rtx-context-menu__divider mx-1 my-1 h-px"
         style={{
           background: skin === 'theme' ? 'var(--border-secondary)' : skin === 'light'
-            ? 'linear-gradient(90deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.09) 15%, rgba(0,0,0,0.09) 85%, rgba(0,0,0,0.02) 100%)'
-            : 'linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.08) 15%, rgba(255,255,255,0.08) 85%, rgba(255,255,255,0.02) 100%)',
+            ? '#e2e8f0'
+            : 'rgba(255, 255, 255, 0.08)',
         }}
       />
     );
@@ -335,17 +336,21 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const fallbackGlyphColor = skin === 'theme'
     ? (item.disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)')
     : item.disabled
-    ? (skin === 'light' ? 'rgba(0, 0, 0, 0.28)' : 'rgba(255, 255, 255, 0.25)')
+    ? (skin === 'light' ? '#94a3b8' : 'rgba(255, 255, 255, 0.25)')
     : isActive
-      ? (skin === 'light' ? '#0f172a' : '#ffffff')
+      ? (skin === 'light' ? '#1e4788' : '#ffffff')
       : (skin === 'light' ? '#475569' : 'rgba(255, 255, 255, 0.70)');
-  const glyphColor = `var(${item.disabled ? '--rtx-light-text-disabled' : isActive ? '--rtx-light-accent-strong' : '--rtx-light-text-secondary'}, ${fallbackGlyphColor})`;
+  const glyphColor = item.disabled
+    ? fallbackGlyphColor
+    : `var(${isActive ? '--rtx-light-accent-strong' : '--rtx-light-text-secondary'}, ${fallbackGlyphColor})`;
   const fallbackShortcutColor = skin === 'theme' ? 'var(--text-tertiary)' : item.disabled
-    ? (skin === 'light' ? 'rgba(0, 0, 0, 0.25)' : 'rgba(255, 255, 255, 0.20)')
+    ? (skin === 'light' ? '#94a3b8' : 'rgba(255, 255, 255, 0.20)')
     : isActive
-      ? (skin === 'light' ? 'rgba(0, 0, 0, 0.60)' : 'rgba(255, 255, 255, 0.70)')
-      : (skin === 'light' ? 'rgba(0, 0, 0, 0.42)' : 'rgba(255, 255, 255, 0.40)');
-  const shortcutColor = `var(${item.disabled ? '--rtx-light-text-disabled' : '--rtx-light-text-muted'}, ${fallbackShortcutColor})`;
+      ? (skin === 'light' ? '#1e4788' : 'rgba(255, 255, 255, 0.70)')
+      : (skin === 'light' ? '#64748b' : 'rgba(255, 255, 255, 0.42)');
+  const shortcutColor = item.disabled
+    ? fallbackShortcutColor
+    : `var(${isActive ? '--rtx-light-accent-strong' : '--rtx-light-text-muted'}, ${fallbackShortcutColor})`;
 
   const checkmark = (
     <svg
@@ -353,10 +358,10 @@ const MenuItem: React.FC<MenuItemProps> = ({
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2.2}
+      strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ color: item.disabled ? 'var(--rtx-light-text-disabled, inherit)' : `var(--rtx-light-accent, ${skin === 'light' ? '#0284c7' : '#38bdf8'})` }}
+      style={{ color: item.disabled ? fallbackGlyphColor : `var(--rtx-light-accent, ${skin === 'light' ? '#2457a7' : '#38bdf8'})` }}
     >
       <polyline points="3 8.5 6.5 12 13 4.5" />
     </svg>
@@ -367,27 +372,22 @@ const MenuItem: React.FC<MenuItemProps> = ({
     color: skin === 'theme'
       ? (item.disabled ? 'var(--text-tertiary)' : 'var(--text-primary)')
       : item.disabled
-      ? (skin === 'light' ? 'rgba(0, 0, 0, 0.32)' : 'rgba(255, 255, 255, 0.28)')
+      ? (skin === 'light' ? '#94a3b8' : 'rgba(255, 255, 255, 0.28)')
       : isActive
-        ? (skin === 'light' ? '#0f172a' : '#ffffff')
-        : (skin === 'light' ? '#1e293b' : 'rgba(255, 255, 255, 0.90)'),
+        ? (skin === 'light' ? 'var(--rtx-light-accent-strong, #1e4788)' : '#ffffff')
+        : (skin === 'light' ? 'var(--rtx-light-text, #182230)' : 'rgba(255, 255, 255, 0.90)'),
     background: isActive
-      ? (skin === 'theme' ? 'var(--bg-elevated)' : skin === 'light' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)')
+      ? (skin === 'theme' ? 'var(--bg-elevated)' : skin === 'light' ? 'var(--rtx-light-accent-soft, #dce9fa)' : 'rgba(255, 255, 255, 0.08)')
       : 'transparent',
-    boxShadow: isActive && skin !== 'theme'
-      ? (skin === 'light'
-        ? 'inset 0 1px 0 rgba(255,255,255,0.80)'
-        : 'inset 0 1px 0 rgba(255,255,255,0.05)')
-      : undefined,
     borderRadius: 4,
-    cursor: item.disabled ? 'not-allowed' : 'pointer',
+    cursor: item.disabled ? 'default' : 'pointer',
     transition: 'background-color 80ms ease, color 80ms ease',
   };
 
   return (
     <div
       ref={itemRef}
-      className="group relative flex cursor-default select-none items-center px-2 py-0.5 text-[12px] font-medium"
+      className={`rtx-context-menu__item group relative flex cursor-default select-none items-center px-2.5 py-0.5 text-[12px] font-normal${isActive ? ' is-active' : ''}${item.disabled ? ' is-disabled' : ''}`}
       style={rowStyle}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
@@ -407,7 +407,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
       )}
       <span
         className={isCompact
-          ? 'flex w-[18px] shrink-0 items-center justify-center mr-1.5'
+          ? 'flex w-4 shrink-0 items-center justify-center mr-2'
           : 'flex w-5 shrink-0 items-center justify-center mr-2'}
         aria-hidden="true"
       >
@@ -420,12 +420,12 @@ const MenuItem: React.FC<MenuItemProps> = ({
           </span>
         ) : null}
       </span>
-      <span className="min-w-0 flex-1 whitespace-nowrap pr-2 text-[12px] font-medium tracking-[-0.005em] select-none leading-none">
+      <span className="rtx-context-menu__label min-w-0 flex-1 whitespace-nowrap pr-3 text-[12px] font-normal tracking-normal select-none leading-none">
         {tr(item.label)}
       </span>
       {item.shortcut && (
         <span
-          className="rtx-context-menu__shortcut ml-auto whitespace-nowrap pl-4 pr-1 font-mono text-[11px] font-normal tracking-wide tabular-nums select-none leading-none transition-colors"
+          className="rtx-context-menu__shortcut ml-auto whitespace-nowrap pl-6 pr-0.5 text-[11.5px] font-normal tabular-nums select-none leading-none transition-colors"
           style={{ color: shortcutColor }}
         >
           {item.shortcut}
@@ -433,10 +433,10 @@ const MenuItem: React.FC<MenuItemProps> = ({
       )}
       {hasSubmenu && (
         <span
-          className="rtx-context-menu__chevron ml-2 -mr-0.5 flex items-center justify-center transition-opacity"
+          className={`rtx-context-menu__chevron ${item.shortcut ? 'ml-1.5' : 'ml-auto pl-4'} flex items-center justify-center transition-opacity`}
           style={{
             color: glyphColor,
-            opacity: isActive ? 1 : 'var(--rtx-light-icon-opacity, 0.65)',
+            opacity: item.disabled ? 0.5 : isActive ? 1 : 0.75,
           }}
         >
           <Icon name="chevron-right" size="xs" />
@@ -722,7 +722,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
     <>
       <div
         ref={menuRef}
-        className={`fixed w-max min-w-[256px] ${isMultiColumn ? 'max-w-[calc(100vw-16px)] overflow-x-auto' : 'max-w-[min(440px,calc(100vw-16px))] overflow-x-hidden'} max-h-[calc(100vh-16px)] rounded-lg border p-1 text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent shadow-2xl`}
+        className={`rtx-context-menu${density === 'compact' ? ' rtx-context-menu--compact' : ''}${isSubmenu ? ' rtx-context-menu--submenu' : ''} fixed w-max ${density === 'compact' ? 'min-w-[212px]' : 'min-w-[232px]'} ${isMultiColumn ? 'max-w-[calc(100vw-16px)] overflow-x-auto' : 'max-w-[min(440px,calc(100vw-16px))] overflow-x-hidden'} max-h-[calc(100vh-16px)] rounded-[6px] border p-1 text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent shadow-2xl`}
         style={{
           ...menuPanelStyle(panelSkin),
           left: `${adjustedPosition.x}px`,

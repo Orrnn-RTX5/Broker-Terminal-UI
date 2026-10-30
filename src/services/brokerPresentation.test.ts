@@ -168,7 +168,7 @@ describe('broker presentation', () => {
     }
   });
 
-  it('updates the browser tab icon for each broker and restores the app icon when cleared', () => {
+  it('keeps the RTX5 browser tab favicon across all brokers in local and deployment', () => {
     document.querySelectorAll('link[rel~="icon"]').forEach(link => link.remove());
     const icon = document.createElement('link');
     icon.rel = 'icon';
@@ -176,10 +176,11 @@ describe('broker presentation', () => {
     icon.setAttribute('href', '/favicon.png');
     document.head.appendChild(icon);
     applyBrokerChrome({ brokerId: 'broker-a', logoUrl: 'https://broker-a.example/logo.svg' });
-    expect(icon).toHaveAttribute('href', 'https://broker-a.example/logo.svg');
-    expect(icon).not.toHaveAttribute('type');
+    expect(icon).toHaveAttribute('href', '/favicon.png');
+    expect(icon).toHaveAttribute('type', 'image/png');
     applyBrokerChrome({ brokerId: 'broker-b', logoUrl: 'https://broker-b.example/logo.ico' });
-    expect(icon).toHaveAttribute('href', 'https://broker-b.example/logo.ico');
+    expect(icon).toHaveAttribute('href', '/favicon.png');
+    expect(icon).toHaveAttribute('type', 'image/png');
     applyBrokerChrome({});
     expect(icon).toHaveAttribute('href', '/favicon.png');
     expect(icon).toHaveAttribute('type', 'image/png');

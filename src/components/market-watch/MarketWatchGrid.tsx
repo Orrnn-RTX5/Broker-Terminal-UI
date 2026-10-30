@@ -242,7 +242,7 @@ export const MarketWatchGrid = ({
                 return (
                   <th
                     key={column}
-                    className={`rtx-market-watch__column-heading${column === 'symbol' ? ' rtx-market-watch__column-heading--symbol' : ''}`}
+                    className={`rtx-market-watch__column-heading${column === 'symbol' || column === 'bid' || column === 'ask' ? ` rtx-market-watch__column-heading--${column}` : ''}`}
                     onClick={isSortable ? () => setSortMode(sortableMode) : undefined}
                     onKeyDown={isSortable ? (event) => {
                       if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -255,7 +255,11 @@ export const MarketWatchGrid = ({
                       ? (sortMode === 'gainers' || sortMode === 'change-desc' || sortMode === 'volume' ? 'descending' : 'ascending')
                       : 'none'}
                     style={{
-                      textAlign: column === 'symbol' || column === 'source' ? 'left' : 'right',
+                      textAlign: column === 'symbol' || column === 'source'
+                        ? 'left'
+                        : column === 'bid' || column === 'ask'
+                          ? 'center'
+                          : 'right',
                       padding: '0 5px',
                       fontSize: 12,
                       fontWeight: 400,

@@ -111,12 +111,18 @@ describe('chart header symbol tabs', () => {
       },
     };
     render(<ChartSymbolTabs panel={layout.root.children[0]} />);
+    const tabBtn = screen.getByRole('tab', { name: 'XAUUSD M1' });
     const closeBtn = screen.getByRole('button', { name: 'Close XAUUSD tab' });
     const icon = closeBtn.querySelector('svg');
     expect(icon).not.toBeNull();
     expect(icon?.classList.contains('lucide-x')).toBe(true);
     expect(icon?.classList.contains('w-3')).toBe(true);
     expect(icon?.classList.contains('h-3')).toBe(true);
+    expect(tabBtn.className).toContain('h-full');
+    expect(tabBtn.className).toContain('min-h-0');
     expect(closeBtn.className).toContain('text-zinc-400');
+    expect(closeBtn.className).toContain('h-full');
+    expect(closeBtn.className).toContain('min-h-0');
+    expect(closeBtn).toHaveAttribute('data-chart-tab-active', 'true');
   });
 });

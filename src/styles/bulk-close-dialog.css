@@ -95,34 +95,45 @@
 
 /* ─── Summary Stats Bar ─── */
 .rtx-bulk-close-dialog__stats {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   flex-shrink: 0;
-  align-items: center;
+  align-items: stretch;
+  gap: 10px;
   padding: 12px 18px;
-  background: var(--bg-primary);
+  background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-primary);
-  gap: 0;
 }
 
 .rtx-bulk-close-dialog__stat {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  flex: 1;
+  justify-content: space-between;
+  gap: 4px;
   min-width: 0;
+  padding: 9px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
 }
 
 .rtx-bulk-close-dialog__stat-label {
-  font-size: 10px;
+  --rtx-type-size: 11px;
+  --rtx-type-weight: 500;
+  font-size: 11px;
   font-weight: 500;
+  line-height: 14px !important;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
 }
 
 .rtx-bulk-close-dialog__stat-value {
-  font-size: 15px;
-  font-weight: 700;
+  --rtx-type-size: 16px;
+  --rtx-type-weight: 600;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px !important;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -136,41 +147,51 @@
 }
 
 .rtx-bulk-close-dialog__stat-divider {
-  width: 1px;
-  height: 32px;
-  background: var(--border-primary);
-  margin: 0 16px;
-  flex-shrink: 0;
+  display: none;
 }
 
 /* ─── Breakdown Chips ─── */
 .rtx-bulk-close-dialog__breakdown {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  font-size: 13px;
+  min-height: 22px;
 }
 
 .rtx-bulk-close-dialog__breakdown-item {
+  --rtx-type-size: 12px;
+  --rtx-type-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 18px !important;
   font-variant-numeric: tabular-nums;
 }
 
 .rtx-bulk-close-dialog__breakdown-item--profit {
   color: var(--color-profit);
+  background: var(--color-profit-dimmer);
+  border: 1px solid var(--color-profit-dim);
 }
 
 .rtx-bulk-close-dialog__breakdown-item--loss {
   color: var(--color-loss);
+  background: var(--color-loss-dimmer);
+  border: 1px solid var(--color-loss-dim);
 }
 
 .rtx-bulk-close-dialog__breakdown-item--neutral {
   color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
 }
 
 .rtx-bulk-close-dialog__breakdown-sep {
-  color: var(--text-secondary);
-  font-size: 11px;
+  display: none;
 }
 
 /* ─── Position Preview Table ─── */
@@ -437,6 +458,17 @@ html.rtx-skin-untitled-light .rtx-bulk-close-backdrop {
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-backdrop .rtx-bulk-close-dialog {
   background: var(--rtx-light-elevated) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-dialog__stats {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #dde4ed !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-dialog__stat {
+  background: #ffffff !important;
+  border: 1px solid #d5dee9 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bulk-close-dialog__btn-confirm,

@@ -399,7 +399,8 @@ return (
 
         return isAdvancedUntitledLight ? (
           <div className="rtx-chart-hud" style={{
-            position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
+            position: 'absolute', top: 6, left: 6, zIndex: 28, pointerEvents: 'none',
+            background: chartTheme.background, padding: '2px 6px', borderRadius: '3px',
             fontFamily: 'var(--font-sans)', fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', lineHeight: '16px', letterSpacing: 'normal',
             display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'
           }}>
@@ -442,7 +443,8 @@ return (
           </div>
         ) : (
           <div className="rtx-chart-hud" style={{
-            position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
+            position: 'absolute', top: 6, left: 6, zIndex: 28, pointerEvents: 'none',
+            background: chartTheme.background, padding: '2px 6px', borderRadius: '3px',
             fontFamily: 'var(--font-mono)', fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', lineHeight: '16px', color: chartTheme.axisText,
             textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'
           }}>
@@ -564,7 +566,7 @@ return (
           whiteSpace: 'nowrap',
           pointerEvents: 'none',
           zIndex: 13,
-          borderRadius: 0,
+          borderRadius: '3px',
           transform: 'translateY(-50%)',
           letterSpacing: 0,
           textAlign: 'center',

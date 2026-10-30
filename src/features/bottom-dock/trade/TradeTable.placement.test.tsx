@@ -351,6 +351,15 @@ describe('Trade row updates', () => {
     expect(doubleBtn).toHaveClass('rtx-trade-double-button', 'bg-[#383d48]');
     expect(closeBtn).toHaveClass('rtx-trade-close-button', 'bg-[#383d48]', 'hover:bg-[#dc2626]');
 
+    for (const btn of [shareBtn, reverseBtn, doubleBtn, closeBtn]) {
+      const svg = btn.querySelector('svg');
+      expect(svg).not.toBeNull();
+      expect(svg).toHaveAttribute('width', '16');
+      expect(svg).toHaveAttribute('height', '16');
+      expect(svg).toHaveAttribute('viewBox', '0 0 16 16');
+      expect(svg).toHaveAttribute('stroke-width', '1.15');
+    }
+
     const actionEvents: Array<{ action: string; ticket: number; symbol: string }> = [];
     const feedbackEvents: Event[] = [];
     const onChartPositionAction = (event: Event) => {

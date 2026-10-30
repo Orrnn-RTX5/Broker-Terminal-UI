@@ -22,12 +22,14 @@ import type {
   ChartPostInteractionCoordinator,
 } from '../../../utils/chartPostInteractionCoordinator';
 import {
+  buildTradeHistoryLineCandleMask,
   getTradePlotClipLayer,
   layoutTradeControls,
   placeTradeMarkerTooltip,
   TRADE_LEVEL_OVERRIDES_STORAGE_KEY,
   TRADE_MARKER_TIP_OFFSET_PX,
   tradeMarkerTooltipLayouts,
+  type TradeHistoryCandleSubRect,
   type TradeSide,
 } from '../presentation/tradeOverlayPresentation';
 import { useTradingChartTradeLevelDrag } from './useTradingChartTradeLevelDrag';
@@ -493,6 +495,88 @@ export const useTradingChartTradeRuntime = ({
       return getTradeHistoryMarkerPrice(node.markerSide, node.price, tradeMarkerCandles.get(markerTime));
     };
 
+    const candleBodyRectCache = new Map<number, TradeHistoryCandleSubRect | null>();
+    let cachedHalfBodyWidth: number | null = null;
+    const resolveHalfBodyWidth = (sampleIndex: number): number => {
+      if (cachedHalfBodyWidth != null) return cachedHalfBodyWidth;
+      const candles = candlesRef.current;
+      let barSpacing = 0;
+      const idxA = Math.max(0, Math.min(sampleIndex, candles.length - 2));
+      if (idxA >= 0 && idxA + 1 < candles.length) {
+        const cxA = chart.timeScale().timeToCoordinate(candles[idxA].time as Time);
+        const cxB = chart.timeScale().timeToCoordinate(candles[idxA + 1].time as Time);
+        if (cxA != null && cxB != null && Math.abs(cxB - cxA) > 0.5) {
+          barSpacing = Math.abs(cxB - cxA);
+        }
+      }
+      if (!(barSpacing > 0.5)) {
+        const timeScaleWithOptions = chart.timeScale() as { options?: () => { barSpacing?: number } };
+        barSpacing = Number(timeScaleWithOptions.options?.()?.barSpacing) || 8;
+      }
+      cachedHalfBodyWidth = Math.max(2.5, barSpacing * 0.42 + 0.75);
+      return cachedHalfBodyWidth;
+    };
+    const resolveCandleBodyRect = (candle: Candle, sampleIndex: number): TradeHistoryCandleSubRect | null => {
+      if (candleBodyRectCache.has(candle.time)) {
+        return candleBodyRectCache.get(candle.time) ?? null;
+      }
+      const cx = chart.timeScale().timeToCoordinate(candle.time as Time);
+      const openY = series.priceToCoordinate(candle.open);
+      const closeY = series.priceToCoordinate(candle.close);
+      if (cx == null || openY == null || closeY == null) {
+        candleBodyRectCache.set(candle.time, null);
+        return null;
+      }
+      const halfWidth = resolveHalfBodyWidth(sampleIndex);
+      const rect: TradeHistoryCandleSubRect = {
+        left: cx - halfWidth,
+        right: cx + halfWidth,
+        top: Math.min(openY, closeY) - 1,
+        bottom: Math.max(openY, closeY) + 1,
+      };
+      candleBodyRectCache.set(candle.time, rect);
+      return rect;
+    };
+    const collectSegmentCandleBodyRects = (startTime: number, endTime: number): TradeHistoryCandleSubRect[] => {
+      const candles = candlesRef.current;
+      const minTime = Math.min(startTime, endTime);
+      const maxTime = Math.max(startTime, endTime);
+      const rects: TradeHistoryCandleSubRect[] = [];
+      if (candles.length > 0) {
+        let lo = 0;
+        let hi = candles.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (candles[mid].time < minTime) lo = mid + 1;
+          else hi = mid;
+        }
+        const startIdx = Math.max(0, lo - 1);
+        lo = startIdx;
+        hi = candles.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (candles[mid].time <= maxTime) lo = mid + 1;
+          else hi = mid;
+        }
+        const endIdx = Math.min(candles.length - 1, lo);
+        for (let idx = startIdx; idx <= endIdx; idx++) {
+          const rect = resolveCandleBodyRect(candles[idx], idx);
+          if (rect) rects.push(rect);
+        }
+      }
+      const liveCandle = currentCandleRef.current;
+      if (liveCandle && !candleBodyRectCache.has(liveCandle.time)) {
+        const rect = resolveCandleBodyRect(liveCandle, Math.max(0, candles.length - 1));
+        if (rect) rects.push(rect);
+      } else if (liveCandle) {
+        const cachedLive = candleBodyRectCache.get(liveCandle.time);
+        if (cachedLive && (candles.length === 0 || candles[candles.length - 1].time !== liveCandle.time)) {
+          rects.push(cachedLive);
+        }
+      }
+      return rects;
+    };
+
     for (const { nodes, data } of overlayLayers) {
       for (let i = 0; i < nodes.length; i++) {
         const el = nodes[i];
@@ -625,6 +709,17 @@ export const useTradingChartTradeRuntime = ({
             el.style.width = `${geometry.width}px`;
             el.style.transform = `rotate(${geometry.angleDeg}deg)`;
             el.style.transformOrigin = isHistoryLine ? '0 50%' : '0 0';
+            if (isHistoryLine && x1 != null && y1 != null && x2 != null && y2 != null) {
+              const maskImage = buildTradeHistoryLineCandleMask(
+                x1,
+                y1,
+                x2,
+                y2,
+                collectSegmentCandleBodyRects(node.time, endTime),
+              );
+              el.style.maskImage = maskImage;
+              el.style.webkitMaskImage = maskImage;
+            }
             continue;
           }
 

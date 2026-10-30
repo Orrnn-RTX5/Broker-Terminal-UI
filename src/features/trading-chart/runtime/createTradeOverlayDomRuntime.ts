@@ -174,12 +174,12 @@ export const createTradeOverlayDomRuntime = ({
     };
 
     const createArrowSvg = (side: TradeSide) => {
-      // MT5-style execution chevrons: blue for BUY fills, red for SELL fills.
+      // MT5-style filled execution arrows with crisp white outline: blue for BUY fills, red for SELL fills.
       const color = side === 'BUY' ? '#2962ff' : '#f23645';
       const path = side === 'BUY'
-        ? 'M3 7 7 3l4 4M3 11l4-4 4 4M7 8v9'
-        : 'M3 13l4 4 4-4M3 9l4 4 4-4M7 3v9';
-      return `<svg width="14" height="20" viewBox="0 0 14 20" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="${path}" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+        ? 'M6 1L10.5 6H7.75V10.5H4.25V6H1.5Z'
+        : 'M6 11L1.5 6H4.25V1.5H7.75V6H10.5Z';
+      return `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="${path}" fill="${color}" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round" paint-order="stroke fill"/></svg>`;
     };
 
     const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, layer: TradeOverlayLayer, opacity = 1, resolveTime?: () => number | null, lifecycle: 'open' | 'close' = 'open', historyPositionSide: TradeSide = side, executionTime = time) => {
@@ -188,11 +188,11 @@ export const createTradeOverlayDomRuntime = ({
       marker.dataset.tradeLifecycle = lifecycle;
       if (layer === 'active') marker.title = title;
       const isHistoryMarker = layer === 'history';
-      const markerWidth = 14;
-      const markerHeight = 20;
+      const markerWidth = 12;
+      const markerHeight = 12;
       marker.innerHTML = createArrowSvg(side);
       marker.style.cssText = `position:absolute;display:none;width:${markerWidth}px;height:${markerHeight}px;z-index:${isHistoryMarker ? 20 : 16};pointer-events:none;opacity:${opacity};filter:none;`;
-      appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? -3 : 3 }, layer);
+      appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? -1 : 1 }, layer);
 
       if (layer !== 'history') return;
 
@@ -267,7 +267,7 @@ export const createTradeOverlayDomRuntime = ({
       hoverTarget.appendChild(tooltip);
       appendHistoryInteractionNode(
         hoverTarget,
-        { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? -3 : 3 },
+        { kind: 'marker', price, time, markerSide: side, resolveTime, markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? -1 : 1 },
       );
     };
 
@@ -282,7 +282,7 @@ export const createTradeOverlayDomRuntime = ({
     ) => {
       const line = document.createElement('div');
       line.className = 'rtx-trade-history-line';
-      line.style.cssText = `position:absolute;display:none;height:1px;background:${color};border:0;border-radius:999px;z-index:17;pointer-events:none;opacity:${clampAlpha(opacity)};transform-origin:0 50%;will-change:transform,width;`;
+      line.style.cssText = `position:absolute;display:none;height:0.75px;background-image:repeating-linear-gradient(to right, ${color} 0 3px, transparent 3px 5px);background-repeat:repeat-x;border:0;z-index:17;pointer-events:none;opacity:${clampAlpha(opacity)};transform-origin:0 50%;will-change:transform,width;`;
       appendOverlayNode(line, {
         kind: 'segment',
         price,
@@ -447,7 +447,7 @@ export const createTradeOverlayDomRuntime = ({
         [TRADE_PENDING_SELL_LINE_COLOR]: LIGHT_CHART_TRADE_COLORS.pendingSell,
       };
       const axisColor = lightSurface ? (lightEntryColors[color] ?? color) : color;
-      const borderColor = colorWithAlpha(axisColor, lightSurface ? 0.38 : 0.48, axisColor);
+      const borderColor = lightSurface ? axisColor : colorWithAlpha(axisColor, 0.48, axisColor);
       const background = chartThemeRef.current.background ?? (lightSurface ? '#fafbfc' : '#000000');
       badge.style.cssText = `position:absolute;display:none;right:0;height:18px;align-items:center;justify-content:center;padding:0 6px;box-sizing:border-box;border:1px solid ${borderColor};border-radius:3px;background-color:${background};background-image:none;color:${axisColor};font-family:${CHART_AXIS_FONT_FAMILY};font-size:12px;font-weight:600;line-height:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;transform:translateY(-50%);pointer-events:none;z-index:8;`;
       badge.style.setProperty('--rtx-type-size', '12px');

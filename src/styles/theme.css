@@ -230,8 +230,8 @@ body {
 /* === Primary chart command strip === */
 .rtx-toolbar-command-cluster {
   --rtx-toolbar-control-width: 36px;
-  --rtx-toolbar-item-gap: 8px;
-  --rtx-toolbar-group-gap: 20px;
+  --rtx-toolbar-item-gap: 10px;
+  --rtx-toolbar-group-gap: 10px;
   gap: var(--rtx-toolbar-group-gap);
   padding-inline: 12px;
 }
@@ -245,11 +245,11 @@ body {
 .rtx-toolbar-group,
 .rtx-timeframe-strip {
   flex-shrink: 0;
-  gap: var(--rtx-toolbar-item-gap, 8px);
+  gap: var(--rtx-toolbar-item-gap, 10px);
 }
 
 .rtx-toolbar-group--trading {
-  gap: var(--rtx-toolbar-item-gap, 8px);
+  gap: var(--rtx-toolbar-item-gap, 10px);
 }
 
 .rtx-toolbar-command-cluster .rtx-toolbar-icon-button,
@@ -261,6 +261,9 @@ body {
 }
 
 .rtx-timeframe-strip .rtx-timeframe-option {
+  flex: 0 0 auto;
+  width: auto;
+  padding-inline: 8px;
   font-family: "Segoe UI", Tahoma, Arial, sans-serif;
   font-size: 13px;
   font-weight: var(--font-weight-normal);
@@ -299,8 +302,8 @@ body {
 
 @media (max-width: 1280px) {
   .rtx-toolbar-command-cluster {
-    --rtx-toolbar-item-gap: 4px;
-    --rtx-toolbar-group-gap: 12px;
+    --rtx-toolbar-item-gap: 8px;
+    --rtx-toolbar-group-gap: 8px;
   }
 }
 
@@ -365,6 +368,11 @@ body {
   line-height: 1;
   padding: 0 10px;
   white-space: nowrap;
+}
+
+.rtx-toolbar-command-cluster .rtx-toolbar-action--last-symbol {
+  gap: 8px;
+  padding-inline: 8px;
 }
 
 .rtx-toolbar-action__icon {
@@ -836,7 +844,8 @@ textarea {
 }
 
 .rtx-application-menu__brand-logo {
-  border-radius: 3px;
+  background-color: #27272d;
+  border-radius: 4px;
   flex: 0 0 auto;
   height: 20px;
   object-fit: contain;

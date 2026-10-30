@@ -10,6 +10,7 @@ import { ChartSymbolDropdown } from './components/ChartSymbolDropdown';
 import { translateUi } from './hooks/useUiTranslation';
 import { feedbackLabel, feedbackValue, feedbackSymbol, type UiMessage } from './utils/uiFeedback';
 import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { WelcomeTerminal } from './startup/WelcomeTerminalEntry';
 import { isElectronRuntime } from './config/backendTarget.js';
 import {
@@ -1748,16 +1749,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       ?? { symbol }
   )), [allSymbols, chartEligibleSymbolNames]);
   useEffect(() => { setChartSymbolPicker(null); }, [isAuthenticated, accountId]);
-  // One feedback toast at a time. Each message gets a fresh id so the toast
-  // remounts and restarts its full lifetime; the toast owns its own timer so
-  // it can pause while the trader hovers or focuses it.
-  const [feedbackToast, setFeedbackToast] = useState<{
+  // Concurrent feedback toasts stack vertically at the bottom-left of the chart.
+  // Each message gets a fresh id so it owns its own lifetime timer.
+  const [feedbackToasts, setFeedbackToasts] = useState<Array<{
     id: number;
     message: UiMessage;
     notice?: ActionFeedbackNotice;
     type: ActionFeedbackType;
     report?: PositionCloseReport;
-  } | null>(null);
+  }>>([]);
   const feedbackToastSeqRef = useRef(0);
 
   const displayToast = useCallback((
@@ -1767,11 +1767,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     notice?: ActionFeedbackNotice,
   ) => {
     feedbackToastSeqRef.current += 1;
-    setFeedbackToast({ id: feedbackToastSeqRef.current, message, notice, type, report });
+    const nextToast = { id: feedbackToastSeqRef.current, message, notice, type, report };
+    setFeedbackToasts((current) => [
+      ...current.filter((item) => (!report || !item.report) && (!notice || !item.notice)).slice(-4),
+      nextToast,
+    ]);
   }, []);
 
   const dismissFeedbackToast = useCallback((id: number) => {
-    setFeedbackToast((current) => (current?.id === id ? null : current));
+    setFeedbackToasts((current) => current.filter((item) => item.id !== id));
   }, []);
 
   useEffect(() => {
@@ -2203,17 +2207,28 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           ))}
 
           {/* Compact action notices; successful position closes intentionally stay silent. */}
-          {feedbackToast && (
-            <ActionFeedbackToast
-              key={feedbackToast.id}
-              durationMs={resolveActionFeedbackDurationMs(feedbackToast.type, feedbackToast.report)}
-              message={feedbackToast.message}
-              notice={feedbackToast.notice}
-              onDismiss={() => dismissFeedbackToast(feedbackToast.id)}
-              report={feedbackToast.report}
-              tone={resolveActionFeedbackTone(feedbackToast.type, feedbackToast.report)}
-            />
-          )}
+          {feedbackToasts.length > 0 && (() => {
+            const chartHost = typeof document !== 'undefined'
+              ? (document.querySelector('.rtx-chart-panel[data-chart-panel-active="true"]')
+                ?? document.querySelector('.rtx-chart-panel'))
+              : null;
+            const toastStack = (
+              <div className="rtx-action-feedback-stack">
+                {feedbackToasts.map((feedbackToast) => (
+                  <ActionFeedbackToast
+                    key={feedbackToast.id}
+                    durationMs={resolveActionFeedbackDurationMs(feedbackToast.type, feedbackToast.report)}
+                    message={feedbackToast.message}
+                    notice={feedbackToast.notice}
+                    onDismiss={() => dismissFeedbackToast(feedbackToast.id)}
+                    report={feedbackToast.report}
+                    tone={resolveActionFeedbackTone(feedbackToast.type, feedbackToast.report)}
+                  />
+                ))}
+              </div>
+            );
+            return chartHost ? createPortal(toastStack, chartHost) : toastStack;
+          })()}
 
           {/* Last Symbol Trading Panel */}
           {lastSymbolPanelVisible && (
@@ -2224,7 +2239,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
           {/* Notification Toast Container */}
           <ToastContainer
-            avoidActionFeedback={Boolean(feedbackToast && !feedbackToast.report && !feedbackToast.notice)}
+            avoidActionFeedback={false}
             notifications={activeToasts}
           />
 

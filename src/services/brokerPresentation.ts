@@ -36,7 +36,7 @@ const ABSOLUTE_ASSET_URL = /^(?:https?:|data:|blob:)/i;
 export const DEFAULT_LOGIN_TITLE = NEUTRAL_TERMINAL_TITLE;
 const originalFavicons = new WeakMap<HTMLLinkElement, { href: string; type: string | null }>();
 
-const updateBrokerFavicon = (logoUrl: string): void => {
+const updateBrokerFavicon = (): void => {
   let favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
   if (!favicon) {
     favicon = document.createElement('link');
@@ -49,10 +49,8 @@ const updateBrokerFavicon = (logoUrl: string): void => {
     originalFavicons.set(favicon, { href: favicon.getAttribute('href') || './favicon.png', type: favicon.getAttribute('type') });
   }
   const original = originalFavicons.get(favicon)!;
-  const nextHref = logoUrl || original.href;
-  if (favicon.getAttribute('href') !== nextHref) favicon.setAttribute('href', nextHref);
-  // Brokers can provide PNG, SVG or ICO; let the browser detect their format.
-  if (logoUrl || original.type === null) favicon.removeAttribute('type');
+  if (favicon.getAttribute('href') !== original.href) favicon.setAttribute('href', original.href);
+  if (original.type === null) favicon.removeAttribute('type');
   else favicon.setAttribute('type', original.type);
 };
 
@@ -217,7 +215,7 @@ export const applyBrokerChrome = (
   };
 
   if (typeof document === 'undefined') return currentChrome;
-  updateBrokerFavicon(currentChrome.logoUrl);
+  updateBrokerFavicon();
 
   const root = document.documentElement;
   if (currentChrome.brokerId) root.setAttribute('data-broker-id', currentChrome.brokerId);

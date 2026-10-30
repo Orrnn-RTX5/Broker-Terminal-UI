@@ -111,20 +111,18 @@ export const getTradeHistoryExecutionSide = (
     : positionSide === 'BUY' ? 'SELL' : 'BUY'
 );
 
-/** Anchors execution markers to the trade price point on their candle. */
+/** Anchors execution markers to the exact trade price point on their candle. */
 export const getTradeHistoryMarkerPrice = (
   executionSide: TradeHistoryPositionSide,
   executionPrice: number,
   candle?: { high: number; low: number } | null,
 ): number => {
+  if (Number.isFinite(executionPrice) && executionPrice > 0) {
+    return executionPrice;
+  }
   const hasCandleRange = candle != null
     && Number.isFinite(candle.low)
     && Number.isFinite(candle.high);
-  if (hasCandleRange && Number.isFinite(executionPrice) && executionPrice > 0) {
-    const low = Math.min(candle.low, candle.high);
-    const high = Math.max(candle.low, candle.high);
-    return Math.min(high, Math.max(low, executionPrice));
-  }
   if (hasCandleRange) {
     return executionSide === 'BUY' ? candle.low : candle.high;
   }

@@ -22,16 +22,42 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   background: rgb(32 36 42 / 22%);
 }
 
+.rtx-action-feedback-stack {
+  position: fixed;
+  inset-block-end: max(36px, env(safe-area-inset-bottom));
+  inset-inline-start: max(12px, env(safe-area-inset-left));
+  z-index: calc(var(--z-tooltip, 1070) + 1);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: max-content;
+  max-width: min(440px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.rtx-chart-panel > .rtx-action-feedback-stack {
+  position: absolute;
+  inset-block-end: 32px;
+  inset-inline-start: 10px;
+  max-width: min(440px, calc(100% - 20px));
+}
+
 .rtx-action-feedback-region {
   position: fixed;
-  /* Keep action receipts below the 40px web command bar. */
-  inset-block-start: max(52px, env(safe-area-inset-top));
-  inset-inline-end: max(14px, env(safe-area-inset-right));
+  inset-block-end: max(36px, env(safe-area-inset-bottom));
+  inset-inline-start: max(12px, env(safe-area-inset-left));
   z-index: calc(var(--z-tooltip, 1070) + 1);
   width: max-content;
-  min-width: min(320px, calc(100vw - 28px));
-  max-width: min(460px, calc(100vw - 28px));
+  max-width: min(440px, calc(100vw - 24px));
   pointer-events: none;
+}
+
+.rtx-action-feedback-stack > .rtx-action-feedback-region:not(.rtx-action-feedback-region--center):not(.rtx-action-feedback-region--notice-center) {
+  position: relative;
+  inset: auto;
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* The legacy notification stack shares this corner. Keep it below terminal
@@ -79,9 +105,9 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
 /* ── Shared surface ─────────────────────────────────────────────────────── */
 
 .rtx-action-feedback {
-  --rtx-action-feedback-accent: var(--color-info);
-  --rtx-action-feedback-accent-text: var(--rtx-action-feedback-accent);
-  --rtx-action-feedback-accent-soft: var(--color-info-dim);
+  --rtx-action-feedback-accent: #64748b;
+  --rtx-action-feedback-accent-text: #94a3b8;
+  --rtx-action-feedback-accent-soft: rgba(148, 163, 184, 0.10);
   --rtx-action-feedback-muted: color-mix(in srgb, var(--text-primary) 72%, var(--bg-elevated));
   --rtx-af-text-xs: calc(var(--rtx-ui-font-size, 14px) - 3px);
   --rtx-af-text-sm: calc(var(--rtx-ui-font-size, 14px) - 2px);
@@ -98,11 +124,9 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   overflow: hidden;
   padding: 14px 11px 14px 15px;
   color: var(--text-primary);
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--rtx-action-feedback-accent) 5%, transparent), transparent 42%),
-    var(--bg-elevated);
-  border: 1px solid color-mix(in srgb, var(--border-secondary) 88%, var(--rtx-action-feedback-accent));
-  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
   box-shadow: var(--shadow-xl);
   pointer-events: auto;
   isolation: isolate;
@@ -113,51 +137,50 @@ html.rtx-skin-untitled-light .rtx-action-feedback-backdrop {
   animation: rtx-action-feedback-exit 160ms ease-in both;
 }
 
-/* Status edge: a crisp institutional accent rule on the leading edge. */
+/* Status edge: crisp 3px accent bar on the leading edge. */
 .rtx-action-feedback::before {
   content: '';
   position: absolute;
   inset-block: 0;
   inset-inline-start: 0;
   width: 3px;
-  background: var(--rtx-action-feedback-accent-text);
+  background: var(--rtx-action-feedback-accent);
 }
 
 .rtx-action-feedback:not(.rtx-action-feedback--report) {
-  grid-template-columns: 28px minmax(0, 1fr) 22px;
-  column-gap: 11px;
+  grid-template-columns: 22px minmax(0, 1fr) 20px;
+  column-gap: 9px;
   align-items: center;
-  padding: 9px 11px 11px 14px;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--rtx-action-feedback-accent) 9%, transparent) 0%, transparent 48%),
-    color-mix(in srgb, var(--bg-secondary, #141820) 94%, #0b0e14);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid color-mix(in srgb, var(--border-secondary) 76%, var(--rtx-action-feedback-accent));
-  border-radius: 6px;
+  min-height: 34px;
+  padding: 6px 9px 6px 12px;
+  background: linear-gradient(180deg, #1e232d 0%, #171b24 100%);
+  border: 1px solid #2e3646;
+  border-radius: 5px;
   box-shadow:
-    0 14px 32px -8px rgb(0 0 0 / 0.68),
-    0 0 0 1px rgb(255 255 255 / 0.04) inset;
+    0 4px 14px rgba(0, 0, 0, 0.42),
+    0 1px 3px rgba(0, 0, 0, 0.28);
 }
 
 .rtx-action-feedback-region--notice-center .rtx-action-feedback:not(.rtx-action-feedback--report) {
+  grid-template-columns: 24px minmax(0, 1fr) 22px;
+  column-gap: 10px;
   align-items: start;
-  padding: 13px 12px 14px 15px;
+  padding: 12px 12px 13px 14px;
+  border-radius: 6px;
 }
 
 html.rtx-skin-untitled-light .rtx-action-feedback:not(.rtx-action-feedback--report) {
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--rtx-action-feedback-accent) 7%, transparent) 0%, transparent 48%),
-    var(--bg-elevated);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #cbd5e1;
   box-shadow:
-    0 12px 28px -8px rgb(16 24 40 / 0.18),
-    0 2px 6px -1px rgb(16 24 40 / 0.08);
+    0 4px 12px rgba(15, 23, 42, 0.10),
+    0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .rtx-action-feedback--success {
-  --rtx-action-feedback-accent: #10b981;
-  --rtx-action-feedback-accent-text: #34d399;
-  --rtx-action-feedback-accent-soft: rgb(16 185 129 / 0.14);
+  --rtx-action-feedback-accent: #3b82f6;
+  --rtx-action-feedback-accent-text: #60a5fa;
+  --rtx-action-feedback-accent-soft: rgba(59, 130, 246, 0.14);
 }
 
 .rtx-action-feedback--report.rtx-action-feedback--success {
@@ -169,26 +192,33 @@ html.rtx-skin-untitled-light .rtx-action-feedback:not(.rtx-action-feedback--repo
 .rtx-action-feedback--loss,
 .rtx-action-feedback--error {
   --rtx-action-feedback-accent: var(--color-loss);
+  --rtx-action-feedback-accent-text: var(--color-loss);
   --rtx-action-feedback-accent-soft: var(--color-loss-dimmer);
 }
 
 .rtx-action-feedback--warning {
   --rtx-action-feedback-accent: var(--color-warning);
+  --rtx-action-feedback-accent-text: var(--color-warning);
   --rtx-action-feedback-accent-soft: var(--color-warning-dim);
 }
 
-/* Bright quote colors need darker semantic variants when used as small text
-   on the light toast surface. */
+/* Light theme institutional variants */
 html.rtx-skin-untitled-light .rtx-action-feedback--success {
-  --rtx-action-feedback-accent-text: #027a48;
+  --rtx-action-feedback-accent: #2563eb;
+  --rtx-action-feedback-accent-text: #2563eb;
+  --rtx-action-feedback-accent-soft: #eff6ff;
 }
 
 html.rtx-skin-untitled-light :is(.rtx-action-feedback--loss, .rtx-action-feedback--error) {
-  --rtx-action-feedback-accent-text: #b42318;
+  --rtx-action-feedback-accent: #dc2626;
+  --rtx-action-feedback-accent-text: #b91c1c;
+  --rtx-action-feedback-accent-soft: #fef2f2;
 }
 
 html.rtx-skin-untitled-light .rtx-action-feedback--warning {
-  --rtx-action-feedback-accent-text: #b54708;
+  --rtx-action-feedback-accent: #d97706;
+  --rtx-action-feedback-accent-text: #b45309;
+  --rtx-action-feedback-accent-soft: #fffbeb;
 }
 
 /* A close at exactly 0.00 is neither a win nor a loss. */
@@ -200,27 +230,42 @@ html.rtx-skin-untitled-light .rtx-action-feedback--warning {
 .rtx-action-feedback__icon {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   color: var(--rtx-action-feedback-accent-text);
   background: var(--rtx-action-feedback-accent-soft);
-  border: 1px solid color-mix(in srgb, var(--rtx-action-feedback-accent) 32%, transparent);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--rtx-action-feedback-accent) 24%, transparent);
+  border-radius: 4px;
+}
+
+.rtx-action-feedback__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.rtx-action-feedback-region--notice-center .rtx-action-feedback__icon {
+  width: 24px;
+  height: 24px;
 }
 
 .rtx-action-feedback__dismiss {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   margin: 0;
   padding: 0;
   color: var(--text-secondary);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: 4px;
   cursor: pointer;
   transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.rtx-action-feedback__dismiss svg {
+  width: 12px;
+  height: 12px;
 }
 
 .rtx-action-feedback__dismiss:hover {
@@ -246,16 +291,20 @@ html.rtx-skin-untitled-light .rtx-action-feedback--warning {
 }
 
 .rtx-action-feedback__meta {
-  --rtx-type-size: 10.5px;
-  --rtx-type-weight: 700;
-  display: flex;
+  --rtx-type-size: 10px;
+  --rtx-type-weight: 500;
+  display: none;
   align-items: center;
   gap: 6px;
   min-width: 0;
   margin: 0 0 2px;
-  line-height: 14px;
-  letter-spacing: 0.07em;
+  line-height: 13px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.rtx-action-feedback-region--notice-center .rtx-action-feedback__meta {
+  display: flex;
 }
 
 .rtx-action-feedback__status {
@@ -264,19 +313,19 @@ html.rtx-skin-untitled-light .rtx-action-feedback--warning {
 }
 
 .rtx-action-feedback__time {
-  --rtx-type-size: 11px;
+  --rtx-type-size: 10px;
   --rtx-type-weight: 400;
   flex: 0 0 auto;
   margin-inline-start: auto;
   padding-inline-start: 8px;
-  color: var(--rtx-action-feedback-muted);
+  color: var(--text-secondary);
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
 }
 
 .rtx-action-feedback__title {
-  --rtx-type-size: var(--rtx-af-text-md);
-  --rtx-type-weight: 600;
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 500;
   margin: 0;
   color: var(--text-primary);
   line-height: 18px;
@@ -771,14 +820,19 @@ html .rtx-action-feedback .rtx-action-feedback__table tr.is-rejected td {
 /* ── Lifetime ───────────────────────────────────────────────────────────── */
 
 .rtx-action-feedback__lifetime {
+  display: none;
   position: absolute;
-  inset-inline: 2px 0;
+  inset-inline: 0;
   inset-block-end: 0;
-  height: 2px;
+  height: 1.5px;
   background: var(--rtx-action-feedback-accent);
-  opacity: 0.6;
+  opacity: 0.45;
   transform-origin: left center;
   animation: rtx-action-feedback-lifetime var(--rtx-action-feedback-duration, 5000ms) linear forwards;
+}
+
+.rtx-action-feedback-region--notice-center .rtx-action-feedback__lifetime {
+  display: block;
 }
 
 .rtx-action-feedback--report .rtx-action-feedback__lifetime {
@@ -791,13 +845,13 @@ html .rtx-action-feedback .rtx-action-feedback__table tr.is-rejected td {
 }
 
 @keyframes rtx-action-feedback-enter {
-  from { opacity: 0; transform: translate3d(0, -8px, 0) scale(0.985); }
+  from { opacity: 0; transform: translate3d(0, 6px, 0) scale(0.99); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
 @keyframes rtx-action-feedback-exit {
   from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-  to { opacity: 0; transform: translate3d(8px, -2px, 0) scale(0.985); }
+  to { opacity: 0; transform: translate3d(-6px, 2px, 0) scale(0.99); }
 }
 
 @keyframes rtx-action-feedback-dialog-in {
@@ -826,8 +880,9 @@ html .rtx-action-feedback .rtx-action-feedback__table tr.is-rejected td {
 }
 
 @media (max-width: 480px) {
+  .rtx-action-feedback-stack,
   .rtx-action-feedback-region:not(.rtx-action-feedback-region--center):not(.rtx-action-feedback-region--notice-center) {
-    inset-block-start: max(48px, env(safe-area-inset-top));
+    inset-block-end: max(32px, env(safe-area-inset-bottom));
     inset-inline: 8px;
     width: auto;
   }
@@ -885,13 +940,8 @@ html .rtx-action-feedback .rtx-action-feedback__table tr.is-rejected td {
 }
 
 /* Desktop: the frameless window's 36px title bar (DesktopWindowShell.css)
-   paints above page content, so notices and the receipt start below it and
-   the window controls stay usable. Kept last so it wins over the offsets above. */
-.rtx-desktop-shell-active .rtx-action-feedback-region {
-  /* Title bar (36px) + menu row (30px) + command row (40px) + gap. */
-  inset-block-start: calc(36px + 30px + 40px + 12px);
-}
-
+   paints above page content, so centered notices and the receipt start below it
+   and the window controls stay usable. */
 .rtx-desktop-shell-active .rtx-notification-toast-region {
   top: calc(36px + 30px + 40px + 12px);
 }

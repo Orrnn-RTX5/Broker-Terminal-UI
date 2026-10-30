@@ -73,14 +73,14 @@ describe('chart trade-history presentation', () => {
     expect(getTradeHistoryExecutionSide('SELL', 'CLOSE')).toBe('BUY');
   });
 
-  it('anchors buy and sell executions to the trade price point on the candle and clamps to the candle range', () => {
+  it('anchors buy and sell executions to the exact trade price point so zooming the price scale separates dense trades', () => {
     const candle = { high: 81300, low: 81200 };
     expect(getTradeHistoryMarkerPrice('BUY', 81250, candle)).toBe(81250);
     expect(getTradeHistoryMarkerPrice('SELL', 81250, candle)).toBe(81250);
     expect(getTradeHistoryMarkerPrice(getTradeHistoryExecutionSide('BUY', 'CLOSE'), 81260, candle)).toBe(81260);
-    expect(getTradeHistoryMarkerPrice(getTradeHistoryExecutionSide('SELL', 'CLOSE'), 81260, candle)).toBe(81260);
-    expect(getTradeHistoryMarkerPrice('BUY', 81340, candle)).toBe(81300);
-    expect(getTradeHistoryMarkerPrice('SELL', 81150, candle)).toBe(81200);
+    expect(getTradeHistoryExecutionSide('SELL', 'CLOSE') && getTradeHistoryMarkerPrice(getTradeHistoryExecutionSide('SELL', 'CLOSE'), 81260, candle)).toBe(81260);
+    expect(getTradeHistoryMarkerPrice('BUY', 81340, candle)).toBe(81340);
+    expect(getTradeHistoryMarkerPrice('SELL', 81150, candle)).toBe(81150);
   });
 
   it('uses the execution price while the candle is unavailable', () => {

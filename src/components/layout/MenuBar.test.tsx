@@ -421,7 +421,9 @@ describe('MenuBar hamburger launcher', () => {
         expect(launcher).toHaveAttribute('aria-expanded', 'true');
         const brandHeader = screen.getByTestId('application-menu-brand');
         expect(brandHeader).toBeInTheDocument();
-        expect(brandHeader.querySelector('img.rtx-application-menu__brand-logo')).not.toBeNull();
+        const brandLogo = brandHeader.querySelector('img.rtx-application-menu__brand-logo');
+        expect(brandLogo).not.toBeNull();
+        expect(brandLogo).toHaveAttribute('src', expect.stringContaining('brand/rtx5-chart-watermark.png'));
         expect(brandHeader.querySelector('.rtx-application-menu__brand-title')).not.toBeNull();
         for (const label of [
             'Trading accounts',

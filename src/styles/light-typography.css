@@ -33,7 +33,7 @@ html:root.rtx-skin-untitled-light :is(
   .rtx-toolbar-action, .rtx-timeframe-option,
   .rtx-menu-row, .rtx-application-menu__root-item, .rtx-menu-row__shortcut,
   .rtx-desktop-quick-menu__item, .rtx-dock-tab,
-  .rtx-history-time-btn, .rtx-history-refresh-btn, .rtx-journal-control,
+  .rtx-history-time-btn, .rtx-history-refresh-btn, .rtx-history-toolbar__meta, .rtx-history-toolbar__meta > span, .rtx-journal-control,
   .rtx-order-dialog__label, .rtx-order-dialog__control,
   .rtx-order-dialog__volume-input, .rtx-order-dialog__action,
   .navigator-tree-item__label, .rtx-data-window__value,
@@ -49,7 +49,8 @@ html:root.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
 
 html:root.rtx-skin-untitled-light :is(
   .rtx-menu-row, .rtx-application-menu__root-item, .rtx-menu-row__shortcut, .navigator-tree-item__label,
-  .rtx-history-time-btn, .rtx-journal-control
+  .rtx-timeframe-option, .rtx-timeframe-option[aria-checked='true'],
+  .rtx-history-time-btn, .rtx-history-refresh-btn, .rtx-history-toolbar__meta, .rtx-history-toolbar__meta > span, .rtx-journal-control
 ) {
   --rtx-type-weight: var(--rtx-light-weight-body);
 }
@@ -88,7 +89,6 @@ html:root.rtx-skin-untitled-light :is(
 
 html:root.rtx-skin-untitled-light :is(
   [role='tab'][aria-selected='true'],
-  .rtx-timeframe-option[aria-checked='true'],
   .rtx-history-time-btn[aria-pressed='true'],
   .rtx-journal-time-btn[aria-pressed='true']
 ) {
@@ -149,7 +149,7 @@ html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop :i
 }
 
 html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__grid :is(tr, th, td),
-html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button {
+html:root.rtx-skin-untitled-light .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__view-tabs button:not([aria-selected='true']) {
   height: calc(var(--rtx-ui-line-height) + 5px);
   min-height: calc(var(--rtx-ui-line-height) + 5px);
 }
@@ -193,6 +193,27 @@ html:root.rtx-skin-untitled-light :is(
 ) {
   --rtx-type-size: var(--rtx-light-type-caption);
   --rtx-type-weight: var(--rtx-light-weight-body);
+}
+
+/* Context menus use the same crisp regular reading role as Market Watch rows
+   and application dropdowns instead of the heavier button control weight. */
+html:root.rtx-skin-untitled-light :is(
+  .rtx-context-menu [role='menuitem'],
+  .rtx-context-menu [role='menuitemcheckbox'],
+  .rtx-context-menu [role='menuitemradio'],
+  .rtx-context-menu .rtx-context-menu__label,
+  .rtx-chart-context-menu [role='menuitem'],
+  .rtx-chart-context-menu [role='menuitemcheckbox'],
+  .rtx-chart-context-menu [role='menuitemradio']
+) {
+  --rtx-type-size: max(13px, calc(var(--rtx-ui-font-size) - 1px));
+  --rtx-type-weight: var(--rtx-light-weight-body);
+}
+
+html:root.rtx-skin-untitled-light .rtx-context-menu .rtx-context-menu__shortcut {
+  --rtx-type-size: max(12px, calc(var(--rtx-ui-font-size) - 2px));
+  --rtx-type-weight: var(--rtx-light-weight-body);
+  --rtx-type-family: var(--rtx-ui-font-family);
 }
 
 html:root.rtx-skin-untitled-light :is(
@@ -270,8 +291,8 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light {
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role='tab'] {
-  height: auto !important;
-  min-height: 30px !important;
+  height: 100% !important;
+  min-height: 0 !important;
 }
 
 /* Fit the shared text size inside the classic footer and its controls. */
@@ -369,6 +390,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs::befo
   top: 0;
   left: 0;
   right: 0;
+  z-index: 1;
   height: 1px;
   background: var(--rtx-light-line-border, #64748b);
   pointer-events: none;
@@ -397,6 +419,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs :is(
 ) {
   position: relative;
   border: 0 !important;
+  background: transparent !important;
   box-shadow: none !important;
   background-image: none !important;
 }
@@ -408,7 +431,10 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
   padding: 0 10px !important;
 }
 
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:not(.active-tab):not(:last-child):not(:has(+ .active-tab))::after {
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs :is(
+  .rtx-dock-tab-scroller .rtx-dock-tab:not(.active-tab):not(:has(+ .active-tab)),
+  .rtx-dock-tab-actions .rtx-dock-tab:not(:last-child)
+)::after {
   content: '';
   position: absolute;
   top: 4px;
@@ -420,7 +446,9 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
-  border: 1px solid var(--rtx-light-accent) !important;
+  z-index: 2;
+  background: var(--rtx-light-elevated) !important;
+  border: 1px solid var(--rtx-light-line-border, #64748b) !important;
   border-top: 0 !important;
 }
 
@@ -721,7 +749,7 @@ html:root.rtx-skin-untitled-light :is(
   .rtx-history-status-tag, .rtx-history-duration-badge,
   .rtx-history-coverage-date, .rtx-history-coverage-recorded,
   .rtx-indicator-description, .rtx-auth-dialog__footer,
-  .rtx-bulk-close-dialog__stat-label, .rtx-bulk-close-dialog__symbol-badge,
+  .rtx-bulk-close-dialog__symbol-badge,
   .rtx-action-feedback__meta, .rtx-action-feedback__channel,
   .rtx-action-feedback__status-pill, .rtx-action-feedback__stat-label,
   .rtx-action-feedback__channel-label, .rtx-action-feedback__hint,
@@ -741,21 +769,41 @@ html:root.rtx-skin-untitled-light :is(
   .rtx-action-feedback__unit, .rtx-action-feedback__details dt,
   .rtx-action-feedback__details dd, .rtx-action-feedback__stat-value,
   .rtx-action-feedback__row-symbol, .rtx-action-feedback__pnl,
-  .rtx-action-feedback__reason, .rtx-bulk-close-dialog__stat-value
+  .rtx-action-feedback__reason
 ) {
   --rtx-type-size: var(--rtx-light-type-body);
   --rtx-type-weight: var(--rtx-light-weight-body);
   line-height: var(--rtx-ui-line-height) !important;
 }
 
+html:root.rtx-skin-untitled-light .rtx-bulk-close-dialog__stat-label {
+  --rtx-type-size: 11px;
+  --rtx-type-weight: 500;
+  line-height: 14px !important;
+  letter-spacing: 0.05em;
+}
+
+html:root.rtx-skin-untitled-light .rtx-bulk-close-dialog__stat-value {
+  --rtx-type-size: 16px;
+  --rtx-type-weight: 600;
+  line-height: 22px !important;
+}
+
+html:root.rtx-skin-untitled-light .rtx-bulk-close-dialog__breakdown-item {
+  --rtx-type-size: 12px;
+  --rtx-type-weight: 600;
+  line-height: 18px !important;
+}
+
 html:root.rtx-skin-untitled-light .rtx-action-feedback__title {
-  --rtx-type-size: var(--rtx-light-type-body);
-  --rtx-type-weight: var(--rtx-light-weight-heading);
-  line-height: var(--rtx-ui-line-height) !important;
+  --rtx-type-size: 12.5px;
+  --rtx-type-weight: 500;
+  line-height: 18px !important;
 }
 
 html:root.rtx-skin-untitled-light .rtx-action-feedback--report .rtx-action-feedback__title {
   --rtx-type-size: var(--rtx-light-type-title);
+  --rtx-type-weight: var(--rtx-light-weight-heading);
   line-height: calc(var(--rtx-light-type-title) + 6px) !important;
 }
 

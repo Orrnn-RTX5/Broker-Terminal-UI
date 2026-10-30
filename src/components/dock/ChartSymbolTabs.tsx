@@ -20,7 +20,7 @@ export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
 
   if (!tabs.length) return <span>{panel.title}</span>;
   return (
-    <span className="grid flex-1 min-w-0 h-full overflow-x-auto [scrollbar-width:none]"
+    <span className="grid flex-1 min-w-0 h-full items-stretch overflow-x-auto overflow-y-hidden [scrollbar-width:none]"
       style={{ gridTemplateColumns: tabs.map(tab => `max-content ${showSymbolDropdown && normalizeExactBrokerSymbol(tab.symbol) === symbol ? '24px' : '0px'} ${panel.closable !== false ? '24px' : '0px'}`).join(' ') }}>
       <span role="tablist" aria-label={tr('Symbol charts')} className="contents">
       {tabs.map((tab, index) => {
@@ -33,7 +33,7 @@ export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
               aria-label={`${tab.symbol} ${tab.timeframe}`}
               tabIndex={active ? 0 : -1}
               style={{ gridColumn: index * 3 + 1, gridRow: 1 }}
-              className={`inline-flex items-center gap-2 px-2 h-full min-h-6 whitespace-nowrap focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400 ${active ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'}`}
+              className={`inline-flex items-center gap-2 px-2.5 h-full min-h-0 whitespace-nowrap focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400 ${active ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'}`}
               onKeyDown={event => {
                 const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
                   : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
@@ -57,8 +57,9 @@ export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
         const active = normalizeExactBrokerSymbol(tab.symbol) === symbol;
         return <Fragment key={tab.symbol}>
             {active && showSymbolDropdown && <button type="button"
+              data-chart-tab-active="true"
               style={{ gridColumn: index * 3 + 2, gridRow: 1 }}
-              className="h-full min-h-6 px-1 hover:bg-white/10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400"
+              className="rtx-chart-symbol-tab__accessory h-full min-h-0 px-1 bg-[var(--bg-tertiary)] hover:bg-white/10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400"
               aria-label={tr('Change symbol for {{symbol}}', { symbol: tab.symbol })}
               title={tr('Change chart symbol')}
               onClick={event => {
@@ -67,8 +68,9 @@ export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
               }}><Icon name="chevron-down" size="xs" /></button>}
             {panel.closable !== false && <button
               type="button"
+              data-chart-tab-active={active ? 'true' : 'false'}
               style={{ gridColumn: index * 3 + 3, gridRow: 1 }}
-              className="inline-flex shrink-0 items-center justify-center w-6 h-6 border-r border-[var(--border-primary)] rounded-sm text-zinc-400 hover:bg-red-500/80 hover:text-white transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400"
+              className={`rtx-chart-symbol-tab__close inline-flex shrink-0 items-center justify-center w-6 h-full min-h-0 border-r border-[var(--border-primary)] rounded-none text-zinc-400 hover:bg-red-500/80 hover:text-white transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400 ${active ? 'bg-[var(--bg-tertiary)]' : ''}`}
               aria-label={tr('Close {{symbol}} tab', { symbol: tab.symbol })}
               title={tr('Close {{symbol}} tab', { symbol: tab.symbol })}
               onMouseDown={event => event.stopPropagation()}

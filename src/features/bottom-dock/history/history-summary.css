@@ -1,18 +1,29 @@
-/* MT5's summary continues the table directly after the final history row. */
+/* MT5's summary continues the table directly after the final history row and stays sticky at the bottom when rows overflow. */
+.rtx-history-table tfoot,
 .rtx-history-summary-row {
-  --rtx-type-size: 12px;
-  --rtx-type-weight: 600;
-  background: var(--rtx-toolbox-summary, var(--bg-quaternary, #444444));
+  --rtx-type-size: 13px;
+  --rtx-type-weight: 400;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: var(--rtx-toolbox-summary, var(--bg-tertiary, #191a1e));
   color: var(--text-primary, #ffffff);
 }
 
 .rtx-history-table .rtx-history-summary-row > td {
-  padding: 3px 6px;
-  height: 24px;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  padding: 4px 8px;
+  height: 28px;
+  min-height: 28px;
   border: 0;
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 600;
+  border-top: 1px solid var(--border-primary, #444444);
+  box-shadow: inset 0 1px 0 0 var(--border-primary, #444444) !important;
+  background: var(--rtx-toolbox-summary, var(--bg-tertiary, #191a1e));
+  font-size: 13px;
+  line-height: 19.5px;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -20,16 +31,55 @@
 .rtx-history-summary-values {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 16px;
   text-align: left;
 }
 
-.rtx-history-summary-values > svg {
+.rtx-history-summary-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 3px;
+  border: 1px solid rgba(63, 63, 70, 0.7);
+  background: rgba(9, 9, 11, 0.35);
+  color: #a1a1aa;
+}
+
+.rtx-history-summary-status > svg {
   flex: 0 0 12px;
 }
 
+.rtx-history-summary-metric {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-history-summary-row,
-html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-history-summary-row :is(td, span) {
-  background: #444444 !important;
-  color: #ffffff !important;
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-history-summary-row :is(td, .rtx-history-summary-metric) {
+  background: var(--rtx-toolbox-summary, var(--bg-tertiary, #191a1e)) !important;
+  color: var(--text-primary, #ffffff) !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-history-table .rtx-history-summary-row > td {
+  border-top-color: var(--border-primary, #444444) !important;
+  box-shadow: inset 0 1px 0 0 var(--border-primary, #444444) !important;
+}
+
+html:root.rtx-skin-untitled-light .rtx-history-summary-row,
+html:root.rtx-skin-untitled-light .rtx-history-table .rtx-history-summary-row > td {
+  background: var(--rtx-light-panel-header, var(--bg-quaternary, #f1f5f9)) !important;
+  border-top-color: var(--rtx-light-line-border, #64748b) !important;
+  box-shadow: inset 0 1px 0 0 var(--rtx-light-line-border, #64748b) !important;
+  color: var(--rtx-light-price, var(--rtx-light-text, #0f172a));
+}
+
+html:root.rtx-skin-untitled-light .rtx-history-summary-status {
+  background: var(--rtx-light-panel, #ffffff) !important;
+  border-color: var(--rtx-light-line-border, #64748b) !important;
+  color: var(--rtx-light-text-secondary, #475569) !important;
 }

@@ -292,10 +292,12 @@ describe('SL/TP chart controls', () => {
     } as NonNullable<RuntimeOptions['seriesRef']['current']>;
     runtime.createEntryControlsForTrade({ ...trade, side }, { sl: 0, tp: 0 });
     const axisBadge = host.querySelector<HTMLElement>(`[data-trade-axis-key='${trade.key}:entry']`)!;
+    const expectedColor = side === 'BUY' ? '#153eaa' : '#981b24';
     expect(axisBadge).toHaveStyle({
       backgroundColor: '#fafbfc',
       backgroundImage: 'none',
-      color: side === 'BUY' ? '#153eaa' : '#981b24',
+      borderColor: expectedColor,
+      color: expectedColor,
     });
   });
 
@@ -475,5 +477,66 @@ describe('SL/TP chart controls', () => {
     expect(options.pendingTradeLevelModifyRequestsRef.current.get(trade.key)).toBe(2);
     expect(dispatch).not.toHaveBeenCalled();
     expect(logError).not.toHaveBeenCalled();
+  });
+
+  it('renders closed trade entry-to-close history connectors as an ultra-thin dashed line', () => {
+    const { overlay, options, runtime } = createRuntime();
+    runtime.createTradeHistoryLine(
+      78650.25,
+      1_730_263_080,
+      78355.10,
+      1_730_265_120,
+      '#2962ff',
+      0.7,
+      { start: 'BUY', end: 'SELL' },
+    );
+
+    const historyLine = overlay.querySelector<HTMLElement>('.rtx-trade-history-line');
+    expect(historyLine).not.toBeNull();
+    expect(historyLine!.style.height).toBe('0.75px');
+    expect(historyLine!.style.backgroundImage).toBe(
+      'repeating-linear-gradient(to right, rgb(41, 98, 255) 0 3px, transparent 3px 5px)',
+    );
+    expect(historyLine!.style.backgroundRepeat).toBe('repeat-x');
+    expect(historyLine!.style.backgroundColor).toBe('');
+    expect(historyLine!.style.opacity).toBe('0.7');
+    expect(options.historyOverlayNodeDataRef.current).toEqual([
+      {
+        kind: 'segment',
+        price: 78650.25,
+        time: 1_730_263_080,
+        endPrice: 78355.10,
+        endTime: 1_730_265_120,
+        startMarkerSide: 'BUY',
+        endMarkerSide: 'SELL',
+      },
+    ]);
+  });
+
+  it.each([
+    { side: 'BUY' as const, fill: '#2962ff', pixelOffsetY: -1 },
+    { side: 'SELL' as const, fill: '#f23645', pixelOffsetY: 1 },
+  ])('renders a compact 12x12 MT5-style filled execution arrow with a white outline for $side fills', ({ side, fill, pixelOffsetY }) => {
+    const { overlay, options, runtime } = createRuntime();
+    runtime.createTradeMarker(side, 78389.08, 1_730_263_080, '78389.08', 'active');
+
+    const marker = overlay.querySelector<HTMLElement>('.rtx-trade-marker--active');
+    expect(marker).not.toBeNull();
+    expect(marker!.style.width).toBe('12px');
+    expect(marker!.style.height).toBe('12px');
+    const path = marker!.querySelector('svg path');
+    expect(path).not.toBeNull();
+    expect(path!.getAttribute('fill')).toBe(fill);
+    expect(path!.getAttribute('stroke')).toBe('#ffffff');
+    expect(options.activeOverlayNodeDataRef.current).toEqual([
+      expect.objectContaining({
+        kind: 'marker',
+        price: 78389.08,
+        time: 1_730_263_080,
+        markerSide: side,
+        markerAnchor: 'candle',
+        pixelOffsetY,
+      }),
+    ]);
   });
 });

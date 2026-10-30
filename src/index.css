@@ -381,7 +381,9 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-footer {
   border-top-color: var(--border-primary) !important;
   box-shadow: none !important;
   color: var(--text-primary);
-  position: static;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
   flex-shrink: 0;
 }
 

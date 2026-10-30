@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { buildTradeHistoryLineCandleMask } from '../features/trading-chart/presentation/tradeOverlayPresentation';
 
 const readChartSource = (relativePath: string) => fs.readFileSync(
   path.resolve(process.cwd(), relativePath),
@@ -58,21 +59,23 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(arrowBuilder).not.toContain('isDesktopBackendTarget');
     expect(markerBuilder).not.toContain('isDesktopBackendTarget');
     expect(arrowBuilder).toContain("const color = side === 'BUY' ? '#2962ff' : '#f23645';");
-    expect(arrowBuilder).toContain('viewBox="0 0 14 20" fill="none"');
-    expect(arrowBuilder).toContain('stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"');
-    expect(arrowBuilder).toContain("'M3 7 7 3l4 4M3 11l4-4 4 4M7 8v9'");
-    expect(arrowBuilder).toContain("'M3 13l4 4 4-4M3 9l4 4 4-4M7 3v9'");
+    expect(arrowBuilder).toContain('viewBox="0 0 12 12" fill="none"');
+    expect(arrowBuilder).toContain('fill="${color}" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round" paint-order="stroke fill"');
+    expect(arrowBuilder).toContain("'M6 1L10.5 6H7.75V10.5H4.25V6H1.5Z'");
+    expect(arrowBuilder).toContain("'M6 11L1.5 6H4.25V1.5H7.75V6H10.5Z'");
     expect(markerBuilder).toContain('marker.innerHTML = createArrowSvg(side);');
-    expect(markerBuilder).toContain("markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? -3 : 3");
+    expect(markerBuilder).toContain("markerAnchor: 'candle', pixelOffsetY: side === 'BUY' ? -1 : 1");
     expect(chartSource).toContain('getTradeHistoryMarkerPrice(node.markerSide, node.price, tradeMarkerCandles.get(markerTime))');
     expect(chartSource).toContain('markerTime = fallbackTime;');
     expect(chartSource).toContain("getTradeHistoryExecutionSide(trade.side, 'CLOSE')");
     expect(chartSource).toContain('const showAnyTradeHistoryOverlay = showTradeHistoryLine || showTradeHistoryArrows;');
     expect(chartSource).toContain('const showTradeHistoryLine = chartProperties.showTradeHistory !== false;');
     expect(chartSource).toContain('const createTradeHistoryLine = (');
+    expect(chartSource).toContain('height:0.75px;background-image:repeating-linear-gradient(to right, ${color} 0 1.5px, transparent 1.5px 4.5px);background-repeat:repeat-x;');
+    expect(chartSource).not.toContain('height:1px;background:${color};');
     expect(chartSource).toContain("createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, entryPriceLabel, 'history', 1, undefined, 'open', trade.side, trade.entryExecutionTime)");
     expect(chartSource).toContain("createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime)");
-    expect(chartSource).toContain("const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v19-crisp-typography';");
+    expect(chartSource).toContain("const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v21-mt5-execution-arrows';");
     expect((chartSource.match(/TRADE_HISTORY_PRESENTATION_VERSION/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(chartSource).not.toContain('createTradeHistoryLabel');
   });
@@ -83,8 +86,8 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(chartSource).toContain('hoverTarget.dataset.positionSide = historyPositionSide;');
     expect(chartSource).toContain('formatTradeHistoryGmtTime(executionTime, { includeSeconds: true })');
     expect(chartSource).toContain('buildTradeHistoryBadgeText({');
-    expect(chartSource).toContain('const markerWidth = 14;');
-    expect(chartSource).toContain('const markerHeight = 20;');
+    expect(chartSource).toContain('const markerWidth = 12;');
+    expect(chartSource).toContain('const markerHeight = 12;');
     expect(chartSource).toContain('pointer-events:none;opacity:${opacity};filter:none;');
     expect(chartSource).toContain("hoverTarget.style.cssText = 'position:absolute;display:none;width:32px;height:36px;z-index:22;pointer-events:auto;");
     expect(chartSource).toContain("tooltip.className = 'rtx-trade-marker__price-tooltip';");
@@ -149,5 +152,25 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(chartSource).toContain('const y1 = resolveSegmentEndY(node.price, node.time, node.startMarkerSide);');
     expect(chartSource).toContain('const y2 = resolveSegmentEndY(endPrice, endTime, node.endMarkerSide);');
     expect(chartSource).toContain("resolveTradeMarkerAnchorPrice({ kind: 'marker', price, time, markerSide, markerAnchor: 'candle' })");
+  });
+
+  it('masks trade-history connector lines across candle bodies and avoids hollow/surface line colors', () => {
+    expect(chartSource).toContain('const isHollowOrSurfaceCandleColor = (color: string, background: string): boolean =>');
+    expect(chartSource).toContain('buildTradeHistoryLineCandleMask(');
+    expect(chartSource).toContain('el.style.maskImage = maskImage;');
+    expect(chartSource).toContain('el.style.webkitMaskImage = maskImage;');
+
+    const mask = buildTradeHistoryLineCandleMask(0, 50, 100, 50, [
+      { left: 20, right: 40, top: 30, bottom: 70 },
+      { left: 60, right: 80, top: 30, bottom: 70 },
+    ]);
+    expect(mask).toBe(
+      'linear-gradient(to right, #000 0px, #000 20px, transparent 20px, transparent 40px, #000 40px, #000 60px, transparent 60px, transparent 80px, #000 80px, #000 100%)',
+    );
+    expect(
+      buildTradeHistoryLineCandleMask(0, 50, 100, 50, [
+        { left: 20, right: 40, top: 80, bottom: 120 },
+      ]),
+    ).toBe('');
   });
 });

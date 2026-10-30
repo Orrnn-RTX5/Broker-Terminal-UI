@@ -49,7 +49,7 @@ import type {
   TradePositionRecord,
 } from './tradeRuntimeContracts';
 
-const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v19-crisp-typography';
+const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v21-mt5-execution-arrows';
 
 interface UseTradingChartTradeOverlayRendererOptions {
   activeOverlayNodeDataRef: RefObject<OverlayNodeData[]>;

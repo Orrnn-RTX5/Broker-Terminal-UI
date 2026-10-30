@@ -726,8 +726,10 @@ describe('MarketWatchPanel symbol visibility', () => {
         textAlign: 'left',
         padding: '0 5px',
       });
-      expect(screen.getByRole('columnheader', { name: 'Bid' })).toHaveStyle({ fontSize: '12px', fontWeight: '400', textAlign: 'right' });
-      expect(screen.getByRole('columnheader', { name: 'Ask' })).toHaveStyle({ textAlign: 'right' });
+      expect(screen.getByRole('columnheader', { name: 'Bid' })).toHaveClass('rtx-market-watch__column-heading--bid');
+      expect(screen.getByRole('columnheader', { name: 'Bid' })).toHaveStyle({ fontSize: '12px', fontWeight: '400', textAlign: 'center' });
+      expect(screen.getByRole('columnheader', { name: 'Ask' })).toHaveClass('rtx-market-watch__column-heading--ask');
+      expect(screen.getByRole('columnheader', { name: 'Ask' })).toHaveStyle({ textAlign: 'center' });
       expect(screen.getByRole('columnheader', { name: 'Daily Change' })).toHaveStyle({ textAlign: 'right' });
 
       const selectedRow = screen.getByText('BTCUSD').closest('tr')!;

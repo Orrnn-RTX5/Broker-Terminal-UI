@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { forgetSavedLogin, loadSavedLogin, saveLogin, savedLoginScopeKey, supportsSavedLogins, type SavedLoginScope } from '../services/savedLogins';
+import { getCachedAccountSession } from '../services/accountSessionCache';
 
 export function useSavedLogin(open: boolean, initialLogin: string, scope: SavedLoginScope | null) {
   const [login, updateLogin] = useState(initialLogin);
@@ -24,7 +25,7 @@ export function useSavedLogin(open: boolean, initialLogin: string, scope: SavedL
 
   useEffect(() => {
     let cancelled = false;
-    if (previousScope.current && previousScope.current !== scopeKey) {
+    if (previousScope.current && previousScope.current.toLowerCase() !== scopeKey.toLowerCase()) {
       edits.current += 1;
       updatePassword('');
       updateSavePassword(false);
@@ -36,11 +37,22 @@ export function useSavedLogin(open: boolean, initialLogin: string, scope: SavedL
     setRestoring(true);
     const [brokerId, serverUrl] = JSON.parse(scopeKey) as [string, string];
     void loadSavedLogin({ brokerId, serverUrl }, login).then(saved => {
-      if (cancelled || edits.current !== version || !saved) return;
-      updateLogin(saved.login);
-      updatePassword(saved.password);
-      updateSavePassword(true);
-      restored.current = true;
+      if (cancelled || edits.current !== version) return;
+      if (saved) {
+        updateLogin(saved.login);
+        updatePassword(saved.password);
+        updateSavePassword(true);
+        restored.current = true;
+        return;
+      }
+      const trimmedLogin = login.trim();
+      if (trimmedLogin) {
+        const cached = getCachedAccountSession({ brokerId, serverUrl, login: trimmedLogin });
+        if (cached?.password) {
+          updatePassword(cached.password);
+          restored.current = true;
+        }
+      }
     }).catch(() => {
       if (!cancelled && edits.current === version) setStorageError('Unable to restore the saved password. Enter it again.');
     }).finally(() => { if (!cancelled) setRestoring(false); });

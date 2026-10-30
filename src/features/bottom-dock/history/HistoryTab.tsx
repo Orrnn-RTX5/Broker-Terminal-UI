@@ -724,14 +724,14 @@ ${rows}
     return (
         <div className="rtx-history-tab h-full flex flex-col relative bg-[#131316] overflow-hidden">
             <div className="rtx-history-toolbar flex h-7 min-h-[28px] flex-nowrap items-center justify-between gap-1.5 px-1.5 py-0 border-b border-zinc-700 bg-[#191a1e] shrink-0 text-[11.5px] font-normal text-zinc-300 tabular-nums">
-                <div className="rtx-history-toolbar__periods flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap" role="group" aria-label={tr('History time filters')}>
+                <div className="rtx-history-toolbar__periods flex h-full min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap" role="group" aria-label={tr('History time filters')}>
                     {HISTORY_PERIOD_PRESETS.map(([period, label]) => (
                         <button
                             key={period}
                             type="button"
                             aria-pressed={periodFilter === period}
                             onClick={() => selectPeriod(period)}
-                            className={`rtx-history-time-btn shrink-0 px-1.5 py-0.5 text-[11.5px] leading-[16px] font-normal rounded-sm transition-colors ${periodFilter === period ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                            className={`rtx-history-time-btn inline-flex h-[22px] shrink-0 items-center px-1.5 py-0 text-[11.5px] leading-[20px] font-normal rounded-sm transition-colors ${periodFilter === period ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                         >
                             {tr(label)}
                         </button>
@@ -740,19 +740,19 @@ ${rows}
                         type="button"
                         aria-pressed={periodFilter === 'custom'}
                         onClick={openCustomPeriodDialog}
-                        className={`rtx-history-time-btn shrink-0 px-1.5 py-0.5 text-[11.5px] leading-[16px] font-normal rounded-sm transition-colors ${periodFilter === 'custom' ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                        className={`rtx-history-time-btn inline-flex h-[22px] shrink-0 items-center px-1.5 py-0 text-[11.5px] leading-[20px] font-normal rounded-sm transition-colors ${periodFilter === 'custom' ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                     >
                         {tr('Custom Period')}
                     </button>
                 </div>
-                <div className="rtx-history-toolbar__meta flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-                    <span className="hidden shrink-0 text-[11.5px] font-normal text-zinc-500 lg:inline">{tr(historyViewLabel)} · {tr(symbolFilterLabel)} · {tr(periodFilterLabel)}</span>
-                    <span className="shrink-0 whitespace-nowrap text-[11.5px] font-normal text-zinc-500">{filteredOrders.length} {tr(" records")}</span>
+                <div className="rtx-history-toolbar__meta flex h-full shrink-0 items-center gap-1.5 whitespace-nowrap">
+                    <span className="rtx-history-toolbar__summary hidden h-[22px] shrink-0 items-center text-[11.5px] leading-[20px] font-normal text-zinc-400 lg:inline-flex">{tr(historyViewLabel)} · {tr(symbolFilterLabel)} · {tr(periodFilterLabel)}</span>
+                    <span className="rtx-history-toolbar__count inline-flex h-[22px] shrink-0 items-center whitespace-nowrap text-[11.5px] leading-[20px] font-normal text-zinc-400">{filteredOrders.length} {tr(" records")}</span>
                     <button
                         type="button"
                         onClick={() => fetchHistory({ force: true })}
                         disabled={loading}
-                        className="rtx-history-refresh-btn shrink-0 text-[11.5px] leading-[16px] font-normal px-1.5 py-0.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 disabled:cursor-wait disabled:opacity-50"
+                        className="rtx-history-refresh-btn inline-flex h-[22px] shrink-0 items-center gap-1 px-1.5 py-0 text-[11.5px] leading-[20px] font-normal rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 disabled:cursor-wait disabled:opacity-50"
                     >
                         <Icon name="refresh" size="xs" className={loading ? 'animate-spin' : ''} />
                         {loading ? tr("Loading…") : tr("Refresh")}
@@ -885,14 +885,16 @@ ${rows}
                             </tr>
                         )}
                     </tbody>
-                    <tfoot>
-                        <tr className="rtx-history-summary-row" aria-rowindex={filteredOrders.length + 2}>
+                    <tfoot className="rtx-history-table__foot sticky bottom-0 z-10">
+                        <tr className="rtx-history-summary-row sticky bottom-0 z-10" aria-rowindex={filteredOrders.length + 2}>
                             <td colSpan={visibleColumnCount - summaryTrailingColumns}>
                                 <div role="group" aria-label={tr('History financial summary')} className="rtx-history-summary-values">
-                                    <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                                        <circle cx="6" cy="6" r="4.5" stroke="currentColor" />
-                                        <path d="M3.5 6h5" stroke="currentColor" />
-                                    </svg>
+                                    <span className="rtx-history-summary-status" aria-hidden="true">
+                                        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                            <circle cx="6" cy="6" r="4.5" stroke="currentColor" />
+                                            <path d="M3.5 6h5" stroke="currentColor" />
+                                        </svg>
+                                    </span>
                                     {([
                                         ['Profit', financialSummary.profit],
                                         ['Credit', financialSummary.credit],
@@ -900,7 +902,7 @@ ${rows}
                                         ['Withdrawal', financialSummary.withdrawal],
                                         ['Balance', accountBalance],
                                     ] as const).map(([label, value]) => (
-                                        <span key={label} className={label === 'Profit' ? moneyColor(value) : undefined} title={value === null ? (
+                                        <span key={label} className="rtx-history-summary-metric" title={value === null ? (
                                             label === 'Balance' ? tr('Account balance unavailable')
                                                 : label === 'Profit' ? tr('Complete backend deal history unavailable')
                                                     : balanceHistoryError ?? tr(balanceHistory === null ? 'Balance history loading' : 'Balance history timestamps unavailable')

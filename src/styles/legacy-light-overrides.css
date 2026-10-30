@@ -676,7 +676,7 @@ html:is(.rtx-advanced-font-small, .rtx-advanced-font-normal, .rtx-advanced-font-
   font-size: var(--rtx-advanced-header-font-size, 12px) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .dock-panel__header,
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .dock-panel__header:not(.rtx-bottom-dock__header),
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .h-\[24px\] {
   height: 26px !important;
   min-height: 26px !important;
@@ -1354,7 +1354,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab:hover {
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab.active-tab {
   background: var(--rtx-light-panel) !important;
-  color: var(--rtx-light-accent) !important;
+  color: var(--rtx-light-text, #101828) !important;
   border: none !important;
   box-shadow: none !important;
 }

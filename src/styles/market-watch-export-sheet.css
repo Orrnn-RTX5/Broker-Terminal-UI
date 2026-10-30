@@ -2,7 +2,7 @@
    a single primary action. The browser top layer keeps charts inert. */
 .rtx-export-sheet {
   --export-muted: color-mix(in srgb, var(--text-primary) 72%, var(--bg-secondary));
-  --export-success: #35d0a3;
+  --export-success: var(--color-profit, #4597ff);
   --export-error: #ff8587;
   position: fixed;
   inset: 0;
@@ -142,7 +142,7 @@
 .rtx-export-sheet :is(button):focus-visible { outline: 2px solid #53b4ff; outline-offset: 3px; }
 .rtx-export-sheet button:active { transform: none; }
 
-html:is(.theme-light, .rtx-skin-untitled-light) .rtx-export-sheet { --export-success: #087b54; --export-error: #b42318; background: var(--bg-secondary); box-shadow: 0 24px 64px -16px rgb(16 24 40 / 25%), 0 2px 8px rgb(16 24 40 / 6%); }
+html:is(.theme-light, .rtx-skin-untitled-light) .rtx-export-sheet { --export-success: var(--color-profit, #2563eb); --export-error: #b42318; background: var(--bg-secondary); box-shadow: 0 24px 64px -16px rgb(16 24 40 / 25%), 0 2px 8px rgb(16 24 40 / 6%); }
 html:is(.theme-light, .rtx-skin-untitled-light) .rtx-export-sheet::backdrop { background: rgb(16 24 40 / 24%); }
 html:is(.theme-light, .rtx-skin-untitled-light) .rtx-export-sheet__destination { background: var(--bg-tertiary); }
 html:is(.theme-light, .rtx-skin-untitled-light) .rtx-export-sheet__destination-icon { background: var(--bg-secondary); }

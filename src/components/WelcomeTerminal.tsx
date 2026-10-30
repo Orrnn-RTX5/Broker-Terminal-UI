@@ -735,7 +735,7 @@ export function WelcomeTerminal({
             server_url: serverUrl,
             ...(isDesktopBrokerSelection ? { backend_url: serverUrl, market_api_url: serverUrl } : {}),
         };
-        if (isDesktopBrokerSelection && (selectedBrokerRef.current?.broker_id !== broker.broker_id || selectedBrokerRef.current?.server_url !== serverUrl)) {
+        if (isDesktopBrokerSelection && selectedBrokerRef.current?.server_url && (selectedBrokerRef.current?.broker_id !== broker.broker_id || selectedBrokerRef.current?.server_url !== serverUrl)) {
             setPassword('');
         }
         selectedBrokerRef.current = nextBroker;
@@ -943,15 +943,28 @@ export function WelcomeTerminal({
             const loginNum = parseInt(String(accountId), 10);
             const tradingAccountType = resolveTradingAccountType(data);
             const loginStoreModule = await loginStoreRuntimePromise;
+            const resolvedSessionBrokerId = data.broker_id || submitBroker.broker_id;
+            const resolvedSessionServerUrl = isDesktopBrokerSelection ? brokerServerUrl : (data.server_url || data.broker_server || brokerServerUrl || brokerExtApiUrl);
             loginStoreModule.rememberAccountSession?.({
-                brokerId: data.broker_id || submitBroker.broker_id,
-                serverUrl: isDesktopBrokerSelection ? brokerServerUrl : (data.server_url || data.broker_server || brokerServerUrl || brokerExtApiUrl),
+                brokerId: resolvedSessionBrokerId,
+                serverUrl: resolvedSessionServerUrl,
                 login: String(accountId),
                 authToken: token,
                 refreshToken: data.refresh_token,
                 expiresAt: sessionHandoff.expiresAt ?? undefined,
                 password,
             });
+            if (submitBroker.broker_id !== resolvedSessionBrokerId || brokerExtApiUrl !== resolvedSessionServerUrl) {
+                loginStoreModule.rememberAccountSession?.({
+                    brokerId: submitBroker.broker_id,
+                    serverUrl: brokerExtApiUrl,
+                    login: String(accountId),
+                    authToken: token,
+                    refreshToken: data.refresh_token,
+                    expiresAt: sessionHandoff.expiresAt ?? undefined,
+                    password,
+                });
+            }
             appStore.setAuthenticated(
                 true,
                 String(accountId),
@@ -982,7 +995,7 @@ export function WelcomeTerminal({
             // synchronous storage writes out of the first terminal paint.
             schedulePostLoginBookkeeping(() => {
                 localStorage.setItem('rtx_last_login', String(accountId));
-                if (rememberMe) {
+                if (rememberMe || savePassword) {
                     localStorage.setItem('rtx_saved_username', String(accountId));
                 } else {
                     localStorage.removeItem('rtx_saved_username');

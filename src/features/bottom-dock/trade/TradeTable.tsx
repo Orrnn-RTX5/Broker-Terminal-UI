@@ -445,11 +445,11 @@ const TradeTableRow = memo(function TradeTableRow({
             }}
             className="rtx-trade-action-button rtx-trade-share-button flex h-[24px] w-[24px] shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-600/50 bg-[#383d48] text-zinc-100 transition-colors hover:border-zinc-500/70 hover:bg-[#4b5262] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 disabled:cursor-default disabled:opacity-45"
           >
-            <svg width="15" height="15" viewBox="0 0 14 14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="10.6" cy="3" r="1.7" />
-              <circle cx="3.4" cy="7" r="1.7" />
-              <circle cx="10.6" cy="11" r="1.7" />
-              <path d="M4.9 6.1 9.1 3.9M4.9 7.9l4.2 2.2" />
+            <svg width="16" height="16" viewBox="0 0 16 16" shapeRendering="geometricPrecision" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11.5" cy="3.5" r="1.75" />
+              <circle cx="4" cy="8" r="1.75" />
+              <circle cx="11.5" cy="12.5" r="1.75" />
+              <path d="M5.5 7.1 10 4.4M5.5 8.9 10 11.6" />
             </svg>
           </button>
 
@@ -471,9 +471,9 @@ const TradeTableRow = memo(function TradeTableRow({
             }}
             className="rtx-trade-action-button rtx-trade-reverse-button flex h-[24px] w-[24px] shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-600/50 bg-[#383d48] text-zinc-100 transition-colors hover:border-zinc-500/70 hover:bg-[#4b5262] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 disabled:cursor-default disabled:opacity-45"
           >
-            <svg width="15" height="15" viewBox="0 0 14 14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3.4 11.8V6.9a3.4 3.4 0 0 1 6.8 0v3.3" />
-              <path d="M8.2 8.2l2 2.2 2-2.2" />
+            <svg width="16" height="16" viewBox="0 0 16 16" shapeRendering="geometricPrecision" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4.5 12.5V7a3.5 3.5 0 0 1 7 0v4.5" />
+              <path d="M9.25 9.5 11.5 11.75 13.75 9.5" />
             </svg>
           </button>
 
@@ -495,11 +495,11 @@ const TradeTableRow = memo(function TradeTableRow({
             }}
             className="rtx-trade-action-button rtx-trade-double-button flex h-[24px] w-[24px] shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-600/50 bg-[#383d48] text-zinc-100 transition-colors hover:border-zinc-500/70 hover:bg-[#4b5262] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 disabled:cursor-default disabled:opacity-45"
           >
-            <svg width="15" height="15" viewBox="0 0 14 14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4.5 11.4V3.4" />
-              <path d="M2.4 5.5 4.5 3.4l2.1 2.1" />
-              <path d="M9.5 11.4V3.4" />
-              <path d="M7.4 5.5 9.5 3.4l2.1 2.1" />
+            <svg width="16" height="16" viewBox="0 0 16 16" shapeRendering="geometricPrecision" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5.5 12.5V3.5" />
+              <path d="M3.5 5.5 5.5 3.5 7.5 5.5" />
+              <path d="M11.5 12.5V3.5" />
+              <path d="M9.5 5.5 11.5 3.5 13.5 5.5" />
             </svg>
           </button>
 
@@ -518,8 +518,8 @@ const TradeTableRow = memo(function TradeTableRow({
             {isPendingPlacement ? (
               isTerminalPlacementFailure ? '!' : '…'
             ) : (
-              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round">
-                <path d="M3.6 3.6l6.8 6.8M10.4 3.6l-6.8 6.8" />
+              <svg width="16" height="16" viewBox="0 0 16 16" shapeRendering="geometricPrecision" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round">
+                <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
               </svg>
             )}
           </button>
@@ -729,9 +729,10 @@ export function TradeTable({
         {tableBody}
       </table>
 
-      {/* Account summary follows the last trade and scrolls with the list. */}
+      {/* Account summary stays sticky at the bottom when positions overflow. */}
       <div
-        className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full text-[13px] font-normal text-zinc-300 tabular-nums"
+        className="rtx-trade-footer sticky bottom-0 z-10 bg-[#191a1e] border-t border-zinc-700 w-full text-[13px] font-normal text-zinc-300 tabular-nums"
+        style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}
         data-metrics-publication-token={account?.publicationToken}
         data-metrics-calculation-version={account?.calculationVersion}
         data-metrics-margin-calculation-version={account?.marginCalculationVersion}

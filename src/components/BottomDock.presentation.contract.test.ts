@@ -80,10 +80,17 @@ describe('BottomDock trade type presentation', () => {
         expect(footer).not.toContain('rtx-trade-footer-actions');
     });
 
-    it('keeps the account summary under the last trade so it scrolls with the list', () => {
+    it('keeps the account summary under the last trade and sticky at the bottom when rows overflow', () => {
         const tradeTab = tradeTableSource;
+        const historySource = readFileSync(
+            resolve(process.cwd(), 'src/features/bottom-dock/history/HistoryTab.tsx'),
+            'utf8',
+        );
 
         expect(tradeTab).toContain('rtx-trade-scroll');
+        expect(tradeTab).toContain('rtx-trade-footer sticky bottom-0 z-10');
+        expect(historySource).toContain('rtx-history-table__foot sticky bottom-0 z-10');
+        expect(historySource).toContain('rtx-history-summary-row sticky bottom-0 z-10');
         expect(tradeTab.indexOf('rtx-trade-table')).toBeLessThan(tradeTab.indexOf('rtx-trade-footer'));
         expect(tradeTab.lastIndexOf('rtx-trade-scroll')).toBeLessThan(tradeTab.indexOf('rtx-trade-footer'));
         expect(tradeTab).not.toContain('syncHorizontalScroll');
