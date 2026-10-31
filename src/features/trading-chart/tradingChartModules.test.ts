@@ -56,7 +56,7 @@ describe('trading chart extracted modules', () => {
     const lightTheme = buildChartTheme(lightColors, true, true, 'dashed', 'mt5', properties.colorScheme);
     expect(lightTheme).toMatchObject({
       background: '#fafbfc',
-      candleUp: '#ffffff', candleDown: '#15803d',
+      candleUp: '#000000', candleDown: '#15803d',
       barUp: '#15803d', barDown: '#15803d', wickUp: '#15803d', wickDown: '#15803d',
       areaUpLine: '#15803d', areaDownLine: '#15803d',
       gridVertical: 'rgba(71, 85, 105, 0.45)', gridHorizontal: 'rgba(71, 85, 105, 0.45)',
@@ -97,9 +97,9 @@ describe('trading chart extracted modules', () => {
     const blueWhiteLightTheme = buildChartTheme(blueWhiteLightColors, true, true, 'dashed', 'mt5', blueWhiteProps.colorScheme);
     expect(blueWhiteLightTheme).toMatchObject({
       background: '#fafbfc',
-      candleUp: '#2557ff', candleDown: '#ffffff',
-      barUp: '#1746bc', barDown: '#334155', wickUp: '#1746bc', wickDown: '#334155',
-      areaUpLine: '#2557ff', areaDownLine: '#334155',
+      candleUp: '#2557ff', candleDown: '#000000',
+      barUp: '#1746bc', barDown: '#000000', wickUp: '#1746bc', wickDown: '#000000',
+      areaUpLine: '#2557ff', areaDownLine: '#000000',
     });
   });
   it('resolves indicator requests and fixed ranges without component state', () => {
@@ -167,7 +167,7 @@ describe('trading chart extracted modules', () => {
 
   it.each([
     { mode: 'dark', light: false, background: '#000000', up: '#4597ff', down: '#ff5858' },
-    { mode: 'light', light: true, background: '#fafbfc', up: '#1746bc', down: '#a51f26' },
+    { mode: 'light', light: true, background: '#fafbfc', up: '#2563eb', down: '#dc2626' },
   ])('keeps default candle bodies, borders, wicks and area lines aligned with quote hues in $mode mode', ({ light, background, up, down }) => {
     const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: light });
     const theme = buildChartTheme(colors, true, light);

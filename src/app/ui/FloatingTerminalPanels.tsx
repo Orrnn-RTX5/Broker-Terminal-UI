@@ -66,7 +66,7 @@ export const FloatingTerminalPanels = ({ panels, onCloseBulk, onPlaceOrder }: Fl
           style={{ position: 'absolute', bottom: 0, right: 0, width: 14, height: 14, cursor: 'nwse-resize', zIndex: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '0 0 10px 0' }}
         >
           <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
-            <path d="M7 1L1 7M7 4L4 7M7 7L7 7" stroke="#404048" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M7 1L1 7M7 4L4 7" stroke="rgba(255,255,255,0.28)" strokeWidth="1.25" strokeLinecap="round" />
           </svg>
         </div>
       </div>

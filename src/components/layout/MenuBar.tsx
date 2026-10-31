@@ -8,7 +8,7 @@ import { RetainedLazyFeature } from '../../startup/RetainedLazyFeature';
 import { FileMenu } from './FileMenu';
 import { useTranslation } from 'react-i18next';
 import { commandBus } from '../../services/commandBus';
-import { normalizeColorSchemeName, useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
+import { getColorSchemeDisplayLabel, normalizeColorSchemeName, useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { useAppStore } from '../../store/useAppStore';
@@ -729,9 +729,14 @@ export const MenuBar = ({
     };
 
     const syncQuoteColorsWithChart = useChartSettingsStore((state) => state.syncQuoteColorsWithChart);
+    const isLightColorTemplateSurface = advancedViewEnabled || (
+        typeof document !== 'undefined'
+        && document.documentElement.classList.contains('rtx-advanced-view')
+        && document.documentElement.classList.contains('rtx-skin-untitled-light')
+    );
     const colorTemplateItems: MenuItem[] = [
         ...(['Green and Red', 'Green and White', 'Green and Blue', 'Blue and White', 'Blue and Red', 'Gray and White', 'Yellow and White'] as const).map((scheme) => ({
-            label: scheme,
+            label: getColorSchemeDisplayLabel(scheme, { isAdvancedUntitledLight: isLightColorTemplateSurface }),
             checked: normalizeColorSchemeName(menuChartProperties.colorScheme) === scheme,
             checkRole: 'radio' as const,
             action: () => applyActiveColorTemplate(scheme),

@@ -460,14 +460,14 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             ? '#ff6b6b'
             : isBuy ? '#6b9fff' : '#6bff6b';
         const restingBackground = isBuy
-            ? '#0078D4'
-            : 'linear-gradient(180deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%)';
+            ? '#4597ff'
+            : '#ff5858';
         const activeBackground = isBuy
-            ? '#005A9E'
-            : 'linear-gradient(180deg, #991b1b 0%, #7f1d1d 100%)';
+            ? '#2563eb'
+            : '#dc2626';
         const hoverBackground = isBuy
-            ? '#026EC1'
-            : 'linear-gradient(180deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%)';
+            ? '#3183ff'
+            : '#ef4444';
         const label = isBuy ? 'BUY' : 'SELL';
 
         return (

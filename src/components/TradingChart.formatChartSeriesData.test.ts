@@ -725,7 +725,7 @@ describe('live price overlay colors', () => {
 
   it.each([
     { mode: 'dark', light: false, up: '#4597ff', down: '#ff5858' },
-    { mode: 'light', light: true, up: '#1746bc', down: '#a51f26' },
+    { mode: 'light', light: true, up: '#2563eb', down: '#dc2626' },
   ])('uses the default quote direction colors for price lines and badges in $mode mode', ({ light, up, down }) => {
     const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: light });
 

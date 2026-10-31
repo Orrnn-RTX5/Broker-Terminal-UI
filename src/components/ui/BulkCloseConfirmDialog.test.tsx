@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { useAppStore } from '../../store/useAppStore';
 import { useBulkCloseConfirmStore, type BulkCloseType } from '../../store/useBulkCloseConfirmStore';
 import { BulkCloseConfirmDialog } from './BulkCloseConfirmDialog';
 
@@ -15,6 +16,7 @@ const positions = [
 describe('BulkCloseConfirmDialog', () => {
   beforeEach(() => {
     useBulkCloseConfirmStore.getState().closeBulkCloseConfirm();
+    useAppStore.setState({ positions: [] });
   });
 
   it.each<[BulkCloseType, string]>([
@@ -113,5 +115,108 @@ describe('BulkCloseConfirmDialog', () => {
     await expect(first).resolves.toBe(false);
     useBulkCloseConfirmStore.getState().onConfirm();
     await expect(second).resolves.toBe(true);
+  });
+
+  it.each<[BulkCloseType, string]>([
+    ['ALL', 'Close All Positions'],
+    ['WINNERS', 'Close In-Profit Positions'],
+    ['LOSERS', 'Close In-Loss Positions'],
+  ])('updates per-position P&L and combined P&L in real time for %s mode', (type, title) => {
+    useAppStore.setState({
+      positions: [
+        {
+          id: 101,
+          symbol: 'BTCUSD',
+          side: 'BUY',
+          volume: 0.01,
+          openPrice: 84_100,
+          currentPrice: 84_350,
+          openTime: '2026-10-31T08:00:00Z',
+          sl: 0,
+          tp: 0,
+          swap: 0,
+          commission: 0,
+          unrealizedPnL: 2.5,
+          profit: 2.5,
+          hasBackendProfit: true,
+        },
+        {
+          id: 102,
+          symbol: 'BTCUSD',
+          side: 'SELL',
+          volume: 0.01,
+          openPrice: 84_200,
+          currentPrice: 84_325,
+          openTime: '2026-10-31T08:01:00Z',
+          sl: 0,
+          tp: 0,
+          swap: 0,
+          commission: 0,
+          unrealizedPnL: -1.25,
+          profit: -1.25,
+          hasBackendProfit: true,
+        },
+      ],
+    });
+
+    render(<BulkCloseConfirmDialog />);
+
+    act(() => {
+      void useBulkCloseConfirmStore.getState().showBulkCloseConfirm({
+        type,
+        positions,
+        combinedPnL: 1.25,
+      });
+    });
+
+    const dialog = screen.getByRole('dialog', { name: title });
+    expect(within(dialog).getByText('+2.50')).toBeInTheDocument();
+    expect(within(dialog).getByText('-1.25')).toBeInTheDocument();
+    expect(within(dialog).getByText('+1.25')).toBeInTheDocument();
+
+    act(() => {
+      useAppStore.setState({
+        positions: [
+          {
+            id: 101,
+            symbol: 'BTCUSD',
+            side: 'BUY',
+            volume: 0.01,
+            openPrice: 84_100,
+            currentPrice: 84_480,
+            openTime: '2026-10-31T08:00:00Z',
+            sl: 0,
+            tp: 0,
+            swap: 0,
+            commission: 0,
+            unrealizedPnL: 3.8,
+            profit: 3.8,
+            hasBackendProfit: true,
+          },
+          {
+            id: 102,
+            symbol: 'BTCUSD',
+            side: 'SELL',
+            volume: 0.01,
+            openPrice: 84_200,
+            currentPrice: 84_160,
+            openTime: '2026-10-31T08:01:00Z',
+            sl: 0,
+            tp: 0,
+            swap: 0,
+            commission: 0,
+            unrealizedPnL: 0.4,
+            profit: 0.4,
+            hasBackendProfit: true,
+          },
+        ],
+      });
+    });
+
+    expect(within(dialog).getByText('+3.80')).toBeInTheDocument();
+    expect(within(dialog).getByText('+0.40')).toBeInTheDocument();
+    expect(within(dialog).getByText('+4.20')).toBeInTheDocument();
+    expect(within(dialog).getByText('2 ↑')).toBeInTheDocument();
+    expect(within(dialog).getByText('0 ↓')).toBeInTheDocument();
   });
 });

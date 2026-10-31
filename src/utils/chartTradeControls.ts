@@ -820,6 +820,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
 
     const defaultHintText = () => tr(isPending ? 'Modify Position' : 'Add stop loss and take profit');
     let activeCustomHint: string | null = null;
+    let isCompactTooltip = false;
+    let activeAccentColor: string = plainSideColor;
+    let activeAnchorEl: HTMLElement | null = null;
     bindChartUiTranslation(tooltip, () => {
       sidePill.textContent = tr(options.orderTypeLabel || side);
       lotsSpan.textContent = tr('{{value0}} lots', { value0: formatVolumeLots(volume) });
@@ -828,14 +831,32 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       hintText.textContent = activeCustomHint ?? defaultHintText();
     });
 
+    const applyTooltipMode = (compact: boolean, accentColor: string) => {
+      isCompactTooltip = compact;
+      activeAccentColor = accentColor;
+      summary.style.display = compact ? 'none' : 'block';
+      tooltip.style.minWidth = compact ? '0' : '224px';
+      tooltip.style.borderTop = `2px solid ${accentColor}`;
+      hint.style.borderTop = compact ? '0' : `1px solid ${tooltipDivider}`;
+      hint.style.borderTopLeftRadius = compact ? '5px' : '0';
+      hint.style.borderTopRightRadius = compact ? '5px' : '0';
+      hint.style.background = compact ? tooltipBg : tooltipFooterBg;
+      hint.style.color = compact ? tooltipPrimaryColor : tooltipSecondaryColor;
+      hint.style.fontWeight = compact ? '600' : '500';
+      hintIcon.style.color = accentColor;
+    };
+
     const hideTooltip = () => {
       activeCustomHint = null;
+      activeAnchorEl = null;
+      applyTooltipMode(false, plainSideColor);
       hintText.textContent = defaultHintText();
       tooltip.style.display = 'none';
       root.style.zIndex = '22';
       options.onHoverChange?.(false);
     };
     const positionTooltip = (event?: Event) => {
+      const bottomArrowColor = isCompactTooltip ? tooltipBg : tooltipFooterBg;
       tooltip.style.left = '0';
       tooltip.style.bottom = 'calc(100% + 9px)';
       tooltip.style.top = 'auto';
@@ -843,21 +864,25 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       arrow.style.top = '100%';
       arrow.style.bottom = 'auto';
       arrow.style.borderColor = 'transparent';
-      arrow.style.borderTopColor = tooltipFooterBg;
+      arrow.style.borderTopColor = bottomArrowColor;
 
       const bounds = root.parentElement?.getBoundingClientRect();
       const rootRect = root.getBoundingClientRect();
       const rect = tooltip.getBoundingClientRect();
-      if (event instanceof MouseEvent && Number.isFinite(event.clientX) && event.clientX > 0 && bounds && rect.width > 0) {
+      const anchorRect = activeAnchorEl?.getBoundingClientRect();
+      const targetCenterX = anchorRect && anchorRect.width > 0
+        ? anchorRect.left + anchorRect.width / 2
+        : (event instanceof MouseEvent && Number.isFinite(event.clientX) && event.clientX > 0 ? event.clientX : null);
+      if (targetCenterX !== null && bounds && rect.width > 0) {
         const desiredLeftInHost = Math.min(
-          Math.max(8, event.clientX - bounds.left - rect.width / 2),
+          Math.max(8, targetCenterX - bounds.left - rect.width / 2),
           Math.max(8, bounds.width - rect.width - 8),
         );
         const relativeLeft = desiredLeftInHost - (rootRect.left - bounds.left);
         tooltip.style.left = `${Math.round(relativeLeft)}px`;
         const arrowLeft = Math.min(
-          Math.max(12, event.clientX - (rootRect.left + relativeLeft) - 5),
-          Math.max(12, rect.width - 18),
+          Math.max(10, targetCenterX - (rootRect.left + relativeLeft) - 5),
+          Math.max(10, rect.width - 14),
         );
         arrow.style.left = `${Math.round(arrowLeft)}px`;
       } else if (bounds && rect.right > bounds.right - 8) {
@@ -870,11 +895,17 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
         arrow.style.top = 'auto';
         arrow.style.bottom = '100%';
         arrow.style.borderTopColor = 'transparent';
-        arrow.style.borderBottomColor = plainSideColor;
+        arrow.style.borderBottomColor = activeAccentColor;
       }
     };
-    const showTooltip = (event?: Event, customHint?: string) => {
+    const showTooltip = (
+      event?: Event,
+      customHint?: string,
+      mode?: { compact?: boolean; accentColor?: string; anchorEl?: HTMLElement | null },
+    ) => {
       activeCustomHint = customHint ?? null;
+      activeAnchorEl = mode?.anchorEl ?? null;
+      applyTooltipMode(Boolean(mode?.compact), mode?.accentColor ?? plainSideColor);
       hintText.textContent = activeCustomHint ?? defaultHintText();
       tooltip.style.display = 'block';
       root.style.zIndex = '100';
@@ -891,12 +922,26 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       btn.addEventListener('mouseenter', (e) => showTooltip(e, btn.dataset.hoverHint || btn.getAttribute('aria-label') || undefined));
       btn.addEventListener('mouseleave', hideTooltip);
     }
-    root.addEventListener('mouseover', (e) => {
+    const handleDockChipHover = (e: Event) => {
       const dockChip = (e.target as Element | null)?.closest?.('.rtx-trade-dock-chip') as HTMLElement | null;
-      if (dockChip) {
-        dockChip.removeAttribute('title');
-        const role = dockChip.dataset.role === 'SL' ? tr('Stop Loss') : tr('Take Profit');
-        showTooltip(e, `${tr('Add')} · ${role}`);
+      if (!dockChip) return;
+      dockChip.removeAttribute('title');
+      const isSl = dockChip.dataset.role === 'SL';
+      const roleAccent = isSl
+        ? (isLightSurface ? LIGHT_CHART_TRADE_COLORS.sl : DARK_CHART_TRADE_COLORS.sl)
+        : (isLightSurface ? LIGHT_CHART_TRADE_COLORS.tp : DARK_CHART_TRADE_COLORS.tp);
+      showTooltip(e, isSl ? 'Drag to add SL' : 'Drag to add TP', {
+        compact: true,
+        accentColor: roleAccent,
+        anchorEl: dockChip,
+      });
+    };
+    root.addEventListener('mouseover', handleDockChipHover);
+    root.addEventListener('mousemove', handleDockChipHover);
+    root.addEventListener('mouseout', (e) => {
+      const dockChip = (e.target as Element | null)?.closest?.('.rtx-trade-dock-chip') as HTMLElement | null;
+      if (dockChip && !dockChip.contains((e as MouseEvent).relatedTarget as Node | null)) {
+        hideTooltip();
       }
     });
     root.addEventListener('mouseleave', hideTooltip);

@@ -11,9 +11,11 @@ import {
   clampChartOpacityPercent,
   defaultChartProperties,
   getChartDirectionalQuoteColors,
+  getColorSchemeDisplayLabel,
   getEffectiveChartColors,
   getPresetSchemeColors,
   normalizeChartProperties,
+  normalizeColorSchemeName,
   resolveChartQuoteColors,
   useChartSettingsStore,
 } from './useChartSettingsStore';
@@ -38,8 +40,11 @@ describe('chart settings trade history overlay defaults', () => {
       });
       expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
         background: '#fafbfc', foreground: '#334155', grid: 'rgba(71, 85, 105, 0.07)',
-        bullCandle: '#ffffff', bearCandle: '#15803d', barUp: '#15803d', barDown: '#15803d',
+        bullCandle: '#000000', bearCandle: '#15803d', barUp: '#15803d', barDown: '#15803d',
       });
+      expect(getColorSchemeDisplayLabel(properties.colorScheme, { isAdvancedUntitledLight: false })).toBe('Green and White');
+      expect(getColorSchemeDisplayLabel(properties.colorScheme, { isAdvancedUntitledLight: true })).toBe('Green and Black');
+      expect(normalizeColorSchemeName('Green and Black')).toBe('Green and White');
       expect(restored.globalProperties.colorScheme).toBe(defaultChartProperties.colorScheme);
     } finally {
       useChartSettingsStore.setState(initial);
@@ -87,9 +92,12 @@ describe('chart settings trade history overlay defaults', () => {
       });
       expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
         background: '#fafbfc', foreground: '#334155', grid: 'rgba(71, 85, 105, 0.07)',
-        bullCandle: '#2557ff', bearCandle: '#ffffff', barUp: '#1746bc', barDown: '#334155',
+        bullCandle: '#2557ff', bearCandle: '#000000', barUp: '#1746bc', barDown: '#000000',
         lineChart: '#1746bc', lastPriceLine: '#1746bc', volumes: 'rgba(37, 87, 255, 0.32)',
       });
+      expect(getColorSchemeDisplayLabel(properties.colorScheme, { isAdvancedUntitledLight: false })).toBe('Blue and White');
+      expect(getColorSchemeDisplayLabel(properties.colorScheme, { isAdvancedUntitledLight: true })).toBe('Blue and Black');
+      expect(normalizeColorSchemeName('Blue and Black')).toBe('Blue and White');
       const legacyBlueAndWhite = normalizeChartProperties({
         colorScheme: 'Blue and White',
         colors: { ...colors, background: '#14171f', grid: 'rgba(255,255,255,0.06)' },
@@ -510,8 +518,8 @@ describe('chart settings trade history overlay defaults', () => {
       barDown: '#ff5858', bearCandle: '#ff5858',
     });
     expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#fafbfc', barUp: '#1746bc', bullCandle: '#1746bc',
-      barDown: '#a51f26', bearCandle: '#a51f26',
+      background: '#fafbfc', barUp: '#2563eb', bullCandle: '#2563eb',
+      barDown: '#dc2626', bearCandle: '#dc2626',
     });
     expect(properties.colors.bullCandle).toBe('#4597ff');
     expect(properties.colors.bearCandle).toBe('#ff5858');
@@ -554,10 +562,13 @@ describe('chart settings trade history overlay defaults', () => {
       barUp: '#795000',
       barDown: '#795000',
       bullCandle: '#000000',
-      bearCandle: '#f8fafc',
+      bearCandle: '#facc15',
       lineChart: '#795000',
       lastPriceLine: '#795000',
     });
+    expect(getColorSchemeDisplayLabel(yellowOnBlack.colorScheme, { isAdvancedUntitledLight: false })).toBe('Yellow and White');
+    expect(getColorSchemeDisplayLabel(yellowOnBlack.colorScheme, { isAdvancedUntitledLight: true })).toBe('Yellow and Black');
+    expect(normalizeColorSchemeName('Yellow and Black')).toBe('Yellow and White');
   });
 
   it('applies the dark-mode Black on White scheme while preserving light gray in light mode', () => {
@@ -588,6 +599,10 @@ describe('chart settings trade history overlay defaults', () => {
       lineChart: '#000000',
       lastPriceLine: '#000000',
     });
+    expect(getColorSchemeDisplayLabel(blackOnWhite.colorScheme, { isAdvancedUntitledLight: false })).toBe('Gray and White');
+    expect(getColorSchemeDisplayLabel(blackOnWhite.colorScheme, { isAdvancedUntitledLight: true })).toBe('White and Black');
+    expect(normalizeColorSchemeName('White and Black')).toBe('Gray and White');
+    expect(normalizeColorSchemeName('Gray and Black')).toBe('Gray and White');
   });
 
   it('shows OHLC values by default in defaultChartProperties', () => {
@@ -777,12 +792,12 @@ describe('chart settings trade history overlay defaults', () => {
         grid: 'rgba(71, 85, 105, 0.07)',
         bullCandle: '#12ab34',
         barUp: '#12ab34',
-        bearCandle: '#a51f26',
-        barDown: '#a51f26',
+        bearCandle: '#dc2626',
+        barDown: '#dc2626',
       });
       expect(resolveChartQuoteColors(useChartSettingsStore.getState(), 'XAUUSD', { isAdvancedUntitledLight: true })).toEqual({
         upColor: '#12ab34',
-        downColor: '#a51f26',
+        downColor: '#dc2626',
         isDefaultPalette: false,
       });
 

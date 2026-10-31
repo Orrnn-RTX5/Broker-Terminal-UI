@@ -1,18 +1,29 @@
-/* Keep the editor blue across themes, including the light theme's price segments. */
+/* Match the Blue and Red chart palette across themes. */
 html:root body .rtx-oct .rtx-oct-trade-button[data-side='buy'] {
-  background: #0078D4 !important;
+  background: #4597ff !important;
 }
 
 html:root body .rtx-oct .rtx-oct-trade-button[data-side='buy']:hover:not(:disabled) {
-  background: #026EC1 !important;
+  background: #3183ff !important;
 }
 
 html:root body .rtx-oct .rtx-oct-trade-button[data-side='buy'][data-active='true']:not(:disabled) {
-  background: #005A9E !important;
+  background: #2563eb !important;
 }
 
-.rtx-oct .rtx-oct-trade-button[data-side='buy'] .rtx-oct-price,
-.rtx-oct .rtx-oct-trade-button[data-side='buy'] .rtx-oct-side-label {
+html:root body .rtx-oct .rtx-oct-trade-button[data-side='sell'] {
+  background: #ff5858 !important;
+}
+
+html:root body .rtx-oct .rtx-oct-trade-button[data-side='sell']:hover:not(:disabled) {
+  background: #ef4444 !important;
+}
+
+html:root body .rtx-oct .rtx-oct-trade-button[data-side='sell'][data-active='true']:not(:disabled) {
+  background: #dc2626 !important;
+}
+
+.rtx-oct .rtx-oct-trade-button :is(.rtx-oct-price, .rtx-oct-side-label) {
   background: inherit !important;
 }
 

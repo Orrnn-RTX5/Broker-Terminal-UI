@@ -827,7 +827,7 @@ export const createTradeOverlayDomRuntime = ({
           label: 'SL',
           isLightSurface: lightSurface,
           leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
-          title: `Drag to set Stop Loss for ${ticketLabel || trade.key}`,
+          title: 'Drag to add SL',
         });
         bindChartUiTranslation(slChip, () => {
           slChip.removeAttribute('title');
@@ -842,7 +842,7 @@ export const createTradeOverlayDomRuntime = ({
           label: 'TP',
           isLightSurface: lightSurface,
           leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
-          title: `Drag to set Take Profit for ${ticketLabel || trade.key}`,
+          title: 'Drag to add TP',
         });
         bindChartUiTranslation(tpChip, () => {
           tpChip.removeAttribute('title');

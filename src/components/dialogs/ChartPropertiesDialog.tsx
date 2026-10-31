@@ -2,6 +2,7 @@ import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  getColorSchemeDisplayLabel,
   getEffectiveChartColors,
   getPresetSchemeColors,
   normalizeColorSchemeName,
@@ -481,7 +482,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
                   >
                     {colorSchemeOptions.map((scheme) => (
                       <option key={scheme} value={scheme} style={colorSchemeOptionStyle}>
-                        {tr(scheme)}
+                        {tr(getColorSchemeDisplayLabel(scheme, { isAdvancedUntitledLight }))}
                       </option>
                     ))}
                   </select>

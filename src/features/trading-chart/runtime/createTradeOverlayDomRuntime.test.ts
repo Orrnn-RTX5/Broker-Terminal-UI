@@ -561,10 +561,30 @@ describe('SL/TP chart controls', () => {
 
     hitArea.dispatchEvent(new MouseEvent('mouseenter'));
     expect(tooltip.style.display).toBe('block');
+    expect((tooltip.children[0] as HTMLElement).style.display).toBe('block');
     expect(tooltip.children[0].textContent).toBe('SELL 0.01 lots · #9302300 · Open price: 85939.87');
     expect(tooltip.children[1].textContent).toBe('Add stop loss and take profit');
 
     hitArea.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(tooltip.style.display).toBe('none');
+
+    const tpChip = entryBar.querySelector<HTMLElement>('.rtx-trade-dock-chip--tp')!;
+    const slChip = entryBar.querySelector<HTMLElement>('.rtx-trade-dock-chip--sl')!;
+
+    tpChip.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(tooltip.style.display).toBe('block');
+    expect((tooltip.children[0] as HTMLElement).style.display).toBe('none');
+    expect(tooltip.children[1].textContent).toBe('Drag to add TP');
+
+    tpChip.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: entryBar }));
+    expect(tooltip.style.display).toBe('none');
+
+    slChip.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(tooltip.style.display).toBe('block');
+    expect((tooltip.children[0] as HTMLElement).style.display).toBe('none');
+    expect(tooltip.children[1].textContent).toBe('Drag to add SL');
+
+    slChip.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: entryBar }));
     expect(tooltip.style.display).toBe('none');
   });
 });

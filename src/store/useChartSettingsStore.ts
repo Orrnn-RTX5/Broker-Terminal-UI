@@ -12,7 +12,12 @@ export type LegacyColorScheme =
   | "Blue on Black"
   | "Black on White"
   | "Yellow on Black"
-  | "Green on White";
+  | "Green on White"
+  | "Green and Black"
+  | "Blue and Black"
+  | "Gray and Black"
+  | "White and Black"
+  | "Yellow and Black";
 
 export type ColorScheme =
   | "Green and Red"
@@ -33,11 +38,17 @@ export const normalizeColorSchemeName = (
     case "Blue on Black":
       return "Blue and Red";
     case "Black on White":
+    case "Gray and Black":
+    case "White and Black":
       return "Gray and White";
     case "Yellow on Black":
+    case "Yellow and Black":
       return "Yellow and White";
     case "Green on White":
+    case "Green and Black":
       return "Green and White";
+    case "Blue and Black":
+      return "Blue and White";
     case "Green and Red":
     case "Green and White":
     case "Green and Blue":
@@ -49,6 +60,33 @@ export const normalizeColorSchemeName = (
       return scheme;
     default:
       return "Blue and Red";
+  }
+};
+
+export const getColorSchemeDisplayLabel = (
+  scheme?: ColorScheme | LegacyColorScheme | null,
+  options: { isAdvancedUntitledLight?: boolean } = {},
+): string => {
+  const normalized = normalizeColorSchemeName(scheme);
+  const isLightMode = options.isAdvancedUntitledLight ?? (
+    typeof document !== "undefined"
+    && document.documentElement.classList.contains("rtx-advanced-view")
+    && document.documentElement.classList.contains("rtx-skin-untitled-light")
+  );
+  if (!isLightMode) {
+    return normalized;
+  }
+  switch (normalized) {
+    case "Green and White":
+      return "Green and Black";
+    case "Blue and White":
+      return "Blue and Black";
+    case "Gray and White":
+      return "White and Black";
+    case "Yellow and White":
+      return "Yellow and Black";
+    default:
+      return normalized;
   }
 };
 
@@ -652,8 +690,9 @@ const isDefaultDarkPresetGrid = (grid: string | undefined): boolean => {
 
 const mapDefaultDarkColorToLight = (color: string): string => {
   const norm = color.trim().toLowerCase();
-  if (norm === CHART_BLUE_COLOR.toLowerCase()) return "#1746bc";
-  if (norm === BLUE_TEMPLATE_RED_COLOR.toLowerCase() || norm === CHART_LOSS_COLOR.toLowerCase()) return "#a51f26";
+  if (norm === CHART_BLUE_COLOR.toLowerCase()) return "#2563eb";
+  if (norm === BLUE_TEMPLATE_RED_COLOR.toLowerCase()) return "#dc2626";
+  if (norm === CHART_LOSS_COLOR.toLowerCase()) return "#a51f26";
   if (norm === CHART_CANDLE_UP_COLOR.toLowerCase()) return "#087f6c";
   if (norm === CHART_CANDLE_DOWN_COLOR.toLowerCase()) return "#ce2938";
   if (norm === CHART_PROFIT_COLOR.toLowerCase()) return "#06634e";
@@ -710,10 +749,10 @@ export const getEffectiveChartColors = (
       colors.lineChart = referenceColor(colors.lineChart);
       colors.lastPriceLine = referenceColor(colors.lastPriceLine);
     } else {
-      // Use the same contrast-safe quote colors as Market Watch in light mode.
+      // Match One-Click Trading BUY (#2563eb) and SELL (#dc2626) button colors in light mode.
       const quoteColor = (color: string): string => {
-        if (color.toLowerCase() === CHART_BLUE_COLOR) return "#1746bc";
-        if (color.toLowerCase() === BLUE_TEMPLATE_RED_COLOR) return "#a51f26";
+        if (color.toLowerCase() === CHART_BLUE_COLOR) return "#2563eb";
+        if (color.toLowerCase() === BLUE_TEMPLATE_RED_COLOR) return "#dc2626";
         return color;
       };
       for (const key of ["barUp", "barDown", "bullCandle", "bearCandle", "lineChart", "askPriceLine", "lastPriceLine", "stopLevels"] as const) {
@@ -743,7 +782,7 @@ export const getEffectiveChartColors = (
       ...lightSurface,
       barUp: "#15803d",
       barDown: "#15803d",
-      bullCandle: "#ffffff",
+      bullCandle: "#000000",
       bearCandle: "#15803d",
       lineChart: "#15803d",
       volumes: "rgba(21, 128, 61, 0.4)",
@@ -770,9 +809,9 @@ export const getEffectiveChartColors = (
       ...properties.colors,
       ...lightSurface,
       barUp: "#1746bc",
-      barDown: "#334155",
+      barDown: "#000000",
       bullCandle: "#2557ff",
-      bearCandle: "#ffffff",
+      bearCandle: "#000000",
       lineChart: "#1746bc",
       volumes: "rgba(37, 87, 255, 0.32)",
       lastPriceLine: "#1746bc",
@@ -786,7 +825,7 @@ export const getEffectiveChartColors = (
       barUp: "#795000",
       barDown: "#795000",
       bullCandle: "#000000",
-      bearCandle: "#f8fafc",
+      bearCandle: "#facc15",
       lineChart: "#795000",
       volumes: "rgba(250, 204, 21, 0.4)",
       lastPriceLine: "#795000",
@@ -913,6 +952,7 @@ const isDefaultBullCandleColor = (color: string | undefined): boolean => {
   return (
     norm === CHART_BLUE_COLOR.toLowerCase()
     || norm === CHART_CANDLE_UP_COLOR.toLowerCase()
+    || norm === "#2563eb"
     || norm === "#1746bc"
     || norm === "#087f6c"
   );
@@ -924,6 +964,7 @@ const isDefaultBearCandleColor = (color: string | undefined): boolean => {
   return (
     norm === BLUE_TEMPLATE_RED_COLOR.toLowerCase()
     || norm === CHART_CANDLE_DOWN_COLOR.toLowerCase()
+    || norm === "#dc2626"
     || norm === "#a51f26"
     || norm === "#ce2938"
   );
@@ -1055,8 +1096,8 @@ export const getChartDirectionalQuoteColors = (
 
   const isDefaultPalette = normalizedColorScheme === defaultChartProperties.colorScheme
     && (isAdvancedUntitledLight
-      ? upColor.trim().toLowerCase() === "#1746bc"
-        && downColor.trim().toLowerCase() === "#a51f26"
+      ? (upColor.trim().toLowerCase() === "#2563eb" || upColor.trim().toLowerCase() === "#1746bc")
+        && (downColor.trim().toLowerCase() === "#dc2626" || downColor.trim().toLowerCase() === "#a51f26")
       : upColor.trim().toLowerCase() === CHART_BLUE_COLOR.toLowerCase()
         && downColor.trim().toLowerCase() === BLUE_TEMPLATE_RED_COLOR.toLowerCase());
 

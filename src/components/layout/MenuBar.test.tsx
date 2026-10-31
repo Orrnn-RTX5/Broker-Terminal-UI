@@ -638,6 +638,37 @@ describe('MenuBar hamburger launcher', () => {
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
 
+    it('displays Black instead of White in Color Templates when Light Theme is enabled', () => {
+        useChartSettingsStore.setState({
+            globalProperties: {
+                ...defaultChartProperties,
+                colors: { ...defaultChartProperties.colors },
+            },
+            symbolProperties: {},
+        });
+
+        render(<MenuBar advancedViewEnabled chartSymbol="XAUUSD" />);
+        fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Color Templates' }));
+
+        const colorTemplatesMenu = screen.getByRole('menu', { name: 'Color Templates menu' });
+        expect(within(colorTemplatesMenu).getAllByRole('menuitemradio').map(item => item.textContent)).toEqual([
+            'Green and Red',
+            'Green and Black',
+            'Green and Blue',
+            'Blue and Black',
+            'Blue and Red',
+            'White and Black',
+            'Yellow and Black',
+        ]);
+
+        fireEvent.click(within(colorTemplatesMenu).getByRole('menuitemradio', { name: 'Blue and Black' }));
+        expect(useChartSettingsStore.getState().symbolProperties.XAUUSD).toMatchObject({
+            colorScheme: 'Blue and White',
+            colors: getPresetSchemeColors('Blue and White'),
+        });
+    });
+
     it('keeps the original actions reachable through the professional launcher', async () => {
         // Walks ~35 role queries across the full launcher menu tree; jsdom role lookups make this exceed the 10s default.
         const onSetAdvancedViewEnabled = vi.fn();

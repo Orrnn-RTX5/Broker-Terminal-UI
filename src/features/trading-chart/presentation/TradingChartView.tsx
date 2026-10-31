@@ -422,13 +422,13 @@ return (
                 </span>
                 <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                   H: <span ref={ohlcHighRef} style={{
-                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-chart-high)',
-                    background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
+                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: hudQuoteColors.upColor,
+                    background: 'rgba(37, 99, 235, 0.10)', padding: '1px 6px', borderRadius: '3px'
                   }}>0.00000</span>
                 </span>
                 <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                   L: <span ref={ohlcLowRef} style={{
-                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-quote-down)',
+                    fontWeight: 'var(--rtx-font-weight-body, 400)', color: hudQuoteColors.downColor,
                     background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
                   }}>0.00000</span>
                 </span>

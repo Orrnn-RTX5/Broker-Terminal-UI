@@ -1,11 +1,15 @@
-/* Depth of Market — enterprise finish.
-   The panel uses theme CSS variables with dark charcoal fallbacks so both
-   dark and light enterprise modes stay crisp. Interactive states live here
-   so the markup carries no JS hover handlers. */
+/* Depth of Market — institutional terminal finish.
+   Uses theme CSS variables with refined slate/charcoal dark fallbacks and
+   clean light-mode overrides so both themes stay crisp and scannable. */
 
 .rtx-depth-of-market {
   font-variant-numeric: tabular-nums;
-  box-shadow: var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.45)), 0 0 0 1px var(--border-primary, #28282e);
+  box-shadow: var(--shadow-lg, 0 16px 36px rgba(0, 0, 0, 0.55)), 0 0 0 1px var(--border-primary, #262b38);
+}
+
+.rtx-dom-status-dot {
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.22);
 }
 
 /* ── Title-bar controls ─────────────────────────────────────────────── */
@@ -17,29 +21,31 @@
   height: 22px;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   background: transparent;
-  color: var(--text-secondary, #808088);
+  color: var(--text-secondary, #94a3b8);
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
 .rtx-dom-icon-btn:hover {
-  color: var(--text-primary, #e2e2e8);
-  background: var(--bg-quaternary, #2a2a30);
+  color: var(--text-primary, #f1f5f9);
+  background: var(--bg-quaternary, #282e3e);
 }
 .rtx-dom-icon-btn--danger:hover {
-  color: #fda4a6;
-  background: rgba(255, 77, 79, 0.14);
+  color: #ffffff;
+  background: #dc2626;
 }
 .rtx-dom-icon-btn:focus-visible {
-  outline: 1px solid #4d6bfe;
+  outline: 1px solid #4597ff;
   outline-offset: 1px;
 }
 
 .rtx-dom-drag-hint {
   display: flex;
   align-items: center;
-  color: var(--text-tertiary, #50505a);
+  padding: 0 2px;
+  color: var(--text-tertiary, #64748b);
+  opacity: 0.75;
 }
 
 /* ── Toolbar ────────────────────────────────────────────────────────── */
@@ -50,109 +56,184 @@
   width: 26px;
   height: 22px;
   padding: 0;
-  border: 0;
-  border-radius: 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
+  color: var(--text-secondary, #94a3b8);
   cursor: pointer;
-  transition: background 120ms ease, box-shadow 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .rtx-dom-toolbar-btn:hover {
-  background: var(--bg-quaternary, #2a2a30);
+  background: var(--bg-quaternary, #252b3b);
+  border-color: var(--border-primary, #333a4b);
+  color: var(--text-primary, #f1f5f9);
 }
 .rtx-dom-toolbar-btn:active {
-  background: var(--bg-elevated, #333339);
+  background: var(--bg-elevated, #2d3548);
 }
 .rtx-dom-toolbar-btn.is-active {
-  background: var(--bg-quaternary, #2e2e36);
-  box-shadow: inset 0 0 0 1px var(--border-secondary, #45454e);
+  background: rgba(69, 151, 255, 0.14);
+  border-color: rgba(69, 151, 255, 0.48);
+  color: var(--text-primary, #f1f5f9);
 }
 .rtx-dom-toolbar-btn:focus-visible {
-  outline: 1px solid #4d6bfe;
+  outline: 1px solid #4597ff;
   outline-offset: 1px;
+}
+
+/* ── Ladder Scrollbar ───────────────────────────────────────────────── */
+.rtx-dom-ladder-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+.rtx-dom-ladder-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.rtx-dom-ladder-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rtx-dom-ladder-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.32);
+  border-radius: 999px;
+}
+.rtx-dom-ladder-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.52);
 }
 
 /* ── Ladder ─────────────────────────────────────────────────────────── */
 .rtx-dom-level {
   cursor: pointer;
-  transition: background 100ms ease;
+  transition: background 90ms ease;
 }
 .rtx-dom-level:hover {
-  background: var(--bg-quaternary, #26262d) !important;
+  background: var(--bg-quaternary, #232836) !important;
 }
 .rtx-dom-level--best-ask {
-  box-shadow: inset 2px 0 0 #ff4d4f;
+  box-shadow: inset 3px 0 0 #ff5858;
 }
 .rtx-dom-level--best-bid {
-  box-shadow: inset 2px 0 0 #00c896;
+  box-shadow: inset 3px 0 0 #4597ff;
 }
 
 .rtx-dom-volbar {
-  border-radius: 2px 0 0 2px;
-  transition: width 160ms ease;
+  border-radius: 0 2px 2px 0;
+  transition: width 150ms ease;
+}
+
+.rtx-dom-vol-placeholder {
+  color: var(--text-tertiary, #64748b);
+  opacity: 0.35;
 }
 
 .rtx-dom-trade-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
+  width: 24px;
   height: 18px;
   padding: 0;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 4px;
-  background: transparent;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1;
   cursor: pointer;
-  transition: background 100ms ease, transform 100ms ease;
+  transition: background 100ms ease, border-color 100ms ease, color 100ms ease, transform 80ms ease;
 }
-.rtx-dom-trade-btn:hover {
-  background: var(--bg-quaternary, #35353d);
-  transform: scale(1.2);
+.rtx-dom-trade-btn--sell {
+  color: #ff5858;
+  background: rgba(255, 88, 88, 0.12);
+  border-color: rgba(255, 88, 88, 0.28);
+}
+.rtx-dom-trade-btn--sell:hover {
+  color: #ffffff;
+  background: #ff5858;
+  border-color: #ff5858;
+}
+.rtx-dom-trade-btn--buy {
+  color: #4597ff;
+  background: rgba(69, 151, 255, 0.12);
+  border-color: rgba(69, 151, 255, 0.28);
+}
+.rtx-dom-trade-btn--buy:hover {
+  color: #ffffff;
+  background: #4597ff;
+  border-color: #4597ff;
 }
 .rtx-dom-trade-btn:focus-visible {
-  outline: 1px solid #4d6bfe;
+  outline: 1px solid #4597ff;
   outline-offset: 1px;
+}
+
+.rtx-dom-spread__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.22);
 }
 
 /* ── Steppers (SL / Volume / TP) ────────────────────────────────────── */
 .rtx-dom-stepper {
-  display: flex;
+  display: inline-flex;
   align-items: stretch;
   height: 24px;
-  border: 1px solid var(--border-secondary, #333338);
-  border-radius: 6px;
-  background: var(--bg-elevated, #222226);
+  border: 1px solid var(--border-secondary, #333a4b);
+  border-radius: 4px;
+  background: var(--bg-elevated, #181c26);
   overflow: hidden;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .rtx-dom-stepper:focus-within {
-  border-color: #1d4ed8;
+  border-color: #4597ff;
+  box-shadow: 0 0 0 1px rgba(69, 151, 255, 0.25);
 }
 .rtx-dom-stepper__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   padding: 0;
   border: 0;
-  background: transparent;
-  color: var(--text-secondary, #808088);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary, #94a3b8);
   font-size: 13px;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
   transition: background 100ms ease, color 100ms ease;
 }
+.rtx-dom-stepper__btn:first-child {
+  border-right: 1px solid var(--border-primary, #2a3040);
+}
+.rtx-dom-stepper__btn:last-child {
+  border-left: 1px solid var(--border-primary, #2a3040);
+}
 .rtx-dom-stepper__btn:hover {
-  background: var(--bg-quaternary, #2e2e36);
-  color: var(--text-primary, #e2e2e8);
+  background: var(--bg-quaternary, #282e3e);
+  color: var(--text-primary, #f1f5f9);
 }
 .rtx-dom-stepper__input {
-  width: 46px;
+  width: 40px;
+  padding: 0 2px;
   border: 0;
   outline: none;
   background: transparent;
   text-align: center;
-  color: var(--text-primary, #e2e2e8);
-  font-size: 13px;
+  color: var(--text-primary, #f1f5f9);
+  font-size: 12px;
+  font-weight: 500;
   appearance: textfield;
   -moz-appearance: textfield;
+}
+.rtx-dom-stepper__input--volume {
+  width: 46px;
+  font-weight: 600;
+  color: #93c5fd;
 }
 .rtx-dom-stepper__input::-webkit-outer-spin-button,
 .rtx-dom-stepper__input::-webkit-inner-spin-button {
@@ -160,14 +241,18 @@
   margin: 0;
 }
 .rtx-dom-stepper__label {
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-tertiary, #6a6a74);
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #94a3b8);
 }
 
 /* ── Execution footer ───────────────────────────────────────────────── */
+.rtx-dom-exec-footer {
+  background: var(--bg-tertiary, #1a1e29);
+}
 .rtx-dom-exec-btn {
   flex: 1;
   display: flex;
@@ -175,60 +260,70 @@
   align-items: center;
   justify-content: center;
   gap: 1px;
-  padding: 5px 4px 6px;
+  min-height: 44px;
+  padding: 5px 6px 6px;
   border: 0;
   cursor: pointer;
   color: #ffffff;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease, filter 120ms ease;
 }
 .rtx-dom-exec-btn:focus-visible {
-  outline: 1px solid rgba(255, 255, 255, 0.35);
+  outline: 2px solid rgba(255, 255, 255, 0.65);
   outline-offset: -2px;
 }
 .rtx-dom-exec-btn__caption {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  line-height: 15px;
-  letter-spacing: 0.09em;
+  line-height: 14px;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  opacity: 0.85;
+  opacity: 0.92;
 }
 .rtx-dom-exec-btn__price {
   font-family: var(--font-mono, 'Roboto Mono', 'Courier New', monospace);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   line-height: 18px;
   font-variant-numeric: tabular-nums;
 }
+.rtx-dom-exec-btn__symbol {
+  font-family: var(--font-sans, sans-serif);
+  font-size: 11.5px;
+  font-weight: 500;
+  opacity: 0.82;
+}
 .rtx-dom-exec-btn--sell {
-  background: #c93a41;
-  border-radius: 0 0 0 10px;
+  background: #ff5858;
+  border-radius: 0 0 0 8px;
 }
 .rtx-dom-exec-btn--sell:hover {
-  background: #d8474e;
+  background: #ef4444;
 }
 .rtx-dom-exec-btn--sell:active {
-  background: #b93239;
+  background: #dc2626;
 }
 .rtx-dom-exec-btn--buy {
-  background: #1e62dd;
-  border-radius: 0 0 10px 0;
+  background: #4597ff;
+  border-radius: 0 0 8px 0;
 }
 .rtx-dom-exec-btn--buy:hover {
-  background: #2d70ea;
+  background: #3183ff;
 }
 .rtx-dom-exec-btn--buy:active {
-  background: #1b58c7;
+  background: #2563eb;
 }
 .rtx-dom-exec-btn--flat {
-  background: var(--bg-tertiary, #232329);
-  color: var(--text-secondary, #9a9aa4);
+  background: var(--bg-tertiary, #1f2432);
+  color: var(--text-primary, #e2e8f0);
+  border-left: 1px solid var(--border-primary, #2c3344);
+  border-right: 1px solid var(--border-primary, #2c3344);
 }
 .rtx-dom-exec-btn--flat:hover {
-  background: var(--bg-quaternary, #2c2c33);
-  color: var(--text-primary, #e2e2e8);
+  background: var(--bg-quaternary, #282f40);
+  color: #ffffff;
 }
 .rtx-dom-exec-btn--flat:active {
-  background: var(--bg-secondary, #212127);
+  background: var(--bg-secondary, #181c26);
 }
+
 

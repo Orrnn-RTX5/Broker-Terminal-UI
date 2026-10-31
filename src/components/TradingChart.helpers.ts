@@ -282,7 +282,6 @@ export const getLivePriceOverlayColors = (
       [CHART_CANDLE_UP_COLOR.toUpperCase()]: '#07816d',
       [CHART_CANDLE_DOWN_COLOR.toUpperCase()]: '#d22f3c',
       '#059669': '#047857',
-      '#DC2626': '#b91c1c',
     };
     const badgeBackground = badgeColors[preferred.toUpperCase()];
     if (badgeBackground) {

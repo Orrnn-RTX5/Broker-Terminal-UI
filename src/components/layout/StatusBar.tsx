@@ -1,11 +1,10 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import { BrokerLogoImage } from '../BrokerLogoImage';
 import { ConnectionStatus } from '../ConnectionStatus';
+import { toPublicAssetPath } from '../welcomeHeroAssets';
 import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import {
     formatTerminalTitle,
-    getLogoUrl,
     getWebTerminalTitle,
     isSameTerminalLabel,
     useTerminalBrokerInfo,
@@ -26,10 +25,7 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
     const tr = useUiTranslation();
     const visible = useTerminalBarsStore(state => state.statusBarVisible);
     const brokerInfo = useTerminalBrokerInfo();
-    const brokerLogo = {
-        broker_id: localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '',
-        logo_url: getLogoUrl(brokerInfo.logoUrl, brokerInfo.logoBaseCandidates),
-    };
+    const statusBarLogoSrc = toPublicAssetPath('favicon.png');
 
     const terminalTitle = symbol && timeframe
         ? formatTerminalTitle(brokerInfo, symbol, timeframe, marketStatus)
@@ -50,11 +46,11 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                 <div
                     className="rtx-status-bar__metric flex min-w-0 max-w-full items-center gap-2 overflow-hidden whitespace-nowrap font-normal"
                 >
-                    <BrokerLogoImage
-                        broker={brokerLogo}
+                    <img
+                        src={statusBarLogoSrc}
                         alt={`${brokerInfo.brokerName} Logo`}
+                        draggable={false}
                         className="rtx-status-bar__logo h-4 w-4 shrink-0 rounded-sm object-contain"
-                        appFallbackUrl="./favicon.png"
                     />
                     <span className="rtx-status-bar__metric rtx-status-bar__title truncate whitespace-nowrap font-normal" title={tr(terminalTitle)}>{tr(terminalTitle)}</span>
                 </div>

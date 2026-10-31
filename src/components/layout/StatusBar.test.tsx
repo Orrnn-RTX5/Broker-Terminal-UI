@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
+import { toPublicAssetPath } from '../welcomeHeroAssets';
 import { StatusBar } from './StatusBar';
 
 const originalElectronDescriptor = Object.getOwnPropertyDescriptor(window, 'electron');
@@ -17,8 +18,8 @@ vi.mock('../../hooks/useTerminalTitle', () => ({
     accountId: '---',
     brokerName: 'Test Broker',
     marginMode: 'Hedge',
-    logoUrl: '',
-    logoBaseCandidates: [],
+    logoUrl: 'https://broker.example/custom-logo.png',
+    logoBaseCandidates: ['https://broker.example'],
   }),
   getLogoUrl: (url: string) => url,
   formatTerminalTitle: () => 'Web Terminal',
@@ -90,6 +91,15 @@ describe.each(['web', 'packaged desktop'] as const)('StatusBar in %s', (runtime)
     const download = screen.queryByRole('button', { name: 'Desktop App' });
     expect(download).toBeNull();
     expect(screen.getByText(runtime === 'web' ? 'v1.0.0' : 'v1.0.25')).toBeVisible();
+  });
+
+  it('always renders the RTX5 logo in the bottom-left status bar across all brokers', () => {
+    localStorage.setItem('broker_id', 'custom-broker');
+    const { container } = render(<StatusBar wsRef={{ current: null }} />);
+    const logo = container.querySelector('.rtx-status-bar__identity .rtx-status-bar__logo');
+    expect(logo).toBeInTheDocument();
+    expect(logo).toHaveAttribute('src', toPublicAssetPath('favicon.png'));
+    localStorage.removeItem('broker_id');
   });
 
   it('hides and restores the bar while preserving the mounted connection control', () => {

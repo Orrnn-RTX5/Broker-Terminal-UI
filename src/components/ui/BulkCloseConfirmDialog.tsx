@@ -1,11 +1,13 @@
 import React, { useRef, useMemo } from 'react';
 import { useBulkCloseConfirmStore } from '../../store/useBulkCloseConfirmStore';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, type Position } from '../../store/useAppStore';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
 import { resolveAccountCurrencyDigits } from '../../utils/accountCurrency';
+import { readBackendPositionProfit, resolveTradeProfit } from '../BottomDock.trade';
 
 const MAX_PREVIEW_ROWS = 10;
+const EMPTY_STORE_POSITIONS: Position[] = [];
 
 export function BulkCloseConfirmDialog() {
     const tr = useUiTranslation();
@@ -19,23 +21,65 @@ export function BulkCloseConfirmDialog() {
         onCancel,
     } = useBulkCloseConfirmStore();
     const accountCurrencyDigits = resolveAccountCurrencyDigits(useAppStore(state => state.account));
+    const storePositions = useAppStore(state => (isOpen ? state.positions : EMPTY_STORE_POSITIONS));
 
     const cancelBtnRef = useRef<HTMLButtonElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     useDialogFocusScope({ isOpen, dialogRef, onClose: onCancel, initialFocusRef: cancelBtnRef });
 
+    const { livePositions, liveCombinedPnL } = useMemo(() => {
+        if (!isOpen || storePositions.length === 0 || positions.length === 0) {
+            return { livePositions: positions, liveCombinedPnL: combinedPnL };
+        }
+
+        const liveById = new Map<number, Position>();
+        for (const rawPosition of storePositions) {
+            const ticketId = Number(
+                rawPosition.id
+                ?? (rawPosition as Position & { ticket?: unknown; position_id?: unknown }).ticket
+                ?? (rawPosition as Position & { ticket?: unknown; position_id?: unknown }).position_id,
+            );
+            if (Number.isFinite(ticketId) && ticketId > 0) {
+                liveById.set(ticketId, rawPosition);
+            }
+        }
+
+        let hasLiveMatch = false;
+        const nextPositions = positions.map((pos) => {
+            const livePos = liveById.get(pos.id);
+            if (!livePos) return pos;
+            hasLiveMatch = true;
+            const resolvedProfit = resolveTradeProfit(livePos).value ?? readBackendPositionProfit(livePos);
+            const liveVolume = Number(livePos.volume ?? livePos.quantity);
+            const liveOpenPrice = Number(livePos.openPrice ?? livePos.price_open ?? livePos.open_price);
+            return {
+                ...pos,
+                volume: Number.isFinite(liveVolume) && liveVolume > 0 ? liveVolume : pos.volume,
+                openPrice: Number.isFinite(liveOpenPrice) && liveOpenPrice > 0 ? liveOpenPrice : pos.openPrice,
+                pnl: resolvedProfit !== null && Number.isFinite(resolvedProfit) ? resolvedProfit : pos.pnl,
+            };
+        });
+
+        if (!hasLiveMatch) {
+            return { livePositions: positions, liveCombinedPnL: combinedPnL };
+        }
+
+        const nextCombinedPnL = nextPositions.reduce((total, pos) => total + pos.pnl, 0);
+        return { livePositions: nextPositions, liveCombinedPnL: nextCombinedPnL };
+    }, [isOpen, positions, combinedPnL, storePositions]);
+
     // Sort positions by P&L descending
     const sortedPositions = useMemo(() =>
-        [...positions].sort((a, b) => b.pnl - a.pnl),
-        [positions],
+        [...livePositions].sort((a, b) => b.pnl - a.pnl),
+        [livePositions],
     );
 
     const visiblePositions = sortedPositions.slice(0, MAX_PREVIEW_ROWS);
     const hiddenCount = Math.max(0, sortedPositions.length - MAX_PREVIEW_ROWS);
 
-    const profitableCount = positions.filter(p => p.pnl > 0).length;
-    const losingCount = positions.filter(p => p.pnl < 0).length;
-    const breakEvenCount = positions.filter(p => p.pnl === 0).length;
+    const profitableCount = livePositions.filter(p => p.pnl > 0).length;
+    const losingCount = livePositions.filter(p => p.pnl < 0).length;
+    const breakEvenCount = livePositions.filter(p => p.pnl === 0).length;
 
     if (!isOpen) return null;
 
@@ -45,9 +89,9 @@ export function BulkCloseConfirmDialog() {
             ? tr('Close In-Profit Positions')
             : tr('Close In-Loss Positions');
 
-    const pnlSign = combinedPnL >= 0 ? '+' : '';
-    const pnlFormatted = `${pnlSign}${combinedPnL.toFixed(accountCurrencyDigits)}`;
-    const pnlTone = combinedPnL >= 0 ? 'profit' : 'loss';
+    const pnlSign = liveCombinedPnL >= 0 ? '+' : '';
+    const pnlFormatted = `${pnlSign}${liveCombinedPnL.toFixed(accountCurrencyDigits)}`;
+    const pnlTone = liveCombinedPnL >= 0 ? 'profit' : 'loss';
 
     return (
         <div
@@ -75,7 +119,7 @@ export function BulkCloseConfirmDialog() {
                 <div className="rtx-bulk-close-dialog__stats">
                     <div className="rtx-bulk-close-dialog__stat">
                         <span className="rtx-bulk-close-dialog__stat-label">{tr('Positions')}</span>
-                        <span className="rtx-bulk-close-dialog__stat-value">{positions.length}</span>
+                        <span className="rtx-bulk-close-dialog__stat-value">{livePositions.length}</span>
                     </div>
                     <div className="rtx-bulk-close-dialog__stat-divider" />
                     <div className="rtx-bulk-close-dialog__stat">
@@ -154,7 +198,7 @@ export function BulkCloseConfirmDialog() {
                         onClick={onConfirm}
                         className="rtx-bulk-close-dialog__btn-confirm"
                     >
-                        {tr('Close')} {positions.length} {tr('Positions')}
+                        {tr('Close')} {livePositions.length} {tr('Positions')}
                     </button>
                 </div>
             </div>

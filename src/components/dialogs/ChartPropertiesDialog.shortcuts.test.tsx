@@ -65,6 +65,28 @@ describe('Chart Properties grid settings', () => {
       useChartSettingsStore.setState(initial);
     }
   });
+  it('displays Black instead of White for white color templates and black candle fills in Light Theme', () => {
+    const initial = useChartSettingsStore.getState();
+    const root = document.documentElement;
+    root.classList.add('rtx-advanced-view', 'rtx-skin-untitled-light');
+    useChartSettingsStore.setState({ globalProperties: { ...defaultChartProperties }, symbolProperties: {} });
+    const { unmount } = render(<ChartPropertiesDialog isOpen symbol="EURUSD" timeframe="M1" onClose={vi.fn()} />);
+    try {
+      fireEvent.click(screen.getByRole('tab', { name: 'Colors' }));
+      expect(screen.getByRole('option', { name: 'Green and Black' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Blue and Black' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'White and Black' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Yellow and Black' })).toBeInTheDocument();
+
+      const scheme = screen.getByDisplayValue('Blue and Red');
+      fireEvent.change(scheme, { target: { value: 'Blue and White' } });
+      expect(screen.getByLabelText('Bear candle')).toHaveValue('#000000');
+    } finally {
+      unmount();
+      root.classList.remove('rtx-advanced-view', 'rtx-skin-untitled-light');
+      useChartSettingsStore.setState(initial);
+    }
+  });
   it('previews independent symbol grid choices while Cancel restores the initial settings', () => {
     const initial = useChartSettingsStore.getState();
     useChartSettingsStore.setState({ globalProperties: { ...defaultChartProperties }, symbolProperties: {} });
