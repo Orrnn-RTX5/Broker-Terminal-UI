@@ -25,6 +25,9 @@ import type { ChartProperties } from '../../../store/useChartSettingsStore';
 import {
   getTimeframePeriodSeconds,
 } from '../../../utils/timeframeBoundary';
+import {
+  getTradingChartDefaultVisibleBars,
+} from '../../../utils/chartTimeFormat';
 import { formatHistoryForOhlcv, mergeHistoricalCandlesWithBufferedLive, type LogicalRangeLike } from '../../../utils/candleHistory';
 import type { PeriodSeparator } from '../../../utils/periodSeparators';
 import type { Candle, ChartType, Timeframe } from '../../../types/chart';
@@ -153,6 +156,7 @@ export function useTradingChartHistoryCache({
     if (!symbol) return false;
     const { key, metadata } = buildHistoryCacheTarget(activeTf);
     let cached = candleCache.getLatest(key);
+    const minWarmBaselineBars = activeTf === 'M1' ? 2 : getTradingChartDefaultVisibleBars(activeTf);
 
     if (!cached || cached.candles.length === 0) {
       const retainedM1Candles = candleAggregationService.getCandlesForHydration(symbol, 'M1', brokerTimeOffsetSecRef.current);
@@ -165,7 +169,7 @@ export function useTradingChartHistoryCache({
             brokerTimeOffsetSecRef.current,
           ).map(candle => ({ ...candle, tickVolume: candle.volume, closed: candle.isComplete })) as Candle[],
         );
-        if (reusableWarmCandles.length > 0) {
+        if (reusableWarmCandles.length >= minWarmBaselineBars) {
           cached = candleCache.setLatest(key, reusableWarmCandles, {
             ...metadata,
             brokerOffsetSeconds: brokerTimeOffsetSecRef.current,
@@ -175,6 +179,13 @@ export function useTradingChartHistoryCache({
       }
     }
     if (!cached || cached.candles.length === 0) return false;
+    if (
+      activeTf !== 'M1'
+      && cached.source === 'derived-m1'
+      && cached.candles.length < minWarmBaselineBars
+    ) {
+      return false;
+    }
 
     let candles = getValidSortedCandles(cached.candles as Candle[]);
     if (candles.length === 0) return false;
@@ -192,6 +203,19 @@ export function useTradingChartHistoryCache({
       && isPriceCompatibleWithReference(forming.close, createRenderedPriceReference(candles))
     ) {
       candles = mergeHistoricalCandlesWithBufferedLive(candles, [forming]);
+    }
+
+    if (
+      reason === 'cached-history'
+      && hasDisplayedHistoryRef.current
+      && lastRenderedCandlesRef.current.length > 0
+      && candlesRef.current.length === candles.length
+      && candlesRef.current[0]?.time === candles[0]?.time
+      && candlesRef.current[candlesRef.current.length - 1]?.time === candles[candles.length - 1]?.time
+      && candlesRef.current[candlesRef.current.length - 1]?.close === candles[candles.length - 1]?.close
+    ) {
+      setApiError(null);
+      return true;
     }
 
     cancelQueuedChartRender();

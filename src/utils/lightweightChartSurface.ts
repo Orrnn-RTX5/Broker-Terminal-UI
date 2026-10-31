@@ -22,10 +22,25 @@ export const refreshLightweightChartSurface = (
       // The public chart element holds the library's applied dimensions. Read
       // its inline values without forcing layout; Lightweight Charts rounds
       // both dimensions down to even pixels to keep the canvas inside its host.
+      // When the container has a fractional CSS box (e.g. 1105.59px),
+      // ResizeObserver contentRect floors to 1104px while offsetWidth rounds
+      // to 1106px. Treat an already-sized even surface within one even step
+      // (<= 2px) as matching so autoSize is not detached and oscillated.
       const style = chart.chartElement?.()?.style;
-      if (style
-        && Number.parseFloat(style.width) === nextWidth - nextWidth % 2
-        && Number.parseFloat(style.height) === nextHeight - nextHeight % 2) {
+      const currentWidth = style ? Number.parseFloat(style.width) : NaN;
+      const currentHeight = style ? Number.parseFloat(style.height) : NaN;
+      const targetEvenWidth = nextWidth - nextWidth % 2;
+      const targetEvenHeight = nextHeight - nextHeight % 2;
+      if (
+        Number.isFinite(currentWidth)
+        && Number.isFinite(currentHeight)
+        && currentWidth > 0
+        && currentHeight > 0
+        && currentWidth % 2 === 0
+        && currentHeight % 2 === 0
+        && Math.abs(currentWidth - targetEvenWidth) <= 2
+        && Math.abs(currentHeight - targetEvenHeight) <= 2
+      ) {
         return true;
       }
     }

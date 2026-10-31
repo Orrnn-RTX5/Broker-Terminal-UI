@@ -2990,7 +2990,7 @@ useTradingChartLiveCandleRuntime({
                 resetVisibleRangeOnNextDataRef.current = !applyInitialVisibleLogicalRange(
                   chartRef.current,
                   totalBars,
-                  prevTimeframeRef.current || timeframe,
+                  prevTimeframeRef.current,
                 );
               }
               console.log(`[TradingChart] Tab became visible — resized to ${offsetWidth}x${offsetHeight}`);
@@ -3005,7 +3005,7 @@ useTradingChartLiveCandleRuntime({
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [applyInitialVisibleLogicalRange, refreshTradeOverlayGeometry, getCandlesForFullRender, schedulePeriodSeparatorRender, timeframe]);
+  }, [applyInitialVisibleLogicalRange, refreshTradeOverlayGeometry, getCandlesForFullRender, schedulePeriodSeparatorRender]);
 
   useEffect(() => {
     if (!isActive) return;

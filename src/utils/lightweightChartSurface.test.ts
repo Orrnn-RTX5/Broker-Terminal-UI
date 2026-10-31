@@ -48,6 +48,20 @@ describe('refreshLightweightChartSurface', () => {
     expect(chart.resize).not.toHaveBeenCalled();
   });
 
+  it('does not oscillate when offsetWidth rounds a fractional box 2px above ResizeObserver even flooring', () => {
+    const chart = {
+      autoSizeActive: vi.fn(() => true),
+      applyOptions: vi.fn(),
+      resize: vi.fn(),
+      chartElement: () => ({ style: { width: '1104px', height: '596px' } }),
+    };
+
+    expect(refreshLightweightChartSurface(chart as never, 1106, 596, { forceRepaint: false })).toBe(true);
+    expect(chart.autoSizeActive).not.toHaveBeenCalled();
+    expect(chart.applyOptions).not.toHaveBeenCalled();
+    expect(chart.resize).not.toHaveBeenCalled();
+  });
+
   it('repairs changed dimensions once, then skips unchanged follow-up frames', () => {
     const style = { width: '900px', height: '502px' };
     const chart = {

@@ -182,6 +182,8 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
 
   const updateLegendDOMRef = useRef(updateLegendDOM);
   updateLegendDOMRef.current = updateLegendDOM;
+  const chartSelectionPresentationKeyRef = useRef(chartSelectionPresentationKey);
+  chartSelectionPresentationKeyRef.current = chartSelectionPresentationKey;
 
   useActiveChartRuntimeEffect(visibleRuntime.candle, () => {
     if (!isActive || !symbol) return;
@@ -210,7 +212,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       && Boolean(seriesRef.current)
       && isChartSelectionLivePaintAllowed(
         chartSelectionPresentationRef.current,
-        chartSelectionPresentationKey,
+        chartSelectionPresentationKeyRef.current,
       )
     );
 
@@ -269,7 +271,7 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
       if (!canPaintLiveChart(allowDuringSettle)) {
         if (shouldCommitFirstLiveSelectionBaseline({
           gate: chartSelectionPresentationRef.current,
-          selectionKey: chartSelectionPresentationKey,
+          selectionKey: chartSelectionPresentationKeyRef.current,
           active: isActiveRef.current,
           disposed: isDisposedRef.current,
           rebuilding: isRebuildingRef.current,
@@ -1057,7 +1059,6 @@ export const useTradingChartLiveCandleRuntime = (options: UseTradingChartLiveCan
     authToken,
     applyAreaTrendColors,
     brokerAccountSessionScope,
-    chartSelectionPresentationKey,
     getSynchronizedChartMarketNowMs,
     synchronizeChartMarketClock,
   ]);

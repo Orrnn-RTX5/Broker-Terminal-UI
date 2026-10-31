@@ -122,7 +122,9 @@ export const computeAdaptiveVisibleBars = (
   totalBars: number,
   minBarsFloor: number,
 ): number => {
-  const containerWidth = container?.offsetWidth || 1400;
+  const chartElementWidth = (chart as { chartElement?: () => HTMLElement | null } | null)
+    ?.chartElement?.()?.clientWidth;
+  const containerWidth = chartElementWidth || container?.clientWidth || container?.offsetWidth || 1400;
   const axisWidth = chart?.priceScale('right').width() || 60;
   const chartWidth = Math.max(200, containerWidth - axisWidth);
   const adaptive = Math.floor(chartWidth / TARGET_BAR_PX);

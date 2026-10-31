@@ -488,12 +488,52 @@ export function useTradingChartHistoryLoading({
         ohlcvCandles,
         explicitBrokerOffsetSeconds,
       );
+      if (aggregationSeedTimeframe === 'M1' && activeTf !== 'M1') {
+        const fullDerivedAggregates = omitPartialLeadingM1Aggregate(
+          candleAggregationService.getCandles(selectedSymbol, activeTf as AggTimeframe, true, false),
+          ohlcvCandles[0]?.time,
+          activeTf as AggTimeframe,
+          explicitBrokerOffsetSeconds,
+        );
+        const fullDerivedCandles = reconcileCandlesWithLiveQuote(
+          getValidSortedCandles(
+            fullDerivedAggregates.map(candle => ({
+              ...candle,
+              tickVolume: candle.volume,
+              closed: candle.isComplete,
+            })) as Candle[],
+          ),
+          'history',
+        );
+        if (fullDerivedCandles.length > candles.length) {
+          candles = resolveLatestFormingHistoryQuote(
+            mergeCandleCollections(fullDerivedCandles, candles),
+            activeTf,
+          );
+          candlesRef.current = candles;
+          renderedPriceReferenceRef.current = createRenderedPriceReference(candles);
+          if (candles.length > 1) {
+            hasDisplayedHistoryRef.current = true;
+            if (candles.length >= protectedDisplayedHistoryRef.current.length) {
+              protectedDisplayedHistoryRef.current = candles;
+            }
+          }
+        }
+      }
 
       // One exact M1 seed can satisfy later timeframe clicks without another
       // network round trip. Fill only missing derived-frame caches, preserving
       // any richer entry that this session already fetched.
-      const warmOtherTimeframeCaches = () => {
+      const warmOtherTimeframeCaches = (allowPartial = false) => {
         if (aggregationSeedTimeframe !== 'M1') return;
+        if (activeTf !== 'M1' && derivedM1Seed.length > 0) {
+          const { key: m1CacheKey } = buildHistoryCacheTarget('M1');
+          const existingM1Cache = candleCache.getLatest(m1CacheKey);
+          const warmM1Candles = getValidSortedCandles(derivedM1Seed);
+          if (warmM1Candles.length > (existingM1Cache?.candles.length ?? 0)) {
+            setHistoryCache('M1', warmM1Candles, explicitBrokerOffsetSeconds, 'backend');
+          }
+        }
         const oldestSeedTime = activeTf === 'M1' ? candlesRef.current[0]?.time : ohlcvCandles[0]?.time;
         for (const targetTf of CANDLE_TIMEFRAMES) {
           if (targetTf === 'M1' || targetTf === activeTf) continue;
@@ -514,7 +554,11 @@ export function useTradingChartHistoryLoading({
             reusableAggregates
               .map(candle => ({ ...candle, tickVolume: candle.volume })) as Candle[],
           );
-          if (warmCandles.length > (existingWarmCache?.candles.length ?? 0)) {
+          const minWarmBars = allowPartial ? 2 : getTradingChartDefaultVisibleBars(targetTf as Timeframe);
+          if (
+            warmCandles.length >= minWarmBars
+            && warmCandles.length > (existingWarmCache?.candles.length ?? 0)
+          ) {
             setHistoryCache(
               targetTf as Timeframe,
               warmCandles,
