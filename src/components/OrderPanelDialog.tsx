@@ -1376,6 +1376,8 @@ function OrderDialogDomPane({
   symbol,
   bid,
   ask,
+  bidVolume,
+  askVolume,
   digits,
   priceStep,
   onToggleTickChart,
@@ -1384,6 +1386,10 @@ function OrderDialogDomPane({
   symbol: string;
   bid: number;
   ask: number;
+  /** Top-of-book bid volume published on the live quote tick, if any. */
+  bidVolume?: number;
+  /** Top-of-book ask volume published on the live quote tick, if any. */
+  askVolume?: number;
   /** Broker digits; null = unknown (raw prices, no rounding). */
   digits: number | null;
   /** Broker tick size or 10^-digits; null = unknown (no synthetic levels). */
@@ -1413,10 +1419,17 @@ function OrderDialogDomPane({
     const step = stepUnit ?? 0;
     const safeAsk = ask > 0 ? ask : bid + step * 2;
     const safeBid = bid > 0 ? bid : Math.max(step, safeAsk - step * 2);
+    const bestAskTickVolume = typeof askVolume === 'number' && Number.isFinite(askVolume) && askVolume > 0
+      ? askVolume
+      : 0;
+    const bestBidTickVolume = typeof bidVolume === 'number' && Number.isFinite(bidVolume) && bidVolume > 0
+      ? bidVolume
+      : 0;
 
-    // Use live order-book levels when published by the broker; if no depth feed is
-    // published by the backend, synthesize price ladder steps from live bid/ask +
-    // broker tick step with volume = 0 (never invent volume numbers).
+    // Use live order-book levels when published by the broker; if fewer than 6
+    // levels or no depth feed is published by the backend, synthesize remaining
+    // price ladder steps from live bid/ask + broker tick step with volume = 0
+    // (never invent volume numbers; only real feed volumes are displayed).
     const sortedLiveAsksAsc = [...liveAsks].sort((a, b) => a.price - b.price);
     const sortedLiveBidsDesc = [...liveBids].sort((a, b) => b.price - a.price);
 
@@ -1427,12 +1440,26 @@ function OrderDialogDomPane({
             && Math.abs(safeAsk - bestBookAsk) > 0
             && Math.abs(safeAsk - bestBookAsk) < step * 250;
           const askShiftDelta = canShiftAsk ? (safeAsk - bestBookAsk) : 0;
-          return sortedLiveAsksAsc
-            .map((lvl) => ({
-              price: askShiftDelta !== 0 ? roundLevel(lvl.price + askShiftDelta) : lvl.price,
-              volume: Number(lvl.volume) > 0 ? Number(lvl.volume) : 0,
-            }))
-            .sort((a, b) => b.price - a.price);
+          const shiftedAsksAsc = sortedLiveAsksAsc
+            .map((lvl, idx) => {
+              const lvlVol = Number(lvl.volume) > 0 ? Number(lvl.volume) : 0;
+              return {
+                price: askShiftDelta !== 0 ? roundLevel(lvl.price + askShiftDelta) : lvl.price,
+                volume: lvlVol > 0 ? lvlVol : (idx === 0 ? bestAskTickVolume : 0),
+              };
+            })
+            .sort((a, b) => a.price - b.price);
+          if (shiftedAsksAsc.length < DOM_LADDER_LEVELS && canSynthesize && step > 0) {
+            const outerBookAsk = shiftedAsksAsc[shiftedAsksAsc.length - 1].price;
+            const missingCount = DOM_LADDER_LEVELS - shiftedAsksAsc.length;
+            for (let i = 1; i <= missingCount; i += 1) {
+              shiftedAsksAsc.push({
+                price: roundLevel(outerBookAsk + i * step),
+                volume: 0,
+              });
+            }
+          }
+          return shiftedAsksAsc.sort((a, b) => b.price - a.price);
         })()
       : !canSynthesize
         ? []
@@ -1440,7 +1467,7 @@ function OrderDialogDomPane({
             const offsetFromBest = DOM_LADDER_LEVELS - 1 - idx;
             return {
               price: roundLevel(safeAsk + offsetFromBest * step),
-              volume: 0,
+              volume: offsetFromBest === 0 ? bestAskTickVolume : 0,
             };
           });
 
@@ -1451,18 +1478,32 @@ function OrderDialogDomPane({
             && Math.abs(safeBid - bestBookBid) > 0
             && Math.abs(safeBid - bestBookBid) < step * 250;
           const bidShiftDelta = canShiftBid ? (safeBid - bestBookBid) : 0;
-          return sortedLiveBidsDesc
-            .map((lvl) => ({
-              price: bidShiftDelta !== 0 ? roundLevel(Math.max(step, lvl.price + bidShiftDelta)) : lvl.price,
-              volume: Number(lvl.volume) > 0 ? Number(lvl.volume) : 0,
-            }))
+          const shiftedBidsDesc = sortedLiveBidsDesc
+            .map((lvl, idx) => {
+              const lvlVol = Number(lvl.volume) > 0 ? Number(lvl.volume) : 0;
+              return {
+                price: bidShiftDelta !== 0 ? roundLevel(Math.max(step, lvl.price + bidShiftDelta)) : lvl.price,
+                volume: lvlVol > 0 ? lvlVol : (idx === 0 ? bestBidTickVolume : 0),
+              };
+            })
             .sort((a, b) => b.price - a.price);
+          if (shiftedBidsDesc.length < DOM_LADDER_LEVELS && canSynthesize && step > 0) {
+            const outerBookBid = shiftedBidsDesc[shiftedBidsDesc.length - 1].price;
+            const missingCount = DOM_LADDER_LEVELS - shiftedBidsDesc.length;
+            for (let i = 1; i <= missingCount; i += 1) {
+              shiftedBidsDesc.push({
+                price: roundLevel(Math.max(step, outerBookBid - i * step)),
+                volume: 0,
+              });
+            }
+          }
+          return shiftedBidsDesc;
         })()
       : !canSynthesize
         ? []
         : Array.from({ length: DOM_LADDER_LEVELS }, (_, idx) => ({
             price: roundLevel(Math.max(step, safeBid - idx * step)),
-            volume: 0,
+            volume: idx === 0 ? bestBidTickVolume : 0,
           }));
 
     const allVols = [...resolvedAsks, ...resolvedBids].map((r) => r.volume);
@@ -1471,7 +1512,7 @@ function OrderDialogDomPane({
       bids: resolvedBids,
       maxVolume: Math.max(...allVols, 1),
     };
-  }, [ask, bid, digits, rawOrderBook?.asks, rawOrderBook?.bids, stepUnit]);
+  }, [ask, askVolume, bid, bidVolume, digits, rawOrderBook?.asks, rawOrderBook?.bids, stepUnit]);
 
   return (
     <div className="rtx-order-dialog__dom" data-testid="order-dom-pane">
@@ -1694,6 +1735,12 @@ export function OrderPanelDialog({
       : ''
   ));
   const [stopLimitPriceStr, setStopLimitPriceStr] = useState('');
+  const [isPriceEdited, setIsPriceEdited] = useState(() => (
+    initialPrice !== undefined && Number.isFinite(initialPrice) && initialPrice > 0
+  ));
+  const [isStopLimitPriceEdited, setIsStopLimitPriceEdited] = useState(false);
+  const [isPriceFocused, setIsPriceFocused] = useState(false);
+  const [isStopLimitPriceFocused, setIsStopLimitPriceFocused] = useState(false);
   const [stopLossStr, setStopLossStr] = useState('');
   const [takeProfitStr, setTakeProfitStr] = useState('');
   const [fillPolicy, setFillPolicy] = useState<FillPolicy>('Fill or Kill');
@@ -1846,10 +1893,43 @@ export function OrderPanelDialog({
   }, [isOpen, initialOrderType]);
 
   useEffect(() => {
-    if (isOpen && initialPrice !== undefined && Number.isFinite(initialPrice) && initialPrice > 0) {
+    if (!isOpen) return;
+    if (initialPrice !== undefined && Number.isFinite(initialPrice) && initialPrice > 0) {
+      setIsPriceEdited(true);
       setPriceStr(specDigits === null ? String(initialPrice) : initialPrice.toFixed(specDigits));
+    } else {
+      setIsPriceEdited(false);
+      setIsStopLimitPriceEdited(false);
     }
   }, [isOpen, initialPrice, specDigits]);
+
+  // While a pending order mode (Limit, Stop, Stop-Limit) is active and the user
+  // has not manually edited or focused the Price / Stop Limit price field, keep
+  // it populated with the live broker quote so it shows the live price and stays editable.
+  useEffect(() => {
+    if (!isOpen || orderType === 'Market Execution') return;
+    const effectiveSide = resolveSideForOrderType(orderType) ?? selectedSide;
+    const refPrice = effectiveSide === 'sell' ? (bid || ask) : (ask || bid);
+    if (!(refPrice > 0)) return;
+    const formattedRef = formatDialogPrice(refPrice, specDigits);
+    if (!isPriceEdited && !isPriceFocused) {
+      setPriceStr((prev) => (prev === formattedRef ? prev : formattedRef));
+    }
+    if (isStopLimitOrderType(orderType) && !isStopLimitPriceEdited && !isStopLimitPriceFocused) {
+      setStopLimitPriceStr((prev) => (prev === formattedRef ? prev : formattedRef));
+    }
+  }, [
+    ask,
+    bid,
+    isOpen,
+    isPriceEdited,
+    isPriceFocused,
+    isStopLimitPriceEdited,
+    isStopLimitPriceFocused,
+    orderType,
+    selectedSide,
+    specDigits,
+  ]);
 
   const spread = ask - bid;
   // Spread pips from the same catalog-first spec digits as the prices.
@@ -2025,17 +2105,25 @@ export function OrderPanelDialog({
     if (impliedSide) {
       setSelectedSide(impliedSide);
     }
-    if (nextType !== 'Market Execution') {
-      const refPrice = impliedSide === 'sell' ? (bid || ask) : (ask || bid);
-      if (refPrice > 0) {
-        const formattedRef = formatDialogPrice(refPrice, specDigits);
-        setPriceStr((prev) => (prev.trim() === '' ? formattedRef : prev));
-        if (isStopLimitOrderType(nextType)) {
-          setStopLimitPriceStr((prev) => (prev.trim() === '' ? formattedRef : prev));
-        }
+    if (nextType === 'Market Execution') {
+      setIsPriceEdited(false);
+      setIsStopLimitPriceEdited(false);
+      return;
+    }
+    const effectiveSide = impliedSide ?? selectedSide;
+    const refPrice = effectiveSide === 'sell' ? (bid || ask) : (ask || bid);
+    if (refPrice > 0) {
+      const formattedRef = formatDialogPrice(refPrice, specDigits);
+      if (!isPriceEdited || priceStr.trim() === '') {
+        setIsPriceEdited(false);
+        setPriceStr(formattedRef);
+      }
+      if (isStopLimitOrderType(nextType) && (!isStopLimitPriceEdited || stopLimitPriceStr.trim() === '')) {
+        setIsStopLimitPriceEdited(false);
+        setStopLimitPriceStr(formattedRef);
       }
     }
-  }, [ask, bid, specDigits]);
+  }, [ask, bid, isPriceEdited, isStopLimitPriceEdited, priceStr, selectedSide, specDigits, stopLimitPriceStr]);
 
   const handleSubmit = useCallback(async (
     side: 'buy' | 'sell',
@@ -2186,6 +2274,7 @@ export function OrderPanelDialog({
 
   const handleSelectDomPrice = useCallback((clickedPrice: number, side: 'buy' | 'sell') => {
     // New-order price display uses catalog digits only; unknown = raw value.
+    setIsPriceEdited(true);
     setPriceStr(specDigits === null ? String(clickedPrice) : clickedPrice.toFixed(specDigits));
     setSelectedSide(side);
     const execKind = depthExecutionForLevel(side === 'buy' ? 'BUY' : 'SELL', clickedPrice, bid, ask);
@@ -2415,7 +2504,7 @@ export function OrderPanelDialog({
                 data-testid="order-mode-market"
                 className={`rtx-order-dialog__mode-btn ${orderType === 'Market Execution' ? 'rtx-order-dialog__mode-btn--active' : ''}`}
                 title={tr("Market Execution")}
-                onClick={() => setOrderType('Market Execution')}
+                onClick={() => handleOrderTypeChange('Market Execution')}
               >
                 <span className="rtx-order-dialog__mode-text">{tr("Market order")}</span>
                 {isSidebarExpanded && <span className="rtx-order-dialog__mode-label">{tr("Market Execution")}</span>}
@@ -2426,7 +2515,7 @@ export function OrderPanelDialog({
                 data-testid="order-mode-limit"
                 className={`rtx-order-dialog__mode-btn ${isLimitOrderType(orderType) ? 'rtx-order-dialog__mode-btn--active' : ''}`}
                 title={tr("Limit Order")}
-                onClick={() => setOrderType('Limit Order')}
+                onClick={() => handleOrderTypeChange('Limit Order')}
               >
                 <span className="rtx-order-dialog__mode-text">{tr("Limit order")}</span>
                 {isSidebarExpanded && <span className="rtx-order-dialog__mode-label">{tr("Limit Order")}</span>}
@@ -2437,7 +2526,7 @@ export function OrderPanelDialog({
                 data-testid="order-mode-stop"
                 className={`rtx-order-dialog__mode-btn ${isStopOrderType(orderType) ? 'rtx-order-dialog__mode-btn--active' : ''}`}
                 title={tr("Stop Order")}
-                onClick={() => setOrderType('Stop Order')}
+                onClick={() => handleOrderTypeChange('Stop Order')}
               >
                 <span className="rtx-order-dialog__mode-text">{tr("Stop order")}</span>
                 {isSidebarExpanded && <span className="rtx-order-dialog__mode-label">{tr("Stop Order")}</span>}
@@ -2448,7 +2537,7 @@ export function OrderPanelDialog({
                 data-testid="order-mode-stop-limit"
                 className={`rtx-order-dialog__mode-btn ${isStopLimitOrderType(orderType) ? 'rtx-order-dialog__mode-btn--active' : ''}`}
                 title={tr("Stop Limit Order")}
-                onClick={() => setOrderType('Stop Limit Order')}
+                onClick={() => handleOrderTypeChange('Stop Limit Order')}
               >
                 <span className="rtx-order-dialog__mode-text">{tr("Stop-limit order")}</span>
                 {isSidebarExpanded && <span className="rtx-order-dialog__mode-label">{tr("Stop Limit Order")}</span>}
@@ -2622,7 +2711,11 @@ export function OrderPanelDialog({
                   <select
                     id={symbolFieldId}
                     value={symbol}
-                    onChange={(e) => setSymbol(e.target.value)}
+                    onChange={(e) => {
+                      setSymbol(e.target.value);
+                      setIsPriceEdited(false);
+                      setIsStopLimitPriceEdited(false);
+                    }}
                     className="rtx-order-dialog__control rtx-order-dialog__symbol-select"
                   >
                     {symbolOptions.map(({ symbol: s, disabled }) => {
@@ -2761,13 +2854,25 @@ export function OrderPanelDialog({
                           type="text"
                           inputMode="decimal"
                           value={priceStr}
+                          onFocus={() => setIsPriceFocused(true)}
                           onChange={(e) => {
                             const val = e.target.value;
-                            if (val === '' || /^\d*\.?\d*$/.test(val)) setPriceStr(val);
+                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                              setIsPriceEdited(true);
+                              setPriceStr(val);
+                            }
                           }}
                           onBlur={() => {
+                            setIsPriceFocused(false);
                             const parsed = Number.parseFloat(priceStr);
-                            setPriceStr(Number.isFinite(parsed) && parsed >= 0 ? (specDigits === null ? String(parsed) : parsed.toFixed(specDigits)) : '');
+                            if (Number.isFinite(parsed) && parsed > 0) {
+                              setPriceStr(specDigits === null ? String(parsed) : parsed.toFixed(specDigits));
+                            } else {
+                              setIsPriceEdited(false);
+                              const effectiveSide = resolveSideForOrderType(orderType) ?? selectedSide;
+                              const refPrice = effectiveSide === 'sell' ? (bid || ask) : (ask || bid);
+                              setPriceStr(refPrice > 0 ? formatDialogPrice(refPrice, specDigits) : '');
+                            }
                           }}
                           className="rtx-order-dialog__volume-input"
                         />
@@ -2775,13 +2880,19 @@ export function OrderPanelDialog({
                           <button
                             type="button"
                             aria-label={tr("Increase price")}
-                            onClick={() => stepPriceField(priceStr, setPriceStr, 1, ask || bid)}
+                            onClick={() => {
+                              setIsPriceEdited(true);
+                              stepPriceField(priceStr, setPriceStr, 1, ask || bid);
+                            }}
                             className="rtx-order-dialog__spinner-button"
                           >▲</button>
                           <button
                             type="button"
                             aria-label={tr("Decrease price")}
-                            onClick={() => stepPriceField(priceStr, setPriceStr, -1, bid || ask)}
+                            onClick={() => {
+                              setIsPriceEdited(true);
+                              stepPriceField(priceStr, setPriceStr, -1, bid || ask);
+                            }}
                             className="rtx-order-dialog__spinner-button"
                           >▼</button>
                         </div>
@@ -2801,13 +2912,25 @@ export function OrderPanelDialog({
                           inputMode="decimal"
                           disabled={!isStopLimitOrderType(orderType)}
                           value={stopLimitPriceStr}
+                          onFocus={() => setIsStopLimitPriceFocused(true)}
                           onChange={(e) => {
                             const val = e.target.value;
-                            if (val === '' || /^\d*\.?\d*$/.test(val)) setStopLimitPriceStr(val);
+                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                              setIsStopLimitPriceEdited(true);
+                              setStopLimitPriceStr(val);
+                            }
                           }}
                           onBlur={() => {
+                            setIsStopLimitPriceFocused(false);
                             const parsed = Number.parseFloat(stopLimitPriceStr);
-                            setStopLimitPriceStr(Number.isFinite(parsed) && parsed >= 0 ? (specDigits === null ? String(parsed) : parsed.toFixed(specDigits)) : '');
+                            if (Number.isFinite(parsed) && parsed > 0) {
+                              setStopLimitPriceStr(specDigits === null ? String(parsed) : parsed.toFixed(specDigits));
+                            } else {
+                              setIsStopLimitPriceEdited(false);
+                              const effectiveSide = resolveSideForOrderType(orderType) ?? selectedSide;
+                              const refPrice = effectiveSide === 'sell' ? (bid || ask) : (ask || bid);
+                              setStopLimitPriceStr(refPrice > 0 ? formatDialogPrice(refPrice, specDigits) : '');
+                            }
                           }}
                           className="rtx-order-dialog__volume-input"
                         />
@@ -2816,14 +2939,20 @@ export function OrderPanelDialog({
                             type="button"
                             disabled={!isStopLimitOrderType(orderType)}
                             aria-label={tr("Increase stop limit price")}
-                            onClick={() => stepPriceField(stopLimitPriceStr, setStopLimitPriceStr, 1, ask || bid)}
+                            onClick={() => {
+                              setIsStopLimitPriceEdited(true);
+                              stepPriceField(stopLimitPriceStr, setStopLimitPriceStr, 1, ask || bid);
+                            }}
                             className="rtx-order-dialog__spinner-button"
                           >▲</button>
                           <button
                             type="button"
                             disabled={!isStopLimitOrderType(orderType)}
                             aria-label={tr("Decrease stop limit price")}
-                            onClick={() => stepPriceField(stopLimitPriceStr, setStopLimitPriceStr, -1, bid || ask)}
+                            onClick={() => {
+                              setIsStopLimitPriceEdited(true);
+                              stepPriceField(stopLimitPriceStr, setStopLimitPriceStr, -1, bid || ask);
+                            }}
                             className="rtx-order-dialog__spinner-button"
                           >▼</button>
                         </div>
@@ -3188,6 +3317,8 @@ export function OrderPanelDialog({
               symbol={symbol}
               bid={bid}
               ask={ask}
+              bidVolume={tick?.bidVolume}
+              askVolume={tick?.askVolume}
               digits={specDigits}
               priceStep={priceStep}
               onToggleTickChart={() => setShowTickChart((v) => !v)}

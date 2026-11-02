@@ -70,24 +70,24 @@ describe('Close All source contract', () => {
     expect(beforeExecution).not.toContain('requestAnimationFrame');
   });
 
-  it('removes every claimed row immediately, then makes confirmations durable', () => {
+  it('keeps every row visible until the backend confirms that ticket (MT5 behaviour)', () => {
     expect(startedStart).toBeGreaterThan(-1);
     expect(startedEnd).toBeGreaterThan(startedStart);
-    expect(candidatesStartedHandler).toContain('markLocalTradeMutation(ticketIds);');
-    expect(candidatesStartedHandler).toContain("dispatchTradeOverlayCloseState(ticketIds, 'pending', {");
-    expect(candidatesStartedHandler).toContain('.positions.filter((position) => !ticketSet.has(position.id))');
-    expect(candidatesStartedHandler).toContain('{ removedTickets: ticketIds }');
+    expect(candidatesStartedHandler).not.toContain('setPositions');
+    expect(candidatesStartedHandler).not.toContain('markLocalTradeMutation');
+    expect(candidatesStartedHandler).not.toContain('dispatchTradeOverlayCloseState');
+    expect(bulkHandler).not.toContain("'pending'");
 
     expect(bulkHandler).toContain('onTicketConfirmed: (ticketId) => {');
+    expect(bulkHandler).toContain('markLocalTradeMutation([ticketId]);');
+    expect(bulkHandler).toContain('.positions.filter((position) => position.id !== ticketId)');
     expect(bulkHandler).toContain('{ closedTickets: [ticketId], removedTickets: [ticketId] }');
     expect(bulkHandler).toContain("dispatchTradeOverlayCloseState([ticketId], 'confirmed', {");
   });
 
-  it('restores failed tickets immediately and reports them', () => {
-    expect(bulkHandler).toContain('clearOptimisticClosedTickets(failedTicketIds, closeMarkerScope);');
-    expect(bulkHandler).toContain("dispatchTradeOverlayCloseState(failedTicketIds, 'failed');");
-    expect(bulkHandler).toContain('closeCandidatesByTicket.get(ticketId)');
-    expect(bulkHandler).toContain('store.setPositions([...store.positions, ...restoredPositions]);');
+  it('leaves failed tickets open and reports them', () => {
+    expect(bulkHandler).not.toContain('clearOptimisticClosedTickets');
+    expect(bulkHandler).not.toContain("'failed'");
     expect(bulkHandler).toContain("feedbackLabel('closed')");
     expect(bulkHandler).toContain('${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length}');
     expect(bulkHandler).toContain('${failedTicketIds.length} — ${failureMessage}');
@@ -119,30 +119,26 @@ describe('Close All source contract', () => {
     expect(bulkHandler).toContain('const closeSessionScope = getCommittedBrokerAccountSessionScopeKey(');
     expect(bulkHandler).toContain('getCurrentSessionKey: getCurrentCloseSessionKey,');
     expect(bulkHandler).toContain('if (getCurrentCloseSessionKey() !== closeSessionScope) return;');
-    expect(bulkHandler).toContain('if (!closeResult.sessionCurrent) {');
-    expect(bulkHandler).toContain('clearOptimisticClosedTickets(closeResult.attemptedTicketIds, closeMarkerScope);');
+    expect(bulkHandler).toContain('if (!closeResult.sessionCurrent) return;');
   });
 });
 
 describe('single position close source contract', () => {
-  it('removes the row before waiting for confirmation and restores a rejection', () => {
+  it('removes the row only after the backend confirms the close', () => {
     expect(singleStart).toBeGreaterThan(-1);
     expect(singleEnd).toBeGreaterThan(singleStart);
     const closeRequest = singleHandler.indexOf("await api.positions.closePosition(String(id), { account_login: closeLogin });");
     expect(closeRequest).toBeGreaterThan(-1);
-    for (const pendingStep of [
+    for (const hideStep of [
       'markLocalTradeMutation([id]);',
-      "dispatchTradeOverlayCloseState([id], 'pending'",
       'useAppStore.getState().setPositions(',
-      '{ removedTickets: [id] }',
+      "dispatchTradeOverlayCloseState([id], 'confirmed'",
     ]) {
-      expect(singleHandler.indexOf(pendingStep)).toBeGreaterThan(-1);
-      expect(singleHandler.indexOf(pendingStep)).toBeLessThan(closeRequest);
+      expect(singleHandler.indexOf(hideStep)).toBeGreaterThan(closeRequest);
     }
-    expect(singleHandler.indexOf("dispatchTradeOverlayCloseState([id], 'confirmed'")).toBeGreaterThan(closeRequest);
-    expect(singleHandler).toContain('clearOptimisticClosedTickets([id], closeMarkerScope);');
-    expect(singleHandler).toContain("dispatchTradeOverlayCloseState([id], 'failed');");
-    expect(singleHandler).toContain('store.setPositions([...store.positions, ...restoredPositions]);');
+    expect(singleHandler).not.toContain("'pending'");
+    expect(singleHandler).not.toContain("'failed'");
+    expect(singleHandler).not.toContain('clearOptimisticClosedTickets');
   });
 
   it('scopes close recovery and UI mutation to the initiating broker account', () => {

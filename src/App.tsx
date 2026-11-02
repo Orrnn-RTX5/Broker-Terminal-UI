@@ -866,24 +866,20 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       );
     };
 
-    // Give immediate execution feedback without weakening broker truth: hide
-    // the pending ticket now, then restore it if the correlated close rejects.
-    markLocalTradeMutation([id]);
-    dispatchTradeOverlayCloseState([id], 'pending', { snapshots: closeSnapshots });
-    useAppStore.getState().setPositions(
-      useAppStore.getState().positions.filter((position) => position.id !== id),
-      { removedTickets: [id] },
-    );
-
+    // MT5 behaviour: the row stays in the table and on the chart until the
+    // backend confirms the close; a rejected close never hides the position.
     try {
       await api.positions.closePosition(String(id), { account_login: closeLogin });
       if (!isCurrentCloseSession()) {
-        clearOptimisticClosedTickets([id], closeMarkerScope);
         return false;
       }
-      // Backend confirmed: convert the optimistic removal into a tombstone so
+      // Backend confirmed: remove the row and convert into a tombstone so
       // a lagging position snapshot cannot restore the closed ticket.
-      useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: [id] });
+      markLocalTradeMutation([id]);
+      useAppStore.getState().setPositions(
+        useAppStore.getState().positions.filter((position) => position.id !== id),
+        { closedTickets: [id], removedTickets: [id] },
+      );
       dispatchTradeOverlayCloseState([id], 'confirmed', { snapshots: closeSnapshots });
       import('./utils/audio').then(m => m.playSystemSound('close'));
       const loginId = closeLogin;
@@ -892,11 +888,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       return true;
     } catch (err: any) {
       console.error('Failed to close position:', err);
-      clearOptimisticClosedTickets([id], closeMarkerScope);
       const sessionCurrent = isCurrentCloseSession();
       if (sessionCurrent) {
-        dispatchTradeOverlayCloseState([id], 'failed');
-        // Already closed on the broker: keep the row removed (no restore) and show a plain message.
+        // Already closed on the broker: refresh from backend and show a plain message.
         const staleMessage = handleStalePositionRefusal(err, id, {
           refresh: () => refreshPositions(closeLogin, { allowWsCommit: true }),
           tr: translateUi,
@@ -905,10 +899,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           if (showFailureFeedback) publishOrderFeedback([feedbackValue(staleMessage)], 'error');
           return false;
         }
-        const store = useAppStore.getState();
-        const existingTickets = new Set(store.positions.map((position) => position.id));
-        const restoredPositions = closingPositions.filter((position) => !existingTickets.has(position.id));
-        if (restoredPositions.length > 0) store.setPositions([...store.positions, ...restoredPositions]);
         publishSingleCloseFailure(formatOrderError(err));
         refreshPositions(closeLogin, { allowWsCommit: true });
       }
@@ -1181,7 +1171,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     const claimedBulkTicketIds: number[] = [];
     const closeSnapshotsByTicket = new Map<number, TradeOverlayCloseSnapshotPayload[]>();
-    const closeCandidatesByTicket = new Map<number, Position>();
     try {
       // Fail-closed bulk-close gate: every bulk-close entry (dock buttons,
       // row menu, DOM) funnels through this handler, so the shared
@@ -1240,30 +1229,17 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           claimedBulkTicketIds.push(ticketId);
           return true;
         },
-        // Remove every claimed row immediately so Close All has zero UI delay.
-        // The close coordinator still waits for correlated backend confirmation
-        // (retrying 429 rate-limits automatically) and restores rejections.
+        // MT5 behaviour: every row stays visible while its close is in flight...
         onCandidatesStarted: (candidates) => {
           if (getCurrentCloseSessionKey() !== closeSessionScope) return;
-          const ticketIds = candidates.map((position) => position.id);
           candidates.forEach((position) => {
-            closeCandidatesByTicket.set(position.id, position);
             closeSnapshotsByTicket.set(position.id, buildTradeOverlayCloseSnapshots([position]));
           });
-          markLocalTradeMutation(ticketIds);
-          dispatchTradeOverlayCloseState(ticketIds, 'pending', {
-            snapshots: buildTradeOverlayCloseSnapshots(candidates),
-          });
-          const ticketSet = new Set(ticketIds);
-          useAppStore.getState().setPositions(
-            useAppStore.getState().positions.filter((position) => !ticketSet.has(position.id)),
-            { removedTickets: ticketIds },
-          );
         },
-        // Convert each pending row into a durable closed-ticket tombstone as
-        // soon as that ticket receives correlated terminal confirmation.
+        // ...and leaves the table and chart only once the backend confirms it.
         onTicketConfirmed: (ticketId) => {
           if (getCurrentCloseSessionKey() !== closeSessionScope) return;
+          markLocalTradeMutation([ticketId]);
           useAppStore.getState().setPositions(
             useAppStore.getState().positions.filter((position) => position.id !== ticketId),
             { closedTickets: [ticketId], removedTickets: [ticketId] },
@@ -1274,10 +1250,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         },
       });
 
-      if (!closeResult.sessionCurrent) {
-        clearOptimisticClosedTickets(closeResult.attemptedTicketIds, closeMarkerScope);
-        return;
-      }
+      if (!closeResult.sessionCurrent) return;
 
       if (closeResult.attemptedTicketIds.length === 0) {
         if (closeResult.authoritativeSnapshotError) throw closeResult.authoritativeSnapshotError;
@@ -1293,26 +1266,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const { confirmedTicketIds, failedTicketIds, failedReasons } = closeResult;
 
       if (failedTicketIds.length > 0) {
-        // A ticket the broker no longer holds open is gone, not failed: plain message, no restore.
-        // One refresh follows below.
-        const goneTicketIds = new Set<number>();
+        // Failed tickets were never hidden on the frontend, so they stay open.
+        // A ticket the broker no longer holds open is gone: plain message, one refresh follows below.
         let goneMessage: string | null = null;
         failedTicketIds.forEach((ticketId, index) => {
           const message = handleStalePositionRefusal(failedReasons[index], ticketId, { refresh: () => undefined, tr: translateUi });
           if (message === null) return;
-          goneTicketIds.add(ticketId);
           if (goneMessage === null) goneMessage = message;
         });
         const failureMessage = goneMessage ?? formatOrderError(failedReasons[0]);
-        clearOptimisticClosedTickets(failedTicketIds, closeMarkerScope);
-        dispatchTradeOverlayCloseState(failedTicketIds, 'failed');
-        const store = useAppStore.getState();
-        const existingTickets = new Set(store.positions.map((position) => position.id));
-        const restoredPositions = failedTicketIds
-          .filter((ticketId) => !goneTicketIds.has(ticketId))
-          .map((ticketId) => closeCandidatesByTicket.get(ticketId))
-          .filter((position): position is Position => position !== undefined && !existingTickets.has(position.id));
-        if (restoredPositions.length > 0) store.setPositions([...store.positions, ...restoredPositions]);
         console.error(`Bulk close failed for ${failedTicketIds.length} position(s):`, failedReasons[0]);
         publishOrderFeedback(
           [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length} · `), feedbackLabel('Failed'), feedbackValue(`: ${failedTicketIds.length} — ${failureMessage}`)],

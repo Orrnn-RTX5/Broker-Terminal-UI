@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAppStore } from '../store/useAppStore';
 import { OrderPanelDialog } from './OrderPanelDialog';
@@ -18,31 +18,34 @@ vi.mock('../hooks/useSymbolMarketStatus', () => ({
   }),
 }));
 
+const mockUseLiveOrderBook = vi.fn<() => unknown>();
+
 vi.mock('../hooks/useLiveMarketData', () => ({
-  useLiveOrderBook: () => ({
-    bids: [
-      { price: 4173.23, volume: 30 },
-      { price: 4173.22, volume: 50 },
-      { price: 4173.21, volume: 100 },
-      { price: 4173.19, volume: 200 },
-      { price: 4173.17, volume: 300 },
-      { price: 4173.16, volume: 500 },
-    ],
-    asks: [
-      { price: 4173.77, volume: 30 },
-      { price: 4173.78, volume: 50 },
-      { price: 4173.79, volume: 100 },
-      { price: 4173.81, volume: 200 },
-      { price: 4173.84, volume: 300 },
-      { price: 4173.87, volume: 500 },
-    ],
-    spread: 0.54,
-    timestamp: Date.now(),
-  }),
+  useLiveOrderBook: () => mockUseLiveOrderBook(),
 }));
 
 describe('OrderPanelDialog MT5 Desktop layout and behavior', () => {
   beforeEach(() => {
+    mockUseLiveOrderBook.mockReturnValue({
+      bids: [
+        { price: 4173.23, volume: 30 },
+        { price: 4173.22, volume: 50 },
+        { price: 4173.21, volume: 100 },
+        { price: 4173.19, volume: 200 },
+        { price: 4173.17, volume: 300 },
+        { price: 4173.16, volume: 500 },
+      ],
+      asks: [
+        { price: 4173.77, volume: 30 },
+        { price: 4173.78, volume: 50 },
+        { price: 4173.79, volume: 100 },
+        { price: 4173.81, volume: 200 },
+        { price: 4173.84, volume: 300 },
+        { price: 4173.87, volume: 500 },
+      ],
+      spread: 0.54,
+      timestamp: Date.now(),
+    });
     localStorage.setItem('lastLotSize', '0.01');
     useAppStore.getState().reset();
     useAppStore.getState().setTicks({
@@ -104,7 +107,7 @@ describe('OrderPanelDialog MT5 Desktop layout and behavior', () => {
       />,
     );
 
-    // Switch to Limit Order
+    // Switch to Limit Order -> Price automatically shows the live quote (4173.77) and stays editable
     fireEvent.click(screen.getByTestId('order-mode-limit'));
     const priceInput = screen.getByLabelText('Price') as HTMLInputElement;
     const stopLimitInput = screen.getByLabelText('Stop Limit price') as HTMLInputElement;
@@ -112,14 +115,14 @@ describe('OrderPanelDialog MT5 Desktop layout and behavior', () => {
     const expirationDateInput = screen.getByLabelText(/Expiration date/i) as HTMLInputElement;
 
     expect(priceInput.disabled).toBe(false);
+    expect(priceInput.value).toBe('4173.77');
     expect(stopLimitInput.disabled).toBe(true);
     expect(expirationSelect.value).toBe('GTC');
     expect(expirationDateInput.disabled).toBe(true);
 
-    // Pending Sell / Buy buttons in form are disabled while Price is 0.00
+    // At the live ask (4173.77), Buy Limit requires price < ask so Buy is disabled
     const sellButtons = screen.getAllByRole<HTMLButtonElement>('button', { name: 'Sell' });
     const buyButtons = screen.getAllByRole<HTMLButtonElement>('button', { name: 'Buy' });
-    expect(sellButtons[0].disabled).toBe(true);
     expect(buyButtons[0].disabled).toBe(true);
 
     // Enter a valid Buy Limit price (< ask 4173.77) -> Buy enables, Sell stays disabled
@@ -132,10 +135,10 @@ describe('OrderPanelDialog MT5 Desktop layout and behavior', () => {
     expect(sellButtons[0].disabled).toBe(false);
     expect(buyButtons[0].disabled).toBe(true);
 
-    // Switch to Stop Limit Order (Price = 4175.00 > ask) -> Stop Limit price becomes enabled and required
+    // Switch to Stop Limit Order (Price = 4175.00 > ask) -> Stop Limit price shows live price (4173.77) and is editable
     fireEvent.click(screen.getByTestId('order-mode-stop-limit'));
     expect((screen.getByLabelText('Stop Limit price') as HTMLInputElement).disabled).toBe(false);
-    expect(screen.getAllByRole<HTMLButtonElement>('button', { name: 'Buy' })[0].disabled).toBe(true);
+    expect((screen.getByLabelText('Stop Limit price') as HTMLInputElement).value).toBe('4173.77');
 
     fireEvent.change(screen.getByLabelText('Stop Limit price'), { target: { value: '4176.00' } });
     expect(screen.getAllByRole<HTMLButtonElement>('button', { name: 'Buy' })[0].disabled).toBe(false);
@@ -377,5 +380,142 @@ describe('OrderPanelDialog MT5 Desktop layout and behavior', () => {
     } finally {
       document.documentElement.classList.remove('rtx-advanced-view', 'rtx-skin-untitled-light');
     }
+  });
+
+  it('pads partial depth books to 6 ladder rows per side and uses tick top-of-book volume when no depth book is available', () => {
+    mockUseLiveOrderBook.mockReturnValue({
+      orderBook: {
+        bids: [{ price: 3897.83, volume: 75 }],
+        asks: [{ price: 3897.98, volume: 90 }],
+        spread: 0.15,
+        timestamp: Date.now(),
+      },
+    });
+    useAppStore.getState().setTicks({
+      XAUUSD: {
+        symbol: 'XAUUSD',
+        bid: 3897.83,
+        ask: 3897.98,
+        spread: 0.15,
+        timestamp: Date.now(),
+        digits: 2,
+      },
+    });
+
+    const { container, unmount } = render(
+      <OrderPanelDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        currentPrice={{ bid: 3897.83, ask: 3897.98 }}
+        onSubmitOrder={vi.fn()}
+        instruments={[{ symbol: 'XAUUSD', digits: 2, contractSize: 100 }]}
+      />,
+    );
+
+    const askRows = container.querySelectorAll('.rtx-order-dialog__dom-row--ask');
+    const bidRows = container.querySelectorAll('.rtx-order-dialog__dom-row--bid');
+    expect(askRows.length).toBe(6);
+    expect(bidRows.length).toBe(6);
+    expect(container.querySelector('.rtx-order-dialog__dom-row--best-ask .rtx-order-dialog__dom-vol-text')?.textContent).toBe('90');
+    expect(container.querySelector('.rtx-order-dialog__dom-row--best-bid .rtx-order-dialog__dom-vol-text')?.textContent).toBe('75');
+    // Outer padded ladder rows do not invent fake volume numbers
+    expect(askRows[0]?.querySelector('.rtx-order-dialog__dom-vol-text')).toBeNull();
+    expect(bidRows[5]?.querySelector('.rtx-order-dialog__dom-vol-text')).toBeNull();
+
+    unmount();
+
+    // When the depth book is null but the live tick carries real top-of-book bidVolume/askVolume:
+    mockUseLiveOrderBook.mockReturnValue({ orderBook: null });
+    useAppStore.getState().setTicks({
+      XAUUSD: {
+        symbol: 'XAUUSD',
+        bid: 3897.83,
+        ask: 3897.98,
+        bidVolume: 120,
+        askVolume: 140,
+        spread: 0.15,
+        timestamp: Date.now(),
+        digits: 2,
+      },
+    });
+
+    const { container: fallbackContainer } = render(
+      <OrderPanelDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        currentPrice={{ bid: 3897.83, ask: 3897.98 }}
+        onSubmitOrder={vi.fn()}
+        instruments={[{ symbol: 'XAUUSD', digits: 2, contractSize: 100 }]}
+      />,
+    );
+
+    expect(fallbackContainer.querySelector('.rtx-order-dialog__dom-row--best-ask .rtx-order-dialog__dom-vol-text')?.textContent).toBe('140');
+    expect(fallbackContainer.querySelector('.rtx-order-dialog__dom-row--best-bid .rtx-order-dialog__dom-vol-text')?.textContent).toBe('120');
+  });
+
+  it('shows live price in Price / Stop Limit price when Limit, Stop, or Stop-Limit order is selected and keeps it editable', () => {
+    render(
+      <OrderPanelDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        currentPrice={{ bid: 4173.23, ask: 4173.77 }}
+        onSubmitOrder={vi.fn()}
+        instruments={[{ symbol: 'XAUUSD', digits: 2, contractSize: 100 }]}
+      />,
+    );
+
+    // 1. Select Limit order -> live price (4173.77) is shown and tracks live ticks until edited
+    fireEvent.click(screen.getByTestId('order-mode-limit'));
+    const priceInput = screen.getByLabelText('Price') as HTMLInputElement;
+    expect(priceInput.value).toBe('4173.77');
+
+    act(() => {
+      useAppStore.getState().setTicks({
+        XAUUSD: {
+          symbol: 'XAUUSD',
+          bid: 4173.40,
+          ask: 4173.95,
+          spread: 0.55,
+          timestamp: Date.now() + 100,
+          digits: 2,
+        },
+      });
+    });
+    expect(priceInput.value).toBe('4173.95');
+
+    // User edits Price -> subsequent live ticks do not overwrite the edited value
+    fireEvent.change(priceInput, { target: { value: '4170.50' } });
+    expect(priceInput.value).toBe('4170.50');
+
+    act(() => {
+      useAppStore.getState().setTicks({
+        XAUUSD: {
+          symbol: 'XAUUSD',
+          bid: 4173.60,
+          ask: 4174.10,
+          spread: 0.50,
+          timestamp: Date.now() + 200,
+          digits: 2,
+        },
+      });
+    });
+    expect(priceInput.value).toBe('4170.50');
+
+    // 2. Switch to Market order and then Stop order -> Price resets to current live price (4174.10) and is editable
+    fireEvent.click(screen.getByTestId('order-mode-market'));
+    fireEvent.click(screen.getByTestId('order-mode-stop'));
+    expect((screen.getByLabelText('Price') as HTMLInputElement).value).toBe('4174.10');
+
+    // 3. Switch to Stop-limit order -> both Price and Stop Limit price show live price (4174.10) and are editable
+    fireEvent.click(screen.getByTestId('order-mode-stop-limit'));
+    const stopLimitInput = screen.getByLabelText('Stop Limit price') as HTMLInputElement;
+    expect((screen.getByLabelText('Price') as HTMLInputElement).value).toBe('4174.10');
+    expect(stopLimitInput.value).toBe('4174.10');
+
+    fireEvent.change(stopLimitInput, { target: { value: '4176.25' } });
+    expect(stopLimitInput.value).toBe('4176.25');
   });
 });

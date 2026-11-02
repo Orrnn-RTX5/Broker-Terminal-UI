@@ -545,51 +545,6 @@ type OptimisticallyClosedToolboxPosition = {
   expiresAt: number;
 };
 
-const normalizeOptimisticallyEmptyAccount = (
-  account: Account | null,
-  positions: readonly ToolboxTradePosition[],
-  optimisticallyClosed: ReadonlyMap<number, OptimisticallyClosedToolboxPosition>,
-  now = Date.now(),
-): Account | null => {
-  if (!account || positions.length > 0) return account;
-  let hasActiveOptimisticClose = false;
-  optimisticallyClosed.forEach((entry) => {
-    if (entry.expiresAt > now) hasActiveOptimisticClose = true;
-  });
-  if (!hasActiveOptimisticClose) return account;
-  if (
-    !(Number(account.margin) > 0)
-    && !(Number(account.marginLevel) > 0)
-    && Number(account.unrealizedPL ?? 0) === 0
-  ) {
-    return account;
-  }
-  const balance = typeof account.balance === 'number' && Number.isFinite(account.balance)
-    ? account.balance
-    : null;
-  const credit = typeof account.credit === 'number' && Number.isFinite(account.credit)
-    ? account.credit
-    : 0;
-  const settledEquity = balance !== null ? balance + credit : account.equity;
-  return {
-    ...account,
-    margin: 0,
-    marginLevel: 0,
-    unrealizedPL: 0,
-    hasBackendMargin: true,
-    hasBackendMarginLevel: true,
-    hasBackendUnrealizedPL: true,
-    ...(settledEquity !== null && Number.isFinite(settledEquity)
-      ? {
-        equity: settledEquity,
-        freeMargin: settledEquity,
-        hasBackendEquity: true,
-        hasBackendFreeMargin: true,
-      }
-      : {}),
-  };
-};
-
 export const mergeRetainedImmediateToolboxPositions = (
   snapshot: ToolboxTradePosition[],
   retained: RetainedImmediateToolboxPosition[],
@@ -801,12 +756,7 @@ export function useToolboxTradeData() {
     }));
   }, []);
 
-  const commitAccount = useCallback((rawAccount: Account | null) => {
-    const account = normalizeOptimisticallyEmptyAccount(
-      rawAccount,
-      positionsRef.current,
-      optimisticallyClosedPositionsRef.current,
-    );
+  const commitAccount = useCallback((account: Account | null) => {
     const previousSig = accountSignature(accountRef.current);
     const nextSig = accountSignature(account);
     accountRef.current = account;
@@ -838,17 +788,8 @@ export function useToolboxTradeData() {
       }
     }
     positionsRef.current = positions;
-    const normalizedAccount = normalizeOptimisticallyEmptyAccount(
-      accountRef.current,
-      positions,
-      optimisticallyClosedPositionsRef.current,
-    );
-    const accountChanged = accountSignature(accountRef.current) !== accountSignature(normalizedAccount);
-    if (accountChanged) {
-      accountRef.current = normalizedAccount;
-    }
-    if (previousSig === nextSig && !accountChanged) return;
-    setState((prev) => ({ ...prev, positions, account: accountRef.current }));
+    if (previousSig === nextSig) return;
+    setState((prev) => ({ ...prev, positions }));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -1116,8 +1057,7 @@ export function useToolboxTradeData() {
           ),
           Array.from(retainedImmediatePositionsRef.current.values()),
         ).filter((position) => (
-          !optimisticallyClosedPositionsRef.current.has(position.id)
-          && !isConfirmedClosedPosition(position.id)
+          !isConfirmedClosedPosition(position.id)
           && !isConfirmedClosedBySnapshot(position.id)
         ));
         deferSnapshot = shouldDeferEmptyPositionSnapshot(
@@ -1132,13 +1072,8 @@ export function useToolboxTradeData() {
           positionsRef.current = nextPositions;
         }
       }
+      const account = accountRef.current;
       const positions = positionsRef.current;
-      const account = normalizeOptimisticallyEmptyAccount(
-        accountRef.current,
-        positions,
-        optimisticallyClosedPositionsRef.current,
-      );
-      accountRef.current = account;
       const restBaseUrl = getBrokerRestBaseUrl();
       setState((prev) => {
         if (deferSnapshot) return prev.account === account ? prev : { ...prev, account };
@@ -1250,23 +1185,6 @@ export function useToolboxTradeData() {
         : [];
       if (ticketIds.length === 0) return;
 
-      if (detail.status === 'pending') {
-        const expiresAt = Date.now() + IMMEDIATE_POSITION_RETENTION_MS;
-        ticketIds.forEach((ticket) => {
-          const position = positionsRef.current.find((candidate) => candidate.id === ticket);
-          if (position) {
-            optimisticallyClosedPositionsRef.current.set(ticket, {
-              position,
-              status: 'pending',
-              expiresAt,
-            });
-          }
-          retainedImmediatePositionsRef.current.delete(ticket);
-        });
-        commitPositions(positionsRef.current.filter((position) => !ticketIds.includes(position.id)));
-        return;
-      }
-
       if (detail.status === 'confirmed') {
         // Closes are confirm-first (MT5 behaviour): the row is still listed
         // here, so the backend confirmation is what removes it.
@@ -1286,23 +1204,6 @@ export function useToolboxTradeData() {
         useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: ticketIds });
         const remaining = positionsRef.current.filter((position) => !ticketIds.includes(position.id));
         if (remaining.length !== positionsRef.current.length) commitPositions(remaining);
-        return;
-      }
-
-      if (detail.status === 'failed') {
-        let next = positionsRef.current;
-        ticketIds.forEach((ticket) => {
-          const existing = optimisticallyClosedPositionsRef.current.get(ticket);
-          optimisticallyClosedPositionsRef.current.delete(ticket);
-          if (existing) {
-            next = patchToolboxPositions(next, [existing.position]);
-            retainedImmediatePositionsRef.current.set(ticket, {
-              position: existing.position,
-              expiresAt: Date.now() + IMMEDIATE_POSITION_RETENTION_MS,
-            });
-          }
-        });
-        if (next !== positionsRef.current) commitPositions(next);
       }
     };
 

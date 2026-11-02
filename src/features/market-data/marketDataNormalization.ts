@@ -328,6 +328,29 @@ export const normalizeTick = (raw: unknown, fallbackSymbol?: string): (Tick & Pa
     'real_volume',
     'realVolume',
   ]);
+  const top = asQuoteRecord(payload.top);
+  const bidVolume = readOptionalInstrumentNumber(top ?? payload, [
+    'bid_size',
+    'bidSize',
+    'bid_volume',
+    'bidVolume',
+  ]) ?? readOptionalInstrumentNumber(payload, [
+    'bid_size',
+    'bidSize',
+    'bid_volume',
+    'bidVolume',
+  ]);
+  const askVolume = readOptionalInstrumentNumber(top ?? payload, [
+    'ask_size',
+    'askSize',
+    'ask_volume',
+    'askVolume',
+  ]) ?? readOptionalInstrumentNumber(payload, [
+    'ask_size',
+    'askSize',
+    'ask_volume',
+    'askVolume',
+  ]);
   const lp = readOptionalInstrumentString(payload, [
     'lp',
     'provider',
@@ -363,6 +386,8 @@ export const normalizeTick = (raw: unknown, fallbackSymbol?: string): (Tick & Pa
     ...(tradingStatus ? { tradingStatus } : {}),
     lp,
     volume,
+    ...(bidVolume !== undefined && bidVolume > 0 ? { bidVolume } : {}),
+    ...(askVolume !== undefined && askVolume > 0 ? { askVolume } : {}),
     last,
     dailyChangeInput: dailyInput,
     dailyChange: resolveDailyChangePercent(
@@ -399,6 +424,31 @@ const withTotals = (levels: unknown[]): OrderBookLevel[] => {
     .filter((level) => level.price > 0 && level.volume >= 0);
 };
 
+const extractBookSidesFromEntries = (entries: unknown[]): { bids: unknown[]; asks: unknown[] } => {
+  const bids: Array<{ price: number; volume: number }> = [];
+  const asks: Array<{ price: number; volume: number }> = [];
+  for (const item of entries) {
+    const entry = asQuoteRecord(item);
+    if (!entry) continue;
+    const rawSide = String(entry.side ?? entry.entry_type ?? entry.entryType ?? entry.type ?? '')
+      .trim()
+      .toLowerCase();
+    const price = toNumber(entry.price ?? entry.rate);
+    const volume = toNumber(
+      entry.volume ?? entry.size ?? entry.qty ?? entry.quantity ?? entry.amount ?? entry.lots,
+    );
+    if (price <= 0 || volume < 0) continue;
+    if (rawSide === 'bid' || rawSide === 'buy' || rawSide === '0') {
+      bids.push({ price, volume });
+    } else if (rawSide === 'ask' || rawSide === 'offer' || rawSide === 'sell' || rawSide === '1') {
+      asks.push({ price, volume });
+    }
+  }
+  bids.sort((a, b) => b.price - a.price);
+  asks.sort((a, b) => a.price - b.price);
+  return { bids, asks };
+};
+
 export const normalizeOrderBook = (raw: unknown, fallbackSymbol?: string): LiveOrderBook | null => {
   const record = asQuoteRecord(raw) ?? {};
   const data = asQuoteRecord(record.data);
@@ -409,8 +459,40 @@ export const normalizeOrderBook = (raw: unknown, fallbackSymbol?: string): LiveO
     ?? asQuoteRecord(record.depth)
     ?? record;
   const symbol = normalizeSymbol(payload.symbol ?? record.symbol ?? fallbackSymbol);
-  const bids = withTotals(Array.isArray(payload.bids) ? payload.bids : []);
-  const asks = withTotals(Array.isArray(payload.asks) ? payload.asks : []);
+  let rawBids: unknown[] = Array.isArray(payload.bids) ? payload.bids : [];
+  let rawAsks: unknown[] = Array.isArray(payload.asks) ? payload.asks : [];
+
+  if (rawBids.length === 0 && rawAsks.length === 0) {
+    const entryList = Array.isArray(payload.entries)
+      ? payload.entries
+      : Array.isArray(payload.levels)
+        ? payload.levels
+        : null;
+    if (entryList) {
+      const split = extractBookSidesFromEntries(entryList);
+      rawBids = split.bids;
+      rawAsks = split.asks;
+    }
+  }
+
+  if (rawBids.length === 0 && rawAsks.length === 0) {
+    const top = asQuoteRecord(payload.top) ?? payload;
+    const topBid = toNumber(top.bid ?? payload.bid);
+    const topAsk = toNumber(top.ask ?? payload.ask);
+    const topBidVolume = readOptionalInstrumentNumber(top, ['bid_size', 'bidSize', 'bid_volume', 'bidVolume'])
+      ?? readOptionalInstrumentNumber(payload, ['bid_size', 'bidSize', 'bid_volume', 'bidVolume']);
+    const topAskVolume = readOptionalInstrumentNumber(top, ['ask_size', 'askSize', 'ask_volume', 'askVolume'])
+      ?? readOptionalInstrumentNumber(payload, ['ask_size', 'askSize', 'ask_volume', 'askVolume']);
+    if (topBid > 0 && topBidVolume !== undefined && topBidVolume > 0) {
+      rawBids = [{ price: topBid, volume: topBidVolume }];
+    }
+    if (topAsk > 0 && topAskVolume !== undefined && topAskVolume > 0) {
+      rawAsks = [{ price: topAsk, volume: topAskVolume }];
+    }
+  }
+
+  const bids = withTotals(rawBids);
+  const asks = withTotals(rawAsks);
   if (!symbol || (bids.length === 0 && asks.length === 0)) return null;
 
   const bestBid = bids[0]?.price ?? 0;

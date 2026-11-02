@@ -29,6 +29,8 @@ export interface NormalizedRealtimeTick extends QuoteSessionRange, QuoteTradingS
   high24h?: number;
   low24h?: number;
   volume?: number;
+  bidVolume?: number;
+  askVolume?: number;
   last?: number;
   /** Broker price precision; null means the feed published none (render raw). */
   digits?: number | null;
@@ -142,6 +144,8 @@ export const normalizeRealtimeTick = (
   // the feed does not publish one the tick carries no `lp` (consumers render
   // the neutral empty state) instead of another broker's literal.
   const publishedLp = typeof record.lp === 'string' ? record.lp.trim() : '';
+  const bidVolume = readFirstFiniteNumber(record, ['bid_size', 'bidSize', 'bid_volume', 'bidVolume']) ?? previous?.bidVolume;
+  const askVolume = readFirstFiniteNumber(record, ['ask_size', 'askSize', 'ask_volume', 'askVolume']) ?? previous?.askVolume;
 
   return {
     symbol,
@@ -163,6 +167,8 @@ export const normalizeRealtimeTick = (
     high24h: toNumber(record.high_24h ?? record.high24h, previous?.high24h ?? Math.max(bid, ask)),
     low24h: toNumber(record.low_24h ?? record.low24h, previous?.low24h ?? Math.min(bid, ask)),
     volume: toNumber(record.volume_24h ?? record.volume ?? candle?.volume, previous?.volume ?? 0),
+    ...(bidVolume !== undefined && bidVolume > 0 ? { bidVolume } : {}),
+    ...(askVolume !== undefined && askVolume > 0 ? { askVolume } : {}),
     // Last is an exchange field, not the Bid/Ask midpoint. Leave it absent
     // when the broker did not publish one.
     last: brokerLast,

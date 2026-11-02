@@ -11,6 +11,7 @@ import {
   getAccountSpreadMarkupMap,
   onAccountSpreadMarkupChange,
 } from '../../services/accountSpreadMarkup';
+import { buildBrokerWsV2Uri } from '../../services/brokerSession';
 import { getEnhancedWebSocketService } from '../../services/websocket-enhanced';
 import { useAppStore } from '../../store/useAppStore';
 import {
@@ -19,7 +20,10 @@ import {
   roundPriceToDigits,
   type SpreadMarkupMap,
 } from '../../utils/spreadMarkup';
-import { fetchMarketDataJson } from './marketDataSession';
+import {
+  fetchMarketDataJson,
+  useBrokerSessionRevision,
+} from './marketDataSession';
 import {
   getSpreadPips,
   normalizeOrderBook,
@@ -66,8 +70,10 @@ export function useLiveOrderBook(symbol: string, depth: number) {
   const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
   const authToken = useAppStore((state) => state.authToken);
+  const sessionRevision = useBrokerSessionRevision();
 
   const reload = useCallback(async () => {
+    void sessionRevision;
     if (!normalizedSymbol || !isAuthenticated) {
       setOrderBook(null);
       setError(null);
@@ -79,6 +85,7 @@ export function useLiveOrderBook(symbol: string, depth: number) {
     try {
       const response = await fetchMarketDataJson<unknown>(`/api/v2/depth/${encodeURIComponent(normalizedSymbol)}`, {
         limit: depth,
+        levels: depth,
       });
       const next = normalizeOrderBook(response, normalizedSymbol);
       setOrderBook(next);
@@ -88,16 +95,18 @@ export function useLiveOrderBook(symbol: string, depth: number) {
     } finally {
       setLoading(false);
     }
-  }, [normalizedSymbol, depth, isAuthenticated]);
+  }, [normalizedSymbol, depth, isAuthenticated, sessionRevision]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   useEffect(() => {
+    void sessionRevision;
     if (!normalizedSymbol || !isAuthenticated) return;
 
-    const ws = getEnhancedWebSocketService(MARKET_WS_URL);
+    const wsUrl = buildBrokerWsV2Uri(null) || MARKET_WS_URL;
+    const ws = getEnhancedWebSocketService(wsUrl);
     ws.connect();
     const channel = `depth.${normalizedSymbol}`;
     const unsubscribe = ws.subscribe(channel, (message) => {
@@ -108,7 +117,7 @@ export function useLiveOrderBook(symbol: string, depth: number) {
     return () => {
       unsubscribe();
     };
-  }, [normalizedSymbol, isAuthenticated, authToken]);
+  }, [normalizedSymbol, isAuthenticated, authToken, sessionRevision]);
 
   return { orderBook, loading, error, reload };
 }

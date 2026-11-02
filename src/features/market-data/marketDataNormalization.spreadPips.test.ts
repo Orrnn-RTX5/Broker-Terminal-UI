@@ -5,7 +5,7 @@ import {
   registerDailyChangePriceModes,
   resetDailyChangePriceModeRegistryForTests,
 } from '../../services/dailyChangePriceModeRegistry';
-import { getSpreadPips, normalizeOrderBook } from './marketDataNormalization';
+import { getSpreadPips, normalizeOrderBook, normalizeTick } from './marketDataNormalization';
 import { applySpreadMarkupToOrderBook } from './useLiveOrderBook';
 
 describe('order book spread pips come from broker digits only (TERM-DIGITS-WL)', () => {
@@ -59,5 +59,50 @@ describe('order book spread pips come from broker digits only (TERM-DIGITS-WL)',
     }, map);
     expect(widened?.spread).toBe(0.00022);
     expect(widened?.spreadPips).toBeCloseTo(2.2, 10);
+  });
+
+  it('normalizes entry-list depth payloads (entries/levels with FIX entry_type or side) and top-of-book sizes', () => {
+    const fromEntries = normalizeOrderBook({
+      symbol: 'XAUUSD',
+      entries: [
+        { entry_type: '0', price: 3897.83, size: 150 },
+        { entry_type: '0', price: 3897.82, size: 250 },
+        { entry_type: '1', price: 3897.98, size: 120 },
+        { entry_type: '1', price: 3897.99, size: 300 },
+      ],
+    });
+    expect(fromEntries?.bids.map((b) => ({ price: b.price, volume: b.volume }))).toEqual([
+      { price: 3897.83, volume: 150 },
+      { price: 3897.82, volume: 250 },
+    ]);
+    expect(fromEntries?.asks.map((a) => ({ price: a.price, volume: a.volume }))).toEqual([
+      { price: 3897.98, volume: 120 },
+      { price: 3897.99, volume: 300 },
+    ]);
+
+    const fromTop = normalizeOrderBook({
+      symbol: 'XAUUSD',
+      top: {
+        bid: '3897.83',
+        ask: '3897.98',
+        bid_size: '75',
+        ask_size: '90',
+      },
+    });
+    expect(fromTop?.bids[0]).toMatchObject({ price: 3897.83, volume: 75 });
+    expect(fromTop?.asks[0]).toMatchObject({ price: 3897.98, volume: 90 });
+  });
+
+  it('extracts positive bidVolume and askVolume in normalizeTick', () => {
+    const tick = normalizeTick({
+      symbol: 'XAUUSD',
+      bid: 3897.83,
+      ask: 3897.98,
+      bid_size: 125,
+      ask_size: 80,
+      timestamp: 1700000000000,
+    });
+    expect(tick?.bidVolume).toBe(125);
+    expect(tick?.askVolume).toBe(80);
   });
 });

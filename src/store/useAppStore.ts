@@ -66,6 +66,8 @@ export interface Tick extends QuoteSessionRange, QuoteTradingStatusFields, Sprea
   high24h?: number;
   low24h?: number;
   volume?: number;
+  bidVolume?: number;
+  askVolume?: number;
   last?: number;
   /** Broker event time that supplied Last, independent of the latest price event. */
   lastSourceTimestamp?: number;

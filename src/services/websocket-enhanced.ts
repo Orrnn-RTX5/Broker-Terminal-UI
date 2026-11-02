@@ -738,6 +738,10 @@ export class EnhancedWebSocketService {
     const previousClose = readDailyChangePreviousClose(dailyChangeContext);
     const dailyOpen = readFirstFiniteNumber(data, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']);
     const close = readFirstFiniteNumber(data, ['close', 'close_price', 'closePrice']) ?? previousClose;
+    const rawBidVolume = readFirstFiniteNumber(data, ['bid_size', 'bidSize', 'bid_volume', 'bidVolume']);
+    const rawAskVolume = readFirstFiniteNumber(data, ['ask_size', 'askSize', 'ask_volume', 'askVolume']);
+    const bidVolume = rawBidVolume !== undefined && rawBidVolume > 0 ? rawBidVolume : undefined;
+    const askVolume = rawAskVolume !== undefined && rawAskVolume > 0 ? rawAskVolume : undefined;
     const volume = readFirstFiniteNumber(data, [
       'volume',
       'volume_24h',
@@ -793,6 +797,8 @@ export class EnhancedWebSocketService {
       sourceTimestamp,
       lp,
       volume,
+      ...(bidVolume !== undefined ? { bidVolume } : {}),
+      ...(askVolume !== undefined ? { askVolume } : {}),
       last,
       dailyChange,
       dailyChangeInput: readDailyChangeInput({ ...dailyChangeContext, bid: data.bid }, priceMode),

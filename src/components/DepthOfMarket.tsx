@@ -761,6 +761,15 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
     bestAsk,
   );
 
+  const rawTickBidVolume = (currentTick as { bidVolume?: unknown } | null | undefined)?.bidVolume;
+  const rawTickAskVolume = (currentTick as { askVolume?: unknown } | null | undefined)?.askVolume;
+  const bestBidTickVolume = typeof rawTickBidVolume === 'number' && Number.isFinite(rawTickBidVolume) && rawTickBidVolume > 0
+    ? rawTickBidVolume
+    : 0;
+  const bestAskTickVolume = typeof rawTickAskVolume === 'number' && Number.isFinite(rawTickAskVolume) && rawTickAskVolume > 0
+    ? rawTickAskVolume
+    : 0;
+
   type DepthLevel = { price: number; volume: number };
   const depthLevels = useMemo(() => {
     if (orderBook && (orderBook.asks.length > 0 || orderBook.bids.length > 0)) {
@@ -772,33 +781,39 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
 
     // Broker without a depth feed: build a one-point price ladder around the
     // live tick so limit-order entry keeps working. Prices are real (derived
-    // from the current bid/ask); no liquidity volumes are invented.
+    // from the current bid/ask); no liquidity volumes are invented (only real
+    // top-of-book tick volumes are shown when published by the broker).
     if (bestBid > 0 && bestAsk > 0) {
+      const topMaxVolume = Math.max(bestAskTickVolume, bestBidTickVolume, 0);
+      const isPurelySynthetic = topMaxVolume === 0;
       if (digits === null) {
         // Unknown precision: expose the live quote raw — no point-step
         // expansion and no rounding.
         return {
-          asks: [{ price: bestAsk, volume: 0 }],
-          bids: [{ price: bestBid, volume: 0 }],
-          maxVolume: 0,
-          synthetic: true,
+          asks: [{ price: bestAsk, volume: bestAskTickVolume }],
+          bids: [{ price: bestBid, volume: bestBidTickVolume }],
+          maxVolume: topMaxVolume,
+          synthetic: isPurelySynthetic,
         };
       }
       const point = 10 ** -digits;
       const roundPrice = (value: number) => Number(value.toFixed(digits));
-      const asks: DepthLevel[] = Array.from({ length: dynamicLevels }, (_, index) => ({
-        price: roundPrice(bestAsk + (dynamicLevels - 1 - index) * point),
-        volume: 0,
-      }));
+      const asks: DepthLevel[] = Array.from({ length: dynamicLevels }, (_, index) => {
+        const offsetFromBest = dynamicLevels - 1 - index;
+        return {
+          price: roundPrice(bestAsk + offsetFromBest * point),
+          volume: offsetFromBest === 0 ? bestAskTickVolume : 0,
+        };
+      });
       const bids: DepthLevel[] = Array.from({ length: dynamicLevels }, (_, index) => ({
         price: roundPrice(bestBid - index * point),
-        volume: 0,
+        volume: index === 0 ? bestBidTickVolume : 0,
       }));
-      return { asks, bids, maxVolume: 0, synthetic: true };
+      return { asks, bids, maxVolume: topMaxVolume, synthetic: isPurelySynthetic };
     }
 
     return { asks: [] as DepthLevel[], bids: [] as DepthLevel[], maxVolume: 0, synthetic: false };
-  }, [orderBook, dynamicLevels, bestBid, bestAsk, digits]);
+  }, [orderBook, dynamicLevels, bestBid, bestAsk, bestBidTickVolume, bestAskTickVolume, digits]);
 
   const handleCloseAll = useCallback(() => {
     onCloseBulk?.('ALL', symbol);

@@ -12,6 +12,8 @@ export interface Tick extends QuoteTradingStatusFields {
   sourceTimestamp?: number;
   lp?: string;
   volume?: number;
+  bidVolume?: number;
+  askVolume?: number;
 }
 
 export type CandleUpdateSource = 'server' | 'local';
