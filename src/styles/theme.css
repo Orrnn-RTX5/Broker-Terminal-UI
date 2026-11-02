@@ -423,7 +423,6 @@ body {
 }
 
 .rtx-toolbar-action[aria-pressed='true'],
-.rtx-toolbar-icon-button[aria-pressed='true']:not(.rtx-period-separator-toggle),
 .rtx-trade-history-overlay-button[aria-expanded='true'],
 .rtx-toolbar-icon-button[aria-checked='true'] {
   background: var(--color-info-dim);
@@ -441,6 +440,7 @@ body {
   color: var(--color-blue-300, #93c5fd);
 }
 
+.rtx-toolbar-icon-button[aria-pressed='true'],
 .rtx-period-separator-toggle[aria-pressed='true'],
 html.rtx-desktop-shell-active .rtx-period-separator-toggle[aria-pressed='true'] {
   background: rgb(59 130 246 / 0.15);

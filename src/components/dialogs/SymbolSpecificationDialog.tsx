@@ -1181,32 +1181,47 @@ const safeWebUrl = (value: string | null): string | null => {
 const PropertyMarker = ({ kind = 'text', selected = false }: { kind?: DisplayRow['kind']; selected?: boolean }) => {
   if (kind === 'enum') {
     return (
-      <span className="flex h-3 w-3 shrink-0 flex-col justify-center gap-[1.5px]" aria-hidden="true">
-        <span className={`h-[1.5px] w-3 ${selected ? 'bg-white/90' : 'bg-[#2d8ceb]'}`} />
-        <span className={`h-[1.5px] w-3 ${selected ? 'bg-[#ff9b9b]' : 'bg-[#e04b4b]'}`} />
-        <span className={`h-[1.5px] w-3 ${selected ? 'bg-white/90' : 'bg-[#2d8ceb]'}`} />
+      <span
+        className={`rtx-spec-marker rtx-spec-marker--enum inline-flex h-[15px] w-[15px] shrink-0 flex-col items-center justify-center gap-[2px] rounded-[3px] border ${
+          selected
+            ? 'border-white/35 bg-white/15'
+            : 'border-[#3b82f6]/25 bg-[#3b82f6]/10'
+        }`}
+        aria-hidden="true"
+      >
+        <span className={`h-[1.5px] w-2.5 rounded-full ${selected ? 'bg-white/95' : 'bg-[#38bdf8]'}`} />
+        <span className={`h-[1.5px] w-2.5 rounded-full ${selected ? 'bg-[#fecaca]' : 'bg-[#f87171]'}`} />
+        <span className={`h-[1.5px] w-2.5 rounded-full ${selected ? 'bg-white/95' : 'bg-[#38bdf8]'}`} />
       </span>
     );
   }
   if (kind === 'calendar') {
     return (
       <span
-        className={`relative h-[11px] w-3 shrink-0 border ${selected ? 'border-white/90' : 'border-[#2d8ceb]'}`}
+        className={`rtx-spec-marker rtx-spec-marker--calendar relative inline-flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-[3px] border ${
+          selected
+            ? 'border-white/35 bg-white/15 text-white'
+            : 'border-[#38bdf8]/25 bg-[#38bdf8]/10 text-[#38bdf8]'
+        }`}
         aria-hidden="true"
       >
-        <span className={`absolute left-0 top-[2px] h-px w-full ${selected ? 'bg-white/90' : 'bg-[#2d8ceb]'}`} />
+        <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+          <rect x="1" y="2" width="8" height="7" rx="1" stroke="currentColor" strokeWidth="1.1" />
+          <path d="M1 4.2H9M3.2 1V2.6M6.8 1V2.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+        </svg>
       </span>
     );
   }
+  const toneClasses = selected
+    ? 'border-white/35 bg-white/15 text-white'
+    : kind === 'text'
+      ? 'border-[#f59e0b]/30 bg-[#f59e0b]/12 text-[#fbbf24]'
+      : kind === 'integer'
+        ? 'border-[#38bdf8]/30 bg-[#38bdf8]/12 text-[#38bdf8]'
+        : 'border-[#818cf8]/30 bg-[#818cf8]/12 text-[#818cf8]';
   return (
     <span
-      className={`w-3 shrink-0 text-center font-sans text-[9px] font-semibold leading-3 ${
-        selected
-          ? 'text-white'
-          : kind === 'text'
-            ? 'text-[#d49b38]'
-            : 'text-[#2d8ceb]'
-      }`}
+      className={`rtx-spec-marker inline-flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-[3px] border text-center font-mono text-[8.5px] font-bold leading-none tracking-tighter ${toneClasses}`}
       aria-hidden="true"
     >
       {kind === 'integer' ? '01' : kind === 'decimal' ? '½' : 'ab'}
@@ -1237,33 +1252,36 @@ const PropertyRows = ({
         const rowKey = `${rowKeyPrefix}:${row.label}`;
         const isSelected = selectedRowKey === rowKey;
         const isEven = (startStripeIndex + index) % 2 === 0;
+        const isMissingPlaceholder = row.value === '—' || row.value === '-';
         return (
           <div
             key={row.label}
             data-selected={isSelected ? 'true' : undefined}
             data-stripe={isEven ? 'even' : 'odd'}
             onClick={() => onSelectRow?.(rowKey)}
-            className={`rtx-spec-row grid min-h-[20px] grid-cols-[40%_60%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
-              isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : ''
+            className={`rtx-spec-row grid min-h-[24px] grid-cols-[42%_58%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+              isSelected ? 'rtx-spec-row--selected text-white' : ''
             }`}
           >
             <dt
-              className={`flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 text-[12px] leading-[16px] ${
-                isSelected ? 'text-white' : 'text-[var(--text-primary)]'
+              className={`flex min-w-0 items-center gap-2 px-2.5 py-1 text-[12px] leading-[16px] ${
+                isSelected ? 'font-medium text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
               }`}
             >
               <PropertyMarker kind={row.kind} selected={isSelected} />
               <span className="truncate">{tr(row.label)}</span>
             </dt>
             <dd
-              className={`m-0 truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right text-[12px] font-normal leading-[16px] tabular-nums ${
+              className={`m-0 truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right text-[12px] leading-[16px] tabular-nums ${
                 isSelected
-                  ? 'text-white'
+                  ? 'font-medium text-white'
                   : row.tone === 'positive'
-                    ? 'text-[var(--color-profit)]'
+                    ? 'font-medium text-[var(--color-profit)]'
                     : row.tone === 'negative'
-                      ? 'text-[var(--color-loss)]'
-                      : 'text-[var(--text-primary)]'
+                      ? 'font-medium text-[var(--color-loss)]'
+                      : isMissingPlaceholder
+                        ? 'font-normal text-[var(--mw-spec-muted,var(--text-tertiary))]'
+                        : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'
               }`}
               title={row.value}
             >
@@ -1292,11 +1310,11 @@ const SectionHeading = ({
     <div
       data-selected={isSelected ? 'true' : undefined}
       onClick={rowKey ? () => onSelectRow?.(rowKey) : undefined}
-      className={`rtx-spec-row rtx-spec-row--heading grid min-h-[20px] grid-cols-[40%_60%] items-center border-y border-[var(--mw-spec-grid,var(--border-primary))] text-[12px] font-semibold leading-4 first:border-t-0 ${
-        isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+      className={`rtx-spec-row rtx-spec-row--heading grid min-h-[26px] grid-cols-[42%_58%] items-center border-y border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] text-[11.5px] font-semibold tracking-[0.01em] leading-4 first:border-t-0 ${
+        isSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-heading-text,var(--text-primary))]'
       }`}
     >
-      <div className="truncate px-1.5 py-0.5">{children}</div>
+      <div className="truncate px-2.5 py-1">{children}</div>
       <div className="h-full border-l border-[var(--mw-spec-grid,var(--border-primary))]" aria-hidden="true" />
     </div>
   );
@@ -1323,42 +1341,48 @@ const SessionTable = ({
           <tr
             data-selected={isHeaderSelected ? 'true' : undefined}
             onClick={() => onSelectRow?.(headerKey)}
-            className={`rtx-spec-row rtx-spec-row--heading h-[20px] border-y border-[var(--mw-spec-grid,var(--border-primary))] ${
-              isHeaderSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+            className={`rtx-spec-row rtx-spec-row--heading h-[26px] border-y border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] text-[11.5px] tracking-[0.01em] ${
+              isHeaderSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-heading-text,var(--text-primary))]'
             }`}
           >
-            <th className="w-[40%] px-1.5 py-0.5 text-left font-semibold" scope="col">
-              {tr('Sessions')}{timeZone ? <span className={`ml-1 font-normal ${isHeaderSelected ? 'text-white/80' : 'text-[var(--text-tertiary)]'}`}>({timeZone})</span> : null}
+            <th className="w-[42%] px-2.5 py-1 text-left font-semibold" scope="col">
+              {tr('Sessions')}{timeZone ? <span className={`ml-1 font-normal ${isHeaderSelected ? 'text-white/80' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'}`}>({timeZone})</span> : null}
             </th>
-            <th className="w-[30%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Quotes')}</th>
-            <th className="w-[30%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Trade')}</th>
+            <th className="w-[29%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right font-semibold" scope="col">{tr('Quotes')}</th>
+            <th className="w-[29%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right font-semibold" scope="col">{tr('Trade')}</th>
           </tr>
         </thead>
         <tbody>
           {sessions.map((session, index) => {
             const rowKey = `session:${session.day}`;
             const isSelected = selectedRowKey === rowKey;
+            const hasQuotes = session.quotes.length > 0;
+            const hasTrade = session.trade.length > 0;
             return (
               <tr
                 key={session.day}
                 data-selected={isSelected ? 'true' : undefined}
                 data-stripe={index % 2 === 0 ? 'even' : 'odd'}
                 onClick={() => onSelectRow?.(rowKey)}
-                className={`rtx-spec-row h-[20px] border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
-                  isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                className={`rtx-spec-row h-[24px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+                  isSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                 }`}
               >
-                <th className="px-1.5 py-0.5 text-left font-normal" scope="row">
-                  <span className="flex items-center gap-1.5">
+                <th className="px-2.5 py-1 text-left font-normal" scope="row">
+                  <span className="flex items-center gap-2">
                     <PropertyMarker kind="calendar" selected={isSelected} />
                     {tr(session.label)}
                   </span>
                 </th>
-                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">
-                  {session.quotes.length > 0 ? session.quotes.join(', ') : '0'}
+                <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right tabular-nums ${
+                  isSelected ? 'font-medium text-white' : hasQuotes ? 'font-medium text-[var(--mw-spec-value,var(--text-primary))]' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'
+                }`}>
+                  {hasQuotes ? session.quotes.join(', ') : '—'}
                 </td>
-                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">
-                  {session.trade.length > 0 ? session.trade.join(', ') : '0'}
+                <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right tabular-nums ${
+                  isSelected ? 'font-medium text-white' : hasTrade ? 'font-medium text-[var(--mw-spec-value,var(--text-primary))]' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'
+                }`}>
+                  {hasTrade ? session.trade.join(', ') : '—'}
                 </td>
               </tr>
             );
@@ -1402,15 +1426,17 @@ const CommissionTable = ({
                   data-selected={isSelected ? 'true' : undefined}
                   data-stripe={tierIndex % 2 === 0 ? 'even' : 'odd'}
                   onClick={() => onSelectRow?.(rowKey)}
-                  className={`rtx-spec-row grid min-h-[20px] grid-cols-[40%_60%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
-                    isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                  className={`rtx-spec-row grid min-h-[24px] grid-cols-[42%_58%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+                    isSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                   }`}
                 >
-                  <dt className="flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 text-[12px]">
+                  <dt className="flex min-w-0 items-center gap-2 px-2.5 py-1 text-[12px]">
                     <PropertyMarker kind="decimal" selected={isSelected} />
                     <span className="truncate">{label}</span>
                   </dt>
-                  <dd className="m-0 truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right text-[12px] font-normal tabular-nums" title={tier.value}>
+                  <dd className={`m-0 truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right text-[12px] font-medium tabular-nums ${
+                    isSelected ? 'text-white' : 'text-[var(--mw-spec-value,var(--text-primary))]'
+                  }`} title={tier.value}>
                     {tier.value}
                   </dd>
                 </div>
@@ -1438,11 +1464,11 @@ const MarginSpreadsTable = ({
     <section aria-label={tr('Spreads')}>
       <table className="w-full table-fixed border-collapse text-[12px]">
         <thead>
-          <tr className="rtx-spec-row rtx-spec-row--heading h-[20px] border-y border-[var(--mw-spec-grid,var(--border-primary))] text-[var(--text-primary)]">
-            <th className="w-[40%] px-1.5 py-0.5 text-left font-semibold" scope="col">{tr('Spreads')}</th>
-            <th className="w-[20%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-left font-semibold" scope="col">{tr('Leg A')}</th>
-            <th className="w-[20%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-left font-semibold" scope="col">{tr('Leg B')}</th>
-            <th className="w-[20%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Margin')}</th>
+          <tr className="rtx-spec-row rtx-spec-row--heading h-[26px] border-y border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] text-[11.5px] tracking-[0.01em] text-[var(--mw-spec-heading-text,var(--text-primary))]">
+            <th className="w-[42%] px-2.5 py-1 text-left font-semibold" scope="col">{tr('Spreads')}</th>
+            <th className="w-[19%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-left font-semibold" scope="col">{tr('Leg A')}</th>
+            <th className="w-[19%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-left font-semibold" scope="col">{tr('Leg B')}</th>
+            <th className="w-[20%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right font-semibold" scope="col">{tr('Margin')}</th>
           </tr>
         </thead>
         <tbody>
@@ -1455,14 +1481,14 @@ const MarginSpreadsTable = ({
                 data-selected={isSelected ? 'true' : undefined}
                 data-stripe={index % 2 === 0 ? 'even' : 'odd'}
                 onClick={() => onSelectRow?.(rowKey)}
-                className={`rtx-spec-row h-[20px] border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
-                  isSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                className={`rtx-spec-row h-[24px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+                  isSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                 }`}
               >
-                <th className="px-1.5 py-0.5 text-left font-normal" scope="row">{spread.name}</th>
-                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-left">{spread.legA}</td>
-                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-left">{spread.legB}</td>
-                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{spread.margin ?? '0'}</td>
+                <th className="px-2.5 py-1 text-left font-normal" scope="row">{spread.name}</th>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-left">{spread.legA}</td>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-left">{spread.legB}</td>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right font-medium tabular-nums">{spread.margin ?? '—'}</td>
               </tr>
             );
           })}
@@ -1533,8 +1559,8 @@ const MarginRatesTable = ({
   const asOfText = formatDate(asOf);
   const perLotHeading = currency ? `${currency.toLowerCase()} / lot` : 'usd / lot';
   const formatPerLot = (value: number | null, rowCurrency: string | null, approximate: boolean): string => {
-    if (value === null) return '0';
-    const formatted = formatGroupedNumber(value, 2, 2) ?? '0';
+    if (value === null) return '—';
+    const formatted = formatGroupedNumber(value, 2, 2) ?? '—';
     const prefixed = `${approximate ? '~' : ''}${formatted}`;
     if (!rowCurrency || rowCurrency.toUpperCase() === currency?.toUpperCase()) return prefixed;
     return `${prefixed} ${rowCurrency}`;
@@ -1550,22 +1576,22 @@ const MarginRatesTable = ({
             <tr
               data-selected={isHeaderSelected ? 'true' : undefined}
               onClick={() => onSelectRow?.(headerKey)}
-              className={`rtx-spec-row rtx-spec-row--heading min-h-[20px] border-y border-[var(--mw-spec-grid,var(--border-primary))] ${
-                isHeaderSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+              className={`rtx-spec-row rtx-spec-row--heading min-h-[26px] border-y border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] text-[11.5px] tracking-[0.01em] ${
+                isHeaderSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-heading-text,var(--text-primary))]'
               }`}
             >
-              <th className="w-[40%] px-1.5 py-0.5 text-left font-semibold" scope="col" title={heading}>
+              <th className="w-[42%] px-2.5 py-1 text-left font-semibold" scope="col" title={heading}>
                 <span className="block truncate">{heading}</span>
                 {asOfText && (
-                  <span className={`block truncate text-[10px] font-normal ${isHeaderSelected ? 'text-white/80' : 'text-[var(--text-tertiary)]'}`}>
+                  <span className={`block truncate text-[10px] font-normal ${isHeaderSelected ? 'text-white/80' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'}`}>
                     {tr('As of')} {asOfText}
                   </span>
                 )}
               </th>
-              <th className="w-[15%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Initial')}</th>
-              <th className="w-[15%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{perLotHeading}</th>
-              <th className="w-[15%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{tr('Maintenance')}</th>
-              <th className="w-[15%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right font-semibold" scope="col">{perLotHeading}</th>
+              <th className="w-[14.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right font-semibold" scope="col">{tr('Initial')}</th>
+              <th className="w-[14.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right font-semibold" scope="col">{perLotHeading}</th>
+              <th className="w-[14.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right font-semibold" scope="col">{tr('Maintenance')}</th>
+              <th className="w-[14.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right font-semibold" scope="col">{perLotHeading}</th>
             </tr>
           </thead>
           <tbody>
@@ -1575,18 +1601,22 @@ const MarginRatesTable = ({
               const isGroupSelected = selectedRowKey === groupKey;
               const rowKey = `margin-rate:${rate.label}:${rate.range ?? 'all'}:${index}`;
               const isRowSelected = selectedRowKey === rowKey;
+              const initialText = formatGroupedNumber(rate.initial, 7, 7) ?? '—';
+              const initialPerLotText = formatPerLot(rate.initialPerLot, rate.currency, rate.initialPerLotApproximate);
+              const maintenanceText = formatGroupedNumber(rate.maintenance, 7, 7) ?? '—';
+              const maintenancePerLotText = formatPerLot(rate.maintenancePerLot, rate.currency, rate.maintenancePerLotApproximate);
               return (
                 <React.Fragment key={`${rate.label}-${rate.range ?? 'all'}-${index}`}>
                   {groupStart && (
                     <tr
                       data-selected={isGroupSelected ? 'true' : undefined}
                       onClick={() => onSelectRow?.(groupKey)}
-                      className={`rtx-spec-row h-[20px] border-b border-[var(--mw-spec-grid,var(--border-primary))] ${
-                        isGroupSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                      className={`rtx-spec-row h-[24px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 ${
+                        isGroupSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                       }`}
                     >
-                      <th className="px-1.5 py-0.5 text-left font-normal" scope="rowgroup">
-                        <span className="flex items-center gap-1.5">
+                      <th className="px-2.5 py-1 text-left font-medium" scope="rowgroup">
+                        <span className="flex items-center gap-2">
                           <PropertyMarker kind="decimal" selected={isGroupSelected} />
                           {tr(rate.label)}
                         </span>
@@ -1601,24 +1631,24 @@ const MarginRatesTable = ({
                     data-selected={isRowSelected ? 'true' : undefined}
                     data-stripe={index % 2 === 0 ? 'even' : 'odd'}
                     onClick={() => onSelectRow?.(rowKey)}
-                    className={`rtx-spec-row h-[20px] border-b border-[var(--mw-spec-grid,var(--border-primary))] last:border-b-0 ${
-                      isRowSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--text-primary)]'
+                    className={`rtx-spec-row h-[24px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+                      isRowSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                     }`}
                   >
-                    <th className={`px-1.5 py-0.5 text-left font-normal ${rate.range ? 'pl-5 tabular-nums' : ''}`} scope="row">
+                    <th className={`px-2.5 py-1 text-left font-normal ${rate.range ? 'pl-6 tabular-nums' : ''}`} scope="row">
                       {rate.range ? (
                         rate.range
                       ) : (
-                        <span className="flex items-center gap-1.5">
+                        <span className="flex items-center gap-2">
                           <PropertyMarker kind="decimal" selected={isRowSelected} />
                           {tr(rate.label)}
                         </span>
                       )}
                     </th>
-                    <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{formatGroupedNumber(rate.initial, 7, 7) ?? '0'}</td>
-                    <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{formatPerLot(rate.initialPerLot, rate.currency, rate.initialPerLotApproximate)}</td>
-                    <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{formatGroupedNumber(rate.maintenance, 7, 7) ?? '0'}</td>
-                    <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-right tabular-nums">{formatPerLot(rate.maintenancePerLot, rate.currency, rate.maintenancePerLotApproximate)}</td>
+                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right tabular-nums ${isRowSelected ? 'text-white' : initialText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'}`}>{initialText}</td>
+                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right tabular-nums ${isRowSelected ? 'text-white' : initialPerLotText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'}`}>{initialPerLotText}</td>
+                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right tabular-nums ${isRowSelected ? 'text-white' : maintenanceText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'}`}>{maintenanceText}</td>
+                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right tabular-nums ${isRowSelected ? 'text-white' : maintenancePerLotText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'}`}>{maintenancePerLotText}</td>
                   </tr>
                 </React.Fragment>
               );
@@ -1631,11 +1661,16 @@ const MarginRatesTable = ({
 };
 
 const SpecificationTitleIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
-    <rect x="1.5" y="2.5" width="10" height="11" rx="1" fill="#1b2838" stroke="#42a5f5" strokeWidth="1" />
-    <rect x="3.5" y="1.5" width="11" height="12" rx="1" fill="#2b2112" stroke="#d49b38" strokeWidth="1.1" />
-    <text x="9" y="10.5" textAnchor="middle" fill="#f5b942" fontSize="8.5" fontWeight="700" fontFamily="Segoe UI, Arial, sans-serif">$</text>
-  </svg>
+  <span
+    className="rtx-spec-title-icon inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border border-[#3b82f6]/30 bg-gradient-to-br from-[#3b82f6]/20 to-[#1d4ed8]/10 shadow-inner"
+    aria-hidden="true"
+  >
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="2" width="9.5" height="11.5" rx="1.6" stroke="#60a5fa" strokeWidth="1.2" />
+      <rect x="4.5" y="1.5" width="9.5" height="12" rx="1.6" fill="#1e293b" stroke="#fbbf24" strokeWidth="1.2" />
+      <path d="M7 5.2H11.5M7 7.8H11.5M7 10.4H9.8" stroke="#f8fafc" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  </span>
 );
 
 export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps> = ({
@@ -1766,40 +1801,40 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
   const mainRows: DisplayRow[] = [
     { label: 'ISIN', value: snapshot.isin, kind: 'text' },
     { label: 'Category', value: snapshot.category, kind: 'text' },
-    { label: 'Exchange', value: snapshot.exchange ?? '0', kind: 'text' },
+    { label: 'Exchange', value: snapshot.exchange ?? '—', kind: 'text' },
     { label: 'CFI', value: snapshot.cfi, kind: 'text' },
-    { label: 'Sector', value: snapshot.sector ?? '0', kind: 'enum' },
+    { label: 'Sector', value: snapshot.sector ?? '—', kind: 'enum' },
     { label: 'Industry', value: snapshot.industry, kind: 'enum' },
     { label: 'Country', value: snapshot.country, kind: 'text' },
-    { label: 'Digits', value: formatNumber(snapshot.digits, 0) ?? '0', kind: 'integer' },
-    { label: 'Contract size', value: formatContractSize(snapshot) ?? '0', kind: 'decimal' },
-    { label: 'Spread', value: formatSpread(snapshot) ?? '0', kind: 'integer' },
-    { label: 'Stops level', value: formatNumber(snapshot.stopsLevel) ?? '0', kind: 'integer' },
-    { label: 'Margin currency', value: snapshot.marginCurrency ?? '0', kind: 'text' },
-    { label: 'Profit currency', value: snapshot.profitCurrency ?? '0', kind: 'text' },
-    { label: 'Calculation', value: snapshot.calculationMode ?? '0', kind: 'enum' },
+    { label: 'Digits', value: formatNumber(snapshot.digits, 0) ?? '—', kind: 'integer' },
+    { label: 'Contract size', value: formatContractSize(snapshot) ?? '—', kind: 'decimal' },
+    { label: 'Spread', value: formatSpread(snapshot) ?? '—', kind: 'integer' },
+    { label: 'Stops level', value: formatNumber(snapshot.stopsLevel) ?? '—', kind: 'integer' },
+    { label: 'Margin currency', value: snapshot.marginCurrency ?? '—', kind: 'text' },
+    { label: 'Profit currency', value: snapshot.profitCurrency ?? '—', kind: 'text' },
+    { label: 'Calculation', value: snapshot.calculationMode ?? '—', kind: 'enum' },
     { label: 'Tick size', value: formatNumber(snapshot.tickSize), kind: 'decimal' },
     { label: 'Tick value', value: formatNumber(snapshot.tickValue), kind: 'decimal' },
     { label: 'Initial margin', value: formatNumber(snapshot.marginInitial), kind: 'decimal' },
     { label: 'Maintenance margin', value: formatNumber(snapshot.marginMaintenance), kind: 'decimal' },
-    { label: 'Hedged margin', value: hedgedMargin ?? '0', kind: 'decimal' },
-    { label: 'Chart mode', value: snapshot.chartMode ?? '0', kind: 'enum' },
+    { label: 'Hedged margin', value: hedgedMargin ?? '—', kind: 'decimal' },
+    { label: 'Chart mode', value: snapshot.chartMode ?? '—', kind: 'enum' },
     { label: 'Subscription', value: snapshot.subscription, kind: 'enum' },
     { label: 'Ticks history', value: snapshot.ticksHistory, kind: 'enum' },
     { label: 'Liquidity rate', value: formatGroupedNumber(snapshot.liquidityRate, 3, 3), kind: 'decimal' },
-    { label: 'Trade', value: snapshot.tradeMode ?? '0', kind: 'enum' },
-    { label: 'Execution', value: (isTradeDisabled ? null : snapshot.executionMode) ?? '0', kind: 'enum' },
-    { label: 'GTC mode', value: (isTradeDisabled ? null : snapshot.gtcMode) ?? '0', kind: 'enum' },
-    { label: 'Filling', value: (isTradeDisabled ? null : snapshot.fillingMode) ?? '0', kind: 'enum' },
-    { label: 'Expiration', value: (isTradeDisabled ? null : snapshot.expirationMode) ?? '0', kind: 'enum' },
-    { label: 'Orders', value: (isTradeDisabled ? null : snapshot.orderMode) ?? '0', kind: 'enum' },
-    { label: 'Minimal volume', value: (isTradeDisabled ? null : formatNumber(snapshot.minVolume)) ?? '0', kind: 'decimal' },
-    { label: 'Maximal volume', value: (isTradeDisabled ? null : formatNumber(snapshot.maxVolume)) ?? '0', kind: 'decimal' },
-    { label: 'Volume step', value: (isTradeDisabled ? null : formatNumber(snapshot.volumeStep)) ?? '0', kind: 'decimal' },
+    { label: 'Trade', value: snapshot.tradeMode ?? '—', kind: 'enum' },
+    { label: 'Execution', value: (isTradeDisabled ? null : snapshot.executionMode) ?? '—', kind: 'enum' },
+    { label: 'GTC mode', value: (isTradeDisabled ? null : snapshot.gtcMode) ?? '—', kind: 'enum' },
+    { label: 'Filling', value: (isTradeDisabled ? null : snapshot.fillingMode) ?? '—', kind: 'enum' },
+    { label: 'Expiration', value: (isTradeDisabled ? null : snapshot.expirationMode) ?? '—', kind: 'enum' },
+    { label: 'Orders', value: (isTradeDisabled ? null : snapshot.orderMode) ?? '—', kind: 'enum' },
+    { label: 'Minimal volume', value: (isTradeDisabled ? null : formatNumber(snapshot.minVolume)) ?? '—', kind: 'decimal' },
+    { label: 'Maximal volume', value: (isTradeDisabled ? null : formatNumber(snapshot.maxVolume)) ?? '—', kind: 'decimal' },
+    { label: 'Volume step', value: (isTradeDisabled ? null : formatNumber(snapshot.volumeStep)) ?? '—', kind: 'decimal' },
     { label: 'Volume limit', value: isTradeDisabled ? null : formatNumber(snapshot.volumeLimit), kind: 'decimal' },
-    { label: 'Swap type', value: snapshot.swapMode ?? '0', kind: 'enum' },
-    { label: 'Swap long', value: formatNumber(snapshot.swapLong) ?? '0', kind: 'decimal' },
-    { label: 'Swap short', value: formatNumber(snapshot.swapShort) ?? '0', kind: 'decimal' },
+    { label: 'Swap type', value: snapshot.swapMode ?? '—', kind: 'enum' },
+    { label: 'Swap long', value: formatNumber(snapshot.swapLong) ?? '—', kind: 'decimal' },
+    { label: 'Swap short', value: formatNumber(snapshot.swapShort) ?? '—', kind: 'decimal' },
     { label: 'First trade', value: formatDate(snapshot.startTime), kind: 'calendar' },
     { label: 'Last trade', value: formatDate(snapshot.expirationTime), kind: 'calendar' },
     { label: 'Face value', value: formatNumber(snapshot.faceValue), kind: 'decimal' },
@@ -1816,7 +1851,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
       label: day.label,
       value: typeof value === 'number'
         ? formatNumber(value)
-        : value ?? (isStandardWeekday ? '0' : null),
+        : value ?? (isStandardWeekday ? '—' : null),
       kind: 'calendar',
     };
   });
@@ -1832,39 +1867,112 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
     >
       <style>{`
         .rtx-symbol-specification-dialog {
-          --mw-spec-grid: #3c3c3c;
-          --mw-spec-row-even: #262626;
-          --mw-spec-row-odd: #1f1f1f;
-          font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+          --mw-spec-bg: #161a20;
+          --mw-spec-surface: #1b2028;
+          --mw-spec-header-bg: linear-gradient(180deg, #222832 0%, #181c23 100%);
+          --mw-spec-banner-bg: linear-gradient(90deg, rgba(37, 99, 235, 0.14) 0%, rgba(30, 41, 59, 0.45) 100%);
+          --mw-spec-heading-bg: #222934;
+          --mw-spec-heading-text: #dbe5f3;
+          --mw-spec-row-even: #1d222b;
+          --mw-spec-row-odd: #181c24;
+          --mw-spec-row-hover: #252c38;
+          --mw-spec-grid: rgba(148, 163, 184, 0.14);
+          --mw-spec-outer-border: rgba(148, 163, 184, 0.24);
+          --mw-spec-selected-bg: linear-gradient(90deg, #1d64d8 0%, #1a56bd 100%);
+          --mw-spec-label: #c9d4e3;
+          --mw-spec-value: #f1f5f9;
+          --mw-spec-muted: #94a3b8;
+          font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+          border-radius: 8px;
+          background: var(--mw-spec-bg);
+          border-color: var(--mw-spec-outer-border);
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.62), 0 4px 16px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.06);
         }
         .theme-light .rtx-symbol-specification-dialog,
         .rtx-skin-untitled-light .rtx-symbol-specification-dialog {
-          --mw-spec-grid: #d8e0ea;
+          --mw-spec-bg: #f1f5f9;
+          --mw-spec-surface: #ffffff;
+          --mw-spec-header-bg: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
+          --mw-spec-banner-bg: linear-gradient(90deg, rgba(37, 99, 235, 0.08) 0%, rgba(241, 245, 249, 0.7) 100%);
+          --mw-spec-heading-bg: #edf2f8;
+          --mw-spec-heading-text: #1e293b;
           --mw-spec-row-even: #ffffff;
-          --mw-spec-row-odd: #f6f8fb;
-          border-radius: 6px;
-          box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.08);
+          --mw-spec-row-odd: #f8fafc;
+          --mw-spec-row-hover: #eef4fb;
+          --mw-spec-grid: #e2e8f0;
+          --mw-spec-outer-border: #cbd5e1;
+          --mw-spec-selected-bg: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%);
+          --mw-spec-label: #334155;
+          --mw-spec-value: #0f172a;
+          --mw-spec-muted: #64748b;
+          border-radius: 8px;
+          box-shadow: 0 22px 52px rgba(15, 23, 42, 0.18), 0 3px 10px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
         }
-        .theme-light .rtx-symbol-specification-dialog .rtx-spec-close-btn,
-        .rtx-skin-untitled-light .rtx-symbol-specification-dialog .rtx-spec-close-btn {
-          border-color: var(--rtx-light-control-border, #c5d0dc);
-          border-radius: 5px;
-          background: var(--rtx-light-button-secondary, #f8fafc);
-          color: var(--rtx-light-text, #0f172a);
-          font-weight: 500;
-          height: 26px;
+        .rtx-symbol-specification-dialog .rtx-spec-header {
+          background: var(--mw-spec-header-bg);
         }
-        .theme-light .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover,
-        .rtx-skin-untitled-light .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover {
-          border-color: var(--rtx-light-control-border-hover, #94a3b8);
-          background: var(--rtx-light-hover, #eef2f6);
+        .rtx-symbol-specification-dialog .rtx-spec-banner:not([data-selected="true"]) {
+          background: var(--mw-spec-banner-bg);
         }
         .rtx-symbol-specification-dialog .rtx-spec-row[data-stripe="even"]:not([data-selected="true"]) {
           background-color: var(--mw-spec-row-even);
         }
-        .rtx-symbol-specification-dialog .rtx-spec-row[data-stripe="odd"]:not([data-selected="true"]),
-        .rtx-symbol-specification-dialog .rtx-spec-row--heading:not([data-selected="true"]) {
+        .rtx-symbol-specification-dialog .rtx-spec-row[data-stripe="odd"]:not([data-selected="true"]):not(.rtx-spec-banner) {
           background-color: var(--mw-spec-row-odd);
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-row--heading:not([data-selected="true"]) {
+          background-color: var(--mw-spec-heading-bg);
+          color: var(--mw-spec-heading-text);
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-row:not([data-selected="true"]):hover {
+          background-color: var(--mw-spec-row-hover);
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-row[data-selected="true"] {
+          background: var(--mw-spec-selected-bg);
+          color: #ffffff;
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar {
+          width: 7px;
+          height: 7px;
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar-thumb {
+          background: rgba(148, 163, 184, 0.28);
+          border-radius: 9999px;
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(148, 163, 184, 0.45);
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-close-btn {
+          border-radius: 5px;
+          border-color: rgba(148, 163, 184, 0.32);
+          background: linear-gradient(180deg, #27303d 0%, #1d242f 100%);
+          color: #f1f5f9;
+          font-weight: 500;
+          letter-spacing: 0.01em;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+          transition: all 120ms ease;
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover {
+          border-color: #3b82f6;
+          background: linear-gradient(180deg, #2e3848 0%, #232b38 100%);
+          color: #ffffff;
+        }
+        .theme-light .rtx-symbol-specification-dialog .rtx-spec-close-btn,
+        .rtx-skin-untitled-light .rtx-symbol-specification-dialog .rtx-spec-close-btn {
+          border-color: var(--rtx-light-control-border, #cbd5e1);
+          border-radius: 5px;
+          background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+          color: var(--rtx-light-text, #0f172a);
+          font-weight: 500;
+          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        .theme-light .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover,
+        .rtx-skin-untitled-light .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover {
+          border-color: var(--rtx-light-control-border-hover, #94a3b8);
+          background: var(--rtx-light-hover, #e2e8f0);
         }
       `}</style>
       <div
@@ -1873,16 +1981,16 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
         aria-modal="true"
         aria-label={`${symbol} ${tr('Specification')}`}
         data-testid="symbol-specification-dialog"
-        className={`rtx-symbol-specification-dialog absolute flex min-w-0 flex-col overflow-hidden border border-[var(--mw-spec-grid,var(--border-secondary))] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-2xl ${isDragging ? 'select-none' : ''} ${isResizing ? 'select-none' : ''}`}
+        className={`rtx-symbol-specification-dialog absolute flex min-w-0 flex-col overflow-hidden border border-[var(--mw-spec-outer-border,var(--border-secondary))] bg-[var(--mw-spec-bg,var(--bg-secondary))] text-[var(--text-primary)] shadow-2xl ${isDragging ? 'select-none' : ''} ${isResizing ? 'select-none' : ''}`}
         style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header
-          className={`flex h-[30px] shrink-0 items-center gap-2 border-b border-[var(--mw-spec-grid,var(--border-secondary))] bg-[var(--bg-primary)] px-2 ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
+          className={`rtx-spec-header flex h-[34px] shrink-0 items-center gap-2 border-b border-[var(--mw-spec-grid,var(--border-secondary))] px-2.5 ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
           {...dragHandleProps}
         >
           <SpecificationTitleIcon />
-          <h2 className="min-w-0 flex-1 truncate text-[12px] font-normal">{tr('Specification')}</h2>
+          <h2 className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[0.01em] text-[var(--mw-spec-value,var(--text-primary))]">{tr('Specification')}</h2>
           <a
             href="https://www.metatrader5.com/en/terminal/help/trading/market_watch#specification"
             target="_blank"
@@ -1890,7 +1998,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
             aria-label={tr('Symbol specification help')}
             title={tr('Symbol specification help')}
             onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-6 w-6 items-center justify-center text-[12px] font-normal text-[var(--text-secondary)] hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[12px] font-semibold text-[var(--mw-spec-muted,var(--text-secondary))] transition-colors hover:bg-[var(--mw-spec-row-hover,var(--bg-quaternary))] hover:text-[var(--mw-spec-value,var(--text-primary))] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
             ?
           </a>
@@ -1900,14 +2008,14 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
             aria-label={tr('Close symbol specification')}
             onClick={onClose}
             onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-6 w-6 items-center justify-center text-[var(--text-secondary)] hover:bg-red-600 hover:text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--mw-spec-muted,var(--text-secondary))] transition-colors hover:bg-red-600 hover:text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
             <Icon name="x-close" size="xs" />
           </button>
         </header>
 
-        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto p-[6px] pb-0">
-          <div className="overflow-hidden border border-[var(--mw-spec-grid,var(--border-secondary))] bg-[var(--bg-secondary)]">
+        <div ref={contentRef} className="rtx-spec-scroll min-h-0 flex-1 overflow-y-auto p-[7px] pb-0">
+          <div className="overflow-hidden rounded-[5px] border border-[var(--mw-spec-outer-border,var(--border-secondary))] bg-[var(--mw-spec-surface,var(--bg-secondary))] shadow-sm">
             {pageUrl ? (
               <a
                 href={pageUrl}
@@ -1916,20 +2024,36 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
                 data-selected={isSymbolBannerSelected ? 'true' : undefined}
                 data-stripe="odd"
                 onClick={() => setSelectedRowKey('symbol-banner')}
-                className={`rtx-spec-row flex min-h-[20px] items-center truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-[12px] font-normal hover:underline ${
-                  isSymbolBannerSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[#4597ff]'
+                className={`rtx-spec-row rtx-spec-banner flex min-h-[26px] items-center justify-between gap-2 truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] px-2.5 py-1 text-[12px] font-semibold tracking-[0.01em] transition-colors hover:underline ${
+                  isSymbolBannerSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[#4da3ff]'
                 }`}
                 title={pageUrl}
               >
-                {symbol}{displayDescription ? `, ${displayDescription}` : ''}
+                <span className="truncate">{symbol}{displayDescription ? `, ${displayDescription}` : ''}</span>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  aria-hidden="true"
+                  className="shrink-0 opacity-75"
+                >
+                  <path
+                    d="M7.5 2H10V4.5M10 2L5.5 6.5M5 2.5H3C2.44772 2.5 2 2.94772 2 3.5V9C2 9.55228 2.44772 10 3 10H8.5C9.05228 10 9.5 9.55228 9.5 9V7"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </a>
             ) : (
               <div
                 data-selected={isSymbolBannerSelected ? 'true' : undefined}
                 data-stripe="odd"
                 onClick={() => setSelectedRowKey('symbol-banner')}
-                className={`rtx-spec-row flex min-h-[20px] items-center truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] px-1.5 py-0.5 text-[12px] font-normal ${
-                  isSymbolBannerSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[#4597ff]'
+                className={`rtx-spec-row rtx-spec-banner flex min-h-[26px] items-center truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] px-2.5 py-1 text-[12px] font-semibold tracking-[0.01em] transition-colors ${
+                  isSymbolBannerSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[#4da3ff]'
                 }`}
                 title={`${symbol}${displayDescription ? `, ${displayDescription}` : ''}`}
               >
@@ -1937,8 +2061,8 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
               </div>
             )}
             {isRequestPending ? (
-              <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 px-6 py-8 text-center text-[12px] text-[var(--text-secondary)]" role="status">
-                <Icon name="refresh" size="sm" className="animate-spin" />
+              <div className="flex min-h-[180px] flex-col items-center justify-center gap-2.5 px-6 py-8 text-center text-[12px] text-[var(--mw-spec-muted,var(--text-secondary))]" role="status">
+                <Icon name="refresh" size="sm" className="animate-spin text-[#4da3ff]" />
                 <span>{tr('Loading current specification...')}</span>
               </div>
             ) : (
@@ -1994,11 +2118,11 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
           </div>
         </div>
 
-        <footer className="flex h-[38px] shrink-0 items-center justify-center bg-[var(--bg-secondary)] px-3">
+        <footer className="flex h-[40px] shrink-0 items-center justify-center bg-[var(--mw-spec-bg,var(--bg-secondary))] px-3">
           <button
             type="button"
             onClick={onClose}
-            className="rtx-spec-close-btn h-[23px] w-[90px] border border-[#8a8a8a] bg-[var(--bg-tertiary)] px-3 text-[12px] font-normal text-[var(--text-primary)] hover:border-[var(--color-info)] hover:bg-[var(--bg-quaternary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="rtx-spec-close-btn h-[25px] min-w-[96px] border px-4 text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
             {tr('Close')}
           </button>
@@ -2022,7 +2146,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
             viewBox="0 0 10 10"
             fill="none"
             aria-hidden="true"
-            className="pointer-events-none absolute bottom-[2px] right-[2px] text-[var(--text-tertiary)]"
+            className="pointer-events-none absolute bottom-[2px] right-[2px] text-[var(--mw-spec-muted,var(--text-tertiary))] opacity-70"
           >
             <circle cx="8" cy="2" r="0.9" fill="currentColor" />
             <circle cx="5" cy="5" r="0.9" fill="currentColor" />

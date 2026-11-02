@@ -1648,6 +1648,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[role="ra
   box-shadow: none !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[aria-pressed="true"] {
+  border-radius: 3px;
+  box-shadow: none !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-symbol-badge {
   background: #f9fafb !important;
   border-color: #eaecf0 !important;

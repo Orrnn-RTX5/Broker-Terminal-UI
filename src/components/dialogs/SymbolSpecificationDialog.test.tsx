@@ -476,7 +476,7 @@ describe('SymbolSpecificationDialog', () => {
     expect(labels.slice(0, 5)).toEqual(['ISIN', 'Exchange', 'Sector', 'Industry', 'Country']);
   });
 
-  it('resets trade-only controls to 0 for a disabled symbol while keeping broker swaps', () => {
+  it('resets trade-only controls to — for a disabled symbol while keeping broker swaps', () => {
     render(
       <SymbolSpecificationDialog
         isOpen
@@ -501,9 +501,9 @@ describe('SymbolSpecificationDialog', () => {
 
     expect(screen.getByText('Disabled')).toBeInTheDocument();
     expect(screen.getByText('Swap type').closest('div')).toHaveTextContent('USD');
-    expect(screen.getByText('Execution').closest('div')).toHaveTextContent('0');
-    expect(screen.getByText('Orders').closest('div')).toHaveTextContent('0');
-    expect(screen.getByText('Minimal volume').closest('div')).toHaveTextContent('0');
+    expect(screen.getByText('Execution').closest('div')).toHaveTextContent('—');
+    expect(screen.getByText('Orders').closest('div')).toHaveTextContent('—');
+    expect(screen.getByText('Minimal volume').closest('div')).toHaveTextContent('—');
   });
 
   it('keeps fresh nested broker values authoritative and uses fallback only for identity', () => {
@@ -566,7 +566,7 @@ describe('SymbolSpecificationDialog', () => {
     expect(within(spreads).getByText('Value: 2000 / 1800 / USD')).toBeInTheDocument();
   });
 
-  it('shows explicit current-request loading state and falls back to 0 rows when unavailable', () => {
+  it('shows explicit current-request loading state and falls back to — rows when unavailable', () => {
     const rendered = render(
       <SymbolSpecificationDialog
         isOpen
@@ -588,14 +588,14 @@ describe('SymbolSpecificationDialog', () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText('Exchange').closest('div')).toHaveTextContent('0');
-    expect(screen.getByText('Digits').closest('div')).toHaveTextContent('0');
+    expect(screen.getByText('Exchange').closest('div')).toHaveTextContent('—');
+    expect(screen.getByText('Digits').closest('div')).toHaveTextContent('—');
     expect(screen.getByRole('region', { name: 'Swap rates' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Sessions' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Margin rates' })).toBeInTheDocument();
   });
 
-  it('keeps all MT5 specification rows and sections with hardcoded 0 when values do not come from the backend', () => {
+  it('keeps all MT5 specification rows and sections with — when values do not come from the backend', () => {
     render(
       <SymbolSpecificationDialog
         isOpen
@@ -606,15 +606,15 @@ describe('SymbolSpecificationDialog', () => {
     );
 
     expect(screen.getByText('EURUSD, Euro vs US Dollar')).toBeInTheDocument();
-    expect(screen.getByText('Exchange').closest('div')).toHaveTextContent('0');
-    expect(screen.getByText('Sector').closest('div')).toHaveTextContent('0');
-    expect(screen.getByText('Contract size').closest('div')).toHaveTextContent('0');
-    expect(screen.getByText('Spread').closest('div')).toHaveTextContent('0');
+    expect(screen.getByText('Exchange').closest('div')).toHaveTextContent('—');
+    expect(screen.getByText('Sector').closest('div')).toHaveTextContent('—');
+    expect(screen.getByText('Contract size').closest('div')).toHaveTextContent('—');
+    expect(screen.getByText('Spread').closest('div')).toHaveTextContent('—');
 
     expect(screen.getByRole('region', { name: 'Swap rates' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Sessions' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Margin rates' })).toBeInTheDocument();
-    expect(screen.queryByText('—')).not.toBeInTheDocument();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
     expect(screen.queryByText('Bid')).not.toBeInTheDocument();
     expect(screen.queryByText('24/5')).not.toBeInTheDocument();
   });

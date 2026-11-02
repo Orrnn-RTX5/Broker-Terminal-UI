@@ -2626,8 +2626,11 @@ useTradingChartInitialization({
   }, [isChartCommandTarget, setCtxChartShift]);
 
   // Apply chart shift when ctxChartShift changes
+  const prevCtxChartShiftRef = useRef(ctxChartShift);
   useEffect(() => {
     if (!chartRef.current || isDisposedRef.current) return;
+    const shiftChanged = prevCtxChartShiftRef.current !== ctxChartShift;
+    prevCtxChartShiftRef.current = ctxChartShift;
     ctxChartShiftRef.current = ctxChartShift;
     const rightOffset = getTradingChartShiftRightOffset(timeframe, ctxChartShift);
     console.log(`[Chart] Applying chart shift: ${ctxChartShift}, rightOffset: ${rightOffset}`);
@@ -2636,7 +2639,11 @@ useTradingChartInitialization({
       rightOffset,
       fixRightEdge: false,
     });
-  }, [ctxChartShift, timeframe]);
+    if (shiftChanged) {
+      scrollToLatestCandleNow(chartRef.current);
+      syncLeftVisibleTime();
+    }
+  }, [ctxChartShift, scrollToLatestCandleNow, syncLeftVisibleTime, timeframe]);
 
   useEffect(() => {
     autoScrollEnabledRef.current = chartSettings.chartAutoScroll;

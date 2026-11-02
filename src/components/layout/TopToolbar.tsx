@@ -495,10 +495,12 @@ const MainToolbar = ({
             ? (store.symbolProperties[targetSymbol] || store.globalProperties)
             : store.globalProperties;
         const enabled = !current.chartShift;
+        store.updateGlobalProperty('chartShift', enabled);
         if (targetSymbol) {
             store.updateSymbolProperty(targetSymbol, 'chartShift', enabled);
-        } else {
-            store.updateGlobalProperty('chartShift', enabled);
+        }
+        if (target.symbol && target.symbol !== targetSymbol) {
+            store.updateSymbolProperty(target.symbol, 'chartShift', enabled);
         }
         dispatchCommand({
             type: 'SET_CHART_SHIFT',

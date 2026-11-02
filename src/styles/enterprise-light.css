@@ -400,6 +400,9 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[role="ra
   box-shadow: none !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[aria-pressed="true"],
+html.rtx-desktop-shell-active .rtx-toolbar-icon-button[aria-pressed="true"],
+.rtx-toolbar-icon-button[aria-pressed="true"],
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-period-separator-toggle[aria-pressed="true"],
 html.rtx-desktop-shell-active .rtx-period-separator-toggle[aria-pressed="true"],
 .rtx-period-separator-toggle[aria-pressed="true"] {
