@@ -277,6 +277,7 @@ export interface User extends AccountClassificationFields {
 
 export interface AccountSummary extends AccountClassificationFields {
   id?: string;
+  name?: string;
   balance: number;
   equity: number;
   margin?: number;

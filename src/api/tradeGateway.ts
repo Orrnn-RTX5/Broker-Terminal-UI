@@ -38,8 +38,6 @@ export type GatewayAccount = {
 };
 
 export type GatewayPosition = {
-  state_version_text?: string;
-  protection_version?: string | number;
   ticket?: number;
   position_id?: number;
   account_login?: number;

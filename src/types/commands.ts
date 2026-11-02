@@ -47,7 +47,7 @@ export type Command =
   }
   | {
     type: 'JUMP_TO_LATEST_CANDLE';
-    payload: Record<string, never>;
+    payload: { targetContextId?: string };
   }
   | {
     type: 'RESET_CHART_VIEWPORT';
