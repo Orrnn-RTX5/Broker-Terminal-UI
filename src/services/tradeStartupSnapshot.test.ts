@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
     serverUrl: 'https://test.example.com',
   },
   getAccountSummary: vi.fn(),
+  getAccountMetrics: vi.fn(),
   getPositions: vi.fn(),
   sessionChangeListeners: [] as Array<() => void>,
 }));
@@ -51,6 +52,7 @@ vi.mock('./api', () => ({
   api: {
     account: {
       getAccountSummary: mocks.getAccountSummary,
+      getAccountMetrics: mocks.getAccountMetrics,
     },
     positions: {
       getPositions: mocks.getPositions,
@@ -300,5 +302,20 @@ describe('loadSessionTradeSnapshot', () => {
     mocks.getAccountSummary.mockResolvedValueOnce(validatedAccount);
     await loadSessionTradeSnapshot(200001);
     expect(mocks.getAccountSummary).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts getAccountMetrics in parallel even when a validated account summary handoff is used', async () => {
+    const metrics = { balance: 1000, equity: 1000, used_margin: 35, free_margin: 965, margin_level: 2857.14 };
+    mocks.getAccountMetrics.mockResolvedValueOnce(metrics);
+    mocks.getPositions.mockResolvedValueOnce([]);
+    expect(seedValidatedSessionAccountSummary(200001, validatedAccount, mocks.token)).toBe(true);
+
+    const snapshot = await loadSessionTradeSnapshot(200001);
+    expect(mocks.getAccountSummary).not.toHaveBeenCalled();
+    expect(mocks.getAccountMetrics).toHaveBeenCalledExactlyOnceWith(200001);
+    await expect(snapshot.metricsResultPromise).resolves.toEqual({
+      status: 'fulfilled',
+      value: metrics,
+    });
   });
 });

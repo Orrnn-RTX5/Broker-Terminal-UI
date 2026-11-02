@@ -906,5 +906,15 @@ describe('TradingChart interaction-priority contract', () => {
     expect(transition).toContain('refreshVisibleChartLayout(true);');
     expect(transition).not.toContain('removeSeries(');
     expect(transition).not.toContain('setData([])');
+    const flushStart = source.indexOf('const flushQueuedChartRender = useCallback');
+    const flushEnd = source.indexOf('const scheduleQueuedChartRenderFlush = useCallback', flushStart);
+    const flush = source.slice(flushStart, flushEnd);
+    expect(flush).toContain('const latestRenderedCandle = currentCandleRef.current ?? sortedCandles[sortedCandles.length - 1] ?? null;');
+    expect(flush).toContain('repaintLivePriceOverlayFromCurrentPrice(latestRenderedCandle);');
+    const postRenderOverlayStart = source.indexOf('useTradingChartPriceFormat({');
+    const postRenderOverlayEnd = source.indexOf('// ── Chart Shift (standalone effect)', postRenderOverlayStart);
+    const postRenderOverlay = source.slice(postRenderOverlayStart, postRenderOverlayEnd);
+    expect(postRenderOverlay).toContain('syncLivePriceCountdownDOM();');
+    expect(postRenderOverlay).toContain('[candlesLoadedRev,');
   });
 });

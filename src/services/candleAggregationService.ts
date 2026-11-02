@@ -345,18 +345,35 @@ export class SymbolCandleBuilder {
       }
 
     } else {
-      // ── No forming candle yet — open first M1 ────────────────────────────
-      this.m1Forming = sealCandleOHLC({
-        time:   m1TimeSeconds,
-        open:   price,
-        high:   tickHigh,
-        low:    tickLow,
-        close:  price,
-        volume,
-        isComplete: false,
-      });
-      // FIX: Seed event-time ownership together with the first forming candle.
-      this.lastCloseTickTimeMs = tsMs;
+      const lastCompletedM1 = this.m1Completed[this.m1Completed.length - 1];
+      if (lastCompletedM1 && m1TimeSeconds < lastCompletedM1.time) {
+        return updates;
+      }
+      if (lastCompletedM1 && m1TimeSeconds === lastCompletedM1.time) {
+        const reopened = this.m1Completed.pop()!;
+        this.m1Forming = sealCandleOHLC({
+          ...reopened,
+          high: Math.max(reopened.high, tickHigh),
+          low: Math.min(reopened.low, tickLow),
+          close: price,
+          volume: reopened.volume + volume,
+          isComplete: false,
+        });
+        this.lastCloseTickTimeMs = tsMs;
+      } else {
+        // ── No forming candle yet — open first M1 ────────────────────────────
+        this.m1Forming = sealCandleOHLC({
+          time:   m1TimeSeconds,
+          open:   price,
+          high:   tickHigh,
+          low:    tickLow,
+          close:  price,
+          volume,
+          isComplete: false,
+        });
+        // FIX: Seed event-time ownership together with the first forming candle.
+        this.lastCloseTickTimeMs = tsMs;
+      }
     }
 
     if (this.m1Forming) {
@@ -412,12 +429,6 @@ export class SymbolCandleBuilder {
         this.m1Forming   = null;
       }
       this.rebuildHigherTimeframes();
-
-      // Fold the forming M1 into higher TFs
-      if (this.m1Forming) {
-        const updates = new Map<Timeframe, OHLCV>();
-        this.updateHigherTimeframesWithM1(this.m1Forming, updates, true);
-      }
       // Rebuild every higher frame from the complete fetched M1 coverage first;
       // only the retained minute-level working set is trimmed afterward.
       this.trimM1History();
@@ -475,7 +486,6 @@ export class SymbolCandleBuilder {
       this.m1Forming = nextForming;
       this.lastCloseTickTimeMs = null;
       this.rebuildHigherTimeframes();
-      this.updateHigherTimeframesWithM1(this.m1Forming, new Map<Timeframe, OHLCV>(), true);
       return;
     }
 
@@ -522,9 +532,6 @@ export class SymbolCandleBuilder {
       this.m1Completed.sort((left, right) => left.time - right.time);
       this.trimM1History();
       this.rebuildHigherTimeframes();
-      if (this.m1Forming) {
-        this.updateHigherTimeframesWithM1(this.m1Forming, new Map<Timeframe, OHLCV>(), true);
-      }
     } else {
       const data = this.higherTFs.get(timeframe);
       if (data) {
@@ -652,6 +659,25 @@ export class SymbolCandleBuilder {
       }
 
       if (!data.forming) {
+        const lastCompleted = data.completed[data.completed.length - 1];
+        if (lastCompleted && lastCompleted.time > tfTimeSeconds) {
+          continue;
+        }
+        if (lastCompleted && lastCompleted.time === tfTimeSeconds) {
+          const reopened = data.completed.pop()!;
+          data.forming = sealCandleOHLC({
+            ...reopened,
+            high: Math.max(reopened.high, m1.high),
+            low: Math.min(reopened.low, m1.low),
+            close: m1.close,
+            volume: Math.max(reopened.volume, m1.volume),
+            isComplete: false,
+          });
+          data.lastAppliedM1Time = m1.time;
+          data.lastAppliedM1Volume = m1.volume;
+          updates.set(tf, data.forming);
+          continue;
+        }
         data.forming = sealCandleOHLC({
           time:   tfTimeSeconds,
           open:   m1.open,
@@ -694,7 +720,23 @@ export class SymbolCandleBuilder {
 
   /** Rebuild all higher TFs from scratch using the stored M1 completed array. */
   private rebuildHigherTimeframes(): void {
-    for (const [, data] of this.higherTFs) {
+    const oldestM1Time = this.m1Completed[0]?.time ?? this.m1Forming?.time ?? null;
+    const canPreserveNativePrefix = (
+      oldestM1Time !== null
+      && (
+        this.derivedM1BoundaryOffsetSeconds === null
+        || this.derivedM1BoundaryOffsetSeconds === this.boundaryOffsetSeconds
+      )
+    );
+    const priorByTf = new Map<Timeframe, { completed: OHLCV[]; forming: OHLCV | null }>();
+
+    for (const [tf, data] of this.higherTFs) {
+      if (canPreserveNativePrefix && (data.completed.length > 0 || data.forming)) {
+        priorByTf.set(tf, {
+          completed: data.completed.map(candle => ({ ...candle })),
+          forming: data.forming ? { ...data.forming } : null,
+        });
+      }
       data.completed = [];
       data.forming   = null;
       data.lastAppliedM1Time = null;
@@ -703,6 +745,52 @@ export class SymbolCandleBuilder {
     const updates = new Map<Timeframe, OHLCV>();
     for (const m1 of this.m1Completed) {
       this.processCompletedM1(m1, updates);
+    }
+    if (this.m1Forming) {
+      this.updateHigherTimeframesWithM1(this.m1Forming, updates, true);
+    }
+    if (canPreserveNativePrefix && oldestM1Time !== null) {
+      for (const [tf, prior] of priorByTf) {
+        const data = this.higherTFs.get(tf);
+        if (!data) continue;
+        const oldestBucketStart = getTimeframePeriodSeconds(
+          oldestM1Time,
+          tf,
+          this.boundaryOffsetSeconds,
+        )?.startTime ?? oldestM1Time;
+        const olderCompleted = prior.completed.filter(candle => candle.time < oldestBucketStart);
+        if (olderCompleted.length > 0) {
+          data.completed = [...olderCompleted, ...data.completed];
+          this.trimHigherTFHistory(tf);
+        }
+        if (oldestM1Time > oldestBucketStart) {
+          const priorAll = prior.forming ? [...prior.completed, prior.forming] : prior.completed;
+          const priorLeadingBar = priorAll.find(candle => candle.time === oldestBucketStart);
+          if (priorLeadingBar) {
+            if (data.forming && data.forming.time === oldestBucketStart) {
+              data.forming = sealCandleOHLC({
+                ...data.forming,
+                open: priorLeadingBar.open,
+                high: Math.max(priorLeadingBar.high, data.forming.high),
+                low: Math.min(priorLeadingBar.low, data.forming.low),
+                volume: Math.max(priorLeadingBar.volume, data.forming.volume),
+              });
+            } else {
+              const idx = data.completed.findIndex(candle => candle.time === oldestBucketStart);
+              if (idx >= 0) {
+                const rebuilt = data.completed[idx];
+                data.completed[idx] = sealCandleOHLC({
+                  ...rebuilt,
+                  open: priorLeadingBar.open,
+                  high: Math.max(priorLeadingBar.high, rebuilt.high),
+                  low: Math.min(priorLeadingBar.low, rebuilt.low),
+                  volume: Math.max(priorLeadingBar.volume, rebuilt.volume),
+                });
+              }
+            }
+          }
+        }
+      }
     }
     this.derivedM1BoundaryOffsetSeconds = this.boundaryOffsetSeconds;
   }

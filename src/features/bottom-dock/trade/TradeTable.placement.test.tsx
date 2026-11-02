@@ -396,4 +396,26 @@ describe('Trade row updates', () => {
     expect(sellReverseBtn).toHaveClass('bg-[#383d48]');
     expect(sellDoubleBtn).toHaveClass('bg-[#383d48]');
   });
+
+  it('resets scrollTop and prevents vertical overflow/shrinking when all positions are closed', () => {
+    const props = createProps([confirmedPosition(100), confirmedPosition(101)]);
+    const view = render(<TradeTable {...props} />);
+    const scrollContainer = view.container.querySelector('.rtx-trade-scroll') as HTMLDivElement;
+
+    expect(scrollContainer).toHaveClass('overflow-auto');
+    scrollContainer.scrollTop = 24;
+    expect(scrollContainer.scrollTop).toBe(24);
+
+    for (const headerCell of view.container.querySelectorAll('thead th')) {
+      expect(headerCell).toHaveClass('whitespace-nowrap');
+    }
+
+    view.rerender(<TradeTable {...props} displayedLivePositions={[]} />);
+
+    expect(scrollContainer.scrollTop).toBe(0);
+    expect(scrollContainer).toHaveClass('overflow-x-auto', 'overflow-y-hidden');
+    const emptyState = view.container.querySelector('.rtx-trade-empty-state');
+    expect(emptyState).toHaveClass('flex-1', 'min-h-0');
+    expect(emptyState).toHaveTextContent('No open positions');
+  });
 });

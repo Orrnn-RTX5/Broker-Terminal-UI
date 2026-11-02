@@ -16,6 +16,10 @@ export interface TradeProfitInput {
   profit?: unknown;
   unrealizedPnL?: unknown;
   unrealized_pl?: unknown;
+  margin?: unknown;
+  used_margin?: unknown;
+  margin_available?: boolean;
+  hasBackendMargin?: boolean;
   hasBackendProfit?: boolean;
   hasBackendCurrentPrice?: boolean;
   openPrice?: number | string;
@@ -121,6 +125,13 @@ const getExplicitContractSize = (position: TradeProfitInput): number | null => (
 export const readBackendPositionProfit = (position: TradeProfitInput): number | null => {
   if (position.hasBackendProfit === false) return null;
   return toBackendFinancialNumber(position.profit ?? position.unrealizedPnL ?? position.unrealized_pl);
+};
+
+/** Backend-computed per-position margin requirement from GET /positions or positions WS. */
+export const readBackendPositionMargin = (position: TradeProfitInput): number | null => {
+  if (position.hasBackendMargin === false || position.margin_available === false) return null;
+  const raw = toBackendFinancialNumber(position.margin ?? position.used_margin);
+  return raw !== null && raw >= 0 ? raw : null;
 };
 
 /**
@@ -238,30 +249,97 @@ export const applyLivePositionProfit = (
       ? metrics
       : { ...metrics, floatingPnL: 0, unrealizedPL: 0 };
   }
-  if (metrics.balance === null) return metrics;
+
+  let positionsMargin: number | null = 0;
+  for (const position of positions) {
+    const positionMargin = readBackendPositionMargin(position);
+    if (positionMargin === null) {
+      positionsMargin = null;
+      break;
+    }
+    positionsMargin += positionMargin;
+  }
+  if (positionsMargin !== null && !Number.isFinite(positionsMargin)) {
+    positionsMargin = null;
+  }
+
+  const margin = metrics.margin !== null && metrics.margin > 0
+    ? metrics.margin
+    : positionsMargin !== null && positionsMargin > 0
+      ? positionsMargin
+      : (metrics.margin ?? positionsMargin);
+
+  if (metrics.balance === null) {
+    return margin !== metrics.margin ? { ...metrics, margin } : metrics;
+  }
+
   let floatingPnL = 0;
+  let allProfitsAvailable = true;
   for (const position of positions) {
     const profit = resolveTradeProfit(position).value;
-    if (profit === null) return metrics;
+    if (profit === null) {
+      allProfitsAvailable = false;
+      break;
+    }
     floatingPnL += profit + toFiniteNumber(position.swap ?? position.storage) + toFiniteNumber(position.commission);
   }
-  if (!Number.isFinite(floatingPnL)) return metrics;
+  if (!allProfitsAvailable || !Number.isFinite(floatingPnL)) {
+    if (positionsMargin === null) return metrics;
+    const equity = metrics.equity;
+    const freeMargin = equity === null || margin === null ? metrics.freeMargin : equity - margin;
+    const marginLevel = equity === null || margin === null
+      ? metrics.marginLevel
+      : margin <= 0
+        ? (metrics.marginLevel !== null && metrics.marginLevel > 0 ? metrics.marginLevel : null)
+        : (equity / margin) * 100;
+    return {
+      ...metrics,
+      margin,
+      freeMargin,
+      marginLevel,
+      freeMarginSource: freeMargin === null ? 'unavailable' : 'backend',
+      marginLevelSource: marginLevel === null ? 'unavailable' : 'backend',
+      warnings: metrics.warnings.filter((warning) => (
+        (freeMargin === null || warning !== 'missing_backend_free_margin')
+        && (marginLevel === null || warning !== 'missing_backend_margin_level')
+      )),
+    };
+  }
 
   const liveEquity = metrics.balance + (metrics.credit ?? 0) + floatingPnL;
-  const equity = metrics.equity === null ? null : liveEquity;
-  const margin = metrics.margin;
-  const freeMargin = metrics.freeMargin === null || margin === null ? metrics.freeMargin : liveEquity - margin;
-  const marginLevel = metrics.marginLevel === null || margin === null || margin <= 0
+  const hasBackendPositionTotals = positionsMargin !== null;
+  const equity = metrics.equity === null && !hasBackendPositionTotals ? null : liveEquity;
+  const freeMargin = (metrics.freeMargin === null && !hasBackendPositionTotals) || margin === null
+    ? metrics.freeMargin
+    : liveEquity - margin;
+  const marginLevel = (metrics.marginLevel === null && !hasBackendPositionTotals) || margin === null
     ? metrics.marginLevel
-    : (liveEquity / margin) * 100;
-  const livePnL = metrics.floatingPnL === null ? null : floatingPnL;
+    : margin <= 0
+      ? (metrics.marginLevel !== null && metrics.marginLevel > 0 ? metrics.marginLevel : null)
+      : (liveEquity / margin) * 100;
+  const livePnL = metrics.floatingPnL === null && !hasBackendPositionTotals ? null : floatingPnL;
+  const equitySource: TradeAccountMetricSource = equity === null ? 'unavailable' : 'backend';
+  const freeMarginSource: TradeAccountMetricSource = freeMargin === null ? 'unavailable' : 'backend';
+  const marginLevelSource: TradeAccountMetricSource = marginLevel === null ? 'unavailable' : 'backend';
+  const warnings = hasBackendPositionTotals
+    ? metrics.warnings.filter((warning) => (
+      (equity === null || warning !== 'missing_backend_equity')
+      && (freeMargin === null || warning !== 'missing_backend_free_margin')
+      && (marginLevel === null || warning !== 'missing_backend_margin_level')
+    ))
+    : metrics.warnings;
   return {
     ...metrics,
+    margin,
     equity,
     freeMargin,
     marginLevel,
     floatingPnL: livePnL,
     unrealizedPL: livePnL,
+    equitySource,
+    freeMarginSource,
+    marginLevelSource,
+    warnings,
   };
 };
 

@@ -28,6 +28,7 @@ describe('TopToolbar primary command cluster', () => {
       'zoom-out',
       'grid',
       'refresh',
+      'auto-scroll',
       'chart-shift',
       'indicator-list',
       'camera',

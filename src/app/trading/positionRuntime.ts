@@ -52,6 +52,12 @@ export const normalizePositions = (payload: unknown): Position[] => {
     const volume = toNumber(raw.volume_lots ?? raw.quantity ?? raw.volume, 0);
     const backendProfit = readBackendNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL);
     const profit = backendProfit ?? 0;
+    const backendMargin = readBackendNumber(raw.margin ?? raw.used_margin);
+    const hasBackendMargin = raw.hasBackendMargin !== false
+      && raw.margin_available !== false
+      && backendMargin !== undefined
+      && backendMargin >= 0;
+    const contractSize = toNumber(raw.contractSize ?? raw.contract_size, 0) || undefined;
 
     return [{
       id: parsedId,
@@ -72,6 +78,19 @@ export const normalizePositions = (payload: unknown): Position[] => {
       state_version: asStringOrNumber(raw.state_version_text ?? raw.state_version),
       price_time_msc: asStringOrNumber(raw.price_time_msc),
       pnl_available: typeof raw.pnl_available === 'boolean' ? raw.pnl_available : undefined,
+      ...(hasBackendMargin ? {
+        margin: backendMargin,
+        used_margin: backendMargin,
+        margin_available: true,
+        hasBackendMargin: true,
+      } : (raw.margin_available === false || raw.hasBackendMargin === false ? {
+        margin_available: false,
+        hasBackendMargin: false,
+      } : {})),
+      ...(contractSize !== undefined ? {
+        contractSize,
+        contract_size: contractSize,
+      } : {}),
       chartEntryPrice: toNumber(raw.chartEntryPrice, 0) || undefined,
       chartEntryTime,
       open_price: openPrice,

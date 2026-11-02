@@ -156,7 +156,7 @@ describe('Trade backend financial rendering', () => {
 
   it('displays backend zero floating profit and margin level verbatim for an empty account', () => {
     trade.positions = [];
-    trade.account = { ...trade.account, unrealizedPL: 0, marginLevel: 0 };
+    trade.account = { ...trade.account, margin: 0, freeMargin: 1000, unrealizedPL: 0, marginLevel: 0 };
     const { container } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(container.querySelector('.rtx-trade-footer-floating')).toHaveTextContent('0.00');
     expect(container.querySelector('.rtx-trade-footer-metrics')).toHaveTextContent('0.00%');

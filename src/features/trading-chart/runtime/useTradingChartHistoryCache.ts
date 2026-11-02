@@ -247,14 +247,6 @@ export function useTradingChartHistoryCache({
       explicitBrokerOffsetSeconds,
     );
 
-    updateChartData(candles, undefined, {
-      immediate: true,
-      resetVisibleRange: true,
-      finishLoadingAfterRender: true,
-      cachedBaseline: true,
-      reason,
-    });
-
     const last = getLatestRenderableCandle(candles);
     if (last) {
       const normalizedTime = getTimeframePeriodSeconds(
@@ -268,6 +260,17 @@ export function useTradingChartHistoryCache({
         lastStoreCandleSecRef.current = normalizedTime;
       }
       prevPriceRef.current = last.close;
+    }
+
+    updateChartData(candles, undefined, {
+      immediate: true,
+      resetVisibleRange: true,
+      finishLoadingAfterRender: true,
+      cachedBaseline: true,
+      reason,
+    });
+
+    if (last) {
       scheduleBoundaryTimerRef.current?.();
     }
 

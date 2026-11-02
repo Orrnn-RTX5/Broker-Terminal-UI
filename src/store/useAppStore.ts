@@ -93,6 +93,12 @@ export interface Position {
   swap: number;
   commission: number;
   unrealizedPnL: number;
+  margin?: number;
+  used_margin?: number;
+  margin_available?: boolean;
+  hasBackendMargin?: boolean;
+  contractSize?: number;
+  contract_size?: number;
   hasBackendProfit?: boolean;
   hasBackendCurrentPrice?: boolean;
   state_version?: string | number;
@@ -1054,7 +1060,30 @@ export const useAppStore = create<AppState>()(
               // A row a stream or local write touched after this complete read started is newer than the read's row.
               if (existing && readStartedAt !== undefined) {
                 const touched = touchedAt.get(Number(incoming.id));
-                if (touched !== undefined && touched > readStartedAt) return [existing];
+                if (touched !== undefined && touched > readStartedAt) {
+                  return [{
+                    ...existing,
+                    ...(existing.margin === undefined && incoming.margin !== undefined ? {
+                      margin: incoming.margin,
+                      used_margin: incoming.used_margin ?? incoming.margin,
+                      margin_available: incoming.margin_available,
+                      hasBackendMargin: incoming.hasBackendMargin,
+                    } : {}),
+                    ...(existing.hasBackendProfit === false && incoming.hasBackendProfit ? {
+                      profit: incoming.profit,
+                      unrealizedPnL: incoming.unrealizedPnL,
+                      unrealized_pl: incoming.unrealized_pl,
+                      hasBackendProfit: true,
+                      pnl_available: incoming.pnl_available ?? true,
+                    } : {}),
+                    ...(existing.hasBackendCurrentPrice === false && incoming.hasBackendCurrentPrice ? {
+                      currentPrice: incoming.currentPrice,
+                      current_price: incoming.current_price,
+                      price_current: incoming.price_current,
+                      hasBackendCurrentPrice: true,
+                    } : {}),
+                  }];
+                }
               }
               if (!existing) {
                 // An admitted ticket is a new row: any close marker it carried is stale.
@@ -1107,6 +1136,12 @@ export const useAppStore = create<AppState>()(
                     ? Number(incoming.unrealized_pl)
                     : (incoming.profit !== undefined ? Number(incoming.profit) : existing.unrealized_pl),
                   profit: incoming.profit !== undefined ? Number(incoming.profit) : existing.profit,
+                  ...(incoming.margin !== undefined ? {
+                    margin: Number(incoming.margin),
+                    used_margin: Number(incoming.used_margin ?? incoming.margin),
+                    margin_available: incoming.margin_available ?? true,
+                    hasBackendMargin: incoming.hasBackendMargin ?? true,
+                  } : {}),
                   time_update: incoming.time_update || existing.time_update,
                   time_create: incoming.time_create || existing.time_create,
                 }];

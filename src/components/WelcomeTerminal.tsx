@@ -928,14 +928,17 @@ export function WelcomeTerminal({
             markPostAuthenticationPhase('auth-session-persist');
 
             const accountId = data.account_login ?? username;
+            const expiresInSec = Number((data as { expires_in?: unknown }).expires_in);
+            const rawExpiresAt = data.expires_at
+                ?? (Number.isFinite(expiresInSec) && expiresInSec > 0 ? Date.now() + expiresInSec * 1000 : undefined);
             const sessionHandoff = createAuthenticatedSessionHandoff({
                 accountId,
                 token,
-                expiresAt: data.expires_at,
+                expiresAt: rawExpiresAt,
             });
             if (!sessionHandoff) throw new Error('Authentication session handoff is invalid');
 
-            if (data.expires_at) localStorage.setItem('token_expires_at', String(data.expires_at));
+            if (sessionHandoff.expiresAt) localStorage.setItem('token_expires_at', String(sessionHandoff.expiresAt));
 
             const { useAppStore } = await loginStoreRuntimePromise;
             markPostAuthenticationPhase('auth-store-runtime');

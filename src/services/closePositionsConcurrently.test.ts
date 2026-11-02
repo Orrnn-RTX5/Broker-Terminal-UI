@@ -104,4 +104,30 @@ describe('closePositionsConcurrently', () => {
     });
     expect(closePosition).not.toHaveBeenCalled();
   });
+
+  it('retries 429 ORDER_RATE_LIMITED / TOO_MANY_ORDERS responses so batches larger than 20 positions close completely', async () => {
+    const attemptsByTicket = new Map<number, number>();
+    const twentyTwoCandidates = Array.from({ length: 22 }, (_, index) => ({ id: 75181600 + index }));
+
+    const result = await closePositionsConcurrently(
+      twentyTwoCandidates,
+      async (ticketId) => {
+        const prev = attemptsByTicket.get(ticketId) ?? 0;
+        attemptsByTicket.set(ticketId, prev + 1);
+        if (ticketId >= 75181620 && prev === 0) {
+          const err = Object.assign(new Error('Order rate limit exceeded (429)'), {
+            status: 429,
+            code: 'ORDER_RATE_LIMITED',
+          });
+          throw err;
+        }
+      },
+      { retryDelayMs: 1 },
+    );
+
+    expect(result.confirmedTicketIds).toHaveLength(22);
+    expect(result.failedTicketIds).toEqual([]);
+    expect(attemptsByTicket.get(75181620)).toBe(2);
+    expect(attemptsByTicket.get(75181621)).toBe(2);
+  });
 });

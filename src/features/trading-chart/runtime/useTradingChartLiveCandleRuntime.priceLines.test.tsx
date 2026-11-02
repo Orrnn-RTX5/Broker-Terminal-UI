@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { candleAggregationService } from '../../../services/candleAggregationService';
 import type { LiveTick } from '../../../services/liveTickDispatcher';
 import type { Candle } from '../../../types/chart';
+import { getTimeframePeriodSeconds } from '../../../utils/timeframeBoundary';
 import { LIVE_CHART_UPDATE_INTERVAL_MS } from './chartRuntime';
 import { useTradingChartLiveCandleRuntime } from './useTradingChartLiveCandleRuntime';
 
@@ -239,5 +240,90 @@ describe('validated quote price-line painting', () => {
     expect(options.hideLivePriceOverlay).toHaveBeenCalledOnce();
     view.unmount();
     warning.mockRestore();
+  });
+
+  it('moves the live price line and updates the forming candle across all timeframes without remounting', () => {
+    const options = createOptions();
+    const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'] as const;
+    const baseTimestamp = Date.parse('2026-10-07T10:30:00Z') / 1000;
+
+    const bindCallbacksForSelectionKey = (selectionKey: string) => {
+      const canPaint = () => {
+        const gate = options.chartSelectionPresentationRef.current;
+        return gate.selectionKey === selectionKey && gate.livePaintAllowed;
+      };
+      options.repaintLivePriceOverlayFromCurrentPrice = vi.fn(() => {
+        if (!canPaint()) return;
+      });
+      options.syncSupplementalPriceLines = vi.fn((_ask: number, _bid: number) => {
+        if (!canPaint()) return;
+      });
+    };
+
+    bindCallbacksForSelectionKey(options.chartSelectionPresentationKey);
+    const view = renderHook(() => useTradingChartLiveCandleRuntime(options));
+
+    timeframes.forEach((tf, index) => {
+      const selectionKey = `account-a:BTCUSD:${tf}`;
+      options.timeframe = tf;
+      options.prevTimeframeRef.current = tf;
+      options.chartSelectionPresentationKey = selectionKey;
+      options.chartSelectionPresentationRef.current = {
+        selectionKey,
+        livePaintAllowed: true,
+      };
+      const bucketStart = getTimeframePeriodSeconds(baseTimestamp, tf, 0)!.startTime;
+      const seededCandle: Candle = {
+        time: bucketStart,
+        open: 100,
+        high: 102,
+        low: 99,
+        close: 100,
+        volume: 10,
+        closed: true,
+      };
+      options.currentCandleRef.current = { ...seededCandle };
+      options.candlesRef.current = [{ ...seededCandle }];
+      bindCallbacksForSelectionKey(selectionKey);
+      (options.seriesRef.current!.update as ReturnType<typeof vi.fn>).mockClear();
+
+      view.rerender();
+
+      const liveBid = 103 + index;
+      const liveAsk = liveBid + 0.4;
+      pollQuote(quote({
+        bid: liveBid,
+        ask: liveAsk,
+        timestamp: baseTimestamp + 10 + index,
+      }));
+
+      expect(options.repaintLivePriceOverlayFromCurrentPrice).toHaveBeenCalled();
+      expect(options.syncSupplementalPriceLines).toHaveBeenCalledWith(liveAsk, liveBid);
+      expect(options.currentCandleRef.current).toMatchObject({
+        time: bucketStart,
+        open: 100,
+        high: liveBid,
+        low: 99,
+        close: liveBid,
+        closed: false,
+      });
+      expect(options.candlesRef.current.at(-1)).toMatchObject({
+        time: bucketStart,
+        close: liveBid,
+        high: liveBid,
+        closed: false,
+      });
+      expect(options.seriesRef.current!.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          time: bucketStart,
+          open: 100,
+          high: liveBid,
+          low: 99,
+          close: liveBid,
+        }),
+      );
+    });
+
+    view.unmount();
   });
 });

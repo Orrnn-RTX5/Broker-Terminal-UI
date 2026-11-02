@@ -212,7 +212,7 @@ function mergePosition<T extends { id: number }>(
       next[output] = (normalized as PositionRecord)[output] ?? canonical[group.canonical];
     }
   }
-  for (const key of ['account_login', 'broker_id', 'update_kind', 'status', 'pnl_available', 'time_update', 'comment']) {
+  for (const key of ['account_login', 'broker_id', 'update_kind', 'status', 'pnl_available', 'margin_available', 'time_update', 'comment']) {
     if (raw[key] !== undefined) next[key] = raw[key];
   }
   if (version !== null) {

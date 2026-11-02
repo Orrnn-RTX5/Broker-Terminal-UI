@@ -562,7 +562,7 @@ describe('SL/TP chart controls', () => {
     hitArea.dispatchEvent(new MouseEvent('mouseenter'));
     expect(tooltip.style.display).toBe('block');
     expect((tooltip.children[0] as HTMLElement).style.display).toBe('block');
-    expect(tooltip.children[0].textContent).toBe('SELL 0.01 lots · #9302300 · Open price: 85939.87');
+    expect(tooltip.children[0].textContent).toBe('SELL 0.01 lots · #9302300');
     expect(tooltip.children[1].textContent).toBe('Add stop loss and take profit');
 
     hitArea.dispatchEvent(new MouseEvent('mouseleave'));

@@ -502,4 +502,42 @@ describe('SymbolCandleBuilder synchronized timeframe contract', () => {
     expect(service.getCandles('EURUSD', 'M1')).toEqual([]);
     expect(service.getCandles('EURUSD.r', 'M1')).toHaveLength(1);
   });
+
+  it('reopens a same-bucket completed candle and preserves native D1/W1/MN prefix on live ticks and M1 updates', () => {
+    const builder = new SymbolCandleBuilder('XAUUSD');
+    const dayStart = utcSeconds(2026, 10, 7, 0, 0);
+    const prevDayStart = utcSeconds(2026, 10, 6, 0, 0);
+    const midDayMinute = utcSeconds(2026, 10, 7, 10, 30);
+
+    builder.loadHistoricalCandles('D1', [
+      { time: prevDayStart, open: 1980, high: 2010, low: 1975, close: 2000, volume: 500, isComplete: true },
+      { time: dayStart, open: 2000, high: 2025, low: 1990, close: 2010, volume: 300, isComplete: true },
+    ]);
+
+    const tickUpdates = builder.processTick(tick(midDayMinute + 15, 2030, 5));
+    expect(tickUpdates.get('D1')).toMatchObject({
+      time: dayStart,
+      open: 2000,
+      high: 2030,
+      low: 1990,
+      close: 2030,
+      volume: 300,
+      isComplete: false,
+    });
+    expect(builder.getCandles('D1')).toHaveLength(2);
+
+    builder.reconcileServerCandle('M1', {
+      time: midDayMinute,
+      open: 2012,
+      high: 2035,
+      low: 2010,
+      close: 2032,
+      volume: 12,
+    }, false);
+
+    expect(builder.getCandles('D1')).toEqual([
+      { time: prevDayStart, open: 1980, high: 2010, low: 1975, close: 2000, volume: 500, isComplete: true },
+      { time: dayStart, open: 2000, high: 2035, low: 1990, close: 2032, volume: 300, isComplete: false },
+    ]);
+  });
 });

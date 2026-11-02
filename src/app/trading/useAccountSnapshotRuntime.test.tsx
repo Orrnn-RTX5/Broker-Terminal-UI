@@ -268,4 +268,93 @@ describe('account summary saved-account ownership', () => {
     expect(loadSessionTradeSnapshot).not.toHaveBeenCalled();
     expect(useAppStore.getState().savedAccounts).toEqual([]);
   });
+
+  it('hydrates margin and freeMargin from metricsResultPromise when account summary only has profile fields', async () => {
+    vi.mocked(loadSessionTradeSnapshot).mockResolvedValue({
+      ...snapshot('Current owner'),
+      metricsResultPromise: Promise.resolve({
+        status: 'fulfilled',
+        value: {
+          balance: 1000,
+          equity: 1015,
+          used_margin: 42.5,
+          free_margin: 972.5,
+          margin_level: 2388.24,
+          floating_pnl: 15,
+          currency: 'USD',
+          leverage: 100,
+        },
+      }),
+    });
+
+    mountSnapshotRuntime();
+    await flushSnapshot();
+
+    expect(useAppStore.getState().account).toMatchObject({
+      balance: 1000,
+      equity: 1015,
+      margin: 42.5,
+      freeMargin: 972.5,
+      marginLevel: 2388.24,
+      unrealizedPL: 15,
+      hasBackendMargin: true,
+      hasBackendFreeMargin: true,
+      hasBackendMarginLevel: true,
+    });
+  });
+
+  it('does not wait for a previous account in-flight snapshot when switching accounts', async () => {
+    let resolveFirstAccount!: (value: SessionTradeSnapshot) => void;
+    vi.mocked(loadSessionTradeSnapshot)
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFirstAccount = resolve;
+      }))
+      .mockResolvedValueOnce({
+        accountResult: {
+          status: 'fulfilled',
+          value: { id: '200004', balance: 2500, equity: 2500, currency: 'USD', leverage: 100, name: 'Second owner' },
+        },
+        positionsResult: { status: 'fulfilled', value: [] },
+      });
+
+    const accountIdRef = { current: '200003' };
+    const isAuthenticatedRef = { current: true };
+    const activeAccountDataRef = { current: 200003 as number | null };
+    const options: Parameters<typeof useAccountSnapshotRuntime>[0] = {
+      isAuthenticated: true,
+      accountId: '200003',
+      accountIdRef,
+      isAuthenticatedRef,
+      activeAccountDataRef,
+      optimisticClosedTicketsRef: { current: new Set() },
+      serverClosedTicketsRef: { current: new Set() },
+      positionsStreamVersionRef: { current: 0 },
+      beginTradeRestRead: () => ({ startedAt: 1, startedVersion: 0, startedLocalMutationVersion: 0 }),
+      isStaleTradeRestRead: () => false,
+      reconcileOptimisticClosedPositions: (positions) => positions,
+      refreshOrdersAndHistory: vi.fn().mockResolvedValue(undefined),
+      refreshPositions: vi.fn().mockResolvedValue(undefined),
+      setInitialTradeSnapshotSettledFor: vi.fn(),
+    };
+
+    const { rerender } = renderHook(({ accountId }) => useAccountSnapshotRuntime({ ...options, accountId }), {
+      initialProps: { accountId: '200003' },
+    });
+    await flushSnapshot();
+    expect(loadSessionTradeSnapshot).toHaveBeenCalledWith(200003);
+
+    accountIdRef.current = '200004';
+    commitBrokerAccountSessionScope({ authenticated: true, accountId: '200004', ...brokerA });
+    useAppStore.setState({ accountId: '200004', authToken: 'test-token-200004' });
+    rerender({ accountId: '200004' });
+    await flushSnapshot();
+
+    expect(loadSessionTradeSnapshot).toHaveBeenCalledWith(200004);
+    expect(useAppStore.getState().account).toMatchObject({ balance: 2500, equity: 2500 });
+
+    await act(async () => {
+      resolveFirstAccount(snapshot('First owner'));
+    });
+    expect(useAppStore.getState().account).toMatchObject({ balance: 2500, equity: 2500 });
+  });
 });

@@ -554,6 +554,10 @@ export const accountApi = {
   async getAccountSummary(login?: number): Promise<endpoints.AccountSummary> {
     return endpoints.accountApi.getSummary(login);
   },
+
+  async getAccountMetrics(login?: number): Promise<endpoints.AccountSummary> {
+    return endpoints.accountApi.getMetrics(login);
+  },
 };
 
 // ============================================

@@ -741,7 +741,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   }
 
   if (options.plainLabel && options.hoverDetails) {
-    const { ticketLabel, entryPriceLabel } = options.hoverDetails;
+    const { ticketLabel } = options.hoverDetails;
     const normalizedTicket = String(ticketLabel || ticket).replace(/^#/, '');
     const tooltipBg = isLightSurface ? '#ffffff' : '#111622';
     const tooltipFooterBg = isLightSurface ? '#f8fafc' : '#161c2a';
@@ -778,7 +778,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     const summary = document.createElement('span');
     summary.style.cssText = 'display:block;';
     const headerRow = document.createElement('span');
-    headerRow.style.cssText = `display:flex;align-items:center;gap:6px;padding:6px 10px 5px;border-bottom:1px solid ${tooltipDivider};`;
+    headerRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 5px;';
     const sidePill = document.createElement('span');
     sidePill.style.cssText = `display:inline-flex;align-items:center;padding:1px 6px;border-radius:3px;font-size:10.5px;font-weight:700;line-height:14px;letter-spacing:0.03em;color:${plainSideColor};background:${sideBadgeBg};border:1px solid ${sideBadgeBorder};`;
     const spaceAfterSide = document.createTextNode(' ');
@@ -789,17 +789,8 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     sep1.style.cssText = 'opacity:0;width:0;overflow:hidden;display:inline-block;';
     const ticketPill = document.createElement('span');
     ticketPill.style.cssText = `margin-left:auto;padding:1px 5px;border-radius:3px;font-size:10.5px;font-weight:600;line-height:14px;color:${tooltipSecondaryColor};background:${ticketChipBg};font-family:Consolas,'Courier New',monospace;`;
-    const sep2 = document.createElement('span');
-    sep2.textContent = ' · ';
-    sep2.style.cssText = 'opacity:0;width:0;overflow:hidden;display:inline-block;';
-    headerRow.append(sidePill, spaceAfterSide, lotsSpan, sep1, ticketPill, sep2);
-
-    const priceRow = document.createElement('span');
-    priceRow.style.cssText = `display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 10px;font-size:11.5px;color:${tooltipSecondaryColor};`;
-    const openPriceText = document.createElement('span');
-    openPriceText.style.cssText = `display:flex;align-items:center;justify-content:space-between;width:100%;font-weight:600;color:${tooltipPrimaryColor};`;
-    priceRow.appendChild(openPriceText);
-    summary.append(headerRow, priceRow);
+    headerRow.append(sidePill, spaceAfterSide, lotsSpan, sep1, ticketPill);
+    summary.append(headerRow);
 
     const hint = document.createElement('span');
     hint.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:11px;font-weight:500;color:${tooltipSecondaryColor};background:${tooltipFooterBg};border-top:1px solid ${tooltipDivider};border-bottom-left-radius:5px;border-bottom-right-radius:5px;`;
@@ -827,7 +818,6 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
       sidePill.textContent = tr(options.orderTypeLabel || side);
       lotsSpan.textContent = tr('{{value0}} lots', { value0: formatVolumeLots(volume) });
       ticketPill.textContent = `#${normalizedTicket}`;
-      openPriceText.textContent = tr('Open price: {{value0}}', { value0: entryPriceLabel });
       hintText.textContent = activeCustomHint ?? defaultHintText();
     });
 

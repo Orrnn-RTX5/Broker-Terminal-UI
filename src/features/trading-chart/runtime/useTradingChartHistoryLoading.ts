@@ -576,26 +576,8 @@ export function useTradingChartHistoryLoading({
 
       // Update chart - live data
       setApiError(null);
-      // A provisional live candle or short WS snapshot can paint before the
-      // uncached REST response and consume the global one-shot viewport reset.
-      // The first authoritative history render must still open at the latest
-      // candles. A cached baseline already owns the viewport, so its background
-      // refresh continues to preserve any user pan/zoom.
-      const shouldResetVisibleRange = shouldResetInitialHistoryVisibleRange({
-        resetVisibleRangeOnNextData: resetVisibleRangeOnNextDataRef.current,
-        hydratedFromCache: hydratedFromCache || (
-          hasDisplayedHistoryRef.current
-          && protectedDisplayedHistoryRef.current.length >= getStartupSnapshotCandleCount(activeTf)
-        ),
-      });
-      updateChartData(candles, undefined, {
-        immediate: true,
-        resetVisibleRange: shouldResetVisibleRange,
-        finishLoadingAfterRender: true,
-        reason: 'initial-history',
-      });
-
-      // Set current forming candle
+      // Set current forming candle before flushing chart data so the initial
+      // render can immediately position the live price line and scale badge.
       if (candles.length > 0) {
         const last = getLatestRenderableCandle(candles);
 
@@ -623,16 +605,35 @@ export function useTradingChartHistoryLoading({
           }
 
           prevPriceRef.current = last.close;
-
-          // Kick the boundary timer now that currentCandleRef is populated.
-          // Without this, if the timer fired while history was still loading
-          // (currentCandleRef was null), rollover() silently bailed and the chart
-          // would stay frozen until the NEXT minute boundary — i.e. it only worked
-          // after a page refresh because history was served instantly from cache.
-          if (scheduleBoundaryTimerRef.current) {
-            scheduleBoundaryTimerRef.current();
-          }
         }
+      }
+
+      // A provisional live candle or short WS snapshot can paint before the
+      // uncached REST response and consume the global one-shot viewport reset.
+      // The first authoritative history render must still open at the latest
+      // candles. A cached baseline already owns the viewport, so its background
+      // refresh continues to preserve any user pan/zoom.
+      const shouldResetVisibleRange = shouldResetInitialHistoryVisibleRange({
+        resetVisibleRangeOnNextData: resetVisibleRangeOnNextDataRef.current,
+        hydratedFromCache: hydratedFromCache || (
+          hasDisplayedHistoryRef.current
+          && protectedDisplayedHistoryRef.current.length >= getStartupSnapshotCandleCount(activeTf)
+        ),
+      });
+      updateChartData(candles, undefined, {
+        immediate: true,
+        resetVisibleRange: shouldResetVisibleRange,
+        finishLoadingAfterRender: true,
+        reason: 'initial-history',
+      });
+
+      // Kick the boundary timer now that currentCandleRef is populated.
+      // Without this, if the timer fired while history was still loading
+      // (currentCandleRef was null), rollover() silently bailed and the chart
+      // would stay frozen until the NEXT minute boundary — i.e. it only worked
+      // after a page refresh because history was served instantly from cache.
+      if (currentCandleRef.current && scheduleBoundaryTimerRef.current) {
+        scheduleBoundaryTimerRef.current();
       }
 
       // Paint the initial viewport before warming other timeframes or fetching

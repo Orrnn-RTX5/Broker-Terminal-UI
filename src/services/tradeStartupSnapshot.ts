@@ -12,11 +12,13 @@ type StartupPositions = Awaited<ReturnType<typeof api.positions.getPositions>>;
 export interface SessionTradeSnapshot {
   accountResult: PromiseSettledResult<StartupAccount>;
   positionsResult: PromiseSettledResult<StartupPositions>;
+  metricsResultPromise?: Promise<PromiseSettledResult<StartupAccount | null>>;
 }
 
 export interface SessionTradeSnapshotRequests {
   accountResultPromise: Promise<PromiseSettledResult<StartupAccount>>;
   positionsResultPromise: Promise<PromiseSettledResult<StartupPositions>>;
+  metricsResultPromise: Promise<PromiseSettledResult<StartupAccount | null>>;
   snapshotPromise: Promise<SessionTradeSnapshot>;
 }
 
@@ -136,6 +138,9 @@ export const getSessionTradeSnapshotRequests = (
   const accountResultPromise = canUseHandoff
     ? Promise.resolve<PromiseSettledResult<StartupAccount>>({ status: 'fulfilled', value: handoff.account })
     : settleRequest(startSettledRequest(() => api.account.getAccountSummary(login)));
+  const metricsResultPromise = typeof api.account?.getAccountMetrics === 'function'
+    ? settleRequest(startSettledRequest(() => api.account.getAccountMetrics(login)))
+    : Promise.resolve<PromiseSettledResult<StartupAccount | null>>({ status: 'fulfilled', value: null });
   const positionsResultPromise = settleRequest(
     startSettledRequest(() => api.positions.getPositions(login)),
   );
@@ -145,10 +150,12 @@ export const getSessionTradeSnapshotRequests = (
   ]).then(([accountResult, positionsResult]) => ({
     accountResult,
     positionsResult,
+    metricsResultPromise,
   }));
   const requests = {
     accountResultPromise,
     positionsResultPromise,
+    metricsResultPromise,
     snapshotPromise,
   };
 

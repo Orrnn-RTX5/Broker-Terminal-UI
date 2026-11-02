@@ -75,6 +75,16 @@ describe('chart controls immediate feedback', () => {
     if (type === 'SET_CHART_SHIFT') expect(timeScale.applyOptions).toHaveBeenCalledWith(expect.objectContaining({ rightOffset: 8 }));
   });
 
+  it('removes the right-side gap and snaps back to the live edge when Chart Shift is disabled', () => {
+    const { options, timeScale, chart } = createHarness({ ctxChartShiftRef: ref(true) });
+    act(() => {
+      commandBus.dispatch({ type: 'SET_CHART_SHIFT', payload: { enabled: false, targetContextId: 'chart-a' } });
+    });
+    expect(options.ctxChartShiftRef.current).toBe(false);
+    expect(timeScale.applyOptions).toHaveBeenCalledWith(expect.objectContaining({ rightOffset: 0 }));
+    expect(options.scrollToLatestCandleNow).toHaveBeenCalledExactlyOnceWith(chart);
+  });
+
   it('does not jump when Auto Scroll is disabled', () => {
     const { options } = createHarness();
     act(() => { commandBus.dispatch({ type: 'SET_AUTO_SCROLL', payload: { enabled: false, targetContextId: 'chart-a' } }); });

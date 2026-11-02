@@ -194,14 +194,6 @@ export const useTradingChartReconfiguration = (options: UseTradingChartReconfigu
           // Clear existing visual data only when there is no cached replacement.
           seriesRef.current.setData([]);
           if (volumeRef.current) volumeRef.current.setData([]);
-
-          // Reset aggregation service for new timeframe (pass empty array to trigger clear)
-          candleAggregationService.loadHistoricalCandles(
-            symbol,
-            timeframe as AggTimeframe,
-            [],
-            brokerTimeOffsetSecRef.current,
-          );
         }
 
         return;

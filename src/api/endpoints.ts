@@ -562,6 +562,19 @@ export const accountApi = {
     }
   },
 
+  getMetrics: async (login?: number) => {
+    try {
+      const resolvedLogin = requireLogin(login ?? resolveStoredLogin(), '/api/v2/account/{login}/metrics');
+      return await apiClient.get<AccountSummary>(`/account/${resolvedLogin}/metrics`, {
+        baseUrl: API_V2_BASE_URL,
+      });
+    } catch (e) {
+      const error = e as { status?: unknown; message?: unknown };
+      debugDebug('[accountApi] getMetrics unavailable:', error.status || error.message);
+      throw e;
+    }
+  },
+
   getTransactions: async (params?: { type?: string; limit?: number; offset?: number; login?: number }) => {
     const login = requireLogin(params?.login ?? resolveStoredLogin(), '/api/v2/accounts/{login}/history');
     const rows = await apiClient.get<TransactionRow[]>(`/accounts/${login}/history`, {

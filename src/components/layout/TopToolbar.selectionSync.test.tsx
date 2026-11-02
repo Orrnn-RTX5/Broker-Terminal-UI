@@ -268,6 +268,36 @@ describe('toolbar selection synchronization', () => {
     expect(screen.getByRole('button', { name: 'Hide Period Separators' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('toggles the opposite-direction Chart Shift button and dispatches SET_CHART_SHIFT for the active chart', () => {
+    prepareDesktopCharts(desktopChartLayout());
+    useChartSettingsStore.setState({
+      globalProperties: { ...originalChartSettings.globalProperties, chartShift: false },
+      symbolProperties: {},
+    });
+    render(<TopToolbar {...toolbarProps()} />);
+
+    const jumpButton = screen.getByRole('button', { name: 'Jump to Latest Candle' });
+    const shiftButton = screen.getByRole('button', { name: 'Chart Shift' });
+    expect(jumpButton.querySelector('[data-chart-command-icon="auto-scroll"]')).not.toBeNull();
+    expect(shiftButton.querySelector('[data-chart-command-icon="chart-shift"]')).not.toBeNull();
+    expect(shiftButton).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(shiftButton);
+    expect(shiftButton).toHaveAttribute('aria-pressed', 'true');
+    expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.chartShift).toBe(true);
+    expect(commandBus.getHistory().filter(command => command.type === 'SET_CHART_SHIFT')).toEqual([
+      expect.objectContaining({ payload: { enabled: true, targetContextId: 'trading-chart:chart-a' } }),
+    ]);
+
+    fireEvent.click(shiftButton);
+    expect(shiftButton).toHaveAttribute('aria-pressed', 'false');
+    expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.chartShift).toBe(false);
+    expect(commandBus.getHistory().filter(command => command.type === 'SET_CHART_SHIFT')).toEqual([
+      expect.objectContaining({ payload: { enabled: true, targetContextId: 'trading-chart:chart-a' } }),
+      expect.objectContaining({ payload: { enabled: false, targetContextId: 'trading-chart:chart-a' } }),
+    ]);
+  });
+
   it('opens the trade history dialog with its trigger and controls correctly associated', () => {
     setTradeHistorySettings(true, true);
     render(<TopToolbar {...toolbarProps()} />);

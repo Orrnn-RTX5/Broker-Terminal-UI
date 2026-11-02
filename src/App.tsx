@@ -918,7 +918,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     }
   };
 
-  // â”€â”€ cTrader-style chart position actions (reverse / double / close) â”€â”€
+  // ── cTrader-style chart position actions (reverse / double / close) ──
   const chartPositionActionBusyRef = useRef<Set<string>>(new Set());
 
   const handleReversePosition = async (ticket: number) => {
@@ -1240,8 +1240,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           claimedBulkTicketIds.push(ticketId);
           return true;
         },
-        // Remove every claimed row immediately. The close coordinator still
-        // waits for correlated backend confirmation and restores rejections.
+        // Remove every claimed row immediately so Close All has zero UI delay.
+        // The close coordinator still waits for correlated backend confirmation
+        // (retrying 429 rate-limits automatically) and restores rejections.
         onCandidatesStarted: (candidates) => {
           if (getCurrentCloseSessionKey() !== closeSessionScope) return;
           const ticketIds = candidates.map((position) => position.id);
@@ -1263,7 +1264,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         // soon as that ticket receives correlated terminal confirmation.
         onTicketConfirmed: (ticketId) => {
           if (getCurrentCloseSessionKey() !== closeSessionScope) return;
-          useAppStore.getState().setPositions(useAppStore.getState().positions, { closedTickets: [ticketId] });
+          useAppStore.getState().setPositions(
+            useAppStore.getState().positions.filter((position) => position.id !== ticketId),
+            { closedTickets: [ticketId], removedTickets: [ticketId] },
+          );
           dispatchTradeOverlayCloseState([ticketId], 'confirmed', {
             snapshots: closeSnapshotsByTicket.get(ticketId),
           });

@@ -363,7 +363,6 @@ export const TradeTab = memo(function TradeTab({
 
     const formatMarginLevel = (value: number | null) => {
         if (value === null) return METRIC_UNAVAILABLE;
-        if (value === 0 && margin === 0) return '\u221e';
         return `${value.toFixed(2)}%`;
     };
 

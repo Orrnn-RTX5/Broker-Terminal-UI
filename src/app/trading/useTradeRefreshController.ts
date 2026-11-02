@@ -5,10 +5,11 @@ import {
   type MutableRefObject,
 } from 'react';
 import { api } from '../../services/api';
+import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../../services/brokerSession';
 import { applyPositionStreamUpdate, decodePositionStreamMessage } from '../../services/tradePositionStream';
 import { beginTradeHistoryRefresh } from '../../services/terminalHistory';
 import { beginPositionsRead, useAppStore, type Order, type Position } from '../../store/useAppStore';
-import { markPositionsReadSettled, markPositionsReadStarted } from '../../services/positionSnapshotSafety';
+import { arePositionsReadsInFlight, markPositionsReadSettled, markPositionsReadStarted } from '../../services/positionSnapshotSafety';
 import { parsePositiveLogin } from '../session/sessionIdentity';
 import {
   bindDefaultHistoryFreshnessOwner,
@@ -17,6 +18,7 @@ import {
 import { fetchOrderHistory, getErrorMessage } from './orderHistoryRefresh';
 import {
   applyOpenPositionSnapshot,
+  normalizeAccountSummary,
   normalizePositions,
 } from './positionRuntime';
 import type {
@@ -53,9 +55,66 @@ export const useTradeRefreshController = ({
   positionsStreamVersionRef,
 }: UseTradeRefreshControllerOptions): TradeRefreshController => {
   const refreshPositionsInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshPositionsInFlightLoginRef = useRef<number | null>(null);
   const refreshPositionsPendingRef = useRef<PendingPositionsRefresh | null>(null);
   const refreshHistoryInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshHistoryInFlightLoginRef = useRef<number | null>(null);
   const refreshHistoryPendingLoginRef = useRef<number | null>(null);
+  const refreshMetricsInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshMetricsInFlightLoginRef = useRef<number | null>(null);
+  const refreshMetricsStartedAtRef = useRef(0);
+  const refreshMetricsPendingLoginRef = useRef<number | null>(null);
+
+  const refreshAccountMetrics = useCallback(async (login?: number): Promise<void> => {
+    if (typeof api.account?.getAccountMetrics !== 'function') return;
+    const requestedLogin = login || getLiveTradingLogin();
+    if (!requestedLogin) return;
+    if (refreshMetricsInFlightRef.current && refreshMetricsInFlightLoginRef.current === requestedLogin) {
+      if (Date.now() - refreshMetricsStartedAtRef.current > 50) {
+        refreshMetricsPendingLoginRef.current = requestedLogin;
+      }
+      await refreshMetricsInFlightRef.current;
+      return;
+    }
+
+    const request = (async () => {
+      try {
+        const restRead = beginTradeRestRead();
+        const startedAuthToken = useAppStore.getState().authToken;
+        const accountScope = getCommittedBrokerAccountSessionScope();
+        const metricsScope = getCommittedBrokerAccountSessionScopeKey(accountScope);
+        const metricsPayload = await api.account.getAccountMetrics(requestedLogin);
+        const activeLogin = parsePositiveLogin(useAppStore.getState().accountId || accountIdRef.current || undefined);
+        if (!isAuthenticatedRef.current || activeLogin !== requestedLogin) return;
+        if (useAppStore.getState().authToken !== startedAuthToken) return;
+        if (getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()) !== metricsScope) return;
+        if (isStaleTradeRestRead(restRead, { allowWsCommit: true })) return;
+        if (!metricsPayload) return;
+
+        const normalizedAccount = normalizeAccountSummary(
+          metricsPayload,
+          useAppStore.getState().account,
+          { partial: true, login: requestedLogin, scope: metricsScope },
+        );
+        useAppStore.getState().setAccount(normalizedAccount);
+      } catch (error) {
+        console.warn('[App] refreshAccountMetrics failed:', getErrorMessage(error, 'Account metrics refresh failed'));
+      } finally {
+        if (refreshMetricsInFlightRef.current === request) {
+          refreshMetricsInFlightRef.current = null;
+          refreshMetricsInFlightLoginRef.current = null;
+          const pendingLogin = refreshMetricsPendingLoginRef.current;
+          refreshMetricsPendingLoginRef.current = null;
+          if (pendingLogin) void refreshAccountMetrics(pendingLogin);
+        }
+      }
+    })();
+
+    refreshMetricsInFlightLoginRef.current = requestedLogin;
+    refreshMetricsStartedAtRef.current = Date.now();
+    refreshMetricsInFlightRef.current = request;
+    await request;
+  }, [accountIdRef, beginTradeRestRead, getLiveTradingLogin, isAuthenticatedRef, isStaleTradeRestRead]);
 
   const refreshPositions = useCallback(async (
     login?: number,
@@ -63,7 +122,8 @@ export const useTradeRefreshController = ({
   ): Promise<void> => {
     const requestedLogin = login || getLiveTradingLogin();
     if (!requestedLogin) return;
-    if (refreshPositionsInFlightRef.current) {
+    void refreshAccountMetrics(requestedLogin);
+    if (refreshPositionsInFlightRef.current && refreshPositionsInFlightLoginRef.current === requestedLogin) {
       refreshPositionsPendingRef.current = { login: requestedLogin, options };
       await refreshPositionsInFlightRef.current;
       return;
@@ -97,13 +157,17 @@ export const useTradeRefreshController = ({
         console.warn('[App] refreshPositions failed:', getErrorMessage(error, 'Position refresh failed'));
       } finally {
         markPositionsReadSettled();
-        refreshPositionsInFlightRef.current = null;
-        const pendingRefresh = refreshPositionsPendingRef.current;
-        refreshPositionsPendingRef.current = null;
-        if (pendingRefresh) void refreshPositions(pendingRefresh.login, pendingRefresh.options);
+        if (refreshPositionsInFlightRef.current === request) {
+          refreshPositionsInFlightRef.current = null;
+          refreshPositionsInFlightLoginRef.current = null;
+          const pendingRefresh = refreshPositionsPendingRef.current;
+          refreshPositionsPendingRef.current = null;
+          if (pendingRefresh) void refreshPositions(pendingRefresh.login, pendingRefresh.options);
+        }
       }
     })();
 
+    refreshPositionsInFlightLoginRef.current = requestedLogin;
     refreshPositionsInFlightRef.current = request;
     await request;
   }, [
@@ -113,12 +177,16 @@ export const useTradeRefreshController = ({
     isAuthenticatedRef,
     isStaleTradeRestRead,
     reconcileOptimisticClosedPositions,
+    refreshAccountMetrics,
   ]);
 
   const refreshOrdersAndHistory = useCallback(async (login?: number): Promise<void> => {
     const resolvedLogin = login || getLiveTradingLogin();
     if (!resolvedLogin) return;
-    if (refreshHistoryInFlightRef.current) {
+    if (!arePositionsReadsInFlight()) {
+      void refreshAccountMetrics(resolvedLogin);
+    }
+    if (refreshHistoryInFlightRef.current && refreshHistoryInFlightLoginRef.current === resolvedLogin) {
       refreshHistoryPendingLoginRef.current = resolvedLogin;
       await refreshHistoryInFlightRef.current;
       return;
@@ -168,7 +236,6 @@ export const useTradeRefreshController = ({
           }));
         }
       } finally {
-        refreshHistoryInFlightRef.current = null;
         window.dispatchEvent(new CustomEvent('rtx:trade-history-refresh-completed', {
           detail: {
             login: resolvedLogin,
@@ -176,15 +243,20 @@ export const useTradeRefreshController = ({
             message: historyError ? getErrorMessage(historyError, 'Failed to refresh order history') : null,
           },
         }));
-        const pendingLogin = refreshHistoryPendingLoginRef.current;
-        refreshHistoryPendingLoginRef.current = null;
-        if (pendingLogin) void refreshOrdersAndHistory(pendingLogin);
+        if (refreshHistoryInFlightRef.current === request) {
+          refreshHistoryInFlightRef.current = null;
+          refreshHistoryInFlightLoginRef.current = null;
+          const pendingLogin = refreshHistoryPendingLoginRef.current;
+          refreshHistoryPendingLoginRef.current = null;
+          if (pendingLogin) void refreshOrdersAndHistory(pendingLogin);
+        }
       }
     })();
 
+    refreshHistoryInFlightLoginRef.current = resolvedLogin;
     refreshHistoryInFlightRef.current = request;
     await request;
-  }, [getLiveTradingLogin, isAuthenticatedRef]);
+  }, [getLiveTradingLogin, isAuthenticatedRef, refreshAccountMetrics]);
 
   useEffect(() => {
     let refreshTimer: number | null = null;

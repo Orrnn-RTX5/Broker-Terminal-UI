@@ -219,4 +219,30 @@ describe('BulkCloseConfirmDialog', () => {
     expect(within(dialog).getByText('2 ↑')).toBeInTheDocument();
     expect(within(dialog).getByText('0 ↓')).toBeInTheDocument();
   });
+
+  it('renders all positions in the scrollable preview table without truncating at 10 rows', () => {
+    const twentyTwoPositions = Array.from({ length: 22 }, (_, index) => ({
+      id: 75181600 + index,
+      symbol: 'XAUUSD',
+      side: 'BUY' as const,
+      volume: 0.01,
+      openPrice: 3909.05,
+      pnl: -1.5,
+    }));
+
+    render(<BulkCloseConfirmDialog />);
+
+    act(() => {
+      void useBulkCloseConfirmStore.getState().showBulkCloseConfirm({
+        type: 'ALL',
+        positions: twentyTwoPositions,
+        combinedPnL: -33,
+      });
+    });
+
+    const dialog = screen.getByRole('dialog', { name: 'Close All Positions' });
+    expect(within(dialog).getByText('#75181600')).toBeInTheDocument();
+    expect(within(dialog).getByText('#75181621')).toBeInTheDocument();
+    expect(within(dialog).queryByText(/more positions? not shown/i)).not.toBeInTheDocument();
+  });
 });

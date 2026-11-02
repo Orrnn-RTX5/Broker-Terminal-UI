@@ -1,7 +1,9 @@
 import {
   Fragment,
   memo,
+  useLayoutEffect,
   useMemo,
+  useRef,
   type CSSProperties,
   type Dispatch,
   type MouseEvent as ReactMouseEvent,
@@ -586,6 +588,15 @@ export function TradeTable({
   visibleTradeTableWidth,
 }: TradeTableProps) {
   const tr = useUiTranslation();
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    if (displayedLivePositions.length === 0) {
+      container.scrollTop = 0;
+    }
+  }, [displayedLivePositions.length]);
 
   const renderColumnResizeHandle = (key: TradeColumnWidthKey) => (
     <button
@@ -613,7 +624,7 @@ export function TradeTable({
   ) => (
     <th
       key={key}
-      className="relative px-1.5 py-[3px] text-center border-r border-zinc-700/70"
+      className="relative px-1.5 py-[3px] text-center whitespace-nowrap border-r border-zinc-700/70"
       style={{ width: columnWidths[key] }}
       title={tr(TRADE_COLUMN_HOVER_COMMENTS[key])}
       aria-sort={sortState?.column === sortColumn ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
@@ -622,9 +633,9 @@ export function TradeTable({
         type="button"
         title={tr('Sort by {{value0}}', { value0: tr(label) })}
         onClick={() => toggleSort(sortColumn)}
-        className="relative flex w-full cursor-default items-center justify-center px-2 text-center hover:text-white"
+        className="relative flex w-full cursor-default items-center justify-center px-2 text-center whitespace-nowrap hover:text-white"
       >
-        <span>{tr(label)}</span>
+        <span className="whitespace-nowrap">{tr(label)}</span>
         <span className="absolute right-0 inline-block w-[8px] text-center text-zinc-500">
           {sortState?.column === sortColumn ? (sortState.direction === 'asc' ? '^' : 'v') : ''}
         </span>
@@ -636,11 +647,11 @@ export function TradeTable({
   const renderHeader = (column: TradeColumnDef) => (
     <th
       key={column.key}
-      className="relative px-1.5 py-[3px] text-center border-r border-zinc-700/70"
+      className="relative px-1.5 py-[3px] text-center whitespace-nowrap border-r border-zinc-700/70"
       style={{ width: columnWidths[column.key] }}
       title={tr(TRADE_COLUMN_HOVER_COMMENTS[column.key])}
     >
-      <span className="block px-2">{tr(column.label)}</span>
+      <span className="block px-2 whitespace-nowrap">{tr(column.label)}</span>
       {renderColumnResizeHandle(column.key)}
     </th>
   );
@@ -695,9 +706,12 @@ export function TradeTable({
   const closeColumnWidth = Math.max(columnWidths.close || 0, TRADE_FIXED_COLUMN_DEFS.close.minWidth);
 
   return (
-    <div className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
+    <div
+      ref={scrollContainerRef}
+      className={`rtx-trade-scroll flex flex-1 flex-col ${displayedLivePositions.length === 0 ? 'overflow-x-auto overflow-y-hidden' : 'overflow-auto'} scrollbar-thin scrollbar-thumb-zinc-700`}
+    >
       <table
-        className="rtx-trade-table w-full text-center border-collapse table-fixed"
+        className="rtx-trade-table w-full shrink-0 text-center border-collapse table-fixed"
         style={{ minWidth: visibleTradeTableWidth, fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif', fontVariantNumeric: 'tabular-nums' }}
       >
         <colgroup>
@@ -717,12 +731,12 @@ export function TradeTable({
               return renderHeader(column);
             })}
             <th
-              className="pl-2.5 pr-4 py-[3px] text-center"
+              className="pl-2.5 pr-4 py-[3px] text-center whitespace-nowrap"
               style={{ width: closeColumnWidth }}
               aria-label={tr('Close position')}
               title={tr(TRADE_COLUMN_HOVER_COMMENTS.close)}
             >
-              <span className="block px-2">{tr('Actions')}</span>
+              <span className="block px-2 whitespace-nowrap">{tr('Actions')}</span>
             </th>
           </tr>
         </thead>
@@ -731,7 +745,7 @@ export function TradeTable({
 
       {/* Account summary stays sticky at the bottom when positions overflow. */}
       <div
-        className="rtx-trade-footer sticky bottom-0 z-10 bg-[#191a1e] border-t border-zinc-700 w-full text-[13px] font-normal text-zinc-300 tabular-nums"
+        className="rtx-trade-footer sticky bottom-0 z-10 shrink-0 bg-[#191a1e] border-t border-zinc-700 w-full text-[13px] font-normal text-zinc-300 tabular-nums"
         style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}
         data-metrics-publication-token={account?.publicationToken}
         data-metrics-calculation-version={account?.calculationVersion}
@@ -799,7 +813,7 @@ export function TradeTable({
       </div>
       {displayedLivePositions.length === 0 && !loading && !error && (
         <div
-          className="rtx-trade-empty-state flex h-16 w-max min-w-full items-center justify-center text-center text-xs italic text-zinc-400"
+          className="rtx-trade-empty-state flex flex-1 min-h-0 w-max min-w-full items-center justify-center text-center text-xs italic text-zinc-400"
           style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}
         >
           {tr('No open positions')}

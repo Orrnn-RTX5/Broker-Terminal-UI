@@ -6,7 +6,6 @@ import { useDialogFocusScope } from '../../hooks/useDialogFocusScope';
 import { resolveAccountCurrencyDigits } from '../../utils/accountCurrency';
 import { readBackendPositionProfit, resolveTradeProfit } from '../BottomDock.trade';
 
-const MAX_PREVIEW_ROWS = 10;
 const EMPTY_STORE_POSITIONS: Position[] = [];
 
 export function BulkCloseConfirmDialog() {
@@ -73,9 +72,6 @@ export function BulkCloseConfirmDialog() {
         [...livePositions].sort((a, b) => b.pnl - a.pnl),
         [livePositions],
     );
-
-    const visiblePositions = sortedPositions.slice(0, MAX_PREVIEW_ROWS);
-    const hiddenCount = Math.max(0, sortedPositions.length - MAX_PREVIEW_ROWS);
 
     const profitableCount = livePositions.filter(p => p.pnl > 0).length;
     const losingCount = livePositions.filter(p => p.pnl < 0).length;
@@ -159,7 +155,7 @@ export function BulkCloseConfirmDialog() {
                             </tr>
                         </thead>
                         <tbody>
-                            {visiblePositions.map((pos) => {
+                            {sortedPositions.map((pos) => {
                                 const rowPnlTone = pos.pnl > 0 ? 'profit' : pos.pnl < 0 ? 'loss' : 'neutral';
                                 const rowPnlSign = pos.pnl > 0 ? '+' : '';
                                 return (
@@ -181,11 +177,6 @@ export function BulkCloseConfirmDialog() {
                             })}
                         </tbody>
                     </table>
-                    {hiddenCount > 0 && (
-                        <div className="rtx-bulk-close-dialog__overflow-note">
-                            +{hiddenCount} more position{hiddenCount > 1 ? 's' : ''} not shown
-                        </div>
-                    )}
                 </div>
 
                 {/* ─── Footer ─── */}

@@ -75,8 +75,14 @@ export type GatewayPosition = {
   contract_size?: number;
   contractSize?: number;
   state_version?: string | number;
+  state_version_text?: string;
+  protection_version?: string | number;
   price_time_msc?: number;
   pnl_available?: boolean;
+  margin?: number;
+  used_margin?: number;
+  margin_available?: boolean;
+  hasBackendMargin?: boolean;
   hasBackendProfit?: boolean;
   hasBackendCurrentPrice?: boolean;
 };
@@ -447,8 +453,10 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
   const openPrice = Number(raw.price_open ?? raw.open_price ?? (raw as any).openPrice ?? (raw as any).entryPrice ?? (raw as any).chartEntryPrice ?? (raw as any).price ?? 0);
   const backendCurrentPrice = readBackendNumber(raw.price_current ?? raw.current_price ?? (raw as any).currentPrice ?? (raw as any).livePrice);
   const backendProfit = readBackendNumber(raw.profit ?? (raw as any).unrealized_pl ?? (raw as any).unrealized_pnl ?? (raw as any).unrealizedPnL);
+  const backendMargin = readBackendNumber(raw.margin ?? raw.used_margin);
   const hasBackendCurrentPrice = raw.pnl_available !== false && raw.hasBackendCurrentPrice !== false && backendCurrentPrice !== undefined;
   const hasBackendProfit = raw.pnl_available !== false && raw.hasBackendProfit !== false && backendProfit !== undefined;
+  const hasBackendMargin = raw.hasBackendMargin !== false && raw.margin_available !== false && backendMargin !== undefined && backendMargin >= 0;
   const currentPrice = hasBackendCurrentPrice ? backendCurrentPrice : 0;
   const profit = hasBackendProfit ? backendProfit : 0;
   const openTime = resolvePositionOpenTime(raw);
@@ -465,6 +473,15 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
     currentPrice,
     hasBackendCurrentPrice,
     hasBackendProfit,
+    ...(hasBackendMargin ? {
+      margin: backendMargin,
+      used_margin: backendMargin,
+      margin_available: true,
+      hasBackendMargin: true,
+    } : (raw.margin_available === false || raw.hasBackendMargin === false ? {
+      margin_available: false,
+      hasBackendMargin: false,
+    } : {})),
     openTime,
     sl: Number(raw.price_sl ?? raw.sl ?? 0),
     tp: Number(raw.price_tp ?? raw.tp ?? 0),

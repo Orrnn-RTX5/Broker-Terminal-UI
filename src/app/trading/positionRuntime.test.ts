@@ -73,4 +73,23 @@ describe('normalizePositions', () => {
     expect(position.chartEntryPrice).toBe(2650.45);
     expect(position.chartEntryTime).toBe('2026-10-27T07:30:00.000Z');
   });
+
+  it('preserves backend per-position margin and margin_available flags', () => {
+    const [position] = normalizePositions([{
+      ticket: 91,
+      symbol: 'XAUUSD',
+      side: 'buy',
+      volume: 0.01,
+      price_open: 3901.3,
+      price_current: 3907.07,
+      profit: 5.77,
+      margin: 39.01,
+      margin_available: true,
+    }]);
+
+    expect(position.margin).toBe(39.01);
+    expect(position.used_margin).toBe(39.01);
+    expect(position.margin_available).toBe(true);
+    expect(position.hasBackendMargin).toBe(true);
+  });
 });

@@ -79,7 +79,7 @@ describe('Close All source contract', () => {
     expect(candidatesStartedHandler).toContain('{ removedTickets: ticketIds }');
 
     expect(bulkHandler).toContain('onTicketConfirmed: (ticketId) => {');
-    expect(bulkHandler).toContain('{ closedTickets: [ticketId] }');
+    expect(bulkHandler).toContain('{ closedTickets: [ticketId], removedTickets: [ticketId] }');
     expect(bulkHandler).toContain("dispatchTradeOverlayCloseState([ticketId], 'confirmed', {");
   });
 

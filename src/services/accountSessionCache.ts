@@ -201,10 +201,31 @@ const writePersistedSessions = (records: Record<string, CachedAccountSession>): 
   }
 };
 
+const extractJwtExpiresAt = (token: string | undefined): number | undefined => {
+  if (!token || typeof atob !== 'function') return undefined;
+  const parts = token.split('.');
+  if (parts.length !== 3) return undefined;
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    const payload = JSON.parse(atob(padded)) as { exp?: unknown };
+    const exp = Number(payload?.exp);
+    if (Number.isFinite(exp) && exp > 0) {
+      return exp > 1e12 ? exp : exp * 1000;
+    }
+  } catch {
+    // Ignore non-JWT tokens
+  }
+  return undefined;
+};
+
 const isSessionFresh = (session: CachedAccountSession | undefined): boolean => {
   if (!session || !session.authToken) return false;
-  if (typeof session.expiresAt === 'number' && Number.isFinite(session.expiresAt)) {
-    if (session.expiresAt <= Date.now() + EXPIRY_BUFFER_MS) return false;
+  const expiresAt = typeof session.expiresAt === 'number' && Number.isFinite(session.expiresAt)
+    ? session.expiresAt
+    : extractJwtExpiresAt(session.authToken);
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+    if (expiresAt <= Date.now() + EXPIRY_BUFFER_MS) return false;
   }
   return true;
 };
@@ -243,9 +264,13 @@ export const rememberAccountSession = (input: {
   const resolvedRefreshToken = input.refreshToken !== undefined
     ? (input.refreshToken || undefined)
     : (existingMemory?.refreshToken || existingPersisted?.refreshToken);
+  const jwtExpiresAt = extractJwtExpiresAt(resolvedAuthToken);
+  const existingTokenMatches = !authToken
+    || authToken === existingMemory?.authToken
+    || authToken === existingPersisted?.authToken;
   const resolvedExpiresAt = typeof input.expiresAt === 'number' && Number.isFinite(input.expiresAt)
     ? input.expiresAt
-    : (existingMemory?.expiresAt ?? existingPersisted?.expiresAt);
+    : (jwtExpiresAt ?? (existingTokenMatches ? (existingMemory?.expiresAt ?? existingPersisted?.expiresAt) : undefined));
   const resolvedPassword = password || existingMemory?.password || existingPersisted?.password;
 
   const entry: CachedAccountSession = {

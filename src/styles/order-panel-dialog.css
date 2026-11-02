@@ -135,8 +135,10 @@
 }
 
 .rtx-order-dialog__sidebar-emblem {
+  --order-emblem-candle-neutral: #e2e8f0;
+  --order-emblem-candle-accent: #4788ff;
   align-items: center;
-  background: radial-gradient(circle at 32% 28%, #2a3346 0%, #131823 68%, #0c0f17 100%);
+  background: radial-gradient(circle at 32% 28%, #2a3346 0%, #1c2230 68%, #141923 100%);
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 9999px;
   box-shadow:
@@ -150,9 +152,30 @@
   width: 62px;
 }
 
-.rtx-order-dialog__sidebar-logo-img {
-  border-radius: 9999px;
-  object-fit: contain;
+.rtx-order-dialog__sidebar-logo-svg {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.rtx-order-dialog__sidebar-candle-neutral {
+  fill: var(--order-emblem-candle-neutral);
+}
+
+.rtx-order-dialog__sidebar-candle-accent {
+  fill: var(--order-emblem-candle-accent);
+}
+
+.rtx-order-dialog__sidebar-emblem[data-light-skin='true'],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__sidebar-emblem {
+  --order-emblem-candle-neutral: #64748b;
+  --order-emblem-candle-accent: #2563eb;
+  background: radial-gradient(circle at 32% 28%, #ffffff 0%, #f8fafc 64%, #eef2f7 100%);
+  border: 1px solid #d0d7e2;
+  box-shadow:
+    0 6px 16px rgb(15 23 42 / 8%),
+    0 2px 4px rgb(15 23 42 / 4%),
+    inset 0 1px 0 #ffffff;
 }
 
 .rtx-order-dialog__sidebar-logo-fallback {
@@ -668,16 +691,16 @@
 /* ─── Sentiment Strip & Spread Summary ───────────────────────── */
 .rtx-order-dialog__sentiment-strip {
   --rtx-type-family: var(--font-mono);
-  --rtx-type-size: 10px;
+  --rtx-type-size: 8.5px;
   --rtx-type-weight: 700;
   background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
-  border-radius: 3px;
+  border-radius: 2px;
   display: flex;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 8.5px;
   font-weight: 700;
-  gap: 2px;
-  height: 16px;
+  gap: 1px;
+  height: 10px;
   line-height: 1;
   overflow: hidden;
   width: 100%;
@@ -685,7 +708,7 @@
 
 .rtx-order-dialog__sentiment-sell {
   --rtx-type-family: var(--font-mono);
-  --rtx-type-size: 10px;
+  --rtx-type-size: 8.5px;
   --rtx-type-weight: 700;
   align-items: center;
   background: linear-gradient(90deg, #991b1b 0%, #dc2626 100%);
@@ -693,13 +716,13 @@
   color: #ffffff;
   display: flex;
   justify-content: flex-start;
-  padding-left: 6px;
+  padding-left: 4px;
   transition: width 0.2s ease;
 }
 
 .rtx-order-dialog__sentiment-buy {
   --rtx-type-family: var(--font-mono);
-  --rtx-type-size: 10px;
+  --rtx-type-size: 8.5px;
   --rtx-type-weight: 700;
   align-items: center;
   background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%);
@@ -707,7 +730,7 @@
   color: #ffffff;
   display: flex;
   justify-content: flex-end;
-  padding-right: 6px;
+  padding-right: 4px;
   transition: width 0.2s ease;
 }
 

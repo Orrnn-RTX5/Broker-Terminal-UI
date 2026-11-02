@@ -143,7 +143,12 @@ export const mergePositionRecord = (raw: any, existing?: any): any => {
       pnl_available: true,
       ...(price !== undefined ? { currentPrice: toFinite(price), current_price: toFinite(price), price_current: toFinite(price), hasBackendCurrentPrice: true } : {}),
       ...(profit !== undefined ? { profit: toFinite(profit), unrealizedPnL: toFinite(profit), unrealized_pl: toFinite(profit), hasBackendProfit: true } : {}),
-      ...(raw.margin !== undefined ? { margin: raw.margin } : {}),
+      ...(raw.margin !== undefined ? {
+        margin: toFinite(raw.margin),
+        used_margin: toFinite(raw.margin),
+        margin_available: raw.margin_available ?? true,
+        hasBackendMargin: raw.hasBackendMargin ?? (raw.margin_available !== false),
+      } : {}),
       ...(Number.isFinite(incomingTime) ? { price_time_msc: incomingTime } : {}),
     };
   }

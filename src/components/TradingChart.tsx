@@ -215,12 +215,14 @@ export const TradingChart = React.memo(function TradingChart({
     }),
     [brokerAccountSessionScope, symbol, timeframe],
   );
+  const chartSelectionPresentationKeyRef = useRef(chartSelectionPresentationKey);
+  chartSelectionPresentationKeyRef.current = chartSelectionPresentationKey;
   const chartSelectionPresentationRef = useRef(
     createChartSelectionPresentationGate(chartSelectionPresentationKey),
   );
   const canPaintLivePrice = useCallback(() => isChartSelectionLivePaintAllowed(
-    chartSelectionPresentationRef.current, chartSelectionPresentationKey,
-  ), [chartSelectionPresentationKey]);
+    chartSelectionPresentationRef.current, chartSelectionPresentationKeyRef.current,
+  ), []);
   const visibleRuntime = useTradingChartVisibleRuntime({
     active: isActive,
     hasSymbol: Boolean(symbol),
@@ -1805,6 +1807,10 @@ export const TradingChart = React.memo(function TradingChart({
       lastRenderedCandlesRef.current = sortedCandles;
       firstRenderedCandleTimeRef.current = sortedCandles[0]?.time ?? null;
       applyAreaTrendColors();
+      const latestRenderedCandle = currentCandleRef.current ?? sortedCandles[sortedCandles.length - 1] ?? null;
+      if (latestRenderedCandle) {
+        repaintLivePriceOverlayFromCurrentPrice(latestRenderedCandle);
+      }
       if (seriesData.length > 1) {
         hasDisplayedHistoryRef.current = true;
         if (candlesForRender.length >= protectedDisplayedHistoryRef.current.length) {
@@ -1822,7 +1828,7 @@ export const TradingChart = React.memo(function TradingChart({
       console.warn(`[Chart] Error setting chart data for ${pending.reason}:`, e);
       return false;
     }
-  }, [applyAreaTrendColors, applyInitialVisibleLogicalRange, discardRetainedPublicChartSurface, getCandlesForFullRender, getClosedMarketRenderCandles, markCandlesReady, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, setLoadingPhase, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, syncObservedChartPriceDigits, timeframe]);
+  }, [applyAreaTrendColors, applyInitialVisibleLogicalRange, discardRetainedPublicChartSurface, getCandlesForFullRender, getClosedMarketRenderCandles, markCandlesReady, rememberVisibleLogicalRange, repaintLivePriceOverlayFromCurrentPrice, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, setLoadingPhase, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, syncObservedChartPriceDigits, timeframe]);
 
   postInteractionCallbacksRef.current.paintModel = () => flushQueuedChartRender(true);
 
@@ -2534,6 +2540,21 @@ useTradingChartInitialization({
     if (isDisposedRef.current || !seriesRef.current) return;
     let frameA: number | null = null;
     let frameB: number | null = null;
+    const syncLivePriceCountdownDOM = () => {
+      const countdown = livePriceCountdownRef.current;
+      if (!countdown) return;
+      const hasCurrentPrice = livePriceRef.current !== null
+        && Number.isFinite(livePriceRef.current)
+        && currentCandleRef.current !== null
+        && livePriceBadgeRef.current?.style.display === 'block';
+      const text = hasCurrentPrice ? getChartCandleCountdownText(
+        getSynchronizedChartMarketNowMs(),
+        prevTimeframeRef.current || timeframe,
+        brokerTimeOffsetSecRef.current,
+      ) : '';
+      countdown.textContent = text;
+      countdown.style.display = text ? 'block' : 'none';
+    };
     try {
       const currentCandle = currentCandleRef.current;
       if (candlesRef.current.length > 0) {
@@ -2553,6 +2574,7 @@ useTradingChartInitialization({
           );
         }
         repaintLivePriceOverlayFromCurrentPrice(currentCandle);
+        syncLivePriceCountdownDOM();
       }
       refreshTradeOverlayGeometry();
       if (typeof window !== 'undefined') {
@@ -2561,6 +2583,7 @@ useTradingChartInitialization({
           if (isDisposedRef.current || !seriesRef.current) return;
           if (currentCandleRef.current) {
             repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+            syncLivePriceCountdownDOM();
           }
           refreshTradeOverlayGeometry();
           frameB = window.requestAnimationFrame(() => {
@@ -2568,6 +2591,7 @@ useTradingChartInitialization({
             if (isDisposedRef.current || !seriesRef.current) return;
             if (currentCandleRef.current) {
               repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+              syncLivePriceCountdownDOM();
             }
             refreshTradeOverlayGeometry();
           });
@@ -2582,7 +2606,7 @@ useTradingChartInitialization({
         if (frameB !== null) window.cancelAnimationFrame(frameB);
       }
     };
-  }, [refreshTradeOverlayGeometry, repaintLivePriceOverlayFromCurrentPrice, resolvedPriceDigits, resolvedPricePoint, syncObservedChartPriceDigits, updateLegendDOM]);
+  }, [candlesLoadedRev, getSynchronizedChartMarketNowMs, livePriceBadgeRef, livePriceCountdownRef, livePriceRef, refreshTradeOverlayGeometry, repaintLivePriceOverlayFromCurrentPrice, resolvedPriceDigits, resolvedPricePoint, syncObservedChartPriceDigits, timeframe, updateLegendDOM]);
 
 
 

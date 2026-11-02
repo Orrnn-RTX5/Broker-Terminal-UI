@@ -447,7 +447,16 @@ const MainToolbar = ({
     const toggleLastSymbolPanel = useLastSymbolStore((state) => state.togglePanel);
     const activeSavedAccount = savedAccounts.find((account) => String(account.login) === accountId);
     const savedAccountCount = new Set(savedAccounts.map((account) => account.login)).size;
-    const tradeHistorySettings = useChartSettingsStore((state) => state.symbolProperties[symbol] || state.globalProperties);
+    const activeChartTarget = getActiveChartCommandTarget(symbol, timeframe);
+    const activeChartSymbol = (!isDesktopShell && symbol && symbol !== 'STALE')
+        ? symbol
+        : (activeChartTarget.symbol || symbol);
+    const tradeHistorySettings = useChartSettingsStore((state) => (
+        (activeChartSymbol ? state.symbolProperties[activeChartSymbol] : undefined)
+        || state.symbolProperties[symbol]
+        || state.globalProperties
+    ));
+    const chartShiftEnabled = Boolean(tradeHistorySettings.chartShift);
     const tradeHistoryLineEnabled = tradeHistorySettings.showTradeHistory !== false;
     const tradeHistoryArrowsEnabled = tradeHistorySettings.showTradeHistoryArrows !== false;
     const tradeHistorySettingsAreDefault = (
@@ -466,6 +475,38 @@ const MainToolbar = ({
     const dispatchTargetedZoom = (type: 'ZOOM_IN' | 'ZOOM_OUT') => {
         const { targetContextId } = getActiveChartCommandTarget(symbol, timeframe);
         dispatchCommand({ type, payload: { targetContextId } });
+    };
+
+    const handleJumpToLatestCandle = () => {
+        const { targetContextId } = getActiveChartCommandTarget(symbol, timeframe);
+        dispatchCommand({
+            type: 'JUMP_TO_LATEST_CANDLE',
+            payload: targetContextId ? { targetContextId } : {},
+        });
+    };
+
+    const toggleChartShift = () => {
+        const target = getActiveChartCommandTarget(symbol, timeframe);
+        const targetSymbol = (!isDesktopShell && symbol && symbol !== 'STALE')
+            ? symbol
+            : (target.symbol || symbol);
+        const store = useChartSettingsStore.getState();
+        const current = targetSymbol
+            ? (store.symbolProperties[targetSymbol] || store.globalProperties)
+            : store.globalProperties;
+        const enabled = !current.chartShift;
+        if (targetSymbol) {
+            store.updateSymbolProperty(targetSymbol, 'chartShift', enabled);
+        } else {
+            store.updateGlobalProperty('chartShift', enabled);
+        }
+        dispatchCommand({
+            type: 'SET_CHART_SHIFT',
+            payload: {
+                enabled,
+                ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}),
+            },
+        });
     };
 
     const themeSuppressionCleanupRef = useRef<(() => void) | null>(null);
@@ -799,16 +840,22 @@ const MainToolbar = ({
                         <MT5Divider />
 
                         {/* Group 4: Zoom */}
-                        {/* Chart tools: zoom, layout, latest candle, indicators */}
+                        {/* Chart tools: zoom, layout, latest candle, chart shift, indicators */}
                         <MT5Group label="Chart tools">
                             <CommandIconButton icon="zoom-in" title="Zoom In" onClick={() => dispatchTargetedZoom('ZOOM_IN')} />
                             <CommandIconButton icon="zoom-out" title="Zoom Out" onClick={() => dispatchTargetedZoom('ZOOM_OUT')} />
                             <CommandIconButton icon="grid" title="Arrange Windows" onClick={() => dispatchCommand({ type: 'TILE_WINDOWS', payload: { mode: 'grid' } })} />
                             <CommandIconButton icon="refresh" title="Reset Layout" onClick={() => window.dispatchEvent(new CustomEvent('resetLayout'))} />
                             <CommandIconButton
-                                icon="chart-shift"
+                                icon="auto-scroll"
                                 title="Jump to Latest Candle"
-                                onClick={() => dispatchCommand({ type: 'JUMP_TO_LATEST_CANDLE', payload: {} })}
+                                onClick={handleJumpToLatestCandle}
+                            />
+                            <CommandIconButton
+                                icon="chart-shift"
+                                title={tr("Chart Shift")}
+                                active={chartShiftEnabled}
+                                onClick={toggleChartShift}
                             />
                             <CommandIconButton
                                 icon="indicator-list"

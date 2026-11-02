@@ -80,18 +80,13 @@ export const useAccountSnapshotRuntime = ({
     let setupActive = true;
     let heartbeatPending = false;
     const fetchAccountHeartbeat = async (isInitial = false): Promise<void> => {
-      if (accountPollInFlightRef.current) {
-        const inFlightLogin = accountPollInFlightLoginRef.current;
-        if (inFlightLogin === loginId) heartbeatPending = true;
+      if (accountPollInFlightRef.current && accountPollInFlightLoginRef.current === loginId) {
+        heartbeatPending = true;
         await accountPollInFlightRef.current;
-        if (inFlightLogin === loginId) {
-          if (isInitial && setupActive && isAuthenticatedRef.current && accountIdRef.current === String(loginId)) {
-            setInitialTradeSnapshotSettledFor(String(loginId));
-          }
-          return;
+        if (isInitial && setupActive && isAuthenticatedRef.current && accountIdRef.current === String(loginId)) {
+          setInitialTradeSnapshotSettledFor(String(loginId));
         }
-        const activeLogin = parsePositiveLogin(useAppStore.getState().accountId || accountIdRef.current || undefined);
-        if (!isAuthenticatedRef.current || activeLogin !== loginId) return;
+        return;
       }
 
       const request = (async () => {
@@ -116,12 +111,16 @@ export const useAccountSnapshotRuntime = ({
           }
 
           const startedSessionToken = useAppStore.getState().authToken;
-          const { accountResult, positionsResult } = await loadSessionTradeSnapshot(loginId);
-          const activeLogin = parsePositiveLogin(useAppStore.getState().accountId || accountIdRef.current || undefined);
-          if (useAppStore.getState().authToken !== startedSessionToken) return;
-          if (!isAuthenticatedRef.current
-            || activeLogin !== loginId
-            || metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
+          const { accountResult, positionsResult, metricsResultPromise } = await loadSessionTradeSnapshot(loginId);
+          const isCurrentAccountHeartbeat = () => {
+            const activeLogin = parsePositiveLogin(useAppStore.getState().accountId || accountIdRef.current || undefined);
+            return useAppStore.getState().authToken === startedSessionToken
+              && isAuthenticatedRef.current
+              && activeLogin === loginId
+              && metricsScope === getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())
+              && !isStaleTradeRestRead(restRead, { allowWsCommit: true });
+          };
+          if (!isCurrentAccountHeartbeat()) return;
 
           const accountPayload = accountResult.status === 'fulfilled' ? accountResult.value : null;
           const positionsPayload = positionsResult.status === 'fulfilled' ? positionsResult.value : null;
@@ -129,10 +128,10 @@ export const useAccountSnapshotRuntime = ({
             if (accountResult.status === 'rejected') console.error('[REST Error] getAccountSummary failed:', accountResult.reason);
             if (positionsResult.status === 'rejected') console.error('[REST Error] getPositions failed:', positionsResult.reason);
           }
-          if (isStaleTradeRestRead(restRead, { allowWsCommit: true })) return;
 
           if (accountPayload) {
             const normalizedAccount = normalizeAccountSummary(accountPayload, useAppStore.getState().account, {
+              partial: true,
               login: loginId,
               scope: metricsScope,
             });
@@ -177,6 +176,19 @@ export const useAccountSnapshotRuntime = ({
             });
           }
           activeAccountDataRef.current = loginId;
+
+          if (metricsResultPromise) {
+            const metricsResult = await metricsResultPromise;
+            const metricsPayload = metricsResult.status === 'fulfilled' ? metricsResult.value : null;
+            if (metricsPayload && isCurrentAccountHeartbeat()) {
+              const normalizedMetrics = normalizeAccountSummary(metricsPayload, useAppStore.getState().account, {
+                partial: true,
+                login: loginId,
+                scope: metricsScope,
+              });
+              useAppStore.getState().setAccount(normalizedMetrics);
+            }
+          }
         } catch (error) {
           if (isInitial) console.error('Failed to fetch account data:', error);
         } finally {

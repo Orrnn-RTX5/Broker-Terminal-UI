@@ -235,7 +235,8 @@ export const NavigatorPanel: React.FC = () => {
     const logoTargets = [...visibleAccounts, ...favoriteAccounts].map(account => getLogoTarget(account.server, account));
     if (servers.length === 0) logoTargets.push(getLogoTarget(placeholderServer));
     const serverLogoKey = JSON.stringify([...new Map(logoTargets.map(target => [brokerLogoKey(target), target])).values()]);
-    const logoScopeKey = `${sessionScope}:${serverLogoKey}`;
+    const brokerLogoScope = `${brokerScope.authenticated ? 'auth' : 'anon'}:${brokerScope.brokerId}:${brokerScope.serverUrl}`;
+    const logoScopeKey = `${brokerLogoScope}:${serverLogoKey}`;
     // Clear old broker images during render, before effects or pending
     // discovery responses have a chance to run.
     const brokerLogos = brokerLogoState.scope === logoScopeKey ? brokerLogoState.logos : {};
@@ -401,8 +402,13 @@ export const NavigatorPanel: React.FC = () => {
                     sessionToApply.expiresAt,
                     { ...acc, lastUsed: Date.now() },
                 );
-                store.setAuthTokens?.(sessionToApply.authToken, sessionToApply.refreshToken, sessionToApply.expiresAt);
-                store.setActiveAccount?.(acc.login);
+                const updatedStore = useAppStore.getState();
+                if (updatedStore?.authToken !== sessionToApply.authToken) {
+                    store.setAuthTokens?.(sessionToApply.authToken, sessionToApply.refreshToken, sessionToApply.expiresAt);
+                }
+                if (updatedStore?.accountId !== String(acc.login)) {
+                    store.setActiveAccount?.(acc.login);
+                }
                 return true;
             };
 
@@ -410,16 +416,16 @@ export const NavigatorPanel: React.FC = () => {
                 brokerId: targetBrokerId,
                 serverUrl: targetServerUrl,
                 login: acc.login,
-            }) || (brokerScope.serverUrl && brokerScope.serverUrl !== targetServerUrl
+            }) || ((brokerScope.brokerId && brokerScope.brokerId !== targetBrokerId) || (brokerScope.serverUrl && brokerScope.serverUrl !== targetServerUrl)
                 ? getCachedAccountSession({
-                    brokerId: targetBrokerId,
-                    serverUrl: brokerScope.serverUrl,
+                    brokerId: brokerScope.brokerId || targetBrokerId,
+                    serverUrl: brokerScope.serverUrl || targetServerUrl,
                     login: acc.login,
                 })
                 : null);
             const hasVerifiedUnexpiredToken = Boolean(
                 cachedSession?.authToken
-                && (!cachedSession.password || (cachedSession.expiresAt && cachedSession.expiresAt > Date.now())),
+                && (!cachedSession.expiresAt || cachedSession.expiresAt > Date.now()),
             );
             if (cachedSession && hasVerifiedUnexpiredToken && applyCachedTokenSession(cachedSession)) {
                 return;
@@ -443,17 +449,12 @@ export const NavigatorPanel: React.FC = () => {
                                 market_api_url: getStoredNavigatorValue('market_api_url') || targetServerUrl,
                             }),
                         ].filter(Boolean)));
-                        for (const url of candidateUrls) {
-                            try {
-                                const savedCred = await loadSavedLogin({ brokerId: targetBrokerId, serverUrl: url }, String(acc.login));
-                                if (savedCred?.password) {
-                                    passwordToUse = savedCred.password;
-                                    break;
-                                }
-                            } catch {
-                                // Ignore non-URL candidates or vault errors and continue
-                            }
-                        }
+                        const savedCredResults = await Promise.all(
+                            candidateUrls.map((url) =>
+                                loadSavedLogin({ brokerId: targetBrokerId, serverUrl: url }, String(acc.login)).catch(() => null),
+                            ),
+                        );
+                        passwordToUse = savedCredResults.find((cred) => Boolean(cred?.password))?.password || '';
                     }
                     const loginFn = 'authV2Api' in tradeApiModule ? tradeApiModule.authV2Api?.login : undefined;
                     if (passwordToUse && loginFn) {
@@ -516,8 +517,13 @@ export const NavigatorPanel: React.FC = () => {
                                     lastUsed: Date.now(),
                                 },
                             );
-                            store.setAuthTokens?.(token, data.refresh_token, expiresAt);
-                            store.setActiveAccount?.(acc.login);
+                            const updatedStore = useAppStore.getState();
+                            if (updatedStore?.authToken !== token) {
+                                store.setAuthTokens?.(token, data.refresh_token, expiresAt);
+                            }
+                            if (updatedStore?.accountId !== String(acc.login)) {
+                                store.setActiveAccount?.(acc.login);
+                            }
                             return;
                         }
                     }

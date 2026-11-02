@@ -311,7 +311,11 @@ useEffect(() => {
           rightOffset,
           fixRightEdge: false,
         });
-        if (enabled) handleScrollToRealtime();
+        if (latestCandleJumpPendingRef) latestCandleJumpPendingRef.current = true;
+        if (leftVisibleTimeRef) leftVisibleTimeRef.current = null;
+        if (lastVisibleLogicalRangeRef) lastVisibleLogicalRangeRef.current = null;
+        handleScrollToRealtime();
+        syncLeftVisibleTime?.();
       } catch { /* disposed */ }
     };
 

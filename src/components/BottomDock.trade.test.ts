@@ -540,6 +540,141 @@ describe('live account metrics between backend snapshots', () => {
     expect(partial.equity).toBeCloseTo(10024.2336, 10);
   });
 
+  it('withholds zero margin level while open positions exist and positive used margin has not arrived yet', () => {
+    const preMarginMetrics = resolveTradeAccountMetrics({
+      balance: 10000,
+      credit: 0,
+      equity: 10000,
+      margin: 0,
+      freeMargin: 10000,
+      marginLevel: 0,
+      unrealizedPL: 0,
+    });
+    const liveWhileMarginZero = applyLivePositionProfit(preMarginMetrics, positions);
+    expect(liveWhileMarginZero.marginLevel).toBeNull();
+
+    const liveWithPreviousPositiveLevel = applyLivePositionProfit(
+      { ...preMarginMetrics, marginLevel: 25000 },
+      positions,
+    );
+    expect(liveWithPreviousPositiveLevel.marginLevel).toBe(25000);
+
+    const liveOnceMarginArrives = applyLivePositionProfit(
+      { ...preMarginMetrics, margin: 25.08, marginLevel: 39872.41 },
+      positions,
+    );
+    expect(liveOnceMarginArrives.marginLevel).toBeCloseTo(((10000 - 1.1264) / 25.08) * 100, 8);
+  });
+
+  it('resolves margin, free margin, equity, and margin level from backend position margins when account-level metrics omit used_margin', () => {
+    const partialAccountMetrics = resolveTradeAccountMetrics({
+      balance: 10416.64,
+      credit: 0,
+      hasBackendEquity: false,
+      hasBackendMargin: false,
+      hasBackendFreeMargin: false,
+      hasBackendMarginLevel: false,
+      hasBackendUnrealizedPL: false,
+    });
+    const positionsWithBackendMargin = [
+      {
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        volume: 0.01,
+        openPrice: 3901.3,
+        currentPrice: 3907.07,
+        profit: 5.77,
+        margin: 39.01,
+        margin_available: true,
+        hasBackendMargin: true,
+        hasBackendProfit: true,
+      },
+    ];
+    const resolved = applyLivePositionProfit(partialAccountMetrics, positionsWithBackendMargin);
+    expect(resolved.margin).toBeCloseTo(39.01, 8);
+    expect(resolved.floatingPnL).toBeCloseTo(5.77, 8);
+    expect(resolved.equity).toBeCloseTo(10422.41, 8);
+    expect(resolved.freeMargin).toBeCloseTo(10383.40, 8);
+    expect(resolved.marginLevel).toBeCloseTo((10422.41 / 39.01) * 100, 6);
+    expect(resolved.equitySource).toBe('backend');
+    expect(resolved.freeMarginSource).toBe('backend');
+    expect(resolved.marginLevelSource).toBe('backend');
+    expect(resolved.warnings).toEqual([]);
+  });
+
+  it('resolves margin from backend position margins even while a position awaits live profit', () => {
+    const partialAccountMetrics = resolveTradeAccountMetrics({
+      balance: 10000,
+      credit: 0,
+      hasBackendEquity: false,
+      hasBackendMargin: false,
+      hasBackendFreeMargin: false,
+      hasBackendMarginLevel: false,
+      hasBackendUnrealizedPL: false,
+    });
+    const positionsWithMarginOnly = [
+      {
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        volume: 0.01,
+        openPrice: 3901.3,
+        currentPrice: 0,
+        profit: 0,
+        margin: 39.01,
+        margin_available: true,
+        hasBackendMargin: true,
+        hasBackendProfit: false,
+      },
+    ];
+    const resolved = applyLivePositionProfit(partialAccountMetrics, positionsWithMarginOnly);
+    expect(resolved.margin).toBeCloseTo(39.01, 8);
+    expect(resolved.equity).toBeNull();
+    expect(resolved.marginLevel).toBeNull();
+  });
+
+  it('transitions cleanly when opening the first position on a flat account (pre-trade margin === 0)', () => {
+    const preTradeFlatMetrics = resolveTradeAccountMetrics({
+      balance: 10000,
+      credit: 0,
+      equity: 10000,
+      margin: 0,
+      freeMargin: 10000,
+      marginLevel: 0,
+      unrealizedPL: 0,
+    });
+    const firstPositionWithMargin = [
+      {
+        symbol: 'EURUSD',
+        side: 'BUY',
+        volume: 0.1,
+        openPrice: 1.1000,
+        currentPrice: 1.1005,
+        profit: 5,
+        margin: 110,
+        margin_available: true,
+        hasBackendMargin: true,
+        hasBackendProfit: true,
+      },
+    ];
+
+    const duringTransition = applyLivePositionProfit(preTradeFlatMetrics, firstPositionWithMargin);
+    expect(duringTransition.margin).toBeCloseTo(110, 8);
+    expect(duringTransition.equity).toBeCloseTo(10005, 8);
+    expect(duringTransition.freeMargin).toBeCloseTo(9895, 8);
+    expect(duringTransition.marginLevel).toBeCloseTo((10005 / 110) * 100, 6);
+    expect(duringTransition.freeMarginSource).toBe('backend');
+    expect(duringTransition.marginLevelSource).toBe('backend');
+
+    // Once account-level used_margin > 0 arrives (e.g., hedged margin = 55), account-level margin wins
+    const afterAccountMetricsArrive = applyLivePositionProfit(
+      { ...preTradeFlatMetrics, margin: 55, freeMargin: 9950, marginLevel: (10005 / 55) * 100 },
+      firstPositionWithMargin,
+    );
+    expect(afterAccountMetricsArrive.margin).toBeCloseTo(55, 8);
+    expect(afterAccountMetricsArrive.freeMargin).toBeCloseTo(9950, 8);
+    expect(afterAccountMetricsArrive.marginLevel).toBeCloseTo((10005 / 55) * 100, 6);
+  });
+
   it('formats row profit with account-currency digits, not a USD-only heuristic', () => {
     expect(formatPositionProfit(-0.1525, 2)).toBe('-0.15');
     expect(formatPositionProfit(-0.00001, 2)).toBe('0.00');

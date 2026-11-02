@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NavigatorPanel } from './NavigatorPanel';
 import { SAVED_ACCOUNTS_STORAGE_KEY, useAppStore, type SavedAccount } from '../../store/useAppStore';
 import { commitBrokerAccountSessionScope } from '../../services/brokerSession';
+import { clearCachedAccountSessions, rememberAccountSession } from '../../services/accountSessionCache';
 
 vi.mock('../../api/trade', () => ({
   brokerV2Api: {
@@ -68,12 +69,14 @@ describe('Navigator authenticated broker account visibility', () => {
     delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
     localStorage.clear();
     sessionStorage.clear();
+    clearCachedAccountSessions();
     useAppStore.setState({ isAuthenticated: false, accountId: null, authToken: null, savedAccounts: [] });
     commitBrokerAccountSessionScope({ authenticated: false, accountId: null, brokerId: '', serverUrl: '' });
   });
 
   afterEach(() => {
     cleanup();
+    clearCachedAccountSessions();
     useAppStore.setState({ isAuthenticated: false, accountId: null, authToken: null, savedAccounts: [] });
     commitBrokerAccountSessionScope({ authenticated: false, accountId: null, brokerId: '', serverUrl: '' });
     delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
@@ -424,5 +427,28 @@ describe('Navigator authenticated broker account visibility', () => {
     expect(await screen.findByRole('dialog', { name: 'Account login' })).toHaveTextContent('200003 Beta-Live');
     expect(useAppStore.getState().savedAccounts).toEqual(accounts);
     expect(localStorage.getItem(SAVED_ACCOUNTS_STORAGE_KEY)).toBe(persisted);
+  });
+
+  it('switches immediately to a cached session with stored password even when explicit expiresAt was omitted', async () => {
+    authenticate(brokerA, [saved('Alpha owner', brokerA.server), saved('Alpha other', brokerA.server, 200004)]);
+    rememberAccountSession({
+      brokerId: brokerA.id,
+      serverUrl: brokerA.url,
+      login: 200004,
+      authToken: 'cached-token-200004',
+      password: 'saved-password-200004',
+    });
+    render(<NavigatorPanel />);
+
+    await act(async () => {
+      fireEvent.click(favorites().getByText(/Alpha other/));
+    });
+
+    expect(screen.queryByRole('dialog', { name: 'Account login' })).not.toBeInTheDocument();
+    expect(useAppStore.getState()).toMatchObject({
+      isAuthenticated: true,
+      accountId: '200004',
+      authToken: 'cached-token-200004',
+    });
   });
 });

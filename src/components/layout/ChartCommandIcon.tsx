@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import { ReferenceToolbarGlyph } from '../ui/ReferenceToolbarGlyph';
 
 export type ChartCommandIconName = 'bar-chart' | 'candlestick' | 'line-chart' | 'area-chart'
-  | 'zoom-in' | 'zoom-out' | 'grid' | 'refresh' | 'chart-shift' | 'indicator-list'
+  | 'zoom-in' | 'zoom-out' | 'grid' | 'refresh' | 'auto-scroll' | 'chart-shift' | 'indicator-list'
   | 'camera' | 'period-separator' | 'sliders-horizontal' | 'add-chart';
 
-const glyphs: Record<'area-chart' | 'refresh' | 'chart-shift' | 'period-separator' | 'sliders-horizontal' | 'add-chart', ReactNode> = {
+const glyphs: Record<'area-chart' | 'refresh' | 'auto-scroll' | 'chart-shift' | 'period-separator' | 'sliders-horizontal' | 'add-chart', ReactNode> = {
   'area-chart': <>
     <path fill="currentColor" fillOpacity=".08" stroke="none" d="m5.5 19.5 5.5-6.5 4.5 4 7-9.5v14h-17Z" />
     <path d="m5.5 19.5 5.5-6.5 4.5 4 7-9.5M5.5 21.5h17" />
@@ -13,8 +13,12 @@ const glyphs: Record<'area-chart' | 'refresh' | 'chart-shift' | 'period-separato
   refresh: <>
     <path d="M22.5 11.5a9 9 0 0 0-15.9-3M22.5 5.5v6h-6M5.5 16.5a9 9 0 0 0 15.9 3M5.5 22.5v-6h6" />
   </>,
-  'chart-shift': <>
+  'auto-scroll': <>
     <path d="M8.5 5.5v3m0 10v4M14.5 14.5h7m-3.5-3.5 3.5 3.5-3.5 3.5M23.5 5.5v17" />
+    <rect x="6.5" y="8.5" width="4" height="10" rx=".5" />
+  </>,
+  'chart-shift': <>
+    <path d="M8.5 5.5v3m0 10v4M21.5 14.5h-7m3.5-3.5-3.5 3.5 3.5 3.5M23.5 5.5v17" />
     <rect x="6.5" y="8.5" width="4" height="10" rx=".5" />
   </>,
   'period-separator': <>

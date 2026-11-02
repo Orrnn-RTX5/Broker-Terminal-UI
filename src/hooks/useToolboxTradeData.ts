@@ -33,6 +33,10 @@ export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'>
   ticket?: number;
   contractSize?: number;
   contract_size?: number;
+  margin?: number;
+  used_margin?: number;
+  margin_available?: boolean;
+  hasBackendMargin?: boolean;
   hasBackendProfit?: boolean;
   hasBackendCurrentPrice?: boolean;
   profitSource?: TradeProfitSource;
@@ -149,6 +153,11 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
   const backendProfit = readBackendNumber(rawProfit);
   const hasBackendProfit = raw?.pnl_available !== false && raw?.hasBackendProfit !== false && backendProfit !== undefined;
   const profit = hasBackendProfit ? backendProfit! : 0;
+  const rawMargin = readBackendNumber(raw?.margin ?? raw?.used_margin ?? normalized.margin ?? normalized.used_margin);
+  const hasBackendMargin = raw?.hasBackendMargin !== false
+    && raw?.margin_available !== false
+    && rawMargin !== undefined
+    && rawMargin >= 0;
   const chartEntryTime = typeof raw?.chartEntryTime === 'string' && raw.chartEntryTime.trim()
     ? raw.chartEntryTime.trim()
     : (typeof normalized.chartEntryTime === 'string' && normalized.chartEntryTime.trim()
@@ -177,6 +186,15 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     openTime,
     ...(chartEntryPrice !== undefined ? { chartEntryPrice } : {}),
     ...(chartEntryTime !== undefined ? { chartEntryTime } : {}),
+    ...(hasBackendMargin ? {
+      margin: rawMargin,
+      used_margin: rawMargin,
+      margin_available: true,
+      hasBackendMargin: true,
+    } : (raw?.margin_available === false || raw?.hasBackendMargin === false ? {
+      margin_available: false,
+      hasBackendMargin: false,
+    } : {})),
     time_create: raw?.time_create ?? normalized.time_create ?? openTime,
     open_time: raw?.open_time ?? openTime,
     time: raw?.time ?? openTime,
@@ -203,6 +221,9 @@ const positionSignature = (position: ToolboxTradePosition): string => [
   position.side,
   position.volume,
   position.contractSize ?? position.contract_size ?? '',
+  position.margin ?? position.used_margin ?? '',
+  position.hasBackendMargin ?? '',
+  position.margin_available ?? '',
   position.hasBackendProfit ?? '',
   position.hasBackendCurrentPrice ?? '',
   position.price_open ?? position.openPrice,
@@ -286,6 +307,25 @@ const mergePatchIntoPosition = (
     next.unrealizedPnL = profit;
     next.profit = profit;
     next.hasBackendProfit = supplied;
+  }
+
+  const marginPatch = readBackendNumber(raw?.margin ?? raw?.used_margin);
+  const hasMarginPatch = raw?.margin !== undefined || raw?.used_margin !== undefined
+    || raw?.margin_available !== undefined || raw?.hasBackendMargin !== undefined;
+  if (hasMarginPatch) {
+    const supplied = raw?.hasBackendMargin !== false && raw?.margin_available !== false
+      && marginPatch !== undefined && marginPatch >= 0;
+    if (supplied) {
+      next.margin = marginPatch!;
+      next.used_margin = marginPatch!;
+      next.margin_available = true;
+      next.hasBackendMargin = true;
+    } else if (raw?.margin_available === false || raw?.hasBackendMargin === false) {
+      delete next.margin;
+      delete next.used_margin;
+      next.margin_available = false;
+      next.hasBackendMargin = false;
+    }
   }
 
   if (raw?.swap !== undefined || raw?.storage !== undefined) {
@@ -505,6 +545,51 @@ type OptimisticallyClosedToolboxPosition = {
   expiresAt: number;
 };
 
+const normalizeOptimisticallyEmptyAccount = (
+  account: Account | null,
+  positions: readonly ToolboxTradePosition[],
+  optimisticallyClosed: ReadonlyMap<number, OptimisticallyClosedToolboxPosition>,
+  now = Date.now(),
+): Account | null => {
+  if (!account || positions.length > 0) return account;
+  let hasActiveOptimisticClose = false;
+  optimisticallyClosed.forEach((entry) => {
+    if (entry.expiresAt > now) hasActiveOptimisticClose = true;
+  });
+  if (!hasActiveOptimisticClose) return account;
+  if (
+    !(Number(account.margin) > 0)
+    && !(Number(account.marginLevel) > 0)
+    && Number(account.unrealizedPL ?? 0) === 0
+  ) {
+    return account;
+  }
+  const balance = typeof account.balance === 'number' && Number.isFinite(account.balance)
+    ? account.balance
+    : null;
+  const credit = typeof account.credit === 'number' && Number.isFinite(account.credit)
+    ? account.credit
+    : 0;
+  const settledEquity = balance !== null ? balance + credit : account.equity;
+  return {
+    ...account,
+    margin: 0,
+    marginLevel: 0,
+    unrealizedPL: 0,
+    hasBackendMargin: true,
+    hasBackendMarginLevel: true,
+    hasBackendUnrealizedPL: true,
+    ...(settledEquity !== null && Number.isFinite(settledEquity)
+      ? {
+        equity: settledEquity,
+        freeMargin: settledEquity,
+        hasBackendEquity: true,
+        hasBackendFreeMargin: true,
+      }
+      : {}),
+  };
+};
+
 export const mergeRetainedImmediateToolboxPositions = (
   snapshot: ToolboxTradePosition[],
   retained: RetainedImmediateToolboxPosition[],
@@ -716,7 +801,12 @@ export function useToolboxTradeData() {
     }));
   }, []);
 
-  const commitAccount = useCallback((account: Account | null) => {
+  const commitAccount = useCallback((rawAccount: Account | null) => {
+    const account = normalizeOptimisticallyEmptyAccount(
+      rawAccount,
+      positionsRef.current,
+      optimisticallyClosedPositionsRef.current,
+    );
     const previousSig = accountSignature(accountRef.current);
     const nextSig = accountSignature(account);
     accountRef.current = account;
@@ -748,8 +838,17 @@ export function useToolboxTradeData() {
       }
     }
     positionsRef.current = positions;
-    if (previousSig === nextSig) return;
-    setState((prev) => ({ ...prev, positions }));
+    const normalizedAccount = normalizeOptimisticallyEmptyAccount(
+      accountRef.current,
+      positions,
+      optimisticallyClosedPositionsRef.current,
+    );
+    const accountChanged = accountSignature(accountRef.current) !== accountSignature(normalizedAccount);
+    if (accountChanged) {
+      accountRef.current = normalizedAccount;
+    }
+    if (previousSig === nextSig && !accountChanged) return;
+    setState((prev) => ({ ...prev, positions, account: accountRef.current }));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -807,7 +906,29 @@ export function useToolboxTradeData() {
       const liveById = new Map(livePositions.map((position) => [position.id, position]));
       const rawPositions = arrayFrom(positionsBody, 'positions').map((raw) => {
         const live = liveById.get(getPositionTicket(raw));
-        return live && live !== startedById.get(live.id) ? live : raw;
+        if (!live || live === startedById.get(live.id)) return raw;
+        return {
+          ...live,
+          ...(live.margin === undefined && raw?.margin !== undefined ? {
+            margin: raw.margin,
+            used_margin: raw.used_margin ?? raw.margin,
+            margin_available: raw.margin_available,
+            hasBackendMargin: raw.hasBackendMargin,
+          } : {}),
+          ...(live.hasBackendProfit === false && raw?.pnl_available !== false && raw?.hasBackendProfit !== false && (raw?.profit !== undefined || raw?.unrealized_pl !== undefined || raw?.unrealizedPnL !== undefined) ? {
+            profit: raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL,
+            unrealized_pl: raw.unrealized_pl ?? raw.profit ?? raw.unrealizedPnL,
+            unrealizedPnL: raw.unrealizedPnL ?? raw.profit ?? raw.unrealized_pl,
+            hasBackendProfit: true,
+            pnl_available: raw.pnl_available ?? true,
+          } : {}),
+          ...(live.hasBackendCurrentPrice === false && raw?.pnl_available !== false && raw?.hasBackendCurrentPrice !== false && (raw?.price_current !== undefined || raw?.current_price !== undefined || raw?.currentPrice !== undefined) ? {
+            price_current: raw.price_current ?? raw.current_price ?? raw.currentPrice,
+            current_price: raw.current_price ?? raw.price_current ?? raw.currentPrice,
+            currentPrice: raw.currentPrice ?? raw.price_current ?? raw.current_price,
+            hasBackendCurrentPrice: true,
+          } : {}),
+        };
       });
       const rawPositionTickets = new Set(rawPositions.map(getPositionTicket).filter(Boolean));
       const now = Date.now();
@@ -862,13 +983,6 @@ export function useToolboxTradeData() {
         message: `Loaded ${rawPositions.length} open position(s) for account ${login} from ${restBaseUrl}`,
       });
 
-      const accountResult = await startupRequests.accountResultPromise;
-      if (seq !== refreshSeqRef.current || controller.signal.aborted) return;
-      if (accountResult.status === 'rejected') {
-        throw accountResult.reason;
-      }
-
-      const accountBody = accountResult.value;
       const applyMetrics = (body: unknown) => {
         if (metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
         if (useAppStore.getState().authToken !== startedAuthToken) return;
@@ -877,12 +991,26 @@ export function useToolboxTradeData() {
         commitAccount(next);
         if (next !== current) useAppStore.getState().setAccount(next);
       };
-      applyMetrics(accountBody);
 
-      const metricsBody = await metricsPromise;
+      const [accountResult, metricsBody] = await Promise.all([
+        startupRequests.accountResultPromise,
+        metricsPromise,
+      ]);
       if (seq !== refreshSeqRef.current || controller.signal.aborted) return;
+
+      if (accountResult.status === 'fulfilled' && accountResult.value) {
+        applyMetrics(accountResult.value);
+      }
       if (metricsBody) {
         applyMetrics(metricsBody);
+      }
+      if (
+        accountResult.status === 'rejected'
+        && !metricsBody
+        && !accountRef.current
+        && !useAppStore.getState().account
+      ) {
+        throw accountResult.reason;
       }
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -987,7 +1115,11 @@ export function useToolboxTradeData() {
             Array.isArray(snapshot.positions) ? snapshot.positions : [],
           ),
           Array.from(retainedImmediatePositionsRef.current.values()),
-        ).filter((position) => !isConfirmedClosedPosition(position.id) && !isConfirmedClosedBySnapshot(position.id));
+        ).filter((position) => (
+          !optimisticallyClosedPositionsRef.current.has(position.id)
+          && !isConfirmedClosedPosition(position.id)
+          && !isConfirmedClosedBySnapshot(position.id)
+        ));
         deferSnapshot = shouldDeferEmptyPositionSnapshot(
           positionsRef.current.filter((position) => !isConfirmedClosedPosition(position.id)),
           nextPositions,
@@ -1000,8 +1132,13 @@ export function useToolboxTradeData() {
           positionsRef.current = nextPositions;
         }
       }
-      const account = accountRef.current;
       const positions = positionsRef.current;
+      const account = normalizeOptimisticallyEmptyAccount(
+        accountRef.current,
+        positions,
+        optimisticallyClosedPositionsRef.current,
+      );
+      accountRef.current = account;
       const restBaseUrl = getBrokerRestBaseUrl();
       setState((prev) => {
         if (deferSnapshot) return prev.account === account ? prev : { ...prev, account };
