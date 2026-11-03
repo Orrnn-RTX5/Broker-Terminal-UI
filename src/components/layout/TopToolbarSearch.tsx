@@ -674,7 +674,8 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
   const rafRef = useRef<number | null>(null);
   const hasRevealedSomethingRef = useRef(false);
 
-  const storeSymbols = useAppStore((state) => state.symbols);
+  const storeSymbols = useAppStore((state) => (state as { symbols?: Array<{ symbol?: string; description?: string; category?: string }> }).symbols);
+  const storeTicks = useAppStore((state) => state.ticks);
 
   const clearLocateTimers = useCallback(() => {
     if (rafRef.current !== null && typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
@@ -1149,7 +1150,7 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
           findElements: () => findDrawingFlyoutElements('fibonacci', tool.label, tool.id),
         },
       ];
-      if (tool.id === 'fib_retracement' || tool.id === 'fib_extension') {
+      if (tool.id === 'fib_retracement' || tool.id === 'trend_based_fib_extension') {
         const menuLabel = tool.id === 'fib_retracement' ? 'Fibonacci Retracement' : 'Fibonacci Extension';
         locs.push({
           path: `Menu Bar → Chart settings → Insert & drawing tools → Objects → Fibonacci → ${menuLabel}`,
@@ -1640,7 +1641,8 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
             btn.click();
           } else {
             const store = useChartSettingsStore.getState();
-            const current = store.getSymbolProperties(selectedSymbol).showPeriodSeparators !== false;
+            const symbolProps = (selectedSymbol ? store.symbolProperties[selectedSymbol] : undefined) ?? store.globalProperties;
+            const current = symbolProps.showPeriodSeparators !== false;
             store.updateGlobalProperty('showPeriodSeparators', !current);
             store.updateSymbolProperty(selectedSymbol, 'showPeriodSeparators', !current);
           }
@@ -1666,7 +1668,8 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
             btn.click();
           } else {
             const store = useChartSettingsStore.getState();
-            const current = Boolean(store.getSymbolProperties(selectedSymbol).chartShift);
+            const symbolProps = (selectedSymbol ? store.symbolProperties[selectedSymbol] : undefined) ?? store.globalProperties;
+            const current = Boolean(symbolProps.chartShift);
             store.updateSymbolProperty(selectedSymbol, 'chartShift', !current);
             const target = getActiveChartCommandTarget(selectedSymbol, timeframe);
             commandBus.dispatch({
@@ -1858,18 +1861,18 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
     );
 
     // All 9 Timeframes
-    const timeframes: Array<{ tf: Timeframe; name: string; desc: string }> = [
-      { tf: '1m', name: 'M1 Timeframe (1 Minute)', desc: 'Switch active chart to 1-minute candles' },
-      { tf: '5m', name: 'M5 Timeframe (5 Minutes)', desc: 'Switch active chart to 5-minute candles' },
-      { tf: '15m', name: 'M15 Timeframe (15 Minutes)', desc: 'Switch active chart to 15-minute candles' },
-      { tf: '30m', name: 'M30 Timeframe (30 Minutes)', desc: 'Switch active chart to 30-minute candles' },
-      { tf: '1h', name: 'H1 Timeframe (1 Hour)', desc: 'Switch active chart to 1-hour candles' },
-      { tf: '4h', name: 'H4 Timeframe (4 Hours)', desc: 'Switch active chart to 4-hour candles' },
-      { tf: '1D', name: 'D1 Timeframe (Daily)', desc: 'Switch active chart to Daily candles' },
-      { tf: '1W', name: 'W1 Timeframe (Weekly)', desc: 'Switch active chart to Weekly candles' },
-      { tf: '1M', name: 'MN Timeframe (Monthly)', desc: 'Switch active chart to Monthly candles' },
+    const timeframes: Array<{ tf: Timeframe; alias: string; name: string; desc: string }> = [
+      { tf: 'M1', alias: '1m', name: 'M1 Timeframe (1 Minute)', desc: 'Switch active chart to 1-minute candles' },
+      { tf: 'M5', alias: '5m', name: 'M5 Timeframe (5 Minutes)', desc: 'Switch active chart to 5-minute candles' },
+      { tf: 'M15', alias: '15m', name: 'M15 Timeframe (15 Minutes)', desc: 'Switch active chart to 15-minute candles' },
+      { tf: 'M30', alias: '30m', name: 'M30 Timeframe (30 Minutes)', desc: 'Switch active chart to 30-minute candles' },
+      { tf: 'H1', alias: '1h', name: 'H1 Timeframe (1 Hour)', desc: 'Switch active chart to 1-hour candles' },
+      { tf: 'H4', alias: '4h', name: 'H4 Timeframe (4 Hours)', desc: 'Switch active chart to 4-hour candles' },
+      { tf: 'D1', alias: '1d', name: 'D1 Timeframe (Daily)', desc: 'Switch active chart to Daily candles' },
+      { tf: 'W1', alias: '1w', name: 'W1 Timeframe (Weekly)', desc: 'Switch active chart to Weekly candles' },
+      { tf: 'MN', alias: '1m', name: 'MN Timeframe (Monthly)', desc: 'Switch active chart to Monthly candles' },
     ];
-    for (const { tf, name, desc } of timeframes) {
+    for (const { tf, alias, name, desc } of timeframes) {
       const code = name.split(' ')[0];
       items.push({
         id: `tf-${tf}`,
@@ -1877,7 +1880,7 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
         category: 'toolbar',
         categoryLabel: 'Timeframe Strip',
         description: desc,
-        keywords: ['timeframe', 'period', code.toLowerCase(), tf.toLowerCase(), name.toLowerCase()],
+        keywords: ['timeframe', 'period', code.toLowerCase(), tf.toLowerCase(), alias, name.toLowerCase()],
         locations: [
           {
             path: `Top Toolbar → Timeframe Strip → ${code}`,
@@ -2407,7 +2410,9 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
     // =========================================================================
     // 7. DYNAMIC BROKER SYMBOLS FROM RUNTIME STORE (Zero Hardcoded Symbols)
     // =========================================================================
-    const safeSymbols = Array.isArray(storeSymbols) ? storeSymbols : [];
+    const safeSymbols: Array<{ symbol?: string; description?: string; category?: string }> = Array.isArray(storeSymbols)
+      ? storeSymbols
+      : Object.keys(storeTicks || {}).map((sym) => ({ symbol: sym }));
     for (const sym of safeSymbols) {
       const symbolName = String(sym.symbol || '').trim();
       if (!symbolName) continue;
@@ -2453,6 +2458,7 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
     selectDrawingTool,
     selectedSymbol,
     storeSymbols,
+    storeTicks,
     timeframe,
   ]);
 

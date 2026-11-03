@@ -406,8 +406,10 @@ function loadAdvancedOptions(): AdvancedViewOptions {
 }
 
 const MainToolbar = ({
+    chartType,
     timeframe,
     onTimeframeChange,
+    onToggleDOM,
     toolbarState,
     dispatchCommand,
     symbol,

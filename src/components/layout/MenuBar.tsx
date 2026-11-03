@@ -235,7 +235,7 @@ export const MenuBar = ({
             const detail = (event as CustomEvent<{
                 close?: boolean;
                 webRootId?: string;
-                desktopMenuKey?: DesktopMenuKey;
+                desktopMenuKey?: (typeof DESKTOP_MENU_KEYS)[number];
                 submenuPath?: string[];
                 openDepth?: number;
             }>).detail;

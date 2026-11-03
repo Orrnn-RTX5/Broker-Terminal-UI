@@ -8,7 +8,7 @@ import { useAppStore } from '../../store/useAppStore';
 describe('TopToolbarSearch (Zero-Dropdown Direct In-Place UI Locator)', () => {
   const defaultProps = {
     selectedSymbol: 'EURUSD',
-    timeframe: '1m' as const,
+    timeframe: 'M1' as const,
     chartType: 'candlestick' as const,
     onSymbolChange: vi.fn(),
     onTimeframeChange: vi.fn(),
@@ -217,7 +217,7 @@ describe('TopToolbarSearch (Zero-Dropdown Direct In-Place UI Locator)', () => {
 
     fireEvent.change(input, { target: { value: 'M15' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    expect(defaultProps.onTimeframeChange).toHaveBeenCalledWith('15m');
+    expect(defaultProps.onTimeframeChange).toHaveBeenCalledWith('M15');
 
     fireEvent.change(input, { target: { value: 'New Order' } });
     fireEvent.keyDown(input, { key: 'Enter' });
