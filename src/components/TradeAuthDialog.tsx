@@ -243,12 +243,12 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
 
   if (!isOpen) return null;
 
-  const loginBrokerId = brokerId || (hasDemoAndRealAccounts ? configuration.brokerId : '');
+  const loginBrokerId = brokerId || ((hasDemoAndRealAccounts || mode === 'login') ? configuration.brokerId : '');
   if ((mode === 'login' || hasDemoAndRealAccounts) && loginBrokerId && !brokerPolicyError) {
     return (
       <LoginDialog
         isOpen
-        onClose={hasDemoAndRealAccounts ? closeDialog : () => setMode('choice')}
+        onClose={(hasDemoAndRealAccounts || initialMode === 'login') ? closeDialog : () => setMode('choice')}
         onLoginSuccess={onAuthenticated}
         initialServer={loginBrokerId}
         lockedBrokerId={loginBrokerId}
@@ -279,6 +279,34 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
         className="rtx-auth-dialog"
         data-mode={mode}
         onKeyDown={(event) => {
+          if (!isDemo && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'ArrowRight')) {
+            const actionBtns = Array.from(
+              dialogRef.current?.querySelectorAll<HTMLButtonElement>('.rtx-auth-action:not(:disabled)') || [],
+            );
+            if (actionBtns.length > 0) {
+              const activeIdx = actionBtns.indexOf(document.activeElement as HTMLButtonElement);
+              if (event.key === 'ArrowRight') {
+                const targetBtn = activeIdx >= 0 ? actionBtns[activeIdx] : actionBtns[0];
+                if (targetBtn) {
+                  event.preventDefault();
+                  targetBtn.click();
+                  return;
+                }
+              } else {
+                event.preventDefault();
+                const nextIdx =
+                  event.key === 'ArrowDown'
+                    ? activeIdx >= 0
+                      ? (activeIdx + 1) % actionBtns.length
+                      : 0
+                    : activeIdx >= 0
+                      ? (activeIdx - 1 + actionBtns.length) % actionBtns.length
+                      : actionBtns.length - 1;
+                actionBtns[nextIdx]?.focus();
+                return;
+              }
+            }
+          }
           if (event.key !== 'Tab') return;
           const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
             'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]',

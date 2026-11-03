@@ -912,7 +912,7 @@ export const MenuBar = ({
             }}
             onLoginTrade={() => {
                 if (typeof window !== 'undefined' && (window as Window & { __RTX_APP_ACTIVE__?: boolean }).__RTX_APP_ACTIVE__) {
-                    window.dispatchEvent(new CustomEvent('rtx:openTradeAuth'));
+                    window.dispatchEvent(new CustomEvent('rtx:openLoginDialog'));
                 } else {
                     setTradeLoginRequested(false);
                     setIsLoginDialogOpen(true);

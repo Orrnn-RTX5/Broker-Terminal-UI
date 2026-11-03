@@ -677,6 +677,7 @@ const MainToolbar = ({
         if (!showHistoryOverlayMenu) return;
 
         const focusFrame = window.requestAnimationFrame(() => {
+            if (document.activeElement?.closest('[data-rtx-universal-search]')) return;
             historyOverlayDropdownRef.current
                 ?.querySelector<HTMLElement>('input:not(:disabled)')
                 ?.focus();

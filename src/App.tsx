@@ -662,6 +662,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [orderPanelSymbol, setOrderPanelSymbol] = useState('');
   const [orderPanelPrice, setOrderPanelPrice] = useState({ bid: 0, ask: 0 });
   const [tradeAuthOpen, setTradeAuthOpen] = useState(false);
+  const [tradeAuthInitialMode, setTradeAuthInitialMode] = useState<'choice' | 'login' | 'demo'>('choice');
   const [pendingTradeIntent, setPendingTradeIntent] = useState<TradingAuthIntent | null>(null);
 
   useEffect(() => {
@@ -669,10 +670,19 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const handleTradingAuthRequest = (event: Event) => {
       const intent = (event as CustomEvent<TradingAuthIntent>).detail;
       setPendingTradeIntent(intent || null);
+      setTradeAuthInitialMode('choice');
       setTradeAuthOpen(true);
     };
-    const handleGeneralLoginRequest = () => {
+    const handleGeneralLoginRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ mode?: 'choice' | 'login' | 'demo' } | undefined>).detail;
       setPendingTradeIntent(null);
+      setTradeAuthInitialMode(
+        event.type === 'rtx:openLoginDialog' || detail?.mode === 'login'
+          ? 'login'
+          : detail?.mode === 'demo'
+            ? 'demo'
+            : 'choice',
+      );
       setTradeAuthOpen(true);
     };
     window.addEventListener(TRADING_AUTH_REQUEST_EVENT, handleTradingAuthRequest);
@@ -690,6 +700,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
   const handleTradeAuthClose = useCallback(() => {
     setTradeAuthOpen(false);
+    setTradeAuthInitialMode('choice');
     setPendingTradeIntent(null);
   }, []);
 
@@ -2114,6 +2125,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           {tradeAuthOpen && <Suspense fallback={null}><TradeAuthDialog
             isOpen={tradeAuthOpen}
             intent={pendingTradeIntent}
+            initialMode={tradeAuthInitialMode}
             onClose={handleTradeAuthClose}
             onAuthenticated={handleTradeAuthenticated}
           /></Suspense>}

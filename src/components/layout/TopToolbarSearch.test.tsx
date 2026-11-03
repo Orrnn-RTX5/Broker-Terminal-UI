@@ -474,4 +474,107 @@ describe('TopToolbarSearch (Zero-Dropdown Direct In-Place UI Locator)', () => {
     document.body.removeChild(appMenu);
     window.removeEventListener('rtx:reveal-menu-path', revealSpy);
   });
+
+  it('supports progressive action sheet navigation and execution when searching "login" (1st sheet Trading accounts -> ArrowRight -> 2nd sheet Login to Trade Account -> ArrowDown/ArrowUp -> Enter)', () => {
+    const revealSpy = vi.fn();
+    window.addEventListener('rtx:reveal-menu-path', revealSpy);
+
+    const rect = {
+      top: 40,
+      left: 10,
+      width: 268,
+      height: 32,
+      bottom: 72,
+      right: 278,
+      x: 10,
+      y: 40,
+      toJSON: () => ({}),
+    };
+
+    const appMenu = document.createElement('div');
+    appMenu.className = 'rtx-application-menu';
+    appMenu.getBoundingClientRect = () => rect;
+
+    const tradingAccountsBtn = document.createElement('button');
+    tradingAccountsBtn.setAttribute('data-root-menu-item', 'true');
+    tradingAccountsBtn.setAttribute('data-menu-key', 'trading-accounts');
+    tradingAccountsBtn.setAttribute('aria-haspopup', 'menu');
+    tradingAccountsBtn.textContent = 'Trading accounts';
+    tradingAccountsBtn.getBoundingClientRect = () => rect;
+    appMenu.appendChild(tradingAccountsBtn);
+    document.body.appendChild(appMenu);
+
+    render(<TopToolbarSearch {...defaultProps} />);
+    const input = screen.getByRole('searchbox', { name: /search anywhere in application/i });
+
+    // Typing "log" or "logi" must not prematurely open Log Out while user is typing "login"
+    for (const partial of ['l', 'lo', 'log', 'logi']) {
+      fireEvent.change(input, { target: { value: partial } });
+      expect(revealSpy).not.toHaveBeenCalled();
+    }
+
+    // Typing "login" opens 1st sheet (openDepth: 0) and highlights Trading accounts
+    fireEvent.change(input, { target: { value: 'login' } });
+    expect(revealSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          webRootId: 'trading-accounts',
+          desktopMenuKey: 'File',
+          openDepth: 0,
+        }),
+      }),
+    );
+    expect(tradingAccountsBtn.classList.contains('rtx-search-located-target')).toBe(true);
+
+    // Press ArrowRight -> opens 2nd sheet (FileMenu) and highlights Login to Trade Account
+    const fileMenuSurface = document.createElement('div');
+    fileMenuSurface.className = 'rtx-file-menu rtx-menu-surface';
+    fileMenuSurface.getBoundingClientRect = () => rect;
+
+    const openAccountBtn = document.createElement('button');
+    openAccountBtn.setAttribute('data-file-menu-item', 'open-account');
+    openAccountBtn.textContent = 'Open an Account';
+    openAccountBtn.getBoundingClientRect = () => rect;
+
+    const loginTradeBtn = document.createElement('button');
+    loginTradeBtn.setAttribute('data-file-menu-item', 'login-trade');
+    loginTradeBtn.textContent = 'Login to Trade Account';
+    loginTradeBtn.getBoundingClientRect = () => rect;
+
+    const loginWebBtn = document.createElement('button');
+    loginWebBtn.setAttribute('data-file-menu-item', 'login-web');
+    loginWebBtn.textContent = 'Login to Web Trader';
+    loginWebBtn.getBoundingClientRect = () => rect;
+
+    fileMenuSurface.appendChild(openAccountBtn);
+    fileMenuSurface.appendChild(loginTradeBtn);
+    fileMenuSurface.appendChild(loginWebBtn);
+    appMenu.appendChild(fileMenuSurface);
+
+    fireEvent.keyDown(input, { key: 'ArrowRight' });
+    expect(revealSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          webRootId: 'trading-accounts',
+          openDepth: 1,
+        }),
+      }),
+    );
+    expect(loginTradeBtn.classList.contains('rtx-search-located-target')).toBe(true);
+
+    // ArrowDown moves to Login to Web Trader; ArrowUp moves back to Login to Trade Account
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(loginWebBtn.classList.contains('rtx-search-located-target')).toBe(true);
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(loginTradeBtn.classList.contains('rtx-search-located-target')).toBe(true);
+
+    // Enter executes Login to Trade Account
+    const loginTradeClickSpy = vi.fn();
+    loginTradeBtn.addEventListener('click', loginTradeClickSpy);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(loginTradeClickSpy).toHaveBeenCalledTimes(1);
+
+    document.body.removeChild(appMenu);
+    window.removeEventListener('rtx:reveal-menu-path', revealSpy);
+  });
 });

@@ -249,9 +249,9 @@ const resetSearchSheetState = () => {
 };
 
 const getActionSheetButtonsForSurface = (surface: HTMLElement): HTMLElement[] => {
-  return Array.from(surface.querySelectorAll<HTMLElement>('button:not(:disabled)')).filter(
-    (btn) => btn.closest('.rtx-menu-surface') === surface && isElementVisible(btn),
-  );
+  return Array.from(
+    surface.querySelectorAll<HTMLElement>('button:not(:disabled), .rtx-history-overlay-menu__option'),
+  ).filter((btn) => btn.closest('.rtx-menu-surface') === surface && isElementVisible(btn));
 };
 
 const getDeepestOpenActionSheetItems = (): HTMLElement[] => {
@@ -344,9 +344,12 @@ const resetSearchRevealedMenus = () => {
 const clearDomHighlightClasses = () => {
   if (typeof document === 'undefined') return;
   document
-    .querySelectorAll<HTMLElement>('.rtx-search-located-target, .rtx-search-located-step')
+    .querySelectorAll<HTMLElement>(
+      '.rtx-search-located-target, .rtx-search-located-step, [data-rtx-search-highlight]',
+    )
     .forEach((el) => {
       el.classList.remove('rtx-search-located-target', 'rtx-search-located-step');
+      el.removeAttribute('data-rtx-search-highlight');
     });
   document
     .querySelectorAll<HTMLElement>('.rtx-ui-spotlight-layer, [data-testid="rtx-ui-spotlight-layer"]')
@@ -361,13 +364,16 @@ const applyDomHighlightClasses = (elements: HTMLElement[], extraTargets: HTMLEle
     const isFinalTarget = index === elements.length - 1;
     if (isFinalTarget) {
       el.classList.add('rtx-search-located-target');
+      el.setAttribute('data-rtx-search-highlight', 'target');
     } else {
       el.classList.add('rtx-search-located-step');
+      el.setAttribute('data-rtx-search-highlight', 'step');
     }
   });
   extraTargets.forEach((el) => {
     el.classList.remove('rtx-search-located-step');
     el.classList.add('rtx-search-located-target');
+    el.setAttribute('data-rtx-search-highlight', 'target');
   });
 };
 
@@ -534,6 +540,17 @@ const findMenuElements = (
 };
 
 const findFileMenuElements = (fileMenuItemKey: string, extraSelector?: string): HTMLElement[] => {
+  if (
+    searchSheetState.activeWebRootId &&
+    searchSheetState.activeWebRootId !== 'trading-accounts'
+  ) {
+    return findMenuElements(
+      '',
+      searchSheetState.activeWebRootId,
+      searchSheetState.activeSubmenuPath,
+    );
+  }
+
   searchSheetState.lastTargetMenuSpec = {
     webRootId: 'trading-accounts',
     desktopMenuKey: 'File',
@@ -584,7 +601,16 @@ const findFileMenuElements = (fileMenuItemKey: string, extraSelector?: string): 
   }
 
   const fileItem = document.querySelector<HTMLElement>(`[data-file-menu-item="${fileMenuItemKey}"]`);
-  if (isElementVisible(fileItem)) elements.push(fileItem);
+  if (isElementVisible(fileItem) && !fileItem.hasAttribute('disabled')) {
+    elements.push(fileItem);
+  } else if (depth >= 1 && deepestSurface) {
+    const btns = getActionSheetButtonsForSurface(deepestSurface);
+    if (btns.length > 0 && !elements.includes(btns[0])) {
+      elements.push(btns[0]);
+    }
+  } else if (isElementVisible(fileItem)) {
+    elements.push(fileItem);
+  }
 
   if (depth >= 2) {
     if (deepestSurface) {
@@ -644,7 +670,14 @@ const findDrawingFlyoutElements = (menuId: string, toolLabel?: string, toolId?: 
   }
 
   if (isElementVisible(flyout)) {
-    elements.push(flyout);
+    const firstInteractive = flyout.querySelector<HTMLElement>(
+      '.web-drawing-tools-menu__item:not(:disabled), .web-drawing-tools-menu__toggle-row:not(:disabled)',
+    );
+    if (isElementVisible(firstInteractive)) {
+      elements.push(firstInteractive);
+    } else {
+      elements.push(flyout);
+    }
   }
   return elements;
 };
@@ -816,7 +849,10 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
             path: 'Menu Bar → Trading accounts',
             prepare: () => revealMenuBarPath('trading-accounts', 'File', []),
             findElements: () => {
-              const els = findFileMenuElements('logout');
+              const els = findFileMenuElements('login-trade');
+              if (searchSheetState.openDepth >= 1) {
+                return els;
+              }
               const card = document.querySelector<HTMLElement>('.rtx-file-menu__account-card');
               if (isElementVisible(card)) {
                 return [...els.slice(0, 2), card];
@@ -828,6 +864,22 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
             path: 'Navigator Panel → Accounts',
             prepare: () => ensurePanelVisible('.navigator-panel, [data-dock-panel="navigator"]', 'view.toggle-navigator'),
             findElements: () => queryVisibleElements(['.navigator-panel', '[data-dock-panel="navigator"]']),
+          },
+        ],
+        execute: () => revealMenuBarPath('trading-accounts', 'File', []),
+      },
+      {
+        id: 'file-open-account',
+        title: 'Open an Account',
+        category: 'menus',
+        categoryLabel: 'Trading accounts',
+        description: 'Register a new demo or live trading account',
+        keywords: ['open an account', 'open account', 'create account', 'demo account', 'register account', 'new account', 'trading accounts'],
+        locations: [
+          {
+            path: 'Menu Bar → Trading accounts → Open an Account',
+            prepare: () => revealMenuBarPath('trading-accounts', 'File', []),
+            findElements: () => findFileMenuElements('open-account'),
           },
         ],
         execute: () => revealMenuBarPath('trading-accounts', 'File', []),
@@ -1639,10 +1691,31 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
             prepare: () => {
               window.dispatchEvent(new CustomEvent('rtx:reveal-toolbar-dropdown', { detail: { id: 'trade-history-overlays' } }));
             },
-            findElements: () => queryVisibleElements([
-              '[aria-label="Trade History Overlays"]',
-              '[role="menu"][aria-label*="Trade History Overlays"]',
-            ]),
+            findElements: () => {
+              const elements = queryVisibleElements(['[aria-label="Trade History Overlays"]']);
+              const overlay = document.querySelector<HTMLElement>(
+                '.rtx-history-overlay-menu, [role="menu"][aria-label*="Trade History Overlays"]',
+              );
+              if (isElementVisible(overlay)) {
+                if (
+                  searchSheetState.manualTargetElement &&
+                  overlay.contains(searchSheetState.manualTargetElement) &&
+                  isElementVisible(searchSheetState.manualTargetElement)
+                ) {
+                  elements.push(searchSheetState.manualTargetElement);
+                  return elements;
+                }
+                const firstInteractive = overlay.querySelector<HTMLElement>(
+                  '.rtx-history-overlay-menu__option, button:not(:disabled), input[type="checkbox"]:not(:disabled)',
+                );
+                if (isElementVisible(firstInteractive)) {
+                  elements.push(firstInteractive);
+                } else {
+                  elements.push(overlay);
+                }
+              }
+              return elements;
+            },
           },
         ],
         execute: () => {
@@ -2718,6 +2791,8 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
       window.setTimeout(() => {
         clearLocateTimers();
         clearDomHighlightClasses();
+        resetSearchSheetState();
+        lastRevealedKeyRef.current = '';
         setIsHighlighting(false);
       }, 150);
     };
@@ -2726,6 +2801,15 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
   }, [clearLocateTimers, isHighlighting]);
 
   const activeMatch = matchedLocations[activeFlatIndex] ?? matchedLocations[0];
+
+  const ensureActiveMatchRevealed = useCallback(() => {
+    if (!activeMatch || !queryRef.current.trim()) return;
+    const hasOpenSheet = getDeepestOpenActionSheetItems().length > 0;
+    const hasHighlight = Boolean(document.querySelector('.rtx-search-located-target'));
+    if (!hasOpenSheet && !hasHighlight) {
+      revealInPlace(activeMatch.item, activeMatch.location);
+    }
+  }, [activeMatch, revealInPlace]);
 
   return (
     <div
@@ -2739,6 +2823,7 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
         title={activeMatch ? `${activeMatch.item.title} — ${activeMatch.location.path}` : tr('Search & highlight any option in its actual place')}
         onClick={() => {
           inputRef.current?.focus();
+          ensureActiveMatchRevealed();
         }}
       >
         <span className="rtx-toolbar-search__icon" aria-hidden="true">
@@ -2752,6 +2837,9 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
           aria-label={tr('Search anywhere in application')}
           placeholder={tr('Search tools, menus...')}
           className="rtx-toolbar-search__input"
+          onFocus={() => {
+            ensureActiveMatchRevealed();
+          }}
           onChange={(event) => {
             const nextVal = event.target.value;
             queryRef.current = nextVal;
@@ -2772,7 +2860,11 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
             }
 
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-              const sheetItems = getDeepestOpenActionSheetItems();
+              let sheetItems = getDeepestOpenActionSheetItems();
+              if (sheetItems.length === 0 && activeMatch?.location.prepare) {
+                revealInPlace(activeMatch.item, activeMatch.location);
+                sheetItems = getDeepestOpenActionSheetItems();
+              }
               if (sheetItems.length > 0) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -2795,9 +2887,13 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
                   searchSheetState.manualTargetElement = nextEl;
                   sheetItems.forEach((item) => {
                     item.classList.remove('rtx-search-located-target');
+                    if (item.getAttribute('data-rtx-search-highlight') === 'target') {
+                      item.removeAttribute('data-rtx-search-highlight');
+                    }
                   });
                   nextEl.classList.remove('rtx-search-located-step');
                   nextEl.classList.add('rtx-search-located-target');
+                  nextEl.setAttribute('data-rtx-search-highlight', 'target');
                   scrollItemWithinScrollableContainer(nextEl);
                 }
                 return;
@@ -2815,7 +2911,11 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
             }
 
             if (event.key === 'ArrowRight') {
-              const sheetItems = getDeepestOpenActionSheetItems();
+              let sheetItems = getDeepestOpenActionSheetItems();
+              if (sheetItems.length === 0 && activeMatch?.location.prepare) {
+                revealInPlace(activeMatch.item, activeMatch.location);
+                sheetItems = getDeepestOpenActionSheetItems();
+              }
               const currentTarget =
                 sheetItems.find((el) => el.classList.contains('rtx-search-located-target')) ??
                 searchSheetState.manualTargetElement ??
@@ -2915,8 +3015,18 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
                   sheetItems.find((el) => el.classList.contains('rtx-search-located-target')) ??
                   searchSheetState.manualTargetElement;
                 if (currentTarget && !doesElementHaveChildActionSheet(currentTarget)) {
+                  const fileMenuItemAttr = currentTarget.getAttribute('data-file-menu-item');
+                  const opensFileMenuHostedDialog =
+                    fileMenuItemAttr === 'save' ||
+                    fileMenuItemAttr === 'save-picture' ||
+                    fileMenuItemAttr === 'print-setup' ||
+                    fileMenuItemAttr === 'print-preview' ||
+                    fileMenuItemAttr === 'open-account' ||
+                    fileMenuItemAttr === 'exit' ||
+                    Boolean(currentTarget.closest('.rtx-file-submenu'));
                   currentTarget.click();
-                  clearAllSearchEffects(true);
+                  clearAllSearchEffects(!opensFileMenuHostedDialog);
+                  inputRef.current?.blur();
                 }
                 return;
               }
@@ -2926,6 +3036,8 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
                   activeMatch.location.hasActionSheet ?? Boolean(activeMatch.location.prepare);
                 if (!hasActionSheet) {
                   activeMatch.item.execute();
+                  clearAllSearchEffects(true);
+                  inputRef.current?.blur();
                 } else {
                   const directTarget = document.querySelector<HTMLElement>('.rtx-search-located-target');
                   if (
@@ -2933,8 +3045,20 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
                     !doesElementHaveChildActionSheet(directTarget) &&
                     directTarget.tagName === 'BUTTON'
                   ) {
+                    const fileMenuItemAttr = directTarget.getAttribute('data-file-menu-item');
+                    const opensFileMenuHostedDialog =
+                      fileMenuItemAttr === 'save' ||
+                      fileMenuItemAttr === 'save-picture' ||
+                      fileMenuItemAttr === 'print-setup' ||
+                      fileMenuItemAttr === 'print-preview' ||
+                      fileMenuItemAttr === 'open-account' ||
+                      fileMenuItemAttr === 'exit' ||
+                      Boolean(directTarget.closest('.rtx-file-submenu'));
                     directTarget.click();
-                    clearAllSearchEffects(true);
+                    clearAllSearchEffects(!opensFileMenuHostedDialog);
+                    inputRef.current?.blur();
+                  } else if (activeMatch.location.prepare) {
+                    revealInPlace(activeMatch.item, activeMatch.location);
                   }
                 }
               }
