@@ -371,6 +371,17 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         setShowPrintSetupDialog(true);
     };
 
+    useEffect(() => {
+        if (!shortcutsOnly) {
+            const handleRevealSubmenu = (event: Event) => {
+                const submenu = (event as CustomEvent<{ submenu?: 'profiles' | null }>).detail?.submenu;
+                setProfilesOpen(submenu === 'profiles');
+            };
+            window.addEventListener('rtx:reveal-file-submenu', handleRevealSubmenu);
+            return () => window.removeEventListener('rtx:reveal-file-submenu', handleRevealSubmenu);
+        }
+    }, [shortcutsOnly]);
+
     // Keyboard actions use the same capture, error and dialog lifecycle as File.
     useEffect(() => {
         if (!shortcutsOnly) return;
@@ -432,6 +443,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                     type="button"
                                     role="menuitem"
                                     aria-label={tr("Log Out")}
+                                    data-file-menu-item="logout"
                                     title={tr("Log out of the current account")}
                                     onClick={onLogout}
                                     data-desktop-logout={isDesktopShell ? 'true' : undefined}
@@ -453,6 +465,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Open Deleted */}
                 <div className="relative group/deleted px-1 [&:hover>div.submenu]:block">
                     <button
+                        data-file-menu-item="open-deleted"
                         disabled={recentlyClosedCharts.length === 0}
                         className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left ${recentlyClosedCharts.length > 0
                             ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
@@ -495,6 +508,8 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 >
                     <button
                         type="button"
+                        data-file-menu-item="profiles"
+                        aria-haspopup="menu"
                         onClick={() => setProfilesOpen(true)}
                         className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left cursor-default ${
                             profilesOpen
@@ -641,6 +656,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Close */}
                 <button
+                    data-file-menu-item="close"
                     onClick={handleCloseActiveChart}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title={tr("Close current chart")}
@@ -656,6 +672,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Save */}
                 <button
+                    data-file-menu-item="save"
                     onClick={handleSave}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title={tr("Save workspace configuration")}
@@ -669,6 +686,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Save As Picture */}
                 <button
+                    data-file-menu-item="save-picture"
                     onClick={handleSaveAsPicture}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title={tr("Export chart as image")}
@@ -684,6 +702,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Open Data Folder */}
                 <button
+                    data-file-menu-item="open-data-folder"
                     onClick={handleOpenDataFolder}
                     disabled={!onOpenDataFolder}
                     className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left group ${onOpenDataFolder
@@ -704,6 +723,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Print */}
                 <button
+                    data-file-menu-item="print"
                     onClick={() => { void handleDirectPrint(); }}
                     disabled={preparingPrint}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
@@ -718,6 +738,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Print Preview */}
                 <button
+                    data-file-menu-item="print-preview"
                     onClick={handlePrintPreview}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title={tr("Preview before printing")}
@@ -731,6 +752,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Print Setup */}
                 <button
+                    data-file-menu-item="print-setup"
                     onClick={handlePrintSetup}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title={tr("Configure print settings")}
@@ -746,6 +768,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Open an Account */}
                 {!hideOpenAccountOption && (
                     <button
+                        data-file-menu-item="open-account"
                         onClick={() => setShowOpenAccountDialog(true)}
                         className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                         title={tr("Register new trading account")}
@@ -759,6 +782,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Login to Trade Account */}
                 <button
+                    data-file-menu-item="login-trade"
                     onClick={onLoginTrade}
                     disabled={!onLoginTrade}
                     className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left ${onLoginTrade
@@ -774,6 +798,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Login to Web Trader */}
                 <button
+                    data-file-menu-item="login-web"
                     onClick={onLoginWebTrader}
                     disabled={!onLoginWebTrader}
                     className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left ${onLoginWebTrader
@@ -789,6 +814,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Login to RTX5.community */}
                 <button
+                    data-file-menu-item="login-community"
                     disabled
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
                     title={tr("RTX5 Community is not configured for this deployment")}
@@ -804,6 +830,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <>
                         <div className="rtx-menu-divider" role="separator"></div>
                         <button
+                            data-file-menu-item="exit"
                             onClick={handleExit}
                             className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                             title={tr("Close application")}

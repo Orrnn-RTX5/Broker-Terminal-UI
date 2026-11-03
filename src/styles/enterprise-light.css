@@ -866,19 +866,26 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-marke
   margin: 4px 6px;
   background: var(--rtx-light-elevated) !important;
   border: 1px solid var(--rtx-light-border) !important;
-  border-radius: 4px !important;
-  box-shadow: inset 0 1px 1px rgb(17 24 39 / 3%) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%) !important;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search--open .rtx-market-watch__search-bar {
+  margin: 7px 8px;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar:hover {
   border-color: var(--rtx-light-border-strong) !important;
-  box-shadow: 0 1px 3px rgb(17 24 39 / 6%) !important;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 6%) !important;
 }
 
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar .mw-input {
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar .mw-input,
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar .mw-input:is(:hover, :focus, :focus-visible) {
   background: transparent !important;
   border: 0 !important;
-  border-radius: 4px !important;
+  border-color: transparent !important;
+  border-radius: 6px !important;
   box-shadow: none !important;
   outline: none !important;
 }
@@ -893,13 +900,30 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-marke
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar:focus-within {
-  border-color: var(--rtx-light-accent) !important;
-  box-shadow: 0 0 0 2px var(--rtx-light-focus-ring), 0 2px 8px rgb(17 24 39 / 10%) !important;
+  border-color: var(--rtx-light-buy, #2563eb) !important;
+  box-shadow: 0 1px 4px rgb(37 99 235 / 12%) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar:focus-within > svg {
+  color: var(--rtx-light-buy, #2563eb) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__close {
+  color: var(--rtx-light-text-muted) !important;
+  border-radius: 5px !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__close:hover {
+  background: var(--rtx-light-hover) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__symbol-explorer {
+  border-top: 1px solid var(--rtx-light-row-border) !important;
 }
 
 /* Functional outlines stay distinct from quiet structural panel borders. */
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *)),
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input,
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input:not(.mw-input):not(.rtx-toolbar-search__input), select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *)),
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog, .rtx-dom-dialog, .rtx-modify-dialog, .rtx-cp-shell,
   .rtx-options-dialog, .rtx-symbols-dialog, .rtx-chart-template-dialog) :is(input, select, textarea) {
   background: var(--rtx-light-field) !important;
@@ -908,12 +932,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog, .rtx-dom-d
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *))::placeholder {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input:not(.mw-input):not(.rtx-toolbar-search__input), select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *))::placeholder {
   color: var(--rtx-light-text-muted) !important;
   opacity: 1 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input:hover,
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog, .rtx-dom-dialog, .rtx-modify-dialog, .rtx-cp-shell,
   .rtx-options-dialog, .rtx-symbols-dialog, .rtx-chart-template-dialog) :is(input, select, textarea):hover {
   border-color: var(--rtx-light-control-border-hover) !important;
@@ -923,8 +946,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light input:is([type="checkbox"], [type
   accent-color: var(--rtx-light-accent) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *)):focus,
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input:focus,
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input:not(.mw-input):not(.rtx-toolbar-search__input), select, textarea):not(:where(.rtx-desktop-shell .rtx-login-overlay *)):focus,
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog,
   .rtx-order-dialog,
   .rtx-dom-dialog,

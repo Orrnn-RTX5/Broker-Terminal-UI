@@ -30,6 +30,7 @@ import { getActiveChartSourceId, subscribeActiveChartSource } from '../../servic
 import { getDockPanelChartType, findChartPanel } from '../../services/chartTypeCommand';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import type { DesktopFeedSnapshot } from './desktopToolbarStatus';
+import { TopToolbarSearch } from './TopToolbarSearch';
 
 interface TopToolbarProps {
     chartType: ChartType;
@@ -624,9 +625,19 @@ const MainToolbar = ({
 
     // Close the portalled settings surface on outside interaction or Escape.
     useEffect(() => {
+        const handleRevealDropdown = (event: Event) => {
+            const id = (event as CustomEvent<{ id?: string | null }>).detail?.id;
+            setShowHistoryOverlayMenu(id === 'trade-history-overlays');
+        };
+        window.addEventListener('rtx:reveal-toolbar-dropdown', handleRevealDropdown);
+        return () => window.removeEventListener('rtx:reveal-toolbar-dropdown', handleRevealDropdown);
+    }, []);
+
+    useEffect(() => {
         let viewportFrame = 0;
         const handleClickOutside = (e: MouseEvent) => {
             const target = e.target as Node;
+            if (target instanceof Element && target.closest('[data-rtx-universal-search]')) return;
             const clickedHistoryOverlay = !!historyOverlayRef.current?.contains(target) || !!historyOverlayDropdownRef.current?.contains(target);
 
             if (!clickedHistoryOverlay) setShowHistoryOverlayMenu(false);
@@ -993,6 +1004,40 @@ const MainToolbar = ({
                     />
                 )}
             </div>
+            {!isDesktopShell && (
+                <TopToolbarSearch
+                    selectedSymbol={symbol}
+                    timeframe={timeframe}
+                    chartType={toolbarState.chartType || chartType}
+                    onSymbolChange={(nextSymbol) => {
+                        window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: nextSymbol } }));
+                    }}
+                    onTimeframeChange={(nextTimeframe) => {
+                        onTimeframeChange(nextTimeframe);
+                        const target = getActiveChartCommandTarget(symbol, timeframe);
+                        const panelId = getPanelIdFromChartContextId(target.targetContextId);
+                        dispatchCommand({
+                            type: 'SET_TIMEFRAME',
+                            payload: {
+                                timeframe: nextTimeframe,
+                                ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}),
+                                ...(panelId ? { panelId } : {}),
+                            },
+                        });
+                        window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: nextTimeframe } }));
+                    }}
+                    onChartTypeChange={dispatchTargetedChartType}
+                    onNewOrder={() => {
+                        window.dispatchEvent(new CustomEvent('openNewOrder', { detail: { symbol } }));
+                    }}
+                    onOpenSymbols={() => {
+                        window.dispatchEvent(new CustomEvent('openSymbolsDialog'));
+                    }}
+                    onOpenDepthOfMarket={() => onToggleDOM?.()}
+                    onTileWindows={() => dispatchCommand({ type: 'TILE_WINDOWS', payload: { mode: 'grid' } })}
+                    onResetWindows={() => window.dispatchEvent(new CustomEvent('resetLayout'))}
+                />
+            )}
             {!isDesktopShell && reportBugButton}
             {!isDesktopShell && <WindowControls />}
         </div>

@@ -272,6 +272,24 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     useDrawingSidebarStore.getState().clearMenuRequest();
   }, [requestedMenu]);
 
+  useEffect(() => {
+    const handleRevealDrawingMenu = (event: Event) => {
+      const menuId = (event as CustomEvent<{ menuId?: RailMenuId | null }>).detail?.menuId;
+      if (!menuId) {
+        setMenuOpen(null);
+        return;
+      }
+      const button = railRef.current?.querySelector<HTMLButtonElement>(`[data-rail-menu="${menuId}"]`);
+      if (button) {
+        triggerRef.current = button;
+        tooltipControllerRef.current?.hide();
+        setMenuOpen(menuId);
+      }
+    };
+    window.addEventListener('rtx:reveal-drawing-menu', handleRevealDrawingMenu);
+    return () => window.removeEventListener('rtx:reveal-drawing-menu', handleRevealDrawingMenu);
+  }, []);
+
   const tooltipProps = (ownerId: string, label: string) => ({
     onMouseEnter: (event: React.MouseEvent<HTMLButtonElement>) => {
       tooltipControllerRef.current?.enter({ ownerId, label, trigger: event.currentTarget });
@@ -565,6 +583,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest('[data-rtx-universal-search]')) return;
       // Switching flyouts is one click update, not a close on pointerdown
       // followed by a second mount on click.
       if (target instanceof Element && railRef.current?.contains(target)
@@ -1018,6 +1037,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
       <div className="web-drawing-tools-rail__tools">
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="cursors"
           data-active={cursorMode !== 'arrow' && visibleActiveTool === null ? 'true' : 'false'}
           type="button"
           aria-label={tr('{{value0}} — Cursors', { value0: tr(selectedCursor.label) })}
@@ -1032,6 +1052,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="trend"
           data-active={activeTrendToolId !== null ? 'true' : 'false'}
           type="button"
           aria-label={tr("{{value0}} — Trend Line Tools", { value0: tr(selectedTool.label) })}
@@ -1046,6 +1067,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="fibonacci"
           data-active={visibleActiveTool?.tool === 'fibonacci' || visibleActiveTool?.tool === 'fib_extension' ? 'true' : 'false'}
           type="button"
           aria-label={tr("Fib retracement - Gann and Fibonacci Tools")}
@@ -1059,6 +1081,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
         </button>
 
         <button className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="patterns"
           data-active={visibleActiveTool?.tool === 'pattern' ? 'true' : 'false'} type="button"
           aria-label={tr("Chart patterns")} aria-haspopup="menu" aria-expanded={menuOpen === 'patterns'}
           onClick={event => openRailMenu('patterns', event.currentTarget)} {...tooltipProps('patterns', 'Chart patterns')}>
@@ -1067,6 +1090,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="forecasting"
           data-active={visibleActiveTool?.tool === 'measure' ? 'true' : 'false'}
           type="button"
           aria-label={tr("Forecasting and measurement tools")}
@@ -1081,6 +1105,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="shapes"
           data-active={['freehand', 'shapes', 'rectangle', 'ellipse'].includes(visibleActiveTool?.tool ?? '') ? 'true' : 'false'}
           type="button"
           aria-label={tr("Brush tools")}
@@ -1095,6 +1120,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="annotations"
           data-active={visibleActiveTool?.tool === 'text' || visibleActiveTool?.tool === 'callout' ? 'true' : 'false'}
           type="button"
           aria-label={tr("Annotation Tools")}
@@ -1109,6 +1135,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="emojis"
           data-active={visibleActiveTool?.tool === 'stamp' && isPictographStamp(visibleActiveTool.subtype) ? 'true' : 'false'}
           type="button"
           aria-label={tr("Emojis")}
@@ -1124,6 +1151,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="stamps"
           data-active={visibleActiveTool?.tool === 'stamp' && !isPictographStamp(visibleActiveTool.subtype) ? 'true' : 'false'}
           type="button"
           aria-label={tr("Icons and Stamps")}
@@ -1180,6 +1208,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="magnet"
           data-active={magnetMode !== 'off' ? 'true' : 'false'}
           type="button"
           aria-label={tr("Magnet mode")}
@@ -1208,6 +1237,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="lock"
           data-active={chartObjectState.drawingsLocked || chartObjectState.indicatorsLocked ? 'true' : 'false'}
           type="button"
           aria-label={tr("Lock objects")}
@@ -1222,6 +1252,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
 
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="hide"
           data-active={chartObjectState.drawingsHidden || chartObjectState.indicatorsHidden || chartObjectState.tradesHidden
             ? 'true'
             : 'false'}
@@ -1245,6 +1276,7 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
         <div className="web-drawing-tools-rail__separator" role="separator" />
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__remove-button web-drawing-tools-rail__flyout-button"
+          data-rail-menu="remove"
           type="button"
           aria-label={tr("Remove Drawings")}
           aria-haspopup="menu"

@@ -167,17 +167,27 @@ export const MarketWatchSymbolExplorer = ({
         background: 'var(--bg-secondary)',
       }}
     >
-      <div className="rtx-market-watch__search-bar" style={{ position: 'relative', height: showSymbolsPanel ? 26 : 22, flexShrink: 0 }}>
+      <div
+        className="rtx-market-watch__search-bar"
+        style={{
+          position: 'relative',
+          height: showSymbolsPanel ? 32 : 24,
+          margin: showSymbolsPanel ? '7px 8px' : undefined,
+          borderRadius: showSymbolsPanel ? 6 : undefined,
+          flexShrink: 0,
+        }}
+      >
         <Icon
           name={showSymbolsPanel ? 'search' : 'plus'}
-          size={12}
+          size={showSymbolsPanel ? 14 : 12}
           style={{
             position: 'absolute',
-            left: 5,
+            left: showSymbolsPanel ? 10 : 8,
             top: '50%',
             transform: 'translateY(-50%)',
-            color: showSymbolsPanel ? 'var(--text-primary)' : '#4d9e87',
+            color: showSymbolsPanel ? 'var(--text-secondary)' : '#4d9e87',
             pointerEvents: 'none',
+            transition: 'color 140ms ease',
           }}
         />
         <input
@@ -191,8 +201,8 @@ export const MarketWatchSymbolExplorer = ({
             boxSizing: 'border-box',
             background: 'transparent',
             border: '1px solid transparent',
-            borderRadius: 0,
-            padding: showSymbolsPanel ? '0 26px 0 22px' : '0 84px 0 22px',
+            borderRadius: showSymbolsPanel ? 6 : 0,
+            padding: showSymbolsPanel ? '0 32px 0 32px' : '0 84px 0 26px',
             fontSize: 12,
             fontWeight: 400,
             color: 'var(--text-primary)',
@@ -216,7 +226,7 @@ export const MarketWatchSymbolExplorer = ({
           <span
             className="rtx-market-watch__symbol-count"
             aria-label={translate('Displayed symbols: {{displayed}} of {{total}}', { displayed: symbolCount, total: searchUniverse.length })}
-            style={{ position: 'absolute', right: 5, top: 0, height: '100%', display: 'flex', alignItems: 'center', pointerEvents: 'none', color: 'var(--text-primary)', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
+            style={{ position: 'absolute', right: 8, top: 0, height: '100%', display: 'flex', alignItems: 'center', pointerEvents: 'none', color: 'var(--text-secondary)', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
           >
             {symbolCount} / {searchUniverse.length}
           </span>
@@ -230,11 +240,12 @@ export const MarketWatchSymbolExplorer = ({
           className="rtx-market-watch__close"
           style={{
             position: 'absolute',
-            right: 5,
+            right: 6,
             top: '50%',
             transform: 'translateY(-50%)',
-            width: 16,
-            height: 16,
+            width: 20,
+            height: 20,
+            borderRadius: 5,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -242,6 +253,7 @@ export const MarketWatchSymbolExplorer = ({
             background: 'transparent',
             color: 'var(--text-secondary)',
             cursor: 'pointer',
+            transition: 'background-color 120ms ease, color 120ms ease',
           }}
         >
           <Icon name="x-close" size={12} />
@@ -256,6 +268,7 @@ export const MarketWatchSymbolExplorer = ({
             flex: '1 1 auto',
             flexDirection: 'column',
             minHeight: 0,
+            borderTop: '1px solid var(--border-primary)',
             background: 'var(--bg-secondary)',
           }}
         >

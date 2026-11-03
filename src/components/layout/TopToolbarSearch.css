@@ -1,0 +1,421 @@
+/* ==========================================================================
+   Universal Top Toolbar Search & Live In-Place UI Locator (`TopToolbarSearch`)
+   Zero dropdown under the search bar — highlights options directly in-place
+   where they exist in the application.
+   ========================================================================== */
+
+.rtx-toolbar-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 2px 0 6px;
+  flex-shrink: 0;
+}
+
+.rtx-toolbar-search::after {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 18px;
+  margin-left: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.rtx-toolbar-search__field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: clamp(215px, 17.5vw, 270px);
+  height: 28px;
+  padding: 0 7px 0 9px;
+  border-radius: 6px;
+  background: rgba(18, 21, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+  color: #f2f4f7;
+  cursor: text;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.rtx-toolbar-search__field:hover {
+  background: rgba(24, 28, 37, 0.98);
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+}
+
+.rtx-toolbar-search__field:focus-within,
+.rtx-toolbar-search__field.has-query {
+  background: #10131a;
+  border-color: #3b82f6;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.18);
+}
+
+.rtx-toolbar-search__field.is-no-match:focus-within,
+.rtx-toolbar-search__field.is-no-match {
+  border-color: #ef4444;
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.16);
+}
+
+.rtx-toolbar-search__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #98a2b3;
+  pointer-events: none;
+  transition: color 140ms ease, transform 140ms ease;
+}
+
+.rtx-toolbar-search__field:focus-within .rtx-toolbar-search__icon,
+.rtx-toolbar-search__field.has-query .rtx-toolbar-search__icon {
+  color: #60a5fa;
+}
+
+.rtx-toolbar-search__field.is-no-match .rtx-toolbar-search__icon {
+  color: #f87171;
+}
+
+html:root .rtx-toolbar-search .rtx-toolbar-search__input,
+html:root .rtx-toolbar-search .rtx-toolbar-search__input:is(:hover, :focus, :focus-visible) {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-color: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  color: inherit !important;
+  font-family: var(--font-sans, 'Plus Jakarta Sans Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-size: 12.5px;
+  font-weight: 450;
+  line-height: 18px;
+  letter-spacing: -0.005em;
+}
+
+html:root .rtx-toolbar-search .rtx-toolbar-search__input::placeholder {
+  color: #858e9e !important;
+  font-weight: 400;
+  opacity: 1 !important;
+}
+
+.rtx-toolbar-search__suffix {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.rtx-toolbar-search__kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 19px;
+  padding: 0 5.5px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  color: #98a2b3;
+  font-family: var(--font-sans, 'Plus Jakarta Sans Variable', sans-serif);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
+}
+
+.rtx-toolbar-search__stepper {
+  display: inline-flex;
+  align-items: center;
+  height: 19px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.34);
+  overflow: hidden;
+}
+
+.rtx-toolbar-search__stepper.is-empty {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.36);
+}
+
+.rtx-toolbar-search__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 5.5px;
+  color: #93c5fd;
+  font-family: var(--font-sans, 'Plus Jakarta Sans Variable', sans-serif);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.rtx-toolbar-search__count.is-empty {
+  color: #fca5a5;
+}
+
+.rtx-toolbar-search__step-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #93c5fd;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.rtx-toolbar-search__step-btn:first-child {
+  border-right: 1px solid rgba(59, 130, 246, 0.24);
+}
+
+.rtx-toolbar-search__step-btn:last-child {
+  border-left: 1px solid rgba(59, 130, 246, 0.24);
+}
+
+.rtx-toolbar-search__step-btn:hover {
+  background: rgba(59, 130, 246, 0.26);
+  color: #ffffff;
+}
+
+.rtx-toolbar-search__divider {
+  width: 1px;
+  height: 13px;
+  background: rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+}
+
+.rtx-toolbar-search__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
+  color: #98a2b3;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 100ms ease;
+}
+
+.rtx-toolbar-search__clear:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.rtx-toolbar-search__clear:active {
+  transform: scale(0.93);
+}
+
+/* ==========================================================================
+   Direct In-Place DOM Highlight Classes
+   Applied directly onto the actual menu rows, buttons, flyout items, & tabs.
+   Institutional solid geometry — crisp rounded border & subtle luminous fill.
+   ========================================================================== */
+
+html:root body .rtx-search-located-target,
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) body .rtx-search-located-target {
+  position: relative;
+  z-index: 20;
+  border-radius: 6px !important;
+  border-color: transparent !important;
+  outline: 1.5px solid #60a5fa !important;
+  outline-offset: -1px !important;
+  background: rgba(59, 130, 246, 0.2) !important;
+  background-color: rgba(59, 130, 246, 0.2) !important;
+  background-image: none !important;
+  box-shadow:
+    0 0 0 2px rgba(59, 130, 246, 0.22),
+    0 1px 4px rgba(0, 0, 0, 0.32) !important;
+  color: #f8fafc !important;
+  transition:
+    background-color 140ms ease,
+    outline-color 140ms ease,
+    box-shadow 140ms ease !important;
+}
+
+html:root body .rtx-search-located-step,
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) body .rtx-search-located-step {
+  position: relative;
+  z-index: 15;
+  border-radius: 6px !important;
+  border-color: transparent !important;
+  outline: 1px solid rgba(96, 165, 250, 0.45) !important;
+  outline-offset: -1px !important;
+  background: rgba(59, 130, 246, 0.14) !important;
+  background-color: rgba(59, 130, 246, 0.14) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: #f1f5f9 !important;
+}
+
+html:root body .rtx-search-located-target :is(.rtx-application-menu__item-icon, .rtx-menu-row__icon, .rtx-application-menu__chevron, .rtx-menu-row__chevron),
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) body .rtx-search-located-target :is(.rtx-application-menu__item-icon, .rtx-menu-row__icon, .rtx-application-menu__chevron, .rtx-menu-row__chevron) {
+  color: #93c5fd !important;
+}
+
+html:root body .rtx-search-located-step :is(.rtx-application-menu__item-icon, .rtx-menu-row__icon, .rtx-application-menu__chevron, .rtx-menu-row__chevron),
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) body .rtx-search-located-step :is(.rtx-application-menu__item-icon, .rtx-menu-row__icon, .rtx-application-menu__chevron, .rtx-menu-row__chevron) {
+  color: #93c5fd !important;
+}
+
+html:root:is(.rtx-skin-untitled-light, .theme-light) body .rtx-search-located-target,
+html.rtx-advanced-view.rtx-skin-untitled-light body .rtx-search-located-target {
+  border-radius: 6px !important;
+  border-color: transparent !important;
+  outline: 1.5px solid #2563eb !important;
+  outline-offset: -1px !important;
+  background: rgba(37, 99, 235, 0.1) !important;
+  background-color: rgba(37, 99, 235, 0.1) !important;
+  background-image: none !important;
+  box-shadow:
+    0 0 0 2px rgba(37, 99, 235, 0.16),
+    0 1px 3px rgba(15, 23, 42, 0.06) !important;
+  color: #0f172a !important;
+}
+
+html:root:is(.rtx-skin-untitled-light, .theme-light) body .rtx-search-located-step,
+html.rtx-advanced-view.rtx-skin-untitled-light body .rtx-search-located-step {
+  border-radius: 6px !important;
+  border-color: transparent !important;
+  outline: 1px solid rgba(37, 99, 235, 0.32) !important;
+  outline-offset: -1px !important;
+  background: rgba(37, 99, 235, 0.08) !important;
+  background-color: rgba(37, 99, 235, 0.08) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+}
+
+html:root:is(.rtx-skin-untitled-light, .theme-light) body :is(.rtx-search-located-target, .rtx-search-located-step) :is(.rtx-application-menu__item-icon, .rtx-menu-row__icon, .rtx-application-menu__chevron, .rtx-menu-row__chevron),
+html.rtx-advanced-view.rtx-skin-untitled-light body :is(.rtx-search-located-target, .rtx-search-located-step) :is(.rtx-application-menu__item-icon, .rtx-menu-row__icon, .rtx-application-menu__chevron, .rtx-menu-row__chevron) {
+  color: #2563eb !important;
+}
+
+/* ==========================================================================
+   Enterprise Light Theme Overrides
+   Matches Market Watch search bar & active timeframe controls
+   ========================================================================== */
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search::after {
+  background: #cbd5e1;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__field {
+  background: var(--rtx-light-elevated, #ffffff) !important;
+  border: 1px solid var(--rtx-light-border, #c5ced9) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  color: var(--rtx-light-text, #182230) !important;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__field:hover {
+  background: var(--rtx-light-elevated, #ffffff) !important;
+  border-color: var(--rtx-light-border-strong, #9eacbd) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__field:focus-within,
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__field.has-query {
+  background: var(--rtx-light-elevated, #ffffff) !important;
+  border-color: var(--rtx-light-buy, #2563eb) !important;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.12) !important;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__field.is-no-match:focus-within,
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__field.is-no-match {
+  border-color: #dc2626 !important;
+  box-shadow: 0 1px 4px rgba(220, 38, 38, 0.12) !important;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__icon {
+  color: #64748b;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__field:focus-within .rtx-toolbar-search__icon,
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__field.has-query .rtx-toolbar-search__icon {
+  color: #2563eb;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__field.is-no-match .rtx-toolbar-search__icon {
+  color: #dc2626;
+}
+
+html:root:is(.rtx-skin-untitled-light, .theme-light) .rtx-toolbar-search .rtx-toolbar-search__input::placeholder {
+  color: #64748b !important;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__kbd {
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  color: #475569;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__stepper {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__stepper.is-empty {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__count {
+  color: #1d4ed8;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__count.is-empty {
+  color: #b91c1c;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__step-btn {
+  color: #1d4ed8;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__step-btn:first-child {
+  border-right-color: #bfdbfe;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__step-btn:last-child {
+  border-left-color: #bfdbfe;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__step-btn:hover {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__divider {
+  background: #e2e8f0;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__clear {
+  color: #64748b;
+}
+
+:is(html.rtx-skin-untitled-light, .rtx-skin-untitled-light, html.theme-light, .theme-light) .rtx-toolbar-search__clear:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}

@@ -356,10 +356,14 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-drop-zone--active .dock-dro
   color: #6941c6 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .mw-input {
-  background: #ffffff !important;
-  border-color: #d0d5dd !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .mw-input,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-search__input {
+  background: transparent !important;
+  border: 0 !important;
+  border-color: transparent !important;
   color: #101828 !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch,

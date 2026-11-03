@@ -828,9 +828,13 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
         .rtx-market-watch .mw-row { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
         .rtx-market-watch .rtx-market-watch__price .price-big { font-size: inherit !important; font-weight: inherit !important; }
         .rtx-market-watch .rtx-market-watch__column-heading--symbol { color: var(--text-primary) !important; }
-        .rtx-market-watch .mw-input::placeholder { color: var(--text-primary); opacity: 1; }
-        .rtx-market-watch .mw-input:focus { border-color: transparent !important; box-shadow: none !important; background: transparent !important; }
-        .rtx-market-watch .rtx-market-watch__search-bar:focus-within { box-shadow: inset 0 -1px 0 var(--border-secondary); }
+        .rtx-market-watch .mw-input::placeholder { color: var(--text-secondary); opacity: 1; }
+        .rtx-market-watch .mw-input:is(:focus, :focus-visible) { border-color: transparent !important; box-shadow: none !important; background: transparent !important; outline: none !important; }
+        .rtx-market-watch .rtx-market-watch__search--open .rtx-market-watch__search-bar { background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: 6px; transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease; }
+        .rtx-market-watch .rtx-market-watch__search--open .rtx-market-watch__search-bar:hover { border-color: var(--border-secondary); }
+        .rtx-market-watch .rtx-market-watch__search--open .rtx-market-watch__search-bar:focus-within { border-color: var(--color-primary, #3b82f6); box-shadow: 0 1px 4px rgba(59, 130, 246, 0.16); }
+        .rtx-market-watch .rtx-market-watch__search--open .rtx-market-watch__search-bar:focus-within > svg { color: var(--color-primary, #3b82f6) !important; }
+        .rtx-market-watch .rtx-market-watch__close:hover { background: var(--bg-quaternary) !important; color: var(--text-primary) !important; }
         .rtx-market-watch .rtx-market-watch__explorer-option:hover { background: var(--bg-quaternary) !important; }
         .rtx-market-watch .mw-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
         .rtx-market-watch .mw-scrollbar::-webkit-scrollbar-track { background: transparent; }

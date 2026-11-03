@@ -171,10 +171,12 @@ export const MenuBar = ({
     const desktopMenuButtonRef = useRef<HTMLButtonElement>(null);
     const desktopMenuButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
     const [menuPosition, setMenuPosition] = useState({ top: 40, left: 4 });
+    const [revealedSubmenuPath, setRevealedSubmenuPath] = useState<string[] | undefined>(undefined);
 
     const closeMenu = useCallback(() => {
         setIsMenuOpen(false);
         setActiveMenu(null);
+        setRevealedSubmenuPath(undefined);
     }, []);
 
     const terminalResolution = useTerminalResolutionStore(state => state.resolution);
@@ -219,7 +221,7 @@ export const MenuBar = ({
         const handleClickOutside = (event: MouseEvent) => {
             if (isFileDialogOpen) return;
             const target = event.target as Node;
-            if (target instanceof Element && target.closest('[data-rtx-desktop-submenu]')) return;
+            if (target instanceof Element && (target.closest('[data-rtx-desktop-submenu]') || target.closest('[data-rtx-universal-search]'))) return;
             if (!menuRef.current?.contains(target) && !menuPopupRef.current?.contains(target)) {
                 closeMenu();
             }
@@ -227,6 +229,40 @@ export const MenuBar = ({
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [closeMenu, isFileDialogOpen]);
+
+    useEffect(() => {
+        const handleRevealMenuPath = (event: Event) => {
+            const detail = (event as CustomEvent<{
+                close?: boolean;
+                webRootId?: string;
+                desktopMenuKey?: DesktopMenuKey;
+                submenuPath?: string[];
+                openDepth?: number;
+            }>).detail;
+            if (!detail) return;
+            if (detail.close) {
+                closeMenu();
+                return;
+            }
+            setIsFileDialogOpen(false);
+            const depth = detail.openDepth ?? 0;
+            setIsMenuOpen(true);
+            if (isElectronDesktop) {
+                setActiveMenu(detail.desktopMenuKey ?? 'View');
+                setRevealedSubmenuPath((detail.submenuPath ?? []).slice(0, depth));
+            } else {
+                if (depth <= 0) {
+                    setActiveMenu(null);
+                    setRevealedSubmenuPath([]);
+                } else {
+                    setActiveMenu(detail.webRootId ?? null);
+                    setRevealedSubmenuPath((detail.submenuPath ?? []).slice(0, depth - 1));
+                }
+            }
+        };
+        window.addEventListener('rtx:reveal-menu-path', handleRevealMenuPath);
+        return () => window.removeEventListener('rtx:reveal-menu-path', handleRevealMenuPath);
+    }, [closeMenu, isElectronDesktop]);
 
     useEffect(() => {
         if (!isMenuOpen) return;
@@ -1021,6 +1057,7 @@ export const MenuBar = ({
     useEffect(() => {
         if (!isMenuOpen || isElectronDesktop) return;
         const frame = window.requestAnimationFrame(() => {
+            if (document.activeElement?.closest('[data-rtx-universal-search]')) return;
             menuPopupRef.current?.querySelector<HTMLButtonElement>('[data-root-menu-item="true"]')?.focus();
         });
         return () => window.cancelAnimationFrame(frame);
@@ -1124,7 +1161,7 @@ export const MenuBar = ({
                                                 fileMenu
                                             ) : (
                                                 <div className="rtx-menu-surface min-w-[260px] py-1">
-                                                    <MenuList items={desktopMenuItems[menuKey]} onClose={closeMenu} />
+                                                    <MenuList items={desktopMenuItems[menuKey]} onClose={closeMenu} openPath={revealedSubmenuPath} />
                                                 </div>
                                             )}
                                         </div>
@@ -1286,7 +1323,7 @@ export const MenuBar = ({
                                                     fileMenu
                                                 ) : (
                                                     <div className="rtx-menu-surface min-w-[260px] py-1">
-                                                        <MenuList items={item.children || []} onClose={closeMenu} />
+                                                        <MenuList items={item.children || []} onClose={closeMenu} openPath={revealedSubmenuPath} />
                                                     </div>
                                                 )}
                                             </div>
@@ -1336,8 +1373,22 @@ export const MenuBar = ({
     );
 };
 
-const MenuList = ({ items, onClose }: { items: MenuItem[]; onClose?: () => void }) => {
+const MenuList = ({ items, onClose, openPath }: { items: MenuItem[]; onClose?: () => void; openPath?: string[] }) => {
     const [openIndex, setOpenIndex] = useState<number | null>(null);
+    const pathTarget = openPath?.[0]?.trim().toLowerCase() || '';
+
+    useEffect(() => {
+        if (!pathTarget) {
+            if (openPath !== undefined) setOpenIndex(null);
+            return;
+        }
+        const foundIndex = items.findIndex((candidate) => !candidate.divider && candidate.label.trim().toLowerCase() === pathTarget);
+        if (foundIndex >= 0 && items[foundIndex]?.children) {
+            setOpenIndex(foundIndex);
+        } else {
+            setOpenIndex(null);
+        }
+    }, [items, openPath, pathTarget]);
 
     return (
         <>
@@ -1348,6 +1399,7 @@ const MenuList = ({ items, onClose }: { items: MenuItem[]; onClose?: () => void 
                     isSubmenuOpen={openIndex === index}
                     onToggleSubmenu={(open) => setOpenIndex(open ? index : null)}
                     onClose={onClose}
+                    openPath={openIndex === index && openPath?.length ? openPath.slice(1) : undefined}
                 />
             ))}
         </>
@@ -1359,11 +1411,13 @@ const MenuItem = ({
     isSubmenuOpen,
     onToggleSubmenu,
     onClose,
+    openPath,
 }: {
     item: MenuItem;
     isSubmenuOpen: boolean;
     onToggleSubmenu: (open: boolean) => void;
     onClose?: () => void;
+    openPath?: string[];
 }) => {
     const tr = useUiTranslation();
     const submenuRef = useRef<HTMLDivElement>(null);
@@ -1394,7 +1448,7 @@ const MenuItem = ({
             data-rtx-desktop-submenu={desktop ? 'true' : undefined}
             className={`rtx-menu-surface min-w-[200px] py-1 ${desktop ? 'fixed z-[10010]' : 'absolute left-full top-0 ml-[-2px] z-[101]'} ${item.scrollableChildren ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}`}
             style={desktop ? { ...position, maxHeight: Math.min(400, window.innerHeight - 16), maxWidth: 'calc(100vw - 16px)', overflowY: 'auto' } : undefined}>
-            <MenuList items={item.children} onClose={onClose} />
+            <MenuList items={item.children} onClose={onClose} openPath={openPath} />
         </div>
     ) : null;
 
@@ -1410,6 +1464,7 @@ const MenuItem = ({
                 disabled={item.disabled}
                 aria-disabled={item.disabled || undefined}
                 aria-label={item.translateLabel === false ? item.label : tr(item.label)}
+                data-menu-item-label={item.label}
                 aria-description={tr(item.unavailableReason)}
                 title={tr(item.unavailableReason)}
                 role={item.checkRole === 'radio' ? 'menuitemradio' : item.checkRole === 'checkbox' ? 'menuitemcheckbox' : 'menuitem'}

@@ -346,7 +346,7 @@ html:root:not(.rtx-skin-untitled-light):not(.theme-light) :is(
     [role='menuitem']:not([aria-disabled='true']),
     [role='option'],
     .web-drawing-tools-menu__item
-  ):is(:hover, :focus-visible, .is-active, .is-open):not(:disabled) {
+  ):is(:hover, :focus-visible, .is-active, .is-open):not(:disabled):not(.rtx-search-located-target):not(.rtx-search-located-step) {
     background: var(--bg-quaternary) !important;
     background-image: none !important;
   }

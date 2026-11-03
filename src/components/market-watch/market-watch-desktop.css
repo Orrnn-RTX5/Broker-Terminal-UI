@@ -374,6 +374,18 @@ html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__search-
   color: var(--text-secondary);
 }
 
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__search--open .rtx-market-watch__search-bar {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid var(--mw-desktop-grid, var(--border-primary)) !important;
+  border-radius: 6px !important;
+}
+
+html:root:not(.rtx-skin-untitled-light):not(.theme-light) .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch__search--open .rtx-market-watch__search-bar:focus-within {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: var(--mw-desktop-selection, #3b82f6) !important;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.18) !important;
+}
+
 html:root .rtx-market-watch.rtx-market-watch--desktop .rtx-market-watch-details {
   padding-bottom: 4px;
 }

@@ -2889,7 +2889,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       resolveSpecification?.(null);
       await Promise.resolve();
     });
-    expect(screen.getByText('Contract size').parentElement?.parentElement).toHaveTextContent('0');
+    expect(screen.getByText('Contract size').parentElement?.parentElement).toHaveTextContent('—');
     expect(screen.getByText('Contract size').parentElement?.parentElement).not.toHaveTextContent('100');
   });
 
