@@ -382,4 +382,96 @@ describe('TopToolbarSearch (Zero-Dropdown Direct In-Place UI Locator)', () => {
     document.body.removeChild(appMenu);
     window.removeEventListener('rtx:reveal-menu-path', revealSpy);
   });
+
+  it('keeps the 2nd action sheet open after ArrowRight across live market tick updates and parent prop re-renders', () => {
+    const revealSpy = vi.fn();
+    window.addEventListener('rtx:reveal-menu-path', revealSpy);
+
+    const rect = {
+      top: 40,
+      left: 10,
+      width: 260,
+      height: 32,
+      bottom: 72,
+      right: 270,
+      x: 10,
+      y: 40,
+      toJSON: () => ({}),
+    };
+
+    const appMenu = document.createElement('div');
+    appMenu.className = 'rtx-application-menu';
+    appMenu.getBoundingClientRect = () => rect;
+
+    const colorTemplatesBtn = document.createElement('button');
+    colorTemplatesBtn.setAttribute('data-root-menu-item', 'true');
+    colorTemplatesBtn.setAttribute('data-menu-key', 'color-templates');
+    colorTemplatesBtn.setAttribute('aria-haspopup', 'menu');
+    colorTemplatesBtn.textContent = 'Color Templates';
+    colorTemplatesBtn.getBoundingClientRect = () => rect;
+    appMenu.appendChild(colorTemplatesBtn);
+    document.body.appendChild(appMenu);
+
+    const { rerender } = render(
+      <TopToolbarSearch
+        {...defaultProps}
+        onSymbolChange={() => {}}
+        onTimeframeChange={() => {}}
+        onChartTypeChange={() => {}}
+        onNewOrder={() => {}}
+      />,
+    );
+    const input = screen.getByRole('searchbox', { name: /search anywhere in application/i });
+
+    fireEvent.change(input, { target: { value: 'color template' } });
+    expect(revealSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          webRootId: 'color-templates',
+          openDepth: 0,
+        }),
+      }),
+    );
+
+    const secondSheet = document.createElement('div');
+    secondSheet.className = 'rtx-menu-surface';
+    secondSheet.getBoundingClientRect = () => rect;
+    const greenRedBtn = document.createElement('button');
+    greenRedBtn.className = 'rtx-menu-row';
+    greenRedBtn.setAttribute('data-menu-item-label', 'Green and Red');
+    greenRedBtn.textContent = 'Green and Red';
+    greenRedBtn.getBoundingClientRect = () => rect;
+    secondSheet.appendChild(greenRedBtn);
+    appMenu.appendChild(secondSheet);
+
+    fireEvent.keyDown(input, { key: 'ArrowRight' });
+    expect(revealSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          webRootId: 'color-templates',
+          openDepth: 1,
+        }),
+      }),
+    );
+
+    revealSpy.mockClear();
+
+    // Simulate parent re-renders on live market ticks with fresh inline arrow callbacks
+    rerender(
+      <TopToolbarSearch
+        {...defaultProps}
+        onSymbolChange={() => {}}
+        onTimeframeChange={() => {}}
+        onChartTypeChange={() => {}}
+        onNewOrder={() => {}}
+      />,
+    );
+
+    // Must NOT dispatch close:true or reset openDepth back to 0
+    expect(revealSpy).not.toHaveBeenCalled();
+    expect(greenRedBtn.classList.contains('rtx-search-located-target')).toBe(true);
+
+    document.body.removeChild(appMenu);
+    window.removeEventListener('rtx:reveal-menu-path', revealSpy);
+  });
 });

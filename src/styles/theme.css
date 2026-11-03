@@ -826,6 +826,14 @@ textarea {
   font-family: var(--font-sans);
 }
 
+.rtx-application-menu [role='menu'],
+.rtx-application-menu .rtx-menu-surface,
+.rtx-menu-surface[role='menu'],
+.rtx-menu-surface.submenu {
+  width: max-content;
+  max-width: calc(100vw - 16px);
+}
+
 .rtx-application-menu {
   animation: rtx-application-menu-enter 120ms ease-out;
   font-family: "Segoe UI", Tahoma, Arial, sans-serif;
@@ -1006,8 +1014,13 @@ textarea {
   line-height: 19.5px;
 }
 
+.rtx-menu-row > .font-segoe {
+  white-space: nowrap;
+}
+
 .rtx-application-menu .rtx-menu-row > .font-segoe {
   font-family: inherit;
+  white-space: nowrap;
 }
 
 /* The Electron menu bar and its portaled submenus are the desktop counterpart of

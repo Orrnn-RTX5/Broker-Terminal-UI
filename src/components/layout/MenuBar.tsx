@@ -1309,7 +1309,7 @@ export const MenuBar = ({
 
                                         {activeMenu === item.id && hasSubmenu && (
                                             <div
-                                                className="absolute left-full ml-px z-[10000]"
+                                                className="absolute left-full ml-px z-[10000] w-max"
                                                 style={{
                                                     top: -(
                                                         rootIndex * 38
@@ -1322,7 +1322,7 @@ export const MenuBar = ({
                                                 {item.opensFileMenu ? (
                                                     fileMenu
                                                 ) : (
-                                                    <div className="rtx-menu-surface min-w-[260px] py-1">
+                                                    <div className={`rtx-menu-surface min-w-[260px] w-max py-1 ${item.id === 'language' ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}`}>
                                                         <MenuList items={item.children || []} onClose={closeMenu} openPath={revealedSubmenuPath} />
                                                     </div>
                                                 )}
@@ -1376,10 +1376,11 @@ export const MenuBar = ({
 const MenuList = ({ items, onClose, openPath }: { items: MenuItem[]; onClose?: () => void; openPath?: string[] }) => {
     const [openIndex, setOpenIndex] = useState<number | null>(null);
     const pathTarget = openPath?.[0]?.trim().toLowerCase() || '';
+    const hasOpenPath = openPath !== undefined;
 
     useEffect(() => {
         if (!pathTarget) {
-            if (openPath !== undefined) setOpenIndex(null);
+            if (hasOpenPath) setOpenIndex(null);
             return;
         }
         const foundIndex = items.findIndex((candidate) => !candidate.divider && candidate.label.trim().toLowerCase() === pathTarget);
@@ -1388,7 +1389,9 @@ const MenuList = ({ items, onClose, openPath }: { items: MenuItem[]; onClose?: (
         } else {
             setOpenIndex(null);
         }
-    }, [items, openPath, pathTarget]);
+        // Only synchronize openIndex when pathTarget changes, not when parent re-renders with a new items array reference.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hasOpenPath, pathTarget]);
 
     return (
         <>
@@ -1446,7 +1449,7 @@ const MenuItem = ({
     const submenu = item.children && isSubmenuOpen ? (
         <div ref={submenuRef} role="menu" aria-label={tr("{{value0}} menu", { value0: item.label })}
             data-rtx-desktop-submenu={desktop ? 'true' : undefined}
-            className={`rtx-menu-surface min-w-[200px] py-1 ${desktop ? 'fixed z-[10010]' : 'absolute left-full top-0 ml-[-2px] z-[101]'} ${item.scrollableChildren ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}`}
+            className={`rtx-menu-surface min-w-[240px] w-max py-1 ${desktop ? 'fixed z-[10010]' : 'absolute left-full top-0 ml-[-2px] z-[101]'} ${item.scrollableChildren ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}`}
             style={desktop ? { ...position, maxHeight: Math.min(400, window.innerHeight - 16), maxWidth: 'calc(100vw - 16px)', overflowY: 'auto' } : undefined}>
             <MenuList items={item.children} onClose={onClose} openPath={openPath} />
         </div>
@@ -1490,7 +1493,7 @@ const MenuItem = ({
                 </div>
 
                 {/* Label */}
-                <span dir="auto" className="flex-1 font-segoe">{item.translateLabel === false ? item.label : tr(item.label)}</span>
+                <span dir="auto" className="flex-1 whitespace-nowrap font-segoe">{item.translateLabel === false ? item.label : tr(item.label)}</span>
 
                 {/* Shortcut or Submenu Arrow */}
                 {item.unavailableReason ? (

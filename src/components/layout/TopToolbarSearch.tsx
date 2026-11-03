@@ -587,15 +587,16 @@ const findFileMenuElements = (fileMenuItemKey: string, extraSelector?: string): 
   if (isElementVisible(fileItem)) elements.push(fileItem);
 
   if (depth >= 2) {
-    if (extraSelector) {
-      const extra = document.querySelector<HTMLElement>(extraSelector);
-      if (isElementVisible(extra)) elements.push(extra);
-    }
     if (deepestSurface) {
       const btns = getActionSheetButtonsForSurface(deepestSurface);
       if (btns.length > 0 && !elements.includes(btns[0])) {
         elements.push(btns[0]);
+        return elements;
       }
+    }
+    if (extraSelector) {
+      const extra = document.querySelector<HTMLElement>(extraSelector);
+      if (isElementVisible(extra)) elements.push(extra);
     }
   }
 
@@ -673,9 +674,35 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
   const locateTimersRef = useRef<number[]>([]);
   const rafRef = useRef<number | null>(null);
   const hasRevealedSomethingRef = useRef(false);
+  const lastRevealedKeyRef = useRef<string>('');
+
+  const latestPropsRef = useRef({
+    selectedSymbol,
+    timeframe,
+    onSymbolChange,
+    onTimeframeChange,
+    onChartTypeChange,
+    onNewOrder,
+    onOpenChart,
+    onOpenHistoryDownloader,
+    onTileWindows,
+    onResetWindows,
+  });
+  latestPropsRef.current = {
+    selectedSymbol,
+    timeframe,
+    onSymbolChange,
+    onTimeframeChange,
+    onChartTypeChange,
+    onNewOrder,
+    onOpenChart,
+    onOpenHistoryDownloader,
+    onTileWindows,
+    onResetWindows,
+  };
 
   const storeSymbols = useAppStore((state) => (state as { symbols?: Array<{ symbol?: string; description?: string; category?: string }> }).symbols);
-  const storeTicks = useAppStore((state) => state.ticks);
+  const tickSymbolsKey = useAppStore((state) => Object.keys(state.ticks || {}).sort().join(','));
 
   const clearLocateTimers = useCallback(() => {
     if (rafRef.current !== null && typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
@@ -690,6 +717,7 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
     clearLocateTimers();
     clearDomHighlightClasses();
     setIsHighlighting(false);
+    lastRevealedKeyRef.current = '';
     if (shouldCloseMenus && hasRevealedSomethingRef.current) {
       resetSearchRevealedMenus();
       hasRevealedSomethingRef.current = false;
@@ -2412,7 +2440,9 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
     // =========================================================================
     const safeSymbols: Array<{ symbol?: string; description?: string; category?: string }> = Array.isArray(storeSymbols)
       ? storeSymbols
-      : Object.keys(storeTicks || {}).map((sym) => ({ symbol: sym }));
+      : tickSymbolsKey
+        ? tickSymbolsKey.split(',').filter(Boolean).map((sym) => ({ symbol: sym }))
+        : [];
     for (const sym of safeSymbols) {
       const symbolName = String(sym.symbol || '').trim();
       if (!symbolName) continue;
@@ -2437,8 +2467,8 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
           },
         ],
         execute: () => {
-          onSymbolChange(symbolName);
-          onOpenChart?.(symbolName);
+          latestPropsRef.current.onSymbolChange(symbolName);
+          latestPropsRef.current.onOpenChart?.(symbolName);
         },
       });
     }
@@ -2446,19 +2476,11 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
     return items;
   }, [
     ensureDrawingRailAndOpenMenu,
-    onChartTypeChange,
-    onNewOrder,
-    onOpenChart,
-    onOpenHistoryDownloader,
-    onResetWindows,
-    onSymbolChange,
-    onTileWindows,
-    onTimeframeChange,
     openIndicatorDialog,
     selectDrawingTool,
     selectedSymbol,
     storeSymbols,
-    storeTicks,
+    tickSymbolsKey,
     timeframe,
   ]);
 
@@ -2578,6 +2600,25 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
     setActiveFlatIndex(0);
   }, [query]);
 
+  // Scroll an item only inside an explicitly scrollable menu/panel container,
+  // never invoking native scrollIntoView() which can scroll body / overflow:hidden ancestors.
+  const scrollItemWithinScrollableContainer = useCallback((el: HTMLElement | null | undefined) => {
+    if (!el) return;
+    const scrollContainer = el.closest<HTMLElement>(
+      '.overflow-y-auto, .web-drawing-tools-menu, .rtx-market-watch__grid, .navigator-panel__body',
+    );
+    if (!scrollContainer || scrollContainer === document.body || scrollContainer === document.documentElement) {
+      return;
+    }
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    if (elRect.top < containerRect.top) {
+      scrollContainer.scrollTop -= containerRect.top - elRect.top;
+    } else if (elRect.bottom > containerRect.bottom) {
+      scrollContainer.scrollTop += elRect.bottom - containerRect.bottom;
+    }
+  }, []);
+
   // Apply direct in-place highlight classes on the actual DOM elements ONLY when query is non-empty
   const syncDomHighlights = useCallback((location: SearchLocationTarget) => {
     if (!queryRef.current.trim()) {
@@ -2587,10 +2628,9 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
     const elements = location.findElements();
     const extraTargets = location.findExtraTargets?.() ?? [];
     applyDomHighlightClasses(elements, extraTargets);
-    elements.forEach((el) => {
-      el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-    });
-  }, []);
+    const finalEl = elements[elements.length - 1];
+    scrollItemWithinScrollableContainer(finalEl);
+  }, [scrollItemWithinScrollableContainer]);
 
   const scheduleDomHighlightSync = useCallback((location: SearchLocationTarget) => {
     clearLocateTimers();
@@ -2647,6 +2687,11 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
       clearAllSearchEffects(true);
       return;
     }
+    const revealKey = `${trimmed.toLowerCase()}::${activeFlatIndex}::${current.item.id}::${current.location.path}`;
+    if (lastRevealedKeyRef.current === revealKey) {
+      return;
+    }
+    lastRevealedKeyRef.current = revealKey;
     revealInPlace(current.item, current.location);
   }, [query, activeFlatIndex, matchedLocations, revealInPlace, clearAllSearchEffects]);
 
@@ -2753,7 +2798,7 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
                   });
                   nextEl.classList.remove('rtx-search-located-step');
                   nextEl.classList.add('rtx-search-located-target');
-                  nextEl.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                  scrollItemWithinScrollableContainer(nextEl);
                 }
                 return;
               }

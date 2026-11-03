@@ -526,7 +526,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <Icon name="chevron-right" size="xs" className="rtx-menu-icon--neutral" />
                     </button>
                     <div
-                        className={`rtx-menu-surface submenu absolute top-0 min-w-[200px] py-1 z-[101] ${profilesAlignLeft ? 'right-full -mr-1' : 'left-full -ml-1'} ${
+                        className={`rtx-menu-surface submenu absolute top-0 min-w-[220px] w-max py-1 z-[101] ${profilesAlignLeft ? 'right-full -mr-1' : 'left-full -ml-1'} ${
                             profilesOpen ? 'block' : 'hidden group-hover/profiles:block'
                         }`}
                     >
