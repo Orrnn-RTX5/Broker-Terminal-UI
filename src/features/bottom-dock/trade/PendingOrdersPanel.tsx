@@ -235,20 +235,33 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
         </div>
       )}
       <div className="overflow-auto min-h-0">
-        <table className="rtx-pending-orders-table w-full text-xs border-collapse">
+        <table className="rtx-pending-orders-table w-full min-w-[820px] table-fixed border-collapse text-xs tabular-nums">
+          <colgroup>
+            <col className="w-[8.5%]" />
+            <col className="w-[9.15%]" />
+            <col className="w-[9.15%]" />
+            <col className="w-[9.15%]" />
+            <col className="w-[9.15%]" />
+            <col className="w-[9.15%]" />
+            <col className="w-[9.15%]" />
+            <col className="w-[9.15%]" />
+            <col className="w-[9.15%]" />
+            <col className="w-[9.15%]" />
+            <col className="w-[9.15%]" />
+          </colgroup>
           <thead className="rtx-trade-table__head sticky top-0 z-10 select-none border-b border-zinc-700/80 bg-[#17181c] text-[12px] font-normal leading-[18px] text-[#c9cfdb]">
-            <tr className="h-[28px] text-left">
-              <th className="py-1 pl-4 pr-2 font-normal">{tr('Ticket')}</th>
-              <th className="px-2 py-1 font-normal">{tr('Symbol')}</th>
-              <th className="px-2 py-1 font-normal">{tr('Type')}</th>
-              <th className="px-2 py-1 font-normal">{tr('Side')}</th>
-              <th className="px-2 py-1 font-normal text-right">{tr('Volume')}</th>
-              <th className="px-2 py-1 font-normal text-right">{tr('Price')}</th>
-              <th className="px-2 py-1 font-normal text-right">{tr('SL')}</th>
-              <th className="px-2 py-1 font-normal text-right">{tr('TP')}</th>
-              <th className="w-[120px] py-1 pl-2 pr-8 text-center font-normal">{tr('Expiry')}</th>
-              <th className="w-[76px] px-2 py-1 text-center font-normal">{tr('Modify')}</th>
-              <th className="w-[88px] py-1 pl-2 pr-8 text-center font-normal">{tr('Cancel')}</th>
+            <tr className="h-[28px]">
+              <th className="py-1 pl-4 pr-2 text-left font-normal whitespace-nowrap">{tr('Ticket')}</th>
+              <th className="px-2 py-1 text-center font-normal whitespace-nowrap">{tr('Symbol')}</th>
+              <th className="px-2 py-1 text-center font-normal whitespace-nowrap">{tr('Type')}</th>
+              <th className="px-2 py-1 text-center font-normal whitespace-nowrap">{tr('Side')}</th>
+              <th className="px-2 py-1 text-center font-normal whitespace-nowrap">{tr('Volume')}</th>
+              <th className="px-2 py-1 text-center font-normal whitespace-nowrap">{tr('Price')}</th>
+              <th className="px-2 py-1 text-center font-normal whitespace-nowrap">{tr('SL')}</th>
+              <th className="px-2 py-1 text-center font-normal whitespace-nowrap">{tr('TP')}</th>
+              <th className="px-2 py-1 text-center font-normal whitespace-nowrap">{tr('Expiry')}</th>
+              <th className="px-2 py-1 text-center font-normal whitespace-nowrap">{tr('Modify')}</th>
+              <th className="py-1 pl-2 pr-6 text-center font-normal whitespace-nowrap">{tr('Cancel')}</th>
             </tr>
           </thead>
           <tbody>
@@ -259,20 +272,20 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
               const digits = resolveSpecDigits(orderTick?.digits);
               return (
                 <tr key={order.ticket} className="rtx-pending-order-row border-b border-zinc-800 hover:bg-zinc-800/40" data-ticket={order.ticket}>
-                  <td className="py-1 pl-4 pr-2 text-zinc-300">{order.ticket}</td>
-                  <td className="px-2 py-1 text-zinc-300">{order.symbol}</td>
-                  <td className="px-2 py-1 text-zinc-400">{order.orderType}</td>
-                  <td className={`px-2 py-1 font-semibold ${order.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <td className="py-1 pl-4 pr-2 text-left text-zinc-300 whitespace-nowrap">{order.ticket}</td>
+                  <td className="px-2 py-1 text-center text-zinc-300 whitespace-nowrap">{order.symbol}</td>
+                  <td className="px-2 py-1 text-center text-zinc-400 whitespace-nowrap">{order.orderType}</td>
+                  <td className={`px-2 py-1 text-center font-semibold whitespace-nowrap ${order.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>
                     {order.side}
                   </td>
-                  <td className="px-2 py-1 text-right text-zinc-300">{order.volume}</td>
-                  <td className="px-2 py-1 text-right text-zinc-300">{formatPrice(order.price, digits)}</td>
-                  <td className="px-2 py-1 text-right text-red-400">{order.sl > 0 ? formatPrice(order.sl, digits) : '—'}</td>
-                  <td className="px-2 py-1 text-right text-emerald-400">{order.tp > 0 ? formatPrice(order.tp, digits) : '—'}</td>
-                  <td className="w-[120px] py-1 pl-2 pr-8 text-center text-zinc-400">
+                  <td className="px-2 py-1 text-center text-zinc-300 whitespace-nowrap">{order.volume}</td>
+                  <td className="px-2 py-1 text-center text-zinc-300 whitespace-nowrap">{formatPrice(order.price, digits)}</td>
+                  <td className="px-2 py-1 text-center text-red-400 whitespace-nowrap">{order.sl > 0 ? formatPrice(order.sl, digits) : '—'}</td>
+                  <td className="px-2 py-1 text-center text-emerald-400 whitespace-nowrap">{order.tp > 0 ? formatPrice(order.tp, digits) : '—'}</td>
+                  <td className="px-2 py-1 text-center text-zinc-400 whitespace-nowrap">
                     {order.expiry && order.expiry > 0 ? new Date(order.expiry * 1000).toLocaleString() : '—'}
                   </td>
-                  <td className="w-[76px] px-2 py-1 text-center whitespace-nowrap">
+                  <td className="px-2 py-1 text-center whitespace-nowrap">
                     <button
                       type="button"
                       disabled={busy}
@@ -282,7 +295,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
                       {tr('Modify')}
                     </button>
                   </td>
-                  <td className="w-[88px] py-1 pl-2 pr-8 text-center whitespace-nowrap">
+                  <td className="py-1 pl-2 pr-6 text-center whitespace-nowrap">
                     <button
                       type="button"
                       disabled={busy}
