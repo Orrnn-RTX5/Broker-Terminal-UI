@@ -351,8 +351,27 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog {
   accent-color: var(--color-info);
 }
 
+.rtx-symbols-dialog .rtx-symbols-dialog__split {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .rtx-symbols-dialog .rtx-symbols-dialog__catalog {
-  height: clamp(132px, 24vh, 184px);
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+}
+
+.rtx-symbols-dialog .rtx-symbols-dialog__details {
+  flex: 0 0 clamp(256px, 41%, 328px);
+  width: clamp(256px, 41%, 328px);
+  min-width: 0;
+  min-height: 0;
+  background: color-mix(in srgb, var(--bg-tertiary) 32%, var(--bg-secondary));
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__catalog table,
@@ -377,20 +396,20 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog {
   --rtx-type-size: calc(var(--rtx-ui-font-size, 14px) - 2px);
   --rtx-type-weight: 600;
   height: 36px;
-  padding: 8px 16px;
+  padding: 8px 14px;
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__catalog th:first-child {
-  width: 164px;
+  width: 136px;
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__catalog th:last-child {
-  width: 112px;
+  width: 96px;
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__catalog td {
-  height: 34px;
-  padding: 7px 16px;
+  height: 33px;
+  padding: 6px 14px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -423,14 +442,16 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog {
 .rtx-symbols-dialog .rtx-symbols-dialog__selection {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 14px 16px;
-  background: color-mix(in srgb, var(--bg-tertiary) 50%, var(--bg-secondary));
+  gap: 2px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--bg-tertiary) 64%, var(--bg-secondary));
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__selected-name {
   --rtx-type-weight: 600;
   color: var(--text-primary);
+  letter-spacing: 0.01em;
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__selected-description {
@@ -439,13 +460,17 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog {
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__specification td {
-  height: 36px;
-  padding: 8px 16px;
+  height: 30px;
+  padding: 5px 14px;
   font-variant-numeric: tabular-nums;
 }
 
 .rtx-symbols-dialog .rtx-symbols-dialog__specification td:first-child {
-  width: 48%;
+  width: 50%;
+}
+
+.rtx-symbols-dialog .rtx-symbols-dialog__specification td:last-child {
+  font-weight: var(--font-weight-medium, 500);
 }
 
 /* Bars and ticks */
@@ -745,16 +770,25 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog {
   }
 
   .rtx-symbols-dialog .rtx-symbols-dialog__workspace {
-    overflow-y: auto;
-    scrollbar-width: thin;
+    overflow: hidden;
   }
 
   .rtx-symbols-dialog .rtx-symbols-dialog__catalog {
-    height: 126px;
+    height: auto;
   }
 
   .rtx-symbols-dialog .rtx-symbols-dialog__details {
-    flex: 0 0 180px;
+    flex: 0 0 clamp(244px, 41%, 312px);
+    width: clamp(244px, 41%, 312px);
+  }
+
+  .rtx-symbols-dialog .rtx-symbols-dialog__selection {
+    padding: 8px 12px;
+  }
+
+  .rtx-symbols-dialog .rtx-symbols-dialog__specification td {
+    height: 27px;
+    padding: 4px 12px;
   }
 
   .rtx-symbols-dialog .rtx-symbols-dialog__history-controls {
