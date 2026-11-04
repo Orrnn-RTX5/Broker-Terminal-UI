@@ -777,7 +777,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
     <>
       <div
         ref={menuRef}
-        className={`rtx-context-menu${density === 'compact' ? ' rtx-context-menu--compact' : ''}${isSubmenu ? ' rtx-context-menu--submenu' : ''}${isMultiColumn ? ' rtx-context-menu--multicolumn' : ''} fixed w-max ${density === 'compact' ? 'min-w-[212px]' : 'min-w-[232px]'} ${isMultiColumn ? 'max-w-[calc(100vw-16px)] overflow-x-auto p-1.5' : 'max-w-[min(440px,calc(100vw-16px))] overflow-x-hidden p-1'} max-h-[calc(100vh-16px)] rounded-[6px] border text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent shadow-2xl`}
+        className={`rtx-context-menu${density === 'compact' ? ' rtx-context-menu--compact' : ''}${isSubmenu ? ' rtx-context-menu--submenu' : ''}${isMultiColumn ? ' rtx-context-menu--multicolumn' : ''} fixed w-max ${density === 'compact' ? 'min-w-[212px]' : 'min-w-[232px]'} ${isMultiColumn ? 'max-w-[calc(100vw-16px)] overflow-x-auto p-1' : 'max-w-[min(440px,calc(100vw-16px))] overflow-x-hidden p-1'} max-h-[calc(100vh-16px)] rounded-[6px] border text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent shadow-2xl`}
         style={{
           ...menuPanelStyle(panelSkin),
           left: `${adjustedPosition.x}px`,
@@ -797,11 +797,11 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
             {itemColumns.map((columnEntries, colIndex) => (
               <div
                 key={`col-${colIndex}`}
-                className="rtx-context-menu__column flex flex-col gap-[1px] min-w-[172px] py-0.5"
+                className="rtx-context-menu__column flex flex-col gap-0 min-w-[126px] py-0"
                 style={colIndex > 0 ? {
                   borderLeft: `1px solid ${columnSeparatorColor}`,
-                  paddingLeft: 6,
-                  marginLeft: 6,
+                  paddingLeft: 4,
+                  marginLeft: 4,
                 } : undefined}
               >
                 {columnEntries.map(({ item, index }) => renderEntry(item, index))}

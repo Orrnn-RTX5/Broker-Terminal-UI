@@ -64,8 +64,11 @@ const clampDialogRect = (rect: DialogRect): DialogRect => {
 
 const centeredDialogRect = (): DialogRect => {
   const viewport = viewportSize();
-  const width = Math.min(DEFAULT_DIALOG_WIDTH, Math.max(0, viewport.width - VIEWPORT_GAP * 2));
-  const height = Math.min(DEFAULT_DIALOG_HEIGHT, Math.max(0, viewport.height - VIEWPORT_GAP * 2));
+  const isLaptopHeight = viewport.height < 720;
+  const maxWidth = isLaptopHeight ? Math.round(viewport.width * 0.86) : DEFAULT_DIALOG_WIDTH;
+  const maxHeight = isLaptopHeight ? Math.round(viewport.height * 0.85) : DEFAULT_DIALOG_HEIGHT;
+  const width = Math.min(DEFAULT_DIALOG_WIDTH, maxWidth, Math.max(0, viewport.width - VIEWPORT_GAP * 2));
+  const height = Math.min(DEFAULT_DIALOG_HEIGHT, maxHeight, Math.max(0, viewport.height - VIEWPORT_GAP * 2));
   return clampDialogRect({
     x: (viewport.width - width) / 2,
     y: (viewport.height - height) / 2,
