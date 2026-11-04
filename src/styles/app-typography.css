@@ -38,6 +38,7 @@ html:root.rtx-advanced-font-large { --rtx-ui-font-size: 15px; }
       .rtx-login-overlay, .rtx-login-overlay *,
       .login-page-container, .login-page-container *,
       .rtx-bootstrap-loader, .rtx-bootstrap-loader *,
+      .rtx-terminal-loading, .rtx-terminal-loading *,
       .rtx-journal-spacer-row, .rtx-journal-spacer-row *,
       .rtx-order-dialog__spinner-button, .rtx-order-dialog__close,
       .navigator-tree-item__icon, .navigator-tree-item__chevron
@@ -80,7 +81,7 @@ html:root :where(input, select, option, optgroup, textarea) {
 
 html:root :where(h1, h2, h3, h4, h5, h6, .rtx-dialog-title, .rtx-section-title):not(:where(
   .rtx-login-overlay *, .login-page-container *, .rtx-bootstrap-loader *,
-  .chart-drawing-overlay *
+  .rtx-terminal-loading *, .chart-drawing-overlay *
 )) {
   --rtx-type-weight: var(--rtx-font-weight-heading);
   line-height: calc(var(--rtx-type-size, var(--rtx-ui-font-size)) + 8px) !important;

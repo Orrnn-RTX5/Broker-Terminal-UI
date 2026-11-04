@@ -64,6 +64,10 @@ try {
     localStorage.removeItem('rtx5_selected_symbol');
     localStorage.setItem('rtx5_selected_symbol_v2_migrated', '1');
   }
+  if (!localStorage.getItem('rtx5_selected_symbol_v3_migrated')) {
+    localStorage.removeItem('rtx5_selected_symbol');
+    localStorage.setItem('rtx5_selected_symbol_v3_migrated', '1');
+  }
   if (!localStorage.getItem('rtx5_mw_grid_v3_migrated')) {
     const rawMwOptions = localStorage.getItem('rtx5_marketwatch_options');
     if (rawMwOptions) {

@@ -370,20 +370,27 @@
     body { margin: 0; overflow: hidden; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; font-weight: 400; line-height: 20px; }
     * { box-sizing: border-box; }
 
-    .rtx-terminal-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; width: 100%; height: 100%; min-height: 0; padding: 24px; background: radial-gradient(circle at 50% 38%, #151924 0%, #0d0d11 65%, #07080c 100%); color: #cbd5e1; text-align: center; }
-    .rtx-terminal-loading__card { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; max-width: 380px; padding: 32px 28px 26px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.12); background: linear-gradient(180deg, rgba(22, 25, 34, 0.92) 0%, rgba(14, 16, 22, 0.96) 100%); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
-    .rtx-terminal-loading__emblem { display: flex; align-items: flex-end; justify-content: center; gap: 3px; width: 44px; height: 44px; padding: 10px; border-radius: 11px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.24); color: #60a5fa; }
+    .rtx-terminal-loading { position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; width: 100%; height: 100%; min-height: 0; padding: 24px; background: radial-gradient(circle at 50% 38%, #131926 0%, #0b0e16 62%, #05070b 100%); color: #cbd5e1; text-align: center; }
+    .rtx-terminal-loading::before { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.035) 1px, transparent 1px); background-size: 32px 32px; mask-image: radial-gradient(circle at 50% 45%, #000 25%, transparent 80%); -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 25%, transparent 80%); }
+    .rtx-terminal-loading__card { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; max-width: 416px; padding: 34px 32px 24px; border-radius: 16px; border: 1px solid rgba(148, 163, 184, 0.14); background: linear-gradient(180deg, rgba(20, 26, 38, 0.94) 0%, rgba(11, 14, 22, 0.98) 100%); box-shadow: 0 28px 70px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(59, 130, 246, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.08); overflow: hidden; }
+    .rtx-terminal-loading__card::before { content: ""; position: absolute; top: 0; left: 10%; right: 10%; height: 2px; background: linear-gradient(90deg, transparent 0%, rgba(59, 130, 246, 0.85) 50%, transparent 100%); }
+    .rtx-terminal-loading__eyebrow { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(59, 130, 246, 0.24); background: rgba(37, 99, 235, 0.10); font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #93c5fd; line-height: 14px; }
+    .rtx-terminal-loading__dot { width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.8); }
+    .rtx-terminal-loading__emblem { display: flex; align-items: flex-end; justify-content: center; gap: 4px; width: 52px; height: 52px; padding: 12px; border-radius: 14px; background: linear-gradient(145deg, rgba(37, 99, 235, 0.18) 0%, rgba(15, 23, 42, 0.75) 100%); border: 1px solid rgba(96, 165, 250, 0.28); box-shadow: 0 10px 24px rgba(15, 23, 42, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12); color: #60a5fa; }
     .rtx-terminal-loading__bar { width: 4px; border-radius: 2px; background: currentColor; animation: rtx-terminal-loading-pulse 1.2s ease-in-out infinite; }
-    .rtx-terminal-loading__bar:nth-child(1) { height: 11px; animation-delay: 0ms; }
-    .rtx-terminal-loading__bar:nth-child(2) { height: 18px; animation-delay: 150ms; }
-    .rtx-terminal-loading__bar:nth-child(3) { height: 14px; animation-delay: 300ms; }
-    .rtx-terminal-loading__bar:nth-child(4) { height: 22px; animation-delay: 450ms; }
-    .rtx-terminal-loading__brand { font-size: 19px; font-weight: 600; letter-spacing: .04em; color: #f8fafc; }
+    .rtx-terminal-loading__bar:nth-child(1) { height: 12px; animation-delay: 0ms; }
+    .rtx-terminal-loading__bar:nth-child(2) { height: 20px; animation-delay: 150ms; background: #38bdf8; }
+    .rtx-terminal-loading__bar:nth-child(3) { height: 15px; animation-delay: 300ms; }
+    .rtx-terminal-loading__bar:nth-child(4) { height: 24px; animation-delay: 450ms; background: #34d399; }
+    .rtx-terminal-loading__brand { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; line-height: 28px; color: #f8fafc; }
     .rtx-terminal-loading__status { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
     .rtx-terminal-loading__spinner { width: 16px; height: 16px; border: 2px solid rgba(96, 165, 250, 0.28); border-top-color: #60a5fa; border-radius: 50%; animation: rtx-terminal-loading-spin .8s linear infinite; flex-shrink: 0; }
     .rtx-terminal-loading__message { max-width: 340px; font-size: 13px; font-weight: 500; line-height: 18px; color: #94a3b8; }
-    .rtx-terminal-loading__progress { position: relative; width: 100%; height: 3px; margin-top: 4px; border-radius: 999px; background: rgba(148, 163, 184, 0.14); overflow: hidden; }
-    .rtx-terminal-loading__progress-bar { position: absolute; inset: 0 auto 0 0; width: 42%; border-radius: 999px; background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%); animation: rtx-terminal-loading-progress 1.4s ease-in-out infinite; }
+    .rtx-terminal-loading__progress { position: relative; width: 100%; height: 4px; margin-top: 2px; border-radius: 999px; background: rgba(148, 163, 184, 0.14); overflow: hidden; }
+    .rtx-terminal-loading__progress-bar { position: absolute; inset: 0 auto 0 0; width: 42%; border-radius: 999px; background: linear-gradient(90deg, #2563eb 0%, #38bdf8 100%); animation: rtx-terminal-loading-progress 1.4s ease-in-out infinite; }
+    .rtx-terminal-loading__meta { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 6px; padding-top: 14px; border-top: 1px solid rgba(148, 163, 184, 0.10); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; line-height: 14px; }
+    .rtx-terminal-loading__pill { display: inline-flex; align-items: center; gap: 5px; }
+    .rtx-terminal-loading__pill-dot { width: 5px; height: 5px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.65); }
     .rtx-terminal-loading__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
     .rtx-terminal-loading__actions button { min-height: 36px; padding: 8px 14px; border: 1px solid #454550; border-radius: 6px; background: #202026; color: inherit; font: inherit; cursor: pointer; }
     .rtx-terminal-loading__actions button:hover { border-color: currentColor; }
@@ -415,19 +422,30 @@
     }
     html.rtx-skin-untitled-light .rtx-terminal-loading,
     html[data-theme="light"] .rtx-terminal-loading {
-      background: #e8edf3;
+      background: radial-gradient(circle at 50% 36%, #ffffff 0%, #eef2f6 62%, #e3e9f0 100%);
       color: #182230;
+    }
+    html.rtx-skin-untitled-light .rtx-terminal-loading::before,
+    html[data-theme="light"] .rtx-terminal-loading::before {
+      background-image: linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
     }
     html.rtx-skin-untitled-light .rtx-terminal-loading__card,
     html[data-theme="light"] .rtx-terminal-loading__card {
-      background: #ffffff;
-      border-color: rgba(15, 23, 42, 0.1);
-      box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      border-color: rgba(15, 23, 42, 0.10);
+      box-shadow: 0 24px 54px rgba(15, 23, 42, 0.09), 0 2px 6px rgba(15, 23, 42, 0.04), inset 0 1px 0 #ffffff;
+    }
+    html.rtx-skin-untitled-light .rtx-terminal-loading__eyebrow,
+    html[data-theme="light"] .rtx-terminal-loading__eyebrow {
+      background: rgba(37, 99, 235, 0.07);
+      border-color: rgba(37, 99, 235, 0.18);
+      color: #1d4ed8;
     }
     html.rtx-skin-untitled-light .rtx-terminal-loading__emblem,
     html[data-theme="light"] .rtx-terminal-loading__emblem {
-      background: rgba(37, 99, 235, 0.08);
-      border-color: rgba(37, 99, 235, 0.2);
+      background: linear-gradient(145deg, rgba(37, 99, 235, 0.10) 0%, rgba(241, 245, 249, 0.9) 100%);
+      border-color: rgba(37, 99, 235, 0.22);
+      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.10), inset 0 1px 0 #ffffff;
       color: #2563eb;
     }
     html.rtx-skin-untitled-light .rtx-terminal-loading__brand,
@@ -447,6 +465,11 @@
     html[data-theme="light"] .rtx-terminal-loading__progress {
       background: rgba(15, 23, 42, 0.08);
     }
+    html.rtx-skin-untitled-light .rtx-terminal-loading__meta,
+    html[data-theme="light"] .rtx-terminal-loading__meta {
+      border-top-color: rgba(15, 23, 42, 0.08);
+      color: #64748b;
+    }
     html.rtx-skin-untitled-light .rtx-terminal-loading__actions button,
     html[data-theme="light"] .rtx-terminal-loading__actions button {
       background: #ffffff;
@@ -460,6 +483,10 @@
     <div data-rtx-static-shell>
       <div class="rtx-terminal-loading" role="status" aria-live="polite" aria-busy="true">
         <div class="rtx-terminal-loading__card">
+          <div class="rtx-terminal-loading__eyebrow" aria-hidden="true">
+            <span class="rtx-terminal-loading__dot"></span>
+            <span>MULTI-ASSET TRADING WORKSPACE</span>
+          </div>
           <div class="rtx-terminal-loading__emblem" aria-hidden="true">
             <span class="rtx-terminal-loading__bar"></span>
             <span class="rtx-terminal-loading__bar"></span>
@@ -482,6 +509,11 @@
           </div>
           <div class="rtx-terminal-loading__progress" aria-hidden="true">
             <div class="rtx-terminal-loading__progress-bar"></div>
+          </div>
+          <div class="rtx-terminal-loading__meta" aria-hidden="true">
+            <span class="rtx-terminal-loading__pill"><span class="rtx-terminal-loading__pill-dot"></span>MARKET FEED</span>
+            <span class="rtx-terminal-loading__pill"><span class="rtx-terminal-loading__pill-dot"></span>CHART ENGINE</span>
+            <span class="rtx-terminal-loading__pill"><span class="rtx-terminal-loading__pill-dot"></span>ORDER ROUTER</span>
           </div>
         </div>
       </div>

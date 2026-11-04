@@ -413,7 +413,7 @@ return (
               }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
             )}
             {chartSettings.showOHLC && (
-              <>
+              <span style={{ display: (loadingPhase === 'connecting' || loadingPhase === 'receiving') && !retainedPublicChartSurface ? 'none' : 'contents' }}>
                 <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                   O: <span ref={ohlcOpenRef} style={{
                     fontWeight: 'var(--rtx-font-weight-body, 400)', color: 'var(--rtx-light-price)',
@@ -438,7 +438,7 @@ return (
                     background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
                   }}>0.00000</span>
                 </span>
-              </>
+              </span>
             )}
           </div>
         ) : (
@@ -453,12 +453,12 @@ return (
               <span className="rtx-chart-hud__symbol" style={{ fontWeight: 'var(--rtx-font-weight-control, 400)', color: chartTheme.text }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
             )}
             {chartSettings.showOHLC && (
-              <>
+              <span style={{ display: (loadingPhase === 'connecting' || loadingPhase === 'receiving') && !retainedPublicChartSurface ? 'none' : 'contents' }}>
                 <span>O: <span ref={ohlcOpenRef} style={{ color: chartTheme.text }}>0.00000</span></span>
                 <span>H: <span ref={ohlcHighRef} style={{ color: hudQuoteColors.upColor }}>0.00000</span></span>
                 <span>L: <span ref={ohlcLowRef} style={{ color: hudQuoteColors.downColor }}>0.00000</span></span>
                 <span>C: <span ref={ohlcCloseRef} style={{ color: chartTheme.text }}>0.00000</span></span>
-              </>
+              </span>
             )}
           </div>
         );

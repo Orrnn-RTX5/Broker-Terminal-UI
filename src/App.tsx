@@ -46,6 +46,8 @@ import {
   pickPreferredChartSymbol,
   resolveAuthorizedChartSymbol,
 } from './utils/symbolEligibility';
+import { selectDefaultMarketWatchSymbols } from './utils/marketWatchGroups';
+import { preloadPublicStartupHistory } from './startup/publicHistoryPrefetch';
 import {
   isAccountSymbolUniverseActive,
   resolveChartEligibleSymbolNames,
@@ -531,6 +533,28 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     timeframe,
   });
   const chartEligibleSymbolSet = useMemo(() => new Set(chartEligibleSymbolNames), [chartEligibleSymbolNames]);
+  const defaultMarketWatchSymbolNames = useMemo(
+    () => selectDefaultMarketWatchSymbols(
+      allSymbols.length > 0 ? allSymbols : chartEligibleSymbolNames,
+      allSymbols,
+      chartEligibleSymbolNames,
+    ),
+    [allSymbols, chartEligibleSymbolNames],
+  );
+  const preferredChartCandidateSymbolNames = useMemo(
+    () => getAllowedSymbolNames([
+      ...defaultMarketWatchSymbolNames,
+      ...chartEligibleSymbolNames,
+    ]),
+    [chartEligibleSymbolNames, defaultMarketWatchSymbolNames],
+  );
+  useEffect(() => {
+    if (!guestMode) return;
+    const candidate = normalizeSymbolName(selectedSymbol) || preferredChartCandidateSymbolNames[0];
+    if (candidate) {
+      preloadPublicStartupHistory(candidate);
+    }
+  }, [guestMode, preferredChartCandidateSymbolNames, selectedSymbol]);
   const tradeEligibleSymbolSet = useMemo(() => new Set(tradeEligibleSymbolNames), [tradeEligibleSymbolNames]);
   // While an account catalogue loads, no public/feed symbol may seed chart
   // selection or rewrite saved chart panels.
@@ -1503,6 +1527,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         || saved
         || resolveAuthorizedChartSymbol(DEFAULT_CHART_SYMBOL, chartEligibleSymbolNames)
         || resolveAuthorizedChartSymbol(DEFAULT_CHART_SYMBOL, allowedSymbolNames)
+        || preferredChartCandidateSymbolNames[0]
         || chartEligibleSymbolNames[0]
         || allowedSymbolNames[0]
         || '';
@@ -1513,6 +1538,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     chartEligibleSymbolNames,
     isAuthenticated,
     marketInstrumentsSnapshot.authorizationSettled,
+    preferredChartCandidateSymbolNames,
   ]);
 
   const chartSelectionReconciliationKey = useMemo(() => buildChartSelectionReconciliationKey({
@@ -1525,20 +1551,27 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   useEffect(() => {
     if (!hasLoadedChartSymbols) return;
 
-    const liveSymbols = activeMarketSymbolsCurrent
+    const rawLiveSymbols = activeMarketSymbolsCurrent
       ? (accountSymbolUniverseActive
         ? activeMarketSymbols.filter((symbol) => chartEligibleSymbolSet.has(normalizeSymbolName(symbol)))
         : activeMarketSymbols)
       : [];
+    const liveSymbolSet = new Set(getAllowedSymbolNames(rawLiveSymbols));
+    const liveSymbols = rawLiveSymbols.length > 0
+      ? getAllowedSymbolNames([
+        ...defaultMarketWatchSymbolNames.filter((symbol) => liveSymbolSet.has(symbol)),
+        ...rawLiveSymbols,
+      ])
+      : [];
     const applyLivePreference = activeMarketSymbolsCurrent && !didApplyLiveChartPreferenceRef.current;
     const fallbackSymbol = pickPreferredChartSymbol(
-      chartEligibleSymbolNames,
+      preferredChartCandidateSymbolNames,
       liveSymbols,
       selectedSymbol,
       // Keep the startup or restored chart even when another symbol's feed
       // arrives first. Opening this chart creates its own feed demand.
       false,
-    ) || getChartEligibleSymbol(selectedSymbol) || chartEligibleSymbolNames[0] || '';
+    ) || getChartEligibleSymbol(selectedSymbol) || preferredChartCandidateSymbolNames[0] || chartEligibleSymbolNames[0] || '';
 
     if (applyLivePreference) {
       didApplyLiveChartPreferenceRef.current = true;
@@ -1597,12 +1630,14 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     chartSelectionReconciliationKey,
     chartEligibleSymbolNames,
     chartEligibleSymbolSet,
+    defaultMarketWatchSymbolNames,
     getChartEligibleSymbol,
     hasAppliedLiveChartPreference,
     hasLoadedChartSymbols,
     hasLoadedSymbols,
     isAuthenticated,
     isChartCatalogAuthoritative,
+    preferredChartCandidateSymbolNames,
     restoredLayoutAccountId,
     selectedSymbol,
     timeframe,
@@ -1614,14 +1649,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     catalogSettled: hasLoadedSymbols && !isLoadingSymbols,
     feedPreferenceSettled: activeMarketSymbolsSettled && hasAppliedLiveChartPreference,
     selectedSymbol,
-    authorizedSymbols: chartEligibleSymbolNames,
+    authorizedSymbols: preferredChartCandidateSymbolNames,
     layout: dockLayout,
     reconciliationKey: chartSelectionReconciliationKey,
     committedReconciliationKey: committedChartSelectionKey,
   }), [
     accountId,
     activeMarketSymbolsSettled,
-    chartEligibleSymbolNames,
     chartSelectionReconciliationKey,
     committedChartSelectionKey,
     dockLayout,
@@ -1629,6 +1663,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     hasLoadedSymbols,
     isAuthenticated,
     isLoadingSymbols,
+    preferredChartCandidateSymbolNames,
     restoredLayoutAccountId,
     selectedSymbol,
   ]);
@@ -1975,7 +2010,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     <TerminalStartupBoundary
       dataReady={!marketInstrumentsSnapshot.loading
         && (!isAuthenticated || (hasInitialAccountSnapshot && initialTradeSnapshotSettledFor === accountId))}
-      waitForChart={false}
+      waitForChart={chartEligibleSymbolNames.length > 0}
     >
     <CommandBusProvider>
       <KeyboardShortcutProvider>
@@ -2045,7 +2080,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                       globalChartType={chartType}
                       globalTimeframe={timeframe}
                       allSymbols={allSymbols}
-                      chartSymbols={chartEligibleSymbolNames}
+                      chartSymbols={preferredChartCandidateSymbolNames}
                       tradeSymbols={tradeEligibleSymbolNames}
                       activeMarketSnapshot={activeMarketSnapshot}
                       marketInstrumentsSnapshot={marketInstrumentsSnapshot}

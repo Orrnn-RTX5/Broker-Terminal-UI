@@ -37,6 +37,10 @@ export function TerminalLoadFallback({
       aria-busy={!isError}
     >
       <div className="rtx-terminal-loading__card">
+        <div className="rtx-terminal-loading__eyebrow" aria-hidden="true">
+          <span className="rtx-terminal-loading__dot" />
+          <span>{tr('MULTI-ASSET TRADING WORKSPACE')}</span>
+        </div>
         <div className="rtx-terminal-loading__emblem" aria-hidden="true">
           <span className="rtx-terminal-loading__bar" />
           <span className="rtx-terminal-loading__bar" />
@@ -49,9 +53,25 @@ export function TerminalLoadFallback({
           <div className="rtx-terminal-loading__message">{tr(message)}</div>
         </div>
         {!isError && (
-          <div className="rtx-terminal-loading__progress" aria-hidden="true">
-            <div className="rtx-terminal-loading__progress-bar" />
-          </div>
+          <>
+            <div className="rtx-terminal-loading__progress" aria-hidden="true">
+              <div className="rtx-terminal-loading__progress-bar" />
+            </div>
+            <div className="rtx-terminal-loading__meta" aria-hidden="true">
+              <span className="rtx-terminal-loading__pill">
+                <span className="rtx-terminal-loading__pill-dot" />
+                {tr('MARKET FEED')}
+              </span>
+              <span className="rtx-terminal-loading__pill">
+                <span className="rtx-terminal-loading__pill-dot" />
+                {tr('CHART ENGINE')}
+              </span>
+              <span className="rtx-terminal-loading__pill">
+                <span className="rtx-terminal-loading__pill-dot" />
+                {tr('ORDER ROUTER')}
+              </span>
+            </div>
+          </>
         )}
         {children}
       </div>

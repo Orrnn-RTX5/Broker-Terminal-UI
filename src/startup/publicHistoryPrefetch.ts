@@ -27,7 +27,7 @@ const assertCurrentOwner = (entry: Prefetch) => {
 };
 
 /** Public first viewport only. Never prefetch with account credentials. */
-export function preloadPublicStartupHistory(): void {
+export function preloadPublicStartupHistory(fallbackSymbol?: string): void {
   if (typeof window === 'undefined' || isDesktopBackendTarget()) return;
   try {
     for (const storage of [window.localStorage, window.sessionStorage]) {
@@ -37,10 +37,12 @@ export function preloadPublicStartupHistory(): void {
   const backend = getPublicBackendTarget();
   if (!backend) return;
   // No configured tenant chart symbol: the chart opens on the first authorized
-  // symbol, which is unknown here, so there is nothing to warm up.
-  if (!DEFAULT_CHART_SYMBOL) return;
+  // symbol, which is unknown here, so there is nothing to warm up unless the
+  // caller provides the resolved startup candidate symbol.
+  const targetSymbol = DEFAULT_CHART_SYMBOL || (typeof fallbackSymbol === 'string' ? fallbackSymbol.trim().toUpperCase() : '');
+  if (!targetSymbol) return;
   const query = new URLSearchParams({ timeframe: DEFAULT_CHART_TIMEFRAME, limit: String(FIRST_PAINT_HISTORY_COUNT) });
-  const url = toLocalDevProxyUrl(`${backend}/api/v2/candles/${encodeURIComponent(DEFAULT_CHART_SYMBOL)}?${query}`);
+  const url = toLocalDevProxyUrl(`${backend}/api/v2/candles/${encodeURIComponent(targetSymbol)}?${query}`);
   const brokerId = getRuntimeBrokerConfiguration().brokerId;
   const key = requestKey(url);
   if (pending.has(key)) return;
