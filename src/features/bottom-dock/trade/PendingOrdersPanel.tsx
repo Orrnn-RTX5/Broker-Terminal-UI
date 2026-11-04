@@ -247,7 +247,8 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
               <th className="px-2 py-1 font-normal text-right">{tr('SL')}</th>
               <th className="px-2 py-1 font-normal text-right">{tr('TP')}</th>
               <th className="px-2 py-1 font-normal text-right">{tr('Expiry')}</th>
-              <th className="w-[164px] py-1 pl-2 pr-12 text-center font-normal">{tr('Actions')}</th>
+              <th className="w-[76px] px-2 py-1 text-center font-normal">{tr('Modify')}</th>
+              <th className="w-[88px] py-1 pl-2 pr-8 text-center font-normal">{tr('Cancel')}</th>
             </tr>
           </thead>
           <tbody>
@@ -271,15 +272,17 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
                   <td className="px-2 py-1 text-right text-zinc-400">
                     {order.expiry && order.expiry > 0 ? new Date(order.expiry * 1000).toLocaleString() : '—'}
                   </td>
-                  <td className="w-[164px] py-1 pl-2 pr-12 text-center whitespace-nowrap">
+                  <td className="w-[76px] px-2 py-1 text-center whitespace-nowrap">
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => onModifyOrder(order)}
-                      className="rtx-pending-row-btn rtx-pending-row-btn--modify mr-1.5 inline-flex h-[21px] items-center justify-center rounded-[3px] border border-zinc-600/60 bg-zinc-800/80 px-2 text-[11px] font-medium leading-none text-zinc-200 transition-colors hover:border-sky-500/60 hover:bg-sky-500/15 hover:text-sky-300 disabled:pointer-events-none disabled:opacity-45"
+                      className="rtx-pending-row-btn rtx-pending-row-btn--modify inline-flex h-[21px] items-center justify-center rounded-[3px] border border-zinc-600/60 bg-zinc-800/80 px-2 text-[11px] font-medium leading-none text-zinc-200 transition-colors hover:border-sky-500/60 hover:bg-sky-500/15 hover:text-sky-300 disabled:pointer-events-none disabled:opacity-45"
                     >
                       {tr('Modify')}
                     </button>
+                  </td>
+                  <td className="w-[88px] py-1 pl-2 pr-8 text-center whitespace-nowrap">
                     <button
                       type="button"
                       disabled={busy}
