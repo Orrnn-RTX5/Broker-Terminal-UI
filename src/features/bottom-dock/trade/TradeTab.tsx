@@ -139,6 +139,7 @@ export const TradeTab = memo(function TradeTab({
     }, []);
 
     const [tradeView, setTradeView] = useState<'positions' | 'pending'>('positions');
+    const [pendingHeaderActionsHost, setPendingHeaderActionsHost] = useState<HTMLDivElement | null>(null);
     const pendingCount = useAppStore((s) => s.orders?.length ?? 0);
 
     const openModifyPendingOrder = useCallback((order: PendingOrderView) => {
@@ -1039,7 +1040,7 @@ ${rows}
 
     return (
         <div ref={tradeTabRef} className="rtx-trade-tab h-full cursor-default flex flex-col relative bg-[#131316] overflow-hidden">
-            <div className="flex items-center gap-1 px-2 pt-1">
+            <div className="flex items-center gap-1 px-2 pt-1 pr-8">
                 <button
                     type="button"
                     onClick={() => setTradeView('positions')}
@@ -1056,6 +1057,7 @@ ${rows}
                 >
                     {tr('Pending Orders')}{pendingCount > 0 ? ` (${pendingCount})` : ''}
                 </button>
+                <div ref={setPendingHeaderActionsHost} className="ml-auto flex items-center gap-2" />
             </div>
             {tradeView === 'pending' ? (
                 <PendingOrdersPanel
@@ -1063,6 +1065,7 @@ ${rows}
                     onCancelOrder={async (ticket) => { await onCancelOrder?.(ticket); }}
                     onCancelBulkOrders={onCancelBulkOrders}
                     onCancelOrderWithoutConfirm={onCancelOrderWithoutConfirm}
+                    headerActionsHost={pendingHeaderActionsHost}
                 />
             ) : (
             <TradeTable

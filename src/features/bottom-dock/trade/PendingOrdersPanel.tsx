@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../../../services/api';
 import { useAppStore } from '../../../store/useAppStore';
 import { useConfirmStore } from '../../../store/useConfirmStore';
@@ -88,6 +89,7 @@ type PendingOrdersPanelProps = {
   // confirm — never through the confirming single path.
   onCancelBulkOrders?: (tickets: number[]) => Promise<void> | void;
   onCancelOrderWithoutConfirm?: (ticket: number) => Promise<void> | void;
+  headerActionsHost?: HTMLElement | null;
 };
 
 export const PendingOrdersPanel = memo(function PendingOrdersPanel({
@@ -95,6 +97,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
   onCancelOrder,
   onCancelBulkOrders,
   onCancelOrderWithoutConfirm,
+  headerActionsHost,
 }: PendingOrdersPanelProps) {
   const tr = useUiTranslation();
   const storeOrders = useAppStore((s) => s.orders);
@@ -180,22 +183,32 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
     );
   }
 
+  const bulkActionButtons = (
+    <>
+      <button type="button" disabled={busy} onClick={() => void cancelMany('BUY')}
+        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
+        {tr('Cancel Buys')}
+      </button>
+      <button type="button" disabled={busy} onClick={() => void cancelMany('SELL')}
+        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
+        {tr('Cancel Sells')}
+      </button>
+      <button type="button" disabled={busy} onClick={() => void cancelMany('ALL')}
+        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
+        {tr('Cancel All')}
+      </button>
+    </>
+  );
+
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <div className="flex items-center justify-end gap-2 px-2 py-1">
-        <button type="button" disabled={busy} onClick={() => void cancelMany('BUY')}
-          className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
-          {tr('Cancel Buys')}
-        </button>
-        <button type="button" disabled={busy} onClick={() => void cancelMany('SELL')}
-          className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
-          {tr('Cancel Sells')}
-        </button>
-        <button type="button" disabled={busy} onClick={() => void cancelMany('ALL')}
-          className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
-          {tr('Cancel All')}
-        </button>
-      </div>
+      {headerActionsHost ? (
+        createPortal(bulkActionButtons, headerActionsHost)
+      ) : (
+        <div className="flex items-center justify-end gap-2 px-2 py-1">
+          {bulkActionButtons}
+        </div>
+      )}
       {error && (
         <div className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded p-2 mx-2 mb-1">
           {error}
