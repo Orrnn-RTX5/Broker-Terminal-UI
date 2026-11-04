@@ -246,7 +246,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
               <th className="px-2 py-1 font-normal text-right">{tr('Price')}</th>
               <th className="px-2 py-1 font-normal text-right">{tr('SL')}</th>
               <th className="px-2 py-1 font-normal text-right">{tr('TP')}</th>
-              <th className="px-2 py-1 font-normal text-right">{tr('Expiry')}</th>
+              <th className="w-[120px] py-1 pl-2 pr-8 text-center font-normal">{tr('Expiry')}</th>
               <th className="w-[76px] px-2 py-1 text-center font-normal">{tr('Modify')}</th>
               <th className="w-[88px] py-1 pl-2 pr-8 text-center font-normal">{tr('Cancel')}</th>
             </tr>
@@ -269,7 +269,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
                   <td className="px-2 py-1 text-right text-zinc-300">{formatPrice(order.price, digits)}</td>
                   <td className="px-2 py-1 text-right text-red-400">{order.sl > 0 ? formatPrice(order.sl, digits) : '—'}</td>
                   <td className="px-2 py-1 text-right text-emerald-400">{order.tp > 0 ? formatPrice(order.tp, digits) : '—'}</td>
-                  <td className="px-2 py-1 text-right text-zinc-400">
+                  <td className="w-[120px] py-1 pl-2 pr-8 text-center text-zinc-400">
                     {order.expiry && order.expiry > 0 ? new Date(order.expiry * 1000).toLocaleString() : '—'}
                   </td>
                   <td className="w-[76px] px-2 py-1 text-center whitespace-nowrap">
