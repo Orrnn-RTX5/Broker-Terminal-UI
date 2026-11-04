@@ -199,4 +199,27 @@ describe('PendingOrdersPanel (real store + backend shapes)', () => {
     render(<PendingOrdersPanel onModifyOrder={vi.fn()} onCancelOrder={vi.fn()} />);
     expect(screen.getByText('No pending orders')).toBeTruthy();
   });
+
+  it('portals segmented bulk actions into headerActionsHost and disables side actions when empty', () => {
+    act(() => {
+      useAppStore.getState().setOrders([BACKEND_ROWS[0]] as any);
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+
+    render(<PendingOrdersPanel onModifyOrder={vi.fn()} onCancelOrder={vi.fn()} headerActionsHost={host} />);
+
+    const cancelBuysBtn = host.querySelector('.rtx-pending-bulk-btn--buy') as HTMLButtonElement | null;
+    const cancelSellsBtn = host.querySelector('.rtx-pending-bulk-btn--sell') as HTMLButtonElement | null;
+    const cancelAllBtn = host.querySelector('.rtx-pending-bulk-btn--all') as HTMLButtonElement | null;
+
+    expect(cancelBuysBtn).not.toBeNull();
+    expect(cancelBuysBtn?.disabled).toBe(false);
+    expect(cancelSellsBtn).not.toBeNull();
+    expect(cancelSellsBtn?.disabled).toBe(true);
+    expect(cancelAllBtn).not.toBeNull();
+    expect(cancelAllBtn?.disabled).toBe(false);
+
+    host.remove();
+  });
 });

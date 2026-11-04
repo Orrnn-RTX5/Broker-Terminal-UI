@@ -183,21 +183,46 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
     );
   }
 
+  let buyCount = 0;
+  let sellCount = 0;
+  for (const order of orders) {
+    if (order.side === 'BUY') buyCount += 1;
+    else if (order.side === 'SELL') sellCount += 1;
+  }
+
   const bulkActionButtons = (
-    <>
-      <button type="button" disabled={busy} onClick={() => void cancelMany('BUY')}
-        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
+    <div className="rtx-pending-bulk-actions inline-flex items-center gap-1.5">
+      <button
+        type="button"
+        disabled={busy || buyCount === 0}
+        onClick={() => void cancelMany('BUY')}
+        className="rtx-pending-bulk-btn rtx-pending-bulk-btn--buy inline-flex h-[21px] items-center gap-1.5 rounded-[3px] border border-zinc-700/80 bg-zinc-800/75 px-2.5 text-[11px] font-medium leading-none text-zinc-200 transition-colors hover:border-sky-500/50 hover:bg-sky-500/15 hover:text-sky-200 disabled:pointer-events-none disabled:opacity-40"
+      >
+        <span className="rtx-pending-bulk-dot rtx-pending-bulk-dot--buy h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden="true" />
         {tr('Cancel Buys')}
       </button>
-      <button type="button" disabled={busy} onClick={() => void cancelMany('SELL')}
-        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
+      <button
+        type="button"
+        disabled={busy || sellCount === 0}
+        onClick={() => void cancelMany('SELL')}
+        className="rtx-pending-bulk-btn rtx-pending-bulk-btn--sell inline-flex h-[21px] items-center gap-1.5 rounded-[3px] border border-zinc-700/80 bg-zinc-800/75 px-2.5 text-[11px] font-medium leading-none text-zinc-200 transition-colors hover:border-rose-500/50 hover:bg-rose-500/15 hover:text-rose-200 disabled:pointer-events-none disabled:opacity-40"
+      >
+        <span className="rtx-pending-bulk-dot rtx-pending-bulk-dot--sell h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400" aria-hidden="true" />
         {tr('Cancel Sells')}
       </button>
-      <button type="button" disabled={busy} onClick={() => void cancelMany('ALL')}
-        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
+      <span className="rtx-pending-bulk-sep h-3.5 w-px shrink-0 bg-zinc-700/80" aria-hidden="true" />
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void cancelMany('ALL')}
+        className="rtx-pending-bulk-btn rtx-pending-bulk-btn--all inline-flex h-[21px] items-center gap-1 rounded-[3px] border border-red-500/45 bg-red-500/12 px-2.5 text-[11px] font-medium leading-none text-red-300 transition-colors hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+      >
+        <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+          <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+        </svg>
         {tr('Cancel All')}
       </button>
-    </>
+    </div>
   );
 
   return (
@@ -216,8 +241,8 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
       )}
       <div className="overflow-auto min-h-0">
         <table className="rtx-pending-orders-table w-full text-xs border-collapse">
-          <thead className="sticky top-0 bg-zinc-900">
-            <tr className="text-zinc-500 text-left border-b border-zinc-700">
+          <thead className="rtx-trade-table__head sticky top-0 z-10 select-none border-b border-zinc-700/80 bg-[#17181c] text-[12px] font-normal leading-[18px] text-[#c9cfdb]">
+            <tr className="h-[28px] text-left">
               <th className="px-2 py-1 font-normal">{tr('Ticket')}</th>
               <th className="px-2 py-1 font-normal">{tr('Symbol')}</th>
               <th className="px-2 py-1 font-normal">{tr('Type')}</th>
@@ -252,14 +277,20 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
                     {order.expiry && order.expiry > 0 ? new Date(order.expiry * 1000).toLocaleString() : '—'}
                   </td>
                   <td className="px-2 py-1 text-right whitespace-nowrap">
-                    <button type="button" disabled={busy}
+                    <button
+                      type="button"
+                      disabled={busy}
                       onClick={() => onModifyOrder(order)}
-                      className="text-sky-400 hover:text-sky-300 disabled:opacity-50 mr-2">
+                      className="rtx-pending-row-btn rtx-pending-row-btn--modify mr-1.5 inline-flex h-[21px] items-center justify-center rounded-[3px] border border-zinc-600/60 bg-zinc-800/80 px-2 text-[11px] font-medium leading-none text-zinc-200 transition-colors hover:border-sky-500/60 hover:bg-sky-500/15 hover:text-sky-300 disabled:pointer-events-none disabled:opacity-45"
+                    >
                       {tr('Modify')}
                     </button>
-                    <button type="button" disabled={busy}
+                    <button
+                      type="button"
+                      disabled={busy}
                       onClick={() => void cancelOne(order.ticket)}
-                      className="text-red-400 hover:text-red-300 disabled:opacity-50">
+                      className="rtx-pending-row-btn rtx-pending-row-btn--cancel inline-flex h-[21px] items-center justify-center rounded-[3px] border border-red-500/40 bg-red-500/10 px-2 text-[11px] font-medium leading-none text-red-300 transition-colors hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-45"
+                    >
                       {tr('Cancel')}
                     </button>
                   </td>

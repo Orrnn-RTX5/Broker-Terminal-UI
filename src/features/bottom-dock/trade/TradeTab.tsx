@@ -1040,12 +1040,12 @@ ${rows}
 
     return (
         <div ref={tradeTabRef} className="rtx-trade-tab h-full cursor-default flex flex-col relative bg-[#131316] overflow-hidden">
-            <div className="flex items-center gap-1 px-2 pt-1 pr-8">
+            <div className="rtx-trade-view-bar flex min-h-[28px] items-center gap-1 border-b border-zinc-800/80 px-2 py-0.5 pr-7">
                 <button
                     type="button"
                     onClick={() => setTradeView('positions')}
                     aria-pressed={tradeView === 'positions'}
-                    className={`text-xs px-2 py-0.5 rounded ${tradeView === 'positions' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}
+                    className={`rtx-trade-subtab-btn text-xs px-2 py-0.5 rounded ${tradeView === 'positions' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}
                 >
                     {tr('Positions')}
                 </button>
@@ -1053,11 +1053,11 @@ ${rows}
                     type="button"
                     onClick={() => setTradeView('pending')}
                     aria-pressed={tradeView === 'pending'}
-                    className={`text-xs px-2 py-0.5 rounded ${tradeView === 'pending' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}
+                    className={`rtx-trade-subtab-btn text-xs px-2 py-0.5 rounded ${tradeView === 'pending' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}
                 >
                     {tr('Pending Orders')}{pendingCount > 0 ? ` (${pendingCount})` : ''}
                 </button>
-                <div ref={setPendingHeaderActionsHost} className="ml-auto flex items-center gap-2" />
+                <div ref={setPendingHeaderActionsHost} className="rtx-pending-header-actions ml-auto flex items-center" />
             </div>
             {tradeView === 'pending' ? (
                 <PendingOrdersPanel

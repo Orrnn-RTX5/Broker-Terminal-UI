@@ -89,10 +89,20 @@ html:root.rtx-skin-untitled-light :is(
 
 html:root.rtx-skin-untitled-light :is(
   [role='tab'][aria-selected='true'],
+  .rtx-trade-subtab-btn[aria-pressed='true'],
+  .rtx-pending-bulk-btn,
+  .rtx-pending-row-btn,
   .rtx-history-time-btn[aria-pressed='true'],
   .rtx-journal-time-btn[aria-pressed='true']
 ) {
   --rtx-type-weight: var(--rtx-light-weight-control);
+}
+
+html:root.rtx-skin-untitled-light :is(
+  .rtx-pending-bulk-btn,
+  .rtx-pending-row-btn
+) {
+  --rtx-type-size: var(--rtx-light-type-caption);
 }
 
 /* Market Watch's desktop geometry previously fixed every label at 12px/400.

@@ -1731,6 +1731,104 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-close-button:focus-vis
   outline-offset: 1px;
 }
 
+/* Pending Orders bulk-action toolbar & row action buttons in Light theme */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-subtab-btn[aria-pressed="true"] {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: var(--rtx-light-accent-strong, #1e4788) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-subtab-btn[aria-pressed="false"] {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--rtx-light-text-secondary, #334155) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-subtab-btn[aria-pressed="false"]:hover {
+  background: var(--rtx-light-hover, #e8eef6) !important;
+  color: var(--rtx-light-text, #182230) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-btn--buy,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-btn--sell {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #1e293b !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-dot--buy {
+  background: var(--rtx-light-buy, #2563eb) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-dot--sell {
+  background: var(--rtx-light-sell, #dc2626) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-btn--buy:not(:disabled):hover {
+  background: #eff6ff !important;
+  border-color: #3b82f6 !important;
+  color: #1d4ed8 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-btn--sell:not(:disabled):hover {
+  background: #fef2f2 !important;
+  border-color: #ef4444 !important;
+  color: #b91c1c !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-sep {
+  background: #cbd5e1 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-btn--all {
+  background: #fef2f2 !important;
+  border: 1px solid #fca5a5 !important;
+  color: #b91c1c !important;
+  box-shadow: 0 1px 2px rgba(185, 28, 28, 0.05) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-btn--all:not(:disabled):hover {
+  background: var(--rtx-light-sell, #dc2626) !important;
+  border-color: var(--rtx-light-sell, #dc2626) !important;
+  color: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-btn:disabled {
+  background: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+  opacity: 0.65 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-row-btn--modify {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #334155 !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-row-btn--modify:not(:disabled):hover {
+  background: var(--rtx-light-selected, #dce9fa) !important;
+  border-color: var(--rtx-light-accent, #2457a7) !important;
+  color: var(--rtx-light-accent, #2457a7) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-row-btn--cancel {
+  background: #fef2f2 !important;
+  border: 1px solid #fecaca !important;
+  color: #b91c1c !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-row-btn--cancel:not(:disabled):hover {
+  background: var(--color-loss, #a51f26) !important;
+  border-color: var(--color-loss, #a51f26) !important;
+  color: #ffffff !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bg-image-dialog__save:not(:disabled):hover {
   background: #007d3b !important;
   border-color: #007d3b !important;
