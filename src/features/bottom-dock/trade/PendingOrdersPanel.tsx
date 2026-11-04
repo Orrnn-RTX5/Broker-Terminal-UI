@@ -247,7 +247,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
               <th className="px-2 py-1 font-normal text-right">{tr('SL')}</th>
               <th className="px-2 py-1 font-normal text-right">{tr('TP')}</th>
               <th className="px-2 py-1 font-normal text-right">{tr('Expiry')}</th>
-              <th className="px-2 py-1 pr-7 font-normal text-right">{tr('Actions')}</th>
+              <th className="w-[164px] py-1 pl-2 pr-12 text-center font-normal">{tr('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -271,7 +271,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
                   <td className="px-2 py-1 text-right text-zinc-400">
                     {order.expiry && order.expiry > 0 ? new Date(order.expiry * 1000).toLocaleString() : '—'}
                   </td>
-                  <td className="px-2 py-1 text-right whitespace-nowrap">
+                  <td className="w-[164px] py-1 pl-2 pr-12 text-center whitespace-nowrap">
                     <button
                       type="button"
                       disabled={busy}
