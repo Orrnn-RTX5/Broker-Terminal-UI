@@ -53,7 +53,45 @@ const readVolumeMetadata = (instrument: unknown): TradeVolumeMetadata => {
     };
 };
 
+const CHART_LOADING_BAR_HEIGHTS = [24, 38, 30, 52, 36, 62, 46, 32, 56, 42, 68, 48, 54, 38];
+
+const ChartWorkspaceLoadingSurface: React.FC<{
+    runtimeLoading?: boolean;
+    label: string;
+}> = ({ runtimeLoading = false, label }) => (
+    <div
+        className="rtx-chart-loading-surface flex-1 h-full w-full min-h-0 min-w-0 relative flex flex-col items-center justify-center select-none overflow-hidden"
+        data-rtx-chart-runtime-loading={runtimeLoading ? 'true' : undefined}
+        aria-busy="true"
+        style={{
+            backgroundColor: 'var(--bg-secondary, #0e0e12)',
+            color: 'var(--text-secondary, #94a3b8)',
+            backgroundImage:
+                'linear-gradient(to right, rgba(148, 163, 184, 0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.06) 1px, transparent 1px)',
+            backgroundSize: '56px 56px',
+        }}
+    >
+        <div className="flex items-end gap-1 mb-5 opacity-30" aria-hidden="true">
+            {CHART_LOADING_BAR_HEIGHTS.map((height, i) => (
+                <div
+                    key={i}
+                    className="w-2 bg-current rounded-sm animate-pulse"
+                    style={{
+                        height: `${height}px`,
+                        animationDelay: `${i * 80}ms`,
+                    }}
+                />
+            ))}
+        </div>
+        <div className="flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+            <div className="text-sm tracking-wide">{label}</div>
+        </div>
+    </div>
+);
+
 const DeferredTradingChart: React.FC<DeferredTradingChartProps> = (props) => {
+    const tr = useUiTranslation();
     const [ChartComponent, setChartComponent] = useState<TradingChartModule['TradingChart'] | null>(() => (
         getResolvedTradingChartRuntime()?.TradingChart ?? null
     ));
@@ -82,7 +120,7 @@ const DeferredTradingChart: React.FC<DeferredTradingChartProps> = (props) => {
     }, [ChartComponent, loadAttempt]);
 
     if (!ChartComponent) {
-        return <div className="h-full w-full bg-[#0e0e12]" data-rtx-chart-runtime-loading="true" />;
+        return <ChartWorkspaceLoadingSurface runtimeLoading label={tr('Connecting to market data…')} />;
     }
 
     return <ChartComponent {...props} />;
@@ -270,7 +308,7 @@ export const DockWorkspace = React.memo(function DockWorkspace({
                             </ErrorBoundary>
                         </div>
                     ) : (
-                        <div className="flex-1 w-full h-full min-h-0 min-w-0 bg-[#0e0e12]" />
+                        <ChartWorkspaceLoadingSurface label={tr('Connecting to market data…')} />
                     )}
                 </div>
             );

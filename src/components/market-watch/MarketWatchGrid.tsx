@@ -163,42 +163,124 @@ export const MarketWatchGrid = ({
       className="rtx-market-watch__table mw-scrollbar"
     >
       {showRows && (rows.length === 0 ? (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: 72,
-          gap: 8,
-          color: '#222226',
-        }}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
-            <line x1="18" y1="20" x2="18" y2="10" />
-            <line x1="12" y1="20" x2="12" y2="4" />
-            <line x1="6" y1="20" x2="6" y2="14" />
-          </svg>
-          <span className="rtx-market-watch__empty-text" style={{ fontSize: 11, color: '#50505a' }}>
-            {isSymbolListLoading ? translate('Loading symbols...') : translate('No live symbols')}
-          </span>
-          {!isSymbolListLoading && quoteEligibleSymbols.length > 0 && (
-            <button
-              type="button"
-              onClick={onShowAll}
+        isSymbolListLoading ? (
+          <div
+            className="rtx-market-watch__loading-skeleton"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              width: '100%',
+            }}
+          >
+            <div
+              aria-hidden="true"
               style={{
-                border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: 3,
-                background: 'rgba(255,255,255,0.04)',
-                color: 'var(--rtx-light-text-muted, #808088)',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                fontSize: 10,
-                padding: '4px 8px',
+                display: 'grid',
+                gridTemplateColumns: '1.2fr 1fr 1fr 1.1fr',
+                gap: 8,
+                padding: '0 8px',
+                height: 24,
+                alignItems: 'center',
+                borderBottom: '1px solid var(--border-primary, rgba(148, 163, 184, 0.14))',
+                background: 'var(--bg-secondary, rgba(255, 255, 255, 0.02))',
+                fontSize: 11,
+                color: 'var(--text-secondary, #64748b)',
               }}
             >
-              {translate('Show all symbols')}
-            </button>
-          )}
-        </div>
+              <span>{translate(columnHeaders.symbol)}</span>
+              <span style={{ textAlign: 'center' }}>{translate(columnHeaders.bid)}</span>
+              <span style={{ textAlign: 'center' }}>{translate(columnHeaders.ask)}</span>
+              <span style={{ textAlign: 'right' }}>{translate(columnHeaders.dailyChange)}</span>
+            </div>
+            <div aria-hidden="true" style={{ display: 'flex', flexDirection: 'column', padding: '4px 0' }}>
+              {[56, 68, 52, 64, 58, 60].map((symbolWidth, idx) => (
+                <div
+                  key={idx}
+                  className="animate-pulse"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1.2fr 1fr 1fr 1.1fr',
+                    gap: 8,
+                    padding: '6px 8px',
+                    alignItems: 'center',
+                    borderBottom: '1px solid rgba(148, 163, 184, 0.06)',
+                    animationDelay: `${idx * 90}ms`,
+                  }}
+                >
+                  <span style={{ height: 10, width: `${symbolWidth}%`, borderRadius: 3, background: 'rgba(148, 163, 184, 0.16)' }} />
+                  <span style={{ height: 10, width: '72%', margin: '0 auto', borderRadius: 3, background: 'rgba(148, 163, 184, 0.12)' }} />
+                  <span style={{ height: 10, width: '72%', margin: '0 auto', borderRadius: 3, background: 'rgba(148, 163, 184, 0.12)' }} />
+                  <span style={{ height: 10, width: '64%', marginLeft: 'auto', borderRadius: 3, background: 'rgba(148, 163, 184, 0.12)' }} />
+                </div>
+              ))}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                padding: '10px 8px',
+                color: 'var(--text-secondary, #64748b)',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                className="animate-spin"
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  border: '1.75px solid currentColor',
+                  borderTopColor: 'transparent',
+                  flexShrink: 0,
+                }}
+              />
+              <span className="rtx-market-watch__empty-text" style={{ fontSize: 11, color: 'var(--text-secondary, #64748b)' }}>
+                {translate('Loading symbols...')}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 72,
+            gap: 8,
+            color: '#222226',
+          }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+              <line x1="18" y1="20" x2="18" y2="10" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="6" y1="20" x2="6" y2="14" />
+            </svg>
+            <span className="rtx-market-watch__empty-text" style={{ fontSize: 11, color: '#50505a' }}>
+              {translate('No live symbols')}
+            </span>
+            {quoteEligibleSymbols.length > 0 && (
+              <button
+                type="button"
+                onClick={onShowAll}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 3,
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--rtx-light-text-muted, #808088)',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: 10,
+                  padding: '4px 8px',
+                }}
+              >
+                {translate('Show all symbols')}
+              </button>
+            )}
+          </div>
+        )
       ) : (
         <table
           className={`rtx-market-watch__grid${marketWatchOptions.showGrid ? ' rtx-market-watch__grid--lines' : ''}`}

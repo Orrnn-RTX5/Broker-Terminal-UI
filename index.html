@@ -370,16 +370,28 @@
     body { margin: 0; overflow: hidden; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; font-weight: 400; line-height: 20px; }
     * { box-sizing: border-box; }
 
-    .rtx-terminal-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; width: 100%; height: 100%; min-height: 0; padding: 24px; background: #0d0d11; color: #cbd5e1; text-align: center; }
-    .rtx-terminal-loading__brand { font-size: 22px; font-weight: 600; letter-spacing: .08em; }
-    .rtx-terminal-loading__spinner { width: 22px; height: 22px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rtx-terminal-loading-spin .8s linear infinite; }
-    .rtx-terminal-loading__message { max-width: 420px; font-size: 14px; line-height: 20px; }
+    .rtx-terminal-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; width: 100%; height: 100%; min-height: 0; padding: 24px; background: radial-gradient(circle at 50% 38%, #151924 0%, #0d0d11 65%, #07080c 100%); color: #cbd5e1; text-align: center; }
+    .rtx-terminal-loading__card { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; max-width: 380px; padding: 32px 28px 26px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.12); background: linear-gradient(180deg, rgba(22, 25, 34, 0.92) 0%, rgba(14, 16, 22, 0.96) 100%); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+    .rtx-terminal-loading__emblem { display: flex; align-items: flex-end; justify-content: center; gap: 3px; width: 44px; height: 44px; padding: 10px; border-radius: 11px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.24); color: #60a5fa; }
+    .rtx-terminal-loading__bar { width: 4px; border-radius: 2px; background: currentColor; animation: rtx-terminal-loading-pulse 1.2s ease-in-out infinite; }
+    .rtx-terminal-loading__bar:nth-child(1) { height: 11px; animation-delay: 0ms; }
+    .rtx-terminal-loading__bar:nth-child(2) { height: 18px; animation-delay: 150ms; }
+    .rtx-terminal-loading__bar:nth-child(3) { height: 14px; animation-delay: 300ms; }
+    .rtx-terminal-loading__bar:nth-child(4) { height: 22px; animation-delay: 450ms; }
+    .rtx-terminal-loading__brand { font-size: 19px; font-weight: 600; letter-spacing: .04em; color: #f8fafc; }
+    .rtx-terminal-loading__status { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+    .rtx-terminal-loading__spinner { width: 16px; height: 16px; border: 2px solid rgba(96, 165, 250, 0.28); border-top-color: #60a5fa; border-radius: 50%; animation: rtx-terminal-loading-spin .8s linear infinite; flex-shrink: 0; }
+    .rtx-terminal-loading__message { max-width: 340px; font-size: 13px; font-weight: 500; line-height: 18px; color: #94a3b8; }
+    .rtx-terminal-loading__progress { position: relative; width: 100%; height: 3px; margin-top: 4px; border-radius: 999px; background: rgba(148, 163, 184, 0.14); overflow: hidden; }
+    .rtx-terminal-loading__progress-bar { position: absolute; inset: 0 auto 0 0; width: 42%; border-radius: 999px; background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%); animation: rtx-terminal-loading-progress 1.4s ease-in-out infinite; }
     .rtx-terminal-loading__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
     .rtx-terminal-loading__actions button { min-height: 36px; padding: 8px 14px; border: 1px solid #454550; border-radius: 6px; background: #202026; color: inherit; font: inherit; cursor: pointer; }
     .rtx-terminal-loading__actions button:hover { border-color: currentColor; }
     .rtx-terminal-loading__actions button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 3px; }
     @keyframes rtx-terminal-loading-spin { to { transform: rotate(360deg); } }
-    @media (prefers-reduced-motion: reduce) { .rtx-terminal-loading__spinner { animation: none; } }
+    @keyframes rtx-terminal-loading-pulse { 0%, 100% { opacity: .45; transform: scaleY(.82); } 50% { opacity: 1; transform: scaleY(1); } }
+    @keyframes rtx-terminal-loading-progress { 0% { transform: translateX(-110%); } 100% { transform: translateX(250%); } }
+    @media (prefers-reduced-motion: reduce) { .rtx-terminal-loading__spinner, .rtx-terminal-loading__bar, .rtx-terminal-loading__progress-bar { animation: none; } }
 
     [data-rtx-static-shell] { width: 100%; height: 100%; background: #050608; }
     [data-rtx-static-shell] > .rtx-terminal-loading { display: none; }
@@ -406,6 +418,35 @@
       background: #e8edf3;
       color: #182230;
     }
+    html.rtx-skin-untitled-light .rtx-terminal-loading__card,
+    html[data-theme="light"] .rtx-terminal-loading__card {
+      background: #ffffff;
+      border-color: rgba(15, 23, 42, 0.1);
+      box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04);
+    }
+    html.rtx-skin-untitled-light .rtx-terminal-loading__emblem,
+    html[data-theme="light"] .rtx-terminal-loading__emblem {
+      background: rgba(37, 99, 235, 0.08);
+      border-color: rgba(37, 99, 235, 0.2);
+      color: #2563eb;
+    }
+    html.rtx-skin-untitled-light .rtx-terminal-loading__brand,
+    html[data-theme="light"] .rtx-terminal-loading__brand {
+      color: #0f172a;
+    }
+    html.rtx-skin-untitled-light .rtx-terminal-loading__message,
+    html[data-theme="light"] .rtx-terminal-loading__message {
+      color: #475569;
+    }
+    html.rtx-skin-untitled-light .rtx-terminal-loading__spinner,
+    html[data-theme="light"] .rtx-terminal-loading__spinner {
+      border-color: rgba(37, 99, 235, 0.22);
+      border-top-color: #2563eb;
+    }
+    html.rtx-skin-untitled-light .rtx-terminal-loading__progress,
+    html[data-theme="light"] .rtx-terminal-loading__progress {
+      background: rgba(15, 23, 42, 0.08);
+    }
     html.rtx-skin-untitled-light .rtx-terminal-loading__actions button,
     html[data-theme="light"] .rtx-terminal-loading__actions button {
       background: #ffffff;
@@ -418,18 +459,31 @@
   <div id="root">
     <div data-rtx-static-shell>
       <div class="rtx-terminal-loading" role="status" aria-live="polite" aria-busy="true">
-        <div class="rtx-terminal-loading__brand" data-rtx-boot-brand-slot>Web Terminal</div>
-        <script>
-          (function applyBootBrand() {
-            try {
-              var brand = document.documentElement.getAttribute('data-rtx-boot-brand');
-              var slot = document.querySelector('[data-rtx-boot-brand-slot]');
-              if (brand && slot) slot.textContent = brand;
-            } catch (_) { /* The brand label must never delay the terminal. */ }
-          })();
-        </script>
-        <div class="rtx-terminal-loading__spinner" aria-hidden="true"></div>
-        <div class="rtx-terminal-loading__message">Loading terminal…</div>
+        <div class="rtx-terminal-loading__card">
+          <div class="rtx-terminal-loading__emblem" aria-hidden="true">
+            <span class="rtx-terminal-loading__bar"></span>
+            <span class="rtx-terminal-loading__bar"></span>
+            <span class="rtx-terminal-loading__bar"></span>
+            <span class="rtx-terminal-loading__bar"></span>
+          </div>
+          <div class="rtx-terminal-loading__brand" data-rtx-boot-brand-slot>Web Terminal</div>
+          <script>
+            (function applyBootBrand() {
+              try {
+                var brand = document.documentElement.getAttribute('data-rtx-boot-brand');
+                var slot = document.querySelector('[data-rtx-boot-brand-slot]');
+                if (brand && slot) slot.textContent = brand;
+              } catch (_) { /* The brand label must never delay the terminal. */ }
+            })();
+          </script>
+          <div class="rtx-terminal-loading__status">
+            <div class="rtx-terminal-loading__spinner" aria-hidden="true"></div>
+            <div class="rtx-terminal-loading__message">Loading terminal…</div>
+          </div>
+          <div class="rtx-terminal-loading__progress" aria-hidden="true">
+            <div class="rtx-terminal-loading__progress-bar"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
