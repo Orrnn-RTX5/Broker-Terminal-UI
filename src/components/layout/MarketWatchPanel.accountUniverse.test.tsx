@@ -93,6 +93,7 @@ describe('MarketWatchPanel logged-in account symbol universe', () => {
 
     expect(getRenderedRowSymbols(container)).toEqual([]);
     expect(screen.getByText('Loading symbols...')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Add symbol' })).not.toBeInTheDocument();
     expect(demandedSymbols()).toEqual([]);
   });
 

@@ -318,7 +318,7 @@ export const MarketWatchGrid = ({
           </tbody>
         </table>
       ))}
-      {footer}
+      {(!showRows || (!isSymbolListLoading && (rows.length > 0 || quoteEligibleSymbols.length > 0))) && footer}
     </div>
   );
 };
