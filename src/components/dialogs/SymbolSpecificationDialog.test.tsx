@@ -650,7 +650,7 @@ describe('SymbolSpecificationDialog', () => {
     );
 
     const dialog = screen.getByTestId('symbol-specification-dialog');
-    expect(dialog).toHaveStyle({ width: '444px', height: '438px' });
+    expect(dialog).toHaveStyle({ width: '760px', height: '650px' });
 
     fireEvent.mouseDown(dialog.parentElement as HTMLElement);
     expect(onClose).not.toHaveBeenCalled();
@@ -658,7 +658,7 @@ describe('SymbolSpecificationDialog', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: 'Resize symbol specification dialog' }), {
       key: 'ArrowRight',
     });
-    expect(dialog).toHaveStyle({ width: '460px', height: '438px' });
+    expect(dialog).toHaveStyle({ width: '776px', height: '650px' });
   });
 
   it('renders MT5 In points swap type, derives weekday swap rates from rollover day, and highlights clicked rows', () => {

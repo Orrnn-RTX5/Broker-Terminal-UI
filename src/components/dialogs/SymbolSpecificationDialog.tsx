@@ -33,10 +33,10 @@ interface ResizeGesture {
 }
 
 const VIEWPORT_GAP = 16;
-const DEFAULT_DIALOG_WIDTH = 444;
-const DEFAULT_DIALOG_HEIGHT = 438;
-const MINIMUM_DIALOG_WIDTH = 360;
-const MINIMUM_DIALOG_HEIGHT = 300;
+const DEFAULT_DIALOG_WIDTH = 760;
+const DEFAULT_DIALOG_HEIGHT = 650;
+const MINIMUM_DIALOG_WIDTH = 520;
+const MINIMUM_DIALOG_HEIGHT = 380;
 
 const viewportSize = () => ({
   width: typeof window === 'undefined' ? 1_280 : window.innerWidth,
@@ -1182,46 +1182,38 @@ const PropertyMarker = ({ kind = 'text', selected = false }: { kind?: DisplayRow
   if (kind === 'enum') {
     return (
       <span
-        className={`rtx-spec-marker rtx-spec-marker--enum inline-flex h-[15px] w-[15px] shrink-0 flex-col items-center justify-center gap-[2px] rounded-[3px] border ${
-          selected
-            ? 'border-white/35 bg-white/15'
-            : 'border-[#3b82f6]/25 bg-[#3b82f6]/10'
-        }`}
+        className="rtx-spec-marker rtx-spec-marker--enum inline-flex h-[14px] w-[16px] shrink-0 flex-col items-center justify-center gap-[2px]"
         aria-hidden="true"
       >
-        <span className={`h-[1.5px] w-2.5 rounded-full ${selected ? 'bg-white/95' : 'bg-[#38bdf8]'}`} />
-        <span className={`h-[1.5px] w-2.5 rounded-full ${selected ? 'bg-[#fecaca]' : 'bg-[#f87171]'}`} />
-        <span className={`h-[1.5px] w-2.5 rounded-full ${selected ? 'bg-white/95' : 'bg-[#38bdf8]'}`} />
+        <span className={`h-[1.5px] w-[11px] rounded-full ${selected ? 'bg-white' : 'bg-[#3898ff]'}`} />
+        <span className={`h-[2px] w-[13px] rounded-full ${selected ? 'bg-[#fca5a5]' : 'bg-[#ef4444]'}`} />
+        <span className={`h-[1.5px] w-[11px] rounded-full ${selected ? 'bg-white' : 'bg-[#3898ff]'}`} />
       </span>
     );
   }
   if (kind === 'calendar') {
     return (
       <span
-        className={`rtx-spec-marker rtx-spec-marker--calendar relative inline-flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-[3px] border ${
-          selected
-            ? 'border-white/35 bg-white/15 text-white'
-            : 'border-[#38bdf8]/25 bg-[#38bdf8]/10 text-[#38bdf8]'
+        className={`rtx-spec-marker rtx-spec-marker--calendar relative inline-flex h-[14px] w-[16px] shrink-0 items-center justify-center ${
+          selected ? 'text-white' : 'text-[#2b95ff]'
         }`}
         aria-hidden="true"
       >
-        <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-          <rect x="1" y="2" width="8" height="7" rx="1" stroke="currentColor" strokeWidth="1.1" />
-          <path d="M1 4.2H9M3.2 1V2.6M6.8 1V2.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+        <svg width="13" height="12" viewBox="0 0 13 12" fill="none">
+          <rect x="1" y="2" width="11" height="9" rx="0.8" stroke="currentColor" strokeWidth="1.2" />
+          <path d="M1 4.5H12M3.8 0.8V2.8M9.2 0.8V2.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
         </svg>
       </span>
     );
   }
   const toneClasses = selected
-    ? 'border-white/35 bg-white/15 text-white'
+    ? 'text-white'
     : kind === 'text'
-      ? 'border-[#f59e0b]/30 bg-[#f59e0b]/12 text-[#fbbf24]'
-      : kind === 'integer'
-        ? 'border-[#38bdf8]/30 bg-[#38bdf8]/12 text-[#38bdf8]'
-        : 'border-[#818cf8]/30 bg-[#818cf8]/12 text-[#818cf8]';
+      ? 'text-[#c59b6d]'
+      : 'text-[#3898ff]';
   return (
     <span
-      className={`rtx-spec-marker inline-flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-[3px] border text-center font-mono text-[8.5px] font-bold leading-none tracking-tighter ${toneClasses}`}
+      className={`rtx-spec-marker inline-flex h-[14px] w-[16px] shrink-0 items-center justify-center text-center font-sans text-[11px] font-semibold leading-none tracking-tight ${toneClasses}`}
       aria-hidden="true"
     >
       {kind === 'integer' ? '01' : kind === 'decimal' ? '½' : 'ab'}
@@ -1259,29 +1251,29 @@ const PropertyRows = ({
             data-selected={isSelected ? 'true' : undefined}
             data-stripe={isEven ? 'even' : 'odd'}
             onClick={() => onSelectRow?.(rowKey)}
-            className={`rtx-spec-row grid min-h-[24px] grid-cols-[42%_58%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+            className={`rtx-spec-row grid h-[22px] min-h-[22px] grid-cols-[38.5%_61.5%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
               isSelected ? 'rtx-spec-row--selected text-white' : ''
             }`}
           >
             <dt
-              className={`flex min-w-0 items-center gap-2 px-2.5 py-1 text-[12px] leading-[16px] ${
-                isSelected ? 'font-medium text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
+              className={`flex min-w-0 items-center gap-1.5 px-2 py-[2px] text-[12px] leading-[16px] ${
+                isSelected ? 'font-normal text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
               }`}
             >
               <PropertyMarker kind={row.kind} selected={isSelected} />
               <span className="truncate">{tr(row.label)}</span>
             </dt>
             <dd
-              className={`m-0 truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right text-[12px] leading-[16px] tabular-nums ${
+              className={`m-0 flex h-full items-center justify-end truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right text-[12px] leading-[16px] tabular-nums ${
                 isSelected
-                  ? 'font-medium text-white'
+                  ? 'font-normal text-white'
                   : row.tone === 'positive'
-                    ? 'font-medium text-[var(--color-profit)]'
+                    ? 'font-normal text-[var(--color-profit)]'
                     : row.tone === 'negative'
-                      ? 'font-medium text-[var(--color-loss)]'
+                      ? 'font-normal text-[var(--color-loss)]'
                       : isMissingPlaceholder
                         ? 'font-normal text-[var(--mw-spec-muted,var(--text-tertiary))]'
-                        : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'
+                        : 'font-normal text-[var(--mw-spec-value,var(--text-primary))]'
               }`}
               title={row.value}
             >
@@ -1310,11 +1302,11 @@ const SectionHeading = ({
     <div
       data-selected={isSelected ? 'true' : undefined}
       onClick={rowKey ? () => onSelectRow?.(rowKey) : undefined}
-      className={`rtx-spec-row rtx-spec-row--heading grid min-h-[26px] grid-cols-[42%_58%] items-center border-y border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] text-[11.5px] font-semibold tracking-[0.01em] leading-4 first:border-t-0 ${
+      className={`rtx-spec-row rtx-spec-row--heading grid h-[22px] min-h-[22px] grid-cols-[38.5%_61.5%] items-center border-y border-[var(--mw-spec-grid,var(--border-primary))] text-[12px] font-bold leading-4 first:border-t-0 ${
         isSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-heading-text,var(--text-primary))]'
       }`}
     >
-      <div className="truncate px-2.5 py-1">{children}</div>
+      <div className="truncate px-2 py-[2px]">{children}</div>
       <div className="h-full border-l border-[var(--mw-spec-grid,var(--border-primary))]" aria-hidden="true" />
     </div>
   );
@@ -1334,6 +1326,7 @@ const SessionTable = ({
   const tr = useUiTranslation();
   const headerKey = 'sessions:header';
   const isHeaderSelected = selectedRowKey === headerKey;
+  const hasAnySessionSchedule = sessions.some((s) => s.quotes.length > 0 || s.trade.length > 0);
   return (
     <section aria-label={tr('Sessions')} title={timeZone ? `${tr('Broker server time')}: ${timeZone}` : undefined}>
       <table className="w-full table-fixed border-collapse text-[12px]">
@@ -1341,15 +1334,15 @@ const SessionTable = ({
           <tr
             data-selected={isHeaderSelected ? 'true' : undefined}
             onClick={() => onSelectRow?.(headerKey)}
-            className={`rtx-spec-row rtx-spec-row--heading h-[26px] border-y border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] text-[11.5px] tracking-[0.01em] ${
+            className={`rtx-spec-row rtx-spec-row--heading h-[22px] border-y border-[var(--mw-spec-grid,var(--border-primary))] text-[12px] ${
               isHeaderSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-heading-text,var(--text-primary))]'
             }`}
           >
-            <th className="w-[42%] px-2.5 py-1 text-left font-semibold" scope="col">
+            <th className="w-[38.5%] px-2 py-[2px] text-left font-bold" scope="col">
               {tr('Sessions')}{timeZone ? <span className={`ml-1 font-normal ${isHeaderSelected ? 'text-white/80' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'}`}>({timeZone})</span> : null}
             </th>
-            <th className="w-[29%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right font-semibold" scope="col">{tr('Quotes')}</th>
-            <th className="w-[29%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right font-semibold" scope="col">{tr('Trade')}</th>
+            <th className="w-[30.75%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right font-bold" scope="col">{tr('Quotes')}</th>
+            <th className="w-[30.75%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right font-bold" scope="col">{tr('Trade')}</th>
           </tr>
         </thead>
         <tbody>
@@ -1358,31 +1351,32 @@ const SessionTable = ({
             const isSelected = selectedRowKey === rowKey;
             const hasQuotes = session.quotes.length > 0;
             const hasTrade = session.trade.length > 0;
+            const emptyCellText = hasAnySessionSchedule ? '' : '—';
             return (
               <tr
                 key={session.day}
                 data-selected={isSelected ? 'true' : undefined}
                 data-stripe={index % 2 === 0 ? 'even' : 'odd'}
                 onClick={() => onSelectRow?.(rowKey)}
-                className={`rtx-spec-row h-[24px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+                className={`rtx-spec-row h-[22px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
                   isSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                 }`}
               >
-                <th className="px-2.5 py-1 text-left font-normal" scope="row">
-                  <span className="flex items-center gap-2">
+                <th className="px-2 py-[2px] text-left font-normal" scope="row">
+                  <span className="flex items-center gap-1.5">
                     <PropertyMarker kind="calendar" selected={isSelected} />
                     {tr(session.label)}
                   </span>
                 </th>
-                <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right tabular-nums ${
-                  isSelected ? 'font-medium text-white' : hasQuotes ? 'font-medium text-[var(--mw-spec-value,var(--text-primary))]' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'
+                <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right tabular-nums ${
+                  isSelected ? 'text-white' : hasQuotes ? 'text-[var(--mw-spec-value,var(--text-primary))]' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'
                 }`}>
-                  {hasQuotes ? session.quotes.join(', ') : '—'}
+                  {hasQuotes ? session.quotes.join(', ') : emptyCellText}
                 </td>
-                <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right tabular-nums ${
-                  isSelected ? 'font-medium text-white' : hasTrade ? 'font-medium text-[var(--mw-spec-value,var(--text-primary))]' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'
+                <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right tabular-nums ${
+                  isSelected ? 'text-white' : hasTrade ? 'text-[var(--mw-spec-value,var(--text-primary))]' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'
                 }`}>
-                  {hasTrade ? session.trade.join(', ') : '—'}
+                  {hasTrade ? session.trade.join(', ') : emptyCellText}
                 </td>
               </tr>
             );
@@ -1426,15 +1420,15 @@ const CommissionTable = ({
                   data-selected={isSelected ? 'true' : undefined}
                   data-stripe={tierIndex % 2 === 0 ? 'even' : 'odd'}
                   onClick={() => onSelectRow?.(rowKey)}
-                  className={`rtx-spec-row grid min-h-[24px] grid-cols-[42%_58%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+                  className={`rtx-spec-row grid h-[22px] min-h-[22px] grid-cols-[38.5%_61.5%] items-center border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
                     isSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                   }`}
                 >
-                  <dt className="flex min-w-0 items-center gap-2 px-2.5 py-1 text-[12px]">
+                  <dt className="flex min-w-0 items-center gap-1.5 px-2 py-[2px] text-[12px]">
                     <PropertyMarker kind="decimal" selected={isSelected} />
                     <span className="truncate">{label}</span>
                   </dt>
-                  <dd className={`m-0 truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right text-[12px] font-medium tabular-nums ${
+                  <dd className={`m-0 flex h-full items-center justify-end truncate border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right text-[12px] tabular-nums ${
                     isSelected ? 'text-white' : 'text-[var(--mw-spec-value,var(--text-primary))]'
                   }`} title={tier.value}>
                     {tier.value}
@@ -1464,11 +1458,11 @@ const MarginSpreadsTable = ({
     <section aria-label={tr('Spreads')}>
       <table className="w-full table-fixed border-collapse text-[12px]">
         <thead>
-          <tr className="rtx-spec-row rtx-spec-row--heading h-[26px] border-y border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] text-[11.5px] tracking-[0.01em] text-[var(--mw-spec-heading-text,var(--text-primary))]">
-            <th className="w-[42%] px-2.5 py-1 text-left font-semibold" scope="col">{tr('Spreads')}</th>
-            <th className="w-[19%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-left font-semibold" scope="col">{tr('Leg A')}</th>
-            <th className="w-[19%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-left font-semibold" scope="col">{tr('Leg B')}</th>
-            <th className="w-[20%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right font-semibold" scope="col">{tr('Margin')}</th>
+          <tr className="rtx-spec-row rtx-spec-row--heading h-[22px] border-y border-[var(--mw-spec-grid,var(--border-primary))] text-[12px] text-[var(--mw-spec-heading-text,var(--text-primary))]">
+            <th className="w-[38.5%] px-2 py-[2px] text-left font-bold" scope="col">{tr('Spreads')}</th>
+            <th className="w-[20.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-left font-bold" scope="col">{tr('Leg A')}</th>
+            <th className="w-[20.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-left font-bold" scope="col">{tr('Leg B')}</th>
+            <th className="w-[20.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right font-bold" scope="col">{tr('Margin')}</th>
           </tr>
         </thead>
         <tbody>
@@ -1481,14 +1475,14 @@ const MarginSpreadsTable = ({
                 data-selected={isSelected ? 'true' : undefined}
                 data-stripe={index % 2 === 0 ? 'even' : 'odd'}
                 onClick={() => onSelectRow?.(rowKey)}
-                className={`rtx-spec-row h-[24px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+                className={`rtx-spec-row h-[22px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
                   isSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                 }`}
               >
-                <th className="px-2.5 py-1 text-left font-normal" scope="row">{spread.name}</th>
-                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-left">{spread.legA}</td>
-                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-left">{spread.legB}</td>
-                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2.5 py-1 text-right font-medium tabular-nums">{spread.margin ?? '—'}</td>
+                <th className="px-2 py-[2px] text-left font-normal" scope="row">{spread.name}</th>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-left">{spread.legA}</td>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-left">{spread.legB}</td>
+                <td className="border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right tabular-nums">{spread.margin ?? '—'}</td>
               </tr>
             );
           })}
@@ -1571,16 +1565,16 @@ const MarginRatesTable = ({
   return (
     <section aria-label={tr('Margin rates')}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[420px] table-fixed border-collapse text-[12px]">
+        <table className="w-full table-fixed border-collapse text-[12px]">
           <thead>
             <tr
               data-selected={isHeaderSelected ? 'true' : undefined}
               onClick={() => onSelectRow?.(headerKey)}
-              className={`rtx-spec-row rtx-spec-row--heading min-h-[26px] border-y border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] text-[11.5px] tracking-[0.01em] ${
+              className={`rtx-spec-row rtx-spec-row--heading min-h-[22px] border-y border-[var(--mw-spec-grid,var(--border-primary))] text-[12px] ${
                 isHeaderSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-heading-text,var(--text-primary))]'
               }`}
             >
-              <th className="w-[42%] px-2.5 py-1 text-left font-semibold" scope="col" title={heading}>
+              <th className="w-[38.5%] px-2 py-[2px] text-left font-bold" scope="col" title={heading}>
                 <span className="block truncate">{heading}</span>
                 {asOfText && (
                   <span className={`block truncate text-[10px] font-normal ${isHeaderSelected ? 'text-white/80' : 'text-[var(--mw-spec-muted,var(--text-tertiary))]'}`}>
@@ -1588,10 +1582,10 @@ const MarginRatesTable = ({
                   </span>
                 )}
               </th>
-              <th className="w-[14.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right font-semibold" scope="col">{tr('Initial')}</th>
-              <th className="w-[14.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right font-semibold" scope="col">{perLotHeading}</th>
-              <th className="w-[14.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right font-semibold" scope="col">{tr('Maintenance')}</th>
-              <th className="w-[14.5%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right font-semibold" scope="col">{perLotHeading}</th>
+              <th className="w-[15.375%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right font-bold" scope="col">{tr('Initial')}</th>
+              <th className="w-[15.375%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right font-bold" scope="col">{perLotHeading}</th>
+              <th className="w-[15.375%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right font-bold" scope="col">{tr('Maintenance')}</th>
+              <th className="w-[15.375%] border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right font-bold" scope="col">{perLotHeading}</th>
             </tr>
           </thead>
           <tbody>
@@ -1611,12 +1605,12 @@ const MarginRatesTable = ({
                     <tr
                       data-selected={isGroupSelected ? 'true' : undefined}
                       onClick={() => onSelectRow?.(groupKey)}
-                      className={`rtx-spec-row h-[24px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 ${
+                      className={`rtx-spec-row h-[22px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 ${
                         isGroupSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                       }`}
                     >
-                      <th className="px-2.5 py-1 text-left font-medium" scope="rowgroup">
-                        <span className="flex items-center gap-2">
+                      <th className="px-2 py-[2px] text-left font-normal" scope="rowgroup">
+                        <span className="flex items-center gap-1.5">
                           <PropertyMarker kind="decimal" selected={isGroupSelected} />
                           {tr(rate.label)}
                         </span>
@@ -1631,24 +1625,24 @@ const MarginRatesTable = ({
                     data-selected={isRowSelected ? 'true' : undefined}
                     data-stripe={index % 2 === 0 ? 'even' : 'odd'}
                     onClick={() => onSelectRow?.(rowKey)}
-                    className={`rtx-spec-row h-[24px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
+                    className={`rtx-spec-row h-[22px] border-b border-[var(--mw-spec-grid,var(--border-primary))] transition-colors duration-75 last:border-b-0 ${
                       isRowSelected ? 'rtx-spec-row--selected text-white' : 'text-[var(--mw-spec-label,var(--text-primary))]'
                     }`}
                   >
-                    <th className={`px-2.5 py-1 text-left font-normal ${rate.range ? 'pl-6 tabular-nums' : ''}`} scope="row">
+                    <th className={`px-2 py-[2px] text-left font-normal ${rate.range ? 'pl-6 tabular-nums' : ''}`} scope="row">
                       {rate.range ? (
                         rate.range
                       ) : (
-                        <span className="flex items-center gap-2">
+                        <span className="flex items-center gap-1.5">
                           <PropertyMarker kind="decimal" selected={isRowSelected} />
                           {tr(rate.label)}
                         </span>
                       )}
                     </th>
-                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right tabular-nums ${isRowSelected ? 'text-white' : initialText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'}`}>{initialText}</td>
-                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right tabular-nums ${isRowSelected ? 'text-white' : initialPerLotText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'}`}>{initialPerLotText}</td>
-                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right tabular-nums ${isRowSelected ? 'text-white' : maintenanceText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'}`}>{maintenanceText}</td>
-                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-1 text-right tabular-nums ${isRowSelected ? 'text-white' : maintenancePerLotText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'font-medium text-[var(--mw-spec-value,var(--text-primary))]'}`}>{maintenancePerLotText}</td>
+                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right tabular-nums ${isRowSelected ? 'text-white' : initialText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'text-[var(--mw-spec-value,var(--text-primary))]'}`}>{initialText}</td>
+                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right tabular-nums ${isRowSelected ? 'text-white' : initialPerLotText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'text-[var(--mw-spec-value,var(--text-primary))]'}`}>{initialPerLotText}</td>
+                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right tabular-nums ${isRowSelected ? 'text-white' : maintenanceText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'text-[var(--mw-spec-value,var(--text-primary))]'}`}>{maintenanceText}</td>
+                    <td className={`border-l border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-right tabular-nums ${isRowSelected ? 'text-white' : maintenancePerLotText === '—' ? 'text-[var(--mw-spec-muted,var(--text-tertiary))]' : 'text-[var(--mw-spec-value,var(--text-primary))]'}`}>{maintenancePerLotText}</td>
                   </tr>
                 </React.Fragment>
               );
@@ -1662,13 +1656,13 @@ const MarginRatesTable = ({
 
 const SpecificationTitleIcon = () => (
   <span
-    className="rtx-spec-title-icon inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border border-[#3b82f6]/30 bg-gradient-to-br from-[#3b82f6]/20 to-[#1d4ed8]/10 shadow-inner"
+    className="rtx-spec-title-icon inline-flex h-4 w-4 shrink-0 items-center justify-center"
     aria-hidden="true"
   >
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-      <rect x="2" y="2" width="9.5" height="11.5" rx="1.6" stroke="#60a5fa" strokeWidth="1.2" />
-      <rect x="4.5" y="1.5" width="9.5" height="12" rx="1.6" fill="#1e293b" stroke="#fbbf24" strokeWidth="1.2" />
-      <path d="M7 5.2H11.5M7 7.8H11.5M7 10.4H9.8" stroke="#f8fafc" strokeWidth="1.2" strokeLinecap="round" />
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+      <rect x="3.5" y="1" width="10" height="12.5" rx="1.2" fill="#1d4ed8" stroke="#60a5fa" strokeWidth="1" />
+      <rect x="1.5" y="2.5" width="10" height="12.5" rx="1.2" fill="#d97706" stroke="#fbbf24" strokeWidth="1" />
+      <path d="M6.5 5.2V12.2M8.2 6.8C8.2 6.1 7.4 5.7 6.5 5.7C5.5 5.7 4.8 6.2 4.8 6.9C4.8 7.6 5.5 7.9 6.5 8.2C7.5 8.5 8.2 8.9 8.2 9.7C8.2 10.5 7.4 11 6.5 11C5.4 11 4.7 10.5 4.7 9.7" stroke="#fef3c7" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   </span>
 );
@@ -1867,46 +1861,52 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
     >
       <style>{`
         .rtx-symbol-specification-dialog {
-          --mw-spec-bg: #161a20;
-          --mw-spec-surface: #1b2028;
-          --mw-spec-header-bg: linear-gradient(180deg, #222832 0%, #181c23 100%);
-          --mw-spec-banner-bg: linear-gradient(90deg, rgba(37, 99, 235, 0.14) 0%, rgba(30, 41, 59, 0.45) 100%);
-          --mw-spec-heading-bg: #222934;
-          --mw-spec-heading-text: #dbe5f3;
-          --mw-spec-row-even: #1d222b;
-          --mw-spec-row-odd: #181c24;
-          --mw-spec-row-hover: #252c38;
-          --mw-spec-grid: rgba(148, 163, 184, 0.14);
-          --mw-spec-outer-border: rgba(148, 163, 184, 0.24);
-          --mw-spec-selected-bg: linear-gradient(90deg, #1d64d8 0%, #1a56bd 100%);
-          --mw-spec-label: #c9d4e3;
-          --mw-spec-value: #f1f5f9;
+          --mw-spec-bg: #1c1e22;
+          --mw-spec-surface: #25282c;
+          --mw-spec-header-bg: #131518;
+          --mw-spec-banner-bg: #222529;
+          --mw-spec-heading-bg: #222529;
+          --mw-spec-heading-text: #ffffff;
+          --mw-spec-row-even: #25282c;
+          --mw-spec-row-odd: #222529;
+          --mw-spec-row-hover: #2d3238;
+          --mw-spec-grid: #373b41;
+          --mw-spec-outer-border: #3d4249;
+          --mw-spec-selected-bg: #0078d7;
+          --mw-spec-label: #e2e8f0;
+          --mw-spec-value: #f8fafc;
           --mw-spec-muted: #94a3b8;
-          font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
-          border-radius: 8px;
+          --mw-spec-scroll-track: #17191c;
+          --mw-spec-scroll-thumb: #4b5057;
+          --mw-spec-scroll-thumb-hover: #5e646d;
+          font-family: "Segoe UI", Tahoma, "Inter", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+          border-radius: 2px;
           background: var(--mw-spec-bg);
           border-color: var(--mw-spec-outer-border);
-          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.62), 0 4px 16px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 2px 10px rgba(0, 0, 0, 0.45);
         }
         .theme-light .rtx-symbol-specification-dialog,
         .rtx-skin-untitled-light .rtx-symbol-specification-dialog {
-          --mw-spec-bg: #f1f5f9;
+          --mw-spec-bg: #f0f2f5;
           --mw-spec-surface: #ffffff;
-          --mw-spec-header-bg: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
-          --mw-spec-banner-bg: linear-gradient(90deg, rgba(37, 99, 235, 0.08) 0%, rgba(241, 245, 249, 0.7) 100%);
-          --mw-spec-heading-bg: #edf2f8;
-          --mw-spec-heading-text: #1e293b;
+          --mw-spec-header-bg: #ffffff;
+          --mw-spec-banner-bg: #f1f5f9;
+          --mw-spec-heading-bg: #f1f5f9;
+          --mw-spec-heading-text: #0f172a;
           --mw-spec-row-even: #ffffff;
           --mw-spec-row-odd: #f8fafc;
-          --mw-spec-row-hover: #eef4fb;
-          --mw-spec-grid: #e2e8f0;
-          --mw-spec-outer-border: #cbd5e1;
-          --mw-spec-selected-bg: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%);
-          --mw-spec-label: #334155;
+          --mw-spec-row-hover: #edf2f7;
+          --mw-spec-grid: #d5dce6;
+          --mw-spec-outer-border: #b8c2cf;
+          --mw-spec-selected-bg: #0078d7;
+          --mw-spec-label: #1e293b;
           --mw-spec-value: #0f172a;
           --mw-spec-muted: #64748b;
-          border-radius: 8px;
-          box-shadow: 0 22px 52px rgba(15, 23, 42, 0.18), 0 3px 10px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+          --mw-spec-scroll-track: #e2e8f0;
+          --mw-spec-scroll-thumb: #94a3b8;
+          --mw-spec-scroll-thumb-hover: #64748b;
+          border-radius: 2px;
+          box-shadow: 0 18px 44px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(15, 23, 42, 0.1);
         }
         .rtx-symbol-specification-dialog .rtx-spec-header {
           background: var(--mw-spec-header-bg);
@@ -1932,47 +1932,61 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
           color: #ffffff;
         }
         .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar {
-          width: 7px;
-          height: 7px;
+          width: 15px;
+          height: 15px;
         }
         .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar-track {
-          background: transparent;
+          background: var(--mw-spec-scroll-track);
+          border-left: 1px solid var(--mw-spec-grid);
         }
         .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.28);
-          border-radius: 9999px;
+          background: var(--mw-spec-scroll-thumb);
+          border: 2px solid var(--mw-spec-scroll-track);
+          border-radius: 0;
         }
         .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar-thumb:hover {
-          background: rgba(148, 163, 184, 0.45);
+          background: var(--mw-spec-scroll-thumb-hover);
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar-button:single-button {
+          display: block;
+          height: 15px;
+          width: 15px;
+          background-color: var(--mw-spec-surface);
+          background-repeat: no-repeat;
+          background-position: center;
+          border-left: 1px solid var(--mw-spec-grid);
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar-button:single-button:vertical:decrement {
+          border-bottom: 1px solid var(--mw-spec-grid);
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M1 4L4 1L7 4' stroke='%2394a3b8' stroke-width='1.3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        }
+        .rtx-symbol-specification-dialog .rtx-spec-scroll::-webkit-scrollbar-button:single-button:vertical:increment {
+          border-top: 1px solid var(--mw-spec-grid);
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M1 1L4 4L7 1' stroke='%2394a3b8' stroke-width='1.3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
         }
         .rtx-symbol-specification-dialog .rtx-spec-close-btn {
-          border-radius: 5px;
-          border-color: rgba(148, 163, 184, 0.32);
-          background: linear-gradient(180deg, #27303d 0%, #1d242f 100%);
-          color: #f1f5f9;
-          font-weight: 500;
-          letter-spacing: 0.01em;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-          transition: all 120ms ease;
+          border-radius: 0;
+          border-color: #9ca3af;
+          background: #2b2f35;
+          color: #ffffff;
+          transition: all 100ms ease;
         }
         .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover {
-          border-color: #3b82f6;
-          background: linear-gradient(180deg, #2e3848 0%, #232b38 100%);
+          border-color: #e2e8f0;
+          background: #363b42;
           color: #ffffff;
         }
         .theme-light .rtx-symbol-specification-dialog .rtx-spec-close-btn,
         .rtx-skin-untitled-light .rtx-symbol-specification-dialog .rtx-spec-close-btn {
-          border-color: var(--rtx-light-control-border, #cbd5e1);
-          border-radius: 5px;
-          background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
-          color: var(--rtx-light-text, #0f172a);
-          font-weight: 500;
-          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+          border-color: #64748b;
+          border-radius: 0;
+          background: #ffffff;
+          color: #0f172a;
         }
         .theme-light .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover,
         .rtx-skin-untitled-light .rtx-symbol-specification-dialog .rtx-spec-close-btn:hover {
-          border-color: var(--rtx-light-control-border-hover, #94a3b8);
-          background: var(--rtx-light-hover, #e2e8f0);
+          border-color: #334155;
+          background: #e2e8f0;
         }
       `}</style>
       <div
@@ -1986,11 +2000,11 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header
-          className={`rtx-spec-header flex h-[34px] shrink-0 items-center gap-2 border-b border-[var(--mw-spec-grid,var(--border-secondary))] px-2.5 ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
+          className={`rtx-spec-header flex h-[30px] shrink-0 items-center gap-2 border-b border-[var(--mw-spec-grid,var(--border-secondary))] px-2.5 ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
           {...dragHandleProps}
         >
           <SpecificationTitleIcon />
-          <h2 className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[0.01em] text-[var(--mw-spec-value,var(--text-primary))]">{tr('Specification')}</h2>
+          <h2 className="min-w-0 flex-1 truncate text-[12px] font-normal text-[var(--mw-spec-value,var(--text-primary))]">{tr('Specification')}</h2>
           <a
             href="https://www.metatrader5.com/en/terminal/help/trading/market_watch#specification"
             target="_blank"
@@ -1998,7 +2012,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
             aria-label={tr('Symbol specification help')}
             title={tr('Symbol specification help')}
             onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[12px] font-semibold text-[var(--mw-spec-muted,var(--text-secondary))] transition-colors hover:bg-[var(--mw-spec-row-hover,var(--bg-quaternary))] hover:text-[var(--mw-spec-value,var(--text-primary))] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="flex h-6 w-6 items-center justify-center rounded-[2px] text-[12px] font-normal text-[var(--mw-spec-value,var(--text-secondary))] transition-colors hover:bg-[var(--mw-spec-row-hover,var(--bg-quaternary))] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
             ?
           </a>
@@ -2008,14 +2022,17 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
             aria-label={tr('Close symbol specification')}
             onClick={onClose}
             onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--mw-spec-muted,var(--text-secondary))] transition-colors hover:bg-red-600 hover:text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="flex h-6 w-6 items-center justify-center rounded-[2px] text-[var(--mw-spec-value,var(--text-secondary))] transition-colors hover:bg-red-600 hover:text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
             <Icon name="x-close" size="xs" />
           </button>
         </header>
 
-        <div ref={contentRef} className="rtx-spec-scroll min-h-0 flex-1 overflow-y-auto p-[7px] pb-0">
-          <div className="overflow-hidden rounded-[5px] border border-[var(--mw-spec-outer-border,var(--border-secondary))] bg-[var(--mw-spec-surface,var(--bg-secondary))] shadow-sm">
+        <div className="min-h-0 flex-1 px-[10px] pt-[10px] pb-0 flex flex-col">
+          <div
+            ref={contentRef}
+            className="rtx-spec-scroll min-h-0 flex-1 overflow-y-auto border border-[var(--mw-spec-grid,var(--border-secondary))] bg-[var(--mw-spec-surface,var(--bg-secondary))]"
+          >
             {pageUrl ? (
               <a
                 href={pageUrl}
@@ -2024,7 +2041,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
                 data-selected={isSymbolBannerSelected ? 'true' : undefined}
                 data-stripe="odd"
                 onClick={() => setSelectedRowKey('symbol-banner')}
-                className={`rtx-spec-row rtx-spec-banner flex min-h-[26px] items-center justify-between gap-2 truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] px-2.5 py-1 text-[12px] font-semibold tracking-[0.01em] transition-colors hover:underline ${
+                className={`rtx-spec-row rtx-spec-banner flex h-[22px] min-h-[22px] items-center justify-between gap-2 truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-[12px] font-bold transition-colors hover:underline ${
                   isSymbolBannerSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[#4da3ff]'
                 }`}
                 title={pageUrl}
@@ -2052,8 +2069,8 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
                 data-selected={isSymbolBannerSelected ? 'true' : undefined}
                 data-stripe="odd"
                 onClick={() => setSelectedRowKey('symbol-banner')}
-                className={`rtx-spec-row rtx-spec-banner flex min-h-[26px] items-center truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] border-l-[3px] border-l-[#3b82f6] px-2.5 py-1 text-[12px] font-semibold tracking-[0.01em] transition-colors ${
-                  isSymbolBannerSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[#4da3ff]'
+                className={`rtx-spec-row rtx-spec-banner flex h-[22px] min-h-[22px] items-center truncate border-b border-[var(--mw-spec-grid,var(--border-primary))] px-2 py-[2px] text-[12px] font-bold transition-colors ${
+                  isSymbolBannerSelected ? 'rtx-spec-row--selected bg-[#0078d7] text-white' : 'text-[var(--mw-spec-heading-text,var(--text-primary))]'
                 }`}
                 title={`${symbol}${displayDescription ? `, ${displayDescription}` : ''}`}
               >
@@ -2118,11 +2135,11 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
           </div>
         </div>
 
-        <footer className="flex h-[40px] shrink-0 items-center justify-center bg-[var(--mw-spec-bg,var(--bg-secondary))] px-3">
+        <footer className="flex h-[42px] shrink-0 items-center justify-center bg-[var(--mw-spec-bg,var(--bg-secondary))] px-3">
           <button
             type="button"
             onClick={onClose}
-            className="rtx-spec-close-btn h-[25px] min-w-[96px] border px-4 text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
+            className="rtx-spec-close-btn h-[23px] min-w-[100px] border px-4 text-[12px] focus:outline-none focus:ring-1 focus:ring-inset focus:ring-white/60"
           >
             {tr('Close')}
           </button>
