@@ -667,10 +667,10 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 {symbol}
             </div>
 
-            {/* ── New Order (highlighted) ── */}
+            {/* ── Pending Order (highlighted) ── */}
             <MenuItem
                 icon={<FileText size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-red, #ff4d4f)' }} />}
-                label={tr("New Order")}
+                label={tr("Pending Order")}
                 shortcut="F9"
                 highlight={false}
                 onClick={() => closeThen(() => { onOpenNewOrder(); })}

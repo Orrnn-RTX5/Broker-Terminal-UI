@@ -302,7 +302,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       expect(row).toHaveClass('rtx-market-watch__row--stale');
       expect(useAppStore.getState().ticks).toEqual({});
       fireEvent.contextMenu(row);
-      expect(screen.getByText('New Order').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByText('Pending Order').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true');
     } finally {
       width.mockRestore();
     }
@@ -1017,7 +1017,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(onSymbolSelect).toHaveBeenNthCalledWith(2, 'BTCUSD');
 
     fireEvent.contextMenu(eurRow);
-    expect(screen.getByText('New Order').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Pending Order').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('Chart Window').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'false');
   });
 
@@ -1068,7 +1068,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     ));
 
     expect(labels).toEqual([
-      'New Order',
+      'Pending Order',
       'Chart Window',
       'Tick Chart',
       'Depth Of Market',
@@ -1337,7 +1337,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       item.querySelector('.flex-1')?.textContent
     ));
     expect(labels).toEqual([
-      'New Order',
+      'Pending Order',
       'Chart Window',
       'Tick Chart',
       'Depth Of Market',
@@ -2648,7 +2648,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     fireEvent.contextMenu(screen.getByText('0001.HK').closest('tr')!);
     const menu = screen.getByRole('menu');
     const iconLabels = [
-      'New Order',
+      'Pending Order',
       'Chart Window',
       'Depth Of Market',
       'Specification',

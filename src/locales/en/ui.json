@@ -1105,6 +1105,8 @@
   "Paused": "Paused",
   "Payment Method": "Payment Method",
   "Pending": "Pending",
+  "Pending Order": "Pending Order",
+  "Pending Order (F9)": "Pending Order (F9)",
   "Pending Orders": "Pending Orders",
   "Period": "Period",
   "Personal details are used for opening a trade account and are not passed to any third parties.": "Personal details are used for opening a trade account and are not passed to any third parties.",
@@ -2244,5 +2246,8 @@
   "Double position": "Double position",
   "Limit Price:": "Limit Price:",
   "Expiration mode": "Expiration mode",
-  "Expiration date picker": "Expiration date picker"
+  "Expiration date picker": "Expiration date picker",
+  "Credit": "Credit",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn",
+  "Balance plus credit plus current floating P/L": "Balance plus credit plus current floating P/L"
 }

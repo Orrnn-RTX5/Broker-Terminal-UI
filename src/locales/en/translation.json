@@ -61,7 +61,7 @@
         },
         "tools": {
             "label": "Tools",
-            "newOrder": "New Order",
+            "newOrder": "Pending Order",
             "strategyTester": "Strategy Tester",
             "scriptEditor": "Script Editor",
             "agentsManager": "Agents Manager",

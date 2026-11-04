@@ -190,7 +190,7 @@ export const useMarketWatchContextMenu = ({
 
   return [
     {
-      label: 'New Order',
+      label: 'Pending Order',
       icon: <Icon name="new-order" size="xs" />,
       shortcut: 'F9',
       disabled: tradeDisabled,
@@ -386,7 +386,7 @@ export const useMarketWatchDetailsContextMenu = ({
 
   return [
     {
-      label: 'New Order',
+      label: 'Pending Order',
       icon: <Icon name="new-order" size="xs" />,
       disabled: tradeDisabled,
       action: () => window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol } })),

@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "ใช้การเปลี่ยนแปลงกับกราฟที่เปิดอยู่ทั้งหมด",
   "Share position": "แชร์โพซิชัน",
   "Reverse position": "กลับด้านโพซิชัน",
-  "Double position": "เพิ่มโพซิชันเป็นสองเท่า"
+  "Double position": "เพิ่มโพซิชันเป็นสองเท่า",
+  "Credit": "เครดิต",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "เครดิต (โบนัส) ที่โบรกเกอร์มอบให้ นับรวมในอิควิตี้และมาร์จิ้น ไม่สามารถถอนได้",
+  "Balance plus credit plus current floating P/L": "ยอดคงเหลือรวมเครดิตและกำไร/ขาดทุนลอยตัวปัจจุบัน",
+  "Pending Order": "คำสั่งรอดำเนินการ",
+  "Pending Order (F9)": "คำสั่งรอดำเนินการ (F9)",
+  "Blue and Red": "น้ำเงินและแดง"
 }

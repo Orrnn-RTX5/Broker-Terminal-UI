@@ -692,4 +692,48 @@ describe('live account metrics between backend snapshots', () => {
     expect(formatPositionProfit(12.3456, resolvePositionProfitDigits({ currency: 'USD', currency_digits: 0 }))).toBe('12');
     expect(formatPositionProfit(12.3456, resolvePositionProfitDigits({ currency: 'JPY' }))).toBe('12');
   });
+
+  it('defines Credit between Balance and Equity in footer metric definitions and defaults', async () => {
+    const {
+      DEFAULT_TRADE_FOOTER_METRICS,
+      TRADE_FOOTER_METRIC_COMMENTS,
+      TRADE_FOOTER_METRIC_DEFS,
+    } = await import('../features/bottom-dock/trade/tradeTabModel');
+    expect(TRADE_FOOTER_METRIC_DEFS.map(def => def.key)).toEqual([
+      'positions',
+      'balance',
+      'credit',
+      'equity',
+      'margin',
+      'freeMargin',
+      'marginLevel',
+      'swap',
+      'commission',
+    ]);
+    expect(DEFAULT_TRADE_FOOTER_METRICS.credit).toBe(true);
+    expect(TRADE_FOOTER_METRIC_COMMENTS.credit).toBe(
+      'Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn',
+    );
+    expect(TRADE_FOOTER_METRIC_COMMENTS.equity).toBe(
+      'Balance plus credit plus current floating P/L',
+    );
+  });
+
+  it('includes Credit and updated footer metric hover comments in every locale file', async () => {
+    const { supportedLanguages } = await import('../config/supportedLanguages');
+    const catalogs = import.meta.glob('../locales/*/ui.json', { eager: true, import: 'default' }) as Record<string, Record<string, string>>;
+    for (const { code } of supportedLanguages) {
+      const catalog = catalogs[`../locales/${code}/ui.json`];
+      expect(catalog, `${code}/ui.json exists`).toBeDefined();
+      expect(catalog['Credit']?.trim(), `${code}: Credit`).toBeTruthy();
+      expect(
+        catalog['Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn']?.trim(),
+        `${code}: Credit hover comment`,
+      ).toBeTruthy();
+      expect(
+        catalog['Balance plus credit plus current floating P/L']?.trim(),
+        `${code}: Equity hover comment`,
+      ).toBeTruthy();
+    }
+  });
 });

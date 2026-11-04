@@ -403,8 +403,21 @@ html.theme-light .rtx-market-watch-details {
 }
 
 .rtx-popup-prices {
-  --rtx-popup-bid: var(--color-loss, #ff4d4f);
-  --rtx-popup-ask: var(--color-info, #7aacca);
+  --rtx-popup-bid: var(--color-loss, #ef4444);
+  --rtx-popup-ask: var(--color-info, #3b82f6);
+  --rtx-popup-bg: #0f1319;
+  --rtx-popup-header-bg: linear-gradient(180deg, #1a202c 0%, #141922 100%);
+  --rtx-popup-card-bg: #151a23;
+  --rtx-popup-card-header-bg: #1b222e;
+  --rtx-popup-card-border: rgba(148, 163, 184, 0.16);
+  --rtx-popup-card-hover-border: rgba(59, 130, 246, 0.42);
+  --rtx-popup-card-shadow: 0 6px 18px rgba(0, 0, 0, 0.34), 0 1px 3px rgba(0, 0, 0, 0.24);
+  --rtx-popup-bid-surface: linear-gradient(180deg, rgba(239, 68, 68, 0.05) 0%, rgba(239, 68, 68, 0.01) 100%);
+  --rtx-popup-ask-surface: linear-gradient(180deg, rgba(59, 130, 246, 0.05) 0%, rgba(59, 130, 246, 0.01) 100%);
+  --rtx-popup-pill-bg: rgba(16, 185, 129, 0.1);
+  --rtx-popup-pill-border: rgba(16, 185, 129, 0.26);
+  --rtx-popup-pill-text: #cbd5e1;
+  --rtx-popup-dot: #10b981;
   position: fixed;
   display: flex;
   min-width: 0;
@@ -412,13 +425,35 @@ html.theme-light .rtx-market-watch-details {
   box-sizing: border-box;
   flex-direction: column;
   overflow: hidden;
-  color: var(--text-primary, #e2e2e8);
-  background: var(--bg-secondary, #131316);
-  border: 1px solid var(--border-secondary, #333338);
-  border-radius: var(--radius-md, 6px);
-  box-shadow: var(--shadow-xl, 0 20px 40px rgb(0 0 0 / 55%));
+  color: var(--text-primary, #e2e8f0);
+  background: var(--rtx-popup-bg);
+  border: 1px solid var(--rtx-popup-card-border);
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.62), 0 4px 16px rgba(0, 0, 0, 0.35);
   outline: none;
   pointer-events: auto;
+}
+
+html.rtx-skin-untitled-light .rtx-popup-prices,
+html.theme-light .rtx-popup-prices {
+  --rtx-popup-bid: #c81e1e;
+  --rtx-popup-ask: #1d4ed8;
+  --rtx-popup-bg: #f1f5f9;
+  --rtx-popup-header-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --rtx-popup-card-bg: #ffffff;
+  --rtx-popup-card-header-bg: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  --rtx-popup-card-border: #d8e0ea;
+  --rtx-popup-card-hover-border: #93c5fd;
+  --rtx-popup-card-shadow: 0 2px 8px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --rtx-popup-bid-surface: linear-gradient(180deg, rgba(220, 38, 38, 0.028) 0%, rgba(255, 255, 255, 0) 100%);
+  --rtx-popup-ask-surface: linear-gradient(180deg, rgba(37, 99, 235, 0.028) 0%, rgba(255, 255, 255, 0) 100%);
+  --rtx-popup-pill-bg: rgba(37, 99, 235, 0.08);
+  --rtx-popup-pill-border: rgba(37, 99, 235, 0.22);
+  --rtx-popup-pill-text: #334155;
+  --rtx-popup-dot: #2563eb;
+  color: #0f172a;
+  border-color: #cbd5e1;
+  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .rtx-popup-prices.is-maximized {
@@ -433,14 +468,14 @@ html.theme-light .rtx-market-watch-details {
 
 .rtx-popup-prices__header {
   display: flex;
-  min-height: 44px;
-  flex: 0 0 44px;
+  min-height: 54px;
+  flex: 0 0 54px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-left: 12px;
-  background: var(--rtx-chrome-sheen, none), var(--bg-tertiary, #191a1e);
-  border-bottom: 1px solid var(--border-primary, #28282e);
+  padding: 8px 10px 8px 16px;
+  background: var(--rtx-popup-header-bg);
+  border-bottom: 1px solid var(--rtx-popup-card-border);
   cursor: grab;
   touch-action: none;
 }
@@ -457,20 +492,21 @@ html.theme-light .rtx-market-watch-details {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 9px;
+  gap: 11px;
   pointer-events: none;
 }
 
 .rtx-popup-prices__title-icon {
   display: grid;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   place-items: center;
-  color: var(--color-info, #7aacca);
-  background: var(--color-info-dim, rgb(122 172 202 / 18%));
-  border: 1px solid color-mix(in srgb, var(--color-info, #7aacca) 38%, transparent);
-  border-radius: var(--radius-sm, 4px);
+  color: var(--rtx-popup-ask);
+  background: color-mix(in srgb, var(--rtx-popup-ask) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--rtx-popup-ask) 28%, transparent);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .rtx-popup-prices__title h2,
@@ -482,51 +518,54 @@ html.theme-light .rtx-market-watch-details {
 }
 
 .rtx-popup-prices__title h2 {
-  font-size: var(--text-sm, 0.875rem);
+  font-size: 15px;
   font-weight: var(--font-weight-semibold, 600);
-  line-height: 1.15;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
 
 .rtx-popup-prices__title p {
   margin-top: 2px;
-  color: var(--text-secondary, #808088);
-  font-size: 10px;
-  line-height: 1.1;
+  color: var(--text-secondary, #64748b);
+  font-size: 11.5px;
+  line-height: 1.25;
 }
 
 .rtx-popup-prices__window-controls {
   display: flex;
-  height: 100%;
-  align-items: stretch;
+  align-items: center;
+  gap: 4px;
 }
 
 .rtx-popup-prices__window-controls button {
   display: grid;
-  width: 42px;
-  height: 100%;
+  width: 30px;
+  height: 30px;
   padding: 0;
   place-items: center;
-  color: var(--text-secondary, #808088);
+  color: var(--text-secondary, #64748b);
   background: transparent;
-  border: 0;
-  border-left: 1px solid transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
   cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
 .rtx-popup-prices__window-controls button:hover {
-  color: var(--text-primary, #e2e2e8);
-  background: var(--bg-quaternary, #222226);
-  border-left-color: var(--border-primary, #28282e);
+  color: var(--text-primary, #0f172a);
+  background: color-mix(in srgb, var(--text-secondary, #64748b) 12%, transparent);
+  border-color: var(--rtx-popup-card-border);
 }
 
 .rtx-popup-prices__window-controls button:last-child:hover {
   color: #fff;
-  background: var(--color-loss, #ff4d4f);
+  background: var(--color-loss, #ef4444);
+  border-color: var(--color-loss, #ef4444);
 }
 
 .rtx-popup-prices__window-controls button:focus-visible,
 .rtx-popup-prices__resize-handle:focus-visible {
-  outline: 2px solid var(--color-info, #7aacca);
+  outline: 2px solid var(--color-info, #3b82f6);
   outline-offset: -2px;
 }
 
@@ -535,24 +574,29 @@ html.theme-light .rtx-market-watch-details {
   flex: 1 1 auto;
   overflow: auto;
   padding: 14px;
-  background: var(--bg-primary, #0d0d11);
-  scrollbar-color: var(--border-secondary, #333338) transparent;
+  background: var(--rtx-popup-bg);
+  scrollbar-color: var(--border-secondary, #94a3b8) transparent;
   scrollbar-width: thin;
 }
 
 .rtx-popup-prices__cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .rtx-popup-prices__card {
   min-width: 0;
   overflow: hidden;
-  background: var(--bg-secondary, #131316);
-  border: 1px solid var(--border-primary, #28282e);
-  border-radius: var(--radius-md, 6px);
-  box-shadow: var(--shadow-sm, 0 1px 2px rgb(0 0 0 / 30%));
+  background: var(--rtx-popup-card-bg);
+  border: 1px solid var(--rtx-popup-card-border);
+  border-radius: 8px;
+  box-shadow: var(--rtx-popup-card-shadow);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.rtx-popup-prices__card:hover {
+  border-color: var(--rtx-popup-card-hover-border);
 }
 
 .rtx-popup-prices__card-header {
@@ -560,19 +604,17 @@ html.theme-light .rtx-market-watch-details {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
-}
-
-.rtx-popup-prices__card-header {
-  background: var(--bg-tertiary, #191a1e);
-  border-bottom: 1px solid var(--border-primary, #28282e);
+  padding: 9px 12px;
+  background: var(--rtx-popup-card-header-bg);
+  border-bottom: 1px solid var(--rtx-popup-card-border);
 }
 
 .rtx-popup-prices__card-header strong {
   overflow: hidden;
-  font-family: var(--font-mono, monospace);
-  font-size: var(--text-sm, 0.875rem);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 13.5px;
   font-weight: var(--font-weight-semibold, 600);
+  letter-spacing: 0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -581,28 +623,34 @@ html.theme-light .rtx-market-watch-details {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--text-secondary, #808088);
-  font-size: 10px;
+  padding: 2px 8px;
+  color: var(--rtx-popup-pill-text);
+  background: var(--rtx-popup-pill-bg);
+  border: 1px solid var(--rtx-popup-pill-border);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 .rtx-popup-prices__quote-status > span {
   width: 6px;
   height: 6px;
-  background: var(--status-idle, #808088);
+  background: var(--status-idle, #94a3b8);
   border-radius: 999px;
 }
 
 .rtx-popup-prices__quote-status[data-available='true'] > span {
-  background: var(--status-connected, #00c896);
-  box-shadow: 0 0 0 3px var(--color-profit-dimmer, rgb(0 200 150 / 12%));
+  background: var(--rtx-popup-dot);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rtx-popup-dot) 22%, transparent);
 }
 
 .rtx-popup-prices__limit-note {
   margin-top: 10px;
   padding: 8px 10px;
-  color: var(--text-secondary, #808088);
-  background: var(--bg-secondary, #131316);
-  border: 1px solid var(--border-primary, #28282e);
+  color: var(--text-secondary, #64748b);
+  background: var(--rtx-popup-card-bg);
+  border: 1px solid var(--rtx-popup-card-border);
+  border-radius: 6px;
   font-size: 11px;
   text-align: center;
 }
@@ -615,35 +663,43 @@ html.theme-light .rtx-market-watch-details {
 .rtx-popup-prices__price {
   display: grid;
   min-width: 0;
-  min-height: 75px;
+  min-height: 64px;
   align-content: center;
   justify-items: center;
-  gap: 5px;
-  padding: 9px 6px;
+  gap: 4px;
+  padding: 10px 8px;
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
 }
 
+.rtx-popup-prices__price--bid {
+  background: var(--rtx-popup-bid-surface);
+}
+
+.rtx-popup-prices__price--ask {
+  background: var(--rtx-popup-ask-surface);
+}
+
 .rtx-popup-prices__price + .rtx-popup-prices__price {
-  border-left: 1px solid var(--border-primary, #28282e);
+  border-left: 1px solid var(--rtx-popup-card-border);
 }
 
 .rtx-popup-prices__price > span:first-child {
-  color: var(--text-secondary, #808088);
+  color: var(--text-secondary, #64748b);
   font-family: var(--font-sans, sans-serif);
-  font-size: 10px;
-  font-weight: var(--font-weight-medium, 500);
-  letter-spacing: 0.055em;
+  font-size: 10.5px;
+  font-weight: var(--font-weight-semibold, 600);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .rtx-popup-prices__price .price-display {
-  font-size: var(--text-sm, 0.875rem);
-  font-weight: var(--font-weight-medium, 500);
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold, 600);
 }
 
 .rtx-popup-prices__price .price-big {
-  font-size: clamp(1.24em, 3vw, 2.4em);
+  font-size: clamp(1.18em, 2.5vw, 1.9em);
   font-weight: var(--font-weight-bold, 600);
 }
 
@@ -659,11 +715,11 @@ html.theme-light .rtx-market-watch-details {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
   gap: 1px;
-  padding: 1px;
-  color: var(--text-secondary, #808088);
-  background: var(--border-primary, #28282e);
-  border-top: 1px solid var(--border-primary, #28282e);
-  font-size: 10px;
+  padding: 0;
+  color: var(--text-secondary, #64748b);
+  background: var(--rtx-popup-card-border);
+  border-top: 1px solid var(--rtx-popup-card-border);
+  font-size: 11px;
 }
 
 .rtx-popup-prices__metric {
@@ -672,8 +728,8 @@ html.theme-light .rtx-market-watch-details {
   align-items: center;
   justify-content: space-between;
   gap: 7px;
-  padding: 7px 8px;
-  background: var(--bg-secondary, #131316);
+  padding: 7px 12px;
+  background: var(--rtx-popup-card-bg);
 }
 
 .rtx-popup-prices__metric > :last-child {
@@ -691,19 +747,19 @@ html.theme-light .rtx-market-watch-details {
 }
 
 .rtx-popup-prices__card-footer strong[data-tone='positive'] {
-  color: var(--color-profit, #00c896);
+  color: var(--rtx-popup-ask);
 }
 
 .rtx-popup-prices__card-footer strong[data-tone='negative'] {
-  color: var(--color-loss, #ff4d4f);
+  color: var(--rtx-popup-bid);
 }
 
 .rtx-popup-prices__card-footer strong[data-tone='neutral'] {
-  color: var(--text-secondary, #808088);
+  color: var(--text-secondary, #64748b);
 }
 
 .rtx-popup-prices__card-footer time {
-  color: var(--text-secondary, #808088);
+  color: var(--text-secondary, #64748b);
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
 }
@@ -716,17 +772,17 @@ html.theme-light .rtx-market-watch-details {
   justify-content: center;
   flex-direction: column;
   gap: 7px;
-  color: var(--text-secondary, #808088);
+  color: var(--text-secondary, #64748b);
   text-align: center;
 }
 
 .rtx-popup-prices__empty > svg {
   margin-bottom: 4px;
-  color: var(--text-tertiary, #50505a);
+  color: var(--text-tertiary, #94a3b8);
 }
 
 .rtx-popup-prices__empty strong {
-  color: var(--text-primary, #e2e2e8);
+  color: var(--text-primary, #0f172a);
   font-size: var(--text-sm, 0.875rem);
   font-weight: var(--font-weight-medium, 500);
 }
@@ -756,9 +812,9 @@ html.theme-light .rtx-market-watch-details {
   width: 9px;
   height: 9px;
   content: '';
-  border-right: 1px solid var(--text-tertiary, #50505a);
-  border-bottom: 1px solid var(--text-tertiary, #50505a);
-  box-shadow: 3px 3px 0 -2px var(--text-tertiary, #50505a);
+  border-right: 1.5px solid var(--text-tertiary, #94a3b8);
+  border-bottom: 1.5px solid var(--text-tertiary, #94a3b8);
+  box-shadow: 3px 3px 0 -2px var(--text-tertiary, #94a3b8);
 }
 
 @media (max-width: 520px) {

@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "Применить изменения ко всем открытым графикам",
   "Share position": "Поделиться позицией",
   "Reverse position": "Развернуть позицию",
-  "Double position": "Удвоить позицию"
+  "Double position": "Удвоить позицию",
+  "Credit": "Кредит",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "Кредит (бонус), предоставленный брокером; учитывается в средствах и марже, не подлежит выводу",
+  "Balance plus credit plus current floating P/L": "Баланс плюс кредит плюс текущая плавающая прибыль или убыток",
+  "Pending Order": "Отложенный ордер",
+  "Pending Order (F9)": "Отложенный ордер (F9)",
+  "Blue and Red": "Синий и красный"
 }

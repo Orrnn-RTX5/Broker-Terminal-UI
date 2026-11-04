@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "Zastosuj zmiany do wszystkich otwartych wykresów",
   "Share position": "Udostępnij pozycję",
   "Reverse position": "Odwróć pozycję",
-  "Double position": "Podwój pozycję"
+  "Double position": "Podwój pozycję",
+  "Credit": "Kredyt",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "Kredyt (bonus) przyznany przez brokera; wlicza się do kapitału i depozytu zabezpieczającego, nie podlega wypłacie",
+  "Balance plus credit plus current floating P/L": "Saldo plus kredyt plus bieżący niezrealizowany zysk lub strata",
+  "Pending Order": "Zlecenie oczekujące",
+  "Pending Order (F9)": "Zlecenie oczekujące (F9)",
+  "Blue and Red": "Niebieski i czerwony"
 }

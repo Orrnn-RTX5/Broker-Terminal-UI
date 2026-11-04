@@ -1565,24 +1565,24 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
     items.push(
       {
         id: 'toolbar-new-order',
-        title: 'New Order',
+        title: 'Pending Order',
         category: 'toolbar',
         categoryLabel: 'Top Toolbar',
         description: 'Open the Market / Pending Order execution ticket for the selected symbol',
         shortcut: 'F9',
-        keywords: ['new order', 'buy', 'sell', 'market order', 'limit order', 'stop order', 'trade', 'f9', 'ticket'],
+        keywords: ['pending order', 'new order', 'buy', 'sell', 'market order', 'limit order', 'stop order', 'trade', 'f9', 'ticket'],
         locations: [
           {
-            path: 'Top Toolbar → New Order (F9)',
+            path: 'Top Toolbar → Pending Order (F9)',
             hasActionSheet: false,
-            findElements: () => queryVisibleElements(['.rtx-toolbar-action--primary', '[aria-label*="New Order"]']),
+            findElements: () => queryVisibleElements(['.rtx-toolbar-action--primary', '[aria-label*="Pending Order"]', '[aria-label*="New Order"]']),
           },
         ],
         execute: () => {
           if (onNewOrder) {
             onNewOrder();
           } else {
-            document.querySelector<HTMLButtonElement>('.rtx-toolbar-action--primary, [aria-label*="New Order"]')?.click();
+            document.querySelector<HTMLButtonElement>('.rtx-toolbar-action--primary, [aria-label*="Pending Order"], [aria-label*="New Order"]')?.click();
           }
         },
       },

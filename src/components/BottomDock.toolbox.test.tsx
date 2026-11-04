@@ -99,7 +99,7 @@ describe('Toolbox utility commands', () => {
   it('uses the executable shortcut catalog for every enabled tool', () => {
     render(<ToolboxTab />);
     const tools = [
-      ['New Order', 'tools.new-order'], ['Depth of Market', 'view.depth-of-market'],
+      ['Pending Order', 'tools.new-order'], ['Depth of Market', 'view.depth-of-market'],
       ['One Click Trading', 'trading.toggle-one-click'], ['Order History', 'trading.order-history'],
       ['Market Watch', 'view.market-watch'], ['Data Window', 'view.data-window'],
       ['Navigator', 'view.navigator'], ['Terminal', 'view.terminal'], ['Toolbox', 'view.toolbox'],

@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "Terapkan perubahan ke semua grafik terbuka",
   "Share position": "Bagikan posisi",
   "Reverse position": "Balikkan posisi",
-  "Double position": "Gandakan posisi"
+  "Double position": "Gandakan posisi",
+  "Credit": "Kredit",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "Kredit (bonus) yang diberikan oleh broker; dihitung dalam ekuitas dan margin, tidak dapat ditarik",
+  "Balance plus credit plus current floating P/L": "Saldo ditambah kredit ditambah laba/rugi mengambang saat ini",
+  "Pending Order": "Order Tertunda",
+  "Pending Order (F9)": "Order Tertunda (F9)",
+  "Blue and Red": "Biru dan Merah"
 }

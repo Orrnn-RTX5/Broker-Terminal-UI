@@ -810,15 +810,15 @@ const MainToolbar = ({
                             <button
                                 type="button"
                                 className="rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-normal font-segoe"
-                                title="New Order (F9)"
-                                aria-label={tr("New Order (F9)")}
+                                title="Pending Order (F9)"
+                                aria-label={tr("Pending Order (F9)")}
                                 onClick={() => {
                                     window.dispatchEvent(new CustomEvent('openNewOrder', {
                                         detail: { symbol },
                                     }));
                                 }}
                             >
-                                <span className="rtx-toolbar-action__label">New Order</span>
+                                <span className="rtx-toolbar-action__label">Pending Order</span>
                             </button>
 
                             {/* Last Symbol Trader Toggle */}

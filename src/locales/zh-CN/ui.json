@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "将更改应用到所有打开的图表",
   "Share position": "分享持仓",
   "Reverse position": "反向持仓",
-  "Double position": "加倍持仓"
+  "Double position": "加倍持仓",
+  "Credit": "信用额",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "经纪商提供的信用额（赠金）；计入净值和保证金，不可提取",
+  "Balance plus credit plus current floating P/L": "余额加上信用额及当前浮动盈亏",
+  "Pending Order": "挂单",
+  "Pending Order (F9)": "挂单 (F9)",
+  "Blue and Red": "蓝与红"
 }

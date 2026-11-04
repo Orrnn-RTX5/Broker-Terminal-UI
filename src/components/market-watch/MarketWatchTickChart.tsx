@@ -349,7 +349,7 @@ export function MarketWatchTickChart({
 
   const contextMenuItems = useMemo<ContextMenuItemConfig[]>(() => [
     {
-      label: 'New Order',
+      label: 'Pending Order',
       icon: <Icon name="new-order" size="xs" />,
       disabled: !canTrade || !normalizedSymbol,
       action: () => {

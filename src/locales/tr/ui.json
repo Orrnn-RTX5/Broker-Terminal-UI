@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "Değişiklikleri tüm açık grafiklere uygula",
   "Share position": "Pozisyonu paylaş",
   "Reverse position": "Pozisyonu ters çevir",
-  "Double position": "Pozisyonu ikiye katla"
+  "Double position": "Pozisyonu ikiye katla",
+  "Credit": "Kredi",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "Aracı kurum tarafından verilen kredi (bonus); varlık ve teminata dahil edilir, çekilemez",
+  "Balance plus credit plus current floating P/L": "Bakiye, kredi ve mevcut gerçekleşmemiş kâr/zarar toplamı",
+  "Pending Order": "Bekleyen Emir",
+  "Pending Order (F9)": "Bekleyen Emir (F9)",
+  "Blue and Red": "Mavi ve Kırmızı"
 }

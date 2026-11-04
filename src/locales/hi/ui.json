@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "सभी खुले चार्ट पर परिवर्तन लागू करें",
   "Share position": "पोज़िशन साझा करें",
   "Reverse position": "पोज़िशन उलटें",
-  "Double position": "पोज़िशन दोगुनी करें"
+  "Double position": "पोज़िशन दोगुनी करें",
+  "Credit": "क्रेडिट",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "ब्रोकर द्वारा दिया गया क्रेडिट (बोनस); इक्विटी और मार्जिन में गिना जाता है, निकाला नहीं जा सकता",
+  "Balance plus credit plus current floating P/L": "शेष राशि, क्रेडिट और वर्तमान अप्राप्त लाभ/हानि का योग",
+  "Pending Order": "लंबित ऑर्डर",
+  "Pending Order (F9)": "लंबित ऑर्डर (F9)",
+  "Blue and Red": "नीला और लाल"
 }

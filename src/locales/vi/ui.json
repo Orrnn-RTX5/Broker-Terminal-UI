@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "Áp dụng thay đổi cho tất cả biểu đồ đang mở",
   "Share position": "Chia sẻ vị thế",
   "Reverse position": "Đảo ngược vị thế",
-  "Double position": "Nhân đôi vị thế"
+  "Double position": "Nhân đôi vị thế",
+  "Credit": "Tín dụng",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "Tín dụng (tiền thưởng) do nhà môi giới cấp; được tính vào vốn chủ sở hữu và ký quỹ, không thể rút",
+  "Balance plus credit plus current floating P/L": "Số dư cộng tín dụng cộng lãi/lỗ thả nổi hiện tại",
+  "Pending Order": "Lệnh chờ",
+  "Pending Order (F9)": "Lệnh chờ (F9)",
+  "Blue and Red": "Xanh lam và Đỏ"
 }

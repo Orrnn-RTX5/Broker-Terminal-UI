@@ -191,7 +191,7 @@ export function GlobalShortcuts({
     {
       id: 'tools.new-order',
       key: 'F9',
-      description: 'New Order',
+      description: 'Pending Order',
       category: SHORTCUT_CATEGORIES.TOOLS,
       priority: 100,
       allowInInput: true,
@@ -200,7 +200,7 @@ export function GlobalShortcuts({
         if (isOrderPanelOpen) {
           showFeedback(null);
         } else {
-          showFeedback(`New Order - ${target.symbol} (F9)`);
+          showFeedback(`Pending Order - ${target.symbol} (F9)`);
         }
         const tick = getCurrentTick(target.symbol);
         onOpenOrderPanel(target.symbol, { bid: tick.bid, ask: tick.ask });

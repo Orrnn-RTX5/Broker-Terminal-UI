@@ -524,7 +524,7 @@ describe('BottomDock History live-deal integration', () => {
 
         let menu = await openHistorySurfaceMenu();
         expect(getMenuLabels(menu)).toEqual([
-            'New Order',
+            'Pending Order',
             'Positions',
             'Deals',
             'Orders',
@@ -611,9 +611,9 @@ describe('BottomDock History live-deal integration', () => {
             await screen.findByText('0 records');
 
             const menu = await openHistorySurfaceMenu();
-            const newOrderItem = within(menu).getByText('New Order').closest('[role="menuitem"]');
+            const newOrderItem = within(menu).getByText('Pending Order').closest('[role="menuitem"]');
             expect(newOrderItem).toHaveAttribute('aria-disabled', 'false');
-            fireEvent.click(within(menu).getByText('New Order'));
+            fireEvent.click(within(menu).getByText('Pending Order'));
 
             expect(openOrder).toHaveBeenCalledTimes(1);
             expect((openOrder.mock.calls[0][0] as CustomEvent).detail).toEqual({ symbol: 'AUDUSD' });

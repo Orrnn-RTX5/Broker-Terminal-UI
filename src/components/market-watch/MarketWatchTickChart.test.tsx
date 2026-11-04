@@ -251,7 +251,7 @@ describe('MarketWatchTickChart', () => {
 
       fireEvent.contextMenu(svg, { clientX: 80, clientY: 80 });
       const menu = screen.getByRole('menu');
-      expect(menu).toHaveTextContent('New Order');
+      expect(menu).toHaveTextContent('Pending Order');
       expect(menu).toHaveTextContent('Chart Window');
       expect(menu).toHaveTextContent('Auto Scroll');
       expect(menu).toHaveTextContent('Crosshair');
@@ -260,7 +260,7 @@ describe('MarketWatchTickChart', () => {
       expect(menu).toHaveTextContent('Last Line');
       expect(menu).toHaveTextContent('Grid');
 
-      fireEvent.click(screen.getByRole('menuitem', { name: /New Order/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /Pending Order/i }));
       expect(orderListener).toHaveBeenCalledTimes(1);
       expect((orderListener.mock.calls[0][0] as CustomEvent).detail).toEqual({ symbol: 'EURUSD' });
 

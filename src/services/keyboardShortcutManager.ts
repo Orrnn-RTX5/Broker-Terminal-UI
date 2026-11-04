@@ -442,7 +442,7 @@ export const DEFAULT_SHORTCUTS: Omit<ShortcutDefinition, 'handler'>[] = [
   { id: 'charts.undo', key: 'z', ctrl: true, description: 'Undo', category: SHORTCUT_CATEGORIES.CHARTS, priority: 100 },
 
   // Tools menu
-  { id: 'tools.new-order', key: 'F9', description: 'New Order', category: SHORTCUT_CATEGORIES.TOOLS, priority: 100, allowInInput: true },
+  { id: 'tools.new-order', key: 'F9', description: 'Pending Order', category: SHORTCUT_CATEGORIES.TOOLS, priority: 100, allowInInput: true },
   { id: 'tools.options', key: 'o', ctrl: true, description: 'Options', category: SHORTCUT_CATEGORIES.TOOLS, priority: 90 },
 
   // Window menu

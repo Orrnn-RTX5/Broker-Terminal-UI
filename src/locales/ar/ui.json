@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "تطبيق التغييرات على جميع الرسوم البيانية المفتوحة",
   "Share position": "مشاركة الصفقة",
   "Reverse position": "عكس الصفقة",
-  "Double position": "مضاعفة الصفقة"
+  "Double position": "مضاعفة الصفقة",
+  "Credit": "الائتمان",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "الائتمان (المكافأة) الممنوح من الوسيط؛ يُحتسب ضمن الأسهم والهامش ولا يمكن سحبه",
+  "Balance plus credit plus current floating P/L": "الرصيد مضافاً إليه الائتمان والأرباح والخسائر العائمة الحالية",
+  "Pending Order": "أمر معلق",
+  "Pending Order (F9)": "أمر معلق (F9)",
+  "Blue and Red": "أزرق وأحمر"
 }

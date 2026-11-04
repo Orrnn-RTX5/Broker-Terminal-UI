@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "열려 있는 모든 차트에 변경 사항 적용",
   "Share position": "포지션 공유",
   "Reverse position": "포지션 반전",
-  "Double position": "포지션 두 배"
+  "Double position": "포지션 두 배",
+  "Credit": "크레딧",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "브로커가 제공한 크레딧(보너스); 유효증거금 및 증거금에 포함되며 출금할 수 없습니다",
+  "Balance plus credit plus current floating P/L": "잔고와 크레딧 및 현재 평가손익의 합계",
+  "Pending Order": "대기 주문",
+  "Pending Order (F9)": "대기 주문 (F9)",
+  "Blue and Red": "파란색과 빨간색"
 }

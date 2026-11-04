@@ -74,7 +74,7 @@ type TradeTableProps = {
   setSelectedPositionKey: Dispatch<SetStateAction<string | null>>;
   sortState: TradeSortState;
   startColumnResize: (event: ReactMouseEvent, key: TradeColumnWidthKey) => void;
-  toggleFooterMetricMenu: (trigger: HTMLButtonElement) => void;
+  toggleFooterMetricMenu: (trigger: HTMLButtonElement, position?: { x: number; y: number }) => void;
   toggleSort: (column: TradeSortColumn) => void;
   totalLivePnL: number | null;
   visibleFooterMetrics: TradeFooterMetricDef[];
@@ -225,7 +225,7 @@ const TradeTableRow = memo(function TradeTableRow({
   const leadingCells = useMemo(() => (
     <Fragment>
       {/* symbol */}
-      <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={tr('Symbol: {{value0}}', { value0: symbolLabel })}>
+      <td className="pl-4 pr-1.5 py-[2px] border-r border-zinc-800 text-left font-normal text-zinc-100 whitespace-nowrap" title={tr('Symbol: {{value0}}', { value0: symbolLabel })}>
         {isPendingPlacement && !isColumnVisible('ticket') ? (
           <span className="flex min-w-0 flex-col">
             <span className="truncate">{symbolLabel}</span>
@@ -621,28 +621,31 @@ export function TradeTable({
     key: TradeColumnWidthKey,
     label: string,
     sortColumn: TradeSortColumn,
-  ) => (
-    <th
-      key={key}
-      className="relative px-1.5 py-[3px] text-center whitespace-nowrap border-r border-zinc-700/70"
-      style={{ width: columnWidths[key] }}
-      title={tr(TRADE_COLUMN_HOVER_COMMENTS[key])}
-      aria-sort={sortState?.column === sortColumn ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-    >
-      <button
-        type="button"
-        title={tr('Sort by {{value0}}', { value0: tr(label) })}
-        onClick={() => toggleSort(sortColumn)}
-        className="relative flex w-full cursor-default items-center justify-center px-2 text-center whitespace-nowrap hover:text-white"
+  ) => {
+    const isSymbolColumn = key === 'symbol';
+    return (
+      <th
+        key={key}
+        className={`relative py-[3px] whitespace-nowrap border-r border-zinc-700/70 ${isSymbolColumn ? 'pl-4 pr-1.5 text-left' : 'px-1.5 text-center'}`}
+        style={{ width: columnWidths[key] }}
+        title={tr(TRADE_COLUMN_HOVER_COMMENTS[key])}
+        aria-sort={sortState?.column === sortColumn ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
       >
-        <span className="whitespace-nowrap">{tr(label)}</span>
-        <span className="absolute right-0 inline-block w-[8px] text-center text-zinc-500">
-          {sortState?.column === sortColumn ? (sortState.direction === 'asc' ? '^' : 'v') : ''}
-        </span>
-      </button>
-      {renderColumnResizeHandle(key)}
-    </th>
-  );
+        <button
+          type="button"
+          title={tr('Sort by {{value0}}', { value0: tr(label) })}
+          onClick={() => toggleSort(sortColumn)}
+          className={`relative flex w-full cursor-default items-center whitespace-nowrap hover:text-white ${isSymbolColumn ? 'justify-start pl-0 pr-2 text-left' : 'justify-center px-2 text-center'}`}
+        >
+          <span className="whitespace-nowrap">{tr(label)}</span>
+          <span className="absolute right-0 inline-block w-[8px] text-center text-zinc-500">
+            {sortState?.column === sortColumn ? (sortState.direction === 'asc' ? '^' : 'v') : ''}
+          </span>
+        </button>
+        {renderColumnResizeHandle(key)}
+      </th>
+    );
+  };
 
   const renderHeader = (column: TradeColumnDef) => (
     <th
@@ -752,6 +755,12 @@ export function TradeTable({
         data-metrics-margin-calculation-version={account?.marginCalculationVersion}
         data-metrics-configuration-version={account?.configurationVersion}
         data-metrics-status={account?.metricsStatus ?? (liveEquity === null ? 'unavailable' : 'valid')}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const trigger = event.currentTarget.querySelector<HTMLButtonElement>('.rtx-trade-footer-status');
+          if (trigger) toggleFooterMetricMenu(trigger, { x: event.clientX, y: event.clientY });
+        }}
       >
         <div className="rtx-trade-footer-inner flex w-max min-w-full items-center py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
           <div className="rtx-trade-footer-metrics flex min-w-0 items-center gap-3 px-1.5">

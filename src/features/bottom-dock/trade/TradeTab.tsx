@@ -357,6 +357,7 @@ export const TradeTab = memo(function TradeTab({
         : totalLivePnL !== null && totalLivePnL < 0 ? 'text-loss' : 'text-zinc-100';
     const floatingProfitLabel = totalLivePnL === null ? METRIC_UNAVAILABLE : formatMoney(totalLivePnL);
     const accountBalance = accountMetricResolution.balance;
+    const accountCredit = accountMetricResolution.credit;
     const liveEquity = accountMetricResolution.equity;
     const margin = accountMetricResolution.margin;
     const liveFreeMargin = accountMetricResolution.freeMargin;
@@ -453,10 +454,10 @@ export const TradeTab = memo(function TradeTab({
         setFooterMetricVisibility({ ...DEFAULT_TRADE_FOOTER_METRICS });
     }, []);
 
-    const toggleFooterMetricMenu = useCallback((trigger: HTMLButtonElement) => {
+    const toggleFooterMetricMenu = useCallback((trigger: HTMLButtonElement, position?: { x: number; y: number }) => {
         const rect = trigger.getBoundingClientRect();
         setFooterMetricMenu(prev => (
-            prev ? null : { x: rect.left, y: rect.bottom + 2, trigger }
+            prev ? null : { x: position?.x ?? rect.left, y: position?.y ?? rect.bottom + 2, trigger }
         ));
     }, []);
 
@@ -472,8 +473,11 @@ export const TradeTab = memo(function TradeTab({
     ], [isFooterMetricVisible, resetFooterMetrics, toggleFooterMetric]);
 
     const visibleFooterMetrics = useMemo(
-        () => TRADE_FOOTER_METRIC_DEFS.filter(metric => isFooterMetricVisible(metric.key)),
-        [isFooterMetricVisible]
+        () => TRADE_FOOTER_METRIC_DEFS.filter(metric => (
+            isFooterMetricVisible(metric.key)
+            && (metric.key !== 'credit' || accountCredit !== 0)
+        )),
+        [accountCredit, isFooterMetricVisible]
     );
 
     const renderFooterMetricValue = (key: TradeFooterMetricKey) => {
@@ -482,6 +486,8 @@ export const TradeTab = memo(function TradeTab({
                 return <TradeMetricValue value={livePositions.length} />;
             case 'balance':
                 return accountBalance === null ? <UnavailableTradeMetric /> : <TradeMetricValue value={accountBalance} formatFn={formatMoney} />;
+            case 'credit':
+                return accountCredit === null ? <UnavailableTradeMetric /> : <TradeMetricValue value={accountCredit} formatFn={formatMoney} />;
             case 'equity':
                 return liveEquity === null
                     ? <UnavailableTradeMetric />
@@ -513,6 +519,9 @@ export const TradeTab = memo(function TradeTab({
                 break;
             case 'balance':
                 value = accountBalance === null ? METRIC_UNAVAILABLE : `${formatMoney(accountBalance)} ${account?.currency || 'USD'}`;
+                break;
+            case 'credit':
+                value = accountCredit === null ? METRIC_UNAVAILABLE : `${formatMoney(accountCredit)} ${account?.currency || 'USD'}`;
                 break;
             case 'equity':
                 value = liveEquity === null ? METRIC_UNAVAILABLE : formatMoney(liveEquity);
@@ -876,7 +885,7 @@ ${rows}
         const closeByTicket = closeByCounterpart ? readCloseByLegTicket(closeByCounterpart) : null;
         return [
             {
-                label: 'New Order',
+                label: 'Pending Order',
                 shortcut: 'F9',
                 icon: <Icon name="plus" size="xs" />,
                 action: () => window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol } })),

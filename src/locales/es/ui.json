@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "Aplicar cambios a todos los gráficos abiertos",
   "Share position": "Compartir posición",
   "Reverse position": "Invertir posición",
-  "Double position": "Duplicar posición"
+  "Double position": "Duplicar posición",
+  "Credit": "Crédito",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "Crédito (bono) otorgado por el bróker; cuenta en el capital y el margen, no se puede retirar",
+  "Balance plus credit plus current floating P/L": "Saldo más crédito más ganancias o pérdidas flotantes actuales",
+  "Pending Order": "Orden pendiente",
+  "Pending Order (F9)": "Orden pendiente (F9)",
+  "Blue and Red": "Azul y rojo"
 }

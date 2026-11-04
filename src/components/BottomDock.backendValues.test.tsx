@@ -25,7 +25,7 @@ describe('Trade backend financial rendering', () => {
   beforeEach(() => {
     localStorage.clear();
     trade.account = {
-      balance: 1000, equity: 1100, margin: 20, freeMargin: 1080, marginLevel: 5500,
+      balance: 1000, credit: 0, equity: 1100, margin: 20, freeMargin: 1080, marginLevel: 5500,
       unrealizedPL: -81.4, hasBackendUnrealizedPL: true, currency: 'USD',
     };
     trade.positions = [{
@@ -182,5 +182,78 @@ describe('Trade backend financial rendering', () => {
     render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
     expect(screen.getByTitle('Current price: —')).toHaveTextContent('—');
     expect(screen.queryByTitle('Current price: 90000.00')).not.toBeInTheDocument();
+  });
+
+  it('shows Credit: 500.00 between Balance and Equity when non-zero and hides it when credit is 0', () => {
+    trade.account = { ...trade.account, balance: 1000, credit: 500, hasBackendCredit: true, equity: 1507 };
+    const { container, rerender } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+
+    const getFooterLabels = () => Array.from(
+      container.querySelectorAll('.rtx-trade-footer-metrics .rtx-trade-metric-label'),
+    ).map(node => node.textContent);
+
+    expect(getFooterLabels()).toEqual(['Balance', 'Credit', 'Equity', 'Margin', 'Free margin', 'Level']);
+    expect(screen.getByText('Credit').parentElement?.lastElementChild).toHaveTextContent('500.00');
+    expect(screen.getByText('Credit').closest('.rtx-trade-footer-metric')).toHaveAttribute(
+      'title',
+      'Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn: 500.00 USD',
+    );
+    expect(screen.getByText('Equity').closest('.rtx-trade-footer-metric')).toHaveAttribute(
+      'title',
+      'Balance plus credit plus current floating P/L: 1 507.00',
+    );
+
+    trade.account = { ...trade.account, credit: 0, hasBackendCredit: true };
+    rerender(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(getFooterLabels()).toEqual(['Balance', 'Equity', 'Margin', 'Free margin', 'Level']);
+    expect(screen.queryByText('Credit')).not.toBeInTheDocument();
+  });
+
+  it('shows — instead of 0 when credit is not supplied by the backend (hasBackendCredit: false)', () => {
+    trade.account = { ...trade.account, credit: 0, hasBackendCredit: false };
+    render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+
+    const creditMetric = screen.getByText('Credit').closest('.rtx-trade-footer-metric')!;
+    expect(creditMetric).toHaveTextContent('Credit—');
+    expect(creditMetric).not.toHaveTextContent('0.00');
+    expect(creditMetric.querySelector('[title="Not reported by the trading server"]')).toBeInTheDocument();
+  });
+
+  it('shows Credit for an old saved footer setting without a credit key', () => {
+    localStorage.setItem('rtx5_trade_footer_metrics_v1', JSON.stringify({
+      positions: false,
+      balance: true,
+      equity: true,
+      margin: true,
+      freeMargin: true,
+      marginLevel: true,
+      swap: false,
+      commission: false,
+    }));
+    trade.account = { ...trade.account, credit: 500, hasBackendCredit: true };
+    render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+
+    expect(screen.getByText('Credit').parentElement?.lastElementChild).toHaveTextContent('500.00');
+  });
+
+  it('hides Credit when switched off in the footer right-click menu and keeps it hidden after reload', () => {
+    trade.account = { ...trade.account, credit: 500, hasBackendCredit: true };
+    const { container, unmount } = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+
+    const getFooterLabels = (root: HTMLElement) => Array.from(
+      root.querySelectorAll('.rtx-trade-footer-metrics .rtx-trade-metric-label'),
+    ).map(node => node.textContent);
+
+    expect(getFooterLabels(container)).toContain('Credit');
+    fireEvent.contextMenu(container.querySelector('.rtx-trade-footer')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Credit' }));
+
+    expect(getFooterLabels(container)).not.toContain('Credit');
+    expect(JSON.parse(localStorage.getItem('rtx5_trade_footer_metrics_v1') || '{}').credit).toBe(false);
+
+    unmount();
+    const reloaded = render(<BottomDock height={300} onClosePosition={vi.fn()} onModifyPosition={vi.fn()} />);
+    expect(getFooterLabels(reloaded.container)).not.toContain('Credit');
+    expect(screen.queryByText('Credit')).not.toBeInTheDocument();
   });
 });

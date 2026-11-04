@@ -19,7 +19,7 @@ export function ToolboxTab() {
         {
             category: 'Trading',
             items: [
-                { name: 'New Order', shortcutId: 'tools.new-order', icon: 'plus' },
+                { name: 'Pending Order', shortcutId: 'tools.new-order', icon: 'plus' },
                 { name: 'Depth of Market', shortcutId: 'view.depth-of-market', icon: 'box' },
                 { name: 'One Click Trading', shortcutId: 'trading.toggle-one-click', icon: 'mouse-pointer' },
                 { name: 'Order History', shortcutId: 'trading.order-history', icon: 'history' },

@@ -219,7 +219,7 @@ describe('TopToolbarSearch (Zero-Dropdown Direct In-Place UI Locator)', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(defaultProps.onTimeframeChange).toHaveBeenCalledWith('M15');
 
-    fireEvent.change(input, { target: { value: 'New Order' } });
+    fireEvent.change(input, { target: { value: 'Pending Order' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(defaultProps.onNewOrder).toHaveBeenCalled();
 

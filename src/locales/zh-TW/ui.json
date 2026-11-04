@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "將變更套用至所有開啟的圖表",
   "Share position": "分享部位",
   "Reverse position": "反向部位",
-  "Double position": "加倍部位"
+  "Double position": "加倍部位",
+  "Credit": "信用額",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "經紀商提供的信用額（贈金）；計入淨值與保證金，不可提取",
+  "Balance plus credit plus current floating P/L": "餘額加上信用額及目前浮動盈虧",
+  "Pending Order": "掛單",
+  "Pending Order (F9)": "掛單 (F9)",
+  "Blue and Red": "藍與紅"
 }

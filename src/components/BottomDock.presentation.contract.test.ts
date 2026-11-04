@@ -43,8 +43,11 @@ describe('BottomDock trade type presentation', () => {
         expect(sideCell).not.toContain('<svg');
     });
 
-    it('centers every trade header and row value without offsetting sortable labels', () => {
-        const headerHelpers = tradeTableSource.match(/const renderSortableHeader[\s\S]*?return \(/)?.[0] ?? '';
+    it('left-aligns the Symbol column with the Positions header while centering remaining trade columns', () => {
+        const headerHelpers = tradeTableSource.slice(
+            tradeTableSource.indexOf('const renderSortableHeader'),
+            tradeTableSource.indexOf('// Account publications update'),
+        );
         const tradeTable = tradeTableSource.match(/<table\s+className="rtx-trade-table[\s\S]*?<\/table>/)?.[0] ?? '';
         const tradeRow = tradeTableSource.slice(
             tradeTableSource.indexOf('const TradeTableRow = memo('),
@@ -52,17 +55,18 @@ describe('BottomDock trade type presentation', () => {
         );
         // Rejection reasons span the columns as a separate, left-aligned message.
         const tradeValues = tradeRow.slice(0, tradeRow.indexOf('{isTerminalPlacementFailure && ('));
+        const nonSymbolTradeValues = tradeValues.slice(tradeValues.indexOf('{/* ticket */}'));
 
-        expect(headerHelpers).toContain('text-center border-r');
-        expect(headerHelpers).toContain('items-center justify-center px-2 text-center');
-        expect(tradeTable).toContain('rtx-trade-table w-full text-center');
+        expect(headerHelpers).toContain("isSymbolColumn ? 'pl-4 pr-1.5 text-left' : 'px-1.5 text-center'");
+        expect(headerHelpers).toContain("isSymbolColumn ? 'justify-start pl-0 pr-2 text-left' : 'justify-center px-2 text-center'");
+        expect(tradeTable).toContain('rtx-trade-table w-full shrink-0 text-center');
         expect(tradeTable).toContain('{tableBody}');
         expect(tradeValues).toContain('flex items-center justify-center');
         expect(tradeValues).toContain('rtx-trade-sl-value w-full cursor-pointer bg-transparent px-1 text-center');
         expect(tradeValues).toContain('rtx-trade-tp-value w-full cursor-pointer bg-transparent px-1 text-center');
         expect(tradeValues).toContain('rtx-trade-row');
         expect(tradeValues).not.toContain('text-right');
-        expect(tradeValues).not.toContain('text-left');
+        expect(nonSymbolTradeValues).not.toContain('text-left');
     });
 
     it('pins Close In-Profit, Close In-Loss, and Close All to the bottom tab strip', () => {
@@ -114,10 +118,11 @@ describe('BottomDock trade type presentation', () => {
         expect(tradeTab.indexOf('rtx-trade-footer')).toBeLessThan(tradeTab.indexOf('rtx-trade-empty-state'));
     });
 
-    it('renders the Symbol cell as centered text without the colored direction badge', () => {
+    it('renders the Symbol cell as left-aligned text without the colored direction badge', () => {
         const symbolCell = tradeTableSource.match(/\{\/\* symbol \*\/\}([\s\S]*?)\{\/\* ticket \*\/\}/)?.[1] ?? '';
 
-        expect(symbolCell).toContain('text-center');
+        expect(symbolCell).toContain('pl-4 pr-1.5');
+        expect(symbolCell).toContain('text-left');
         expect(symbolCell).toContain('<span>{symbolLabel}</span>');
         expect(symbolCell).not.toContain("isBuy ? '+' : '-'");
         expect(symbolCell).not.toContain('h-[11px] w-[7px]');

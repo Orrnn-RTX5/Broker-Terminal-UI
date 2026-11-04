@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "変更をすべての開いているチャートに適用",
   "Share position": "ポジションを共有",
   "Reverse position": "ポジションを反転",
-  "Double position": "ポジションを倍増"
+  "Double position": "ポジションを倍増",
+  "Credit": "クレジット",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "ブローカーから付与されたクレジット（ボーナス）。有効証拠金および証拠金に算入され、出金はできません",
+  "Balance plus credit plus current floating P/L": "残高とクレジットおよび現在の含み損益の合計",
+  "Pending Order": "指値・逆指値注文",
+  "Pending Order (F9)": "指値・逆指値注文 (F9)",
+  "Blue and Red": "青と赤"
 }

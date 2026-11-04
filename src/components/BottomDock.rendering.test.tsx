@@ -111,7 +111,7 @@ describe('Trade rendering latency', () => {
 
     for (let update = 1; update <= 20; update += 1) {
       trade.account = {
-        balance: 1000, equity: 1000 + update, margin: 20, freeMargin: 980 + update,
+        balance: 1000, credit: update * 10, hasBackendCredit: true, equity: 1000 + update * 10 + update, margin: 20, freeMargin: 980 + update * 10 + update,
         unrealizedPL: update, marginLevel: 5000, currency: 'USD', leverage: 100,
         publicationToken: `publication-${update}`,
       };
@@ -119,6 +119,7 @@ describe('Trade rendering latency', () => {
     }
 
     expect(container.querySelector('.rtx-trade-footer')).toHaveAttribute('data-metrics-publication-token', 'publication-20');
+    expect(screen.getByText('Credit').parentElement?.lastElementChild).toHaveTextContent('200.00');
     expect(formatPrice).not.toHaveBeenCalled();
     expect(screen.getByTitle('Current price: 81000.00')).toBeInTheDocument();
 

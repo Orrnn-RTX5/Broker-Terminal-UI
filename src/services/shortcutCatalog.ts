@@ -16,7 +16,7 @@ export type ShortcutHelpEntry = Pick<ShortcutDefinition,
 // One source for executable keyboard bindings and the hints displayed in menus.
 // Browser-reserved combinations (Ctrl+N/T/W) have usable web alternatives.
 export const TERMINAL_SHORTCUTS: ShortcutHelpEntry[] = [
-  { id: 'tools.new-order', key: 'F9', description: 'New Order', category: 'Trading' },
+  { id: 'tools.new-order', key: 'F9', description: 'Pending Order', category: 'Trading' },
   { id: 'view.depth-of-market', key: 'b', alt: true, description: 'Depth of Market', category: 'Trading' },
   { id: 'trading.toggle-one-click', key: 't', alt: true, shift: true, description: 'One Click Trading', category: 'Trading' },
   { id: 'trading.order-history', key: 'o', alt: true, shift: true, description: 'Order History', category: 'Trading' },

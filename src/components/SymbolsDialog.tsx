@@ -1308,117 +1308,119 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               </label>
             </div>
 
-            {/* Symbol list table */}
-            <div className="rtx-symbols-dialog__catalog h-[120px] flex-shrink-0 overflow-y-auto border-b border-[var(--border-primary)]">
-              <table className="w-full border-collapse text-[13px] font-normal" aria-label={tr('Available symbols')}>
-                <thead>
-                  <tr className="bg-[var(--bg-tertiary)] sticky top-0">
-                    <th className="w-[140px] border-b border-[var(--border-primary)] px-3 py-1.5 text-left text-[12px] font-normal text-[var(--text-secondary)]">{tr("Symbol")}</th>
-                    <th className="border-b border-[var(--border-primary)] px-3 py-1.5 text-left text-[12px] font-normal text-[var(--text-secondary)]">{tr("Description")}</th>
-                    <th className="w-[100px] border-b border-[var(--border-primary)] px-3 py-1.5 text-right text-[12px] font-normal text-[var(--text-secondary)]">{tr("Expiration")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredSymbols.length === 0 && !loading && (
-                    <tr>
-                      <td colSpan={3} className="py-4 text-center text-[12px] font-normal text-[var(--text-tertiary)]">
-                        <div>{symbolsError || 'No symbols found'}</div>
-                        {symbolsError && (
-                          <button
-                            className="mt-2 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-3 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
-                            onClick={() => setSymbolsFetchTrigger(v => v + 1)}
-                          >
-                            {tr("Retry")}</button>
-                        )}
-                      </td>
+            <div className="rtx-symbols-dialog__split flex flex-1 min-h-0 min-w-0">
+              {/* Symbol list table (Left / Center section) */}
+              <div className="rtx-symbols-dialog__catalog flex-1 min-w-0 overflow-y-auto">
+                <table className="w-full border-collapse text-[13px] font-normal" aria-label={tr('Available symbols')}>
+                  <thead>
+                    <tr className="bg-[var(--bg-tertiary)] sticky top-0">
+                      <th className="w-[140px] border-b border-[var(--border-primary)] px-3 py-1.5 text-left text-[12px] font-normal text-[var(--text-secondary)]">{tr("Symbol")}</th>
+                      <th className="border-b border-[var(--border-primary)] px-3 py-1.5 text-left text-[12px] font-normal text-[var(--text-secondary)]">{tr("Description")}</th>
+                      <th className="w-[100px] border-b border-[var(--border-primary)] px-3 py-1.5 text-right text-[12px] font-normal text-[var(--text-secondary)]">{tr("Expiration")}</th>
                     </tr>
-                  )}
-                  {filteredSymbols.map(sym => (
-                    <tr
-                      key={sym.id || sym.name}
-                      data-selected={selectedSymbol?.name === sym.name}
-                      aria-selected={selectedSymbol?.name === sym.name}
-                      data-symbol-row
-                      tabIndex={catalogTabStopName === sym.name ? 0 : -1}
-                      onClick={() => setSelectedSymbol(sym)}
-                      onDoubleClick={() => openChartForSymbol(sym)}
-                      onKeyDown={event => {
-                        const rows = Array.from(event.currentTarget.closest('tbody')?.querySelectorAll<HTMLTableRowElement>('tr[data-symbol-row]') ?? []);
-                        const currentIndex = rows.indexOf(event.currentTarget);
-                        let nextIndex = currentIndex;
-                        if (event.key === 'ArrowDown') nextIndex = Math.min(rows.length - 1, currentIndex + 1);
-                        else if (event.key === 'ArrowUp') nextIndex = Math.max(0, currentIndex - 1);
-                        else if (event.key === 'Home') nextIndex = 0;
-                        else if (event.key === 'End') nextIndex = rows.length - 1;
-                        else if (event.key === 'Enter' || event.key === ' ') {
+                  </thead>
+                  <tbody>
+                    {filteredSymbols.length === 0 && !loading && (
+                      <tr>
+                        <td colSpan={3} className="py-4 text-center text-[12px] font-normal text-[var(--text-tertiary)]">
+                          <div>{symbolsError || 'No symbols found'}</div>
+                          {symbolsError && (
+                            <button
+                              className="mt-2 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-3 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
+                              onClick={() => setSymbolsFetchTrigger(v => v + 1)}
+                            >
+                              {tr("Retry")}</button>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    {filteredSymbols.map(sym => (
+                      <tr
+                        key={sym.id || sym.name}
+                        data-selected={selectedSymbol?.name === sym.name}
+                        aria-selected={selectedSymbol?.name === sym.name}
+                        data-symbol-row
+                        tabIndex={catalogTabStopName === sym.name ? 0 : -1}
+                        onClick={() => setSelectedSymbol(sym)}
+                        onDoubleClick={() => openChartForSymbol(sym)}
+                        onKeyDown={event => {
+                          const rows = Array.from(event.currentTarget.closest('tbody')?.querySelectorAll<HTMLTableRowElement>('tr[data-symbol-row]') ?? []);
+                          const currentIndex = rows.indexOf(event.currentTarget);
+                          let nextIndex = currentIndex;
+                          if (event.key === 'ArrowDown') nextIndex = Math.min(rows.length - 1, currentIndex + 1);
+                          else if (event.key === 'ArrowUp') nextIndex = Math.max(0, currentIndex - 1);
+                          else if (event.key === 'Home') nextIndex = 0;
+                          else if (event.key === 'End') nextIndex = rows.length - 1;
+                          else if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setSelectedSymbol(sym);
+                            if (event.key === 'Enter') openChartForSymbol(sym);
+                            return;
+                          } else return;
+
                           event.preventDefault();
-                          setSelectedSymbol(sym);
-                          if (event.key === 'Enter') openChartForSymbol(sym);
-                          return;
-                        } else return;
+                          const nextSymbol = filteredSymbols[nextIndex];
+                          if (nextSymbol) setSelectedSymbol(nextSymbol);
+                          rows[nextIndex]?.focus();
+                        }}
+                        className={`cursor-pointer transition-colors ${
+                          selectedSymbol?.name === sym.name
+                            ? 'bg-[var(--color-info-dim)] text-[var(--text-primary)]'
+                            : 'hover:bg-[var(--bg-quaternary)] text-[var(--text-primary)]'
+                        }`}
+                      >
+                        <td className="px-3 py-1">
+                          <div className="flex items-center gap-1.5">
+                            <DollarIcon shown={watchlistSymbols.includes(sym.symbol || sym.name)} />
+                            <span className={selectedSymbol?.name === sym.name ? 'text-[var(--text-primary)]' : 'text-[var(--text-primary)]'}>{sym.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-1 text-[var(--text-secondary)]" title={sym.description}>{sym.description}</td>
+                        <td className="px-3 py-1 text-[var(--text-secondary)] text-right">{sym.expiration || ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-                        event.preventDefault();
-                        const nextSymbol = filteredSymbols[nextIndex];
-                        if (nextSymbol) setSelectedSymbol(nextSymbol);
-                        rows[nextIndex]?.focus();
-                      }}
-                      className={`cursor-pointer transition-colors ${
-                        selectedSymbol?.name === sym.name
-                          ? 'bg-[var(--color-info-dim)] text-[var(--text-primary)]'
-                          : 'hover:bg-[var(--bg-quaternary)] text-[var(--text-primary)]'
-                      }`}
-                    >
-                      <td className="px-3 py-1">
-                        <div className="flex items-center gap-1.5">
-                          <DollarIcon shown={watchlistSymbols.includes(sym.symbol || sym.name)} />
-                          <span className={selectedSymbol?.name === sym.name ? 'text-[var(--text-primary)]' : 'text-[var(--text-primary)]'}>{sym.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-1 text-[var(--text-secondary)]" title={sym.description}>{sym.description}</td>
-                      <td className="px-3 py-1 text-[var(--text-secondary)] text-right">{sym.expiration || ''}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              {/* ── Right-side Specification Section ───────────────────────── */}
+              <div className="rtx-symbols-dialog__details overflow-y-auto min-h-0 border-l border-[var(--border-primary)]">
 
-            {/* ── Tab content area ─────────────────────────────────────────── */}
-            <div className="rtx-symbols-dialog__details flex-1 overflow-y-auto min-h-0 no-scrollbar">
+                {/* SPECIFICATION TAB */}
+                {activeTab === 'Specification' && selectedSymbol && (
+                  <div className="rtx-symbols-dialog__spec-card">
+                    {/* Symbol title */}
+                    <div className="rtx-symbols-dialog__selection px-3 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border-primary)]">
+                      <span className="rtx-symbols-dialog__selected-name">{selectedSymbol.name}</span>
+                      {selectedSymbol.description !== selectedSymbol.name && <span className="rtx-symbols-dialog__selected-description">{selectedSymbol.description}</span>}
+                    </div>
 
-              {/* SPECIFICATION TAB */}
-              {activeTab === 'Specification' && selectedSymbol && (
-                <div>
-                  {/* Symbol title */}
-                  <div className="rtx-symbols-dialog__selection px-3 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border-primary)]">
-                    <span className="rtx-symbols-dialog__selected-name">{selectedSymbol.name}</span>
-                    {selectedSymbol.description !== selectedSymbol.name && <span className="rtx-symbols-dialog__selected-description">{selectedSymbol.description}</span>}
+                    {/* Spec rows */}
+                    <table className="rtx-symbols-dialog__specification w-full border-collapse text-[13px] font-normal" aria-label={tr('Contract specification')}>
+                      <tbody>
+                        {specFields.map((field, i) => (
+                          <tr key={i} className={`border-b border-[var(--border-primary)] ${i % 2 === 0 ? 'bg-[var(--bg-secondary)]' : 'bg-[var(--bg-tertiary)]'}`}>
+                            <td className="px-3 py-[5px] w-[140px]">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[var(--text-secondary)]">{tr(field.label)}</span>
+                              </div>
+                            </td>
+                            <td className={`px-3 py-[5px] text-right ${field.alignRight ? 'text-right' : ''} ${field.color}`}>
+                              {String(field.value)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
+                )}
 
-                  {/* Spec rows */}
-                  <table className="rtx-symbols-dialog__specification w-full border-collapse text-[13px] font-normal" aria-label={tr('Contract specification')}>
-                    <tbody>
-                      {specFields.map((field, i) => (
-                        <tr key={i} className={`border-b border-[var(--border-primary)] ${i % 2 === 0 ? 'bg-[var(--bg-secondary)]' : 'bg-[var(--bg-tertiary)]'}`}>
-                          <td className="px-3 py-[5px] w-[160px]">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[var(--text-secondary)]">{tr(field.label)}</span>
-                            </div>
-                          </td>
-                          <td className={`px-3 py-[5px] text-right ${field.alignRight ? 'text-right' : ''} ${field.color}`}>
-                            {String(field.value)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                {activeTab === 'Specification' && !selectedSymbol && (
+                  <div className="flex h-full items-center justify-center text-[12px] font-normal text-[var(--text-tertiary)]">
+                    {tr("Select a symbol to view specification")}</div>
+                )}
 
-              {activeTab === 'Specification' && !selectedSymbol && (
-                <div className="flex h-full items-center justify-center text-[12px] font-normal text-[var(--text-tertiary)]">
-                  {tr("Select a symbol to view specification")}</div>
-              )}
-
+              </div>
             </div>
           </div>
             </>

@@ -36,6 +36,7 @@ export type TradeColumnDef = {
 export type TradeFooterMetricKey =
   | 'positions'
   | 'balance'
+  | 'credit'
   | 'equity'
   | 'margin'
   | 'freeMargin'
@@ -93,6 +94,7 @@ export const DEFAULT_TRADE_COLUMNS: TradeColumnVisibility = {
 export const TRADE_FOOTER_METRIC_DEFS: TradeFooterMetricDef[] = [
   { key: 'positions', label: 'Positions' },
   { key: 'balance', label: 'Balance' },
+  { key: 'credit', label: 'Credit' },
   { key: 'equity', label: 'Equity' },
   { key: 'margin', label: 'Margin' },
   { key: 'freeMargin', label: 'Free margin' },
@@ -104,6 +106,7 @@ export const TRADE_FOOTER_METRIC_DEFS: TradeFooterMetricDef[] = [
 export const DEFAULT_TRADE_FOOTER_METRICS: TradeFooterMetricVisibility = {
   positions: false,
   balance: true,
+  credit: true,
   equity: true,
   margin: true,
   freeMargin: true,
@@ -156,7 +159,8 @@ export const TRADE_COLUMN_HOVER_COMMENTS: Record<TradeColumnWidthKey, string> = 
 export const TRADE_FOOTER_METRIC_COMMENTS: Record<TradeFooterMetricKey, string> = {
   positions: 'Number of open positions',
   balance: 'Account balance excluding floating P/L',
-  equity: 'Balance plus current floating P/L',
+  credit: 'Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn',
+  equity: 'Balance plus credit plus current floating P/L',
   margin: 'Margin currently used by open positions',
   freeMargin: 'Available margin after used margin',
   marginLevel: 'Equity divided by margin, shown as a percent',

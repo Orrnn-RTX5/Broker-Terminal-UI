@@ -116,7 +116,9 @@ describe('Trade placement status presentation', () => {
     expect(reason.style.getPropertyValue('--rtx-type-size')).toBe('13px');
     expect(reason.closest('tr')).toHaveClass('text-loss');
     expect(reason.closest('td')).toHaveClass('text-left');
-    for (const cell of within(tradeRow).getAllByRole('cell')) {
+    const [symbolCell, ...otherCells] = within(tradeRow).getAllByRole('cell');
+    expect(symbolCell).toHaveClass('text-left', 'pl-4');
+    for (const cell of otherCells) {
       expect(cell).toHaveClass('text-center');
     }
     expect(within(tradeRow).queryByText('…')).not.toBeInTheDocument();

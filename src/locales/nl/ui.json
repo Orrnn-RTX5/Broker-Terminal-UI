@@ -2210,5 +2210,11 @@
   "Apply changes to all open charts": "Wijzigingen toepassen op alle geopende grafieken",
   "Share position": "Positie delen",
   "Reverse position": "Positie omkeren",
-  "Double position": "Positie verdubbelen"
+  "Double position": "Positie verdubbelen",
+  "Credit": "Krediet",
+  "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "Door de broker verstrekt krediet (bonus); telt mee in vermogen en marge, kan niet worden opgenomen",
+  "Balance plus credit plus current floating P/L": "Saldo plus krediet plus huidige ongerealiseerde winst of verlies",
+  "Pending Order": "In behandeling zijnde order",
+  "Pending Order (F9)": "In behandeling zijnde order (F9)",
+  "Blue and Red": "Blauw en rood"
 }

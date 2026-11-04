@@ -40,7 +40,7 @@ describe('TopToolbar primary command cluster', () => {
 
     expect(markedCluster).not.toMatch(/<(?:FileText|TrendingUp|BarChart2|CandlestickChart|LineChart|AreaChart|ZoomIn|ZoomOut|LayoutPanelTop|RefreshCw)\b/);
     expect(markedCluster).not.toContain('<Icon name="new-order"');
-    expect(markedCluster).toContain('<span className="rtx-toolbar-action__label">New Order</span>');
+    expect(markedCluster).toContain('<span className="rtx-toolbar-action__label">Pending Order</span>');
     expect(markedCluster).not.toContain('<Icon name="activity" size={20} />');
     expect(markedCluster).toContain('label={tr("Chart capture and overlays")}');
     expect(markedCluster).toContain('className="rtx-period-separator-toggle"');
@@ -52,7 +52,7 @@ describe('TopToolbar primary command cluster', () => {
 
   it('keeps the two labeled actions dense, reactive, and accessible', () => {
     expect(markedCluster).toContain('text-[13px] font-normal');
-    expect(markedCluster).toContain('aria-label={tr("New Order (F9)")}');
+    expect(markedCluster).toContain('aria-label={tr("Pending Order (F9)")}');
     expect(markedCluster).toContain("new CustomEvent('openNewOrder', {");
     expect(markedCluster).toContain('detail: { symbol }');
     expect(markedCluster).toContain('aria-pressed={lastSymbolPanelVisible}');

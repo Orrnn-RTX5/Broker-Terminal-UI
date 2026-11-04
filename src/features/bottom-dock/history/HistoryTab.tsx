@@ -612,7 +612,7 @@ ${rows}
         ];
         return [
             {
-                label: 'New Order',
+                label: 'Pending Order',
                 shortcut: 'F9',
                 icon: <Icon name="plus" size="xs" />,
                 disabled: !symbol,
