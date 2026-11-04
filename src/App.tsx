@@ -548,13 +548,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     ]),
     [chartEligibleSymbolNames, defaultMarketWatchSymbolNames],
   );
-  useEffect(() => {
-    if (!guestMode) return;
-    const candidate = normalizeSymbolName(selectedSymbol) || preferredChartCandidateSymbolNames[0];
-    if (candidate) {
-      preloadPublicStartupHistory(candidate);
-    }
-  }, [guestMode, preferredChartCandidateSymbolNames, selectedSymbol]);
   const tradeEligibleSymbolSet = useMemo(() => new Set(tradeEligibleSymbolNames), [tradeEligibleSymbolNames]);
   // While an account catalogue loads, no public/feed symbol may seed chart
   // selection or rewrite saved chart panels.
@@ -563,6 +556,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     : hasLoadedSymbols
       || marketCatalogSymbolNames.length > 0
       || (activeMarketSymbolsCurrent && activeMarketSymbols.length > 0);
+  useEffect(() => {
+    if (!guestMode || !hasLoadedChartSymbols) return;
+    const candidate = normalizeSymbolName(selectedSymbol) || preferredChartCandidateSymbolNames[0];
+    if (candidate) {
+      preloadPublicStartupHistory(candidate);
+    }
+  }, [guestMode, hasLoadedChartSymbols, preferredChartCandidateSymbolNames, selectedSymbol]);
   const hasLoadedTradeSymbols = activeMarketSymbolsSettled
     && activeMarketSymbolsCurrent
     && (hasLoadedSymbols || activeMarketSymbols.length > 0);
@@ -1845,7 +1845,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);
 
     if (!dialogSymbol) {
-      publishOrderFeedback([feedbackSymbol(targetSymbol), feedbackValue(' · '), feedbackLabel('New Order'), feedbackValue(': '), feedbackLabel('Unavailable')]);
+      publishOrderFeedback([feedbackSymbol(targetSymbol), feedbackValue(' · '), feedbackLabel('Pending Order'), feedbackValue(': '), feedbackLabel('Unavailable')]);
       return false;
     }
 
