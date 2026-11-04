@@ -829,6 +829,7 @@ export const TradingChart = React.memo(function TradingChart({
     state.symbolProperties[symbol] || state.globalProperties
   );
   const chartSettingsRef = useRef(chartSettings);
+  chartSettingsRef.current = chartSettings;
   const {
     applyLivePriceHorizontalGeometry,
     areaTrendDirectionRef,
@@ -1078,8 +1079,8 @@ export const TradingChart = React.memo(function TradingChart({
   }, [chartSettings, symbol, updateLegendDOM, isAdvancedUntitledLight]);
 
   const chartColors = useMemo(
-    () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
-    [chartSettings, isAdvancedUntitledLight, themeAppearanceSignature],
+    () => getEffectiveChartColors(chartSettingsRef.current, { isAdvancedUntitledLight }),
+    [chartSettings.colorScheme, chartSettings.colors, isAdvancedUntitledLight, themeAppearanceSignature],
   );
   const isLimeOutlineBlackPreset = chartSettings.colorScheme === 'Green and White'
     || chartSettings.colorScheme === 'Green and Blue';
@@ -2633,13 +2634,17 @@ useTradingChartInitialization({
     prevCtxChartShiftRef.current = ctxChartShift;
     ctxChartShiftRef.current = ctxChartShift;
     const rightOffset = getTradingChartShiftRightOffset(timeframe, ctxChartShift);
+    const currentRightOffset = chartRef.current.timeScale().options?.()?.rightOffset;
+    if (currentRightOffset === rightOffset && !shiftChanged) {
+      return;
+    }
     console.log(`[Chart] Applying chart shift: ${ctxChartShift}, rightOffset: ${rightOffset}`);
     chartRef.current.timeScale().applyOptions({
       ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
       rightOffset,
       fixRightEdge: false,
     });
-    if (shiftChanged) {
+    if (shiftChanged && currentRightOffset !== rightOffset) {
       scrollToLatestCandleNow(chartRef.current);
       syncLeftVisibleTime();
     }
@@ -2703,9 +2708,10 @@ useTradingChartInitialization({
   useLayoutEffect(() => {
     if (!chartRef.current || isDisposedRef.current) return;
     const chart = chartRef.current;
+    const currentSettings = chartSettingsRef.current;
 
     // Apply global layout and grid
-    const gridRenderingOptions = getChartGridRenderingOptions(chartSettings, chartTheme);
+    const gridRenderingOptions = getChartGridRenderingOptions(currentSettings, chartTheme);
     chart.applyOptions({
       layout: {
         background: { type: ColorType.Solid, color: chartTheme.background },
@@ -2725,7 +2731,7 @@ useTradingChartInitialization({
         ticksVisible: !gridRenderingOptions.squareVisible,
         minimumWidth: 72,
         borderColor: chartTheme.scaleBorder,
-        textColor: chartSettings.showGrid && chartSettings.gridType === 'mt5' ? 'transparent' : chartTheme.axisText,
+        textColor: currentSettings.showGrid && currentSettings.gridType === 'mt5' ? 'transparent' : chartTheme.axisText,
         alignLabels: false,
       },
       timeScale: {
@@ -2782,7 +2788,7 @@ useTradingChartInitialization({
 
     // Toggle volumes and apply colors if it exists
     if (volumeRef.current) {
-      const volumeVisible = shouldBuildVolumeData(chartSettings);
+      const volumeVisible = shouldBuildVolumeData(currentSettings);
       volumeRef.current.applyOptions({
         visible: volumeVisible,
         color: chartTheme.volumeUp
@@ -2792,7 +2798,7 @@ useTradingChartInitialization({
         // price history and every indicator.
         volumeRef.current.setData(lastRenderedCandlesRef.current.map(candle => ({
           time: candle.time as Time,
-          value: getDisplayVolume(candle, chartSettings),
+          value: getDisplayVolume(candle, currentSettings),
           color: candle.close >= candle.open ? chartTheme.volumeUp : chartTheme.volumeDown,
         })));
       } else {
@@ -2801,12 +2807,34 @@ useTradingChartInitialization({
       }
       const current = currentCandleRef.current;
       if (current) {
-        updateLegendDOM(current.open, current.high, current.low, current.close, getDisplayVolume(current, chartSettings));
+        updateLegendDOM(current.open, current.high, current.low, current.close, getDisplayVolume(current, currentSettings));
       }
     }
 
     requestChartTradeOverlayRefresh(drawingRuntimeContextRef.current.contextId, 'rebuild');
-  }, [areaTrendDirectionRef, chartAxisFontSize, chartSettings, chartTheme, chartType, requestChartDataRender, schedulePeriodSeparatorRender, symbol, timeframe, updateLegendDOM]);
+  }, [
+    areaTrendDirectionRef,
+    chartAxisFontSize,
+    chartSettings.gridLineStyle,
+    chartSettings.gridType,
+    chartSettings.showGrid,
+    chartSettings.showRealVolumes,
+    chartSettings.showTickVolumes,
+    chartSettings.showTradeHistory,
+    chartSettings.showTradeHistoryArrows,
+    chartSettings.showTradeHistoryBoxes,
+    chartSettings.showTradeLevels,
+    chartSettings.tradeHistoryBoxOpacity,
+    chartSettings.tradeHistoryLineOpacity,
+    chartTheme,
+    chartType,
+    isAdvancedUntitledLight,
+    requestChartDataRender,
+    schedulePeriodSeparatorRender,
+    symbol,
+    timeframe,
+    updateLegendDOM,
+  ]);
 
   useLayoutEffect(() => {
     if (previousAdvancedUntitledLightRef.current === isAdvancedUntitledLight) return;
