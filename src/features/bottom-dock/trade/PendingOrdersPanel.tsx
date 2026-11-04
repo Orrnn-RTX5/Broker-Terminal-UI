@@ -238,7 +238,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
         <table className="rtx-pending-orders-table w-full text-xs border-collapse">
           <thead className="rtx-trade-table__head sticky top-0 z-10 select-none border-b border-zinc-700/80 bg-[#17181c] text-[12px] font-normal leading-[18px] text-[#c9cfdb]">
             <tr className="h-[28px] text-left">
-              <th className="px-2 py-1 font-normal">{tr('Ticket')}</th>
+              <th className="py-1 pl-4 pr-2 font-normal">{tr('Ticket')}</th>
               <th className="px-2 py-1 font-normal">{tr('Symbol')}</th>
               <th className="px-2 py-1 font-normal">{tr('Type')}</th>
               <th className="px-2 py-1 font-normal">{tr('Side')}</th>
@@ -259,7 +259,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
               const digits = resolveSpecDigits(orderTick?.digits);
               return (
                 <tr key={order.ticket} className="rtx-pending-order-row border-b border-zinc-800 hover:bg-zinc-800/40" data-ticket={order.ticket}>
-                  <td className="px-2 py-1 text-zinc-300">{order.ticket}</td>
+                  <td className="py-1 pl-4 pr-2 text-zinc-300">{order.ticket}</td>
                   <td className="px-2 py-1 text-zinc-300">{order.symbol}</td>
                   <td className="px-2 py-1 text-zinc-400">{order.orderType}</td>
                   <td className={`px-2 py-1 font-semibold ${order.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>
