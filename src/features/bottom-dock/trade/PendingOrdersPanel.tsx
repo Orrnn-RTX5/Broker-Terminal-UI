@@ -196,18 +196,16 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
         type="button"
         disabled={busy || buyCount === 0}
         onClick={() => void cancelMany('BUY')}
-        className="rtx-pending-bulk-btn rtx-pending-bulk-btn--buy inline-flex h-[21px] items-center gap-1.5 rounded-[3px] border border-zinc-700/80 bg-zinc-800/75 px-2.5 text-[11px] font-medium leading-none text-zinc-200 transition-colors hover:border-sky-500/50 hover:bg-sky-500/15 hover:text-sky-200 disabled:pointer-events-none disabled:opacity-40"
+        className="rtx-pending-bulk-btn rtx-pending-bulk-btn--buy inline-flex h-[21px] items-center justify-center rounded-[3px] border border-zinc-700/80 bg-zinc-800/75 px-2.5 text-[11px] font-medium leading-none text-zinc-200 transition-colors hover:border-sky-500/50 hover:bg-sky-500/15 hover:text-sky-200 disabled:pointer-events-none disabled:opacity-40"
       >
-        <span className="rtx-pending-bulk-dot rtx-pending-bulk-dot--buy h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden="true" />
         {tr('Cancel Buys')}
       </button>
       <button
         type="button"
         disabled={busy || sellCount === 0}
         onClick={() => void cancelMany('SELL')}
-        className="rtx-pending-bulk-btn rtx-pending-bulk-btn--sell inline-flex h-[21px] items-center gap-1.5 rounded-[3px] border border-zinc-700/80 bg-zinc-800/75 px-2.5 text-[11px] font-medium leading-none text-zinc-200 transition-colors hover:border-rose-500/50 hover:bg-rose-500/15 hover:text-rose-200 disabled:pointer-events-none disabled:opacity-40"
+        className="rtx-pending-bulk-btn rtx-pending-bulk-btn--sell inline-flex h-[21px] items-center justify-center rounded-[3px] border border-zinc-700/80 bg-zinc-800/75 px-2.5 text-[11px] font-medium leading-none text-zinc-200 transition-colors hover:border-rose-500/50 hover:bg-rose-500/15 hover:text-rose-200 disabled:pointer-events-none disabled:opacity-40"
       >
-        <span className="rtx-pending-bulk-dot rtx-pending-bulk-dot--sell h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400" aria-hidden="true" />
         {tr('Cancel Sells')}
       </button>
       <span className="rtx-pending-bulk-sep h-3.5 w-px shrink-0 bg-zinc-700/80" aria-hidden="true" />
@@ -215,11 +213,8 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
         type="button"
         disabled={busy}
         onClick={() => void cancelMany('ALL')}
-        className="rtx-pending-bulk-btn rtx-pending-bulk-btn--all inline-flex h-[21px] items-center gap-1 rounded-[3px] border border-red-500/45 bg-red-500/12 px-2.5 text-[11px] font-medium leading-none text-red-300 transition-colors hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+        className="rtx-pending-bulk-btn rtx-pending-bulk-btn--all inline-flex h-[21px] items-center justify-center rounded-[3px] border border-red-500/45 bg-red-500/12 px-2.5 text-[11px] font-medium leading-none text-red-300 transition-colors hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-40"
       >
-        <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-          <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
-        </svg>
         {tr('Cancel All')}
       </button>
     </div>
@@ -252,7 +247,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
               <th className="px-2 py-1 font-normal text-right">{tr('SL')}</th>
               <th className="px-2 py-1 font-normal text-right">{tr('TP')}</th>
               <th className="px-2 py-1 font-normal text-right">{tr('Expiry')}</th>
-              <th className="px-2 py-1 font-normal text-right">{tr('Actions')}</th>
+              <th className="px-2 py-1 pr-7 font-normal text-right">{tr('Actions')}</th>
             </tr>
           </thead>
           <tbody>

@@ -1758,14 +1758,6 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-btn--sell {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-dot--buy {
-  background: var(--rtx-light-buy, #2563eb) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-dot--sell {
-  background: var(--rtx-light-sell, #dc2626) !important;
-}
-
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-pending-bulk-btn--buy:not(:disabled):hover {
   background: #eff6ff !important;
   border-color: #3b82f6 !important;
