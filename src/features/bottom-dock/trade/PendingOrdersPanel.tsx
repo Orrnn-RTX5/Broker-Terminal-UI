@@ -182,9 +182,7 @@ export const PendingOrdersPanel = memo(function PendingOrdersPanel({
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <div className="flex items-center gap-2 px-2 py-1">
-        <span className="text-xs text-zinc-400">{tr('Pending')} ({orders.length})</span>
-        <span className="flex-1" />
+      <div className="flex items-center justify-end gap-2 px-2 py-1">
         <button type="button" disabled={busy} onClick={() => void cancelMany('BUY')}
           className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
           {tr('Cancel Buys')}
