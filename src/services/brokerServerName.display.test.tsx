@@ -97,12 +97,13 @@ describe('server name display comes from the broker API', () => {
     } as unknown as ConfigResult);
     vi.mocked(brokerV2Api.getServers).mockResolvedValue([serverEntry('broker-server-9')]);
 
-    const { result } = renderHook(() => useTerminalBrokerInfo());
+    const { result } = renderHook(() => useTerminalBrokerInfo(''));
 
     await waitFor(() => expect(result.current.brokerName).toBe('Example Markets'));
     expect(getWebTerminalTitle()).toBe('Example Markets');
     const statusTitle = formatTerminalTitle(result.current, 'EURUSD', 'm15');
-    expect(statusTitle).toBe('Example Markets - 100043 - Hedge - EURUSD,M15');
+    // No signed account-mode read here, so the mode segment is the fail-closed unknown, never a guessed Hedge.
+    expect(statusTitle).toBe('Example Markets - 100043 - — - EURUSD,M15');
     expect(statusTitle).not.toContain(BUILD_FALLBACK);
     expect(brokerDisplayName(API_HOST)).toBe('Example Markets');
     expect(brokerDisplayName(BUILD_FALLBACK)).toBe('Example Markets');
@@ -113,7 +114,7 @@ describe('server name display comes from the broker API', () => {
       server_name: 'Test Markets', broker_name: 'Test Markets',
     } as unknown as ConfigResult);
 
-    const { result } = renderHook(() => useTerminalBrokerInfo());
+    const { result } = renderHook(() => useTerminalBrokerInfo(''));
 
     await waitFor(() => expect(result.current.brokerName).toBe('Test Markets'));
     expect(getWebTerminalTitle()).toBe('Test Markets');
@@ -125,7 +126,7 @@ describe('server name display comes from the broker API', () => {
     vi.mocked(configApi.getConfig).mockResolvedValue({} as ConfigResult);
     vi.mocked(brokerV2Api.getServers).mockResolvedValue([serverEntry('test')]);
 
-    const { result } = renderHook(() => useTerminalBrokerInfo());
+    const { result } = renderHook(() => useTerminalBrokerInfo(''));
 
     await waitFor(() => expect(result.current.brokerName).toBe('test'));
     expect(getWebTerminalTitle()).toBe('test');
@@ -135,7 +136,7 @@ describe('server name display comes from the broker API', () => {
   it('displays a broker config server_name literally named "test"', async () => {
     vi.mocked(configApi.getConfig).mockResolvedValue({ server_name: 'test' } as unknown as ConfigResult);
 
-    const { result } = renderHook(() => useTerminalBrokerInfo());
+    const { result } = renderHook(() => useTerminalBrokerInfo(''));
 
     await waitFor(() => expect(result.current.brokerName).toBe('test'));
     expect(brokerDisplayName(API_HOST)).toBe('test');
@@ -145,7 +146,7 @@ describe('server name display comes from the broker API', () => {
     vi.mocked(configApi.getConfig).mockRejectedValue(new TypeError('Failed to fetch'));
     vi.mocked(brokerV2Api.getServers).mockRejectedValue(new TypeError('Failed to fetch'));
 
-    const { result } = renderHook(() => useTerminalBrokerInfo());
+    const { result } = renderHook(() => useTerminalBrokerInfo(''));
     await act(async () => {});
     await act(async () => {});
 
@@ -157,7 +158,7 @@ describe('server name display comes from the broker API', () => {
   it('suppresses only the build fallback: every other broker value is shown verbatim', async () => {
     vi.mocked(configApi.getConfig).mockResolvedValue({ server_name: 'Example Markets' } as unknown as ConfigResult);
 
-    const { result } = renderHook(() => useTerminalBrokerInfo());
+    const { result } = renderHook(() => useTerminalBrokerInfo(''));
     await waitFor(() => expect(result.current.brokerName).toBe('Example Markets'));
 
     for (const label of ['dev', 'local', 'development', 'localhost', '127.0.0.1', 'test', 'Dev Markets', 'test-server']) {

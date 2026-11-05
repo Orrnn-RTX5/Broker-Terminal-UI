@@ -1,10 +1,17 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useAppStore } from '../store/useAppStore';
-import { useTerminalBrokerInfo } from './useTerminalTitle';
+import { UNKNOWN_MARGIN_MODE, useTerminalBrokerInfo } from './useTerminalTitle';
 import { brokerV2Api } from '../api/trade';
+import { apiClient } from '../api/client';
+import { API_V2_BASE_URL } from '../config/api';
 import { configApi } from '../services/api';
 import { emitSessionChange } from '../services/brokerSession';
+
+vi.mock('../api/client', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../api/client')>();
+    return { ...actual, apiClient: { ...actual.apiClient, get: vi.fn() } };
+});
 
 vi.mock('../startup/runAfterTerminalReady', () => ({
     runAfterTerminalReady: (task: () => void) => { task(); return () => undefined; },
@@ -25,9 +32,13 @@ vi.mock('../services/api', () => ({
 
 const originalAccountId = useAppStore.getState().accountId;
 const originalSavedAccounts = useAppStore.getState().savedAccounts;
+const originalIsAuthenticated = useAppStore.getState().isAuthenticated;
+const originalSelectedSymbol = useAppStore.getState().selectedSymbol;
 
 beforeEach(() => {
     localStorage.clear();
+    vi.mocked(apiClient.get).mockReset();
+    vi.mocked(apiClient.get).mockRejectedValue(new Error('unmocked account read'));
     vi.mocked(brokerV2Api.getServers).mockResolvedValue([]);
     vi.mocked(brokerV2Api.getBrokers).mockResolvedValue({ brokers: [], count: 0 });
     vi.mocked(configApi.getConfig).mockResolvedValue({ brokerName: 'Account Test Broker' } as Awaited<ReturnType<typeof configApi.getConfig>>);
@@ -35,7 +46,12 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
-    useAppStore.setState({ accountId: originalAccountId, savedAccounts: originalSavedAccounts });
+    useAppStore.setState({
+        accountId: originalAccountId,
+        savedAccounts: originalSavedAccounts,
+        isAuthenticated: originalIsAuthenticated,
+        selectedSymbol: originalSelectedSymbol,
+    });
     localStorage.clear();
     vi.unstubAllGlobals();
 });
@@ -159,13 +175,236 @@ it('resolves snake_case broker_name from /api/v2/broker/config and ignores /asse
     expect(result.current.logoUrl).toBe('https://directory.example/api/v1/brokers/alpha-markets/logo');
 });
 
-it('resolves snake_case margin_mode from /api/v2/broker/config', async () => {
-    localStorage.setItem('broker_id', 'alpha-markets');
+const signInAccount = (login: string) => {
+    // The store's selectedSymbol stays empty, as in the real app: the shown
+    // symbol is passed in by App/StatusBar.
+    useAppStore.setState({ accountId: login, isAuthenticated: true, selectedSymbol: '' });
+};
+
+const renderModeHook = (symbol = 'TESTSYM') => renderHook(
+    ({ chartSymbol }: { chartSymbol: string }) => useTerminalBrokerInfo(chartSymbol),
+    { initialProps: { chartSymbol: symbol } },
+);
+
+const capabilityReads = () => vi.mocked(apiClient.get).mock.calls
+    .filter(([endpoint]) => String(endpoint).startsWith('/account/symbol-capabilities/'));
+
+// Let every pending promise chain (read -> label -> notify) settle.
+const flush = () => act(() => new Promise<void>(resolve => { setTimeout(resolve, 0); }));
+
+it('reads the account mode for the shown symbol from the v2 API base while the store symbol is empty', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ account_login: '700010', account_mode: 'netting' });
+    signInAccount('700010');
+
+    const { result } = renderModeHook('SHOWNSYM');
+    await waitFor(() => expect(result.current.marginMode).toBe('Netting'));
+    expect(useAppStore.getState().selectedSymbol).toBe('');
+    expect(capabilityReads()).toEqual([['/account/symbol-capabilities/SHOWNSYM', { baseUrl: API_V2_BASE_URL }]]);
+});
+
+it('makes no account read without a shown symbol', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ account_login: '700009', account_mode: 'netting' });
+    signInAccount('700009');
+
+    const { result } = renderHook(() => useTerminalBrokerInfo(''));
+    await flush();
+    expect(capabilityReads()).toHaveLength(0);
+    expect(result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+});
+
+it('shows Netting for a netting account even when the broker config says hedging', async () => {
+    vi.mocked(configApi.getConfig).mockResolvedValue({
+        margin_mode: 'HEDGING',
+    } as unknown as Awaited<ReturnType<typeof configApi.getConfig>>);
+    vi.mocked(apiClient.get).mockResolvedValue({ account_login: '700001', account_mode: 'netting' });
+    signInAccount('700001');
+
+    const { result } = renderModeHook();
+    await waitFor(() => expect(result.current.marginMode).toBe('Netting'));
+    expect(capabilityReads()).toHaveLength(1);
+});
+
+it('shows Hedge for a hedging account even when the broker config says netting', async () => {
     vi.mocked(configApi.getConfig).mockResolvedValue({
         margin_mode: 'NETTING',
     } as unknown as Awaited<ReturnType<typeof configApi.getConfig>>);
+    vi.mocked(apiClient.get).mockResolvedValue({ account_login: '700002', account_mode: 'hedging' });
+    signInAccount('700002');
 
-    const { result } = renderHook(useTerminalBrokerInfo);
-    await waitFor(() => expect(result.current.marginMode).toBe('Netting'));
+    const { result } = renderModeHook();
+    await waitFor(() => expect(result.current.marginMode).toBe('Hedge'));
 });
 
+it('fails closed to the unknown mode when the account mode read errors', async () => {
+    vi.mocked(configApi.getConfig).mockResolvedValue({
+        margin_mode: 'HEDGING',
+    } as unknown as Awaited<ReturnType<typeof configApi.getConfig>>);
+    vi.mocked(apiClient.get).mockRejectedValue(new Error('503 CAPABILITY_UNAVAILABLE'));
+    signInAccount('700003');
+
+    const { result } = renderModeHook();
+    await waitFor(() => expect(capabilityReads()).toHaveLength(1));
+    await flush();
+    expect(result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+});
+
+it('fails closed on an unrecognised mode or a snapshot for another login', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ account_login: '700004', account_mode: 'mystery' });
+    signInAccount('700004');
+    const first = renderModeHook();
+    await waitFor(() => expect(capabilityReads()).toHaveLength(1));
+    await flush();
+    expect(first.result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+    first.unmount();
+
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ account_login: '799999', account_mode: 'netting' });
+    signInAccount('700005');
+    const second = renderModeHook();
+    await waitFor(() => expect(capabilityReads()).toHaveLength(2));
+    await flush();
+    expect(second.result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+});
+
+it('never guesses Hedge from the broker config and makes no account read for a guest', async () => {
+    vi.mocked(configApi.getConfig).mockResolvedValue({
+        margin_mode: 'HEDGING',
+    } as unknown as Awaited<ReturnType<typeof configApi.getConfig>>);
+    useAppStore.setState({ accountId: '700006', isAuthenticated: false, selectedSymbol: '' });
+
+    const { result } = renderModeHook();
+    await waitFor(() => expect(configApi.getConfig).toHaveBeenCalled());
+    await flush();
+    expect(result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+    expect(capabilityReads()).toHaveLength(0);
+});
+
+it('does not re-read a known mode when the shown symbol changes', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ account_login: '700011', account_mode: 'hedging' });
+    signInAccount('700011');
+
+    const { result, rerender } = renderModeHook();
+    await waitFor(() => expect(result.current.marginMode).toBe('Hedge'));
+    rerender({ chartSymbol: 'OTHERSYM' });
+    await flush();
+    expect(capabilityReads()).toHaveLength(1);
+    expect(result.current.marginMode).toBe('Hedge');
+});
+
+it('retries an unknown mode when the shown symbol changes', async () => {
+    vi.mocked(apiClient.get)
+        .mockRejectedValueOnce(new Error('403 SYMBOL_NOT_ALLOWED'))
+        .mockResolvedValueOnce({ account_login: '700012', account_mode: 'netting' });
+    signInAccount('700012');
+    const { result, rerender } = renderModeHook();
+    await waitFor(() => expect(capabilityReads()).toHaveLength(1));
+    await flush();
+    expect(result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+
+    rerender({ chartSymbol: 'SCOPEDSYM' });
+    await waitFor(() => expect(result.current.marginMode).toBe('Netting'));
+    expect(capabilityReads()[1][0]).toBe('/account/symbol-capabilities/SCOPEDSYM');
+});
+
+it('stops reading an unknown mode after the read cap', async () => {
+    vi.mocked(apiClient.get).mockRejectedValue(new Error('503 CAPABILITY_UNAVAILABLE'));
+    signInAccount('700013');
+    const { result, rerender } = renderModeHook();
+    for (const symbol of ['S1', 'S2', 'S3', 'S4', 'S5']) {
+        await flush();
+        rerender({ chartSymbol: symbol });
+    }
+    await flush();
+    // TESTSYM on mount, then S1 and S2; S3-S5 are past the cap.
+    expect(capabilityReads().map(([endpoint]) => endpoint)).toEqual([
+        '/account/symbol-capabilities/TESTSYM',
+        '/account/symbol-capabilities/S1',
+        '/account/symbol-capabilities/S2',
+    ]);
+    expect(result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+});
+
+it('keeps a correct answer that lands after a symbol change, even if the next read fails', async () => {
+    let resolveFirst: (value: unknown) => void = () => undefined;
+    let rejectSecond: (error: Error) => void = () => undefined;
+    vi.mocked(apiClient.get)
+        .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
+        .mockImplementationOnce(() => new Promise((_, reject) => { rejectSecond = reject; }));
+    signInAccount('700014');
+    const { result, rerender } = renderModeHook();
+    await waitFor(() => expect(capabilityReads()).toHaveLength(1));
+
+    rerender({ chartSymbol: 'OUTOFSCOPE' });
+    await waitFor(() => expect(capabilityReads()).toHaveLength(2));
+    // The first symbol's read answers after the symbol changed; the failed
+    // second read lands last and must not replace the known mode.
+    await act(async () => { resolveFirst({ account_login: '700014', account_mode: 'netting' }); });
+    await waitFor(() => expect(result.current.marginMode).toBe('Netting'));
+    await act(async () => { rejectSecond(new Error('404 NOT_FOUND')); });
+    await flush();
+    expect(result.current.marginMode).toBe('Netting');
+});
+
+it('shares one read between hook users, including one mounted later', async () => {
+    let resolveRead: (value: unknown) => void = () => undefined;
+    vi.mocked(apiClient.get).mockImplementationOnce(() => new Promise(resolve => { resolveRead = resolve; }));
+    signInAccount('700015');
+    const header = renderModeHook();
+    const status = renderModeHook();
+    await waitFor(() => expect(capabilityReads()).toHaveLength(1));
+    await act(async () => { resolveRead({ account_login: '700015', account_mode: 'netting' }); });
+    await waitFor(() => expect(header.result.current.marginMode).toBe('Netting'));
+    expect(status.result.current.marginMode).toBe('Netting');
+
+    const late = renderModeHook('ANOTHERSYM');
+    expect(late.result.current.marginMode).toBe('Netting');
+    await flush();
+    expect(capabilityReads()).toHaveLength(1);
+});
+
+it('uses the same key for a hook user that mounts after a login and re-reads after a re-login', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ account_login: '700016', account_mode: 'netting' });
+    // App's hook user exists before the login event; StatusBar mounts after it.
+    const header = renderModeHook();
+    act(() => { signInAccount('700016'); emitSessionChange('login'); });
+    await waitFor(() => expect(header.result.current.marginMode).toBe('Netting'));
+
+    const status = renderModeHook();
+    expect(status.result.current.marginMode).toBe('Netting');
+    await flush();
+    expect(capabilityReads()).toHaveLength(1);
+
+    // Re-login of the same account after its group mode changed: no stale mode survives.
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ account_login: '700016', account_mode: 'hedging' });
+    act(() => { useAppStore.setState({ isAuthenticated: false }); emitSessionChange('logout'); });
+    expect(header.result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+    expect(status.result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+    act(() => { useAppStore.setState({ isAuthenticated: true }); emitSessionChange('login'); });
+    await waitFor(() => expect(header.result.current.marginMode).toBe('Hedge'));
+    expect(status.result.current.marginMode).toBe('Hedge');
+    expect(capabilityReads()).toHaveLength(2);
+});
+
+it('drops the old mode at once on an account switch', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ account_login: '700017', account_mode: 'netting' });
+    signInAccount('700017');
+    const { result } = renderModeHook();
+    await waitFor(() => expect(result.current.marginMode).toBe('Netting'));
+
+    let resolveNext: (value: unknown) => void = () => undefined;
+    vi.mocked(apiClient.get).mockImplementationOnce(() => new Promise(resolve => { resolveNext = resolve; }));
+    act(() => { useAppStore.setState({ accountId: '700018' }); });
+    expect(result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+    await waitFor(() => expect(capabilityReads()).toHaveLength(2));
+    await act(async () => { resolveNext({ account_login: '700018', account_mode: 'hedging' }); });
+    await waitFor(() => expect(result.current.marginMode).toBe('Hedge'));
+});
+
+it('drops a known mode on logout', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ account_login: '700019', account_mode: 'netting' });
+    signInAccount('700019');
+    const { result } = renderModeHook();
+    await waitFor(() => expect(result.current.marginMode).toBe('Netting'));
+
+    act(() => { useAppStore.setState({ isAuthenticated: false }); });
+    expect(result.current.marginMode).toBe(UNKNOWN_MARGIN_MODE);
+});

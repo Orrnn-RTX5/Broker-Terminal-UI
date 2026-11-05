@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTerminalBarsStore } from '../../store/useTerminalBarsStore';
 import { toPublicAssetPath } from '../welcomeHeroAssets';
 import { StatusBar } from './StatusBar';
+import { useTerminalBrokerInfo } from '../../hooks/useTerminalTitle';
 
 const originalElectronDescriptor = Object.getOwnPropertyDescriptor(window, 'electron');
 const originalAppActiveDescriptor = Object.getOwnPropertyDescriptor(window, '__RTX_APP_ACTIVE__');
@@ -14,13 +15,13 @@ vi.mock('../../hooks/useUiTranslation', () => ({
 vi.mock('../../hooks/useTerminalTitle', () => ({
   WEB_TERMINAL_TITLE: 'Web Terminal',
   getWebTerminalTitle: () => 'Web Terminal',
-  useTerminalBrokerInfo: () => ({
+  useTerminalBrokerInfo: vi.fn(() => ({
     accountId: '---',
     brokerName: 'Test Broker',
     marginMode: 'Hedge',
     logoUrl: 'https://broker.example/custom-logo.png',
     logoBaseCandidates: ['https://broker.example'],
-  }),
+  })),
   getLogoUrl: (url: string) => url,
   formatTerminalTitle: () => 'Web Terminal',
 }));
@@ -84,6 +85,11 @@ describe.each(['web', 'packaged desktop'] as const)('StatusBar in %s', (runtime)
         updater: { isSupported: false },
       } : undefined,
     });
+  });
+
+  it('passes its shown symbol to the broker info hook (account-mode read)', () => {
+    render(<StatusBar wsRef={{ current: null }} symbol="WIRESYM" timeframe="m15" />);
+    expect(vi.mocked(useTerminalBrokerInfo)).toHaveBeenCalledWith('WIRESYM');
   });
 
   it('shows the terminal version without a desktop download shortcut', () => {

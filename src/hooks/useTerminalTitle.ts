@@ -1,15 +1,15 @@
 import { brokerDisplayName, NEUTRAL_TERMINAL_TITLE, resolveTerminalTitle } from '../services/brokerDisplayName';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { brokerV2Api } from '../api/trade';
 import { configApi } from '../services/api';
 import type { Broker, BrokerServer } from '../types/api';
 import type { NormalizedMarketStatus } from '../utils/marketStatus';
-import { RTX5_API_URL, normalizeServerUrl } from '../config/api';
+import { API_V2_BASE_URL, RTX5_API_URL, normalizeServerUrl } from '../config/api';
+import { apiClient } from '../api/client';
 import { runAfterTerminalReady } from '../startup/runAfterTerminalReady';
 import { setBrokerServerTimeZoneFromConfig } from '../services/brokerServerClock';
 import { onSessionChange } from '../services/brokerSession';
-import { normalizeBrokerOperationalConfig } from '../services/brokerOperationalConfig';
 import {
     buildBrokerDirectoryLogoUrl,
     getConfiguredBrokerLogoUrl,
@@ -162,6 +162,95 @@ const fetchBrokerDetails = (key: string): Promise<BrokerDetails> => {
     return promise;
 };
 
+/** Shown while the signed account's own mode is unknown; never a guessed Hedge. */
+export const UNKNOWN_MARGIN_MODE = '—';
+
+/** accounts.account_mode ('netting' | 'hedging') → title label; anything else stays unknown. */
+export const accountModeLabel = (value: unknown): string => {
+    const mode = normalizeHeaderText(value).toLowerCase();
+    if (mode === 'netting') return 'Netting';
+    if (mode === 'hedging') return 'Hedge';
+    return UNKNOWN_MARGIN_MODE;
+};
+
+type AccountModeRead = { account_login?: unknown; account_mode?: unknown };
+
+// Netting/hedging is per account (group), not per broker: read it from the
+// signed current-account capability snapshot once per account/session key.
+// Every hook user shares one record per account/session key (resolved mode +
+// read count), one in-flight read per key and symbol, and one session epoch,
+// and is notified when a mode resolves (a small external store).
+let accountModeCache: { key: string; promise: Promise<string> } | null = null;
+const accountModeRecords = new Map<string, { mode: string; reads: number }>();
+const accountModeListeners = new Set<() => void>();
+/** Reads per account/session key while the mode stays unknown (one per symbol change). */
+const MAX_ACCOUNT_MODE_READS = 3;
+/** Bounded: only the current and a few recent account/session keys are kept. */
+const MAX_ACCOUNT_MODE_RECORDS = 8;
+/** Shared by every hook user, so a user that mounts after a login uses the same key. */
+let accountModeSessionEpoch = 0;
+
+const notifyAccountMode = () => { accountModeListeners.forEach((listener) => listener()); };
+const subscribeAccountMode = (listener: () => void) => {
+    accountModeListeners.add(listener);
+    return () => { accountModeListeners.delete(listener); };
+};
+
+// Registered at import, before any hook user subscribes, so the epoch has moved
+// when their own session listeners re-render. A login, logout or account change
+// never reuses a previous session's mode.
+onSessionChange((reason) => {
+    if (reason === 'token_rotation') return;
+    accountModeSessionEpoch += 1;
+    accountModeRecords.clear();
+    accountModeCache = null;
+    notifyAccountMode();
+});
+
+const accountModeRecordFor = (key: string) => {
+    let record = accountModeRecords.get(key);
+    if (!record) {
+        record = { mode: UNKNOWN_MARGIN_MODE, reads: 0 };
+        accountModeRecords.set(key, record);
+        while (accountModeRecords.size > MAX_ACCOUNT_MODE_RECORDS) {
+            accountModeRecords.delete(accountModeRecords.keys().next().value as string);
+        }
+    }
+    return record;
+};
+
+/** The shared resolved mode for this account/session key. */
+const knownAccountMode = (key: string): string => accountModeRecords.get(key)?.mode ?? UNKNOWN_MARGIN_MODE;
+
+const fetchAccountMode = (key: string, accountId: string, symbol: string): Promise<string> => {
+    const record = accountModeRecordFor(key);
+    if (record.mode !== UNKNOWN_MARGIN_MODE) return Promise.resolve(record.mode);
+    const readKey = `${key}|${symbol}`;
+    if (accountModeCache?.key === readKey) return accountModeCache.promise;
+    if (record.reads >= MAX_ACCOUNT_MODE_READS) return Promise.resolve(UNKNOWN_MARGIN_MODE);
+    record.reads += 1;
+    const promise = apiClient.get<AccountModeRead>(
+        `/account/symbol-capabilities/${encodeURIComponent(symbol)}`,
+        { baseUrl: API_V2_BASE_URL },
+    ).then((read) => (
+        // A snapshot for another login (stale token after a switch) is not this account's mode.
+        normalizeHeaderText(read?.account_login) === accountId ? accountModeLabel(read?.account_mode) : UNKNOWN_MARGIN_MODE
+    )).catch(() => UNKNOWN_MARGIN_MODE).then((mode) => {
+        // Keep the answer for its own key, even after a symbol change; an
+        // unknown never replaces a known mode.
+        const current = accountModeRecords.get(key);
+        if (current && current.mode === UNKNOWN_MARGIN_MODE && mode !== UNKNOWN_MARGIN_MODE) {
+            current.mode = mode;
+            notifyAccountMode();
+        }
+        return knownAccountMode(key);
+    }).finally(() => {
+        if (accountModeCache?.promise === promise) accountModeCache = null;
+    });
+    accountModeCache = { key: readKey, promise };
+    return promise;
+};
+
 export interface TerminalBrokerInfo {
     accountId: string;
     accountName?: string;
@@ -172,7 +261,11 @@ export interface TerminalBrokerInfo {
     logoBaseCandidates: string[];
 }
 
-export function useTerminalBrokerInfo(): TerminalBrokerInfo {
+/**
+ * @param symbol the chart symbol the caller shows (required: App / StatusBar own
+ *   it; the store's selectedSymbol is not kept in sync). Used only for the account-mode read.
+ */
+export function useTerminalBrokerInfo(symbol: string): TerminalBrokerInfo {
     const [sessionRevision, setSessionRevision] = useState(0);
     useEffect(() => onSessionChange(reason => {
         if (reason !== 'token_rotation') setSessionRevision(value => value + 1);
@@ -188,7 +281,9 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
 
     const [resolvedKey, setResolvedKey] = useState(infoKey);
     const [brokerName, setBrokerName] = useState<string>(() => brokerDisplayName(serverName));
-    const [marginMode, setMarginMode] = useState<string>('Hedge');
+    const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+    const modeSymbol = normalizeHeaderText(symbol);
+    const modeKey = `${brokerId}|${serverName}|${accountId}|${isAuthenticated ? 'auth' : 'guest'}|${accountModeSessionEpoch}`;
     const [logoUrl, setLogoUrl] = useState<string>(() => getStoredLogoUrl());
     const [logoBaseCandidates, setLogoBaseCandidates] = useState<string[]>([]);
 
@@ -211,17 +306,7 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
                 // current broker's /broker/servers entry) replaces the build fallback.
                 recordBrokerServerIdentity(config, servers);
 
-                // 1. Margin mode from the broker config (camelCase or
-                // snake_case — anything else stays on the neutral Hedge).
-                if (config) {
-                    if (normalizeBrokerOperationalConfig(config).marginMode === 'NETTING') {
-                        setMarginMode('Netting');
-                    } else {
-                        setMarginMode('Hedge');
-                    }
-                }
-
-                // 2. Find broker ID, broker name, and logo from server matching
+                // Find broker ID, broker name, and logo from server matching
                 const matchedServer = servers.find(server => brokerId && String(server.broker_id) === brokerId)
                     || servers.find((server) => matchesBrokerServer(server, serverName));
                 const brokersList = brokersData?.brokers || [];
@@ -267,6 +352,23 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
             cancelScheduledDetails();
         };
     }, [infoKey, serverName, brokerId]);
+
+    // Account mode: read once per account/session; unknown until the signed
+    // snapshot for this login answers. The read is per symbol and can fail for
+    // a symbol outside this account's scope, so while the mode is still
+    // unknown a symbol change may retry (capped); a known mode never re-reads.
+    const sharedMode = useSyncExternalStore(subscribeAccountMode, () => knownAccountMode(modeKey));
+    const marginMode = isAuthenticated ? sharedMode : UNKNOWN_MARGIN_MODE;
+    const modeReadSymbol = marginMode !== UNKNOWN_MARGIN_MODE ? '' : modeSymbol;
+    useEffect(() => {
+        const login = accountId === '---' ? '' : String(accountId);
+        if (!isAuthenticated || !login || !modeReadSymbol) return undefined;
+        // The answer lands in the shared record for its own key and notifies
+        // every hook user, so a read that finishes after a symbol change still counts.
+        return runAfterTerminalReady(() => {
+            void fetchAccountMode(modeKey, login, modeReadSymbol);
+        });
+    }, [modeKey, accountId, isAuthenticated, modeReadSymbol]);
 
     // Re-render when the broker-published server name becomes known so the
     // build fallback is replaced without waiting for another session change.

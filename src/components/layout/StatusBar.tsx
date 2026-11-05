@@ -24,7 +24,7 @@ interface StatusBarProps {
 export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketStatus }: StatusBarProps) {
     const tr = useUiTranslation();
     const visible = useTerminalBarsStore(state => state.statusBarVisible);
-    const brokerInfo = useTerminalBrokerInfo();
+    const brokerInfo = useTerminalBrokerInfo(symbol ?? '');
     const statusBarLogoSrc = toPublicAssetPath('favicon.png');
 
     const terminalTitle = symbol && timeframe
