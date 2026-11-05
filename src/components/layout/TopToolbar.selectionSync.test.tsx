@@ -280,21 +280,27 @@ describe('toolbar selection synchronization', () => {
     const shiftButton = screen.getByRole('button', { name: 'Chart Shift' });
     expect(jumpButton.querySelector('[data-chart-command-icon="auto-scroll"]')).not.toBeNull();
     expect(shiftButton.querySelector('[data-chart-command-icon="chart-shift"]')).not.toBeNull();
+    expect(jumpButton).toHaveAttribute('aria-pressed', 'true');
     expect(shiftButton).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(shiftButton);
+    expect(jumpButton).toHaveAttribute('aria-pressed', 'false');
     expect(shiftButton).toHaveAttribute('aria-pressed', 'true');
     expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.chartShift).toBe(true);
     expect(commandBus.getHistory().filter(command => command.type === 'SET_CHART_SHIFT')).toEqual([
       expect.objectContaining({ payload: { enabled: true, targetContextId: 'trading-chart:chart-a' } }),
     ]);
 
-    fireEvent.click(shiftButton);
+    fireEvent.click(jumpButton);
+    expect(jumpButton).toHaveAttribute('aria-pressed', 'true');
     expect(shiftButton).toHaveAttribute('aria-pressed', 'false');
     expect(useChartSettingsStore.getState().symbolProperties.BTCUSD.chartShift).toBe(false);
     expect(commandBus.getHistory().filter(command => command.type === 'SET_CHART_SHIFT')).toEqual([
       expect.objectContaining({ payload: { enabled: true, targetContextId: 'trading-chart:chart-a' } }),
       expect.objectContaining({ payload: { enabled: false, targetContextId: 'trading-chart:chart-a' } }),
+    ]);
+    expect(commandBus.getHistory().filter(command => command.type === 'JUMP_TO_LATEST_CANDLE')).toEqual([
+      expect.objectContaining({ payload: { targetContextId: 'trading-chart:chart-a' } }),
     ]);
   });
 

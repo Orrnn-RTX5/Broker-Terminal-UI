@@ -31,9 +31,17 @@ type ContextMenuDensity = 'default' | 'compact';
 // --bg-elevated, and the inset highlight is the only "gloss" in the sheet.
 type MenuSkin = 'dark' | 'light' | 'theme';
 
-const resolveMenuSkin = (variant: ContextMenuVariant): MenuSkin => (
-  variant === 'theme' ? 'theme' : variant === 'mt5-light' ? 'light' : 'dark'
-);
+const isDocumentLightTheme = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  const root = document.documentElement;
+  return root.classList.contains('rtx-skin-untitled-light') || root.classList.contains('theme-light');
+};
+
+const resolveMenuSkin = (variant: ContextMenuVariant): MenuSkin => {
+  if (variant === 'mt5-light') return 'light';
+  if (variant === 'theme') return isDocumentLightTheme() ? 'light' : 'theme';
+  return isDocumentLightTheme() ? 'light' : 'dark';
+};
 
 const menuPanelStyle = (skin: MenuSkin): React.CSSProperties => skin === 'theme' ? ({
   background: 'var(--bg-secondary)',
@@ -44,13 +52,13 @@ const menuPanelStyle = (skin: MenuSkin): React.CSSProperties => skin === 'theme'
 }) : ({
   background: skin === 'light'
     ? '#ffffff'
-    : 'rgba(20, 21, 26, 0.96)',
-  borderColor: skin === 'light' ? '#cbd5e1' : 'rgba(255, 255, 255, 0.10)',
+    : 'rgba(18, 21, 28, 0.98)',
+  borderColor: skin === 'light' ? '#cbd5e1' : 'rgba(148, 163, 184, 0.18)',
   borderRadius: 6,
-  color: 'var(--text-primary)',
+  color: skin === 'light' ? '#0f172a' : '#f1f5f9',
   boxShadow: skin === 'light'
-    ? '0 10px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08)'
-    : '0 20px 48px -6px rgba(0, 0, 0, 0.75), 0 8px 20px -3px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+    ? '0 14px 34px -4px rgba(15, 23, 42, 0.15), 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.03)'
+    : '0 20px 48px -6px rgba(0, 0, 0, 0.78), 0 8px 20px -3px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
   backdropFilter: skin === 'light' ? 'none' : 'blur(16px)',
   WebkitBackdropFilter: skin === 'light' ? 'none' : 'blur(16px)',
 });
@@ -192,6 +200,7 @@ interface MenuItemProps {
   itemIndex: number;
   variant: ContextMenuVariant;
   density: ContextMenuDensity;
+  inMultiColumn?: boolean;
   isPointerHovered?: boolean;
   onPointerEnterItem?: () => void;
   onPointerLeaveItem?: () => void;
@@ -207,6 +216,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   itemIndex,
   variant,
   density,
+  inMultiColumn = false,
   isPointerHovered = false,
   onPointerEnterItem,
   onPointerLeaveItem,
@@ -352,33 +362,68 @@ const MenuItem: React.FC<MenuItemProps> = ({
     ? fallbackShortcutColor
     : `var(${isActive ? '--rtx-light-accent-strong' : '--rtx-light-text-muted'}, ${fallbackShortcutColor})`;
 
+  const isCheckableColumnItem = inMultiColumn && typeof item.checked === 'boolean';
+  const isChecked = item.checked === true;
+
   const checkmark = (
     <svg
-      className="rtx-context-menu__check w-3.5 h-3.5"
+      className={isCheckableColumnItem ? 'rtx-context-menu__check w-3 h-3' : 'rtx-context-menu__check w-3.5 h-3.5'}
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
+      strokeWidth={isCheckableColumnItem ? 2.35 : 2}
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ color: item.disabled ? fallbackGlyphColor : `var(--rtx-light-accent, ${skin === 'light' ? '#2457a7' : '#38bdf8'})` }}
+      style={{
+        color: isCheckableColumnItem
+          ? '#ffffff'
+          : (item.disabled ? fallbackGlyphColor : `var(--rtx-light-accent, ${skin === 'light' ? '#2457a7' : '#38bdf8'})`),
+      }}
     >
       <polyline points="3 8.5 6.5 12 13 4.5" />
     </svg>
   );
 
+  const checkboxBoxStyle: React.CSSProperties | undefined = isCheckableColumnItem ? {
+    width: 14,
+    height: 14,
+    borderRadius: 3.5,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    background: isChecked
+      ? (skin === 'light' ? '#2563eb' : '#3b82f6')
+      : isActive
+        ? (skin === 'light' ? '#ffffff' : 'rgba(255, 255, 255, 0.07)')
+        : (skin === 'light' ? '#f8fafc' : 'rgba(255, 255, 255, 0.03)'),
+    border: isChecked
+      ? (skin === 'light' ? '1px solid #1d4ed8' : '1px solid #60a5fa')
+      : isActive
+        ? (skin === 'light' ? '1px solid #94a3b8' : '1px solid rgba(148, 163, 184, 0.48)')
+        : (skin === 'light' ? '1px solid #cbd5e1' : '1px solid rgba(148, 163, 184, 0.28)'),
+    boxShadow: isChecked
+      ? (skin === 'light' ? '0 1px 2px rgba(37, 99, 235, 0.22)' : '0 1px 2px rgba(0, 0, 0, 0.35)')
+      : 'none',
+    transition: 'background-color 90ms ease, border-color 90ms ease, box-shadow 90ms ease',
+  } : undefined;
+
   const rowStyle: React.CSSProperties = {
-    height: isCompact ? 26 : 30,
+    height: isCheckableColumnItem ? 27 : (isCompact ? 26 : 30),
     color: skin === 'theme'
       ? (item.disabled ? 'var(--text-tertiary)' : 'var(--text-primary)')
       : item.disabled
       ? (skin === 'light' ? '#94a3b8' : 'rgba(255, 255, 255, 0.28)')
       : isActive
         ? (skin === 'light' ? 'var(--rtx-light-accent-strong, #1e4788)' : '#ffffff')
-        : (skin === 'light' ? 'var(--rtx-light-text, #182230)' : 'rgba(255, 255, 255, 0.90)'),
+        : isCheckableColumnItem && isChecked
+          ? (skin === 'light' ? '#1d4ed8' : '#93c5fd')
+          : (skin === 'light' ? 'var(--rtx-light-text, #182230)' : 'rgba(241, 245, 249, 0.92)'),
     background: isActive
-      ? (skin === 'theme' ? 'var(--bg-elevated)' : skin === 'light' ? 'var(--rtx-light-accent-soft, #dce9fa)' : 'rgba(255, 255, 255, 0.08)')
-      : 'transparent',
+      ? (skin === 'theme' ? 'var(--bg-elevated)' : skin === 'light' ? 'var(--rtx-light-accent-soft, #dce9fa)' : 'rgba(59, 130, 246, 0.16)')
+      : isCheckableColumnItem && isChecked
+        ? (skin === 'light' ? 'rgba(37, 99, 235, 0.06)' : 'rgba(59, 130, 246, 0.10)')
+        : 'transparent',
     borderRadius: 4,
     cursor: item.disabled ? 'default' : 'pointer',
     transition: 'background-color 80ms ease, color 80ms ease',
@@ -387,7 +432,8 @@ const MenuItem: React.FC<MenuItemProps> = ({
   return (
     <div
       ref={itemRef}
-      className={`rtx-context-menu__item group relative flex cursor-default select-none items-center px-2.5 py-0.5 text-[12px] font-normal${isActive ? ' is-active' : ''}${item.disabled ? ' is-disabled' : ''}`}
+      className={`rtx-context-menu__item group relative flex cursor-default select-none items-center px-2.5 py-0.5 text-[12px] font-normal${isActive ? ' is-active' : ''}${isChecked ? ' is-checked' : ''}${item.disabled ? ' is-disabled' : ''}`}
+      data-checked={typeof item.checked === 'boolean' ? String(isChecked) : undefined}
       style={rowStyle}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
@@ -402,7 +448,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
       {/* Compact menus share one glyph column to keep labels close to the edge. */}
       {!isCompact && (
         <span className="flex w-[18px] shrink-0 items-center justify-center mr-0.5" aria-hidden="true">
-          {item.checked ? checkmark : null}
+          {isCheckableColumnItem ? (
+            <span className="rtx-context-menu__checkbox" style={checkboxBoxStyle}>
+              {isChecked ? checkmark : null}
+            </span>
+          ) : (isChecked ? checkmark : null)}
         </span>
       )}
       <span
@@ -411,7 +461,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
           : 'flex w-5 shrink-0 items-center justify-center mr-2'}
         aria-hidden="true"
       >
-        {isCompact && item.checked ? checkmark : item.icon ? (
+        {isCompact && isCheckableColumnItem ? (
+          <span className="rtx-context-menu__checkbox" style={checkboxBoxStyle}>
+            {isChecked ? checkmark : null}
+          </span>
+        ) : isCompact && isChecked ? checkmark : item.icon ? (
           <span
             className="rtx-context-menu__glyph flex items-center justify-center transition-colors"
             style={{ color: glyphColor }}
@@ -687,8 +741,8 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
   const columnSeparatorColor = panelSkin === 'theme'
     ? 'var(--border-secondary)'
     : panelSkin === 'light'
-      ? 'rgba(0, 0, 0, 0.08)'
-      : 'rgba(255, 255, 255, 0.08)';
+      ? '#e2e8f0'
+      : 'rgba(148, 163, 184, 0.14)';
 
   const renderEntry = (item: ContextMenuItemConfig, index: number) => {
     const itemId = `item-${index}`;
@@ -709,6 +763,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
           itemIndex={index}
           variant={variant}
           density={density}
+          inMultiColumn={isMultiColumn}
           isPointerHovered={hoveredIndex === index}
           onPointerEnterItem={() => setHoveredIndex(index)}
           onPointerLeaveItem={() => setHoveredIndex(prev => prev === index ? null : prev)}
@@ -722,7 +777,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
     <>
       <div
         ref={menuRef}
-        className={`rtx-context-menu${density === 'compact' ? ' rtx-context-menu--compact' : ''}${isSubmenu ? ' rtx-context-menu--submenu' : ''} fixed w-max ${density === 'compact' ? 'min-w-[212px]' : 'min-w-[232px]'} ${isMultiColumn ? 'max-w-[calc(100vw-16px)] overflow-x-auto' : 'max-w-[min(440px,calc(100vw-16px))] overflow-x-hidden'} max-h-[calc(100vh-16px)] rounded-[6px] border p-1 text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent shadow-2xl`}
+        className={`rtx-context-menu${density === 'compact' ? ' rtx-context-menu--compact' : ''}${isSubmenu ? ' rtx-context-menu--submenu' : ''}${isMultiColumn ? ' rtx-context-menu--multicolumn' : ''} fixed w-max ${density === 'compact' ? 'min-w-[212px]' : 'min-w-[232px]'} ${isMultiColumn ? 'max-w-[calc(100vw-16px)] overflow-x-auto p-1' : 'max-w-[min(440px,calc(100vw-16px))] overflow-x-hidden p-1'} max-h-[calc(100vh-16px)] rounded-[6px] border text-[12px] font-normal outline-none transition-opacity duration-75 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent shadow-2xl`}
         style={{
           ...menuPanelStyle(panelSkin),
           left: `${adjustedPosition.x}px`,
@@ -742,7 +797,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
             {itemColumns.map((columnEntries, colIndex) => (
               <div
                 key={`col-${colIndex}`}
-                className="rtx-context-menu__column flex flex-col min-w-[164px]"
+                className="rtx-context-menu__column flex flex-col gap-0 min-w-[126px] py-0"
                 style={colIndex > 0 ? {
                   borderLeft: `1px solid ${columnSeparatorColor}`,
                   paddingLeft: 4,

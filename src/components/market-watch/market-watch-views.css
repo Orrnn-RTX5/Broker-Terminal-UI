@@ -468,12 +468,12 @@ html.theme-light .rtx-popup-prices {
 
 .rtx-popup-prices__header {
   display: flex;
-  min-height: 54px;
-  flex: 0 0 54px;
+  min-height: 44px;
+  flex: 0 0 44px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 10px 8px 16px;
+  gap: 10px;
+  padding: 6px 10px 6px 14px;
   background: var(--rtx-popup-header-bg);
   border-bottom: 1px solid var(--rtx-popup-card-border);
   cursor: grab;
@@ -492,20 +492,20 @@ html.theme-light .rtx-popup-prices {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 11px;
+  gap: 9px;
   pointer-events: none;
 }
 
 .rtx-popup-prices__title-icon {
   display: grid;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   place-items: center;
   color: var(--rtx-popup-ask);
   background: color-mix(in srgb, var(--rtx-popup-ask) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--rtx-popup-ask) 28%, transparent);
-  border-radius: 8px;
+  border-radius: 7px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
@@ -518,17 +518,17 @@ html.theme-light .rtx-popup-prices {
 }
 
 .rtx-popup-prices__title h2 {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: var(--font-weight-semibold, 600);
-  line-height: 1.25;
+  line-height: 1.2;
   letter-spacing: -0.01em;
 }
 
 .rtx-popup-prices__title p {
-  margin-top: 2px;
+  margin-top: 1px;
   color: var(--text-secondary, #64748b);
-  font-size: 11.5px;
-  line-height: 1.25;
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .rtx-popup-prices__window-controls {
@@ -539,8 +539,8 @@ html.theme-light .rtx-popup-prices {
 
 .rtx-popup-prices__window-controls button {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   place-items: center;
   color: var(--text-secondary, #64748b);
@@ -573,7 +573,7 @@ html.theme-light .rtx-popup-prices {
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
-  padding: 14px;
+  padding: 10px 12px;
   background: var(--rtx-popup-bg);
   scrollbar-color: var(--border-secondary, #94a3b8) transparent;
   scrollbar-width: thin;
@@ -581,8 +581,8 @@ html.theme-light .rtx-popup-prices {
 
 .rtx-popup-prices__cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(198px, 100%), 1fr));
+  gap: 9px;
 }
 
 .rtx-popup-prices__card {
@@ -604,7 +604,7 @@ html.theme-light .rtx-popup-prices {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 9px 12px;
+  padding: 6px 10px;
   background: var(--rtx-popup-card-header-bg);
   border-bottom: 1px solid var(--rtx-popup-card-border);
 }
@@ -612,7 +612,7 @@ html.theme-light .rtx-popup-prices {
 .rtx-popup-prices__card-header strong {
   overflow: hidden;
   font-family: var(--font-sans, sans-serif);
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: var(--font-weight-semibold, 600);
   letter-spacing: 0.01em;
   text-overflow: ellipsis;
@@ -623,13 +623,13 @@ html.theme-light .rtx-popup-prices {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
+  padding: 1.5px 7px;
   color: var(--rtx-popup-pill-text);
   background: var(--rtx-popup-pill-bg);
   border: 1px solid var(--rtx-popup-pill-border);
   border-radius: 999px;
-  font-size: 11px;
-  line-height: 1.3;
+  font-size: 10.5px;
+  line-height: 1.25;
 }
 
 .rtx-popup-prices__quote-status > span {
@@ -645,8 +645,8 @@ html.theme-light .rtx-popup-prices {
 }
 
 .rtx-popup-prices__limit-note {
-  margin-top: 10px;
-  padding: 8px 10px;
+  margin-top: 8px;
+  padding: 6px 10px;
   color: var(--text-secondary, #64748b);
   background: var(--rtx-popup-card-bg);
   border: 1px solid var(--rtx-popup-card-border);
@@ -663,11 +663,11 @@ html.theme-light .rtx-popup-prices {
 .rtx-popup-prices__price {
   display: grid;
   min-width: 0;
-  min-height: 64px;
+  min-height: 48px;
   align-content: center;
   justify-items: center;
-  gap: 4px;
-  padding: 10px 8px;
+  gap: 2px;
+  padding: 6px 6px;
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
 }
@@ -687,19 +687,19 @@ html.theme-light .rtx-popup-prices {
 .rtx-popup-prices__price > span:first-child {
   color: var(--text-secondary, #64748b);
   font-family: var(--font-sans, sans-serif);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: var(--font-weight-semibold, 600);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .rtx-popup-prices__price .price-display {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: var(--font-weight-semibold, 600);
 }
 
 .rtx-popup-prices__price .price-big {
-  font-size: clamp(1.18em, 2.5vw, 1.9em);
+  font-size: clamp(1.12em, 2.1vw, 1.65em);
   font-weight: var(--font-weight-bold, 600);
 }
 
@@ -728,7 +728,7 @@ html.theme-light .rtx-popup-prices {
   align-items: center;
   justify-content: space-between;
   gap: 7px;
-  padding: 7px 12px;
+  padding: 5px 10px;
   background: var(--rtx-popup-card-bg);
 }
 

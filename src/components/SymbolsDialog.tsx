@@ -83,10 +83,15 @@ const DIALOG_DEFAULT_HEIGHT = 640;
 const DIALOG_MIN_WIDTH = 680;
 const DIALOG_MIN_HEIGHT = 440;
 
-const getDialogSizeForViewport = () => ({
-  w: Math.min(DIALOG_DEFAULT_WIDTH, Math.max(0, window.innerWidth - DIALOG_VIEWPORT_GAP * 2)),
-  h: Math.min(DIALOG_DEFAULT_HEIGHT, Math.max(0, window.innerHeight - DIALOG_VIEWPORT_GAP * 2)),
-});
+const getDialogSizeForViewport = () => {
+  const isLaptopHeight = window.innerHeight < 720;
+  const maxWidth = isLaptopHeight ? Math.round(window.innerWidth * 0.88) : DIALOG_DEFAULT_WIDTH;
+  const maxHeight = isLaptopHeight ? Math.round(window.innerHeight * 0.86) : DIALOG_DEFAULT_HEIGHT;
+  return {
+    w: Math.min(DIALOG_DEFAULT_WIDTH, maxWidth, Math.max(0, window.innerWidth - DIALOG_VIEWPORT_GAP * 2)),
+    h: Math.min(DIALOG_DEFAULT_HEIGHT, maxHeight, Math.max(0, window.innerHeight - DIALOG_VIEWPORT_GAP * 2)),
+  };
+};
 
 const getCenteredDialogPosition = (size: { w: number; h: number }) => ({
   x: Math.max(DIALOG_VIEWPORT_GAP, Math.round((window.innerWidth - size.w) / 2)),

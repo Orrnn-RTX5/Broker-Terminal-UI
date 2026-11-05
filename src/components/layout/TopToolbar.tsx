@@ -456,6 +456,7 @@ const MainToolbar = ({
         : (activeChartTarget.symbol || symbol);
     const tradeHistorySettings = useChartSettingsStore((state) => (
         (activeChartSymbol ? state.symbolProperties[activeChartSymbol] : undefined)
+        || (activeChartTarget.symbol ? state.symbolProperties[activeChartTarget.symbol] : undefined)
         || state.symbolProperties[symbol]
         || state.globalProperties
     ));
@@ -466,6 +467,16 @@ const MainToolbar = ({
         tradeHistoryLineEnabled === defaultChartProperties.showTradeHistory
         && tradeHistoryArrowsEnabled === defaultChartProperties.showTradeHistoryArrows
     );
+
+    const resolveChartTargetSymbols = (targetSymbolFromCommand?: string): string[] => {
+        const candidates = [
+            activeChartSymbol,
+            targetSymbolFromCommand,
+            activeChartTarget.symbol,
+            symbol && symbol !== 'STALE' ? symbol : undefined,
+        ];
+        return Array.from(new Set(candidates.filter((item): item is string => Boolean(item))));
+    };
 
     const dispatchTargetedChartType = (nextChartType: ChartType) => {
         const { targetContextId } = getActiveChartCommandTarget(symbol, timeframe);
@@ -481,10 +492,37 @@ const MainToolbar = ({
     };
 
     const handleJumpToLatestCandle = () => {
-        const { targetContextId } = getActiveChartCommandTarget(symbol, timeframe);
+        const target = getActiveChartCommandTarget(symbol, timeframe);
+        const store = useChartSettingsStore.getState();
+        const symbolsToSync = resolveChartTargetSymbols(target.symbol);
+        const wasShiftEnabled = Boolean(
+            (activeChartSymbol ? store.symbolProperties[activeChartSymbol]?.chartShift : undefined)
+            ?? (target.symbol ? store.symbolProperties[target.symbol]?.chartShift : undefined)
+            ?? store.symbolProperties[symbol]?.chartShift
+            ?? store.globalProperties.chartShift
+        );
+        store.updateGlobalProperty('chartAutoScroll', true);
+        if (wasShiftEnabled) {
+            store.updateGlobalProperty('chartShift', false);
+        }
+        for (const sym of symbolsToSync) {
+            store.updateSymbolProperty(sym, 'chartAutoScroll', true);
+            if (wasShiftEnabled) {
+                store.updateSymbolProperty(sym, 'chartShift', false);
+            }
+        }
+        if (wasShiftEnabled) {
+            dispatchCommand({
+                type: 'SET_CHART_SHIFT',
+                payload: {
+                    enabled: false,
+                    ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}),
+                },
+            });
+        }
         dispatchCommand({
             type: 'JUMP_TO_LATEST_CANDLE',
-            payload: targetContextId ? { targetContextId } : {},
+            payload: target.targetContextId ? { targetContextId: target.targetContextId } : {},
         });
     };
 
@@ -499,11 +537,8 @@ const MainToolbar = ({
             : store.globalProperties;
         const enabled = !current.chartShift;
         store.updateGlobalProperty('chartShift', enabled);
-        if (targetSymbol) {
-            store.updateSymbolProperty(targetSymbol, 'chartShift', enabled);
-        }
-        if (target.symbol && target.symbol !== targetSymbol) {
-            store.updateSymbolProperty(target.symbol, 'chartShift', enabled);
+        for (const sym of resolveChartTargetSymbols(target.symbol || targetSymbol)) {
+            store.updateSymbolProperty(sym, 'chartShift', enabled);
         }
         dispatchCommand({
             type: 'SET_CHART_SHIFT',
@@ -865,6 +900,7 @@ const MainToolbar = ({
                             <CommandIconButton
                                 icon="auto-scroll"
                                 title="Jump to Latest Candle"
+                                active={!chartShiftEnabled}
                                 onClick={handleJumpToLatestCandle}
                             />
                             <CommandIconButton

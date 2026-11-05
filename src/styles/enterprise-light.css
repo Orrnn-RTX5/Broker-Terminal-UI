@@ -523,6 +523,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-context-menu .rtx-context-me
   background: #e2e8f0 !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-context-menu--multicolumn .rtx-context-menu__item[data-checked="true"]:not(.is-active):not(:hover) {
+  background: rgba(37, 99, 235, 0.06) !important;
+  color: #1d4ed8 !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-file-menu button.rtx-file-menu__logout[role="menuitem"],
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-file-menu button.rtx-file-menu__logout[role="menuitem"]:is(:hover, :focus-visible) {
   color: var(--color-loss) !important;

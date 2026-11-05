@@ -132,6 +132,13 @@ useEffect(() => {
     const unsub1 = commandBus.subscribe('ZOOM_IN', (payload) => handleZoom(payload, 'in'));
     const unsub2 = commandBus.subscribe('ZOOM_OUT', (payload) => handleZoom(payload, 'out'));
 
+    const settleChartInteractionBeforeJump = () => {
+      clearLocalChartPointerStateRef?.current?.();
+      if (isChartUserInteractingRef) isChartUserInteractingRef.current = false;
+      chartInteractionOwnershipRef?.current?.forceSettle?.();
+      if (isChartInteractionActiveRef) isChartInteractionActiveRef.current = false;
+    };
+
     const handleScrollToRealtime = () => {
       if (isDisposedRef.current || !chartRef.current) return;
       try {
@@ -143,17 +150,28 @@ useEffect(() => {
 
     const unsubScrollToRealtime = commandBus.subscribe('SCROLL_TO_REALTIME', (payload) => {
       if (!isChartCommandTarget(payload)) return;
+      settleChartInteractionBeforeJump();
       handleScrollToRealtime();
     });
 
     const handleJumpToLatestCandle = () => {
       if (isDisposedRef.current || !chartRef.current) return;
       try {
-        latestCandleJumpPendingRef.current = true;
-        leftVisibleTimeRef.current = null;
-        lastVisibleLogicalRangeRef.current = null;
+        settleChartInteractionBeforeJump();
+        const rightOffset = getTradingChartShiftRightOffset(
+          prevTimeframeRef.current || timeframe,
+          Boolean(ctxChartShiftRef?.current),
+        );
+        chartRef.current.timeScale().applyOptions?.({
+          ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
+          rightOffset,
+          fixRightEdge: false,
+        });
+        if (latestCandleJumpPendingRef) latestCandleJumpPendingRef.current = true;
+        if (leftVisibleTimeRef) leftVisibleTimeRef.current = null;
+        if (lastVisibleLogicalRangeRef) lastVisibleLogicalRangeRef.current = null;
         scrollToLatestCandleNow(chartRef.current);
-        syncLeftVisibleTime();
+        syncLeftVisibleTime?.();
       } catch { /* disposed */ }
     };
 
@@ -293,6 +311,7 @@ useEffect(() => {
         autoScrollEnabledRef.current = enabled;
         setCtxAutoScroll(enabled);
         if (enabled) {
+          settleChartInteractionBeforeJump();
           handleScrollToRealtime();
         }
       } catch { /* disposed */ }
@@ -302,6 +321,7 @@ useEffect(() => {
     const applyChartShift = (enabled: boolean) => {
       if (isDisposedRef.current || !chartRef.current) return;
       try {
+        settleChartInteractionBeforeJump();
         const rightOffset = getTradingChartShiftRightOffset(prevTimeframeRef.current || timeframe, enabled);
         console.log(`[Chart] Chart shift ${enabled ? 'ENABLED' : 'DISABLED'}, setting rightOffset: ${rightOffset}`);
         ctxChartShiftRef.current = enabled;
