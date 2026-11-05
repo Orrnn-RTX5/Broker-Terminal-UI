@@ -5,7 +5,7 @@ import type { SymbolMarketStatusState } from '../../hooks/useSymbolMarketStatus'
 import { getCachedSymbolMarketStatus } from '../../hooks/useSymbolMarketStatus';
 import { captureTradeOrderIntent } from '../../services/orderLatencyTelemetry';
 import { requireTradingAuth } from '../../services/tradingAuthGate';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, type Position } from '../../store/useAppStore';
 import { formatOrderError } from '../../utils/orderError';
 import {
   createUnavailableMarketStatus,
@@ -31,6 +31,25 @@ import {
   refreshHistoryAfterFill,
   type HistoryFreshnessOwner,
 } from './tradeHistoryFreshness';
+
+/**
+ * Admits a market-order result as an immediate row only for a NEW ticket.
+ * A result whose position ticket is already an open row is a netting add,
+ * reduce or close: its price/volume describe the deal, not the re-averaged
+ * position, so merging it would flash the deal price/volume on the row and the
+ * chart line. The position stream (and the REST refresh that follows) carries
+ * the authoritative row. Hedging fills always get a new ticket: unchanged.
+ */
+const admitImmediateOrderResultPosition = (position: Position | undefined): void => {
+  if (!position) return;
+  const ticket = String(position.id);
+  const symbol = normalizeSymbolName(position.symbol);
+  const positions = useAppStore.getState().positions as unknown as Position[];
+  const targetsExistingRow = positions.some((existing) => String(existing.id) === ticket
+    && normalizeSymbolName(existing.symbol) === symbol);
+  if (targetsExistingRow) return;
+  upsertImmediatePosition(position);
+};
 
 export interface OrderPanelSubmission {
   type: 'buy' | 'sell';
@@ -189,7 +208,7 @@ export const useOrderExecution = ({
             chartEntryPrice,
             chartEntryTime,
           }]);
-          if (immediatePosition) upsertImmediatePosition(immediatePosition);
+          admitImmediateOrderResultPosition(immediatePosition);
         },
       );
       if (!resultCommitted) return;
@@ -442,7 +461,7 @@ export const useOrderExecution = ({
             chartEntryPrice,
             chartEntryTime,
           }]);
-          if (immediatePosition) upsertImmediatePosition(immediatePosition);
+          admitImmediateOrderResultPosition(immediatePosition);
         },
       );
       if (!resultCommitted) return;

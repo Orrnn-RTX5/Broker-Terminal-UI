@@ -331,8 +331,9 @@ export const useTradingChartTradeOverlayRenderer = ({
         const side = String(position?.side ?? position?.action ?? position?.type ?? '').trim().toUpperCase();
         return side.includes('SELL') || side === '1' ? 'SELL' : 'BUY';
       };
+      // Backend open price only. A netting add/reduce re-averages it on the same ticket;
+      // the click-time quote (chartEntryPrice) is just the fallback until it exists.
       const getPositionOpenPrice = (position: TradePositionRecord): number => pickPositiveNumber(
-        position?.chartEntryPrice,
         position?.openPrice,
         position?.open_price,
         position?.price_open,
@@ -398,6 +399,7 @@ export const useTradingChartTradeOverlayRenderer = ({
         side: getPositionSide(position),
         volume: getPositionVolume(position),
         openPrice: getPositionOpenPrice(position),
+        chartEntryPrice: pickPositiveNumber(position?.chartEntryPrice),
         currentPrice: getPositionCurrentPrice(position),
         rawOpenTime: getPositionOpenTime(position),
         sl: pickPositiveNumber(position.sl, position.price_sl, position.stopLoss, position.stop_loss),
@@ -456,12 +458,14 @@ export const useTradingChartTradeOverlayRenderer = ({
         }
 
         const storedEntryPrice = frozenEntryPricesRef.current.get(key);
+        // A positive backend open price wins and re-pins (netting add/reduce keeps the
+        // ticket); the pin only holds a click-quote / live-price fallback steady.
         const entryPrice = resolveStableTradeEntryPrice(
           storedEntryPrice,
           position.openPrice,
-          position.currentPrice,
+          position.chartEntryPrice || position.currentPrice,
         );
-        if (storedEntryPrice == null && entryPrice > 0) {
+        if (entryPrice > 0 && entryPrice !== storedEntryPrice) {
           frozenEntryPricesRef.current.set(key, entryPrice);
         }
         if (!(entryTime > 0) || !(entryPrice > 0)) continue;

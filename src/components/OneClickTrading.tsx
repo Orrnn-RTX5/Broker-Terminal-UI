@@ -109,8 +109,17 @@ const normalizeImmediatePosition = (
     };
 };
 
+const sameSymbol = (left: unknown, right: unknown): boolean =>
+    String(left ?? '').trim().toUpperCase() === String(right ?? '').trim().toUpperCase();
+
 const upsertImmediatePosition = (position: Position) => {
     const store = useAppStore.getState();
+    // A result whose ticket is already an open row is a netting add/reduce/close:
+    // its price/volume describe the deal, not the re-averaged position. Keep the
+    // row; the position stream (and the forced refresh) carries the real one.
+    // Hedging fills always get a new ticket and are admitted at once.
+    if (store.positions.some((existing) => String(existing.id) === String(position.id)
+        && sameSymbol(existing.symbol, position.symbol))) return;
     const existingIndex = store.positions.findIndex((existing) => existing.id === position.id);
     const nextPositions = existingIndex >= 0
         ? store.positions.map((existing, index) => index === existingIndex ? { ...existing, ...position } : existing)

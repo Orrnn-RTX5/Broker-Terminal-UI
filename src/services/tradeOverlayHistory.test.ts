@@ -341,12 +341,23 @@ describe('trade overlay close suppression helpers', () => {
     )).toBe(1760000340);
   });
 
-  it('keeps an already resolved trade entry price stable across current-price updates', () => {
+  it('lets a changed positive backend open price replace the stored entry price (netting re-average)', () => {
     expect(resolveStableTradeEntryPrice(
       1.34149,
       1.34210,
-      1.34210,
-    )).toBe(1.34149);
+      1.34300,
+    )).toBe(1.34210);
+  });
+
+  it('keeps the stored entry price across current-price updates while no backend open price exists', () => {
+    expect(resolveStableTradeEntryPrice(1.34149, 0, 1.34210)).toBe(1.34149);
+    expect(resolveStableTradeEntryPrice(1.34149, null, 1.34300)).toBe(1.34149);
+    expect(resolveStableTradeEntryPrice(1.34149, undefined, 1.34000)).toBe(1.34149);
+  });
+
+  it('keeps the backend open price when only the current price moves', () => {
+    expect(resolveStableTradeEntryPrice(1.34149, 1.34149, 1.34210)).toBe(1.34149);
+    expect(resolveStableTradeEntryPrice(1.34149, 1.34149, 1.34400)).toBe(1.34149);
   });
 
   it('uses a live fallback entry price only until a price has been frozen', () => {
