@@ -221,6 +221,9 @@ export const beginPositionsRead = (): number => nextPositionsClock();
 // a stream or local write touched the ticket after that read started. Recent-open
 // retention protects only fills that no read has confirmed yet (the fast-fill gap).
 const confirmedAt = new Map<number, number>();
+export const isConfirmedOpenPosition = (ticket: unknown): boolean => (
+  confirmedAt.has(Number(ticket))
+);
 // Ticket -> stamp of the last stream or local write that touched it.
 const touchedAt = new Map<number, number>();
 // Start stamp of the newest committed complete read. Older complete reads are discarded.

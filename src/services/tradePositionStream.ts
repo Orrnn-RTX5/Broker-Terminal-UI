@@ -22,7 +22,7 @@ const firstOwn = (value: PositionRecord, keys: readonly string[]): string | unde
 );
 
 export const getPositionStreamTicket = (value: PositionRecord): number | null => {
-  const ticket = Number(value.ticket ?? value.position_id ?? value.position_ticket ?? value.id);
+  const ticket = Number(value.ticket ?? value.position_id ?? value.position_ticket ?? value.closed_ticket ?? value.id);
   return Number.isSafeInteger(ticket) && ticket > 0 ? ticket : null;
 };
 
@@ -91,6 +91,8 @@ export function decodePositionStreamMessage(message: unknown): DecodedPositionSt
       listSnapshot = true;
     } else if (record(payload.position) || record(payload.closed_position)) {
       payload = payload.position ?? payload.closed_position;
+    } else if (record(payload.result) && (event.startsWith('position_') || isCloseEvent(event))) {
+      payload = payload.result;
     } else if (payload.data !== undefined) {
       payload = payload.data;
     } else if (payload.payload !== undefined) {
