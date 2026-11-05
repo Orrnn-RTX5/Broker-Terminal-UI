@@ -56,7 +56,6 @@ export const TERMINAL_SHORTCUTS: ShortcutHelpEntry[] = [
   { id: 'window.reset', key: 'r', alt: true, shift: true, description: 'Reset Windows', category: 'Window' },
   { id: 'file.close-chart', key: 'q', alt: true, shift: true, description: 'Close active chart', category: 'File' },
   { id: 'file.print-preview', key: 'p', ctrl: true, shift: true, description: 'Print Preview', category: 'File' },
-  { id: 'file.save-picture', key: 's', ctrl: true, shift: true, description: 'Save as Picture', category: 'File' },
   { id: 'help.shortcuts', key: 'F1', description: 'Keyboard Shortcuts', category: 'Help' },
   // SUI-T19c: MenuBar hints for these actions already fire through GlobalShortcuts
   // registrations (same id + combo, so the additions loop skips them and the

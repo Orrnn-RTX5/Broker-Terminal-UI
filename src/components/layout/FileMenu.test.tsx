@@ -237,7 +237,6 @@ describe('FileMenu Component', () => {
 
         it.each([
             ['Close', 'file.close-chart', 'Shift+Alt+Q'],
-            ['Save As Picture', 'file.save-picture', 'Ctrl+Shift+S'],
             ['Print Preview', 'file.print-preview', 'Ctrl+Shift+P'],
         ])('shows the executable catalog binding beside %s', (label, shortcutId, expectedHint) => {
             render(<FileMenu {...mockHandlers} />);
@@ -246,6 +245,16 @@ describe('FileMenu Component', () => {
             const button = screen.getByText(label).closest('button')!;
             expect(within(button).getByText(getTerminalShortcutHint(shortcutId))).toBeInTheDocument();
             expect(within(button).queryByText('Ctrl+F4')).not.toBeInTheDocument();
+        });
+
+        it('keeps Save As Picture in the menu with no Ctrl+Shift+S binding or hint', () => {
+            render(<FileMenu {...mockHandlers} />);
+            expect(TERMINAL_SHORTCUTS.some(shortcut => shortcut.id === 'file.save-picture')).toBe(false);
+            expect(TERMINAL_SHORTCUTS.some(shortcut => shortcut.key.toLowerCase() === 's' && shortcut.ctrl && shortcut.shift)).toBe(false);
+            expect(getTerminalShortcutHint('file.save-picture')).toBe('');
+            const button = screen.getByText('Save As Picture').closest('button')!;
+            expect(button).not.toBeDisabled();
+            expect(within(button).queryByText('Ctrl+Shift+S')).not.toBeInTheDocument();
         });
 
         it('disables unavailable items', () => {

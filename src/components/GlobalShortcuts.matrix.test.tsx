@@ -57,7 +57,7 @@ const commandCases: Record<string, { type: string; values?: Record<string, unkno
 };
 const eventCases: Record<string, string> = {
   'window.add-chart': 'add-chart-panel',
-  'file.close-chart': 'close-active-chart', 'file.print-preview': 'open-print-preview', 'file.save-picture': 'open-save-picture',
+  'file.close-chart': 'close-active-chart', 'file.print-preview': 'open-print-preview',
   'view.data-window': 'openDataWindow', 'view.symbols': 'openSymbolsDialog', 'tools.options': 'open-terminal-options',
   'trading.toggle-one-click': 'toggle-one-click-trading', 'charts.object-list': 'open-object-list', 'charts.properties': 'openChartProperties',
   'charts.undo-drawing': 'chart-undo-drawing', 'charts.redo-drawing': 'chart-redo-drawing',
@@ -247,6 +247,18 @@ describe('mounted shortcut action matrix', { timeout: 30000 }, () => {
       }
       expect(JSON.parse(readFileSync(inventoryPath, 'utf8'))).toEqual(JSON.parse(serializedInventory));
     }
+  });
+
+  it('leaves Ctrl+Shift+S unbound: no Save as Picture and the browser default is not prevented', () => {
+    createChart('active', () => 'TESTSYM', () => 'H1');
+    activateActiveChartSource('trading-chart:active');
+    mount();
+    const savePicture = listen('open-save-picture');
+    expect(keyboardShortcutManager.getShortcuts().some(binding => binding.key.toLowerCase() === 's' && binding.ctrl && binding.shift)).toBe(false);
+    document.body.focus();
+    const notPrevented = fireEvent.keyDown(document.body, { key: 'S', code: 'KeyS', ctrlKey: true, shiftKey: true });
+    expect(notPrevented).toBe(true);
+    expect(savePicture).not.toHaveBeenCalled();
   });
 
   it('switches broker/suffix and chart without re-registering, preserves quotes and all nine target timeframes', () => {

@@ -677,17 +677,6 @@
     "verification": "Mounted key to scoped event; consumer tested separately"
   },
   {
-    "id": "file.save-picture",
-    "key": "s",
-    "ctrl": true,
-    "shift": true,
-    "description": "Save as Picture",
-    "category": "File",
-    "priority": 90,
-    "enabled": true,
-    "verification": "Mounted key to scoped event; consumer tested separately"
-  },
-  {
     "id": "drawing.select-all",
     "key": "a",
     "ctrl": true,

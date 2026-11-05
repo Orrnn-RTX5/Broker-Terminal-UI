@@ -96,7 +96,6 @@ Shared automated fixtures cover four configured broker identities with exact suf
 | `window.redo` | Shift+Alt+Y | Redo layout | Key routing and actual layout-history consumer verified: four-chart grid → columns → undo → redo; chart properties preserved. | Browser verified: Shift+Alt+Y restored three columns after undo; all chart IDs retained. |
 | `window.reset` | Shift+Alt+R | Reset Windows | Actual key handler → shared reset action. Updated component regression verifies six panes become exactly one active chart, retaining its DOM and draft; old arrangement undo steps are cleared. | Browser verified: toolbar Reset Layout reduced two AAPL.US panes to one. Ctrl+Alt+N added a second pane, then Shift+Alt+R returned to one. Final screenshot confirmed the single-chart workspace. |
 | `file.print-preview` | Ctrl+Shift+P | Print Preview | Actual key handler → expected custom event; chart events assert active context. Consumer behavior separate. | Browser verified: Ctrl+Shift+P opened a rendered ADAUSD M5 preview; screenshot visually checked. Native printing not invoked. |
-| `file.save-picture` | Ctrl+Shift+S | Save as Picture | Actual key handler → expected custom event; chart events assert active context. Consumer behavior separate. | Not exercised in this pass |
 | `drawing.select-all` | Ctrl+A | Select all drawings | Actual key handler → drawingManager.selectAll with active context (method mocked). | Not exercised in this pass |
 | `drawing.trendline` | T | Select Trendline Tool | Actual key handler → scoped chart command and corresponding toolbar state; renderer separate. | Not exercised in this pass |
 | `drawing.hline` | H | Select Horizontal Line Tool | Actual key handler → scoped chart command and corresponding toolbar state; renderer separate. | Not exercised in this pass |
@@ -189,7 +188,7 @@ These runs overlap; their test counts must not be added together.
 | Final chart-type regression: mounted matrix, toolbar contract, and dialogs | 3 suites / 27 tests passed: matrix 11, toolbar contract 1, dialogs 15. |
 | Local help and annotation/table handlers | 3 suites / 40 tests passed. |
 | Layout history consumers | 3 suites / 26 tests passed, including four-chart grid → columns → undo → redo. |
-| File menu and shared shortcut hints | 29 tests passed; Close uses Shift+Alt+Q, Save as Picture uses Ctrl+Shift+S, and Print Preview uses Ctrl+Shift+P. |
+| File menu and shared shortcut hints | 29 tests passed; Close uses Shift+Alt+Q and Print Preview uses Ctrl+Shift+P; Save as Picture has no shortcut (Ctrl+Shift+S removed 2026-11-05, owner request) and stays in the File menu. |
 | Final production web build | `npm run build:web` passed after all production changes. Log: `tmp/shortcut-final-build.log`. Existing chunk-size and mixed-import warnings remain. |
 
 Bindings without browser evidence remain explicitly labeled in the tables. Native printing and live trading were not performed.

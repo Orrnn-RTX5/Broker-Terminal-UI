@@ -964,8 +964,7 @@ export const TopToolbarSearch: React.FC<TopToolbarSearchProps> = ({
         category: 'menus',
         categoryLabel: 'Trading accounts & Toolbar',
         description: 'Export the active chart or workspace as a high-resolution PNG image',
-        shortcut: 'Ctrl+Shift+S',
-        keywords: ['save as picture', 'screenshot', 'export image', 'chart picture', 'ctrl+shift+s', 'trading accounts'],
+        keywords: ['save as picture', 'screenshot', 'export image', 'chart picture', 'trading accounts'],
         locations: [
           {
             path: 'Menu Bar → Trading accounts → Save As Picture',

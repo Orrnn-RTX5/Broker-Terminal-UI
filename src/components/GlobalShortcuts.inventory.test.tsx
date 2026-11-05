@@ -97,7 +97,8 @@ describe('complete terminal shortcut inventory', () => {
     const preview = listen('open-print-preview'); const picture = listen('open-save-picture');
     const oneClick = listen('toggle-one-click-trading');
     press('p', { ctrlKey: true, shiftKey: true }); press('s', { ctrlKey: true, shiftKey: true });
-    expect(preview).toHaveBeenCalledOnce(); expect(picture).toHaveBeenCalledOnce();
+    // Ctrl+Shift+S was removed (owner 2026-11-05); Save As Picture stays in the File menu.
+    expect(preview).toHaveBeenCalledOnce(); expect(picture).not.toHaveBeenCalled();
     press('t', { altKey: true }); expect(oneClick).not.toHaveBeenCalled();
     press('t', { altKey: true, shiftKey: true }); expect(oneClick).toHaveBeenCalledOnce();
     press('e', { altKey: true }); expect(useDrawingSidebarStore.getState()).toMatchObject({ visible: true, requestedMenu: 'emojis' });
