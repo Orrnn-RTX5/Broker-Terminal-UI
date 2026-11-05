@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "Saldo ditambah kredit ditambah laba/rugi mengambang saat ini",
   "Pending Order": "Order Tertunda",
   "Pending Order (F9)": "Order Tertunda (F9)",
-  "Blue and Red": "Biru dan Merah"
+  "Blue and Red": "Biru dan Merah",
+  "Account mode": "Mode akun",
+  "Hedging": "Hedging",
+  "Netting": "Netting",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "Netting: satu posisi per simbol; transaksi baru menambah, mengurangi, atau membalikkannya.",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "Hedging: setiap transaksi membuka posisinya sendiri, jadi satu simbol bisa punya beberapa posisi.",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "Akun demo netting saat ini tidak tersedia dari broker ini. Silakan coba lagi nanti atau hubungi broker.",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "Akun demo netting tidak dapat dibuat saat ini. Tidak ada yang dibuat. Silakan coba lagi nanti.",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "Akun demo dibuat dengan mode akun yang berbeda dari yang diminta, jadi Anda tidak masuk. Mungkin sudah ada akun untuk email ini; hubungi broker sebelum mencoba lagi."
 }

@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "余额加上信用额及当前浮动盈亏",
   "Pending Order": "挂单",
   "Pending Order (F9)": "挂单 (F9)",
-  "Blue and Red": "蓝与红"
+  "Blue and Red": "蓝与红",
+  "Account mode": "账户模式",
+  "Hedging": "对冲",
+  "Netting": "净额",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "净额：每个品种只有一个持仓；新交易会增加、减少或反转该持仓。",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "对冲：每笔交易都会开立独立持仓，因此一个品种可以有多个持仓。",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "该经纪商目前不提供净额模拟账户。请稍后重试，或联系经纪商。",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "暂时无法创建净额模拟账户。未创建任何内容。请稍后重试。",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "模拟账户以与请求不同的账户模式创建，因此未为您登录。该邮箱可能已存在账户；请先联系经纪商，再重试。"
 }

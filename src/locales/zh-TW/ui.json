@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "餘額加上信用額及目前浮動盈虧",
   "Pending Order": "掛單",
   "Pending Order (F9)": "掛單 (F9)",
-  "Blue and Red": "藍與紅"
+  "Blue and Red": "藍與紅",
+  "Account mode": "帳戶模式",
+  "Hedging": "對沖",
+  "Netting": "淨額",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "淨額：每個商品只有一個持倉；新交易會增加、減少或反轉該持倉。",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "對沖：每筆交易都會開立獨立持倉，因此一個商品可以有多個持倉。",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "該經紀商目前不提供淨額模擬帳戶。請稍後再試，或聯繫經紀商。",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "暫時無法建立淨額模擬帳戶。未建立任何內容。請稍後再試。",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "模擬帳戶以與要求不同的帳戶模式建立，因此未為您登入。此電子郵件可能已有帳戶；請先聯繫經紀商，再重試。"
 }

@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "Saldo mais crédito mais lucros ou perdas flutuantes atuais",
   "Pending Order": "Ordem pendente",
   "Pending Order (F9)": "Ordem pendente (F9)",
-  "Blue and Red": "Azul e vermelho"
+  "Blue and Red": "Azul e vermelho",
+  "Account mode": "Modo da conta",
+  "Hedging": "Hedge (hedging)",
+  "Netting": "Compensação (netting)",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "Compensação: uma posição por símbolo; novas operações a aumentam, reduzem ou invertem.",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "Hedge: cada operação abre a sua própria posição, então um símbolo pode ter várias.",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "Contas demo de compensação não estão disponíveis nesta corretora no momento. Tente novamente mais tarde ou entre em contato com a corretora.",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "Não foi possível criar a conta demo de compensação agora. Nada foi criado. Tente novamente mais tarde.",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "A conta demo foi criada com um modo de conta diferente do solicitado, por isso você não foi conectado. Talvez já exista uma conta para este e-mail; entre em contato com a corretora antes de tentar novamente."
 }

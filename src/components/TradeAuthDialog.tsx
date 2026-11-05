@@ -3,7 +3,12 @@ import { createPortal } from 'react-dom';
 import { AlertCircle, ChevronRight, Info, LogIn, UserPlus, X } from 'lucide-react';
 import '../styles/trade-auth-dialog.css';
 import { LoginDialog } from './LoginDialog';
-import { registerRuntimeBrokerDemoAccount } from '../api/demoRegistration';
+import {
+  loadDemoRegistrationModes,
+  registerRuntimeBrokerDemoAccount,
+  type DemoAccountMode,
+  type DemoRegistrationModes,
+} from '../api/demoRegistration';
 import { parseTokenExpiresAt, setRefreshToken, setToken } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 import type { TradingAuthIntent } from '../services/tradingAuthGate';
@@ -13,6 +18,7 @@ import { persistBrokerSessionDiscovery } from '../services/brokerSession';
 import { rememberAccountSession } from '../services/accountSessionCache';
 import { saveLogin, supportsSavedLogins } from '../services/savedLogins';
 import { getBrokerSavedAccountTypes } from '../services/tradingAccountType';
+import { useUiTranslation } from '../hooks/useUiTranslation';
 
 interface TradeAuthDialogProps {
   isOpen: boolean;
@@ -53,6 +59,9 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
   const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accountMode, setAccountMode] = useState<DemoAccountMode>('hedging');
+  const [demoModes, setDemoModes] = useState<{ brokerId: string; modes: DemoRegistrationModes } | null>(null);
+  const tr = useUiTranslation();
   const dialogRef = useRef<HTMLElement>(null);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
   const demoRequestGenerationRef = useRef(0);
@@ -70,10 +79,31 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
     serverUrl: configuration.apiHost || configuration.apiHostExt,
   });
   const effectiveInitialMode: DialogMode = hasDemoAndRealAccounts ? 'login' : initialMode;
+  // Each demo option is shown on the broker's own flag. Netting fails closed
+  // (shown only on an explicit true for THIS broker); hedging stays offered
+  // unless the broker explicitly says it is off while netting is on.
+  const knownDemoModes = demoModes && brokerId && demoModes.brokerId === brokerId ? demoModes.modes : null;
+  const nettingAvailable = knownDemoModes?.netting === true;
+  const hedgingOffered = !(nettingAvailable && knownDemoModes?.hedging === false);
+  const selectedAccountMode: DemoAccountMode = nettingAvailable
+    ? (hedgingOffered ? accountMode : 'netting')
+    : 'hedging';
+
+  useEffect(() => {
+    // A previous answer never outlives the broker/config it was read for.
+    setDemoModes(null);
+    if (!isOpen || !brokerId) return undefined;
+    const controller = new AbortController();
+    void loadDemoRegistrationModes(brokerId, controller.signal).then((modes) => {
+      if (!controller.signal.aborted) setDemoModes({ brokerId, modes });
+    });
+    return () => controller.abort();
+  }, [isOpen, brokerId, configurationIdentity]);
 
   useEffect(() => {
     if (!isOpen) return;
     setMode(effectiveInitialMode);
+    setAccountMode('hedging');
     setError(null);
     setPassword('');
     setConfirmPassword('');
@@ -230,12 +260,17 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
     setSubmitting(true);
     const requestGeneration = ++demoRequestGenerationRef.current;
     try {
-      const response = await registerRuntimeBrokerDemoAccount({ name, email, password }, brokerId);
+      const response = await registerRuntimeBrokerDemoAccount(
+        selectedAccountMode === 'netting'
+          ? { name, email, password, accountMode: 'netting' }
+          : { name, email, password },
+        brokerId,
+      );
       if (requestGeneration !== demoRequestGenerationRef.current) return;
       completeDemoSession(response);
     } catch (registrationError) {
       if (requestGeneration !== demoRequestGenerationRef.current) return;
-      setError(getErrorMessage(registrationError));
+      setError(tr(getErrorMessage(registrationError)));
     } finally {
       if (requestGeneration === demoRequestGenerationRef.current) setSubmitting(false);
     }
@@ -436,6 +471,41 @@ function WebTradeAuthDialog({ isOpen, intent, onClose, onAuthenticated, initialM
                   {brokerPolicy?.displayName || 'Not configured'}
                 </span>
               </div>
+
+              {nettingAvailable && (
+                <fieldset className="rtx-auth-mode" aria-describedby="trade-auth-mode-hint">
+                  <legend className="rtx-auth-field__label">{tr('Account mode')}</legend>
+                  <div className="rtx-auth-mode__options">
+                    <label className="rtx-auth-mode__option">
+                      <input
+                        type="radio"
+                        name="trade-auth-account-mode"
+                        value="hedging"
+                        checked={selectedAccountMode === 'hedging'}
+                        disabled={!hedgingOffered || submitting}
+                        onChange={() => setAccountMode('hedging')}
+                      />
+                      <span>{tr('Hedging')}</span>
+                    </label>
+                    <label className="rtx-auth-mode__option">
+                      <input
+                        type="radio"
+                        name="trade-auth-account-mode"
+                        value="netting"
+                        checked={selectedAccountMode === 'netting'}
+                        disabled={submitting}
+                        onChange={() => setAccountMode('netting')}
+                      />
+                      <span>{tr('Netting')}</span>
+                    </label>
+                  </div>
+                  <span id="trade-auth-mode-hint" className="rtx-auth-field__hint">
+                    {selectedAccountMode === 'netting'
+                      ? tr('Netting: one position per symbol; new trades add to it, reduce it or reverse it.')
+                      : tr('Hedging: each trade opens its own position, so one symbol can have several.')}
+                  </span>
+                </fieldset>
+              )}
 
               <div className="rtx-auth-form">
                 <label className="rtx-auth-field">

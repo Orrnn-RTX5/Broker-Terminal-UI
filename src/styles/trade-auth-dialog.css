@@ -535,6 +535,54 @@ html:root body .rtx-auth-dialog__title {
   line-height: 1.5;
 }
 
+/* ── Demo account mode (hedging / netting) ─────────────────────────────── */
+.rtx-auth-mode {
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.rtx-auth-mode > legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.rtx-auth-mode__options {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.rtx-auth-mode__option {
+  align-items: center;
+  background: var(--auth-subtle);
+  border: 1px solid var(--auth-border);
+  border-radius: 7px;
+  color: var(--auth-text);
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.rtx-auth-mode__option:has(input:checked) {
+  border-color: var(--auth-primary);
+}
+
+.rtx-auth-mode__option:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.rtx-auth-mode__option:has(input:focus-visible) {
+  box-shadow: 0 0 0 3px rgb(47 140 255 / 18%);
+}
+
 /* ── Alert ──────────────────────────────────────────────────────────────── */
 
 .rtx-auth-alert {

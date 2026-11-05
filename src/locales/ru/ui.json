@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "Баланс плюс кредит плюс текущая плавающая прибыль или убыток",
   "Pending Order": "Отложенный ордер",
   "Pending Order (F9)": "Отложенный ордер (F9)",
-  "Blue and Red": "Синий и красный"
+  "Blue and Red": "Синий и красный",
+  "Account mode": "Режим счёта",
+  "Hedging": "Хеджинг",
+  "Netting": "Неттинг",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "Неттинг: одна позиция по символу; новые сделки увеличивают, уменьшают или разворачивают её.",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "Хеджинг: каждая сделка открывает отдельную позицию, поэтому по одному символу их может быть несколько.",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "Демо-счета с неттингом сейчас недоступны у этого брокера. Попробуйте позже или обратитесь к брокеру.",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "Не удалось создать демо-счёт с неттингом. Ничего не было создано. Попробуйте позже.",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "Демо-счёт создан в другом режиме, чем запрошено, поэтому вход не выполнен. Возможно, счёт с этим e-mail уже существует; обратитесь к брокеру, прежде чем пробовать снова."
 }

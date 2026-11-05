@@ -2249,5 +2249,13 @@
   "Expiration date picker": "Expiration date picker",
   "Credit": "Credit",
   "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn": "Credit (bonus) given by the broker; counts in equity and margin, cannot be withdrawn",
-  "Balance plus credit plus current floating P/L": "Balance plus credit plus current floating P/L"
+  "Balance plus credit plus current floating P/L": "Balance plus credit plus current floating P/L",
+  "Account mode": "Account mode",
+  "Hedging": "Hedging",
+  "Netting": "Netting",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "Netting: one position per symbol; new trades add to it, reduce it or reverse it.",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "Hedging: each trade opens its own position, so one symbol can have several.",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "The demo netting account could not be created right now. Nothing was created. Please try again later.",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again."
 }

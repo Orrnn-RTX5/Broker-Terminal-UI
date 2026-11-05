@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { supportedLanguages } from '../config/supportedLanguages';
 import englishUi from './en/ui.json';
+import {
+    DEMO_ACCOUNT_MODE_MISMATCH_MESSAGE,
+    DEMO_NETTING_NOT_CONFIGURED_MESSAGE,
+    DEMO_NETTING_UNAVAILABLE_MESSAGE,
+} from '../api/demoRegistration';
 
 /**
  * T16 residuals: pins the resolved strings behind tr()/translateUi()/
@@ -105,6 +110,11 @@ const DYNAMICALLY_RESOLVED_KEYS = [
     'SELL',
     // App.tsx item 1 — converted from a raw publishOrderFeedback string.
     'No trading account is selected. Please sign in again.',
+    // TradeAuthDialog.tsx — tr(getErrorMessage(error)) over the demoRegistration.ts
+    // constants (#21); imported so a copy edit without the catalogs fails here.
+    DEMO_NETTING_NOT_CONFIGURED_MESSAGE,
+    DEMO_NETTING_UNAVAILABLE_MESSAGE,
+    DEMO_ACCOUNT_MODE_MISMATCH_MESSAGE,
 ] as const;
 
 const catalogs = import.meta.glob('./*/*.json', { eager: true, import: 'default' }) as Record<string, Record<string, unknown>>;

@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "ยอดคงเหลือรวมเครดิตและกำไร/ขาดทุนลอยตัวปัจจุบัน",
   "Pending Order": "คำสั่งรอดำเนินการ",
   "Pending Order (F9)": "คำสั่งรอดำเนินการ (F9)",
-  "Blue and Red": "น้ำเงินและแดง"
+  "Blue and Red": "น้ำเงินและแดง",
+  "Account mode": "โหมดบัญชี",
+  "Hedging": "เฮดจิง",
+  "Netting": "เน็ตติง",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "เน็ตติง: หนึ่งสถานะต่อสัญลักษณ์ การซื้อขายใหม่จะเพิ่ม ลด หรือกลับทิศสถานะนั้น",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "เฮดจิง: การซื้อขายแต่ละครั้งเปิดสถานะของตัวเอง สัญลักษณ์เดียวจึงมีได้หลายสถานะ",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "ขณะนี้โบรกเกอร์นี้ยังไม่เปิดบัญชีทดลองแบบเน็ตติง โปรดลองอีกครั้งภายหลังหรือติดต่อโบรกเกอร์",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "ไม่สามารถสร้างบัญชีทดลองแบบเน็ตติงได้ในขณะนี้ ไม่มีสิ่งใดถูกสร้างขึ้น โปรดลองอีกครั้งภายหลัง",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "บัญชีทดลองถูกสร้างด้วยโหมดบัญชีที่ต่างจากที่ขอ จึงไม่ได้เข้าสู่ระบบ อาจมีบัญชีสำหรับอีเมลนี้อยู่แล้ว โปรดติดต่อโบรกเกอร์ก่อนลองอีกครั้ง"
 }

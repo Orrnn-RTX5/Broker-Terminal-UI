@@ -9,7 +9,10 @@ import { installTestBrokerRuntime } from '../../test/brokerRuntime';
 vi.mock('../../services/brokerDirectory', () => ({
   loadBrokerDirectory: vi.fn(), loadAppBrokerDirectory: vi.fn(), getCachedBrokerDirectory: vi.fn(),
 }));
-vi.mock('../../api/demoRegistration', () => ({ registerRuntimeBrokerDemoAccount: vi.fn() }));
+vi.mock('../../api/demoRegistration', () => ({
+  registerRuntimeBrokerDemoAccount: vi.fn(),
+  loadDemoRegistrationModes: vi.fn().mockResolvedValue({ hedging: null, netting: false }),
+}));
 
 let restoreRuntime: () => void;
 beforeEach(() => {

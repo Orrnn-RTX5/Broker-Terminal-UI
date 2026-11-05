@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "Bakiye, kredi ve mevcut gerçekleşmemiş kâr/zarar toplamı",
   "Pending Order": "Bekleyen Emir",
   "Pending Order (F9)": "Bekleyen Emir (F9)",
-  "Blue and Red": "Mavi ve Kırmızı"
+  "Blue and Red": "Mavi ve Kırmızı",
+  "Account mode": "Hesap modu",
+  "Hedging": "Hedging",
+  "Netting": "Netting",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "Netting: sembol başına tek pozisyon; yeni işlemler onu artırır, azaltır veya ters çevirir.",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "Hedging: her işlem kendi pozisyonunu açar, bu yüzden bir sembolde birden çok pozisyon olabilir.",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "Bu aracı kurumda demo netting hesapları şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin veya aracı kurumla iletişime geçin.",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "Demo netting hesabı şu anda oluşturulamadı. Hiçbir şey oluşturulmadı. Lütfen daha sonra tekrar deneyin.",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "Demo hesap istenenden farklı bir hesap moduyla oluşturuldu, bu yüzden oturum açılmadı. Bu e-posta için zaten bir hesap olabilir; tekrar denemeden önce aracı kurumla iletişime geçin."
 }

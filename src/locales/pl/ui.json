@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "Saldo plus kredyt plus bieżący niezrealizowany zysk lub strata",
   "Pending Order": "Zlecenie oczekujące",
   "Pending Order (F9)": "Zlecenie oczekujące (F9)",
-  "Blue and Red": "Niebieski i czerwony"
+  "Blue and Red": "Niebieski i czerwony",
+  "Account mode": "Tryb konta",
+  "Hedging": "Hedging",
+  "Netting": "Netting",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "Netting: jedna pozycja na symbol; nowe transakcje ją zwiększają, zmniejszają lub odwracają.",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "Hedging: każda transakcja otwiera własną pozycję, więc jeden symbol może mieć ich kilka.",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "Konta demo typu netting nie są obecnie dostępne u tego brokera. Spróbuj ponownie później lub skontaktuj się z brokerem.",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "Nie udało się teraz utworzyć konta demo typu netting. Nic nie zostało utworzone. Spróbuj ponownie później.",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "Konto demo zostało utworzone w innym trybie niż żądany, dlatego nie zalogowano Cię. Dla tego adresu e-mail może już istnieć konto; skontaktuj się z brokerem przed ponowną próbą."
 }

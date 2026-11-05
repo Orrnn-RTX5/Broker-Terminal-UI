@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "الرصيد مضافاً إليه الائتمان والأرباح والخسائر العائمة الحالية",
   "Pending Order": "أمر معلق",
   "Pending Order (F9)": "أمر معلق (F9)",
-  "Blue and Red": "أزرق وأحمر"
+  "Blue and Red": "أزرق وأحمر",
+  "Account mode": "وضع الحساب",
+  "Hedging": "التحوّط",
+  "Netting": "المقاصة",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "المقاصة: مركز واحد لكل رمز؛ الصفقات الجديدة تزيده أو تقلّله أو تعكسه.",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "التحوّط: كل صفقة تفتح مركزها الخاص، لذا قد يكون للرمز الواحد عدة مراكز.",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "حسابات المقاصة التجريبية غير متاحة لدى هذا الوسيط حاليًا. يُرجى المحاولة لاحقًا أو التواصل مع الوسيط.",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "تعذّر إنشاء حساب المقاصة التجريبي الآن. لم يتم إنشاء أي شيء. يُرجى المحاولة لاحقًا.",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "تم إنشاء الحساب التجريبي بوضع حساب مختلف عن المطلوب، لذلك لم يتم تسجيل دخولك. قد يكون هناك حساب موجود بالفعل لهذا البريد الإلكتروني؛ يُرجى التواصل مع الوسيط قبل المحاولة مرة أخرى."
 }

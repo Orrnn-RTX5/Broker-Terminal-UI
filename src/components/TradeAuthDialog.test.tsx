@@ -14,6 +14,7 @@ vi.mock('../services/brokerDirectory', () => ({
 
 vi.mock('../api/demoRegistration', () => ({
   registerRuntimeBrokerDemoAccount: vi.fn(),
+  loadDemoRegistrationModes: vi.fn().mockResolvedValue({ hedging: null, netting: false }),
 }));
 
 vi.mock('../utils/audio', () => ({

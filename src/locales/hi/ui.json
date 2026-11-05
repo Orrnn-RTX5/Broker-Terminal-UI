@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "शेष राशि, क्रेडिट और वर्तमान अप्राप्त लाभ/हानि का योग",
   "Pending Order": "लंबित ऑर्डर",
   "Pending Order (F9)": "लंबित ऑर्डर (F9)",
-  "Blue and Red": "नीला और लाल"
+  "Blue and Red": "नीला और लाल",
+  "Account mode": "खाता मोड",
+  "Hedging": "हेजिंग",
+  "Netting": "नेटिंग",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "नेटिंग: प्रति सिंबल एक पोज़िशन; नए ट्रेड उसे बढ़ाते, घटाते या उलटते हैं।",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "हेजिंग: हर ट्रेड अपनी अलग पोज़िशन खोलता है, इसलिए एक सिंबल की कई पोज़िशन हो सकती हैं।",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "इस ब्रोकर के पास अभी डेमो नेटिंग खाते उपलब्ध नहीं हैं। कृपया बाद में फिर कोशिश करें या ब्रोकर से संपर्क करें।",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "डेमो नेटिंग खाता अभी नहीं बनाया जा सका। कुछ भी नहीं बनाया गया। कृपया बाद में फिर कोशिश करें।",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "डेमो खाता अनुरोध से अलग खाता मोड में बनाया गया, इसलिए आपको लॉग इन नहीं किया गया। इस ईमेल के लिए पहले से कोई खाता हो सकता है; दोबारा कोशिश करने से पहले कृपया ब्रोकर से संपर्क करें।"
 }

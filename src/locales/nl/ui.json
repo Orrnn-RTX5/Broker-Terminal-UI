@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "Saldo plus krediet plus huidige ongerealiseerde winst of verlies",
   "Pending Order": "In behandeling zijnde order",
   "Pending Order (F9)": "In behandeling zijnde order (F9)",
-  "Blue and Red": "Blauw en rood"
+  "Blue and Red": "Blauw en rood",
+  "Account mode": "Accountmodus",
+  "Hedging": "Hedging",
+  "Netting": "Netting",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "Netting: één positie per symbool; nieuwe trades vergroten, verkleinen of keren die om.",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "Hedging: elke trade opent een eigen positie, dus één symbool kan er meerdere hebben.",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "Demo-nettingaccounts zijn op dit moment niet beschikbaar bij deze broker. Probeer het later opnieuw of neem contact op met de broker.",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "Het demo-nettingaccount kon nu niet worden aangemaakt. Er is niets aangemaakt. Probeer het later opnieuw.",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "Het demo-account is aangemaakt met een andere accountmodus dan gevraagd, daarom bent u niet ingelogd. Er bestaat mogelijk al een account voor dit e-mailadres; neem contact op met de broker voordat u het opnieuw probeert."
 }

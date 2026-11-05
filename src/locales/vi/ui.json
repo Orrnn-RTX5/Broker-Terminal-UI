@@ -2216,5 +2216,13 @@
   "Balance plus credit plus current floating P/L": "Số dư cộng tín dụng cộng lãi/lỗ thả nổi hiện tại",
   "Pending Order": "Lệnh chờ",
   "Pending Order (F9)": "Lệnh chờ (F9)",
-  "Blue and Red": "Xanh lam và Đỏ"
+  "Blue and Red": "Xanh lam và Đỏ",
+  "Account mode": "Chế độ tài khoản",
+  "Hedging": "Phòng hộ (hedging)",
+  "Netting": "Bù trừ (netting)",
+  "Netting: one position per symbol; new trades add to it, reduce it or reverse it.": "Bù trừ: mỗi mã chỉ có một vị thế; giao dịch mới sẽ tăng, giảm hoặc đảo chiều vị thế đó.",
+  "Hedging: each trade opens its own position, so one symbol can have several.": "Phòng hộ: mỗi giao dịch mở một vị thế riêng, nên một mã có thể có nhiều vị thế.",
+  "Demo netting accounts are not available from this broker right now. Please try again later or contact the broker.": "Hiện nhà môi giới này chưa cung cấp tài khoản demo bù trừ. Vui lòng thử lại sau hoặc liên hệ nhà môi giới.",
+  "The demo netting account could not be created right now. Nothing was created. Please try again later.": "Hiện không thể tạo tài khoản demo bù trừ. Chưa có gì được tạo. Vui lòng thử lại sau.",
+  "The demo account was created with a different account mode than requested, so you were not logged in. An account may already exist for this email; please contact the broker before trying again.": "Tài khoản demo đã được tạo với chế độ tài khoản khác với yêu cầu, nên bạn chưa được đăng nhập. Có thể đã có tài khoản cho email này; vui lòng liên hệ nhà môi giới trước khi thử lại."
 }
