@@ -16,15 +16,6 @@ export const shouldDeferEmptyPositionSnapshot = (
 
 const REVALIDATION_DEBOUNCE_MS = 500;
 let lastRevalidationAt = 0;
-let trailingRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
-
-const dispatchPositionSnapshotRevalidation = (): void => {
-  lastRevalidationAt = Date.now();
-  window.dispatchEvent(new CustomEvent('rtx:toolbox-trade-refresh', {
-    detail: { reason: 'incomplete_position_stream_update' },
-  }));
-  window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-};
 
 /**
  * BottomDock owns a REST-backed Trade data reader. Ask it to reconcile an
@@ -35,23 +26,11 @@ export const requestPositionSnapshotRevalidation = (): boolean => {
   if (typeof window === 'undefined') return false;
 
   const now = Date.now();
-  const elapsed = now - lastRevalidationAt;
-  if (elapsed < REVALIDATION_DEBOUNCE_MS) {
-    if (trailingRevalidationTimer === null) {
-      trailingRevalidationTimer = setTimeout(() => {
-        trailingRevalidationTimer = null;
-        if (typeof window !== 'undefined') {
-          dispatchPositionSnapshotRevalidation();
-        }
-      }, Math.max(50, REVALIDATION_DEBOUNCE_MS - elapsed));
-    }
-    return false;
-  }
-  if (trailingRevalidationTimer !== null) {
-    clearTimeout(trailingRevalidationTimer);
-    trailingRevalidationTimer = null;
-  }
-  dispatchPositionSnapshotRevalidation();
+  if (now - lastRevalidationAt < REVALIDATION_DEBOUNCE_MS) return false;
+  lastRevalidationAt = now;
+  window.dispatchEvent(new CustomEvent('rtx:toolbox-trade-refresh', {
+    detail: { reason: 'incomplete_position_stream_update' },
+  }));
   return true;
 };
 

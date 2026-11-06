@@ -108,7 +108,7 @@ export function normalizePosition(raw: any) {
 }
 
 export const getPositionId = (raw: any): number => (
-  toFinite(raw?.position_id ?? raw?.ticket ?? raw?.id ?? raw?.position_ticket ?? raw?.closed_ticket, 0)
+  toFinite(raw?.position_id ?? raw?.ticket ?? raw?.id ?? raw?.position_ticket, 0)
 );
 
 export const isClosedPositionRecord = (raw: any): boolean => {
@@ -254,13 +254,8 @@ export const readPositionStreamEvent = (message: any): { event: string; position
   const event = envelopes.flatMap((value) => [value?.event, value?.type])
     .map((value) => String(value ?? '').trim().toLowerCase())
     .find((value) => value && value !== 'channel_message') ?? '';
-  const allowResult = event.startsWith('position_') || POSITION_CLOSED_EVENTS.has(event);
-  const position = envelopes.flatMap((value) => [
-    value?.position,
-    value?.closed_position,
-    ...(allowResult ? [value?.result] : []),
-    value,
-  ]).find((value) => getPositionId(value) > 0);
+  const position = envelopes.flatMap((value) => [value?.position, value?.closed_position, value])
+    .find((value) => getPositionId(value) > 0);
   return { event, position };
 };
 
