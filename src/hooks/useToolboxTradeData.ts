@@ -10,7 +10,13 @@ import {
   getCommittedBrokerAccountSessionScopeKey,
   getServerUrl,
 } from '../services/brokerSession';
-import { beginPositionsRead, isConfirmedClosedBySnapshot, isConfirmedClosedPosition, useAppStore } from '../store/useAppStore';
+import {
+  beginPositionsRead,
+  isConfirmedClosedBySnapshot,
+  isConfirmedClosedPosition,
+  isConfirmedOpenPosition,
+  useAppStore,
+} from '../store/useAppStore';
 import { TRADE_OVERLAY_CLOSE_STATE_EVENT } from '../services/tradeOverlayHistory';
 import {
   requestPositionSnapshotRevalidation,
@@ -892,7 +898,13 @@ export function useToolboxTradeData() {
       const snapshot = replaceToolboxPositions(positionsRef.current, visibleRawPositions);
       const snapshotTickets = new Set(snapshot.map((position) => position.id));
       retainedImmediatePositionsRef.current.forEach(({ expiresAt }, ticket) => {
-        if (expiresAt <= now || snapshotTickets.has(ticket) || isConfirmedClosedBySnapshot(ticket)) {
+        if (
+          expiresAt <= now
+          || snapshotTickets.has(ticket)
+          || isConfirmedOpenPosition(ticket)
+          || isConfirmedClosedPosition(ticket)
+          || isConfirmedClosedBySnapshot(ticket)
+        ) {
           retainedImmediatePositionsRef.current.delete(ticket);
         }
       });
@@ -1050,6 +1062,17 @@ export function useToolboxTradeData() {
       }
       let deferSnapshot = false;
       if (positionsChanged) {
+        const now = Date.now();
+        retainedImmediatePositionsRef.current.forEach(({ expiresAt }, ticket) => {
+          if (
+            expiresAt <= now
+            || isConfirmedOpenPosition(ticket)
+            || isConfirmedClosedPosition(ticket)
+            || isConfirmedClosedBySnapshot(ticket)
+          ) {
+            retainedImmediatePositionsRef.current.delete(ticket);
+          }
+        });
         const nextPositions = mergeRetainedImmediateToolboxPositions(
           replaceToolboxPositions(
             positionsRef.current,
@@ -1061,7 +1084,7 @@ export function useToolboxTradeData() {
           && !isConfirmedClosedBySnapshot(position.id)
         ));
         deferSnapshot = shouldDeferEmptyPositionSnapshot(
-          positionsRef.current.filter((position) => !isConfirmedClosedPosition(position.id)),
+          positionsRef.current.filter((position) => !isConfirmedClosedPosition(position.id) && !isConfirmedClosedBySnapshot(position.id)),
           nextPositions,
         );
         if (deferSnapshot) {

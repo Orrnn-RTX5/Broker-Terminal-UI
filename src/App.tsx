@@ -354,7 +354,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const liveLogin = getLiveTradingLogin();
     if (!liveLogin) return null;
 
-    const match = /^(?:account|metrics|positions|orders|deals)\.([1-9]\d*)$/.exec(channel ?? '');
+    const match = /^(?:account|metrics|positions|orders|deals|state)\.([1-9]\d*)$/.exec(channel ?? '');
     if (!match || match[1] !== String(liveLogin)) return null;
     return liveLogin;
   }, [getLiveTradingLogin]);
@@ -1445,7 +1445,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
   useEffect(() => {
     const loginId = parsePositiveInt(accountId);
-    if (!isAuthenticated || !isConnected || !loginId) return;
+    if (!isAuthenticated || !loginId) return;
 
     const channels = [
       `account.${loginId}`,
@@ -1459,7 +1459,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     console.log('[WS] Subscribing to account v2 channels:', channels.join(', '));
     const unsubscribers = channels.map(channel => subscribe(channel, () => undefined));
     return () => unsubscribers.forEach(unsubscribe => unsubscribe());
-  }, [accountId, isAuthenticated, isConnected, subscribe]);
+  }, [accountId, isAuthenticated, subscribe]);
 
   const isTradeSessionActive = useCallback(() => isAuthenticatedRef.current, []);
   const incrementPositionsStreamVersion = useCallback(() => {

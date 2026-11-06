@@ -165,6 +165,7 @@ export const getSessionTradeSnapshotRequests = (
       inFlightSnapshots.delete(requestKey);
     }
   };
+  void positionsResultPromise.then(evict, evict);
   void snapshotPromise.then(evict, evict);
 
   return requests;
